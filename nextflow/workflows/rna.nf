@@ -4,15 +4,15 @@
 ========================================================================================
 */
 
-include { GBCMS_RUN } from '../modules/local/gbcms/run/main'
+include { GBCMS_RNA } from '../modules/local/gbcms/rna/main'
 
 /*
 ========================================================================================
-    RUN MAIN WORKFLOW
+    RUN RNA WORKFLOW
 ========================================================================================
 */
 
-workflow GBCMS {
+workflow GBCMS_RNA_WF {
     take:
     ch_samples  // channel: [ val(meta), path(bam), path(bai), path(variants) ]
     ch_fasta    // channel: [ path(fasta), path(fai) ]
@@ -22,15 +22,15 @@ workflow GBCMS {
     ch_versions = Channel.empty()
 
     //
-    // MODULE: Run gbcms
+    // MODULE: Run gbcms rna
     //
-    GBCMS_RUN (
+    GBCMS_RNA (
         ch_samples,
         ch_fasta
     )
-    ch_versions = ch_versions.mix(GBCMS_RUN.out.versions)
+    ch_versions = ch_versions.mix(GBCMS_RNA.out.versions)
 
     emit:
-    counts   = GBCMS_RUN.out.counts
+    counts   = GBCMS_RNA.out.counts
     versions = ch_versions
 }

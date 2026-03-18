@@ -71,7 +71,7 @@ flowchart TD
 | QC Failed | `--filter-qc-failed` | Off | `0x200` | Platform QC failures |
 | Improper Pair | `--filter-improper-pair` | Off | `0x2` (inverted) | Reads not properly paired |
 | Indel reads | `--filter-indel` | Off | CIGAR-based | Any Ins or Del in CIGAR |
-| MAPQ threshold | `--min-mapq` | **20** | — | Minimum mapping quality |
+| MAPQ threshold | `--min-mapq` | **20** (DNA) / **1** (RNA) | — | Minimum mapping quality |
 
 ---
 
@@ -132,8 +132,62 @@ BAM fetch window: [183, 206)   ← ±17bp (repeat_span + 2)
 
 ---
 
+## RNA-Specific Filters
+
+RNA mode (`gbcms rna`) extends the standard filter cascade with two additional checks.
+
+### NH:i:1 MAPQ Rescue
+
+STAR assigns MAPQ=255 to uniquely mapped reads and MAPQ=0–3 to multi-mappers. When `--min-mapq 1` (RNA default), reads that fail the MAPQ threshold are checked for the `NH:i:1` tag (Number of Hits = 1). If present, the read is uniquely aligned and rescued.
+
+```mermaid
+flowchart TD
+    Read([📖 RNA Read]) --> MAPQ{MAPQ ≥ min_mapq?}
+    MAPQ -->|Yes| Pass([✅ Pass]):::pass
+    MAPQ -->|No| NH{NH:i:1 tag?}
+    NH -->|Yes| Rescue([✅ Rescued]):::rescue
+    NH -->|No| Drop([❌ Discard]):::drop
+
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef rescue fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+```
+
+!!! info "Biological Context"
+    Novel splice junctions often receive low MAPQ because STAR hasn't observed the junction in its first-pass database. The NH:i:1 rescue ensures these uniquely mapped reads contribute to allele counts rather than being silently discarded.
+
+### Strandedness Filter
+
+For dUTP-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense reads are **counted** (they contribute to `rna_sense_depth` and `rna_antisense_depth` respectively), but only sense-strand reads contribute to the primary DP/RD/AD counts when `--enforce-strandedness` is enabled.
+
+| Read Orientation | Gene Strand | Classification |
+|:-----------------|:------------|:---------------|
+| Forward (R1) | + | Sense |
+| Reverse (R1) | + | Antisense |
+| Forward (R1) | − | Antisense |
+| Reverse (R1) | − | Sense |
+
+!!! tip
+    Disable strandedness filtering with `--no-strandedness` for unstranded RNA-seq libraries.
+
+---
+
+## BAQ Quality Downgrade
+
+When `--apply-baq` is enabled, base qualities near indels are heuristically downgraded to prevent inflated quality scores from causing false-positive allele classifications.
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--apply-baq/--no-baq` | off | Enable heuristic BAQ quality downgrade |
+
+!!! info "When to Enable BAQ"
+    Most modern pipelines (BQSR, fgbio consensus) already recalibrate base qualities. Enable BAQ only for legacy BAMs lacking quality recalibration, where bases adjacent to indels may retain inflated quality scores from the original base caller.
+
+---
+
 ## Related
 
 - [Allele Classification](allele-classification.md) — How reads passing filters are classified
 - [Counting & Metrics](counting-metrics.md) — Read-level and fragment-level counts
-- [CLI Run Command](../cli/run.md) — All parameter options
+- [DNA CLI Reference](../cli/dna.md) — DNA parameter options
+- [RNA CLI Reference](../cli/rna.md) — RNA-specific parameter options

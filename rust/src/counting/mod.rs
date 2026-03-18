@@ -13,17 +13,22 @@
 //! - [`variant_checks`] — Per-variant-type classification (SNP, MNP, Ins, Del, Complex)
 //! - [`utils`] — Shared utility functions (position lookup, quality, masked comparison)
 //! - [`mfsd`] — Mutant Fragment Size Distribution statistics (KS test, LLR, mean)
+//! - [`rna`] — RNA-seq-specific alignment filters and utilities
 
 mod engine;
 mod fragment;
 mod alignment;
 pub mod pairhmm;
+pub(crate) mod pangenome;
+pub(crate) mod wfa_router;
 mod variant_checks;
 mod utils;
 pub(crate) mod mfsd;
+pub(crate) mod rna;
 
-// Re-export the PyO3 entry point so lib.rs can call counting::count_bam
+// Re-export the PyO3 entry points so lib.rs can call counting::count_bam / count_bam_binned
 pub use engine::count_bam;
+pub use engine::count_bam_binned;
 
 // Re-export AlignmentBackend for sibling modules (used by pairhmm tests)
 pub use engine::AlignmentBackend;

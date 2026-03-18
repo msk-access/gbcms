@@ -1,7 +1,8 @@
-import os
+# test_accuracy.py — accuracy tests for variant counting
 
 import pysam
 import pytest
+from helpers import count_both
 
 from gbcms._rs import count_bam
 
@@ -275,7 +276,7 @@ def test_insertion_accuracy(synthetic_bam):
     ), f"DP invariant failed: dp={counts.dp} < rd+ad={counts.rd + counts.ad}"
 
 
-def test_complex_accuracy(synthetic_bam):
+def test_complex_accuracy(synthetic_bam, tmp_path):
     """
     Test accuracy for complex variants (DelIns, SNP+Indel) using check_complex.
     """
@@ -292,7 +293,7 @@ def test_complex_accuracy(synthetic_bam):
 
     from gbcms import _rs as gbcms_rs
 
-    complex_bam = "test_complex.bam"
+    complex_bam = str(tmp_path / "test_complex.bam")
 
     # Create header
     header = {"HD": {"VN": "1.0"}, "SQ": [{"LN": 1000, "SN": "chr1"}]}
@@ -362,8 +363,9 @@ def test_complex_accuracy(synthetic_bam):
         d.query_qualities = [30, 30]  # type: ignore[assignment]
         outf.write(d)
 
-    pysam.sort("-o", "test_complex.sorted.bam", complex_bam)
-    pysam.index("test_complex.sorted.bam")
+    sorted_path = str(tmp_path / "test_complex.sorted.bam")
+    pysam.sort("-o", sorted_path, complex_bam)
+    pysam.index(sorted_path)
 
     variants = [
         gbcms_rs.Variant("chr1", 100, "AT", "C", "COMPLEX"),
@@ -371,7 +373,7 @@ def test_complex_accuracy(synthetic_bam):
     ]
 
     counts = gbcms_rs.count_bam(
-        bam_path="test_complex.sorted.bam",
+        bam_path=sorted_path,
         variants=variants,
         decomposed=[None] * len(variants),
         min_mapq=20,
@@ -385,13 +387,7 @@ def test_complex_accuracy(synthetic_bam):
         threads=1,
     )
 
-    # Cleanup
-    if os.path.exists(complex_bam):
-        os.remove(complex_bam)
-    if os.path.exists("test_complex.sorted.bam"):
-        os.remove("test_complex.sorted.bam")
-    if os.path.exists("test_complex.sorted.bam.bai"):
-        os.remove("test_complex.sorted.bam.bai")
+    # tmp_path cleanup is automatic — no manual os.remove needed
 
     assert len(counts) == 2
 
@@ -472,4 +468,92 @@ def test_mnp_accuracy(synthetic_bam):
     assert counts.ad == 2
     assert counts.rd == 1
     # Gap 1D invariant: DP includes 'neither' reads
+    assert counts.dp >= counts.rd + counts.ad
+
+
+# ── count_bam_binned parity tests ────────────────────────────────────────
+
+
+def test_snp_accuracy_binned(synthetic_bam):
+    """count_bam_binned produces same SNP counts as count_bam."""
+    from gbcms._rs import Variant
+
+    variant = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="T", variant_type="SNP")
+    counts = count_both(
+        synthetic_bam,
+        [variant],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert counts.rd_fwd == 5
+    assert counts.rd_rev == 3
+    assert counts.ad_fwd == 4
+    assert counts.ad_rev == 2
+    assert counts.rd == 8
+    assert counts.ad == 6
+
+
+def test_insertion_accuracy_binned(synthetic_bam):
+    """count_bam_binned produces same insertion counts as count_bam."""
+    from gbcms._rs import Variant
+
+    variant = Variant(
+        chrom="chr1", pos=200, ref_allele="A", alt_allele="AT", variant_type="INSERTION"
+    )
+    counts = count_both(
+        synthetic_bam,
+        [variant],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert counts.ad_fwd == 2
+    assert counts.ad == 2
+    assert counts.dp >= counts.rd + counts.ad
+
+
+def test_deletion_accuracy_binned(synthetic_bam):
+    """count_bam_binned produces same deletion counts as count_bam."""
+    from gbcms._rs import Variant
+
+    variant = Variant(
+        chrom="chr1", pos=300, ref_allele="AT", alt_allele="A", variant_type="DELETION"
+    )
+    counts = count_both(
+        synthetic_bam,
+        [variant],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert counts.ad_fwd == 3
+    assert counts.ad == 3
+    assert counts.dp >= counts.rd + counts.ad
+
+
+def test_mnp_accuracy_binned(synthetic_bam):
+    """count_bam_binned produces same MNP counts as count_bam."""
+    from gbcms._rs import Variant
+
+    variant = Variant(chrom="chr1", pos=400, ref_allele="AT", alt_allele="CG", variant_type="MNP")
+    counts = count_both(
+        synthetic_bam,
+        [variant],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert counts.ad_fwd == 2
+    assert counts.rd_rev == 1
+    assert counts.ad == 2
+    assert counts.rd == 1
     assert counts.dp >= counts.rd + counts.ad

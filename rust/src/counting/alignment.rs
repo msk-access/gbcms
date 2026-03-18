@@ -10,7 +10,7 @@
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 use bio::alignment::pairwise::Aligner;
-use log::trace;
+use log::{debug, trace};
 
 use crate::types::Variant;
 use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase};
@@ -44,6 +44,7 @@ use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase}
 /// large leading clips from polluting Phase 3 alignment.
 pub fn extract_raw_read_window(
     record: &Record,
+    quals: &[u8],
     win_start: i64,
     win_end: i64,
     variant_pos: i64,
@@ -53,7 +54,7 @@ pub fn extract_raw_read_window(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
     let seq = record.seq();
-    let quals = record.qual();
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
 
     let mut first_read_pos: Option<usize> = None;
     let mut last_read_pos: Option<usize> = None;
@@ -221,7 +222,11 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
 ) -> ClassifyResult {
     let (ref_hap, alt_hap) = match build_haplotypes(variant) {
         Some(haps) => haps,
-        None => return ClassifyResult::neither(ClassifyPhase::Alignment),
+        None => {
+            debug!("classify_by_alignment: build_haplotypes failed for {}:{}",
+                   variant.chrom, variant.pos + 1);
+            return ClassifyResult::neither(ClassifyPhase::Alignment);
+        }
     };
 
     // Mask low-quality bases as N so they don't bias scoring.

@@ -10,6 +10,12 @@ Complete reference for all pipeline parameters.
 | `--variants` | Path to [VCF/MAF](../reference/input-formats.md) variants file |
 | `--fasta` | Reference FASTA (with .fai index) |
 
+## Mode
+
+| Parameter | Default | Description |
+|:----------|:--------|:------------|
+| `--mode` | `dna` | Analysis mode: `dna` (cfDNA/somatic) or `rna` (RNA-seq with transcriptome-aware filtering) |
+
 ## Output Options
 
 | Parameter | Default | Description |
@@ -20,7 +26,7 @@ Complete reference for all pipeline parameters.
 | `--column_prefix` | `''` | Prefix for gbcms count columns in MAF output |
 | `--preserve_barcode` | `false` | Keep original Tumor_Sample_Barcode from input MAF |
 
-## mFSD Options
+## mFSD Options (DNA only)
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
@@ -45,11 +51,30 @@ Complete reference for all pipeline parameters.
 | `--filter_by_sample` | `false` | Filter multi-sample MAF by `Tumor_Sample_Barcode` ([details](samplesheet.md#multi-sample-maf-filtering)) |
 | `--show_normalization` | `false` | Add `norm_*` columns showing left-aligned coordinates in output |
 
+## UMI & BAQ Options
+
+| Parameter | Default | Description |
+|:----------|:--------|:------------|
+| `--umi_tag` | `''` | UMI BAM tag for deduplication (e.g., `XM`, `RX`). When set, reads sharing the same UMI are grouped as a single observation. |
+| `--apply_baq` | `false` | Apply Base Alignment Quality recalibration (DNA mode only). Reduces false positives near indels. |
+
+## RNA-Specific Options
+
+These parameters are only used when `--mode rna` is specified.
+
+| Parameter | Default | Description |
+|:----------|:--------|:------------|
+| `--rna_editing_db` | `''` | Path to [REDIportal](http://srv00.recas.ba.infn.it/atlas/index.html) editing database file (e.g., `TABLE1_hg38_v3.txt`). Flags ALT sites that overlap known A→I RNA editing positions. |
+| `--enforce_strandedness` | `false` | Enforce dUTP strand-specific library prep for A→I editing detection. Skips ALT reads on the wrong strand for known editing sites. |
+
+!!! tip "RNA mode defaults"
+    RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
+
 ## Alignment Backend (Advanced)
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
-| `--alignment_backend` | `sw` | Phase 3 alignment backend: `sw` (Smith-Waterman) or `hmm` (PairHMM). See [CLI Reference](../cli/run.md#advanced-alignment-backend). |
+| `--alignment_backend` | `hmm` | Phase 3 alignment backend: `hmm` (PairHMM, default) or `sw` (Smith-Waterman). See [CLI Reference](../cli/dna.md#alignment-backend). |
 | `--llr_threshold` | `2.3` | PairHMM log-likelihood ratio threshold for confident calls |
 | `--gap_open_prob` | `1e-4` | PairHMM gap-open probability for non-repeat regions |
 | `--gap_extend_prob` | `0.1` | PairHMM gap-extend probability for non-repeat regions |
@@ -89,16 +114,17 @@ Representative metrics from cfDNA duplex BAM samples:
 
     ```groovy
     process {
-        withName: GBCMS_RUN {
+        withName: GBCMS_DNA {
             ext.args = '--verbose'
         }
     }
     ```
 
-    See [CLI Run Reference](../cli/run.md) for all available options.
+    See [DNA CLI Reference](../cli/dna.md) or [RNA CLI Reference](../cli/rna.md) for all available options.
 
 ## Related
 
 - [Samplesheet](samplesheet.md) — Input format
 - [Examples](examples.md) — Usage patterns
-- [CLI Reference](../cli/run.md) — Underlying command
+- [DNA CLI Reference](../cli/dna.md) — Underlying DNA command
+- [RNA CLI Reference](../cli/rna.md) — Underlying RNA command

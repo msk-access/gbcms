@@ -39,13 +39,24 @@ sample2,/path/to/sample2.bam,,
 
 ### 2. Run the workflow
 
-**Local with Docker:**
+**DNA mode (default) — local with Docker:**
 ```bash
 nextflow run nextflow/main.nf \
     --input samplesheet.csv \
     --variants variants.vcf \
     --fasta reference.fa \
     --outdir results \
+    -profile docker
+```
+
+**RNA mode:**
+```bash
+nextflow run nextflow/main.nf \
+    --input samplesheet.csv \
+    --variants variants.maf \
+    --fasta reference.fa \
+    --mode rna \
+    --format maf \
     -profile docker
 ```
 
@@ -68,6 +79,11 @@ nextflow run nextflow/main.nf \
 | `--variants` | Path to VCF/MAF variants file |
 | `--fasta` | Path to reference FASTA (with .fai index) |
 
+### Mode
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--mode` | Analysis mode: `dna` or `rna` | `dna` |
+
 ### Optional
 | Parameter | Description | Default |
 |-----------|-------------|---------|
@@ -82,6 +98,8 @@ nextflow run nextflow/main.nf \
 | `--fragment_qual_threshold` | Quality margin for fragment consensus | `10` |
 | `--context_padding` | Minimum flanking bases for alignment | `5` |
 | `--adaptive_context` | Auto-increase context in tandem repeats | `true` |
+| `--umi_tag` | UMI BAM tag for deduplication (e.g., `XM`, `RX`) | `''` (disabled) |
+| `--apply_baq` | Apply BAQ recalibration (DNA only) | `false` |
 | `--filter_duplicates` | Filter duplicate reads | `true` |
 | `--filter_secondary` | Filter secondary alignments | `false` |
 | `--filter_supplementary` | Filter supplementary alignments | `false` |
@@ -89,7 +107,13 @@ nextflow run nextflow/main.nf \
 | `--filter_improper_pair` | Filter improperly paired reads | `false` |
 | `--filter_indel` | Filter reads with indels | `false` |
 | `--filter_by_sample` | Filter multi-sample MAF by Tumor_Sample_Barcode | `false` |
-| `--alignment_backend` | Phase 3 alignment: `sw` or `hmm` | `sw` |
+| `--alignment_backend` | Phase 3 alignment: `hmm` (PairHMM, default) or `sw` (Smith-Waterman) | `hmm` |
+
+### RNA-Specific
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--rna_editing_db` | Path to REDIportal editing database (TABLE1_hg38_v3.txt) | `''` (disabled) |
+| `--enforce_strandedness` | Enforce dUTP strandedness for A→I editing detection | `false` |
 
 See [Full Parameter Reference](docs/nextflow/parameters.md) for all options including PairHMM tuning parameters.
 
@@ -105,6 +129,7 @@ See [Full Parameter Reference](docs/nextflow/parameters.md) for all options incl
 - `-profile docker`: Use Docker containers (recommended for local)
 - `-profile singularity`: Use Singularity images (recommended for HPC)
 - `-profile slurm`: Run on SLURM cluster with Singularity (queue: `cmobic_cpu`)
+- `-profile local`: No container (requires local `gbcms` install)
 - `-profile debug`: Print hostname for debugging
 
 ## Customizing for Your Cluster
@@ -128,3 +153,13 @@ Results are published to `${params.outdir}/gbcms/`:
 - MAF files: `<sample>.gbcms.maf`
 
 Pipeline info and logs are in `${params.outdir}/pipeline_info/`.
+
+## Pipeline Modules
+
+| Module | Description |
+|--------|-------------|
+| `GBCMS_DNA` | DNA allele counting via `gbcms dna` |
+| `GBCMS_RNA` | RNA allele counting via `gbcms rna` |
+| `GBCMS_NORMALIZE` | Variant normalization via `gbcms normalize` |
+| `FILTER_MAF` | Pre-filter multi-sample MAF by sample |
+| `PIPELINE_SUMMARY` | Aggregate filtering statistics |

@@ -42,8 +42,8 @@ Technical terms used throughout the documentation.
 
 | Term | Definition |
 |:-----|:-----------|
-| **Smith-Waterman (SW)** | Default Phase 3 alignment backend. Uses edit-distance scoring to align reads against REF and ALT haplotypes. Confident call requires ≥2 score margin. |
-| **PairHMM** | Alternative Phase 3 alignment backend (`--alignment-backend hmm`). Uses pair hidden Markov model with base quality probabilities for probabilistic alignment scoring. |
+| **PairHMM** | Default Phase 3 alignment backend for all modes. Uses pair hidden Markov model with base quality probabilities for probabilistic alignment scoring. Selected via `--alignment-backend pairhmm`. |
+| **Smith-Waterman (SW)** | Alternative Phase 3 alignment backend. Uses edit-distance scoring to align reads against REF and ALT haplotypes. Confident call requires ≥2 score margin. Selected via `--alignment-backend sw`. |
 | **LLR** | Log-Likelihood Ratio — PairHMM confidence metric. `LLR = ln(P(read|ALT)) - ln(P(read|REF))`. Default threshold: 2.3 (≈ ln(10), i.e., 10:1 odds). |
 
 ## Fragment Metrics
@@ -66,7 +66,28 @@ Technical terms used throughout the documentation.
 | **REF_MISMATCH** | REF allele does not match the reference genome at the stated position |
 | **FETCH_FAILED** | Could not fetch the reference region (chromosome not found, etc.) |
 
+## RNA Terms
+
+| Term | Definition |
+|:-----|:-----------|
+| **Sense strand** | mRNA coding strand; matches gene transcription direction |
+| **Antisense strand** | Non-coding strand; template for transcription |
+| **A-to-I editing** | Post-transcriptional RNA modification by ADAR enzymes; adenosine → inosine (read as guanosine) |
+| **NH tag** | BAM tag indicating number of reported alignments for a read |
+| **Splice junction** | CIGAR `N` operation representing an intron skip in RNA-seq reads |
+| **REDIportal** | Database of known human A-to-I RNA editing sites |
+
+## Engine Terms
+
+| Term | Definition |
+|:-----|:-----------|
+| **BAQ** | Base Alignment Quality — heuristic quality downgrade near indels to prevent false calls |
+| **UMI** | Unique Molecular Identifier — barcode for molecule-level deduplication |
+| **Genomic binning** | Variant grouping by chromosome for cache-efficient counting (`count_bam_binned`) |
+| **Parity test** | Test verifying `count_bam` and `count_bam_binned` produce identical results |
+
 ## Related
 
 - [Architecture](architecture.md) — System design
 - [Input Formats](input-formats.md) — File specifications
+- [RNA CLI Reference](../cli/rna.md) — RNA-specific options

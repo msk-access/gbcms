@@ -11,6 +11,7 @@ Key invariant: dp >= rd + ad (not dp == rd + ad).
 
 import pysam
 import pytest
+from helpers import count_both
 
 from gbcms._rs import Variant, count_bam
 
@@ -160,4 +161,60 @@ def test_dpf_includes_neither_fragments(neither_bam):
     assert counts.adf == 2, f"Expected adf=2, got {counts.adf}"
 
     # Key invariant: DPF >= RDF + ADF
+    assert counts.dpf >= counts.rdf + counts.adf
+
+
+# ── count_bam_binned parity tests ────────────────────────────────────────
+
+
+def test_dp_includes_neither_reads_binned(neither_bam):
+    """count_bam_binned: DP includes third-allele reads."""
+    variant = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="T", variant_type="SNP")
+    counts = count_both(
+        neither_bam,
+        [variant],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert counts.rd == 3
+    assert counts.ad == 2
+    assert counts.dp == 8
+    assert counts.dp >= counts.rd + counts.ad
+
+
+def test_dp_strand_includes_neither_binned(neither_bam):
+    """count_bam_binned: Strand DP includes third-allele reads."""
+    variant = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="T", variant_type="SNP")
+    counts = count_both(
+        neither_bam,
+        [variant],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert counts.dp_fwd == 5
+    assert counts.dp_rev == 3
+    assert counts.dp_fwd + counts.dp_rev == counts.dp
+
+
+def test_dpf_includes_neither_fragments_binned(neither_bam):
+    """count_bam_binned: DPF includes third-allele fragments."""
+    variant = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="T", variant_type="SNP")
+    counts = count_both(
+        neither_bam,
+        [variant],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert counts.dpf == 8
+    assert counts.rdf == 3
+    assert counts.adf == 2
     assert counts.dpf >= counts.rdf + counts.adf

@@ -79,7 +79,8 @@ nav:
   
   - CLI Reference:
     - Overview: cli/index.md
-    - Run Command: cli/run.md
+    - DNA Command: cli/dna.md
+    - RNA Command: cli/rna.md
     - Normalize Command: cli/normalize.md
   
   - Nextflow Pipeline:

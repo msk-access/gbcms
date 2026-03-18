@@ -6,6 +6,7 @@ Run gbcms at scale on HPC clusters with automatic parallelization.
 
 The Nextflow workflow provides:
 
+- **DNA and RNA modes** with dedicated modules
 - **Automatic parallelization** across samples
 - **SLURM/HPC integration** with resource management  
 - **Containerization** with Docker/Singularity
@@ -27,14 +28,19 @@ flowchart TD
     HasData -->|No| Skip([⚪ Skip sample]):::skip
     FilterMAF --> Summary["PIPELINE_SUMMARY<br/>(aggregate filter stats)"]
 
-    Ready --> Run["GBCMS_RUN<br/>(per-sample counting)"]:::run
-    Ready2 --> Run
+    Ready --> ModeCheck{mode?}
+    Ready2 --> ModeCheck
 
-    Run --> Output([📊 VCF/MAF output]):::output
+    ModeCheck -->|dna| DNA["GBCMS_DNA<br/>(cfDNA/somatic counting)"]:::dna
+    ModeCheck -->|rna| RNA["GBCMS_RNA<br/>(RNA-seq counting)"]:::rna
+
+    DNA --> Output([📊 VCF/MAF output]):::output
+    RNA --> Output
     Summary --> SummaryOut([📋 pipeline_summary.tsv]):::output
 
     classDef input fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    classDef run fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef rna fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef output fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef skip fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
 ```
@@ -42,10 +48,19 @@ flowchart TD
 ## Quick Start
 
 ```bash
+# DNA mode (default)
 nextflow run nextflow/main.nf \
     --input samplesheet.csv \
     --variants variants.vcf \
     --fasta reference.fa \
+    -profile docker
+
+# RNA mode
+nextflow run nextflow/main.nf \
+    --input samplesheet.csv \
+    --variants variants.maf \
+    --fasta reference.fa \
+    --mode rna \
     -profile docker
 ```
 

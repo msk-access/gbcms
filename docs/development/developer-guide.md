@@ -224,7 +224,7 @@ Before committing:
 | `RUST_LOG` | — | Rust logging |
 
 ```bash
-GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms run ...
+GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms dna ...
 ```
 
 ---

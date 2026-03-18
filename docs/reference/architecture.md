@@ -7,13 +7,17 @@ gbcms uses a hybrid Python/Rust architecture for maximum performance.
 ```mermaid
 flowchart TB
     subgraph Python [🐍 Python Layer]
-        CLI[CLI - cli.py] --> Pipeline[Orchestration - pipeline.py]
+        CLI[CLI - cli.py] -->|dna / rna| Pipeline[Orchestration - pipeline.py]
         Pipeline --> Reader[Input Adapters]
         Pipeline --> Writer[Output Writers]
     end
     
     subgraph Rust [🦀 Rust Layer]
-        Counter[count_bam - counting/engine.rs] --> CIGAR[CIGAR Parser]
+        Counter[count_bam_binned - counting/engine.rs] --> CIGAR[CIGAR Parser]
+        Counter --> RNA[RNA Filters - rna.rs]
+        Counter --> Pangenome[Haplotype Matrix - pangenome.rs]
+        Counter --> WFA[WFA Fast Path - wfa_router.rs]
+        Counter --> PairHMM[PairHMM Backend - pairhmm.rs]
         Counter --> Stats[Strand Bias - stats.rs]
         ParquetWriter[write_fsd_parquet - parquet_writer.rs]
     end
@@ -113,16 +117,16 @@ Low p-value (< 0.05) indicates potential strand bias artifact.
 
 ```
 src/gbcms/
-├── cli.py           # Typer CLI (~350 LOC)
+├── cli.py           # Typer CLI (dna, rna, normalize, run commands)
 ├── pipeline.py      # Orchestration (~450 LOC)
 ├── normalize.py     # Standalone normalization workflow
 ├── core/
 │   └── kernel.py    # Coordinate normalization
 ├── io/
 │   ├── input.py     # VcfReader, MafReader
-│   └── output.py    # VcfWriter, MafWriter
+│   └── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
 ├── models/
-│   └── core.py      # Pydantic config (GbcmsConfig, AlignmentConfig)
+│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, AlignmentConfig)
 └── utils/
     └── logging.py   # Structured logging
 
@@ -131,11 +135,14 @@ rust/src/
 ├── parquet_writer.rs         # write_fsd_parquet() — native Parquet via ZSTD (--mfsd-parquet)
 ├── counting/
 │   ├── mod.rs                # Submodule re-exports
-│   ├── engine.rs             # Main loop, DP gating, read iteration
-│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex
+│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
 │   ├── alignment.rs          # Smith-Waterman implementation
-│   ├── pairhmm.rs            # PairHMM alignment backend
-│   ├── fragment.rs           # FragmentEvidence, quality consensus
+│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+│   ├── pangenome.rs          # Haplotype matrix construction
+│   ├── wfa_router.rs         # WFA2 fast-path alignment
+│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
 │   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
 │   └── utils.rs              # Helpers, reconstruction, soft-clip
 ├── normalize/
@@ -154,19 +161,25 @@ rust/src/
 
 ## Configuration
 
-All settings via `GbcmsConfig` (Pydantic model):
+All settings via mode-specific Pydantic models:
 
 ```mermaid
 flowchart TB
-    GbcmsConfig --> OutputConfig[Output Settings]
-    GbcmsConfig --> ReadFilters[Read Filters]
-    GbcmsConfig --> QualityThresholds[Quality Thresholds]
-    GbcmsConfig --> AlignmentConfig[Alignment Backend]
+    Base[GbcmsBaseConfig] --> DnaConfig[GbcmsDnaConfig]
+    Base --> RnaConfig[GbcmsRnaConfig]
+    DnaConfig --> DnaDefaults["mode=dna, MAPQ=20"]
+    RnaConfig --> RnaDefaults["mode=rna, MAPQ=1, pairhmm relaxed"]
+    RnaConfig --> RnaSpecific["enforce_strandedness, rna_editing_db"]
+    
+    Base --> OutputConfig[Output Settings]
+    Base --> ReadFilters[Read Filters]
+    Base --> QualityThresholds[Quality Thresholds]
+    Base --> AlignmentConfig[Alignment Backend]
     
     OutputConfig --> D1["output_dir, format, suffix, column_prefix, mfsd, mfsd_parquet"]
-    ReadFilters --> D2[exclude_secondary, exclude_duplicates]
+    ReadFilters --> D2["exclude_secondary, exclude_duplicates"]
     QualityThresholds --> D3["min_mapq, min_baseq, fragment_qual_threshold"]
-    AlignmentConfig --> D4["backend: sw|hmm, llr_threshold, gap_*_prob"]
+    AlignmentConfig --> D4["backend: pairhmm|sw, llr_threshold, gap_*_prob"]
 ```
 
 See [models/core.py](file:///src/gbcms/models/core.py) for definitions.
@@ -193,8 +206,8 @@ sequenceDiagram
     Reader-->>Pipeline: List[Variant]
 
     loop For each BAM sample
-        Pipeline->>Rust: count_bam(bam, variants, filters)
-        loop For each variant (parallel via Rayon)
+        Pipeline->>Rust: count_bam_binned(bam, variants, config)
+        loop For each genomic bin (parallel via Rayon)
             Rust->>BAM: fetch(chrom, pos−5, pos+ref_len+5)
             BAM-->>Rust: Iterator of reads
             loop For each read

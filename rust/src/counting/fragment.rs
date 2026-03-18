@@ -162,3 +162,25 @@ pub fn hash_qname(qname: &[u8]) -> u64 {
     qname.hash(&mut hasher);
     hasher.finish()
 }
+
+/// Hash QNAME + optional UMI barcode for UMI-aware fragment grouping.
+///
+/// When `umi` is `Some(tag_bytes)`, the UMI is appended to the QNAME hash
+/// with a separator byte (0xFF, which cannot appear in ASCII QNAME/UMI),
+/// so reads with different UMIs are treated as distinct molecules even if
+/// they share the same QNAME. This is critical for libraries where PCR
+/// duplicates share QNAMEs but have distinct UMI barcodes.
+///
+/// When `umi` is `None`, this is identical to `hash_qname()`.
+#[inline]
+pub fn hash_molecule(qname: &[u8], umi: Option<&[u8]>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    qname.hash(&mut hasher);
+    if let Some(umi_bytes) = umi {
+        // Separator byte prevents QNAME="AB" + UMI="CD" from colliding
+        // with QNAME="ABC" + UMI="D". 0xFF is invalid in ASCII BAM fields.
+        0xFFu8.hash(&mut hasher);
+        umi_bytes.hash(&mut hasher);
+    }
+    hasher.finish()
+}

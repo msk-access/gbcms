@@ -307,6 +307,7 @@ fn prepare_single_variant(
                 ref_context: None,
                 ref_context_start: 0,
                 repeat_span: 0,
+                gene_strand: None,
             },
             validation_status: status,
             was_normalized: false,
@@ -474,6 +475,7 @@ fn prepare_single_variant(
                     ref_context: ref_context.clone(),
                     ref_context_start,
                     repeat_span: 0, // Decomposed variant inherits context but repeat info is not critical
+                    gene_strand: None,
                 }
             })
         })
@@ -502,6 +504,7 @@ fn prepare_single_variant(
             ref_context,
             ref_context_start,
             repeat_span: variant_repeat_span,
+            gene_strand: None,
         },
         validation_status: "PASS".to_string(),
         was_normalized,

@@ -25,3 +25,9 @@ arrow-array = { version = "53", default-features = false }
 arrow-buffer = { version = "53", default-features = false }
 arrow-schema = { version = "53", default-features = false }
 parquet = { version = "53", default-features = false, features = ["arrow", "zstd"] }
+# WFA2 fast-path alignment for Phase 3 read classification triage.
+# Pure Rust implementation from COMBINE-lab — no cmake dependency.
+# NEON/AVX2 SIMD acceleration.
+wfa2lib-rs = { git = "https://github.com/COMBINE-lab/wfa2lib-rs", rev = "7d6ec921" }
+# Gzip decompression for REDIportal RNA editing DB (.txt.gz support)
+flate2 = "1"
