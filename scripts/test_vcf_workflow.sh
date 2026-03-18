@@ -61,7 +61,7 @@ samtools index sample1.bam
 echo
 echo "Running gbcms..."
 export PYTHONPATH=$PYTHONPATH:$(pwd)/../../src
-python3 -m gbcms.cli run \
+python3 -m gbcms.cli dna \
     --fasta reference.fa \
     --bam sample1.bam \
     --variants variants.vcf \

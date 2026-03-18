@@ -12,28 +12,36 @@ use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 use bio::alignment::distance::levenshtein;
 use bio::alignment::pairwise::Aligner;
-use log::{trace, warn};
+use log::{debug, trace, warn};
 
 use crate::types::Variant;
 use super::alignment::{classify_by_alignment, extract_raw_read_window, is_worth_realignment};
-use super::pairhmm::{classify_by_pairhmm, ConfigurableGapParams};
+// INTENTIONAL: classify_by_pairhmm retained for concordance testing against
+// the new marginalized pipeline. Remove after concordance proven.
+use super::pairhmm::{classify_by_pairhmm, classify_by_marginalized_pairhmm, ConfigurableGapParams};
+use super::pangenome::build_haplotype_matrix;
+use super::wfa_router::wfa_fast_path;
 use super::utils::{find_read_pos, masked_dual_compare, masked_single_compare, median_qual, ClassifyResult, ClassifyPhase};
 use super::AlignmentBackend;
 
 
 /// Backend-aware Phase 3 classification.
 ///
-/// Routes to Smith-Waterman (`classify_by_alignment`) or PairHMM
-/// (`classify_by_pairhmm`) based on the active backend. Called from all
+/// Routes to Smith-Waterman (`classify_by_alignment`) or the pangenomic
+/// WFA+PairHMM pipeline based on the active backend. Called from all
 /// Phase 3 fallback sites in variant_checks (check_complex, check_insertion,
 /// check_deletion).
 ///
-/// For PairHMM: extracts the raw read window and computes LLR-based
-/// classification. Falls back to SW if extraction fails or the read
-/// window is too short.
+/// For PairHMM backend:
+/// 1. Build pangenomic haplotype matrix (H0/H1/H2..H2n) from variant + siblings
+/// 2. Try WFA fast-path triage (edit distance; resolves ~70-80% of reads)
+/// 3. Ambiguous reads fall through to marginalized PairHMM (BQ-aware)
+/// 4. If haplotype matrix construction fails, falls back to SW
 fn phase3_classify<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
@@ -42,7 +50,7 @@ fn phase3_classify<F: Fn(u8, u8) -> i32>(
     match backend {
         AlignmentBackend::SmithWaterman => {
             // Full Phases 0-2.5 then Phase 3 SW
-            check_complex(record, variant, min_baseq, alt_aligner, ref_aligner, backend)
+            check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
         }
         AlignmentBackend::PairHMM {
             llr_threshold,
@@ -51,30 +59,77 @@ fn phase3_classify<F: Fn(u8, u8) -> i32>(
             gap_open_repeat,
             gap_extend_repeat,
         } => {
-            // Try PairHMM directly with extracted read window
-            if let Some(ref _ctx) = variant.ref_context {
-                let win_start = variant.ref_context_start;
-                let win_end = win_start + variant.ref_context.as_ref().unwrap().len() as i64;
+            // ── PANGENOMIC WFA + MARGINALIZED PairHMM PIPELINE ──
+            //
+            // Step 1: Build multi-haplotype evaluation matrix.
+            //   H0=REF, H1=ALT, H2..H2n=sibling germline combos
+            if let Some(matrix) = build_haplotype_matrix(variant, siblings) {
+                if let Some(ref _ctx) = variant.ref_context {
+                    let win_start = variant.ref_context_start;
+                    let win_end = win_start + variant.ref_context.as_ref().unwrap().len() as i64;
 
-                if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
-                    record, win_start, win_end, variant.pos, variant.ref_allele.len()
-                ) {
-                    if sub_seq.len() >= 3 {
-                        let gap_params = if variant.repeat_span >= 10 {
-                            ConfigurableGapParams::repeat(*gap_open_repeat, *gap_extend_repeat)
+                    if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
+                        record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
+                    ) {
+                        if sub_seq.len() >= 3 {
+                            // Step 2: WFA fast-path triage (edit distance).
+                            // Clear-cut reads classified without PairHMM.
+                            let med_qual = median_qual(&sub_quals, min_baseq);
+                            if let Some(result) = wfa_fast_path(&sub_seq, &matrix, med_qual) {
+                                trace!(
+                                    "phase3: WFA resolved → is_ref={} is_alt={} qual={} at {}:{}",
+                                    result.is_ref, result.is_alt, result.qual,
+                                    variant.chrom, variant.pos + 1,
+                                );
+                                return result;
+                            }
+
+                            // Step 3: Ambiguous reads → marginalized PairHMM.
+                            // Evaluates read against ALL haplotypes in the matrix,
+                            // taking max LL over REF/ALT classes.
+                            trace!(
+                                "phase3: WFA ambiguous → escalating to marginalized PairHMM at {}:{}",
+                                variant.chrom, variant.pos + 1,
+                            );
+                            let gap_params = ConfigurableGapParams::dynamic(
+                                variant.repeat_span as usize,
+                                *gap_open, *gap_extend,
+                                *gap_open_repeat, *gap_extend_repeat,
+                            );
+                            return classify_by_marginalized_pairhmm(
+                                &sub_seq, &sub_quals, &matrix,
+                                min_baseq, &gap_params, *llr_threshold,
+                            );
                         } else {
-                            ConfigurableGapParams::standard(*gap_open, *gap_extend)
-                        };
-
-                        return classify_by_pairhmm(
-                            &sub_seq, &sub_quals, variant, min_baseq,
-                            &gap_params, *llr_threshold,
+                            trace!(
+                                "phase3: sub_seq too short ({} < 3) → SW fallback at {}:{}",
+                                sub_seq.len(), variant.chrom, variant.pos + 1,
+                            );
+                        }
+                    } else {
+                        trace!(
+                            "phase3: read window extraction failed → SW fallback at {}:{}",
+                            variant.chrom, variant.pos + 1,
                         );
                     }
+                } else {
+                    debug!(
+                        "phase3: variant {}:{} has no ref_context → SW fallback",
+                        variant.chrom, variant.pos + 1,
+                    );
                 }
+            } else {
+                debug!(
+                    "phase3: matrix construction failed for {}:{} → SW fallback",
+                    variant.chrom, variant.pos + 1,
+                );
             }
-            // Fallback: if extraction fails, use check_complex (SW path)
-            check_complex(record, variant, min_baseq, alt_aligner, ref_aligner, backend)
+            // Fallback: if matrix construction or extraction fails, use SW
+            trace!(
+                "phase3: using check_complex (SW) fallback for {}:{}",
+                variant.chrom, variant.pos + 1,
+            );
+            check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
         }
     }
 }
@@ -113,13 +168,13 @@ pub enum MnpResult {
 
 /// Returns `ClassifyResult` for SNP variants. Always Phase 0 (Structural).
 /// Quality is the base quality at the variant position.
-pub fn check_snp(record: &Record, variant: &Variant, min_baseq: u8) -> ClassifyResult {
+pub fn check_snp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8) -> ClassifyResult {
     let read_pos = match find_read_pos(record, variant.pos) {
         Some(p) => p,
         None => return ClassifyResult::neither(ClassifyPhase::Structural),
     };
 
-    let qual = record.qual()[read_pos];
+    let qual = quals[read_pos];
     if qual < min_baseq {
         return ClassifyResult::neither(ClassifyPhase::Structural);
     }
@@ -154,7 +209,7 @@ pub fn check_snp(record: &Record, variant: &Variant, min_baseq: u8) -> ClassifyR
 ///
 /// The contiguity check is performed FIRST (fail-fast for structural
 /// issues) before quality and sequence comparison.
-pub fn check_mnp(record: &Record, variant: &Variant, min_baseq: u8) -> MnpResult {
+pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8) -> MnpResult {
     let len = variant.ref_allele.len();
 
     // ── Step 1: Find read position of the first MNP base ──
@@ -180,7 +235,7 @@ pub fn check_mnp(record: &Record, variant: &Variant, min_baseq: u8) -> MnpResult
     }
 
     // ── Step 4: Min-BQ-across-block quality gate (C++ strategy) ──
-    let quals = record.qual();
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut min_qual = u8::MAX;
     for i in 0..len {
         min_qual = min_qual.min(quals[start_read_pos + i]);
@@ -245,6 +300,8 @@ pub fn check_mnp(record: &Record, variant: &Variant, min_baseq: u8) -> MnpResult
 pub fn check_complex<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
@@ -257,7 +314,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
     let seq = record.seq();
-    let quals = record.qual();
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
 
     // Pre-allocate reconstruction buffers for performance
     let capacity = seq.len();
@@ -283,7 +340,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
 
         if is_worth_realignment(record, win_start, win_end) {
             if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
-                record, win_start, win_end, variant.pos, variant.ref_allele.len()
+                record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
             ) {
                 if sub_seq.len() >= 3 {
                     trace!(
@@ -299,11 +356,11 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                             llr_threshold, gap_open, gap_extend,
                             gap_open_repeat, gap_extend_repeat,
                         } => {
-                            let gap_params = if variant.repeat_span >= 10 {
-                                ConfigurableGapParams::repeat(*gap_open_repeat, *gap_extend_repeat)
-                            } else {
-                                ConfigurableGapParams::standard(*gap_open, *gap_extend)
-                            };
+                            let gap_params = ConfigurableGapParams::dynamic(
+                                variant.repeat_span as usize,
+                                *gap_open, *gap_extend,
+                                *gap_open_repeat, *gap_extend_repeat,
+                            );
                             classify_by_pairhmm(
                                 &sub_seq, &sub_quals, variant, min_baseq,
                                 &gap_params, *llr_threshold,
@@ -576,7 +633,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         }
 
         if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
-            record, win_start, win_end, variant.pos, variant.ref_allele.len()
+            record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
         ) {
             if sub_seq.len() >= 3 {
                 trace!(
@@ -592,11 +649,11 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                         llr_threshold, gap_open, gap_extend,
                         gap_open_repeat, gap_extend_repeat,
                     } => {
-                        let gap_params = if variant.repeat_span >= 10 {
-                            ConfigurableGapParams::repeat(*gap_open_repeat, *gap_extend_repeat)
-                        } else {
-                            ConfigurableGapParams::standard(*gap_open, *gap_extend)
-                        };
+                        let gap_params = ConfigurableGapParams::dynamic(
+                            variant.repeat_span as usize,
+                            *gap_open, *gap_extend,
+                            *gap_open_repeat, *gap_extend_repeat,
+                        );
                         classify_by_pairhmm(
                             &sub_seq, &sub_quals, variant, min_baseq,
                             &gap_params, *llr_threshold,
@@ -635,13 +692,15 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
 pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
     let cigar_view = record.cigar();
-    let quals = record.qual();
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
@@ -861,7 +920,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
              falling back to check_complex for Phase 3 SW",
             expected_ins_len, anchor_pos
         );
-        return phase3_classify(record, variant, min_baseq, alt_aligner, ref_aligner, backend);
+        return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
     }
 
     if found_ref_coverage {
@@ -896,13 +955,15 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
 pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
     let cigar_view = record.cigar();
-    let quals = record.qual();
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
@@ -994,7 +1055,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                                     expected_del_len,
                                     reciprocal_overlap
                                 );
-                                return phase3_classify(record, variant, min_baseq, alt_aligner, ref_aligner, backend);
+                                return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
                             }
                         }
                         found_ref_coverage = true;
@@ -1179,7 +1240,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                 "check_deletion: no CIGAR match at pos {}, falling back to check_complex",
                 anchor_pos
             );
-            return phase3_classify(record, variant, min_baseq, alt_aligner, ref_aligner, backend);
+            return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         }
         // Otherwise: read doesn't overlap the anchor → no variant info
     }

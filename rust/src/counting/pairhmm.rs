@@ -22,7 +22,7 @@ use bio::stats::pairhmm::{
     EmissionParameters, GapParameters, PairHMM, StartEndGapParameters, XYEmission,
 };
 use bio::stats::{LogProb, Prob};
-use log::trace;
+use log::{debug, trace};
 
 use crate::types::Variant;
 use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase};
@@ -148,6 +148,109 @@ impl ConfigurableGapParams {
     pub fn repeat(gap_open: f64, gap_extend: f64) -> Self {
         ConfigurableGapParams { gap_open, gap_extend }
     }
+
+    /// RT-aware defaults for RNA: higher gap tolerance for splice artifacts.
+    ///
+    /// RNA-seq alignments near splice junctions often show indel-like
+    /// artifacts from reverse transcriptase (RT) slippage. These defaults
+    /// use a higher gap_open (0.005 vs 1e-4) and gap_extend (0.25 vs 0.1)
+    /// to be more permissive of these artifacts without inflating false
+    /// positive variant calls.
+    pub fn rna_defaults() -> Self {
+        ConfigurableGapParams {
+            gap_open: 0.005,
+            gap_extend: 0.25,
+        }
+    }
+
+    /// Continuous gap parameters scaled by repeat_span using a logistic function.
+    ///
+    /// Replaces the rigid `repeat_span >= 10` binary threshold with a smooth
+    /// S-curve that models the continuous increase in polymerase slippage
+    /// probability with repeat length.
+    ///
+    /// - `gap_open` scales linearly from `gap_open_base` to `gap_open_repeat`
+    ///    over the range [0, 20bp], clamped at 20bp.
+    /// - `gap_extend` follows a logistic curve from `gap_extend_base` to
+    ///   `gap_extend_repeat` with inflection at 10bp.
+    ///
+    /// ## Parameters
+    ///
+    /// The base/repeat values typically come from the user's CLI flags:
+    /// - `--hmm-gap-open` → `gap_open_base` (default 1e-4)
+    /// - `--hmm-gap-extend` → `gap_extend_base` (default 0.1)
+    /// - `--hmm-gap-open-repeat` → `gap_open_repeat` (default 1e-2)
+    /// - `--hmm-gap-extend-repeat` → `gap_extend_repeat` (default 0.5)
+    pub fn dynamic(
+        repeat_span: usize,
+        gap_open_base: f64,
+        gap_extend_base: f64,
+        gap_open_repeat: f64,
+        gap_extend_repeat: f64,
+    ) -> Self {
+        let gap_extend = dynamic_gap_extend(repeat_span, gap_extend_base, gap_extend_repeat);
+        // Linear interpolation for gap_open, clamped at 20bp
+        let t = (repeat_span as f64 / 20.0).min(1.0);
+        let gap_open = gap_open_base + (gap_open_repeat - gap_open_base) * t;
+        ConfigurableGapParams { gap_open, gap_extend }
+    }
+}
+
+
+/// Continuous gap extension probability using a logistic sigmoid.
+///
+/// Models the biological reality that polymerase slippage probability
+/// increases continuously with tandem repeat length — there is no magic
+/// boundary at any particular repeat_span.
+///
+/// The logistic curve transitions smoothly from `p_base` to `p_max`:
+///
+/// ```text
+///   f(x) = p_base + (p_max - p_base) / (1 + exp(-steepness * (x - k)))
+/// ```
+///
+/// | repeat_span | gap_extend (default params) |
+/// |-------------|---------------------------|
+/// |           0 | ≈ 0.107                   |
+/// |           5 | ≈ 0.149                   |
+/// |          10 | = 0.300 (inflection)      |
+/// |          15 | ≈ 0.451                   |
+/// |          20 | ≈ 0.493                   |
+///
+/// ## Parameters
+///
+/// - `p_base`: baseline gap_extend for non-repeat regions (from `--hmm-gap-extend`)
+/// - `p_max`: ceiling gap_extend for deep repeats (from `--hmm-gap-extend-repeat`)
+/// - `k=10.0`: inflection point in bp (hardcoded — matches biological transition zone)
+/// - `steepness=0.5`: controls transition width (~8bp, avoiding cliff effects)
+pub fn dynamic_gap_extend(repeat_span: usize, p_base: f64, p_max: f64) -> f64 {
+    let k = 10.0;          // inflection point (bp)
+    let steepness = 0.5;   // transition width
+    p_base + (p_max - p_base) / (1.0 + f64::exp(-steepness * (repeat_span as f64 - k)))
+}
+
+
+/// Convert the continuous logistic gap_extend to an integer SW penalty.
+///
+/// Smith-Waterman uses integer gap penalties (typically -1 for tight, 0 for free).
+/// This function maps the logistic curve to i32 by rounding:
+///
+/// ```text
+///   sw_gap_extend = round(-1.0 * (1.0 - logistic(repeat_span)))
+/// ```
+///
+/// - repeat_span=0  → round(-0.893) = -1 (tight)
+/// - repeat_span=10 → round(-0.500) = -1 (tight, Rust rounds half away from zero)
+/// - repeat_span=12 → round(-0.280) = 0  (free)
+/// - repeat_span=20 → round(-0.107) = 0  (free)
+///
+/// The SW path naturally has a slightly higher threshold (~12bp) for full
+/// relaxation than PairHMM, which is appropriate since SW scoring is less
+/// quality-aware and benefits from tighter gap control.
+pub fn dynamic_sw_gap_extend(repeat_span: usize) -> i32 {
+    // Use default base/max for the logistic (PairHMM defaults: 0.1, 0.5)
+    let logistic = dynamic_gap_extend(repeat_span, 0.1, 0.5);
+    (-1.0 * (1.0 - logistic)).round() as i32
 }
 
 
@@ -198,6 +301,8 @@ impl StartEndGapParameters for SemiglobalMode {
 /// - `llr_threshold`: log-likelihood ratio threshold for confident calls
 ///
 /// Returns `ClassifyResult` — same interface as `classify_by_alignment`.
+// INTENTIONAL: kept for concordance testing against classify_by_marginalized_pairhmm.
+// Remove after concordance proven (D3 complete, pending D8 cleanup in v4.1.0).
 pub fn classify_by_pairhmm(
     read_seq: &[u8],
     read_quals: &[u8],
@@ -209,7 +314,11 @@ pub fn classify_by_pairhmm(
     // Build haplotypes
     let (ref_hap, alt_hap) = match build_haplotypes(variant) {
         Some(haps) => haps,
-        None => return ClassifyResult::neither(ClassifyPhase::Alignment),
+        None => {
+            debug!("classify_by_pairhmm: build_haplotypes failed for {}:{}",
+                   variant.chrom, variant.pos + 1);
+            return ClassifyResult::neither(ClassifyPhase::Alignment);
+        }
     };
 
     // Skip if too few usable bases
@@ -275,6 +384,101 @@ pub fn classify_by_pairhmm(
 }
 
 
+/// Marginalized PairHMM classification against the full haplotype matrix.
+///
+/// Computes log-likelihood of the read under EACH haplotype in the matrix,
+/// then takes the max LL over REF-class haplotypes and max LL over ALT-class
+/// haplotypes. The LLR = max_alt_ll - max_ref_ll marginalizes over sibling
+/// germline configurations.
+///
+/// This prevents misclassification at multi-allelic / germline-adjacent sites
+/// where a single REF/ALT comparison would confuse the somatic variant with
+/// a nearby germline variant.
+///
+/// ## Haplotype Classes
+///
+/// - Even indices (0, 2, 4, ...) = REF-class (H0, H2, H4, ...)
+/// - Odd indices (1, 3, 5, ...) = ALT-class (H1, H3, H5, ...)
+///
+/// ## Parameters
+///
+/// - `read_seq`, `adjusted_quals`: raw read bases and (possibly BAQ-adjusted) qualities
+/// - `matrix`: haplotype matrix from `build_haplotype_matrix()`
+/// - `min_baseq`: minimum base quality for median_qual calculation
+/// - `gap_params`: gap open/extend probabilities
+/// - `llr_threshold`: log-likelihood ratio threshold for confident calls
+pub fn classify_by_marginalized_pairhmm(
+    read_seq: &[u8],
+    adjusted_quals: &[u8],
+    matrix: &[Vec<u8>],
+    min_baseq: u8,
+    gap_params: &ConfigurableGapParams,
+    llr_threshold: f64,
+) -> ClassifyResult {
+    if matrix.len() < 2 {
+        trace!("classify_by_marginalized_pairhmm: matrix has {} haplotypes (need ≥2)", matrix.len());
+        return ClassifyResult::neither(ClassifyPhase::Alignment);
+    }
+
+    // Skip if too few usable bases
+    let usable_count = adjusted_quals.iter().filter(|&&q| q >= min_baseq).count();
+    if usable_count < 3 {
+        trace!("classify_by_marginalized_pairhmm: only {} usable bases — skipping", usable_count);
+        return ClassifyResult::neither(ClassifyPhase::Alignment);
+    }
+
+    let mut pairhmm = PairHMM::new(gap_params);
+    let mut best_ref_ll = f64::NEG_INFINITY;
+    let mut best_alt_ll = f64::NEG_INFINITY;
+
+    for (i, haplotype) in matrix.iter().enumerate() {
+        let emission = BQEmission {
+            read_seq,
+            read_quals: adjusted_quals,
+            haplotype,
+        };
+        let ll = pairhmm.prob_related(&emission, &SemiglobalMode, None);
+
+        trace!(
+            "marginalized_pairhmm: hap[{}] ({}) ll={:.3} len={}",
+            i, if i % 2 == 0 { "REF" } else { "ALT" }, *ll, haplotype.len(),
+        );
+
+        if i % 2 == 0 {
+            if *ll > best_ref_ll { best_ref_ll = *ll; }
+        } else {
+            if *ll > best_alt_ll { best_alt_ll = *ll; }
+        }
+    }
+
+    let llr = best_alt_ll - best_ref_ll;
+    let med_qual = median_qual(adjusted_quals, min_baseq);
+
+    debug!(
+        "marginalized_pairhmm: best_ref_ll={:.3} best_alt_ll={:.3} llr={:.3} threshold={:.3} \
+         nhaps={} read_len={}",
+        best_ref_ll, best_alt_ll, llr, llr_threshold,
+        matrix.len(), read_seq.len(),
+    );
+
+    if llr > llr_threshold {
+        ClassifyResult::is_alt(med_qual, ClassifyPhase::Alignment)
+    } else if llr < -llr_threshold {
+        ClassifyResult::is_ref(med_qual, ClassifyPhase::Alignment)
+    } else {
+        trace!(
+            "marginalized_pairhmm: ambiguous (|llr|={:.3} <= threshold={:.3})",
+            llr.abs(), llr_threshold
+        );
+        if best_alt_ll > f64::NEG_INFINITY && best_ref_ll > f64::NEG_INFINITY {
+            ClassifyResult::new(false, false, med_qual, ClassifyPhase::Alignment)
+        } else {
+            ClassifyResult::neither(ClassifyPhase::Alignment)
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,6 +493,7 @@ mod tests {
             ref_context: Some(context.to_string()),
             ref_context_start: ctx_start,
             repeat_span: 0,
+            gene_strand: None,
         }
     }
 
@@ -410,6 +615,7 @@ mod tests {
             ref_context: None,
             ref_context_start: 0,
             repeat_span: 0,
+            gene_strand: None,
         };
         assert!(build_haplotypes(&variant).is_none());
     }

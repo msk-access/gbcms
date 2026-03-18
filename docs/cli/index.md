@@ -1,20 +1,30 @@
 # CLI Reference
 
-The `gbcms` command-line interface provides a single powerful command for variant counting.
+The `gbcms` command-line interface provides two primary commands for variant counting — one for DNA/cfDNA and one for RNA-seq — plus a normalization utility.
 
 ## Commands
 
 | Command | Description |
 |:--------|:------------|
-| [**run**](run.md) | Count alleles at variant positions |
+| [**dna**](dna.md) | Count alleles in DNA/cfDNA BAM files |
+| [**rna**](rna.md) | Count alleles in RNA-seq BAMs with transcriptome-aware filtering |
+| [**normalize**](normalize.md) | Standalone variant normalization (no counting) |
 
 ## Quick Example
 
 ```bash
-gbcms run \
+# DNA/cfDNA counting
+gbcms dna \
     --variants mutations.maf \
     --bam sample1:sample1.bam \
     --bam sample2:sample2.bam \
+    --fasta reference.fa \
+    --output-dir results/
+
+# RNA-seq counting
+gbcms rna \
+    --variants mutations.vcf \
+    --bam rna_sample:star_aligned.bam \
     --fasta reference.fa \
     --output-dir results/
 ```
@@ -23,7 +33,9 @@ gbcms run \
 
 ```bash
 gbcms --help
-gbcms run --help
+gbcms dna --help
+gbcms rna --help
+gbcms normalize --help
 ```
 
 ## Related

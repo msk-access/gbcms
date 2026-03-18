@@ -5,7 +5,10 @@ Provides Pydantic models for variants, configuration, and core data structures.
 """
 
 from .core import (
+    GbcmsBaseConfig,
     GbcmsConfig,
+    GbcmsDnaConfig,
+    GbcmsRnaConfig,
     OutputConfig,
     OutputFormat,
     QualityThresholds,
@@ -15,7 +18,10 @@ from .core import (
 )
 
 __all__ = [
+    "GbcmsBaseConfig",
     "GbcmsConfig",
+    "GbcmsDnaConfig",
+    "GbcmsRnaConfig",
     "OutputConfig",
     "OutputFormat",
     "QualityThresholds",

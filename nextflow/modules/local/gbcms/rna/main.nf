@@ -1,4 +1,4 @@
-process GBCMS_RUN {
+process GBCMS_RNA {
     tag "$meta.id"
     label 'process_medium'
 
@@ -12,7 +12,6 @@ process GBCMS_RUN {
 
     output:
     tuple val(meta), path("*.{vcf,maf}"),  emit: counts
-    tuple val(meta), path("*.fsd.parquet"), emit: fsd_parquet, optional: true
     path "versions.yml"                   , emit: versions
 
     when:
@@ -40,9 +39,9 @@ process GBCMS_RUN {
     // Adaptive context padding in repeat regions
     def adaptive_arg = params.adaptive_context ? "" : "--no-adaptive-context"
 
-    // Alignment backend (advanced — only pass if non-default)
-    def backend_arg = params.alignment_backend != 'sw' ? "--alignment-backend ${params.alignment_backend}" : ""
-    def hmm_args = params.alignment_backend == 'hmm' ? \
+    // Alignment backend — always pass explicitly
+    def backend_arg = "--alignment-backend ${params.alignment_backend}"
+    def hmm_args = params.alignment_backend in ['hmm', 'pairhmm'] ? \
         "--llr-threshold ${params.llr_threshold} --gap-open-prob ${params.gap_open_prob} --gap-extend-prob ${params.gap_extend_prob} --repeat-gap-open-prob ${params.gap_open_prob_repeat} --repeat-gap-extend-prob ${params.gap_extend_prob_repeat}" : ""
     
     // Construct filter arguments
@@ -54,12 +53,17 @@ process GBCMS_RUN {
     if (params.filter_improper_pair) filters += " --filter-improper-pair"
     if (params.filter_indel)         filters += " --filter-indel"
 
-    // mFSD analysis (off by default — must opt in)
-    def mfsd_arg         = params.mfsd         ? "--mfsd"          : ""
-    def mfsd_parquet_arg = params.mfsd_parquet ? "--mfsd-parquet"  : ""
+    // UMI tag (e.g., 'XM', 'RX')
+    def umi_arg = params.umi_tag ? "--umi-tag ${params.umi_tag}" : ""
+
+    // RNA-specific: REDIportal editing database
+    def editing_db_arg = params.rna_editing_db ? "--rna-editing-db ${params.rna_editing_db}" : ""
+
+    // RNA-specific: dUTP strandedness enforcement
+    def strandedness_arg = params.enforce_strandedness ? "--enforce-strandedness" : ""
 
     """
-    gbcms run \\
+    gbcms rna \\
         --variants ${variants} \\
         --bam ${prefix}:${bam} \\
         --fasta ${fasta} \\
@@ -78,8 +82,9 @@ process GBCMS_RUN {
         --fragment-qual-threshold ${params.fragment_qual_threshold} \\
         --context-padding ${params.context_padding} \\
         ${filters} \\
-        ${mfsd_arg} \\
-        ${mfsd_parquet_arg} \\
+        ${umi_arg} \\
+        ${editing_db_arg} \\
+        ${strandedness_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml

@@ -55,8 +55,11 @@ flowchart LR
 # Install
 pip install gbcms
 
-# Run
-gbcms run --variants variants.vcf --bam sample.bam --fasta ref.fa --output-dir results/
+# DNA/cfDNA counting
+gbcms dna --variants variants.vcf --bam sample.bam --fasta ref.fa --output-dir results/
+
+# RNA-seq counting
+gbcms rna --variants variants.vcf --bam rna:aligned.bam --fasta ref.fa --output-dir results/
 ```
 
 **→ [Full Installation Guide](getting-started/installation.md)** | **→ [CLI Examples](getting-started/quickstart.md)**

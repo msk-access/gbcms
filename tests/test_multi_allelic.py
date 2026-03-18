@@ -10,6 +10,7 @@ Phase 2: Verify that reads carrying a sibling ALT allele are excluded from
 
 import pysam
 import pytest
+from helpers import count_both
 
 from gbcms._rs import Variant, count_bam
 
@@ -232,3 +233,61 @@ def test_overlapping_indels_dp(overlapping_indel_bam):
     assert counts.dp == 6, f"Expected dp=6, got {counts.dp}"
     # Deletion reads match ALT
     assert counts.ad == 2, f"Expected ad=2, got {counts.ad}"
+
+
+# ── count_bam_binned parity tests ────────────────────────────────────────
+
+
+def test_multi_allelic_without_siblings_binned(multi_allelic_bam):
+    """count_bam_binned: multi-allelic without siblings."""
+    v1 = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="T", variant_type="SNP")
+    v2 = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="C", variant_type="SNP")
+    results = count_both(
+        multi_allelic_bam,
+        [v1, v2],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )
+    assert results[0].rd == 3
+    assert results[0].ad == 2
+    assert results[0].dp == 7
+    assert results[1].rd == 3
+    assert results[1].ad == 2
+
+
+def test_multi_allelic_with_siblings_binned(multi_allelic_bam):
+    """count_bam_binned: multi-allelic with sibling exclusion."""
+    v1 = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="T", variant_type="SNP")
+    v2 = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="C", variant_type="SNP")
+    results = count_both(
+        multi_allelic_bam,
+        [v1, v2],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+        sibling_variants=[[v2], [v1]],
+    )
+    assert results[0].rd == 3
+    assert results[0].ad == 2
+    assert results[0].dp == 7
+
+
+def test_overlapping_indels_dp_binned(overlapping_indel_bam):
+    """count_bam_binned: overlapping indels DP includes all reads."""
+    v1 = Variant(chrom="chr1", pos=100, ref_allele="AAA", alt_allele="A", variant_type="DELETION")
+    counts = count_both(
+        overlapping_indel_bam,
+        [v1],
+        min_mapq=20,
+        min_baseq=20,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert counts.dp == 6
+    assert counts.ad == 2

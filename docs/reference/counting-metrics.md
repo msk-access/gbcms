@@ -187,7 +187,7 @@ Computed at **both** levels:
 
 ## Complete Output Column Reference
 
-All fields in the `BaseCounts` struct returned by `count_bam()`:
+All fields in the `BaseCounts` struct returned by `count_bam_binned()`:
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
@@ -308,6 +308,55 @@ Written natively by the Rust engine (no `pyarrow` dependency).
 
 ---
 
+## RNA-Specific Output Columns
+
+When running in RNA mode (`gbcms rna`), additional columns capture transcriptome-specific metrics. These columns are **absent** from DNA mode output.
+
+### Biological Context
+
+RNA-seq reads exhibit orientation biases (dUTP strandedness), splice junctions (CIGAR `N` operations representing intron skips), and post-transcriptional modifications (A-to-I editing by ADAR enzymes). These metrics enable downstream filtering of RNA-specific artifacts and biological characterization of variants.
+
+### MAF Columns (5 additional)
+
+| Column | Type | Description |
+|:-------|:-----|:------------|
+| `rna_sense_depth` | u32 | Reads aligning to the gene **sense** strand |
+| `rna_antisense_depth` | u32 | Reads aligning to the gene **antisense** strand |
+| `rna_sense_strand_alt_count` | u32 | ALT-classified reads on the sense strand |
+| `rna_editing_site_overlap` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
+| `rna_splice_spanning_count` | u32 | ALT-classified reads containing splice junctions (CIGAR `N`) spanning the variant |
+
+### VCF Fields
+
+| Field | Scope | Type | Description |
+|:------|:------|:-----|:------------|
+| `SEN` | INFO + FORMAT | Integer | Sense strand depth |
+| `ANT` | INFO + FORMAT | Integer | Antisense strand depth |
+| `ASEN` | INFO + FORMAT | Integer | ALT sense strand count |
+| `RED` | INFO | Integer | RNA editing site overlap (0 or 1) |
+| `SPL` | INFO + FORMAT | Integer | Splice-spanning ALT read count |
+
+!!! tip "Using RNA Columns for Filtering"
+    - **Strandedness ratio**: `rna_sense_depth / (rna_sense_depth + rna_antisense_depth)` — values near 0 or 1 indicate strong strand bias, consistent with dUTP libraries
+    - **Editing site flag**: Variants at known A→I sites (`rna_editing_site_overlap = true`) are likely RNA editing, not somatic mutations
+    - **Splice-spanning ALT**: `rna_splice_spanning_count > 0` indicates the variant is supported by reads crossing exon-exon boundaries
+
+---
+
+## UMI-Aware Fragment Counting
+
+When `--umi-tag` is specified (e.g., `--umi-tag RX`), fragment identity incorporates the UMI barcode in addition to the QNAME:
+
+| Mode | Fragment Key | Use Case |
+|:-----|:-------------|:---------|
+| Default | QNAME hash | Standard paired-end sequencing |
+| UMI-aware | QNAME + UMI hash | UMI-tagged libraries (fgbio, gencore) |
+
+!!! info "Why UMI-Aware Grouping?"
+    In UMI-tagged libraries, multiple original molecules can share the same QNAME after consensus calling. Without UMI-aware grouping, reads from different molecules would be incorrectly merged into a single fragment, deflating fragment-level allele counts and distorting VAF.
+
+---
+
 ## Comparison with Original GBCMS
 
 | Feature | Original GBCMS | gbcms |
@@ -323,6 +372,8 @@ Written natively by the Rust engine (no `pyarrow` dependency).
 | Strand bias | Not computed | Fisher's exact test (read + fragment level) |
 | Fractional depth | `--fragment_fractional_weight` | Not implemented |
 | Parallelism | OpenMP block-based | Rayon per-variant |
+| RNA mode | Not available | Dedicated `gbcms rna` with transcriptome filters |
+| UMI support | Not available | `--umi-tag` for molecule-level deduplication |
 
 ---
 

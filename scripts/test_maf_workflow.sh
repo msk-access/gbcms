@@ -79,7 +79,7 @@ EOF
 echo
 echo "Running gbcms (MAF format)..."
 export PYTHONPATH=$PYTHONPATH:$(pwd)/../../src
-python3 -m gbcms.cli run \
+python3 -m gbcms.cli dna \
     --fasta reference.fa \
     --bam-list bam_files.txt \
     --variants variants.maf \

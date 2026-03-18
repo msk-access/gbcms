@@ -20,17 +20,18 @@ import typer
 from . import __version__
 from .models.core import (
     AlignmentConfig,
-    GbcmsConfig,
+    GbcmsDnaConfig,
+    GbcmsRnaConfig,
     OutputConfig,
     OutputFormat,
     QualityThresholds,
     ReadFilters,
-    StrEnum,  # canonical backport (Python ≮3.10 compatible), defined in models.core
+    StrEnum,  # canonical backport (Python ≤ 3.10 compatible), defined in models.core
 )
 from .pipeline import Pipeline
 from .utils import setup_logging
 
-__all__ = ["app", "run", "normalize"]
+__all__ = ["app", "dna", "rna", "run", "normalize"]
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +41,11 @@ logger = logging.getLogger(__name__)
 
 
 class AlignmentBackend(StrEnum):
-    """CLI-exposed alignment backend options.
-
-    'pairhmm' is accepted as a model-level alias but intentionally not
-    surfaced here so users always type the canonical short form.
-    """
+    """CLI-exposed alignment backend options."""
 
     SW = "sw"
     HMM = "hmm"
+    PAIRHMM = "pairhmm"
 
 
 # Valid variant file extensions (checked before Pydantic config construction).
@@ -95,7 +93,7 @@ def main(
 
 
 @app.command()
-def run(
+def dna(
     # Input options
     variant_file: Path = typer.Option(
         ..., "--variants", "-v", help="Path to VCF or MAF file containing variants"
@@ -135,7 +133,7 @@ def run(
             "Only applies to MAF→MAF output."
         ),
     ),
-    # mFSD options
+    # mFSD options (DNA-only)
     mfsd: bool = typer.Option(
         False,
         "--mfsd",
@@ -154,6 +152,19 @@ def run(
             "fragment size arrays (ref_sizes, alt_sizes). Enables downstream "
             "mFSD visualizations. Requires --mfsd."
         ),
+    ),
+    # BAQ (both modes)
+    apply_baq: bool = typer.Option(
+        False,
+        "--apply-baq/--no-baq",
+        help="Apply heuristic BAQ quality downgrade near indels. Off by default "
+        "(BQSR/fgbio consensus already recalibrates).",
+    ),
+    # UMI (both modes)
+    umi_tag: str | None = typer.Option(
+        None,
+        "--umi-tag",
+        help="BAM tag for UMI barcode (e.g. 'RX'). Enables UMI-aware fragment grouping.",
     ),
     # Quality thresholds
     min_mapq: int = typer.Option(20, "--min-mapq", help="Minimum mapping quality"),
@@ -185,9 +196,9 @@ def run(
     ),
     # Read filters
     filter_duplicates: bool = typer.Option(True, help="Filter duplicate reads"),
-    filter_secondary: bool = typer.Option(False, help="Filter secondary alignments"),
-    filter_supplementary: bool = typer.Option(False, help="Filter supplementary alignments"),
-    filter_qc_failed: bool = typer.Option(False, help="Filter reads failing QC"),
+    filter_secondary: bool = typer.Option(True, help="Filter secondary alignments"),
+    filter_supplementary: bool = typer.Option(True, help="Filter supplementary alignments"),
+    filter_qc_failed: bool = typer.Option(True, help="Filter reads failing QC"),
     filter_improper_pair: bool = typer.Option(False, help="Filter improperly paired reads"),
     filter_indel: bool = typer.Option(False, help="Filter reads containing indels"),
     # Normalization
@@ -220,11 +231,11 @@ def run(
     ),
     # Alignment backend (advanced)
     alignment_backend: AlignmentBackend = typer.Option(
-        AlignmentBackend.SW,
+        AlignmentBackend.PAIRHMM,
         "--alignment-backend",
         help=(
             "Alignment backend for Phase 3 classification: "
-            "'sw' (Smith-Waterman, default) or 'hmm' (PairHMM). "
+            "'pairhmm' (WFA2 + PairHMM, default) or 'sw' (Smith-Waterman). "
             "Invalid values are rejected at parse time."
         ),
     ),
@@ -255,12 +266,13 @@ def run(
     ),
 ):
     """
-    Run gbcms on one or more BAM files.
+    Count alleles in cfDNA/somatic DNA BAMs at known variant sites.
     """
     # ── 1. Logging (must be first so all subsequent checks log correctly) ──────
     setup_logging(verbose=verbose, trace=trace)
+    logger.info("Running gbcms in DNA mode")
 
-    # ── 2. Pre-model validation (semantic + cross-option checks) ──────────────
+    # ── 2. Pre-model validation (semantic + cross-option checks) ───────────────
 
     # GAP 12: Reject unsupported variant file extensions before any I/O.
     _is_vcf_gz = _is_compressed_vcf(variant_file)
@@ -320,6 +332,13 @@ def run(
         raise typer.Exit(code=1)
 
     logger.info("Found %d BAM file(s) to process", len(bams_dict))
+    logger.info(
+        "Config: min_mapq=%d, apply_baq=%s, alignment_backend=%s, umi_tag=%s",
+        min_mapq,
+        apply_baq,
+        alignment_backend.value,
+        umi_tag or "none",
+    )
 
     try:
         # Build nested config objects
@@ -361,7 +380,7 @@ def run(
             hmm_gap_extend_repeat=hmm_gap_extend_repeat,
         )
 
-        config = GbcmsConfig(
+        config = GbcmsDnaConfig(
             variant_file=variant_file,
             bam_files=bams_dict,
             reference_fasta=reference,
@@ -371,6 +390,8 @@ def run(
             threads=threads,
             alignment=alignment_config,
             show_normalization=show_normalization,
+            apply_baq=apply_baq,
+            umi_tag=umi_tag,
         )
 
         pipeline = Pipeline(config)
@@ -379,6 +400,369 @@ def run(
     except Exception as e:
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
+
+
+@app.command()
+def rna(
+    # Input options (shared with dna)
+    variant_file: Path = typer.Option(
+        ..., "--variants", "-v", help="Path to VCF or MAF file containing variants"
+    ),
+    bam_files: list[Path] | None = typer.Option(
+        None, "--bam", "-b", help="Path to BAM file(s). Can be specified multiple times."
+    ),
+    bam_list: Path | None = typer.Option(
+        None, "--bam-list", "-L", help="File containing list of BAM paths (one per line)"
+    ),
+    reference: Path = typer.Option(..., "--fasta", "-f", help="Path to reference FASTA file"),
+    # Output options (shared with dna, no mFSD)
+    output_dir: Path = typer.Option(
+        ..., "--output-dir", "-o", help="Directory to write output files"
+    ),
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.VCF, "--format", help="Output format (vcf or maf)"
+    ),
+    output_suffix: str = typer.Option(
+        "", "--suffix", "-S", help="Suffix to append to output filename (e.g. '.genotyped')"
+    ),
+    column_prefix: str = typer.Option(
+        "",
+        "--column-prefix",
+        help="Prefix for gbcms count columns in MAF output.",
+    ),
+    preserve_barcode: bool = typer.Option(
+        False,
+        "--preserve-barcode",
+        help="Preserve original Tumor_Sample_Barcode from input MAF.",
+    ),
+    # BAQ (shared)
+    apply_baq: bool = typer.Option(
+        False,
+        "--apply-baq/--no-baq",
+        help="Apply heuristic BAQ quality downgrade near indels. Off by default "
+        "(BQSR/fgbio consensus already recalibrates).",
+    ),
+    # UMI (shared)
+    umi_tag: str | None = typer.Option(
+        None,
+        "--umi-tag",
+        help="BAM tag for UMI barcode (e.g. 'RX'). Enables UMI-aware fragment grouping.",
+    ),
+    # RNA-specific options
+    enforce_strandedness: bool = typer.Option(
+        True,
+        "--enforce-strandedness/--no-strandedness",
+        help=(
+            "Filter reads by dUTP strand orientation relative to gene strand. "
+            "Disable for unstranded RNA-seq libraries."
+        ),
+    ),
+    rna_editing_db: Path | None = typer.Option(
+        None,
+        "--rna-editing-db",
+        help="Path to REDIportal VCF of known A-to-I RNA editing sites.",
+    ),
+    # Quality thresholds (different defaults for RNA)
+    min_mapq: int = typer.Option(
+        1,
+        "--min-mapq",
+        help="Minimum mapping quality (default: 1 for STAR-aligned reads).",
+    ),
+    min_baseq: int = typer.Option(20, "--min-baseq", help="Minimum base quality"),
+    fragment_qual_threshold: int = typer.Option(
+        10,
+        "--fragment-qual-threshold",
+        help="Quality difference threshold for fragment consensus.",
+    ),
+    context_padding: int = typer.Option(
+        5,
+        "--context-padding",
+        min=1,
+        max=50,
+        help="Minimum flanking reference bases around indel/complex variants.",
+    ),
+    adaptive_context: bool = typer.Option(
+        True,
+        "--adaptive-context/--no-adaptive-context",
+        help="Dynamically increase context padding in tandem repeat regions.",
+    ),
+    # Read filters (shared)
+    filter_duplicates: bool = typer.Option(True, help="Filter duplicate reads"),
+    filter_secondary: bool = typer.Option(True, help="Filter secondary alignments"),
+    filter_supplementary: bool = typer.Option(True, help="Filter supplementary alignments"),
+    filter_qc_failed: bool = typer.Option(True, help="Filter reads failing QC"),
+    filter_improper_pair: bool = typer.Option(False, help="Filter improperly paired reads"),
+    filter_indel: bool = typer.Option(False, help="Filter reads containing indels"),
+    # Normalization
+    show_normalization: bool = typer.Option(
+        False,
+        "--show-normalization",
+        help="Add norm_* columns showing left-aligned coordinates in output.",
+    ),
+    # Performance
+    threads: int = typer.Option(
+        1, "--threads", "-t", help="Number of threads for parallel processing"
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
+    trace: bool = typer.Option(
+        False,
+        "--trace",
+        "-T",
+        help="Enable per-read Rust trace logging (slow). Implies --verbose.",
+    ),
+    lenient_bam: bool = typer.Option(
+        False,
+        "--lenient-bam",
+        help="Skip missing BAM files and continue with the remaining samples.",
+    ),
+    # Alignment backend (RNA defaults to pairhmm = WFA2 + marginalized PairHMM)
+    alignment_backend: AlignmentBackend = typer.Option(
+        AlignmentBackend.PAIRHMM,
+        "--alignment-backend",
+        help=(
+            "Alignment backend for Phase 3 classification: "
+            "'sw' (Smith-Waterman) or 'pairhmm' (WFA2 + PairHMM, default for RNA)."
+        ),
+    ),
+    hmm_llr_threshold: float = typer.Option(
+        2.3,
+        "--llr-threshold",
+        help="PairHMM log-likelihood ratio threshold for confident calls.",
+    ),
+    hmm_gap_open: float = typer.Option(
+        5e-3,
+        "--gap-open-prob",
+        help="PairHMM gap-open probability (default: 5e-3 for RT stutter tolerance).",
+    ),
+    hmm_gap_extend: float = typer.Option(
+        0.25,
+        "--gap-extend-prob",
+        help="PairHMM gap-extend probability (default: 0.25 for RT stutter tolerance).",
+    ),
+    hmm_gap_open_repeat: float = typer.Option(
+        1e-2,
+        "--repeat-gap-open-prob",
+        help="PairHMM gap-open probability for tandem repeat regions.",
+    ),
+    hmm_gap_extend_repeat: float = typer.Option(
+        0.5,
+        "--repeat-gap-extend-prob",
+        help="PairHMM gap-extend probability for tandem repeat regions.",
+    ),
+):
+    """
+    Count alleles in RNA-seq BAMs with transcriptome-aware filtering.
+
+    RNA mode includes:
+    - NH:i:1 MAPQ rescue for STAR-aligned reads
+    - dUTP strandedness filtering (--enforce-strandedness)
+    - A-to-I RNA editing site flagging (--rna-editing-db)
+    - RT-aware PairHMM gap penalties
+    """
+    # ── 1. Logging ──
+    setup_logging(verbose=verbose, trace=trace)
+    logger.info("Running gbcms in RNA mode")
+
+    # ── 2. Pre-model validation ──
+    _is_vcf_gz = _is_compressed_vcf(variant_file)
+    _ext = variant_file.suffix.lower()
+    if not _is_vcf_gz and _ext not in _VALID_VARIANT_EXTENSIONS:
+        logger.error(
+            "Unsupported variant file extension '%s'. "
+            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
+            _ext,
+            variant_file,
+        )
+        raise typer.Exit(code=1)
+
+    if column_prefix and not _COLUMN_PREFIX_RE.match(column_prefix):
+        logger.error(
+            "Invalid --column-prefix '%s': only letters, digits, and underscores are allowed.",
+            column_prefix,
+        )
+        raise typer.Exit(code=1)
+
+    if preserve_barcode and not _is_vcf_gz and _ext != ".maf":
+        logger.warning(
+            "--preserve-barcode has no effect when the variant file is not a MAF.",
+        )
+
+    cpu_count = os.cpu_count() or 1
+    if threads > cpu_count:
+        logger.warning(
+            "--threads %d exceeds os.cpu_count() (%d).",
+            threads,
+            cpu_count,
+        )
+
+    # ── 3. Parse BAM inputs ──
+    bams_dict = _parse_bam_inputs(bam_files, bam_list, lenient=lenient_bam)
+    if not bams_dict:
+        logger.error("No BAM files to process.")
+        raise typer.Exit(code=1)
+
+    logger.info("Found %d BAM file(s) to process", len(bams_dict))
+    logger.info(
+        "Config: min_mapq=%d, apply_baq=%s, alignment_backend=%s, "
+        "enforce_strandedness=%s, umi_tag=%s",
+        min_mapq,
+        apply_baq,
+        alignment_backend.value,
+        enforce_strandedness,
+        umi_tag or "none",
+    )
+    if rna_editing_db:
+        logger.info("RNA editing database: %s", rna_editing_db)
+
+    try:
+        output_config = OutputConfig(
+            directory=output_dir,
+            format=output_format,
+            suffix=output_suffix,
+            column_prefix=column_prefix,
+            preserve_barcode=preserve_barcode,
+            mfsd=False,  # mFSD not applicable to RNA
+            mfsd_parquet=False,
+        )
+
+        quality_config = QualityThresholds(
+            min_mapping_quality=min_mapq,
+            min_base_quality=min_baseq,
+            fragment_qual_threshold=fragment_qual_threshold,
+            context_padding=context_padding,
+            adaptive_context=adaptive_context,
+        )
+
+        filter_config = ReadFilters(
+            duplicates=filter_duplicates,
+            secondary=filter_secondary,
+            supplementary=filter_supplementary,
+            qc_failed=filter_qc_failed,
+            improper_pair=filter_improper_pair,
+            indel=filter_indel,
+        )
+
+        alignment_config = AlignmentConfig(
+            backend=alignment_backend.value,
+            hmm_llr_threshold=hmm_llr_threshold,
+            hmm_gap_open=hmm_gap_open,
+            hmm_gap_extend=hmm_gap_extend,
+            hmm_gap_open_repeat=hmm_gap_open_repeat,
+            hmm_gap_extend_repeat=hmm_gap_extend_repeat,
+        )
+
+        config = GbcmsRnaConfig(
+            variant_file=variant_file,
+            bam_files=bams_dict,
+            reference_fasta=reference,
+            output=output_config,
+            quality=quality_config,
+            filters=filter_config,
+            threads=threads,
+            alignment=alignment_config,
+            show_normalization=show_normalization,
+            apply_baq=apply_baq,
+            umi_tag=umi_tag,
+            enforce_strandedness=enforce_strandedness,
+            rna_editing_db=rna_editing_db,
+        )
+
+        pipeline = Pipeline(config)
+        pipeline.run()
+
+    except Exception as e:
+        logger.exception("Pipeline failed: %s", e)
+        raise typer.Exit(code=1) from e
+
+
+@app.command(deprecated=True, hidden=True)
+def run(
+    # Same signature as dna() — delegates fully.
+    variant_file: Path = typer.Option(
+        ..., "--variants", "-v", help="Path to VCF or MAF file containing variants"
+    ),
+    bam_files: list[Path] | None = typer.Option(None, "--bam", "-b", help="Path to BAM file(s)."),
+    bam_list: Path | None = typer.Option(
+        None, "--bam-list", "-L", help="File containing list of BAM paths"
+    ),
+    reference: Path = typer.Option(..., "--fasta", "-f", help="Path to reference FASTA file"),
+    output_dir: Path = typer.Option(
+        ..., "--output-dir", "-o", help="Directory to write output files"
+    ),
+    output_format: OutputFormat = typer.Option(OutputFormat.VCF, "--format"),
+    output_suffix: str = typer.Option("", "--suffix", "-S"),
+    column_prefix: str = typer.Option("", "--column-prefix"),
+    preserve_barcode: bool = typer.Option(False, "--preserve-barcode"),
+    mfsd: bool = typer.Option(False, "--mfsd"),
+    mfsd_parquet: bool = typer.Option(False, "--mfsd-parquet"),
+    apply_baq: bool = typer.Option(False, "--apply-baq/--no-baq"),
+    umi_tag: str | None = typer.Option(None, "--umi-tag"),
+    min_mapq: int = typer.Option(20, "--min-mapq"),
+    min_baseq: int = typer.Option(20, "--min-baseq"),
+    fragment_qual_threshold: int = typer.Option(10, "--fragment-qual-threshold"),
+    context_padding: int = typer.Option(5, "--context-padding", min=1, max=50),
+    adaptive_context: bool = typer.Option(True, "--adaptive-context/--no-adaptive-context"),
+    filter_duplicates: bool = typer.Option(True),
+    filter_secondary: bool = typer.Option(True),
+    filter_supplementary: bool = typer.Option(True),
+    filter_qc_failed: bool = typer.Option(True),
+    filter_improper_pair: bool = typer.Option(False),
+    filter_indel: bool = typer.Option(False),
+    show_normalization: bool = typer.Option(False, "--show-normalization"),
+    threads: int = typer.Option(1, "--threads", "-t"),
+    verbose: bool = typer.Option(False, "--verbose", "-V"),
+    trace: bool = typer.Option(False, "--trace", "-T"),
+    lenient_bam: bool = typer.Option(False, "--lenient-bam"),
+    alignment_backend: AlignmentBackend = typer.Option(
+        AlignmentBackend.PAIRHMM, "--alignment-backend"
+    ),
+    hmm_llr_threshold: float = typer.Option(2.3, "--llr-threshold"),
+    hmm_gap_open: float = typer.Option(1e-4, "--gap-open-prob"),
+    hmm_gap_extend: float = typer.Option(0.1, "--gap-extend-prob"),
+    hmm_gap_open_repeat: float = typer.Option(1e-2, "--repeat-gap-open-prob"),
+    hmm_gap_extend_repeat: float = typer.Option(0.5, "--repeat-gap-extend-prob"),
+):
+    """
+    [DEPRECATED] Use 'gbcms dna' instead. This alias will be removed in v4.1.
+    """
+    logger.warning("'gbcms run' is deprecated. Use 'gbcms dna' instead.")
+    dna(
+        variant_file=variant_file,
+        bam_files=bam_files,
+        bam_list=bam_list,
+        reference=reference,
+        output_dir=output_dir,
+        output_format=output_format,
+        output_suffix=output_suffix,
+        column_prefix=column_prefix,
+        preserve_barcode=preserve_barcode,
+        mfsd=mfsd,
+        mfsd_parquet=mfsd_parquet,
+        apply_baq=apply_baq,
+        umi_tag=umi_tag,
+        min_mapq=min_mapq,
+        min_baseq=min_baseq,
+        fragment_qual_threshold=fragment_qual_threshold,
+        context_padding=context_padding,
+        adaptive_context=adaptive_context,
+        filter_duplicates=filter_duplicates,
+        filter_secondary=filter_secondary,
+        filter_supplementary=filter_supplementary,
+        filter_qc_failed=filter_qc_failed,
+        filter_improper_pair=filter_improper_pair,
+        filter_indel=filter_indel,
+        show_normalization=show_normalization,
+        threads=threads,
+        verbose=verbose,
+        trace=trace,
+        lenient_bam=lenient_bam,
+        alignment_backend=alignment_backend,
+        hmm_llr_threshold=hmm_llr_threshold,
+        hmm_gap_open=hmm_gap_open,
+        hmm_gap_extend=hmm_gap_extend,
+        hmm_gap_open_repeat=hmm_gap_open_repeat,
+        hmm_gap_extend_repeat=hmm_gap_extend_repeat,
+    )
 
 
 @app.command()

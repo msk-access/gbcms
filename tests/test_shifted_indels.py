@@ -12,59 +12,21 @@ Reference genome: chr1, 500 bases of 'A' (all A's for homopolymer tests).
   - Deletion tests:  pos 200, REF=AT, ALT=A (delete T after anchor A)
 """
 
-import pysam
 
-from gbcms._rs import Variant, count_bam
+from helpers import (
+    build_bam as _build_bam,
+)
+from helpers import (
+    count_one as _count_one,
+)
+from helpers import (
+    count_one_both as _count_one_both,
+)
+from helpers import (
+    make_read as _make_read,
+)
 
-
-# ---------------------------------------------------------------------------
-# Helper: build a sorted, indexed BAM from a list of AlignedSegments
-# ---------------------------------------------------------------------------
-def _build_bam(tmp_path, reads, filename="test.bam"):
-    """Write reads to a sorted, indexed BAM. Returns path string."""
-    bam_path = tmp_path / filename
-    header = {"HD": {"VN": "1.0", "SO": "coordinate"}, "SQ": [{"LN": 500, "SN": "chr1"}]}
-    with pysam.AlignmentFile(bam_path, "wb", header=header) as outf:
-        for r in reads:
-            outf.write(r)
-    sorted_bam = tmp_path / filename.replace(".bam", ".sorted.bam")
-    pysam.sort("-o", str(sorted_bam), str(bam_path))
-    pysam.index(str(sorted_bam))
-    return str(sorted_bam)
-
-
-def _make_read(name, seq, start, cigar, flag=0, mapq=60, quals=None):
-    """Create an AlignedSegment with sensible defaults."""
-    a = pysam.AlignedSegment()
-    a.query_name = name
-    a.query_sequence = seq
-    a.flag = flag
-    a.reference_id = 0
-    a.reference_start = start
-    a.mapping_quality = mapq
-    a.cigartuples = cigar
-    a.query_qualities = quals if quals else [30] * len(seq)  # type: ignore[assignment]
-    return a
-
-
-def _count_one(bam_path, variant):
-    """Count a single variant and return the BaseCounts object."""
-    results = count_bam(
-        bam_path,
-        [variant],
-        decomposed=[None],
-        min_mapq=20,
-        min_baseq=20,
-        filter_duplicates=True,
-        filter_secondary=True,
-        filter_supplementary=True,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-        threads=1,
-    )
-    return results[0]
-
+from gbcms._rs import Variant, count_bam  # noqa: F401 — count_bam referenced in comments
 
 # ==========================================================================
 # INSERTION TESTS — Variant: chr1:100, REF=A, ALT=AT
@@ -377,3 +339,33 @@ class TestReadDoesNotCover:
         assert counts.rd == 0
         assert counts.ad == 0
         assert counts.dp == 0
+
+
+# ── count_bam_binned parity tests ────────────────────────────────────────
+
+
+# _count_one_both imported from helpers.py above
+
+
+class TestBinnedParity:
+    """Verify count_bam_binned matches count_bam for shifted indel scenarios."""
+
+    def test_insertion_strict_binned(self, tmp_path):
+        reads = [_make_read("r1", "AAAAATAAAA", 96, ((0, 5), (1, 1), (0, 4)))]
+        bam = _build_bam(tmp_path, reads)
+        counts = _count_one_both(bam, INS_VARIANT)
+        assert counts.ad == 1
+        assert counts.rd == 0
+
+    def test_insertion_windowed_binned(self, tmp_path):
+        reads = [_make_read("r1", "AAAAAAATAA", 96, ((0, 7), (1, 1), (0, 2)))]
+        bam = _build_bam(tmp_path, reads)
+        counts = _count_one_both(bam, INS_VARIANT)
+        assert counts.ad == 1
+
+    def test_deletion_strict_binned(self, tmp_path):
+        reads = [_make_read("r1", "AAAAAAAAAA", 196, ((0, 5), (2, 1), (0, 5)))]
+        bam = _build_bam(tmp_path, reads)
+        counts = _count_one_both(bam, DEL_VARIANT)
+        assert counts.ad == 1
+        assert counts.rd == 0

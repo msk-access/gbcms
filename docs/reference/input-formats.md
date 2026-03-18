@@ -126,7 +126,7 @@ samtools faidx reference.fa
 
 ## Related
 
-- [CLI Run Command](../cli/run.md) — Usage examples
+- [DNA CLI Reference](../cli/dna.md) — Usage examples
 - [Variant Normalization](variant-normalization.md) — How variants are prepared
 - [Allele Classification](allele-classification.md) — How counting works
 - [Glossary](glossary.md) — Term definitions

@@ -29,11 +29,15 @@ pytest tests/test_accuracy.py -v
 | DP Neither | `test_dp_neither.py` | Gap 1D: DP includes third-allele/neither reads |
 | Multi-Allelic | `test_multi_allelic.py` | Gap 1A: Sibling ALT exclusion, overlapping indel DP |
 | CLI | `test_cli_sample_id.py` | Argument parsing, input validation, error paths, `--lenient-bam`, subcommands |
+| CLI DNA/RNA | `test_cli_dna_rna.py` | Command existence, option isolation, error handling |
 | Filters | `test_filters.py` | Read filtering logic |
 | MAF | `test_maf_*.py` | MAF column preservation, reader |
 | Pipeline | `test_pipeline_v2.py` | End-to-end workflow |
 | Strand | `test_strand_counts.py` | Strand-specific counts |
-| Alignment Backend | `test_alignment_backend.py` | SW vs PairHMM concordance, backend integration |
+| Alignment Backend | `test_alignment_backend.py` | PairHMM default, backend integration |
+| Config Isolation | `test_config_isolation.py` | DNA vs RNA mode, defaults, field validation |
+| RNA Output | `test_rna_output.py` | MAF/VCF RNA column presence/absence |
+| BAQ | `test_baq.py` | BAQ quality downgrade feature |
 
 ### Rust-Level Tests
 
@@ -60,17 +64,25 @@ Rust tests live inside `#[cfg(test)]` modules in `normalize.rs` (20 tests) and c
 
 ```
 tests/
+├── conftest.py                  # Shared pytest fixtures (paths, RNA BAM, editing DB)
+├── helpers.py                   # Shared helpers (build_bam, make_read, count_one, count_both)
 ├── test_accuracy.py             # Variant type accuracy + DP invariant
+├── test_alignment_backend.py    # PairHMM default, backend integration
+├── test_baq.py                  # BAQ quality downgrade
+├── test_cli_dna_rna.py          # dna/rna command existence, option isolation
 ├── test_cli_sample_id.py        # CLI argument parsing
+├── test_config_isolation.py      # DNA vs RNA config isolation + validation
 ├── test_dp_neither.py           # Gap 1D: DP includes third-allele reads
 ├── test_filters.py              # Read filtering
 ├── test_fragment_consensus.py   # Fragment-level quality consensus + DPF invariant
 ├── test_fuzzy_complex.py        # Quality-aware masked complex matching + MSI penalties
 ├── test_maf_preservation.py     # MAF column preservation
 ├── test_maf_reader.py           # MAF input parsing
+├── test_mfsd_flag.py            # mFSD flag behavior
 ├── test_multi_allelic.py        # Gap 1A: Sibling ALT exclusion
 ├── test_normalization.py        # Left-alignment, REF validation, window expansion
 ├── test_pipeline_v2.py          # End-to-end pipeline
+├── test_rna_output.py           # RNA MAF/VCF column presence/absence
 ├── test_shifted_indels.py       # Windowed indel detection (±5bp)
 └── test_strand_counts.py        # Strand-specific counts
 ```
@@ -160,7 +172,7 @@ samtools mpileup -r chr1:100-100 -q 20 \
 
 ```bash
 # Run gbcms
-gbcms run -v variants.maf -b sample.bam -f ref.fa -o output/
+gbcms dna -v variants.maf -b sample.bam -f ref.fa -o output/
 
 # Check output
 awk -F'\t' 'NR==2 {print "REF="$41, "ALT="$42}' output/*.maf
@@ -207,11 +219,13 @@ samtools mpileup -r 1:11168293-11168293 -q 20 -f ref.fa sample.bam | \
 
 | Module | Target | Current |
 |:-------|:------:|:-------:|
-| cli.py | 90% | ~90% |
-| pipeline.py | 70% | 29% |
-| io/input.py | 85% | 82% |
-| io/output.py | 90% | 96% |
-| models/core.py | 90% | 90% |
+| cli.py | 90% | ~76% |
+| pipeline.py | 70% | 16% |
+| io/input.py | 85% | 80% |
+| io/output.py | 90% | 84% |
+| models/core.py | 90% | 96% |
+
+**Current totals**: 155 tests, 66% overall coverage.
 
 Run coverage report:
 

@@ -754,7 +754,7 @@ def test_normalize_rejects_unsupported_extension(mock_normalize, tmp_path):
 
 @patch("gbcms.cli.Pipeline")
 def test_vcf_bgz_accepted_by_run(mock_pipeline_cls, tmp_path):
-    """.vcf.bgz is accepted as a valid variant file extension by 'gbcms run'."""
+    """.vcf.bgz is accepted as a valid variant file extension by 'gbcms dna'."""
     bgz = tmp_path / "variants.vcf.bgz"
     bgz.touch()
     bam = tmp_path / "test.bam"

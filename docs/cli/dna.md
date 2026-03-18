@@ -1,11 +1,14 @@
-# gbcms run
+# gbcms dna
 
-Count alleles at variant positions across one or more BAM files.
+Count alleles at variant positions across one or more DNA/cfDNA BAM files.
+
+!!! warning "Migrating from `gbcms run`"
+    `gbcms run` is deprecated and hidden. Replace with `gbcms dna` — all arguments are identical. `gbcms run` will be removed in v4.1.0.
 
 ## Synopsis
 
 ```bash
-gbcms run [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
+gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
 ```
 
 ## Required Arguments
@@ -47,7 +50,7 @@ short-fragment enrichment associated with tumor-derived cfDNA
 !!! tip
     To generate both summary statistics and raw Parquet data in one run:
     ```bash
-    gbcms run --mfsd --mfsd-parquet --format maf \\
+    gbcms dna --mfsd --mfsd-parquet --format maf \
         --variants variants.maf --bam tumor:tumor.bam --fasta hg19.fa -o ./results
     ```
     This produces `<sample>.maf` (with 34 mFSD columns) and `<sample>.fsd.parquet`
@@ -67,6 +70,33 @@ short-fragment enrichment associated with tumor-derived cfDNA
 | `--filter-indel` | `false` | Filter reads with indels |
 | `--fragment-qual-threshold` | `10` | Quality difference threshold for fragment consensus (see [Fragment Counting](../reference/counting-metrics.md#fragment-counting)) |
 
+## BAQ Options
+
+Base Alignment Quality (BAQ) heuristically downgrades base qualities near indels to prevent systematic errors from realignment artifacts.
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--apply-baq/--no-baq` | `off` | Enable BAQ quality downgrade near indels |
+
+!!! info "When to Enable BAQ"
+    Most modern pipelines (BQSR, fgbio consensus) already recalibrate base qualities. Enable BAQ only for legacy BAMs lacking quality recalibration, where bases near indels may have inflated quality scores that lead to false-positive allele calls.
+
+## UMI Options
+
+Unique Molecular Identifier (UMI) support for molecule-level deduplication.
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--umi-tag` | _(none)_ | BAM tag for UMI barcode (e.g. `RX`). Enables UMI-aware fragment grouping. |
+
+!!! tip "UMI-Aware Fragment Counting"
+    When `--umi-tag` is set, two reads are considered the same fragment only if they share both **QNAME** and **UMI barcode**. This prevents UMI-collapsed reads from different original molecules being incorrectly merged into a single fragment, which would deflate fragment-level allele counts.
+
+    ```bash
+    gbcms dna --umi-tag RX \
+        --variants variants.vcf --bam sample.bam --fasta ref.fa -o results/
+    ```
+
 ## Debugging Options
 
 | Option | Default | Description |
@@ -74,66 +104,85 @@ short-fragment enrichment associated with tumor-derived cfDNA
 | `--verbose`, `-V` | `false` | Enable verbose debug logging |
 | `--trace`, `-T` | `false` | Enable per-read Rust trace logging (slow). Implies `--verbose`. Shows detailed per-read classification diagnostics. |
 
-## Advanced: Alignment Backend
+## Alignment Backend
 
-By default, Phase 3 allele classification uses Smith-Waterman (SW). An alternative PairHMM backend is available for probabilistic alignment:
+Phase 3 allele classification uses **PairHMM** by default, which integrates per-base quality probabilities into alignment scoring for more accurate classification in noisy regions. Smith-Waterman (SW) is available as a simpler alternative.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--alignment-backend` | `sw` | Alignment backend for Phase 3: `sw` (Smith-Waterman) or `hmm` (PairHMM). Invalid values are rejected at parse time. |
+| `--alignment-backend` | `pairhmm` | Alignment backend for Phase 3: `pairhmm` (PairHMM, default) or `sw` (Smith-Waterman). Invalid values are rejected at parse time. |
 | `--llr-threshold` | `2.3` | PairHMM log-likelihood ratio threshold for confident calls (≈ ln(10)) |
 | `--gap-open-prob` | `1e-4` | PairHMM gap-open probability for non-repeat regions |
 | `--gap-extend-prob` | `0.1` | PairHMM gap-extend probability for non-repeat regions |
 | `--repeat-gap-open-prob` | `1e-2` | PairHMM gap-open probability for tandem repeat regions |
 | `--repeat-gap-extend-prob` | `0.5` | PairHMM gap-extend probability for tandem repeat regions |
 
-!!! tip "When to use PairHMM"
-    The PairHMM backend uses base quality probabilities directly in alignment scoring, making it more sensitive in low-quality or noisy regions. For most workflows, the default SW backend is recommended. Use `--alignment-backend hmm` when you need probabilistic confidence scores (LLR) instead of edit-distance margins.
+!!! tip "PairHMM vs Smith-Waterman"
+    PairHMM uses base quality probabilities directly in alignment scoring, producing log-likelihood ratio (LLR) confidence scores instead of edit-distance margins. This makes it more sensitive in low-quality or noisy regions. Use `--alignment-backend sw` if you need exact reproducibility with older gbcms versions (<3.0.0).
 
 ## Examples
 
-### Single BAM
+=== "Single BAM"
 
-```bash
-gbcms run \
-    --variants mutations.vcf \
-    --bam sample:sample.bam \
-    --fasta reference.fa \
-    --output-dir results/
-```
+    ```bash
+    gbcms dna \
+        --variants mutations.vcf \
+        --bam sample:sample.bam \ # (1)!
+        --fasta reference.fa \
+        --output-dir results/
+    ```
 
-### Multiple BAMs
+    1.  The `sample:` prefix sets the output filename. Without it, the BAM filename stem is used.
 
-```bash
-gbcms run \
-    --variants mutations.maf \
-    --bam tumor:tumor.bam \
-    --bam normal:normal.bam \
-    --fasta reference.fa \
-    --format maf
-```
+=== "Multiple BAMs"
 
-### With Filtering
+    ```bash
+    gbcms dna \
+        --variants mutations.maf \
+        --bam tumor:tumor.bam \
+        --bam normal:normal.bam \
+        --fasta reference.fa \
+        --format maf # (1)!
+    ```
 
-```bash
-gbcms run \
-    --variants mutations.vcf \
-    --bam sample:sample.bam \
-    --fasta reference.fa \
-    --filter-duplicates \
-    --min-mapq 30
-```
+    1. MAF output preserves all input MAF columns and appends gbcms count columns.
 
-### With Normalization Columns
+=== "With Filtering"
 
-```bash
-gbcms run \
-    --variants mutations.maf \
-    --bam sample:sample.bam \
-    --fasta reference.fa \
-    --format maf \
-    --show-normalization
-```
+    ```bash
+    gbcms dna \
+        --variants mutations.vcf \
+        --bam sample:sample.bam \
+        --fasta reference.fa \
+        --filter-duplicates \
+        --min-mapq 30
+    ```
+
+=== "With Normalization"
+
+    ```bash
+    gbcms dna \
+        --variants mutations.maf \
+        --bam sample:sample.bam \
+        --fasta reference.fa \
+        --format maf \
+        --show-normalization # (1)!
+    ```
+
+    1. Appends `norm_chrom`, `norm_pos`, `norm_ref`, `norm_alt` columns showing left-aligned coordinates.
+
+=== "With UMI Tags"
+
+    ```bash
+    gbcms dna \
+        --variants mutations.vcf \
+        --bam sample:umi_deduped.bam \
+        --fasta reference.fa \
+        --umi-tag RX \ # (1)!
+        --output-dir results/
+    ```
+
+    1. The `RX` tag is the standard SAM tag for UMI barcodes (fgbio, gencore).
 
 ## Output
 
@@ -149,6 +198,7 @@ The command produces a VCF or MAF file with:
 ## Related
 
 - [Quick Start](../getting-started/quickstart.md) — Common patterns
+- [gbcms rna](rna.md) — RNA-seq counting with transcriptome-aware filtering
 - [gbcms normalize](normalize.md) — Standalone normalization (no counting)
 - [Nextflow Pipeline](../nextflow/index.md) — For many samples
 - [Input Formats](../reference/input-formats.md) — VCF/MAF specs

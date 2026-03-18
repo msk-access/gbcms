@@ -14,6 +14,8 @@
 - 🔬 **Statistical Analysis**: Fisher's exact test for strand bias
 - 📁 **Flexible I/O**: VCF and MAF input/output formats
 - 🎯 **Quality Filters**: 8 configurable read and quality filtering options
+- 🧬 **RNA Mode**: Transcriptome-aware counting with strandedness, splice detection, and A-to-I editing
+- 🔗 **UMI Support**: Molecule-level deduplication with UMI-aware fragment grouping
 
 ## Installation
 
@@ -49,7 +51,7 @@ docker pull ghcr.io/msk-access/gbcms:X.Y.Z  # Replace X.Y.Z with latest from PyP
 **Best for:** Quick analysis, local processing, direct control
 
 ```bash
-gbcms run \
+gbcms dna \
     --variants variants.vcf \
     --bam sample1.bam \
     --fasta reference.fa \
@@ -60,7 +62,8 @@ gbcms run \
 
 **Learn more:**
 - 📘 [CLI Quick Start](https://msk-access.github.io/gbcms/getting-started/quickstart/)
-- 📖 [CLI Reference](https://msk-access.github.io/gbcms/cli/run/)
+- 📖 [CLI Reference — DNA](https://msk-access.github.io/gbcms/cli/dna/)
+- 📖 [CLI Reference — RNA](https://msk-access.github.io/gbcms/cli/rna/)
 
 ---
 
@@ -103,9 +106,9 @@ nextflow run nextflow/main.nf \
 
 ## Quick Examples
 
-### CLI: Single Sample
+### CLI: DNA Single Sample
 ```bash
-gbcms run \
+gbcms dna \
     --variants variants.vcf \
     --bam tumor.bam \
     --fasta hg19.fa \
@@ -113,9 +116,19 @@ gbcms run \
     --threads 4
 ```
 
+### CLI: RNA-seq
+```bash
+gbcms rna \
+    --variants variants.vcf \
+    --bam rna_sample:aligned.bam \
+    --fasta hg19.fa \
+    --rna-editing-db TABLE1_hg38.txt.gz \
+    --output-dir results/
+```
+
 ### CLI: Multiple Samples (Sequential)
 ```bash
-gbcms run \
+gbcms dna \
     --variants variants.vcf \
     --bam-list samples.txt \
     --fasta hg19.fa \
@@ -147,7 +160,8 @@ nextflow run nextflow/main.nf \
 - [Installation](https://msk-access.github.io/gbcms/getting-started/installation/)
 - [CLI Quick Start](https://msk-access.github.io/gbcms/getting-started/quickstart/)
 - [Nextflow Workflow](https://msk-access.github.io/gbcms/nextflow/)
-- [CLI Reference](https://msk-access.github.io/gbcms/cli/run/)
+- [CLI Reference — DNA](https://msk-access.github.io/gbcms/cli/dna/)
+- [CLI Reference — RNA](https://msk-access.github.io/gbcms/cli/rna/)
 - [Input & Output Formats](https://msk-access.github.io/gbcms/reference/input-formats/)
 - [Architecture](https://msk-access.github.io/gbcms/reference/architecture/)
 

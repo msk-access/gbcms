@@ -11,7 +11,7 @@ gbcms normalize --variants <FILE> --fasta <FILE> --output <FILE>
 ## Description
 
 The `normalize` subcommand applies the same variant preparation pipeline used
-by `gbcms run` — MAF anchor resolution, REF validation, and bcftools-style
+by `gbcms dna` — MAF anchor resolution, REF validation, and bcftools-style
 left-alignment — but **without** performing any BAM counting.  The output is a
 TSV file showing both the original and normalized coordinates for every variant.
 
@@ -64,5 +64,5 @@ gbcms normalize \
 
 ## Related
 
-- [gbcms run](run.md) — Full counting pipeline (with `--show-normalization` flag)
+- [gbcms dna](dna.md) — Full counting pipeline (with `--show-normalization` flag)
 - [Input Formats](../reference/input-formats.md) — VCF/MAF coordinate conventions

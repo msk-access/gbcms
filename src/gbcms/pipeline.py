@@ -28,7 +28,7 @@ from rich.progress import (
 from .core.kernel import CoordinateKernel
 from .io.input import MafReader, VariantReader, VcfReader
 from .io.output import MafWriter, VcfWriter
-from .models.core import GbcmsConfig, OutputFormat, Variant
+from .models.core import GbcmsBaseConfig, OutputFormat, Variant
 
 _gbcms_rs = None
 
@@ -114,13 +114,26 @@ def _zero_counts():
         mfsd_delta_nonref_n=_nan,
         mfsd_ks_nonref_n=_nan,
         mfsd_pval_nonref_n=_nan,
+        # Universal additions (both modes)
+        mq0_count=0,
+        alt_dist_end_median=_nan,
+        ref_dist_end_median=_nan,
+        singleton_alt_count=0,
+        duplex_alt_count=0,
+        # RNA-specific (zeroed in DNA mode)
+        sense_depth=0,
+        antisense_depth=0,
+        sense_strand_alt_count=0,
+        antisense_strand_alt_count=0,
+        rna_editing_site_overlap=False,
+        splice_spanning_count=0,
     )
 
 
 class Pipeline:
     """Main pipeline for processing BAM files and counting bases at variant positions."""
 
-    def __init__(self, config: GbcmsConfig):
+    def __init__(self, config: GbcmsBaseConfig):
         """
         Initialize the pipeline.
 
@@ -324,7 +337,7 @@ class Pipeline:
             align_cfg = self.config.alignment
             if align_cfg.backend != "sw":
                 logger.info("Using alignment backend: %s", align_cfg.backend)
-            counts_list = _get_rs().count_bam(
+            counts_list = _get_rs().count_bam_binned(
                 str(bam_path),
                 rs_variants,
                 decomposed,
@@ -345,9 +358,18 @@ class Pipeline:
                 hmm_gap_extend=align_cfg.hmm_gap_extend,
                 hmm_gap_open_repeat=align_cfg.hmm_gap_open_repeat,
                 hmm_gap_extend_repeat=align_cfg.hmm_gap_extend_repeat,
+                apply_baq=self.config.apply_baq,
+                umi_tag=self.config.umi_tag,
+                mode=self.config.mode,
+                enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
+                rna_editing_db=(
+                    str(self.config.rna_editing_db)
+                    if getattr(self.config, "rna_editing_db", None)
+                    else None
+                ),
             )
             rust_time = time.perf_counter() - rust_start
-            logger.debug("Rust count_bam completed in %.3fs", rust_time)
+            logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 
             # Update validation_status for variants where decomposed allele won
             for idx, counts in zip(valid_indices, counts_list, strict=True):

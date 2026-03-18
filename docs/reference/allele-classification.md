@@ -531,7 +531,7 @@ When Phase 2 and Phase 2.5 both fail, the engine expands to the full `ref_contex
 | Min usable bases | 3 | Reads with <3 usable bases are skipped |
 
 !!! tip "Alternative: PairHMM Backend"
-    Pass `--alignment-backend hmm` to use a **PairHMM** (pair hidden Markov model) instead of Smith-Waterman. PairHMM integrates base quality probabilities directly into the alignment score, using Log-Likelihood Ratio (LLR) instead of edit-distance scoring. Default LLR threshold: 2.3 (≈ ln(10), i.e., 10:1 odds). Gap probabilities are tunable separately for repeat vs non-repeat regions. See [CLI Reference](../cli/run.md#advanced-alignment-backend).
+    PairHMM is the **default** Phase 3 alignment backend. It integrates base quality probabilities directly into the alignment score, using Log-Likelihood Ratio (LLR) instead of edit-distance scoring. Default LLR threshold: 2.3 (≈ ln(10), i.e., 10:1 odds). Gap probabilities are tunable separately for repeat vs non-repeat regions. Use `--alignment-backend sw` for Smith-Waterman instead. See [CLI Reference](../cli/dna.md#alignment-backend).
 
 #### Dual-Trigger Local Fallback
 

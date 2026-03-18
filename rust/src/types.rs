@@ -26,12 +26,17 @@ pub struct Variant {
     /// triggers gap_extend = 0 to absorb polymerase slippage noise.
     #[pyo3(get, set)]
     pub repeat_span: usize,
+
+    /// Transcript strand ('+' or '-') for RNA strandedness filtering.
+    /// None in DNA mode — zero cost, no branching impact.
+    #[pyo3(get, set)]
+    pub gene_strand: Option<char>,
 }
 
 #[pymethods]
 impl Variant {
     #[new]
-    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0))]
+    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0, gene_strand=None))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         chrom: String,
@@ -42,6 +47,7 @@ impl Variant {
         ref_context: Option<String>,
         ref_context_start: i64,
         repeat_span: usize,
+        gene_strand: Option<char>,
     ) -> Self {
         Variant {
             chrom,
@@ -52,6 +58,7 @@ impl Variant {
             ref_context,
             ref_context_start,
             repeat_span,
+            gene_strand,
         }
     }
 }
@@ -228,5 +235,42 @@ pub struct BaseCounts {
     pub ref_sizes: Vec<u32>,
     /// Raw ALT fragment sizes (bp). Internal only; use write_fsd_parquet() to persist.
     pub alt_sizes: Vec<u32>,
+
+    // ── Universal additions (both DNA and RNA modes) ───────────────────────
+    /// Reads with MAPQ == 0 at this locus.
+    #[pyo3(get)]
+    pub mq0_count: u32,
+    /// Median distance of ALT-supporting bases to read end.
+    #[pyo3(get)]
+    pub alt_dist_end_median: f64,
+    /// Median distance of REF-supporting bases to read end.
+    #[pyo3(get)]
+    pub ref_dist_end_median: f64,
+    /// ALT reads from singleton UMI families (no mate confirmation).
+    #[pyo3(get)]
+    pub singleton_alt_count: u32,
+    /// ALT reads from duplex UMI families (both strands confirmed).
+    #[pyo3(get)]
+    pub duplex_alt_count: u32,
+
+    // ── RNA-specific (zeroed in DNA mode via Default) ─────────────────────
+    /// Total reads on the transcript sense strand (SEN in VCF).
+    #[pyo3(get)]
+    pub sense_depth: u32,
+    /// Total reads on the antisense strand (ANT in VCF).
+    #[pyo3(get)]
+    pub antisense_depth: u32,
+    /// ALT reads on the transcript sense strand (ASEN in VCF).
+    #[pyo3(get)]
+    pub sense_strand_alt_count: u32,
+    /// ALT reads on the antisense strand.
+    #[pyo3(get)]
+    pub antisense_strand_alt_count: u32,
+    /// True if locus overlaps a known A-to-I RNA editing site (RED in VCF).
+    #[pyo3(get)]
+    pub rna_editing_site_overlap: bool,
+    /// Reads supporting ALT that span a splice junction — CIGAR N (SPL in VCF).
+    #[pyo3(get)]
+    pub splice_spanning_count: u32,
 }
 

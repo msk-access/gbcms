@@ -79,7 +79,7 @@ For RHEL 8, CentOS 8, or HPC systems with glibc < 2.34:
     singularity exec gbcms_X.Y.Z.sif gbcms --help
     
     # With data binding
-    singularity exec -B /path/to/data:/data gbcms_X.Y.Z.sif gbcms run \
+    singularity exec -B /path/to/data:/data gbcms_X.Y.Z.sif gbcms dna \
       --variants /data/variants.vcf --bam /data/sample.bam \
       --fasta /data/ref.fa --output-dir /data/results/
     ```
@@ -116,7 +116,7 @@ gbcms --help
 docker run --rm \
   -v $(pwd):/data \
   ghcr.io/msk-access/gbcms:X.Y.Z \
-  gbcms run \
+  gbcms dna \
     --variants /data/variants.vcf \
     --bam /data/sample.bam \
     --fasta /data/reference.fa \

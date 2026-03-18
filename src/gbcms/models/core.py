@@ -1,8 +1,13 @@
 """
-Core data models for gbcms v2.
+Core data models for gbcms.
 
 This module defines the data models for variants, configuration, and nested
 config groups (filters, quality thresholds, output settings).
+
+Config hierarchy:
+    GbcmsBaseConfig        — shared fields for all counting modes
+    ├── GbcmsDnaConfig     — DNA/cfDNA-specific defaults (mFSD, sw backend)
+    └── GbcmsRnaConfig     — RNA-specific defaults (strandedness, editing, pairhmm)
 """
 
 import sys
@@ -29,7 +34,10 @@ __all__ = [
     "QualityThresholds",
     "AlignmentConfig",
     "OutputConfig",
-    "GbcmsConfig",
+    "GbcmsBaseConfig",
+    "GbcmsDnaConfig",
+    "GbcmsRnaConfig",
+    "GbcmsConfig",  # deprecated alias for GbcmsDnaConfig
 ]
 
 
@@ -79,9 +87,9 @@ class ReadFilters(BaseModel):
     """
 
     duplicates: bool = Field(default=True, description="Filter duplicate reads")
-    secondary: bool = Field(default=False, description="Filter secondary alignments")
-    supplementary: bool = Field(default=False, description="Filter supplementary alignments")
-    qc_failed: bool = Field(default=False, description="Filter reads failing QC")
+    secondary: bool = Field(default=True, description="Filter secondary alignments")
+    supplementary: bool = Field(default=True, description="Filter supplementary alignments")
+    qc_failed: bool = Field(default=True, description="Filter reads failing QC")
     improper_pair: bool = Field(default=False, description="Filter improperly paired reads")
     indel: bool = Field(default=False, description="Filter reads containing indels")
 
@@ -140,14 +148,14 @@ class AlignmentConfig(BaseModel):
     """Alignment backend configuration for Phase 3 read classification.
 
     Controls which algorithm is used for haplotype-level alignment when
-    variant-type-specific CIGAR matching is inconclusive. Smith-Waterman (sw)
-    is the default; PairHMM (hmm) is an alternative that uses per-base
-    quality-aware emission probabilities.
+    variant-type-specific CIGAR matching is inconclusive. PairHMM (hmm)
+    uses per-base quality-aware emission probabilities and is the default;
+    Smith-Waterman (sw) is a simpler alternative.
     """
 
     backend: str = Field(
-        default="sw",
-        description="Alignment backend: 'sw' (Smith-Waterman) or 'hmm' (PairHMM).",
+        default="pairhmm",
+        description="Alignment backend: 'sw' (Smith-Waterman) or 'pairhmm' (PairHMM, default).",
     )
     hmm_llr_threshold: float = Field(
         default=2.3,
@@ -188,7 +196,10 @@ class AlignmentConfig(BaseModel):
         """Validate backend is a supported value."""
         v = v.lower().strip()
         if v not in ("sw", "hmm", "pairhmm"):
-            raise ValueError(f"Invalid alignment backend '{v}'. Must be 'sw' or 'hmm'.")
+            raise ValueError(f"Invalid alignment backend '{v}'. Must be 'sw' or 'pairhmm'.")
+        # Normalize 'pairhmm' to 'hmm' for the Rust engine.
+        if v == "pairhmm":
+            v = "hmm"
         return v
 
 
@@ -256,11 +267,12 @@ class OutputConfig(BaseModel):
         return self
 
 
-class GbcmsConfig(BaseModel):
+class GbcmsBaseConfig(BaseModel):
     """
-    Global configuration for gbcms execution.
+    Base configuration shared between DNA and RNA modes.
 
     Groups related settings into nested models for cleaner organization.
+    Subclassed by GbcmsDnaConfig and GbcmsRnaConfig which override defaults.
     """
 
     # Input files
@@ -268,10 +280,36 @@ class GbcmsConfig(BaseModel):
     bam_files: dict[str, Path]  # sample_name -> bam_path
     reference_fasta: Path
 
+    # Mode identifier — set by subclasses, used by Rust engine for branching
+    mode: str = "dna"
+
     # Nested configuration groups
     output: OutputConfig
     filters: ReadFilters = Field(default_factory=ReadFilters)
     quality: QualityThresholds = Field(default_factory=QualityThresholds)
+
+    # BAQ quality downgrade (both modes, off by default — BQSR/fgbio consensus
+    # already recalibrates base qualities; applying BAQ on top double-penalizes)
+    apply_baq: bool = Field(
+        default=False,
+        description=(
+            "Apply heuristic BAQ (Base Alignment Quality) downgrade near indels. "
+            "Subtracts 20 from base qualities within 5bp of alignment indels to "
+            "reduce false positive variant calls from alignment artifacts. "
+            "Off by default because MSK-ACCESS/IMPACT BAMs go through BQSR or "
+            "fgbio consensus which already recalibrates base qualities."
+        ),
+    )
+
+    # UMI-aware fragment grouping (both modes)
+    umi_tag: str | None = Field(
+        default=None,
+        description=(
+            "BAM tag containing the UMI barcode (e.g. 'RX'). When set, QNAME+UMI "
+            "are hashed together for fragment grouping, treating reads with different "
+            "UMIs as distinct molecules."
+        ),
+    )
 
     # Performance
     threads: int = Field(default=1, ge=1, description="Number of threads")
@@ -294,9 +332,83 @@ class GbcmsConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_bams(self) -> "GbcmsConfig":
+    def validate_bams(self) -> "GbcmsBaseConfig":
         """Validate that all BAM files exist."""
         for name, path in self.bam_files.items():
             if not path.exists():
                 raise ValueError(f"BAM file for sample '{name}' not found: {path}")
         return self
+
+
+class GbcmsDnaConfig(GbcmsBaseConfig):
+    """DNA/cfDNA-specific configuration.
+
+    Inherits all shared fields from GbcmsBaseConfig. Overrides:
+    - mode = "dna"
+    - Default MAPQ = 20
+    - Default alignment backend = pairhmm
+    - mFSD available
+    """
+
+    mode: str = "dna"
+
+
+class GbcmsRnaConfig(GbcmsBaseConfig):
+    """RNA-seq-specific configuration.
+
+    Inherits all shared fields from GbcmsBaseConfig. Overrides:
+    - mode = "rna"
+    - Default MAPQ = 1 (STAR assigns low MAPQ to novel splice junctions)
+    - Default alignment backend = pairhmm (WFA2 + marginalized PairHMM)
+    - Gap penalties relaxed for RT stutter tolerance
+    - Strandedness filtering enabled by default
+    - RNA editing database support
+    """
+
+    mode: str = "rna"
+
+    # RNA-specific quality overrides
+    quality: QualityThresholds = Field(
+        default_factory=lambda: QualityThresholds(min_mapping_quality=1),
+    )
+
+    # RNA-specific alignment defaults (WFA2 + marginalized PairHMM)
+    alignment: AlignmentConfig = Field(
+        default_factory=lambda: AlignmentConfig(
+            backend="pairhmm",
+            hmm_gap_open=5e-3,
+            hmm_gap_extend=0.25,
+        ),
+    )
+
+    # dUTP sense-strand filtering for stranded RNA-seq libraries
+    enforce_strandedness: bool = Field(
+        default=True,
+        description=(
+            "Filter reads by strand orientation relative to gene_strand. "
+            "In dUTP stranded libraries, R1 is antisense and R2 is sense. "
+            "Antisense reads at variant sites are noise, not signal."
+        ),
+    )
+
+    # REDIportal A-to-I RNA editing site database
+    rna_editing_db: Path | None = Field(
+        default=None,
+        description=(
+            "Path to REDIportal VCF of known RNA editing sites. "
+            "Variants overlapping these sites are flagged (not filtered) "
+            "to distinguish genuine mutations from A-to-I editing."
+        ),
+    )
+
+    @field_validator("rna_editing_db")
+    @classmethod
+    def validate_editing_db(cls, v: Path | None) -> Path | None:
+        """Validate RNA editing database file exists."""
+        if v is not None and not v.exists():
+            raise ValueError(f"RNA editing database not found: {v}")
+        return v
+
+
+# Deprecated alias for backward compatibility — use GbcmsDnaConfig directly.
+GbcmsConfig = GbcmsDnaConfig

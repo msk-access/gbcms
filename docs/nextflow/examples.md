@@ -2,7 +2,7 @@
 
 Common usage patterns for the gbcms Nextflow pipeline.
 
-## Basic Usage
+## DNA Mode (Default)
 
 ### Local with Docker
 
@@ -24,6 +24,34 @@ nextflow run nextflow/main.nf \
     --fasta reference.fa \
     --outdir results \
     -profile slurm
+```
+
+## RNA Mode
+
+### Basic RNA-seq
+
+```bash
+nextflow run nextflow/main.nf \
+    --input samplesheet.csv \
+    --variants variants.maf \
+    --fasta reference.fa \
+    --mode rna \
+    --format maf \
+    -profile docker
+```
+
+### RNA with Editing Database
+
+```bash
+nextflow run nextflow/main.nf \
+    --input samplesheet.csv \
+    --variants variants.maf \
+    --fasta reference.fa \
+    --mode rna \
+    --format maf \
+    --rna_editing_db /path/to/TABLE1_hg38_v3.txt \
+    --enforce_strandedness \
+    -profile docker
 ```
 
 ## MAF Output
@@ -50,6 +78,17 @@ nextflow run nextflow/main.nf \
     --filter_secondary true \
     --filter_supplementary true \
     --filter_qc_failed true \
+    -profile docker
+```
+
+## UMI-Aware Counting
+
+```bash
+nextflow run nextflow/main.nf \
+    --input samplesheet.csv \
+    --variants variants.vcf \
+    --fasta reference.fa \
+    --umi_tag XM \
     -profile docker
 ```
 
