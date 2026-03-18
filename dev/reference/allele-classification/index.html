@@ -7,7 +7,7 @@
 <link href="../read-filters/" rel="prev">
 <link href="../counting-metrics/" rel="next">
 <link href="../../assets/images/favicon.png" rel="icon">
-<meta content="mkdocs-1.6.1, mkdocs-material-9.7.4" name="generator">
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.5" name="generator">
 <title>Allele Classification - gbcms</title>
 <link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet">
 <link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
@@ -241,11 +241,23 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="../../cli/run/">
+<a class="md-nav__link" href="../../cli/dna/">
 <span class="md-ellipsis">
     
   
-    Run Command
+    DNA Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/rna/">
+<span class="md-ellipsis">
+    
+  
+    RNA Command
   
 
     
@@ -1256,7 +1268,7 @@ Use mouse to pan and zoom
 <p>Dispatch uses <code>ref_allele.len()</code> and <code>alt_allele.len()</code> to determine the variant class. This means even if upstream callers emit inconsistent type strings (e.g., <code>"COMPLEX"</code> for what is really a pure deletion after normalization), the correct checker is always selected.</p>
 </div>
 <hr>
-<h2 id="snp-single-nucleotide-polymorphism">SNP (Single Nucleotide Polymorphism)<a class="headerlink" href="#snp-single-nucleotide-polymorphism" title="Permanent link">¶</a></h2>
+<h2 id="snp-single-nucleotide-polymorphism"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (Single Nucleotide Polymorphism)<a class="headerlink" href="#snp-single-nucleotide-polymorphism" title="Permanent link">¶</a></h2>
 <p>A single base substitution — the simplest and most common variant type.</p>
 <table>
 <thead>
@@ -1369,7 +1381,7 @@ Use mouse to pan and zoom
 </tbody>
 </table>
 <h3 id="algorithm_1">Algorithm<a class="headerlink" href="#algorithm_1" title="Permanent link">¶</a></h3>
-<p>The insertion check uses a <strong>single CIGAR walk</strong> with four detection strategies:</p>
+<p>The insertion check uses a <strong>single <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk</strong> with four detection strategies:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1495,7 +1507,7 @@ Use mouse to pan and zoom
 </code></pre></div>
 <hr>
 <h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">¶</a></h2>
-<p>Bases deleted after an <strong>anchor</strong> position. Mirrors insertion but looks for <code>Del</code> CIGAR operations.</p>
+<p>Bases deleted after an <strong>anchor</strong> position. Mirrors insertion but looks for <code>Del</code> <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> operations.</p>
 <table>
 <thead>
 <tr>
@@ -1522,16 +1534,16 @@ Use mouse to pan and zoom
 <p>Same single-walk strategy as insertion, with three additional features:</p>
 <ol>
 <li>
-<p><strong>Reciprocal overlap matching</strong> — For large deletions (≥50bp), if the CIGAR shows a deletion at the anchor but with a different length, gbcms accepts it if the reciprocal overlap is ≥50% (SV-caller standard, used by SURVIVOR):</p>
+<p><strong>Reciprocal overlap matching</strong> — For large deletions (≥50bp), if the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> shows a deletion at the anchor but with a different length, gbcms accepts it if the reciprocal overlap is ≥50% (SV-caller standard, used by SURVIVOR):</p>
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a>reciprocal_overlap = min(expected, found) / max(expected, found)
 <a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>Accept if expected_del ≥ 50bp AND reciprocal_overlap ≥ 0.50
 </code></pre></div>
 </li>
 <li>
-<p><strong>Interior REF guard</strong> — For large deletions (≥50bp), reads that start <em>inside</em> the deleted region are classified as REF directly, without falling back to Smith-Waterman. This prevents overcounting caused by the SW aligner's bias toward shorter ALT haplotypes.</p>
+<p><strong>Interior REF guard</strong> — For large deletions (≥50bp), reads that start <em>inside</em> the deleted region are classified as REF directly, without falling back to Smith-Waterman. This prevents overcounting caused by the <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> aligner's bias toward shorter ALT haplotypes.</p>
 </li>
 <li>
-<p><strong>Haplotype fallback</strong> — When no CIGAR match is found and the read doesn't cover the anchor, falls back to <code>check_complex</code> for haplotype-based comparison.</p>
+<p><strong>Haplotype fallback</strong> — When no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found and the read doesn't cover the anchor, falls back to <code>check_complex</code> for haplotype-based comparison.</p>
 </li>
 </ol>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
@@ -1628,7 +1640,7 @@ Use mouse to pan and zoom
 <a href="#__codelineno-3-21" id="__codelineno-3-21" name="__codelineno-3-21"></a>                          no deletion after anchor → REF ✅
 </code></pre></div>
 <hr>
-<h2 id="mnp-multi-nucleotide-polymorphism">MNP (Multi-Nucleotide Polymorphism)<a class="headerlink" href="#mnp-multi-nucleotide-polymorphism" title="Permanent link">¶</a></h2>
+<h2 id="mnp-multi-nucleotide-polymorphism"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (Multi-Nucleotide Polymorphism)<a class="headerlink" href="#mnp-multi-nucleotide-polymorphism" title="Permanent link">¶</a></h2>
 <p>Multiple adjacent bases substituted simultaneously.</p>
 <table>
 <thead>
@@ -1648,7 +1660,7 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;">Quality check</td>
-<td style="text-align: left;"><strong>Minimum</strong> base quality across the MNP block must meet <code>--min-baseq</code></td>
+<td style="text-align: left;"><strong>Minimum</strong> base quality across the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> block must meet <code>--min-baseq</code></td>
 </tr>
 </tbody>
 </table>
@@ -1704,21 +1716,21 @@ Use mouse to pan and zoom
 </div>
 <div class="admonition info">
 <p class="admonition-title">Min-BQ-Across-Block Strategy</p>
-<p>MNP quality is assessed using the <strong>minimum</strong> base quality across the entire MNP block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code> behavior. If <code>min(BQ) &lt; threshold</code>, the read is skipped entirely — it contributes to neither REF, ALT, nor DP. This replaces the previous per-base rejection which routed low-quality reads to Phase 3 Smith-Waterman, where MNP haplotypes (differing at only 2-3 of ~20 positions) generated ties ~95% of the time, causing catastrophic ALT loss.</p>
+<p><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality is assessed using the <strong>minimum</strong> base quality across the entire <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code> behavior. If <code>min(BQ) &lt; threshold</code>, the read is skipped entirely — it contributes to neither REF, ALT, nor <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>. This replaces the previous per-base rejection which routed low-quality reads to Phase 3 Smith-Waterman, where <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> haplotypes (differing at only 2-3 of ~20 positions) generated ties ~95% of the time, causing catastrophic ALT loss.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Phase 3 Fallback Conditions</p>
 <p><code>check_complex</code> is invoked for both <strong>structural</strong> issues and <strong>quality</strong> issues:</p>
 <ul>
-<li>Read position not found in CIGAR walk</li>
-<li>Read doesn't cover the entire MNP region</li>
-<li>Indel detected within the MNP block (contiguity check)</li>
+<li>Read position not found in <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk</li>
+<li>Read doesn't cover the entire <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> region</li>
+<li>Indel detected within the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> block (contiguity check)</li>
 <li><strong>Low quality</strong>: <code>min(BQ across block) &lt; threshold</code> — Phase 2 masked comparison can still classify using only reliable bases</li>
 </ul>
-<p>The first three indicate a complex variant misannotated as an MNP; the last leverages quality-masking to rescue low-quality reads that strict MNP matching would discard.</p>
+<p>The first three indicate a complex variant misannotated as an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>; the last leverages quality-masking to rescue low-quality reads that strict <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> matching would discard.</p>
 </div>
 <h3 id="contiguity-check">Contiguity Check<a class="headerlink" href="#contiguity-check" title="Permanent link">¶</a></h3>
-<p>The contiguity check is performed <strong>first</strong> (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last MNP base — if the distance doesn't equal <code>len - 1</code>, an indel exists within the block and the read is routed to <code>check_complex</code> for haplotype-based resolution.</p>
+<p>The contiguity check is performed <strong>first</strong> (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> base — if the distance doesn't equal <code>len - 1</code>, an indel exists within the block and the read is routed to <code>check_complex</code> for haplotype-based resolution.</p>
 <hr>
 <h2 id="complex-indel-substitution">Complex (Indel + Substitution)<a class="headerlink" href="#complex-indel-substitution" title="Permanent link">¶</a></h2>
 <p>Variants where REF and ALT differ in both sequence <strong>and</strong> length. Uses a sophisticated <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
@@ -1873,11 +1885,11 @@ Use mouse to pan and zoom
 </div>
 </div>
 <h3 id="phase-1-haplotype-reconstruction">Phase 1: Haplotype Reconstruction<a class="headerlink" href="#phase-1-haplotype-reconstruction" title="Permanent link">¶</a></h3>
-<p>Walks the CIGAR to rebuild what the read shows for the genomic region <code>[pos, pos + ref_len)</code>. Each CIGAR operation contributes differently:</p>
+<p>Walks the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> to rebuild what the read shows for the genomic region <code>[pos, pos + ref_len)</code>. Each <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> operation contributes differently:</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">CIGAR Op</th>
+<th style="text-align: left;"><abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> Op</th>
 <th style="text-align: left;">Action</th>
 <th style="text-align: left;">Example</th>
 </tr>
@@ -1944,7 +1956,7 @@ Use mouse to pan and zoom
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Large-REF Guard</p>
-<p>For variants with REF &gt;50bp, if the reconstruction is &lt;10% of the REF length (e.g., 1bp recon for a 1024bp deletion), Phase 2 is skipped entirely. A tiny reconstruction would trivially match a short ALT allele, causing overcounting. Phase 3 SW handles these correctly.</p>
+<p>For variants with REF &gt;50bp, if the reconstruction is &lt;10% of the REF length (e.g., 1bp recon for a 1024bp deletion), Phase 2 is skipped entirely. A tiny reconstruction would trivially match a short ALT allele, causing overcounting. Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> handles these correctly.</p>
 </div>
 <h3 id="phase-25-edit-distance">Phase 2.5: Edit Distance<a class="headerlink" href="#phase-25-edit-distance" title="Permanent link">¶</a></h3>
 <p>When Phase 2's strict length comparison fails (Case A/B/C don't match), gbcms measures the <strong>Levenshtein edit distance</strong> between the reconstruction and each allele. This catches cases where the reconstruction is off by 1-2 bases due to an incomplete variant definition:</p>
@@ -2024,8 +2036,8 @@ Use mouse to pan and zoom
 </tbody>
 </table>
 <div class="admonition tip">
-<p class="admonition-title">Alternative: PairHMM Backend</p>
-<p>Pass <code>--alignment-backend hmm</code> to use a <strong>PairHMM</strong> (pair hidden Markov model) instead of Smith-Waterman. PairHMM integrates base quality probabilities directly into the alignment score, using Log-Likelihood Ratio (LLR) instead of edit-distance scoring. Default LLR threshold: 2.3 (≈ ln(10), i.e., 10:1 odds). Gap probabilities are tunable separately for repeat vs non-repeat regions. See <a href="../../cli/run/#advanced-alignment-backend"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a>.</p>
+<p class="admonition-title">Alternative: <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> Backend</p>
+<p><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> is the <strong>default</strong> Phase 3 alignment backend. It integrates base quality probabilities directly into the alignment score, using Log-Likelihood Ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) instead of edit-distance scoring. Default <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold: 2.3 (≈ ln(10), i.e., 10:1 odds). Gap probabilities are tunable separately for repeat vs non-repeat regions. Use <code>--alignment-backend sw</code> for Smith-Waterman instead. See <a href="../../cli/dna/#alignment-backend"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a>.</p>
 </div>
 <h4 id="dual-trigger-local-fallback">Dual-Trigger Local Fallback<a class="headerlink" href="#dual-trigger-local-fallback" title="Permanent link">¶</a></h4>
 <p>For <strong>complex variants</strong> (both alleles &gt; 1bp with different lengths), semiglobal alignment can produce confident but incorrect calls when the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> definition is incomplete (e.g., a complex variant missing an adjacent SNV). The ALT haplotype then has a "frameshifted flank" — right-context bases that don't match the biological read. Semiglobal forces gap penalties through this invalid flank.</p>
@@ -2058,27 +2070,27 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <p>When <strong>either</strong> trigger fires, the engine retries with <strong>local alignment</strong> (<code>Aligner::local()</code>), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side.</p>
 <div class="admonition tip">
 <p class="admonition-title">Performance: Aligner Reuse</p>
-<p>SW aligners are created <strong>once per variant</strong> in <code>count_single_variant()</code> and reused for all reads. The <code>bio::alignment::pairwise::Aligner</code> reuses internal DP buffers, avoiding repeated heap allocation.</p>
+<p><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> aligners are created <strong>once per variant</strong> in <code>count_single_variant()</code> and reused for all reads. The <code>bio::alignment::pairwise::Aligner</code> reuses internal <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> buffers, avoiding repeated heap allocation.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Raw Read Window Extraction</p>
-<p>Phase 3 uses <code>extract_raw_read_window()</code> instead of CIGAR-projected extraction. For complex variants (e.g., <code>TCC→CT</code> represented as <code>DEL+INS</code> in CIGAR), CIGAR projection produces a hybrid sequence matching neither haplotype. Raw extraction returns the contiguous read bases that SW can correctly classify.</p>
+<p>Phase 3 uses <code>extract_raw_read_window()</code> instead of <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-projected extraction. For complex variants (e.g., <code>TCC→CT</code> represented as <code>DEL+INS</code> in <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>), <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> projection produces a hybrid sequence matching neither haplotype. Raw extraction returns the contiguous read bases that <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> can correctly classify.</p>
 </div>
 <h4 id="ambiguous-tie-unbiased-vaf-preservation">Ambiguous Tie — Unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> Preservation<a class="headerlink" href="#ambiguous-tie-unbiased-vaf-preservation" title="Permanent link">¶</a></h4>
-<p>For small Complex and MNP variants, biological reads heavily affected by surrounding genetic polymorphism can result in 50% partial matches against the Alternate array. Mathematically, this scores an exact numerical <strong>tie</strong> between the <code>REF</code> and <code>ALT</code> haplotypes (<code>alt_score = 11, ref_score = 11</code>). </p>
-<p>These ambiguous reads are routed to <strong>neither</strong> (<code>is_ref = false, is_alt = false</code>). They still contribute to physical Total Depth (<code>DP</code>) via the anchor overlap gate, but do <strong>not</strong> inflate <code>RD</code> or <code>AD</code>. This preserves an unbiased <code>VAF = AD / (RD + AD)</code> — critical for low-<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> detection where even small RD inflation can push a variant below the clinical Limit of Detection.</p>
+<p>For small Complex and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> variants, biological reads heavily affected by surrounding genetic polymorphism can result in 50% partial matches against the Alternate array. Mathematically, this scores an exact numerical <strong>tie</strong> between the <code>REF</code> and <code>ALT</code> haplotypes (<code>alt_score = 11, ref_score = 11</code>). </p>
+<p>These ambiguous reads are routed to <strong>neither</strong> (<code>is_ref = false, is_alt = false</code>). They still contribute to physical Total Depth (<code>DP</code>) via the anchor overlap gate, but do <strong>not</strong> inflate <code>RD</code> or <code>AD</code>. This preserves an unbiased <code>VAF = AD / (RD + AD)</code> — critical for low-<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> detection where even small <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> inflation can push a variant below the clinical Limit of Detection.</p>
 <hr>
 <h2 id="multi-allelic-behavior">Multi-Allelic Behavior<a class="headerlink" href="#multi-allelic-behavior" title="Permanent link">¶</a></h2>
 <p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
 <h3 id="phase-1-annotation">Phase 1: Annotation<a class="headerlink" href="#phase-1-annotation" title="Permanent link">¶</a></h3>
 <p>During normalization, <code>assign_multi_allelic_groups()</code> identifies overlapping variants using a <strong>sweep-line algorithm</strong> over sorted <code>(chrom, pos)</code> coordinates. Variants whose REF spans intersect receive a shared <code>multi_allelic_group</code> ID, and their <code>validation_status</code> is appended with <code>_MULTI_ALLELIC</code> (e.g., <code>PASS_MULTI_ALLELIC</code>).</p>
 <h3 id="phase-2-sibling-alt-exclusion">Phase 2: Sibling ALT Exclusion<a class="headerlink" href="#phase-2-sibling-alt-exclusion" title="Permanent link">¶</a></h3>
-<p>During counting, reads classified as <strong>REF</strong> for a variant are additionally checked against all <strong>sibling variants</strong> in the same group. For each sibling, the full <code>check_allele_with_qual()</code> pipeline (including CIGAR reconstruction and SW alignment) determines if the read actually carries the sibling's ALT allele. If so, the read is <strong>excluded from REF</strong> for the current variant.</p>
+<p>During counting, reads classified as <strong>REF</strong> for a variant are additionally checked against all <strong>sibling variants</strong> in the same group. For each sibling, the full <code>check_allele_with_qual()</code> pipeline (including <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> reconstruction and <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment) determines if the read actually carries the sibling's ALT allele. If so, the read is <strong>excluded from REF</strong> for the current variant.</p>
 <div class="admonition important">
 <p class="admonition-title">This prevents systematic REF inflation at multi-allelic loci, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> estimation.</p>
 </div>
 <hr>
-<h2 id="dynamic-sw-gap-penalties">Dynamic SW Gap Penalties<a class="headerlink" href="#dynamic-sw-gap-penalties" title="Permanent link">¶</a></h2>
+<h2 id="dynamic-sw-gap-penalties">Dynamic <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> Gap Penalties<a class="headerlink" href="#dynamic-sw-gap-penalties" title="Permanent link">¶</a></h2>
 <p>Phase 3's Smith-Waterman aligners use <strong>adaptive affine gap penalties</strong> tuned by the local repeat context:</p>
 <table>
 <thead>
@@ -2097,32 +2109,32 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <tr>
 <td style="text-align: left;">Tandem repeat (<code>repeat_span ≥ 10bp</code>)</td>
 <td style="text-align: left;">0 (free)</td>
-<td style="text-align: left;">Absorbs polymerase slippage noise — prevents undercounting in MSI regions</td>
+<td style="text-align: left;">Absorbs polymerase slippage noise — prevents undercounting in <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr> regions</td>
 </tr>
 </tbody>
 </table>
 <p>The <code>repeat_span</code> is computed during normalization using <code>find_tandem_repeat()</code> and stored on the <code>Variant</code> struct. <code>gap_open</code> remains fixed at -5 in all cases.</p>
 <div class="admonition tip">
-<p class="admonition-title">MSI-High Tumors</p>
+<p class="admonition-title"><abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-High Tumors</p>
 <p>In microsatellite-unstable tumors, insertions/deletions within long homopolymer or dinucleotide repeats are common. The free gap extension ensures these slippage-like variants get correctly classified rather than artificially rejected by high gap penalties.</p>
 </div>
 <hr>
 <h2 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">¶</a></h2>
 <ol>
 <li>
-<p><strong>Windowed scan range</strong> — Indels shifted beyond the context padding from their expected position won't be detected by the CIGAR-based check. Phase 3 SW can catch some of these via <code>ref_context</code>, but only if the read shows evidence (indels/clips) near the variant. <a href="../variant-normalization/#adaptive-context-padding">Adaptive context padding</a> (enabled by default) utilizes a multi-anchor footprint sweep to dramatically widen the padded detection bounds natively for INDEL clusters.</p>
+<p><strong>Windowed scan range</strong> — Indels shifted beyond the context padding from their expected position won't be detected by the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-based check. Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> can catch some of these via <code>ref_context</code>, but only if the read shows evidence (indels/clips) near the variant. <a href="../variant-normalization/#adaptive-context-padding">Adaptive context padding</a> (enabled by default) utilizes a multi-anchor footprint sweep to dramatically widen the padded detection bounds natively for INDEL clusters.</p>
 </li>
 <li>
-<p><strong>Score margin ≥ 2</strong> — The SW margin is fixed at 2 points to prevent ambiguous calls. Reads failing to achieve definitive spacing are routed to <strong>neither</strong> — they contribute to <code>DP</code> but not to <code>RD</code> or <code>AD</code>, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>.</p>
+<p><strong>Score margin ≥ 2</strong> — The <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> margin is fixed at 2 points to prevent ambiguous calls. Reads failing to achieve definitive spacing are routed to <strong>neither</strong> — they contribute to <code>DP</code> but not to <code>RD</code> or <code>AD</code>, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>.</p>
 </li>
 <li>
 <p><strong>Soft-clip recovery</strong> — Phase 1 includes soft-clipped bases that overlap the variant window, but only when <code>ref_pos</code> is within the variant region. Soft clips at the edge of reads far from the variant are not considered.</p>
 </li>
 <li>
-<p><strong>MNP strict matching</strong> — MNP strict matching is all-or-nothing, but inconclusive reads fall back to the complex variant classification chain (Phase 2 → 2.5 → 3). The fallback rescues reads with low-quality bases or partial matches that strict matching would reject.</p>
+<p><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> strict matching</strong> — <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> strict matching is all-or-nothing, but inconclusive reads fall back to the complex variant classification chain (Phase 2 → 2.5 → 3). The fallback rescues reads with low-quality bases or partial matches that strict matching would reject.</p>
 </li>
 <li>
-<p><strong>Incomplete variant definitions</strong> — When the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> represents a complex event incompletely (e.g., <code>TCC→CT</code> omitting an adjacent SNV), reads may carry a different CIGAR signature than expected. The dual-trigger local fallback in Phase 3 mitigates this by soft-clipping "frameshifted flanks" caused by the definition mismatch.</p>
+<p><strong>Incomplete variant definitions</strong> — When the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> represents a complex event incompletely (e.g., <code>TCC→CT</code> omitting an adjacent SNV), reads may carry a different <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> signature than expected. The dual-trigger local fallback in Phase 3 mitigates this by soft-clipping "frameshifted flanks" caused by the definition mismatch.</p>
 </li>
 </ol>
 <hr>
@@ -2141,7 +2153,7 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 4, 2026 15:37:13 UTC"><span class="timeago" datetime="2026-03-04T15:37:13+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 4, 2026 15:37:13 UTC">2026-03-04</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 18, 2026 22:10:23 UTC"><span class="timeago" datetime="2026-03-18T22:10:23+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 18, 2026 22:10:23 UTC">2026-03-18</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

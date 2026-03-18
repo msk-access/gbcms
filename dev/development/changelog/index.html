@@ -7,7 +7,7 @@
 <link href="../release-guide/" rel="prev">
 <link href="../contributing/" rel="next">
 <link href="../../assets/images/favicon.png" rel="icon">
-<meta content="mkdocs-1.6.1, mkdocs-material-9.7.4" name="generator">
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.5" name="generator">
 <title>Changelog - gbcms</title>
 <link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet">
 <link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
@@ -241,11 +241,23 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="../../cli/run/">
+<a class="md-nav__link" href="../../cli/dna/">
 <span class="md-ellipsis">
     
   
-    Run Command
+    DNA Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/rna/">
+<span class="md-ellipsis">
+    
+  
+    RNA Command
   
 
     
@@ -635,7 +647,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="added">✨ Added<a class="headerlink" href="#added" title="Permanent link">¶</a></h3>
 <ul>
-<li><strong>mFSD native integration</strong>: <code>--mfsd</code> and <code>--mfsd-parquet</code> flags output a
+<li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> native integration</strong>: <code>--mfsd</code> and <code>--mfsd-parquet</code> flags output a
   Parquet file with 31 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns + 7 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields via the Rust native
   Parquet writer. Compression: ZSTD level 1.</li>
 <li><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> validation hardening</strong>: 12 validation gaps resolved — fail-fast <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>
@@ -652,7 +664,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="documentation">📚 Documentation<a class="headerlink" href="#documentation" title="Permanent link">¶</a></h3>
 <ul>
-<li>Full documentation sync with codebase after Phase 6 (mFSD) merge.</li>
+<li>Full documentation sync with codebase after Phase 6 (<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>) merge.</li>
 <li>PDF generation guide added to developer documentation.</li>
 <li><code>.agent/rules/</code> directory added; stale <code>.antigravity</code> docs removed.</li>
 </ul>
@@ -663,17 +675,17 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="280-2026-02-23">[2.8.0] - 2026-02-23<a class="headerlink" href="#280-2026-02-23" title="Permanent link">¶</a></h2>
 <h3 id="added_1">✨ Added<a class="headerlink" href="#added_1" title="Permanent link">¶</a></h3>
 <ul>
-<li><strong>PairHMM alignment backend</strong>: Alternative Phase 3 alignment via <code>--alignment-backend hmm</code> with probabilistic scoring using base quality probabilities. Configurable LLR threshold (default 2.3 ≈ ln(10)) and gap probabilities for repeat/non-repeat regions. 6 new <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options. Exposed as first-class Nextflow params in <code>nextflow.config</code></li>
-<li><strong>MNP min-BQ-across-block quality strategy</strong>: MNP quality now assessed using min(BQ) across the entire block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>. Low-quality MNP reads now fall through to <code>check_complex</code> for masked comparison instead of being silently skipped</li>
+<li><strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> alignment backend</strong>: Alternative Phase 3 alignment via <code>--alignment-backend hmm</code> with probabilistic scoring using base quality probabilities. Configurable <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold (default 2.3 ≈ ln(10)) and gap probabilities for repeat/non-repeat regions. 6 new <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options. Exposed as first-class Nextflow params in <code>nextflow.config</code></li>
+<li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> min-BQ-across-block quality strategy</strong>: <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality now assessed using min(BQ) across the entire block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>. Low-quality <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads now fall through to <code>check_complex</code> for masked comparison instead of being silently skipped</li>
 <li><strong>Per-phase ClassifyResult counters</strong>: Diagnostic counters track how many reads are resolved in each classification phase (Phase 1/2/2.5/3)</li>
 <li><strong><code>--trace</code> flag</strong>: Two-tier Rust logging — <code>--verbose</code> for debug, <code>--trace</code> for per-read classification diagnostics via pyo3-log</li>
 </ul>
 <h3 id="fixed_1">🔧 Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2/2.5 overcounting</strong>: Complex variants with <code>REF &gt;&gt; ALT</code> now skip Phase 2 Case B and Phase 2.5 when <code>ref_len &gt; 2 × alt_len</code> — short ALT trivially matches, edit distance is biased toward shorter allele</li>
-<li><strong>Phase 3 bypass for pure DEL/INS</strong>: Removed <code>is_worth_realignment</code> prefilter — CIGAR structure is ground truth for pure deletions/insertions, prefilter was overcounting</li>
-<li><strong>DP anchor overlap</strong>: Now uses single-position check (<code>read_start ≤ variant.pos</code>), matching Mutect2, VarDictJava, and samtools mpileup standard</li>
-<li><strong>MNP LowQuality routing</strong>: LowQuality reads now fall through to <code>check_complex</code> for masked comparison instead of being skipped entirely</li>
+<li><strong>Phase 3 bypass for pure DEL/INS</strong>: Removed <code>is_worth_realignment</code> prefilter — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> structure is ground truth for pure deletions/insertions, prefilter was overcounting</li>
+<li><strong><abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> anchor overlap</strong>: Now uses single-position check (<code>read_start ≤ variant.pos</code>), matching Mutect2, VarDictJava, and samtools mpileup standard</li>
+<li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> LowQuality routing</strong>: LowQuality reads now fall through to <code>check_complex</code> for masked comparison instead of being skipped entirely</li>
 <li><strong>S3 underflow guard</strong>: Guards against negative <code>ctx_offset</code> in deletion S3 validation</li>
 </ul>
 <h3 id="refactored">🏗️ Refactored<a class="headerlink" href="#refactored" title="Permanent link">¶</a></h3>
@@ -683,7 +695,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="documentation_1">📚 Documentation<a class="headerlink" href="#documentation_1" title="Permanent link">¶</a></h3>
 <ul>
-<li><strong>Comprehensive audit</strong>: 28 fixes across 23 files — all GitBook URLs → MkDocs, version templating (X.Y.Z), undocumented <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options, 5 mermaid diagrams updated for post-2.7.0 logic, architecture module tree refreshed, PairHMM documented end-to-end</li>
+<li><strong>Comprehensive audit</strong>: 28 fixes across 23 files — all GitBook URLs → MkDocs, version templating (X.Y.Z), undocumented <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options, 5 mermaid diagrams updated for post-2.7.0 logic, architecture module tree refreshed, <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> documented end-to-end</li>
 <li>Deleted stale <code>nextflow/CHANGES.md</code></li>
 </ul>
 <h3 id="chores">🧹 Chores<a class="headerlink" href="#chores" title="Permanent link">¶</a></h3>
@@ -696,23 +708,23 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h3 id="tests">🧪 Tests<a class="headerlink" href="#tests" title="Permanent link">¶</a></h3>
 <ul>
 <li>8 Python alignment backend integration tests</li>
-<li>5 SW-vs-PairHMM concordance tests</li>
-<li>10 MNP unit tests</li>
-<li>Multi-allelic isolation, DP/neither, fragment consensus, normalization tests</li>
+<li>5 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>-vs-<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> concordance tests</li>
+<li>10 <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> unit tests</li>
+<li>Multi-allelic isolation, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/neither, fragment consensus, normalization tests</li>
 </ul>
 <h2 id="270-2026-02-19">[2.7.0] - 2026-02-19<a class="headerlink" href="#270-2026-02-19" title="Permanent link">¶</a></h2>
 <h3 id="added_2">✨ Added<a class="headerlink" href="#added_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
-<li><strong>Phase 3 local SW fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
+<li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
 </ul>
 <h3 id="fixed_2">🔧 Fixed<a class="headerlink" href="#fixed_2" title="Permanent link">¶</a></h3>
 <ul>
-<li><strong>Allele-based dispatch</strong> (<code>check_allele_with_qual</code>): Routes by <code>ref_len × alt_len</code> instead of unreliable <code>variant_type</code> string labels. SNP (1×1), insertion (1×N), deletion (N×1), MNP (N×N equal), complex (N×M unequal) — eliminates misrouting when callers emit inconsistent type annotations</li>
-<li><strong>SW semiglobal argument order</strong>: Fixed <code>ref_hap</code>/<code>alt_hap</code> argument swap in semiglobal alignment that was scoring reads against the wrong haplotype</li>
+<li><strong>Allele-based dispatch</strong> (<code>check_allele_with_qual</code>): Routes by <code>ref_len × alt_len</code> instead of unreliable <code>variant_type</code> string labels. <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (1×1), insertion (1×N), deletion (N×1), <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (N×N equal), complex (N×M unequal) — eliminates misrouting when callers emit inconsistent type annotations</li>
+<li><strong><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> semiglobal argument order</strong>: Fixed <code>ref_hap</code>/<code>alt_hap</code> argument swap in semiglobal alignment that was scoring reads against the wrong haplotype</li>
 <li><strong>Haplotype trimming removed</strong>: Eliminated shared symmetric trim that caused <code>slice index starts at 7 but ends at 6</code> panics on asymmetric indels; replaced with validated per-haplotype bounds</li>
-<li><strong>MNP fallback</strong>: MNP reads now correctly fall through to SW alignment instead of silently returning "neither" on partial mismatches</li>
-<li><strong>Dual-count guard</strong>: Prevents a single read from being counted as both REF and ALT when SW scores are exactly equal</li>
+<li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> fallback</strong>: <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads now correctly fall through to <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment instead of silently returning "neither" on partial mismatches</li>
+<li><strong>Dual-count guard</strong>: Prevents a single read from being counted as both REF and ALT when <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> scores are exactly equal</li>
 <li><strong>Soft-clip restriction</strong>: Soft-clipped bases no longer incorrectly contribute to variant region reconstruction</li>
 <li><strong>Strand bias orientation</strong>: Strand bias (Fisher's exact) now couples to the winning allele, not the raw alignment orientation</li>
 <li><strong>Interior REF quality proxy</strong>: Reads falling entirely within a large deletion (&gt;50bp) now use median base quality instead of 0</li>
@@ -721,7 +733,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h3 id="chores_1">🧹 Chores<a class="headerlink" href="#chores_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Clippy</strong>: Removed unused <code>has_large_cigar_del</code> variable</li>
-<li><strong>Tests</strong>: Updated <code>test_fuzzy_complex::TestLengthMismatch</code> expectation to reflect Phase 3 local SW fallback behavior</li>
+<li><strong>Tests</strong>: Updated <code>test_fuzzy_complex::TestLengthMismatch</code> expectation to reflect Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback behavior</li>
 </ul>
 <h2 id="261-2026-02-19">[2.6.1] - 2026-02-19<a class="headerlink" href="#261-2026-02-19" title="Permanent link">¶</a></h2>
 <h3 id="fixed_3">🔧 Fixed<a class="headerlink" href="#fixed_3" title="Permanent link">¶</a></h3>
@@ -771,7 +783,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong><code>--preserve-barcode</code> flag</strong>: Keeps original <code>Tumor_Sample_Barcode</code> from input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> instead of overriding with <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> sample name (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows)</li>
 <li><strong><code>--column-prefix</code> parameter</strong>: Controls prefix for gbcms count columns in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (default: none; use <code>--column-prefix t_</code> for legacy compatibility) ⚠️</li>
-<li><strong><code>CoordinateKernel</code></strong>: Centralized <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>↔internal 0-based coordinate conversion with variant-type-aware logic for SNP, insertion, deletion, and complex variants</li>
+<li><strong><code>CoordinateKernel</code></strong>: Centralized <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>↔internal 0-based coordinate conversion with variant-type-aware logic for <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>, insertion, deletion, and complex variants</li>
 <li><strong>Nextflow <code>FILTER_MAF</code> module</strong>: Per-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> variant filtering by <code>Tumor_Sample_Barcode</code> supporting exact match, regex, and multi-select (comma-separated) modes</li>
 <li><strong>Nextflow <code>PIPELINE_SUMMARY</code> module</strong>: Aggregated per-sample filtering statistics with formatted console output</li>
 <li><strong>Nextflow <code>--filter_by_sample</code> parameter</strong> and samplesheet <code>tsb</code> column for multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows</li>
@@ -779,7 +791,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="fixed_5">🔧 Fixed<a class="headerlink" href="#fixed_5" title="Permanent link">¶</a></h3>
 <ul>
-<li><strong>Fragment quality extraction</strong> (critical): All variant-type handlers (<code>check_insertion</code>, <code>check_deletion</code>, <code>check_mnp</code>, <code>check_complex</code>) now return actual <code>base_qual</code> from CIGAR walk instead of 0 — fixes systematic ALT undercount for indels in fragment-level consensus</li>
+<li><strong>Fragment quality extraction</strong> (critical): All variant-type handlers (<code>check_insertion</code>, <code>check_deletion</code>, <code>check_mnp</code>, <code>check_complex</code>) now return actual <code>base_qual</code> from <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk instead of 0 — fixes systematic ALT undercount for indels in fragment-level consensus</li>
 <li><strong>FILTER_MAF heredoc conflict</strong>: Restructured script from Python shebang to <code>python3 &lt;&lt; 'PYEOF'</code> pattern, resolving <code>SyntaxError</code> from bash syntax in Python context</li>
 <li><strong>FILTER_MAF string quoting</strong>: Changed to single-quoted Python strings for Nextflow variable interpolation to prevent CSV-parsed double-quote conflicts</li>
 <li><strong><code>splitCsv</code> quote handling</strong>: Added <code>quote:'"'</code> parameter for correct RFC 4180 parsing of comma-separated TSB values within quoted CSV fields</li>
@@ -952,7 +964,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>--filter-supplementary</code>: Filter supplementary alignments</li>
 <li><code>--filter-qc-failed</code>: Filter reads that failed QC</li>
 <li><code>--filter-improper-pair</code>: Filter improperly paired reads</li>
-<li><code>--filter-indel</code>: Filter reads with indels in CIGAR</li>
+<li><code>--filter-indel</code>: Filter reads with indels in <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr></li>
 </ul>
 <h4 id="cli-usability"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> &amp; Usability<a class="headerlink" href="#cli-usability" title="Permanent link">¶</a></h4>
 <ul>
@@ -1020,7 +1032,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h3 id="technical-details">🔧 Technical Details<a class="headerlink" href="#technical-details" title="Permanent link">¶</a></h3>
 <h4 id="rust-components">Rust Components<a class="headerlink" href="#rust-components" title="Permanent link">¶</a></h4>
 <ul>
-<li><code>gbcms._rs</code>: PyO3-based Rust extension (bundled in wheel)</li>
+<li><code>gbcms._rs</code>: <abbr title="Python-Rust interop library for building native Python modules">PyO3</abbr>-based Rust extension (bundled in wheel)</li>
 <li>Fisher's exact test via <code>statrs</code> crate</li>
 <li>Rayon-based parallelism with configurable thread pools</li>
 <li>Safe memory management with Rust's ownership model</li>

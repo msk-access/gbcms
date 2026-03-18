@@ -7,7 +7,7 @@
 <link href="../../nextflow/examples/" rel="prev">
 <link href="../input-formats/" rel="next">
 <link href="../../assets/images/favicon.png" rel="icon">
-<meta content="mkdocs-1.6.1, mkdocs-material-9.7.4" name="generator">
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.5" name="generator">
 <title>Architecture - gbcms</title>
 <link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet">
 <link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
@@ -241,11 +241,23 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="../../cli/run/">
+<a class="md-nav__link" href="../../cli/dna/">
 <span class="md-ellipsis">
     
   
-    Run Command
+    DNA Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/rna/">
+<span class="md-ellipsis">
+    
+  
+    RNA Command
   
 
     
@@ -869,13 +881,17 @@
 </nav>
 <pre class="mermaid"><code>flowchart TB
     subgraph Python [🐍 Python Layer]
-        CLI[CLI - cli.py] --&gt; Pipeline[Orchestration - pipeline.py]
+        CLI[CLI - cli.py] --&gt;|dna / rna| Pipeline[Orchestration - pipeline.py]
         Pipeline --&gt; Reader[Input Adapters]
         Pipeline --&gt; Writer[Output Writers]
     end
 
     subgraph Rust [🦀 Rust Layer]
-        Counter[count_bam - counting/engine.rs] --&gt; CIGAR[CIGAR Parser]
+        Counter[count_bam_binned - counting/engine.rs] --&gt; CIGAR[CIGAR Parser]
+        Counter --&gt; RNA[RNA Filters - rna.rs]
+        Counter --&gt; Pangenome[Haplotype Matrix - pangenome.rs]
+        Counter --&gt; WFA[WFA Fast Path - wfa_router.rs]
+        Counter --&gt; PairHMM[PairHMM Backend - pairhmm.rs]
         Counter --&gt; Stats[Strand Bias - stats.rs]
         ParquetWriter[write_fsd_parquet - parquet_writer.rs]
     end
@@ -1009,8 +1025,8 @@ Use mouse to pan and zoom
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>VAF = AD / (RD + AD)
 </code></pre></div>
 <p>Where:
-- <strong>AD</strong> = Alternate allele read count
-- <strong>RD</strong> = Reference allele read count</p>
+- <strong><abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr></strong> = Alternate allele read count
+- <strong><abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr></strong> = Reference allele read count</p>
 <h3 id="strand-bias-fishers-exact-test">Strand Bias (Fisher's Exact Test)<a class="headerlink" href="#strand-bias-fishers-exact-test" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>         |  Forward  Reverse  |
 <a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>    -----+--------------------+
@@ -1024,16 +1040,16 @@ Use mouse to pan and zoom
 <hr>
 <h2 id="module-structure">Module Structure<a class="headerlink" href="#module-structure" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a>src/gbcms/
-<a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>├── cli.py           # Typer CLI (~350 LOC)
+<a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>├── cli.py           # Typer CLI (dna, rna, normalize, run commands)
 <a href="#__codelineno-2-3" id="__codelineno-2-3" name="__codelineno-2-3"></a>├── pipeline.py      # Orchestration (~450 LOC)
 <a href="#__codelineno-2-4" id="__codelineno-2-4" name="__codelineno-2-4"></a>├── normalize.py     # Standalone normalization workflow
 <a href="#__codelineno-2-5" id="__codelineno-2-5" name="__codelineno-2-5"></a>├── core/
 <a href="#__codelineno-2-6" id="__codelineno-2-6" name="__codelineno-2-6"></a>│   └── kernel.py    # Coordinate normalization
 <a href="#__codelineno-2-7" id="__codelineno-2-7" name="__codelineno-2-7"></a>├── io/
 <a href="#__codelineno-2-8" id="__codelineno-2-8" name="__codelineno-2-8"></a>│   ├── input.py     # VcfReader, MafReader
-<a href="#__codelineno-2-9" id="__codelineno-2-9" name="__codelineno-2-9"></a>│   └── output.py    # VcfWriter, MafWriter
+<a href="#__codelineno-2-9" id="__codelineno-2-9" name="__codelineno-2-9"></a>│   └── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
 <a href="#__codelineno-2-10" id="__codelineno-2-10" name="__codelineno-2-10"></a>├── models/
-<a href="#__codelineno-2-11" id="__codelineno-2-11" name="__codelineno-2-11"></a>│   └── core.py      # Pydantic config (GbcmsConfig, AlignmentConfig)
+<a href="#__codelineno-2-11" id="__codelineno-2-11" name="__codelineno-2-11"></a>│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, AlignmentConfig)
 <a href="#__codelineno-2-12" id="__codelineno-2-12" name="__codelineno-2-12"></a>└── utils/
 <a href="#__codelineno-2-13" id="__codelineno-2-13" name="__codelineno-2-13"></a>    └── logging.py   # Structured logging
 <a href="#__codelineno-2-14" id="__codelineno-2-14" name="__codelineno-2-14"></a>
@@ -1042,27 +1058,30 @@ Use mouse to pan and zoom
 <a href="#__codelineno-2-17" id="__codelineno-2-17" name="__codelineno-2-17"></a>├── parquet_writer.rs         # write_fsd_parquet() — native Parquet via ZSTD (--mfsd-parquet)
 <a href="#__codelineno-2-18" id="__codelineno-2-18" name="__codelineno-2-18"></a>├── counting/
 <a href="#__codelineno-2-19" id="__codelineno-2-19" name="__codelineno-2-19"></a>│   ├── mod.rs                # Submodule re-exports
-<a href="#__codelineno-2-20" id="__codelineno-2-20" name="__codelineno-2-20"></a>│   ├── engine.rs             # Main loop, DP gating, read iteration
-<a href="#__codelineno-2-21" id="__codelineno-2-21" name="__codelineno-2-21"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex
+<a href="#__codelineno-2-20" id="__codelineno-2-20" name="__codelineno-2-20"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+<a href="#__codelineno-2-21" id="__codelineno-2-21" name="__codelineno-2-21"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
 <a href="#__codelineno-2-22" id="__codelineno-2-22" name="__codelineno-2-22"></a>│   ├── alignment.rs          # Smith-Waterman implementation
-<a href="#__codelineno-2-23" id="__codelineno-2-23" name="__codelineno-2-23"></a>│   ├── pairhmm.rs            # PairHMM alignment backend
-<a href="#__codelineno-2-24" id="__codelineno-2-24" name="__codelineno-2-24"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus
-<a href="#__codelineno-2-25" id="__codelineno-2-25" name="__codelineno-2-25"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
-<a href="#__codelineno-2-26" id="__codelineno-2-26" name="__codelineno-2-26"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
-<a href="#__codelineno-2-27" id="__codelineno-2-27" name="__codelineno-2-27"></a>├── normalize/
-<a href="#__codelineno-2-28" id="__codelineno-2-28" name="__codelineno-2-28"></a>│   ├── mod.rs                # Submodule re-exports
-<a href="#__codelineno-2-29" id="__codelineno-2-29" name="__codelineno-2-29"></a>│   ├── engine.rs             # Normalization pipeline
-<a href="#__codelineno-2-30" id="__codelineno-2-30" name="__codelineno-2-30"></a>│   ├── left_align.rs         # bcftools-style left-alignment
-<a href="#__codelineno-2-31" id="__codelineno-2-31" name="__codelineno-2-31"></a>│   ├── decomp.rs             # Homopolymer decomposition
-<a href="#__codelineno-2-32" id="__codelineno-2-32" name="__codelineno-2-32"></a>│   ├── fasta.rs              # Reference sequence fetcher
-<a href="#__codelineno-2-33" id="__codelineno-2-33" name="__codelineno-2-33"></a>│   ├── repeat.rs             # Tandem repeat detection
-<a href="#__codelineno-2-34" id="__codelineno-2-34" name="__codelineno-2-34"></a>│   └── types.rs              # NormResult enum
-<a href="#__codelineno-2-35" id="__codelineno-2-35" name="__codelineno-2-35"></a>├── stats.rs                  # Fisher's exact test
-<a href="#__codelineno-2-36" id="__codelineno-2-36" name="__codelineno-2-36"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
+<a href="#__codelineno-2-23" id="__codelineno-2-23" name="__codelineno-2-23"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+<a href="#__codelineno-2-24" id="__codelineno-2-24" name="__codelineno-2-24"></a>│   ├── pangenome.rs          # Haplotype matrix construction
+<a href="#__codelineno-2-25" id="__codelineno-2-25" name="__codelineno-2-25"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
+<a href="#__codelineno-2-26" id="__codelineno-2-26" name="__codelineno-2-26"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+<a href="#__codelineno-2-27" id="__codelineno-2-27" name="__codelineno-2-27"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+<a href="#__codelineno-2-28" id="__codelineno-2-28" name="__codelineno-2-28"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+<a href="#__codelineno-2-29" id="__codelineno-2-29" name="__codelineno-2-29"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
+<a href="#__codelineno-2-30" id="__codelineno-2-30" name="__codelineno-2-30"></a>├── normalize/
+<a href="#__codelineno-2-31" id="__codelineno-2-31" name="__codelineno-2-31"></a>│   ├── mod.rs                # Submodule re-exports
+<a href="#__codelineno-2-32" id="__codelineno-2-32" name="__codelineno-2-32"></a>│   ├── engine.rs             # Normalization pipeline
+<a href="#__codelineno-2-33" id="__codelineno-2-33" name="__codelineno-2-33"></a>│   ├── left_align.rs         # bcftools-style left-alignment
+<a href="#__codelineno-2-34" id="__codelineno-2-34" name="__codelineno-2-34"></a>│   ├── decomp.rs             # Homopolymer decomposition
+<a href="#__codelineno-2-35" id="__codelineno-2-35" name="__codelineno-2-35"></a>│   ├── fasta.rs              # Reference sequence fetcher
+<a href="#__codelineno-2-36" id="__codelineno-2-36" name="__codelineno-2-36"></a>│   ├── repeat.rs             # Tandem repeat detection
+<a href="#__codelineno-2-37" id="__codelineno-2-37" name="__codelineno-2-37"></a>│   └── types.rs              # NormResult enum
+<a href="#__codelineno-2-38" id="__codelineno-2-38" name="__codelineno-2-38"></a>├── stats.rs                  # Fisher's exact test
+<a href="#__codelineno-2-39" id="__codelineno-2-39" name="__codelineno-2-39"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
 </code></pre></div>
 <hr>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">¶</a></h2>
-<p>All settings via <code>GbcmsConfig</code> (Pydantic model):</p>
+<p>All settings via mode-specific Pydantic models:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1084,15 +1103,21 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TB
-    GbcmsConfig --&gt; OutputConfig[Output Settings]
-    GbcmsConfig --&gt; ReadFilters[Read Filters]
-    GbcmsConfig --&gt; QualityThresholds[Quality Thresholds]
-    GbcmsConfig --&gt; AlignmentConfig[Alignment Backend]
+    Base[GbcmsBaseConfig] --&gt; DnaConfig[GbcmsDnaConfig]
+    Base --&gt; RnaConfig[GbcmsRnaConfig]
+    DnaConfig --&gt; DnaDefaults["mode=dna, MAPQ=20"]
+    RnaConfig --&gt; RnaDefaults["mode=rna, MAPQ=1, pairhmm relaxed"]
+    RnaConfig --&gt; RnaSpecific["enforce_strandedness, rna_editing_db"]
+
+    Base --&gt; OutputConfig[Output Settings]
+    Base --&gt; ReadFilters[Read Filters]
+    Base --&gt; QualityThresholds[Quality Thresholds]
+    Base --&gt; AlignmentConfig[Alignment Backend]
 
     OutputConfig --&gt; D1["output_dir, format, suffix, column_prefix, mfsd, mfsd_parquet"]
-    ReadFilters --&gt; D2[exclude_secondary, exclude_duplicates]
+    ReadFilters --&gt; D2["exclude_secondary, exclude_duplicates"]
     QualityThresholds --&gt; D3["min_mapq, min_baseq, fragment_qual_threshold"]
-    AlignmentConfig --&gt; D4["backend: sw|hmm, llr_threshold, gap_*_prob"]
+    AlignmentConfig --&gt; D4["backend: pairhmm|sw, llr_threshold, gap_*_prob"]
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -1137,8 +1162,8 @@ Use mouse to pan and zoom
     Reader--&gt;&gt;Pipeline: List[Variant]
 
     loop For each BAM sample
-        Pipeline-&gt;&gt;Rust: count_bam(bam, variants, filters)
-        loop For each variant (parallel via Rayon)
+        Pipeline-&gt;&gt;Rust: count_bam_binned(bam, variants, config)
+        loop For each genomic bin (parallel via Rayon)
             Rust-&gt;&gt;BAM: fetch(chrom, pos−5, pos+ref_len+5)
             BAM--&gt;&gt;Rust: Iterator of reads
             loop For each read
@@ -1171,7 +1196,7 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;">Counting algorithm</td>
 <td style="text-align: left;">Region-based chunking, position matching</td>
-<td style="text-align: left;">Per-variant CIGAR traversal</td>
+<td style="text-align: left;">Per-variant <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> traversal</td>
 </tr>
 <tr>
 <td style="text-align: left;">Indel detection</td>
@@ -1194,7 +1219,7 @@ Use mouse to pan and zoom
 <td style="text-align: left;">Default <code>--min-baseq 20</code> (Phred Q20)</td>
 </tr>
 <tr>
-<td style="text-align: left;">MNP handling</td>
+<td style="text-align: left;"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> handling</td>
 <td style="text-align: left;">Not explicit</td>
 <td style="text-align: left;">Dedicated <code>check_mnp</code> with contiguity check</td>
 </tr>
@@ -1241,7 +1266,7 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 5, 2026 14:35:56 UTC"><span class="timeago" datetime="2026-03-05T14:35:56+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 5, 2026 14:35:56 UTC">2026-03-05</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 18, 2026 22:10:23 UTC"><span class="timeago" datetime="2026-03-18T22:10:23+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 18, 2026 22:10:23 UTC">2026-03-18</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
