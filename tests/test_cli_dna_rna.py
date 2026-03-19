@@ -12,7 +12,8 @@ from typer.testing import CliRunner
 
 from gbcms.cli import app
 
-runner = CliRunner()
+# Widen terminal to prevent Typer's rich help from truncating options in CI
+runner = CliRunner(env={"COLUMNS": "200"})
 
 
 # ── Command Existence ─────────────────────────────────────────────────────
