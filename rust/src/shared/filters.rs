@@ -49,18 +49,6 @@ impl FilterCounts {
 }
 
 impl ReadFilter {
-    #[allow(dead_code)] // Reserved for HLA extract.rs
-    /// Create a new `ReadFilter` with all filters enabled.
-    pub fn all_enabled() -> Self {
-        ReadFilter {
-            filter_duplicates: true,
-            filter_secondary: true,
-            filter_supplementary: true,
-            filter_qc_failed: true,
-            filter_improper_pair: true,
-            filter_indel: false, // Off by default — only for specific modes
-        }
-    }
 
     /// Check if a BAM record passes all enabled universal filters.
     ///

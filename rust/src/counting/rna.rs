@@ -7,7 +7,6 @@
 //! - [`build_rna_editing_set`] — REDIportal A-to-I editing site loader
 //! - [`apply_consensus_splicing`] — Consensus intron snipping from local CIGAR N ops
 //! - [`has_splice_junction`] — Check if a read spans a splice junction (CIGAR N)
-//! - [`is_rna_editing_candidate`] — Check if a variant is an A→G / T→C editing site
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -136,43 +135,6 @@ pub fn has_splice_junction(record: &Record) -> bool {
 }
 
 
-/// Check if a variant is an A-to-I RNA editing candidate.
-///
-/// A-to-I editing by ADAR enzymes converts adenosine to inosine,
-/// which is read as guanosine by the sequencer. This manifests as:
-/// - A→G on the sense strand
-/// - T→C on the antisense strand (complement)
-///
-/// ## Parameters
-///
-/// - `ref_allele`: reference allele (single base)
-/// - `alt_allele`: alternate allele (single base)
-/// - `gene_strand`: annotated gene strand ('+' or '-')
-#[allow(dead_code)] // Called from pipeline via PyO3, not directly in Rust
-pub fn is_rna_editing_candidate(
-    ref_allele: &str,
-    alt_allele: &str,
-    gene_strand: Option<char>,
-) -> bool {
-    // Only applies to SNPs (single base changes)
-    if ref_allele.len() != 1 || alt_allele.len() != 1 {
-        return false;
-    }
-
-    let ref_base = ref_allele.as_bytes()[0].to_ascii_uppercase();
-    let alt_base = alt_allele.as_bytes()[0].to_ascii_uppercase();
-
-    match gene_strand {
-        Some('+') => ref_base == b'A' && alt_base == b'G',
-        Some('-') => ref_base == b'T' && alt_base == b'C',
-        // If no strand info, flag both A→G and T→C as potential editing
-        None => {
-            (ref_base == b'A' && alt_base == b'G')
-                || (ref_base == b'T' && alt_base == b'C')
-        }
-        _ => false,
-    }
-}
 
 
 /// Build an O(1) lookup set of known RNA editing sites from REDIportal TABLE1.
@@ -491,35 +453,6 @@ mod tests {
         let cigar = CigarString(vec![Cigar::Match(100)]);
         let record = build_record(&vec![b'A'; 100], &vec![30u8; 100], cigar, 100);
         assert!(!has_splice_junction(&record));
-    }
-
-    // ── is_rna_editing_candidate tests ──
-
-    #[test]
-    fn test_editing_a_to_g_plus_strand() {
-        assert!(is_rna_editing_candidate("A", "G", Some('+')));
-    }
-
-    #[test]
-    fn test_editing_t_to_c_minus_strand() {
-        assert!(is_rna_editing_candidate("T", "C", Some('-')));
-    }
-
-    #[test]
-    fn test_editing_a_to_g_minus_strand_not_editing() {
-        // A→G on minus strand is NOT canonical ADAR editing
-        assert!(!is_rna_editing_candidate("A", "G", Some('-')));
-    }
-
-    #[test]
-    fn test_editing_no_strand_flags_both() {
-        assert!(is_rna_editing_candidate("A", "G", None));
-        assert!(is_rna_editing_candidate("T", "C", None));
-    }
-
-    #[test]
-    fn test_editing_indel_not_candidate() {
-        assert!(!is_rna_editing_candidate("AC", "G", Some('+')));
     }
 
     // ── apply_consensus_splicing tests ──

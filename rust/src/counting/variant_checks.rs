@@ -300,6 +300,10 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
 pub fn check_complex<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    // TODO(v4): Route check_complex Phase 3 through phase3_classify() for
+    // pangenomic WFA+PairHMM evaluation. Currently blocked by recursive call
+    // graph: phase3_classify's SW fallback calls check_complex. Needs extraction
+    // of a standalone pangenomic_classify() function first.
     _siblings: &[Variant],
     quals: &[u8],
     min_baseq: u8,

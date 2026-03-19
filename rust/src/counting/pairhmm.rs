@@ -138,32 +138,7 @@ impl GapParameters for ConfigurableGapParams {
     }
 }
 
-#[allow(dead_code)] // Public API — standard/repeat/rna_defaults used by HLA module
 impl ConfigurableGapParams {
-    /// Create standard gap parameters for non-repeat regions.
-    pub fn standard(gap_open: f64, gap_extend: f64) -> Self {
-        ConfigurableGapParams { gap_open, gap_extend }
-    }
-
-    /// Create relaxed gap parameters for tandem repeat regions.
-    pub fn repeat(gap_open: f64, gap_extend: f64) -> Self {
-        ConfigurableGapParams { gap_open, gap_extend }
-    }
-
-    /// RT-aware defaults for RNA: higher gap tolerance for splice artifacts.
-    ///
-    /// RNA-seq alignments near splice junctions often show indel-like
-    /// artifacts from reverse transcriptase (RT) slippage. These defaults
-    /// use a higher gap_open (0.005 vs 1e-4) and gap_extend (0.25 vs 0.1)
-    /// to be more permissive of these artifacts without inflating false
-    /// positive variant calls.
-    pub fn rna_defaults() -> Self {
-        ConfigurableGapParams {
-            gap_open: 0.005,
-            gap_extend: 0.25,
-        }
-    }
-
     /// Continuous gap parameters scaled by repeat_span using a logistic function.
     ///
     /// Replaces the rigid `repeat_span >= 10` binary threshold with a smooth
@@ -193,6 +168,19 @@ impl ConfigurableGapParams {
         // Linear interpolation for gap_open, clamped at 20bp
         let t = (repeat_span as f64 / 20.0).min(1.0);
         let gap_open = gap_open_base + (gap_open_repeat - gap_open_base) * t;
+        ConfigurableGapParams { gap_open, gap_extend }
+    }
+}
+
+#[cfg(test)]
+impl ConfigurableGapParams {
+    /// Test-only convenience: fixed gap params for non-repeat regions.
+    pub fn standard(gap_open: f64, gap_extend: f64) -> Self {
+        ConfigurableGapParams { gap_open, gap_extend }
+    }
+
+    /// Test-only convenience: fixed gap params for repeat regions.
+    pub fn repeat(gap_open: f64, gap_extend: f64) -> Self {
         ConfigurableGapParams { gap_open, gap_extend }
     }
 }
