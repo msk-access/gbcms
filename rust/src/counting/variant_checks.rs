@@ -300,7 +300,7 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
 pub fn check_complex<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
-    siblings: &[Variant],
+    _siblings: &[Variant],
     quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,

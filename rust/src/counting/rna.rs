@@ -148,6 +148,7 @@ pub fn has_splice_junction(record: &Record) -> bool {
 /// - `ref_allele`: reference allele (single base)
 /// - `alt_allele`: alternate allele (single base)
 /// - `gene_strand`: annotated gene strand ('+' or '-')
+#[allow(dead_code)] // Called from pipeline via PyO3, not directly in Rust
 pub fn is_rna_editing_candidate(
     ref_allele: &str,
     alt_allele: &str,

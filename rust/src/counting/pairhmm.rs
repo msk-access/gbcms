@@ -138,6 +138,7 @@ impl GapParameters for ConfigurableGapParams {
     }
 }
 
+#[allow(dead_code)] // Public API — standard/repeat/rna_defaults used by HLA module
 impl ConfigurableGapParams {
     /// Create standard gap parameters for non-repeat regions.
     pub fn standard(gap_open: f64, gap_extend: f64) -> Self {

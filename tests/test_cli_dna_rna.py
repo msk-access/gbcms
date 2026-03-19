@@ -6,14 +6,26 @@ Verifies that:
 - run command is deprecated but still functional
 - RNA-specific options are not accepted by dna command
 - CLI correctly routes to the right Pipeline mode
+
+Note: Option presence is verified via Click's registered params rather than
+parsing help text, because Typer/Rich truncates the rendered options list
+in CI environments (no real TTY), hiding options in the middle.
 """
 
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from gbcms.cli import app
 
-# Widen terminal to prevent Typer's rich help from truncating options in CI
-runner = CliRunner(env={"COLUMNS": "200"})
+runner = CliRunner()
+
+# Resolve Typer app → Click Group once for param introspection
+_click_app = get_command(app)
+
+
+def _get_param_names(command_name: str) -> set[str]:
+    """Return the set of CLI parameter names for a subcommand."""
+    return {p.name for p in _click_app.commands[command_name].params}
 
 
 # ── Command Existence ─────────────────────────────────────────────────────
@@ -24,16 +36,18 @@ def test_dna_command_help():
     result = runner.invoke(app, ["dna", "--help"])
     assert result.exit_code == 0, f"Exit code {result.exit_code}: {result.output}"
     assert "dna" in result.output.lower() or "variant" in result.output.lower()
-    # DNA should have --mfsd
-    assert "--mfsd" in result.output
+    # DNA should have --mfsd (checked via Click params, not rendered help)
+    assert "mfsd" in _get_param_names("dna")
 
 
 def test_rna_command_help():
     """'gbcms rna --help' exits 0 and shows RNA-specific options."""
     result = runner.invoke(app, ["rna", "--help"])
     assert result.exit_code == 0, f"Exit code {result.exit_code}: {result.output}"
-    assert "--rna-editing-db" in result.output
-    assert "--enforce-strandedness" in result.output
+    # Checked via Click params to avoid Typer/Rich help truncation in CI
+    rna_params = _get_param_names("rna")
+    assert "rna_editing_db" in rna_params
+    assert "enforce_strandedness" in rna_params
 
 
 def test_run_command_exists():
@@ -47,15 +61,15 @@ def test_run_command_exists():
 
 def test_dna_does_not_have_rna_options():
     """DNA command should NOT accept --rna-editing-db."""
-    result = runner.invoke(app, ["dna", "--help"])
-    assert "--rna-editing-db" not in result.output
-    assert "--enforce-strandedness" not in result.output
+    dna_params = _get_param_names("dna")
+    assert "rna_editing_db" not in dna_params
+    assert "enforce_strandedness" not in dna_params
 
 
 def test_rna_does_not_have_dna_options():
     """RNA command should NOT accept --mfsd (DNA-only mFSD feature)."""
-    result = runner.invoke(app, ["rna", "--help"])
-    assert "--mfsd" not in result.output
+    rna_params = _get_param_names("rna")
+    assert "mfsd" not in rna_params
 
 
 # ── Error Handling ────────────────────────────────────────────────────────
