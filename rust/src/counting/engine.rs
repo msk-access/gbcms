@@ -484,11 +484,18 @@ pub fn count_bam_binned(
     // Wrap in Arc for thread-safe sharing across rayon workers
     let editing_sites = std::sync::Arc::new(editing_sites);
 
-    info!(
-        "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, rna_editing_db={}",
-        variants.len(), apply_baq, umi_tag, alignment_backend,
-        rna_editing_db.unwrap_or("none"),
-    );
+    if mode == "rna" {
+        info!(
+            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, rna_editing_db={}",
+            variants.len(), apply_baq, umi_tag, alignment_backend,
+            rna_editing_db.unwrap_or("none"),
+        );
+    } else {
+        info!(
+            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}",
+            variants.len(), apply_baq, umi_tag, alignment_backend,
+        );
+    }
 
     // Build genomic bins using a temporary BAM reader for header access
     let header_reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
