@@ -16,13 +16,89 @@ use log::{debug, trace, warn};
 
 use crate::types::Variant;
 use super::alignment::{classify_by_alignment, extract_raw_read_window, is_worth_realignment};
-// INTENTIONAL: classify_by_pairhmm retained for concordance testing against
-// the new marginalized pipeline. Remove after concordance proven.
-use super::pairhmm::{classify_by_pairhmm, classify_by_marginalized_pairhmm, ConfigurableGapParams};
+use super::pairhmm::{classify_by_marginalized_pairhmm, ConfigurableGapParams};
 use super::pangenome::build_haplotype_matrix;
 use super::wfa_router::wfa_fast_path;
 use super::utils::{find_read_pos, masked_dual_compare, masked_single_compare, median_qual, ClassifyResult, ClassifyPhase};
 use super::AlignmentBackend;
+
+
+/// Pangenomic WFA + marginalized PairHMM classification pipeline.
+///
+/// Standalone helper that takes pre-extracted read data and attempts
+/// classification against the full sibling-aware haplotype matrix.
+///
+/// ## Pipeline
+///
+/// 1. Build pangenomic haplotype matrix (H0/H1/H2..H2n) from variant + siblings
+/// 2. WFA edit-distance triage — resolves ~70-80% of reads instantly
+/// 3. Ambiguous reads → marginalized PairHMM (BQ-aware probabilistic)
+///
+/// ## Returns
+///
+/// - `Some(ClassifyResult)` if classification succeeded
+/// - `None` if the pipeline cannot produce a result (matrix build failure,
+///   no ref_context, etc.) — caller should fall back to SW
+///
+/// ## Usage
+///
+/// Called from:
+/// - `phase3_classify()` — for insertion/deletion fallbacks
+/// - `check_complex()` — Phase 0 (structural bypass) and Phase 3 (fallback)
+fn pangenomic_classify(
+    sub_seq: &[u8],
+    sub_quals: &[u8],
+    variant: &Variant,
+    siblings: &[Variant],
+    min_baseq: u8,
+    gap_open: f64,
+    gap_extend: f64,
+    gap_open_repeat: f64,
+    gap_extend_repeat: f64,
+    llr_threshold: f64,
+) -> Option<ClassifyResult> {
+    // Step 1: Build multi-haplotype evaluation matrix.
+    //   H0=REF, H1=ALT, H2..H2n=sibling germline combos
+    let matrix = match build_haplotype_matrix(variant, siblings) {
+        Some(m) => m,
+        None => {
+            debug!(
+                "pangenomic_classify: matrix construction failed for {}:{} (siblings={})",
+                variant.chrom, variant.pos + 1, siblings.len(),
+            );
+            return None;
+        }
+    };
+
+    // Step 2: WFA fast-path triage (edit distance).
+    // Clear-cut reads classified without PairHMM.
+    let med_qual = median_qual(sub_quals, min_baseq);
+    if let Some(result) = wfa_fast_path(sub_seq, &matrix, med_qual) {
+        trace!(
+            "pangenomic_classify: WFA resolved → is_ref={} is_alt={} qual={} at {}:{}",
+            result.is_ref, result.is_alt, result.qual,
+            variant.chrom, variant.pos + 1,
+        );
+        return Some(result);
+    }
+
+    // Step 3: Ambiguous reads → marginalized PairHMM.
+    // Evaluates read against ALL haplotypes in the matrix,
+    // taking max LL over REF/ALT classes.
+    trace!(
+        "pangenomic_classify: WFA ambiguous → escalating to marginalized PairHMM at {}:{} (haplotypes={})",
+        variant.chrom, variant.pos + 1, matrix.len(),
+    );
+    let gap_params = ConfigurableGapParams::dynamic(
+        variant.repeat_span as usize,
+        gap_open, gap_extend,
+        gap_open_repeat, gap_extend_repeat,
+    );
+    Some(classify_by_marginalized_pairhmm(
+        sub_seq, sub_quals, &matrix,
+        min_baseq, &gap_params, llr_threshold,
+    ))
+}
 
 
 /// Backend-aware Phase 3 classification.
@@ -59,72 +135,44 @@ fn phase3_classify<F: Fn(u8, u8) -> i32>(
             gap_open_repeat,
             gap_extend_repeat,
         } => {
-            // ── PANGENOMIC WFA + MARGINALIZED PairHMM PIPELINE ──
-            //
-            // Step 1: Build multi-haplotype evaluation matrix.
-            //   H0=REF, H1=ALT, H2..H2n=sibling germline combos
-            if let Some(matrix) = build_haplotype_matrix(variant, siblings) {
-                if let Some(ref _ctx) = variant.ref_context {
-                    let win_start = variant.ref_context_start;
-                    let win_end = win_start + variant.ref_context.as_ref().unwrap().len() as i64;
+            // Try pangenomic WFA+PairHMM pipeline via pangenomic_classify().
+            // Handles: matrix build → WFA triage → marginalized PairHMM.
+            if let Some(ref _ctx) = variant.ref_context {
+                let win_start = variant.ref_context_start;
+                let win_end = win_start + variant.ref_context.as_ref().unwrap().len() as i64;
 
-                    if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
-                        record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
-                    ) {
-                        if sub_seq.len() >= 3 {
-                            // Step 2: WFA fast-path triage (edit distance).
-                            // Clear-cut reads classified without PairHMM.
-                            let med_qual = median_qual(&sub_quals, min_baseq);
-                            if let Some(result) = wfa_fast_path(&sub_seq, &matrix, med_qual) {
-                                trace!(
-                                    "phase3: WFA resolved → is_ref={} is_alt={} qual={} at {}:{}",
-                                    result.is_ref, result.is_alt, result.qual,
-                                    variant.chrom, variant.pos + 1,
-                                );
-                                return result;
-                            }
-
-                            // Step 3: Ambiguous reads → marginalized PairHMM.
-                            // Evaluates read against ALL haplotypes in the matrix,
-                            // taking max LL over REF/ALT classes.
-                            trace!(
-                                "phase3: WFA ambiguous → escalating to marginalized PairHMM at {}:{}",
-                                variant.chrom, variant.pos + 1,
-                            );
-                            let gap_params = ConfigurableGapParams::dynamic(
-                                variant.repeat_span as usize,
-                                *gap_open, *gap_extend,
-                                *gap_open_repeat, *gap_extend_repeat,
-                            );
-                            return classify_by_marginalized_pairhmm(
-                                &sub_seq, &sub_quals, &matrix,
-                                min_baseq, &gap_params, *llr_threshold,
-                            );
-                        } else {
-                            trace!(
-                                "phase3: sub_seq too short ({} < 3) → SW fallback at {}:{}",
-                                sub_seq.len(), variant.chrom, variant.pos + 1,
-                            );
+                if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
+                    record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
+                ) {
+                    if sub_seq.len() >= 3 {
+                        if let Some(result) = pangenomic_classify(
+                            &sub_seq, &sub_quals, variant, siblings,
+                            min_baseq, *gap_open, *gap_extend,
+                            *gap_open_repeat, *gap_extend_repeat, *llr_threshold,
+                        ) {
+                            return result;
                         }
+                        // pangenomic_classify returned None (matrix build failed) —
+                        // fall through to SW fallback below.
                     } else {
                         trace!(
-                            "phase3: read window extraction failed → SW fallback at {}:{}",
-                            variant.chrom, variant.pos + 1,
+                            "phase3: sub_seq too short ({} < 3) → SW fallback at {}:{}",
+                            sub_seq.len(), variant.chrom, variant.pos + 1,
                         );
                     }
                 } else {
-                    debug!(
-                        "phase3: variant {}:{} has no ref_context → SW fallback",
+                    trace!(
+                        "phase3: read window extraction failed → SW fallback at {}:{}",
                         variant.chrom, variant.pos + 1,
                     );
                 }
             } else {
                 debug!(
-                    "phase3: matrix construction failed for {}:{} → SW fallback",
+                    "phase3: variant {}:{} has no ref_context → SW fallback",
                     variant.chrom, variant.pos + 1,
                 );
             }
-            // Fallback: if matrix construction or extraction fails, use SW
+            // Fallback: if pangenomic pipeline fails at any stage, use SW via check_complex
             trace!(
                 "phase3: using check_complex (SW) fallback for {}:{}",
                 variant.chrom, variant.pos + 1,
@@ -300,11 +348,7 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
 pub fn check_complex<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
-    // TODO(v4): Route check_complex Phase 3 through phase3_classify() for
-    // pangenomic WFA+PairHMM evaluation. Currently blocked by recursive call
-    // graph: phase3_classify's SW fallback calls check_complex. Needs extraction
-    // of a standalone pangenomic_classify() function first.
-    _siblings: &[Variant],
+    siblings: &[Variant],
     quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,
@@ -336,8 +380,8 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     // or garbaged sequence. Phase 2 (masked comparison) then artificially matches
     // this truncated string perfectly to REF, erroneously rejecting complex ALT reads!
     // To prevent this false REF classification, we IMMEDIATELY route all
-    // structurally anomalous reads (is_worth_realignment) to Phase 3 SW, which natively
-    // extracts the raw unstructured bases and aligns against the full haplotype geometries.
+    // structurally anomalous reads (is_worth_realignment) to alignment-based
+    // classification, which extracts raw bases and aligns against full haplotypes.
     if let Some(ref ctx) = variant.ref_context {
         let win_start = variant.ref_context_start;
         let win_end = win_start + ctx.len() as i64;
@@ -348,7 +392,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
             ) {
                 if sub_seq.len() >= 3 {
                     trace!(
-                        "check_complex: bypassing Phase 1/2 due to soft-clips/indels, Phase 3 extracted {} bases",
+                        "check_complex: Phase 0 bypass (soft-clips/indels), extracted {} bases",
                         sub_seq.len()
                     );
                     return match backend {
@@ -360,15 +404,22 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                             llr_threshold, gap_open, gap_extend,
                             gap_open_repeat, gap_extend_repeat,
                         } => {
-                            let gap_params = ConfigurableGapParams::dynamic(
-                                variant.repeat_span as usize,
-                                *gap_open, *gap_extend,
-                                *gap_open_repeat, *gap_extend_repeat,
-                            );
-                            classify_by_pairhmm(
-                                &sub_seq, &sub_quals, variant, min_baseq,
-                                &gap_params, *llr_threshold,
-                            )
+                            // Pangenomic WFA → marginalized PairHMM pipeline.
+                            // Falls back to SW if matrix construction fails.
+                            pangenomic_classify(
+                                &sub_seq, &sub_quals, variant, siblings,
+                                min_baseq, *gap_open, *gap_extend,
+                                *gap_open_repeat, *gap_extend_repeat, *llr_threshold,
+                            ).unwrap_or_else(|| {
+                                trace!(
+                                    "check_complex: Phase 0 pangenomic failed, SW fallback at {}:{}",
+                                    variant.chrom, variant.pos + 1,
+                                );
+                                classify_by_alignment(
+                                    &sub_seq, &sub_quals, variant, min_baseq,
+                                    alt_aligner, ref_aligner,
+                                )
+                            })
                         }
                     };
                 }
@@ -611,15 +662,18 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
 
     // --- Phase 3: Alignment-based fallback (indelpost approach) ---
     // When narrow-window reconstruction fails (FM1: D-truncation, FM2: adjacent I),
-    // expand to the full ref_context window and use dual-haplotype SW alignment.
+    // expand to the full ref_context window and use alignment-based classification.
     //
     // CRITICAL: Use raw read window extraction (not CIGAR-projected) to preserve
     // the true biological sequence. For complex variants (e.g. EPHA7 REF=TCC ALT=CT),
     // BWA represents ALT reads as DEL+INS CIGARs. CIGAR-projected extraction
     // produces a hybrid sequence matching neither REF nor ALT haplotype.
-    // Raw extraction gives the contiguous read bases that SW can correctly align.
+    // Raw extraction gives the contiguous read bases that alignment can correctly classify.
     //
-    // Pre-filter (indelpost pattern): only attempt SW for reads showing
+    // For PairHMM backend: uses pangenomic WFA → marginalized PairHMM pipeline,
+    // which evaluates the read against ALL sibling haplotypes, not just H0/H1.
+    //
+    // Pre-filter (indelpost pattern): only attempt alignment for reads showing
     // evidence of carrying the variant (soft-clips, indels near window).
     // This eliminates ~80-90% of clean REF reads from expensive alignment.
     if let Some(ref ctx) = variant.ref_context {
@@ -653,15 +707,22 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                         llr_threshold, gap_open, gap_extend,
                         gap_open_repeat, gap_extend_repeat,
                     } => {
-                        let gap_params = ConfigurableGapParams::dynamic(
-                            variant.repeat_span as usize,
-                            *gap_open, *gap_extend,
-                            *gap_open_repeat, *gap_extend_repeat,
-                        );
-                        classify_by_pairhmm(
-                            &sub_seq, &sub_quals, variant, min_baseq,
-                            &gap_params, *llr_threshold,
-                        )
+                        // Pangenomic WFA → marginalized PairHMM pipeline.
+                        // Falls back to SW if matrix construction fails.
+                        pangenomic_classify(
+                            &sub_seq, &sub_quals, variant, siblings,
+                            min_baseq, *gap_open, *gap_extend,
+                            *gap_open_repeat, *gap_extend_repeat, *llr_threshold,
+                        ).unwrap_or_else(|| {
+                            trace!(
+                                "check_complex: Phase 3 pangenomic failed, SW fallback at {}:{}",
+                                variant.chrom, variant.pos + 1,
+                            );
+                            classify_by_alignment(
+                                &sub_seq, &sub_quals, variant, min_baseq,
+                                alt_aligner, ref_aligner,
+                            )
+                        })
                     }
                 };
             }

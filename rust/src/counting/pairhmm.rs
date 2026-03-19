@@ -24,8 +24,12 @@ use bio::stats::pairhmm::{
 use bio::stats::{LogProb, Prob};
 use log::{debug, trace};
 
+use super::utils::{median_qual, ClassifyResult, ClassifyPhase};
+
+#[cfg(test)]
 use crate::types::Variant;
-use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase};
+#[cfg(test)]
+use super::utils::build_haplotypes;
 
 
 /// Base-quality-aware emission model for PairHMM.
@@ -290,8 +294,9 @@ impl StartEndGapParameters for SemiglobalMode {
 /// - `llr_threshold`: log-likelihood ratio threshold for confident calls
 ///
 /// Returns `ClassifyResult` — same interface as `classify_by_alignment`.
-// INTENTIONAL: kept for concordance testing against classify_by_marginalized_pairhmm.
-// Remove after concordance proven (D3 complete, pending D8 cleanup in v4.1.0).
+// Test-only: single-variant PairHMM classifier retained for unit testing.
+// Production code uses pangenomic_classify() → classify_by_marginalized_pairhmm().
+#[cfg(test)]
 pub fn classify_by_pairhmm(
     read_seq: &[u8],
     read_quals: &[u8],
