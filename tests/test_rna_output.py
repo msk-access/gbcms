@@ -8,7 +8,6 @@ Verifies that:
 - DNA mode VCF does NOT have RNA headers
 """
 
-
 from gbcms.io.output import MafWriter, VcfWriter
 
 # ── RNA vs DNA column names in MAF ────────────────────────────────────────

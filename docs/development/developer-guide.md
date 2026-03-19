@@ -82,9 +82,10 @@ flowchart LR
     end
     
     subgraph Rust["rust/src/"]
-        Lib[lib.rs] --> Count[counting.rs]
-        Lib --> Norm[normalize.rs]
-        Count --> Stats[stats.rs]
+        Lib[lib.rs] --> Shared["shared/"]
+        Lib --> Count["counting/"]
+        Lib --> Norm["normalize/"]
+        Count --> Shared
     end
     
     Pipeline --> Rust
@@ -112,7 +113,7 @@ maturin build --release --out dist
 
 ### 22-BAM Regression Suite
 
-For changes to the counting engine (`counting.rs`), run the 22-BAM regression
+For changes to the counting engine (`counting/engine.rs`), run the 22-BAM regression
 to verify no unintended count shifts:
 
 1. Build the release binary:

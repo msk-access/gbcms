@@ -121,6 +121,7 @@ disable_error_code = ["call-arg"]
 module = [
     "pysam.*",
     "gbcms._rs",
+    "helpers",
 ]
 ignore_missing_imports = true
 

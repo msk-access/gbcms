@@ -4,7 +4,7 @@ use rust_htslib::bam::{self, Read, Record};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
-use crate::stats::fisher_strand_bias;
+use crate::shared::stats::fisher_strand_bias;
 use crate::types::{BaseCounts, Variant};
 
 use rayon::prelude::*;
@@ -19,94 +19,11 @@ use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion
 use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
+use crate::shared::baq::apply_heuristic_baq;
 
 
-// ── Heuristic BAQ (Base Alignment Quality) ────────────────────────────────
-// Standard technique from samtools (Li 2011). Downgrade base qualities near
-// alignment indels to reduce false positive variant calls caused by alignment
-// artifacts. This is a simpler heuristic version of the full recalibration:
-// we walk the CIGAR and subtract `BAQ_PENALTY` from base qualities within
-// `BAQ_RADIUS` bp of any Ins/Del operation.
-//
-// Rationale: Bases near alignment indels are more likely to be misaligned.
-// By reducing their quality, they contribute less to allele classification
-// (e.g., check_snp gates on min_baseq) and fragment consensus (higher quality
-// wins). This is applied to both DNA and RNA when --apply-baq is set.
-
-/// Number of base-pairs on either side of an indel to penalize.
-const BAQ_RADIUS: usize = 5;
-/// Quality penalty subtracted from BQ near indels (clamped to 0).
-const BAQ_PENALTY: u8 = 20;
-
-/// Apply heuristic BAQ quality downgrade to a read's base qualities.
-///
-/// Walks the CIGAR string, finds Ins/Del operations, and subtracts
-/// `BAQ_PENALTY` (20) from base qualities within `BAQ_RADIUS` (5bp) of
-/// the indel boundary on the read. Qualities are clamped to 0 (never negative).
-///
-/// Returns `None` if the read has no indels (caller should use original quals).
-/// Returns `Some(adjusted_quals)` with the modified quality vector otherwise.
-///
-/// This function is intentionally allocation-free for reads without indels
-/// (the common case), only allocating the Vec when adjustment is needed.
-fn apply_heuristic_baq(record: &Record) -> Option<Vec<u8>> {
-    let cigar = record.cigar();
-
-    // Quick scan: does this read have any indels?
-    let has_indel = cigar.iter().any(|op| matches!(op, Cigar::Ins(_) | Cigar::Del(_)));
-    if !has_indel {
-        return None;
-    }
-
-    let quals = record.qual().to_vec();
-    let mut adjusted = quals;
-    let read_len = adjusted.len();
-
-    // Walk CIGAR to find read-coordinate positions of indel boundaries.
-    // `read_pos` tracks the current position on the read (query) sequence.
-    let mut read_pos: usize = 0;
-    for op in cigar.iter() {
-        match op {
-            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) => {
-                read_pos += *len as usize;
-            }
-            Cigar::Ins(len) => {
-                // Insertion: penalize BAQ_RADIUS bases before the insertion start
-                // and after the insertion end on the read.
-                let ins_start = read_pos;
-                let ins_end = read_pos + *len as usize;
-
-                let pen_start = ins_start.saturating_sub(BAQ_RADIUS);
-                let pen_end = (ins_end + BAQ_RADIUS).min(read_len);
-
-                for q in adjusted[pen_start..pen_end].iter_mut() {
-                    *q = q.saturating_sub(BAQ_PENALTY);
-                }
-                read_pos = ins_end;
-            }
-            Cigar::Del(_) | Cigar::RefSkip(_) => {
-                // Deletion/skip: penalize BAQ_RADIUS bases on either side
-                // of the deletion boundary on the read.
-                // Deletion consumes reference but not query — read_pos stays.
-                let pen_start = read_pos.saturating_sub(BAQ_RADIUS);
-                let pen_end = (read_pos + BAQ_RADIUS).min(read_len);
-
-                for q in adjusted[pen_start..pen_end].iter_mut() {
-                    *q = q.saturating_sub(BAQ_PENALTY);
-                }
-                // Del/RefSkip don't advance read_pos (no query consumption)
-            }
-            Cigar::SoftClip(len) => {
-                read_pos += *len as usize;
-            }
-            Cigar::HardClip(_) | Cigar::Pad(_) => {
-                // No read or reference consumption
-            }
-        }
-    }
-
-    Some(adjusted)
-}
+// BAQ (Base Alignment Quality) heuristic now lives in shared::baq.
+// See crate::shared::baq::apply_heuristic_baq for implementation details.
 
 
 /// Compute the median of a u32 vector. Returns 0.0 for empty input.
@@ -781,40 +698,25 @@ fn count_bin_shared(
         .context("count_bin_shared: failed to fetch bin region")?;
 
     let mut read_cache: Vec<Record> = Vec::new();
-    let mut filtered_counts = [0u64; 7]; // dup, sec, supp, qc, pair, indel, mapq
+    let mut mapq_filtered: u64 = 0;
+
+    // Construct ReadFilter from the boolean params passed in.
+    let read_filter = crate::shared::filters::ReadFilter {
+        filter_duplicates,
+        filter_secondary,
+        filter_supplementary,
+        filter_qc_failed,
+        filter_improper_pair,
+        filter_indel,
+    };
+    let mut filter_counts = crate::shared::filters::FilterCounts::default();
 
     for result in bam.records() {
         let record = result.context("count_bin_shared: error reading BAM record")?;
 
-        // Universal filters: applied once per read, not per variant.
-        if filter_duplicates && record.is_duplicate() {
-            filtered_counts[0] += 1;
+        // Universal flag filters (delegated to shared::filters::ReadFilter).
+        if !read_filter.passes(&record, &mut filter_counts) {
             continue;
-        }
-        if filter_secondary && record.is_secondary() {
-            filtered_counts[1] += 1;
-            continue;
-        }
-        if filter_supplementary && record.is_supplementary() {
-            filtered_counts[2] += 1;
-            continue;
-        }
-        if filter_qc_failed && record.is_quality_check_failed() {
-            filtered_counts[3] += 1;
-            continue;
-        }
-        if filter_improper_pair && !record.is_proper_pair() {
-            filtered_counts[4] += 1;
-            continue;
-        }
-
-        // Indel filter: check CIGAR for Ins or Del
-        if filter_indel {
-            let has_indel = record.cigar().iter().any(|op| matches!(op, Cigar::Ins(_) | Cigar::Del(_)));
-            if has_indel {
-                filtered_counts[5] += 1;
-                continue;
-            }
         }
 
         // MAPQ filter: DNA mode uses simple threshold, RNA mode uses NH rescue.
@@ -829,7 +731,7 @@ fn count_bin_shared(
             // OR for MAPQ<threshold with NH:i:1. So MAPQ=0+NH:i:1 stays in cache.
             // Only filter reads that truly fail RNA validation (MAPQ<threshold AND NH>1).
             if record.mapq() > 0 && !rna::is_valid_rna_alignment(&record, min_mapq) {
-                filtered_counts[6] += 1;
+                mapq_filtered += 1;
                 continue;
             }
             // MAPQ=0 reads: keep in cache for MQ0 tracking; will be handled in Phase 1
@@ -840,7 +742,7 @@ fn count_bin_shared(
         } else if record.mapq() < min_mapq && record.mapq() > 0 {
             // DNA mode: filter reads with 0 < MAPQ < min_mapq.
             // MAPQ=0 reads are KEPT for MQ0 tracking in Phase 1.
-            filtered_counts[6] += 1;
+            mapq_filtered += 1;
             continue;
         }
 
@@ -850,10 +752,10 @@ fn count_bin_shared(
     debug!(
         "Bin tid={} {}-{}: {} reads cached ({} filtered: dup={} sec={} supp={} qc={} pair={} indel={} mapq={})",
         bin.tid, bin.start, bin.end, read_cache.len(),
-        filtered_counts.iter().sum::<u64>(),
-        filtered_counts[0], filtered_counts[1], filtered_counts[2],
-        filtered_counts[3], filtered_counts[4], filtered_counts[5],
-        filtered_counts[6],
+        filter_counts.total() + mapq_filtered,
+        filter_counts.duplicates, filter_counts.secondary, filter_counts.supplementary,
+        filter_counts.qc_failed, filter_counts.improper_pair, filter_counts.indel,
+        mapq_filtered,
     );
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1448,32 +1350,23 @@ fn count_single_variant(
     // Indices: 0=Structural, 1=CigarRecon, 2=MaskedCompare, 3=Levenshtein, 4=Alignment
     let mut phase_counts = [0u32; 5];
 
+    // Construct ReadFilter from the boolean params.
+    let read_filter = crate::shared::filters::ReadFilter {
+        filter_duplicates,
+        filter_secondary,
+        filter_supplementary,
+        filter_qc_failed,
+        filter_improper_pair,
+        filter_indel,
+    };
+    let mut filter_counts = crate::shared::filters::FilterCounts::default();
+
     for result in bam.records() {
         let record = result.context("Error reading BAM record")?;
 
-        // Apply filters
-        if filter_duplicates && record.is_duplicate() {
+        // Universal flag filters (delegated to shared::filters::ReadFilter).
+        if !read_filter.passes(&record, &mut filter_counts) {
             continue;
-        }
-        if filter_secondary && record.is_secondary() {
-            continue;
-        }
-        if filter_supplementary && record.is_supplementary() {
-            continue;
-        }
-        if filter_qc_failed && record.is_quality_check_failed() {
-            continue;
-        }
-        if filter_improper_pair && !record.is_proper_pair() {
-            continue;
-        }
-
-        // Indel filter: check CIGAR for Ins or Del
-        if filter_indel {
-            let has_indel = record.cigar().iter().any(|op| matches!(op, Cigar::Ins(_) | Cigar::Del(_)));
-            if has_indel {
-                continue;
-            }
         }
 
         // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE the MAPQ filter.

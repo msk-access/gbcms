@@ -16,6 +16,7 @@ from gbcms.models.core import (
     GbcmsConfig,
     GbcmsDnaConfig,
     GbcmsRnaConfig,
+    OutputConfig,
 )
 
 # ── Mode Identity ─────────────────────────────────────────────────────────
@@ -62,26 +63,34 @@ def test_dna_lacks_rna_fields():
 
 def test_rna_default_mapq():
     """RNA mode defaults to MAPQ=1 (STAR assigns low MAPQ to novel junctions)."""
-    quality = GbcmsRnaConfig.model_fields["quality"].default_factory()
+    factory = GbcmsRnaConfig.model_fields["quality"].default_factory
+    assert factory is not None
+    quality = factory()  # type: ignore[call-arg]
     assert quality.min_mapping_quality == 1
 
 
 def test_dna_default_mapq():
     """DNA mode defaults to MAPQ=20."""
-    quality = GbcmsDnaConfig.model_fields["quality"].default_factory()
+    factory = GbcmsDnaConfig.model_fields["quality"].default_factory
+    assert factory is not None
+    quality = factory()  # type: ignore[call-arg]
     assert quality.min_mapping_quality == 20
 
 
 def test_rna_default_backend():
     """RNA mode defaults to PairHMM alignment backend (normalized to 'hmm')."""
-    alignment = GbcmsRnaConfig.model_fields["alignment"].default_factory()
+    factory = GbcmsRnaConfig.model_fields["alignment"].default_factory
+    assert factory is not None
+    alignment = factory()  # type: ignore[call-arg]
     # The model stores "pairhmm" but the validator normalizes it to "hmm"
     assert alignment.backend == "hmm"
 
 
 def test_dna_default_backend():
     """DNA mode now defaults to PairHMM alignment backend."""
-    alignment = GbcmsDnaConfig.model_fields["alignment"].default_factory()
+    factory = GbcmsDnaConfig.model_fields["alignment"].default_factory
+    assert factory is not None
+    alignment = factory()  # type: ignore[call-arg]
     # Pydantic default_factory doesn't trigger field_validator, stores 'pairhmm'
     assert alignment.backend == "pairhmm"
 
@@ -112,6 +121,6 @@ def test_rna_editing_db_validates_path(tmp_path):
             variant_file=tmp_path / "dummy.vcf",  # won't reach this validator
             bam_files={},
             reference_fasta=tmp_path / "dummy.fa",
-            output={"directory": tmp_path},
+            output=OutputConfig(directory=tmp_path),
             rna_editing_db=tmp_path / "nonexistent.vcf",
         )

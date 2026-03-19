@@ -1,3 +1,12 @@
+//! Statistical tests shared across analysis modes.
+//!
+//! Currently provides Fisher's exact test for strand bias (used by counting).
+//! Will also host Beta-Binomial LOH test (used by HLA) in a future release.
+//!
+//! Used by:
+//! - `counting/engine.rs` — Fisher strand bias per variant
+//! - `hla/aggregate.rs` (future) — Beta-Binomial LOH p-value
+
 use statrs::distribution::{Discrete, Hypergeometric};
 
 /// Calculate Fisher's Exact Test for strand bias.

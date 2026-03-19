@@ -42,9 +42,16 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 │    variant_checks.rs — check_snp/mnp/ins/del/complex         │
 │    alignment.rs      — Smith-Waterman backend                │
 │    pairhmm.rs        — PairHMM backend (--alignment-backend) │
-│    fragment.rs       — FragmentEvidence, QNAME hashing       │
 │    mfsd.rs           — Mutant Fragment Size Distribution      │
-│    utils.rs          — Reconstruction, soft-clip helpers     │
+│    utils.rs          — ClassifyResult, haplotype helpers     │
+│    parquet_writer.rs — write_fsd_parquet() via ZSTD Parquet  │
+│                                                             │
+│  shared/                                                      │
+│    fragment.rs       — FragmentEvidence, QNAME/UMI hashing   │
+│    stats.rs          — Fisher's exact test (strand bias)     │
+│    bam_utils.rs      — median_qual, find_read_pos            │
+│    filters.rs        — ReadFilter struct (BAM flag checks)   │
+│    baq.rs            — BAQ heuristic (Li 2011)               │
 │                                                             │
 │  normalize/                                                  │
 │    engine.rs         — Normalization pipeline                │
@@ -53,9 +60,7 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 │    fasta.rs          — Reference sequence fetcher            │
 │    repeat.rs         — Tandem repeat detection               │
 │                                                             │
-│  parquet_writer.rs   — write_fsd_parquet() via ZSTD Parquet  │
 │  types.rs            — Variant, BaseCounts (PyO3 bindings)   │
-│  stats.rs            — Fisher's exact test                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -88,12 +93,15 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 | `rust/counting/variant_checks.rs` | check_snp/mnp/ins/del/complex, windowed scan |
 | `rust/counting/alignment.rs` | Smith-Waterman implementation |
 | `rust/counting/pairhmm.rs` | PairHMM backend, LLR scoring |
-| `rust/counting/fragment.rs` | FragmentEvidence, quality-weighted consensus |
 | `rust/counting/mfsd.rs` | Fragment size distribution analysis (KS test, LLR) |
-| `rust/parquet_writer.rs` | write_fsd_parquet(), Arrow/ZSTD native Parquet |
+| `rust/counting/parquet_writer.rs` | write_fsd_parquet(), Arrow/ZSTD native Parquet |
+| `rust/shared/fragment.rs` | FragmentEvidence, quality-weighted consensus, QNAME hashing |
+| `rust/shared/stats.rs` | Fisher's exact test (strand bias) |
+| `rust/shared/bam_utils.rs` | median_qual, find_read_pos |
+| `rust/shared/filters.rs` | ReadFilter struct, FilterCounts (universal BAM flag checks) |
+| `rust/shared/baq.rs` | Heuristic BAQ (Base Alignment Quality, Li 2011) |
 | `rust/normalize/` | Left-alignment, decomp, fasta, repeat (7 modules) |
 | `rust/types.rs` | Variant, BaseCounts PyO3 bindings |
-| `rust/stats.rs` | Fisher's exact test |
 
 ## Key Design Decisions
 

@@ -11,7 +11,6 @@ These tests verify:
 - BAQ only affects bases near cigar indels, not all bases
 """
 
-
 from helpers import build_bam, make_read
 
 from gbcms._rs import Variant, count_bam_binned

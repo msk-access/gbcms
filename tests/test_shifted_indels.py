@@ -12,7 +12,6 @@ Reference genome: chr1, 500 bases of 'A' (all A's for homopolymer tests).
   - Deletion tests:  pos 200, REF=AT, ALT=A (delete T after anchor A)
 """
 
-
 from helpers import (
     build_bam as _build_bam,
 )
