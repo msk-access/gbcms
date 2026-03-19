@@ -45,6 +45,7 @@ use super::AlignmentBackend;
 /// Called from:
 /// - `phase3_classify()` — for insertion/deletion fallbacks
 /// - `check_complex()` — Phase 0 (structural bypass) and Phase 3 (fallback)
+#[allow(clippy::too_many_arguments)]
 fn pangenomic_classify(
     sub_seq: &[u8],
     sub_quals: &[u8],
@@ -90,7 +91,7 @@ fn pangenomic_classify(
         variant.chrom, variant.pos + 1, matrix.len(),
     );
     let gap_params = ConfigurableGapParams::dynamic(
-        variant.repeat_span as usize,
+        variant.repeat_span,
         gap_open, gap_extend,
         gap_open_repeat, gap_extend_repeat,
     );
@@ -113,6 +114,7 @@ fn pangenomic_classify(
 /// 2. Try WFA fast-path triage (edit distance; resolves ~70-80% of reads)
 /// 3. Ambiguous reads fall through to marginalized PairHMM (BQ-aware)
 /// 4. If haplotype matrix construction fails, falls back to SW
+#[allow(clippy::too_many_arguments)]
 fn phase3_classify<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
@@ -345,6 +347,7 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
 ///
 /// Returns `ClassifyResult` where base_qual is the median quality
 /// across the reconstructed haplotype bases, used for fragment consensus.
+#[allow(clippy::too_many_arguments)]
 pub fn check_complex<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
@@ -754,6 +757,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
 ///    nearby but fails the sequence check (e.g., same biological event
 ///    represented differently by caller vs aligner), falls back to
 ///    check_complex for Smith-Waterman haplotype comparison.
+#[allow(clippy::too_many_arguments)]
 pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
@@ -1017,6 +1021,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
 /// 3. **Haplotype fallback:** When CIGAR geometry doesn't match (e.g. different
 ///    breakpoint placement or wrong deletion length), delegates to `check_complex`
 ///    for quality-aware haplotype comparison.
+#[allow(clippy::too_many_arguments)]
 pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,

@@ -444,14 +444,14 @@ mod tests {
             Cigar::RefSkip(1000),
             Cigar::Match(50),
         ]);
-        let record = build_record(&vec![b'A'; 100], &vec![30u8; 100], cigar, 100);
+        let record = build_record(&[b'A'; 100], &[30u8; 100], cigar, 100);
         assert!(has_splice_junction(&record));
     }
 
     #[test]
     fn test_has_splice_junction_without_n() {
         let cigar = CigarString(vec![Cigar::Match(100)]);
-        let record = build_record(&vec![b'A'; 100], &vec![30u8; 100], cigar, 100);
+        let record = build_record(&[b'A'; 100], &[30u8; 100], cigar, 100);
         assert!(!has_splice_junction(&record));
     }
 
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn test_splicing_no_introns() {
         let cigar = CigarString(vec![Cigar::Match(10)]);
-        let record = build_record(&vec![b'A'; 10], &vec![30u8; 10], cigar, 0);
+        let record = build_record(&[b'A'; 10], &[30u8; 10], cigar, 0);
         let reads: Vec<&Record> = vec![&record];
         let result = apply_consensus_splicing(b"AAAAAGGGGG", &reads, 0);
         assert_eq!(result, b"AAAAAGGGGG");
@@ -474,9 +474,9 @@ mod tests {
             Cigar::RefSkip(3),
             Cigar::Match(2),
         ]);
-        let r1 = build_record(&vec![b'A'; 7], &vec![30u8; 7], cigar.clone(), 0);
-        let r2 = build_record(&vec![b'A'; 7], &vec![30u8; 7], cigar.clone(), 0);
-        let r3 = build_record(&vec![b'A'; 7], &vec![30u8; 7], cigar, 0);
+        let r1 = build_record(&[b'A'; 7], &[30u8; 7], cigar.clone(), 0);
+        let r2 = build_record(&[b'A'; 7], &[30u8; 7], cigar.clone(), 0);
+        let r3 = build_record(&[b'A'; 7], &[30u8; 7], cigar, 0);
         let reads: Vec<&Record> = vec![&r1, &r2, &r3];
 
         // ref_ctx: 0123456789 (10 bases), intron at [5,8)

@@ -150,7 +150,7 @@ impl ConfigurableGapParams {
     /// probability with repeat length.
     ///
     /// - `gap_open` scales linearly from `gap_open_base` to `gap_open_repeat`
-    ///    over the range [0, 20bp], clamped at 20bp.
+    ///   over the range [0, 20bp], clamped at 20bp.
     /// - `gap_extend` follows a logistic curve from `gap_extend_base` to
     ///   `gap_extend_repeat` with inflection at 10bp.
     ///
@@ -243,7 +243,7 @@ pub fn dynamic_gap_extend(repeat_span: usize, p_base: f64, p_max: f64) -> f64 {
 pub fn dynamic_sw_gap_extend(repeat_span: usize) -> i32 {
     // Use default base/max for the logistic (PairHMM defaults: 0.1, 0.5)
     let logistic = dynamic_gap_extend(repeat_span, 0.1, 0.5);
-    (-1.0 * (1.0 - logistic)).round() as i32
+    (-(1.0 - logistic)).round() as i32
 }
 
 
@@ -440,9 +440,7 @@ pub fn classify_by_marginalized_pairhmm(
 
         if i % 2 == 0 {
             if *ll > best_ref_ll { best_ref_ll = *ll; }
-        } else {
-            if *ll > best_alt_ll { best_alt_ll = *ll; }
-        }
+        } else if *ll > best_alt_ll { best_alt_ll = *ll; }
     }
 
     let llr = best_alt_ll - best_ref_ll;

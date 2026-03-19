@@ -36,7 +36,7 @@ fn compute_median_u32(v: &mut [u32]) -> f64 {
     }
     v.sort_unstable();
     let mid = v.len() / 2;
-    if v.len() % 2 == 0 {
+    if v.len().is_multiple_of(2) {
         (v[mid - 1] as f64 + v[mid] as f64) / 2.0
     } else {
         v[mid] as f64
@@ -549,6 +549,7 @@ pub fn count_bam_binned(
                         // ── D10: Shared-read optimization ──
                         // Single bam.fetch() per bin; reads shared across all
                         // variants via count_bin_shared.
+                        #[allow(clippy::needless_question_mark)]
                         Ok(count_bin_shared(
                             bam,
                             bin,
@@ -859,7 +860,7 @@ fn count_variant_from_cache(
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
     let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span as usize);
+    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
     let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
     let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
 
@@ -934,10 +935,8 @@ fn count_variant_from_cache(
         reads_considered += 1;
 
         // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
-        if mode == "rna" && enforce_strandedness {
-            if !rna::is_sense_strand(record, variant.gene_strand) {
-                continue;
-            }
+        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand) {
+            continue;
         }
 
         // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE any MAPQ-based skip.
@@ -969,7 +968,7 @@ fn count_variant_from_cache(
         };
         let effective_quals: &[u8] = match &baq_adjusted {
             Some(adj) => adj,
-            None => record.qual().as_ref(),
+            None => record.qual(),
         };
 
         // ── Allele classification
@@ -1095,10 +1094,8 @@ fn count_variant_from_cache(
 
             // ── RNA-SPECIFIC ALT TRACKING ──
             // Splice-spanning count: ALT reads that cross a splice junction
-            if mode == "rna" {
-                if rna::has_splice_junction(record) {
-                    counts.splice_spanning_count += 1;
-                }
+            if mode == "rna" && rna::has_splice_junction(record) {
+                counts.splice_spanning_count += 1;
             }
         }
 
@@ -1125,7 +1122,7 @@ fn count_variant_from_cache(
     // This avoids false positives from pattern-matching-only heuristics
     // (e.g. every A→G SNP being flagged as a potential editing site).
     if mode == "rna" {
-        counts.rna_editing_site_overlap = editing_sites.as_ref().map_or(false, |sites| {
+        counts.rna_editing_site_overlap = editing_sites.as_ref().is_some_and(|sites| {
             let chrom = variant.chrom.trim_start_matches("chr");
             let found = sites.contains(&(chrom.to_string(), variant.pos));
             if found {
@@ -1342,7 +1339,7 @@ fn count_single_variant(
     // Replaces the previous rigid `repeat_span >= 10` binary threshold
     // to prevent boundary artifacts at the transition point.
     let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span as usize);
+    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
     let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
     let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
 
@@ -1392,10 +1389,8 @@ fn count_single_variant(
         // ── RNA STRANDEDNESS FILTER: In RNA mode with strandedness enforced,
         // reject reads on the wrong strand relative to the gene annotation.
         // This prevents antisense artifacts from inflating variant counts.
-        if mode == "rna" && enforce_strandedness {
-            if !rna::is_sense_strand(&record, variant.gene_strand) {
-                continue;
-            }
+        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(&record, variant.gene_strand) {
+            continue;
         }
 
         // ── HEURISTIC BAQ: When enabled, downgrade base qualities near
@@ -1412,7 +1407,7 @@ fn count_single_variant(
         };
         let effective_quals: &[u8] = match &baq_adjusted {
             Some(adj) => adj,
-            None => record.qual().as_ref(),
+            None => record.qual(),
         };
 
         // Determine allele status and base quality at variant position
@@ -1750,6 +1745,7 @@ fn count_single_variant(
 /// The `alt_aligner` and `ref_aligner` are reusable SW aligners created
 /// once per variant in `count_single_variant()` and threaded through to
 /// avoid per-read allocation (indelpost pattern).
+#[allow(clippy::too_many_arguments)]
 fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
@@ -1863,7 +1859,7 @@ mod tests {
 
         // Variant at pos 102-103 (0-based), REF=AT, ALT=CG
         let variant = build_variant(102, "AT", "CG");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
             MnpResult::Ref(q) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
@@ -1880,7 +1876,7 @@ mod tests {
         let record = build_record(seq, qual, &cigar, 100);
 
         let variant = build_variant(102, "AT", "CG");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
             MnpResult::Alt(q) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
@@ -1899,7 +1895,7 @@ mod tests {
         let record = build_record(seq, qual, &cigar, 100);
 
         let variant = build_variant(102, "AT", "CG");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         assert!(
             matches!(result, MnpResult::LowQuality),
@@ -1916,7 +1912,7 @@ mod tests {
         let record = build_record(seq, qual, &cigar, 100);
 
         let variant = build_variant(102, "AT", "CG");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         assert!(
             matches!(result, MnpResult::LowQuality),
@@ -1934,7 +1930,7 @@ mod tests {
         let record = build_record(seq, qual, &cigar, 100);
 
         let variant = build_variant(102, "AT", "CG");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         assert!(
             matches!(result, MnpResult::ThirdAllele),
@@ -1961,7 +1957,7 @@ mod tests {
         // Variant spans pos 102-104 (3bp MNP)
         // With the indel, positions won't be contiguous in read space
         let variant = build_variant(102, "ATG", "CGC");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         assert!(
             matches!(result, MnpResult::Structural),
@@ -1980,7 +1976,7 @@ mod tests {
         let record = build_record(seq, qual, &cigar, 101);
 
         let variant = build_variant(102, "ATG", "CGC");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         assert!(
             matches!(result, MnpResult::Structural),
@@ -1997,7 +1993,7 @@ mod tests {
         let record = build_record(seq, qual, &cigar, 200); // far beyond variant
 
         let variant = build_variant(102, "AT", "CG");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         assert!(
             matches!(result, MnpResult::Structural),
@@ -2016,7 +2012,7 @@ mod tests {
 
         // Variant at pos 102-106
         let variant = build_variant(102, "GAGGG", "AAGGA");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
             MnpResult::Alt(q) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
@@ -2034,7 +2030,7 @@ mod tests {
         let record = build_record(seq, qual, &cigar, 100);
 
         let variant = build_variant(102, "AT", "CG");
-        let result = check_mnp(&record, &variant, &record.qual(), 20);
+        let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
             MnpResult::Alt(q) => assert!(q >= 20, "Should pass at exact threshold boundary"),
@@ -2098,12 +2094,12 @@ mod tests {
 
         let quals = record.qual();
         let sw_result = check_allele_with_qual(
-            record, variant, &[], &quals, min_baseq,
+            record, variant, &[], quals, min_baseq,
             &mut alt_a1, &mut ref_a1,
             &AlignmentBackend::SmithWaterman,
         );
         let hmm_result = check_allele_with_qual(
-            record, variant, &[], &quals, min_baseq,
+            record, variant, &[], quals, min_baseq,
             &mut alt_a1, &mut ref_a1,
             &AlignmentBackend::pairhmm_default(),
         );
