@@ -8205,9 +8205,10 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
     end
 
     subgraph Rust["rust/src/"]
-        Lib[lib.rs] --&gt; Count[counting.rs]
-        Lib --&gt; Norm[normalize.rs]
-        Count --&gt; Stats[stats.rs]
+        Lib[lib.rs] --&gt; Shared["shared/"]
+        Lib --&gt; Count["counting/"]
+        Lib --&gt; Norm["normalize/"]
+        Count --&gt; Shared
     end
 
     Pipeline --&gt; Rust
@@ -8231,7 +8232,7 @@ Use mouse to pan and zoom
 <hr>
 <h2 id="development-developer-guide-regression-testing">Regression Testing<a class="headerlink" href="#development-developer-guide-regression-testing" title="Permanent link">¶</a></h2>
 <h3 id="development-developer-guide-22-bam-regression-suite">22-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Regression Suite<a class="headerlink" href="#development-developer-guide-22-bam-regression-suite" title="Permanent link">¶</a></h3>
-<p>For changes to the counting engine (<code>counting.rs</code>), run the 22-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> regression
+<p>For changes to the counting engine (<code>counting/engine.rs</code>), run the 22-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> regression
 to verify no unintended count shifts:</p>
 <ol>
 <li>
