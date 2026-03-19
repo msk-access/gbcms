@@ -32,7 +32,9 @@ def test_pipeline_v2(tmp_path):
     rs_input = [
         gbcms_rs.Variant(v.chrom, v.pos, v.ref, v.alt, v.variant_type.value) for v in variants
     ]
-    prepared = gbcms_rs.prepare_variants(rs_input, fasta_path, context_padding=5, is_maf=False)
+    prepared = gbcms_rs.prepare_variants(
+        rs_input, fasta_path, context_padding=5, is_maf=False, threads=1, adaptive_context=False
+    )
     rs_variants = [p.variant for p in prepared]
 
     assert len(rs_variants) > 0, "No variants after preparation"
@@ -97,7 +99,9 @@ def test_pipeline_v2_binned(tmp_path):
     rs_input = [
         gbcms_rs.Variant(v.chrom, v.pos, v.ref, v.alt, v.variant_type.value) for v in variants
     ]
-    prepared = gbcms_rs.prepare_variants(rs_input, fasta_path, context_padding=5, is_maf=False)
+    prepared = gbcms_rs.prepare_variants(
+        rs_input, fasta_path, context_padding=5, is_maf=False, threads=1, adaptive_context=False
+    )
     rs_variants = [p.variant for p in prepared]
 
     # 3. Run BOTH engines and compare

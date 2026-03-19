@@ -57,7 +57,7 @@ class TestNormalization(unittest.TestCase):
     def test_snp_passes_through(self):
         """SNPs should pass through with no normalization."""
         variants = [gbcms_rs.Variant("chr1", 0, "A", "T", "SNP")]
-        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1)
+        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(pv.validation_status, "PASS")
@@ -69,7 +69,7 @@ class TestNormalization(unittest.TestCase):
         """Variant with wrong REF allele should be rejected."""
         # Position 0 has 'A', but we claim ref is 'G'
         variants = [gbcms_rs.Variant("chr1", 0, "G", "T", "SNP")]
-        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1)
+        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertNotEqual(pv.validation_status, "PASS")
@@ -79,7 +79,7 @@ class TestNormalization(unittest.TestCase):
         # MAF: chr1:5, ref='-', alt='G' (insert G after pos 4 in 0-based)
         # After anchor: ref=A, alt=AG at pos 4
         variants = [gbcms_rs.Variant("chr1", 4, "-", "G", "INSERTION")]
-        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, True, 1)
+        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, True, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(pv.validation_status, "PASS")
@@ -94,7 +94,7 @@ class TestNormalization(unittest.TestCase):
         # Deletion of one 'A' mid-run: pos=103, REF=AA, ALT=A
         # Should left-align to pos=99, REF=GA, ALT=G (leftmost VCF representation)
         variants = [gbcms_rs.Variant("chr1", 103, "AA", "A", "DELETION")]
-        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1)
+        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(pv.validation_status, "PASS")
@@ -130,7 +130,7 @@ class TestNormalization(unittest.TestCase):
         # Should left-align back toward pos=49/50 (start of repeat)
         # This requires >110bp window, exceeding the default 100bp.
         variants = [gbcms_rs.Variant("chr1", 160, "AC", "A", "DELETION")]
-        prepared = gbcms_rs.prepare_variants(variants, str(long_fasta), 5, False, 1)
+        prepared = gbcms_rs.prepare_variants(variants, str(long_fasta), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertTrue(

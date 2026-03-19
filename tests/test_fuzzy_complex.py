@@ -15,7 +15,6 @@ Variant definitions used:
   - DelIns:              chr1:100, REF=ATG, ALT=CC   (3→2, different lengths)
 """
 
-
 from helpers import (
     build_bam as _build_bam,
 )

@@ -363,7 +363,7 @@ class Pipeline:
                 mode=self.config.mode,
                 enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
                 rna_editing_db=(
-                    str(self.config.rna_editing_db)
+                    str(self.config.rna_editing_db)  # type: ignore[attr-defined]
                     if getattr(self.config, "rna_editing_db", None)
                     else None
                 ),

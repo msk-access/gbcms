@@ -23,7 +23,7 @@ use log::{debug, trace};
 use wfa2lib_rs::aligner::EditAligner;
 use wfa2lib_rs::penalties::WavefrontPenalties;
 
-use super::utils::{ClassifyResult, ClassifyPhase, median_qual};
+use super::utils::{ClassifyResult, ClassifyPhase};
 
 
 /// Score threshold above which both alleles are considered off-target.

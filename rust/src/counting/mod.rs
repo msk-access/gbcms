@@ -7,13 +7,14 @@
 //! ## Submodules
 //!
 //! - [`engine`] — Core orchestration: `count_bam`, `count_single_variant`, `check_allele_with_qual`
-//! - [`fragment`] — Fragment evidence tracking and QNAME hashing
+//! - [`fragment`] — Re-export of `shared::fragment` (FragmentEvidence, QNAME hashing)
 //! - [`alignment`] — Smith-Waterman alignment backend (Phase 3)
 //! - [`pairhmm`] — PairHMM alignment backend (probabilistic Phase 3 alternative)
 //! - [`variant_checks`] — Per-variant-type classification (SNP, MNP, Ins, Del, Complex)
-//! - [`utils`] — Shared utility functions (position lookup, quality, masked comparison)
+//! - [`utils`] — Classification types, haplotype helpers, masked comparison
 //! - [`mfsd`] — Mutant Fragment Size Distribution statistics (KS test, LLR, mean)
 //! - [`rna`] — RNA-seq-specific alignment filters and utilities
+//! - [`parquet_writer`] — Parquet output for fragment size distributions
 
 mod engine;
 mod fragment;
@@ -25,10 +26,12 @@ mod variant_checks;
 mod utils;
 pub(crate) mod mfsd;
 pub(crate) mod rna;
+pub(crate) mod parquet_writer;
 
 // Re-export the PyO3 entry points so lib.rs can call counting::count_bam / count_bam_binned
 pub use engine::count_bam;
 pub use engine::count_bam_binned;
+pub use parquet_writer::write_fsd_parquet;
 
 // Re-export AlignmentBackend for sibling modules (used by pairhmm tests)
 pub use engine::AlignmentBackend;
