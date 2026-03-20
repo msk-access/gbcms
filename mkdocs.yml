@@ -53,6 +53,7 @@ plugins:
   - git-revision-date-localized:
       enable_creation_date: true
       enable_git_follow: false
+      fallback_to_build_date: true
       type: timeago
   - panzoom:
       full_screen: True
