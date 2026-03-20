@@ -3366,11 +3366,11 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Read(["\ud83d\udcd6 RNA Read"]) --&gt; HasGS{"gene_strand annotated?"}
-    HasGS --&gt;|No| Pass(["\u2705 Pass \u2014 no filter"]):::pass
+    Read(["📖 RNA Read"]) --&gt; HasGS{"gene_strand annotated?"}
+    HasGS --&gt;|No| Pass(["✅ Pass — no filter"]):::pass
     HasGS --&gt;|Yes| Check{"Read orientation\nvs gene strand?"}
-    Check --&gt;|"Consistent"| Sense(["\u2705 Sense \u2014 counted in DP/AD/RD"]):::pass
-    Check --&gt;|"Inconsistent"| Anti(["\ud83d\udcca Antisense \u2014 counted in rna_antisense_depth"]):::anti
+    Check --&gt;|"Consistent"| Sense(["✅ Sense — counted in DP/AD/RD"]):::pass
+    Check --&gt;|"Inconsistent"| Anti(["📊 Antisense — counted in rna_antisense_depth"]):::anti
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef anti fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
@@ -4766,7 +4766,7 @@ Use mouse to pan and zoom
     end
 
     subgraph OptOut ["Optional Output (--mfsd-parquet)"]
-        Parquet["\u003csample\u003e.fsd.parquet"]
+        Parquet["<sample>.fsd.parquet"]
     end
 
     VCF --&gt; Load --&gt; Prepare
@@ -4775,7 +4775,7 @@ Use mouse to pan and zoom
     BAM --&gt; Count
     Count --&gt; Result
     Count -.-&gt;|"--mfsd-parquet"| Parquet
-</code></pre> 
+</sample></code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
@@ -5653,12 +5653,12 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    C1{"C1: REF is homopolymer?\n(all same base, \u22653bp)"}
+    C1{"C1: REF is homopolymer?\n(all same base, ≥3bp)"}
     C2{"C2: Net deletion?\n(ref_len &gt; alt_len)"}
     C3{"C3: ALT last base ==\nnext ref base after span?"}
-    C4{"C4: ALT last base \u2260\nhomopolymer base?"}
-    Detected(["\ud83d\udd0d Decomposition detected"]):::detect
-    Skip(["\u23ed\ufe0f Skip \u2014 not a decomposition"]):::skip
+    C4{"C4: ALT last base ≠\nhomopolymer base?"}
+    Detected(["🔍 Decomposition detected"]):::detect
+    Skip(["⏭️ Skip — not a decomposition"]):::skip
 
     C1 --&gt;|Yes| C2
     C2 --&gt;|Yes| C3
@@ -5709,12 +5709,12 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Input(["\u26a1 Decomposition detected"]):::warn
+    Input(["⚡ Decomposition detected"]):::warn
     Input --&gt;|"in parallel"| CountOrig
     Input --&gt;|"in parallel"| CountDecomp
 
-    CountOrig["count_bam(original: CCCCCC\u2192T)"]
-    CountDecomp["count_bam(corrected: CCCCCC\u2192CCCCT)"]
+    CountOrig["count_bam(original: CCCCCC→T)"]
+    CountDecomp["count_bam(corrected: CCCCCC→CCCCT)"]
 
     CountOrig --&gt; Compare
     CountDecomp --&gt; Compare
@@ -6375,19 +6375,19 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    Start(["\ud83e\uddec Insertion Check"]):::start --&gt; Walk["Walk CIGAR \u2192 left to right"]
+    Start(["🧬 Insertion Check"]):::start --&gt; Walk["Walk CIGAR → left to right"]
     Walk --&gt; MatchBlk{"Match block contains anchor?"}
-    MatchBlk --&gt;|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk --&gt;|No| WinCheck(["→ Windowed Scan"]):::next
     MatchBlk --&gt;|Yes| Bwd{"Anchor at block start\nAND prev op = Ins?"}
     Bwd --&gt;|Yes| BwdMatch{"Length + seq match?\n(quality-masked)"}
-    BwdMatch --&gt;|Yes| BWAlt(["\ud83d\udd34 ALT \u2014 backward"]):::alt
+    BwdMatch --&gt;|Yes| BWAlt(["🔴 ALT — backward"]):::alt
     BwdMatch --&gt;|No| Fwd
     Bwd --&gt;|No| Fwd{"Anchor at block end?"}
     Fwd --&gt;|No| RefCov["Mark ref coverage"]
     Fwd --&gt;|Yes| Next{"Next op = Ins?"}
     Next --&gt;|No| RefCov
     Next --&gt;|Yes| StrictMatch{"Length + seq match?\n(quality-masked)"}
-    StrictMatch --&gt;|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
+    StrictMatch --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
     StrictMatch --&gt;|No| RefCov
     RefCov --&gt; WinCheck
 
@@ -6399,7 +6399,7 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
-<h4 id="reference-allele-classification-part-b-u2014-windowed-scan-s1s2s3-safeguards">Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#reference-allele-classification-part-b-u2014-windowed-scan-s1s2s3-safeguards" title="Permanent link">¶</a></h4>
+<h4 id="reference-allele-classification-part-b-windowed-scan-s1s2s3-safeguards">Part B — Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#reference-allele-classification-part-b-windowed-scan-s1s2s3-safeguards" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -6422,7 +6422,7 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    WinIn(["\u2192 from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within \u00b15bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within ±5bp window?"}
     CheckWin --&gt;|No| Continue["Continue CIGAR walk"]
     CheckWin --&gt;|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
     S1 --&gt;|Yes| S3{"S3: Anchor base\nmatches ref?"}
@@ -6436,12 +6436,12 @@ Use mouse to pan and zoom
     Continue --&gt; MoreOps{"More CIGAR ops?"}
     MoreOps --&gt;|Yes| CheckWin
     MoreOps --&gt;|No| Eval{"Windowed candidate found?"}
-    Eval --&gt;|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    Eval --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Eval --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check --&gt;|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    P3Check --&gt;|Yes| CPX(["🔄 check_complex"]):::fallback
     P3Check --&gt;|No| HasRef{"Read covered anchor?"}
-    HasRef --&gt;|Yes| Ref(["\u2705 REF"]):::ref
-    HasRef --&gt;|No| Neither(["\u29ef Neither"]):::neither
+    HasRef --&gt;|Yes| Ref(["✅ REF"]):::ref
+    HasRef --&gt;|No| Neither(["⧯ Neither"]):::neither
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -6561,7 +6561,7 @@ Use mouse to pan and zoom
 <p><strong>Haplotype fallback</strong> — When no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found and the read doesn't cover the anchor, falls back to <code>check_complex</code> for haplotype-based comparison.</p>
 </li>
 </ol>
-<h4 id="reference-allele-classification-part-a-u2014-cigar-based-strict-reciprocal-overlap-detection">Part A \u2014 <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict + Reciprocal-Overlap Detection<a class="headerlink" href="#reference-allele-classification-part-a-u2014-cigar-based-strict-reciprocal-overlap-detection" title="Permanent link">¶</a></h4>
+<h4 id="reference-allele-classification-part-a-cigar-based-strict-reciprocal-overlap-detection">Part A — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict + Reciprocal-Overlap Detection<a class="headerlink" href="#reference-allele-classification-part-a-cigar-based-strict-reciprocal-overlap-detection" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -6584,18 +6584,18 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    Start(["\ud83e\uddec Deletion Check"]):::start --&gt; Walk["Walk CIGAR \u2192 left to right"]
+    Start(["🧬 Deletion Check"]):::start --&gt; Walk["Walk CIGAR → left to right"]
     Walk --&gt; MatchBlk{"Match block contains anchor?"}
-    MatchBlk --&gt;|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk --&gt;|No| WinCheck(["→ Windowed Scan"]):::next
     MatchBlk --&gt;|Yes| AtEnd{"Anchor at block end?"}
     AtEnd --&gt;|No| RefCov["Mark ref coverage"]
     AtEnd --&gt;|Yes| NextDel{"Next op = Del?"}
     NextDel --&gt;|No| RefCov
     NextDel --&gt;|Yes| LenMatch{"Length matches exactly?"}
-    LenMatch --&gt;|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
-    LenMatch --&gt;|No| Recip{"\u226550bp AND\noverlap \u226550%?"}
-    Recip --&gt;|Yes| TolAlt(["\ud83d\udd34 ALT \u2014 tolerant SV"]):::alt
-    Recip --&gt;|No| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    LenMatch --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
+    LenMatch --&gt;|No| Recip{"≥50bp AND\noverlap ≥50%?"}
+    Recip --&gt;|Yes| TolAlt(["🔴 ALT — tolerant SV"]):::alt
+    Recip --&gt;|No| CPX(["🔄 check_complex"]):::fallback
     RefCov --&gt; WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
@@ -6607,7 +6607,7 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
-<h4 id="reference-allele-classification-part-b-u2014-windowed-scan-s1s2s3-safeguards_1">Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#reference-allele-classification-part-b-u2014-windowed-scan-s1s2s3-safeguards_1" title="Permanent link">¶</a></h4>
+<h4 id="reference-allele-classification-part-b-windowed-scan-s1s2s3-safeguards_1">Part B — Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#reference-allele-classification-part-b-windowed-scan-s1s2s3-safeguards_1" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -6630,21 +6630,21 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    WinIn(["\u2192 from CIGAR walk"]):::entry --&gt; CheckWin{"Del within \u00b15bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Del within ±5bp window?"}
     CheckWin --&gt;|No| Continue["Continue walk"]
     CheckWin --&gt;|Yes| S1{"S1: Length check"}
     S1 --&gt;|"Exact match"| S3{"S3: Ref bases match?"}
-    S1 --&gt;|"\u226550bp + overlap \u226550%"| S2Track["S2: Track closest (SV)"]  
+    S1 --&gt;|"≥50bp + overlap ≥50%"| S2Track["S2: Track closest (SV)"]  
     S1 --&gt;|"No match"| Continue
     S3 --&gt;|Yes| S2["S2: Track closest"]
-    S3 --&gt;|"No, del_len \u2265 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 --&gt;|"No, del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
     S3 --&gt;|"No, del_len &lt; 5"| Continue
     S2Track --&gt; Continue
     S2 --&gt; Continue
     FlagP3 --&gt; Continue
     Continue --&gt; MoreOps{"More ops?"}
     MoreOps --&gt;|Yes| CheckWin
-    MoreOps --&gt;|No| Eval(["\u2192 Evaluation"]):::next
+    MoreOps --&gt;|No| Eval(["→ Evaluation"]):::next
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
@@ -6654,7 +6654,7 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
-<h4 id="reference-allele-classification-part-c-u2014-evaluation-interior-ref-guard">Part C \u2014 Evaluation + Interior REF Guard<a class="headerlink" href="#reference-allele-classification-part-c-u2014-evaluation-interior-ref-guard" title="Permanent link">¶</a></h4>
+<h4 id="reference-allele-classification-part-c-evaluation-interior-ref-guard">Part C — Evaluation + Interior REF Guard<a class="headerlink" href="#reference-allele-classification-part-c-evaluation-interior-ref-guard" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -6677,14 +6677,14 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    EvalIn(["\u2192 from windowed scan"]):::entry --&gt; Win{"Windowed match found?"}
-    Win --&gt;|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    EvalIn(["→ from windowed scan"]):::entry --&gt; Win{"Windowed match found?"}
+    Win --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Win --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check --&gt;|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
-    P3Check --&gt;|No| Interior{"Interior read?\n(\u226750bp del, read starts inside span)"}
-    Interior --&gt;|Yes| IntRef(["\u2705 REF \u2014 interior guard"]):::ref
+    P3Check --&gt;|Yes| CPX(["🔄 check_complex"]):::fallback
+    P3Check --&gt;|No| Interior{"Interior read?\n(≧50bp del, read starts inside span)"}
+    Interior --&gt;|Yes| IntRef(["✅ REF — interior guard"]):::ref
     Interior --&gt;|No| HasRef{"Anchor covered?"}
-    HasRef --&gt;|Yes| Ref(["\u2705 REF"]):::ref
+    HasRef --&gt;|Yes| Ref(["✅ REF"]):::ref
     HasRef --&gt;|No| CPX
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
@@ -7415,14 +7415,14 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    Class(["\ud83e\uddec Classification"]):::start
+    Class(["🧬 Classification"]):::start
 
-    subgraph ReadLevel ["\ud83d\udcd6 Read-Level Path"]
+    subgraph ReadLevel ["📖 Read-Level Path"]
         direction LR
         RL1["Read Counts\nDP / RD / AD"] --&gt; SB["Strand Bias\n(Fisher's test)"]
     end
 
-    subgraph FragLevel ["\ud83d\udd17 Fragment-Level Path"]
+    subgraph FragLevel ["🔗 Fragment-Level Path"]
         direction LR
         FL1["Fragment Tracking\n(QNAME hash)"] --&gt; FL2["Quality Consensus\n(R1 vs R2 resolve)"] --&gt; FL3["Fragment Counts\nDPF / RDF / ADF"] --&gt; FSB["Fragment Strand Bias\n(Fisher's test)"]
     end

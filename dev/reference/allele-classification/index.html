@@ -515,10 +515,10 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-b-u2014-windowed-scan-s1s2s3-safeguards">
+<a class="md-nav__link" href="#part-b-windowed-scan-s1s2s3-safeguards">
 <span class="md-ellipsis">
       
-        Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards
+        Part B — Windowed Scan + S1/S2/S3 Safeguards
       
     </span>
 </a>
@@ -568,28 +568,28 @@
 <nav aria-label="Algorithm" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-a-u2014-cigar-based-strict-reciprocal-overlap-detection">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-reciprocal-overlap-detection">
 <span class="md-ellipsis">
       
-        Part A \u2014 CIGAR-Based Strict + Reciprocal-Overlap Detection
+        Part A — CIGAR-Based Strict + Reciprocal-Overlap Detection
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-b-u2014-windowed-scan-s1s2s3-safeguards_1">
+<a class="md-nav__link" href="#part-b-windowed-scan-s1s2s3-safeguards_1">
 <span class="md-ellipsis">
       
-        Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards
+        Part B — Windowed Scan + S1/S2/S3 Safeguards
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-c-u2014-evaluation-interior-ref-guard">
+<a class="md-nav__link" href="#part-c-evaluation-interior-ref-guard">
 <span class="md-ellipsis">
       
-        Part C \u2014 Evaluation + Interior REF Guard
+        Part C — Evaluation + Interior REF Guard
       
     </span>
 </a>
@@ -1076,10 +1076,10 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-b-u2014-windowed-scan-s1s2s3-safeguards">
+<a class="md-nav__link" href="#part-b-windowed-scan-s1s2s3-safeguards">
 <span class="md-ellipsis">
       
-        Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards
+        Part B — Windowed Scan + S1/S2/S3 Safeguards
       
     </span>
 </a>
@@ -1129,28 +1129,28 @@
 <nav aria-label="Algorithm" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-a-u2014-cigar-based-strict-reciprocal-overlap-detection">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-reciprocal-overlap-detection">
 <span class="md-ellipsis">
       
-        Part A \u2014 CIGAR-Based Strict + Reciprocal-Overlap Detection
+        Part A — CIGAR-Based Strict + Reciprocal-Overlap Detection
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-b-u2014-windowed-scan-s1s2s3-safeguards_1">
+<a class="md-nav__link" href="#part-b-windowed-scan-s1s2s3-safeguards_1">
 <span class="md-ellipsis">
       
-        Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards
+        Part B — Windowed Scan + S1/S2/S3 Safeguards
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-c-u2014-evaluation-interior-ref-guard">
+<a class="md-nav__link" href="#part-c-evaluation-interior-ref-guard">
 <span class="md-ellipsis">
       
-        Part C \u2014 Evaluation + Interior REF Guard
+        Part C — Evaluation + Interior REF Guard
       
     </span>
 </a>
@@ -1603,19 +1603,19 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart LR
-    Start(["\ud83e\uddec Insertion Check"]):::start --&gt; Walk["Walk CIGAR \u2192 left to right"]
+    Start(["🧬 Insertion Check"]):::start --&gt; Walk["Walk CIGAR → left to right"]
     Walk --&gt; MatchBlk{"Match block contains anchor?"}
-    MatchBlk --&gt;|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk --&gt;|No| WinCheck(["→ Windowed Scan"]):::next
     MatchBlk --&gt;|Yes| Bwd{"Anchor at block start\nAND prev op = Ins?"}
     Bwd --&gt;|Yes| BwdMatch{"Length + seq match?\n(quality-masked)"}
-    BwdMatch --&gt;|Yes| BWAlt(["\ud83d\udd34 ALT \u2014 backward"]):::alt
+    BwdMatch --&gt;|Yes| BWAlt(["🔴 ALT — backward"]):::alt
     BwdMatch --&gt;|No| Fwd
     Bwd --&gt;|No| Fwd{"Anchor at block end?"}
     Fwd --&gt;|No| RefCov["Mark ref coverage"]
     Fwd --&gt;|Yes| Next{"Next op = Ins?"}
     Next --&gt;|No| RefCov
     Next --&gt;|Yes| StrictMatch{"Length + seq match?\n(quality-masked)"}
-    StrictMatch --&gt;|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
+    StrictMatch --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
     StrictMatch --&gt;|No| RefCov
     RefCov --&gt; WinCheck
 
@@ -1627,7 +1627,7 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
-<h4 id="part-b-u2014-windowed-scan-s1s2s3-safeguards">Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#part-b-u2014-windowed-scan-s1s2s3-safeguards" title="Permanent link">¶</a></h4>
+<h4 id="part-b-windowed-scan-s1s2s3-safeguards">Part B — Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#part-b-windowed-scan-s1s2s3-safeguards" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1649,7 +1649,7 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    WinIn(["\u2192 from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within \u00b15bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within ±5bp window?"}
     CheckWin --&gt;|No| Continue["Continue CIGAR walk"]
     CheckWin --&gt;|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
     S1 --&gt;|Yes| S3{"S3: Anchor base\nmatches ref?"}
@@ -1663,12 +1663,12 @@ Use mouse to pan and zoom
     Continue --&gt; MoreOps{"More CIGAR ops?"}
     MoreOps --&gt;|Yes| CheckWin
     MoreOps --&gt;|No| Eval{"Windowed candidate found?"}
-    Eval --&gt;|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    Eval --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Eval --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check --&gt;|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    P3Check --&gt;|Yes| CPX(["🔄 check_complex"]):::fallback
     P3Check --&gt;|No| HasRef{"Read covered anchor?"}
-    HasRef --&gt;|Yes| Ref(["\u2705 REF"]):::ref
-    HasRef --&gt;|No| Neither(["\u29ef Neither"]):::neither
+    HasRef --&gt;|Yes| Ref(["✅ REF"]):::ref
+    HasRef --&gt;|No| Neither(["⧯ Neither"]):::neither
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -1788,7 +1788,7 @@ Use mouse to pan and zoom
 <p><strong>Haplotype fallback</strong> — When no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found and the read doesn't cover the anchor, falls back to <code>check_complex</code> for haplotype-based comparison.</p>
 </li>
 </ol>
-<h4 id="part-a-u2014-cigar-based-strict-reciprocal-overlap-detection">Part A \u2014 <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict + Reciprocal-Overlap Detection<a class="headerlink" href="#part-a-u2014-cigar-based-strict-reciprocal-overlap-detection" title="Permanent link">¶</a></h4>
+<h4 id="part-a-cigar-based-strict-reciprocal-overlap-detection">Part A — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict + Reciprocal-Overlap Detection<a class="headerlink" href="#part-a-cigar-based-strict-reciprocal-overlap-detection" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1810,18 +1810,18 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart LR
-    Start(["\ud83e\uddec Deletion Check"]):::start --&gt; Walk["Walk CIGAR \u2192 left to right"]
+    Start(["🧬 Deletion Check"]):::start --&gt; Walk["Walk CIGAR → left to right"]
     Walk --&gt; MatchBlk{"Match block contains anchor?"}
-    MatchBlk --&gt;|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk --&gt;|No| WinCheck(["→ Windowed Scan"]):::next
     MatchBlk --&gt;|Yes| AtEnd{"Anchor at block end?"}
     AtEnd --&gt;|No| RefCov["Mark ref coverage"]
     AtEnd --&gt;|Yes| NextDel{"Next op = Del?"}
     NextDel --&gt;|No| RefCov
     NextDel --&gt;|Yes| LenMatch{"Length matches exactly?"}
-    LenMatch --&gt;|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
-    LenMatch --&gt;|No| Recip{"\u226550bp AND\noverlap \u226550%?"}
-    Recip --&gt;|Yes| TolAlt(["\ud83d\udd34 ALT \u2014 tolerant SV"]):::alt
-    Recip --&gt;|No| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    LenMatch --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
+    LenMatch --&gt;|No| Recip{"≥50bp AND\noverlap ≥50%?"}
+    Recip --&gt;|Yes| TolAlt(["🔴 ALT — tolerant SV"]):::alt
+    Recip --&gt;|No| CPX(["🔄 check_complex"]):::fallback
     RefCov --&gt; WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
@@ -1833,7 +1833,7 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
-<h4 id="part-b-u2014-windowed-scan-s1s2s3-safeguards_1">Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#part-b-u2014-windowed-scan-s1s2s3-safeguards_1" title="Permanent link">¶</a></h4>
+<h4 id="part-b-windowed-scan-s1s2s3-safeguards_1">Part B — Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#part-b-windowed-scan-s1s2s3-safeguards_1" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1855,21 +1855,21 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    WinIn(["\u2192 from CIGAR walk"]):::entry --&gt; CheckWin{"Del within \u00b15bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Del within ±5bp window?"}
     CheckWin --&gt;|No| Continue["Continue walk"]
     CheckWin --&gt;|Yes| S1{"S1: Length check"}
     S1 --&gt;|"Exact match"| S3{"S3: Ref bases match?"}
-    S1 --&gt;|"\u226550bp + overlap \u226550%"| S2Track["S2: Track closest (SV)"]  
+    S1 --&gt;|"≥50bp + overlap ≥50%"| S2Track["S2: Track closest (SV)"]  
     S1 --&gt;|"No match"| Continue
     S3 --&gt;|Yes| S2["S2: Track closest"]
-    S3 --&gt;|"No, del_len \u2265 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 --&gt;|"No, del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
     S3 --&gt;|"No, del_len &lt; 5"| Continue
     S2Track --&gt; Continue
     S2 --&gt; Continue
     FlagP3 --&gt; Continue
     Continue --&gt; MoreOps{"More ops?"}
     MoreOps --&gt;|Yes| CheckWin
-    MoreOps --&gt;|No| Eval(["\u2192 Evaluation"]):::next
+    MoreOps --&gt;|No| Eval(["→ Evaluation"]):::next
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
@@ -1879,7 +1879,7 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
-<h4 id="part-c-u2014-evaluation-interior-ref-guard">Part C \u2014 Evaluation + Interior REF Guard<a class="headerlink" href="#part-c-u2014-evaluation-interior-ref-guard" title="Permanent link">¶</a></h4>
+<h4 id="part-c-evaluation-interior-ref-guard">Part C — Evaluation + Interior REF Guard<a class="headerlink" href="#part-c-evaluation-interior-ref-guard" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1901,14 +1901,14 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    EvalIn(["\u2192 from windowed scan"]):::entry --&gt; Win{"Windowed match found?"}
-    Win --&gt;|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    EvalIn(["→ from windowed scan"]):::entry --&gt; Win{"Windowed match found?"}
+    Win --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Win --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check --&gt;|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
-    P3Check --&gt;|No| Interior{"Interior read?\n(\u226750bp del, read starts inside span)"}
-    Interior --&gt;|Yes| IntRef(["\u2705 REF \u2014 interior guard"]):::ref
+    P3Check --&gt;|Yes| CPX(["🔄 check_complex"]):::fallback
+    P3Check --&gt;|No| Interior{"Interior read?\n(≧50bp del, read starts inside span)"}
+    Interior --&gt;|Yes| IntRef(["✅ REF — interior guard"]):::ref
     Interior --&gt;|No| HasRef{"Anchor covered?"}
-    HasRef --&gt;|Yes| Ref(["\u2705 REF"]):::ref
+    HasRef --&gt;|Yes| Ref(["✅ REF"]):::ref
     HasRef --&gt;|No| CPX
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
@@ -2601,7 +2601,7 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 04:39:34 UTC"><span class="timeago" datetime="2026-03-20T04:39:34+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 04:39:34 UTC">2026-03-20</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 04:52:42 UTC"><span class="timeago" datetime="2026-03-20T04:52:42+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 04:52:42 UTC">2026-03-20</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
