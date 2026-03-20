@@ -43,4 +43,5 @@
 *[SNP]: Single Nucleotide Polymorphism - Single base substitution
 *[CIGAR]: Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string
 *[WFA]: Wavefront Alignment - Fast exact sequence alignment algorithm
+*[BWA]: Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)
 *[PyO3]: Python-Rust interop library for building native Python modules

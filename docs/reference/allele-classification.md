@@ -16,11 +16,12 @@ flowchart LR
     Dispatch -->|"1 × 1"| SNP[check_snp]
     Dispatch -->|"N × N"| MNP[check_mnp]
     Dispatch -->|"1 × N"| INS[check_insertion]
-    Dispatch -->|"N × 1"| DEL[check_deletion]
-    Dispatch -->|"else"| CPX[check_complex]
+    Dispatch -->|"N × 1\nalt[0] == ref[0]\n(pure DEL)"| DEL[check_deletion]
+    Dispatch -->|"N × 1\nalt[0] ≠ ref[0]\n(Del+SNV)"| CPX[check_complex]
+    Dispatch -->|"else"| CPX
     MNP -.->|"inconclusive"| CPX
     INS -.->|"Phase 3 fallback"| CPX
-    DEL -.->|"fallback (CIGAR mismatch)"| CPX
+    DEL -.->|"fallback (del_len ≥ 5,\nS3 mismatch → Phase 3)"| CPX
     SNP --> Count([📊 Update Counts]):::count
     INS --> Count
     DEL --> Count
@@ -32,8 +33,15 @@ flowchart LR
     classDef count fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 ```
 
-!!! info "Allele-Length Routing"
-    Dispatch uses `ref_allele.len()` and `alt_allele.len()` to determine the variant class. This means even if upstream callers emit inconsistent type strings (e.g., `"COMPLEX"` for what is really a pure deletion after normalization), the correct checker is always selected.
+!!! info "Allele-Length and Anchor-Base Routing"
+    Dispatch uses `ref_allele.len()` and `alt_allele.len()` as the primary selector. For `N×1` variants (deletion format), it additionally checks whether the anchor base substitutes (`alt_allele[0] ≠ ref_allele[0]`):
+
+    - **Pure deletion** (`alt[0] == ref[0]`) → `check_deletion` — e.g., `AC→A` where anchor A is preserved
+    - **Complex Del+SNV** (`alt[0] ≠ ref[0]`) → `check_complex` — e.g., `GC→T` where anchor G also substitutes to T
+
+    This distinction is critical: `check_deletion`'s CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. `check_complex` handles these via Phase 3 SW haplotype alignment.
+
+    `check_deletion` also falls back to `check_complex` for large deletions (≥5bp) where S3 sequence validation fails due to BWA left-alignment shifting the anchor position (see [Deletion — Windowed Safeguards](#windowed-scan-safeguards-1)).
 
 ---
 
@@ -164,7 +172,7 @@ Three layers of validation prevent false-positive windowed matches:
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
 | **S3** | Reference base at shifted anchor matches original anchor base | Ensures the shifted position is biologically equivalent |
 
-!!! note "Phase 3 Haplotype Fallback"
+!!! note "Phase 3 Haplotype Fallback (has_nearby_length_match)"
     When the windowed scan finds an insertion that matches in **length** but not **sequence** (e.g., aligner represents the biological event with shifted bases in a repeat), the engine flags `has_nearby_length_match` and falls back to `check_complex` for **Smith-Waterman arbitration**. This ensures ambiguous cases are resolved by haplotype comparison rather than strict sequence matching.
 
 ### Visual Example
@@ -201,13 +209,21 @@ Bases deleted after an **anchor** position. Mirrors insertion but looks for `Del
 
 | Property | Value |
 |:---------|:------|
-| Detection | `len(REF) > 1 && len(ALT) == 1` |
+| Detection | `len(REF) > 1 && len(ALT) == 1` AND `alt[0] == ref[0]` (pure deletion) |
 | Position | 0-based index of the **anchor** base |
 | Quality check | Quality-masked ref-context comparison |
 
+!!! warning "Complex Del+SNV: Routed to `check_complex`"
+    When `len(REF) > 1 && len(ALT) == 1` but the anchor base **also substitutes** (`alt[0] ≠ ref[0]`), the variant is a **complex Del+SNV** and is routed directly to `check_complex` — not `check_deletion`. This handles variants such as:
+
+    - **SOX9** `GC→T`: anchor G substitutes to T, C is deleted. D(1) reads classified as ALT via Phase 3 SW.
+    - **ABL1** `AG→T`: anchor A substitutes to T, G is deleted.
+
+    `check_deletion`'s CIGAR safeguards compare anchor bases assuming the anchor is preserved. For these variants, the anchor changes — feeding them to `check_deletion` would incorrectly classify all DEL reads as REF (alt=0).
+
 ### Algorithm
 
-Same single-walk strategy as insertion, with three additional features:
+Same single-walk strategy as insertion, with four additional features:
 
 1. **Reciprocal overlap matching** — For large deletions (≥50bp), if the CIGAR shows a deletion at the anchor but with a different length, gbcms accepts it if the reciprocal overlap is ≥50% (SV-caller standard, used by SURVIVOR):
 
@@ -218,7 +234,9 @@ Same single-walk strategy as insertion, with three additional features:
 
 2. **Interior REF guard** — For large deletions (≥50bp), reads that start *inside* the deleted region are classified as REF directly, without falling back to Smith-Waterman. This prevents overcounting caused by the SW aligner's bias toward shorter ALT haplotypes.
 
-3. **Haplotype fallback** — When no CIGAR match is found and the read doesn't cover the anchor, falls back to `check_complex` for haplotype-based comparison.
+3. **Left-alignment Phase 3 fallback** — For large deletions (≥5bp) where the windowed scan finds a matching-length Del but S3 sequence validation fails (BWA left-alignment shifted the anchor further left than the CIGAR `D` position), the engine flags `has_nearby_length_match` and routes to `check_complex` for Phase 3 arbitration. Short deletions (<5bp) with failed S3 remain CIGAR-definitive REF — they are almost certainly unrelated spurious deletions, not left-alignment artifacts. See [Case 3 in the Complex Indels guide](complex-indels.md#case-3-tp53-12bp-left-alignment-shifted-deletion).
+
+4. **Haplotype fallback** — When no CIGAR match is found and the read doesn't cover the anchor, falls back to `check_complex` for haplotype-based comparison.
 
 ```mermaid
 flowchart TD
@@ -243,15 +261,19 @@ flowchart TD
     S1 -->|"≥50bp + overlap ≥50%"| S2Track[S2: Track closest]
     S1 -->|No match| Continue
     S3 -->|Yes| S2[S2: Track closest]
-    S3 -->|No| Continue
+    S3 -->|"No AND del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 -->|"No AND del_len < 5"| Continue
     S2Track --> Continue
     S2 --> Continue
+    FlagP3 --> Continue
 
     Continue --> MoreOps{More ops?}
     MoreOps -->|Yes| Walk
     MoreOps -->|No| Eval{Windowed match?}
     Eval -->|Yes| WinAlt([🔴 ALT]):::alt
-    Eval -->|No| Interior{"Interior read?<br/>(≥50bp del, read starts inside span)"}
+    Eval -->|No| P3DelCheck{"has_nearby_length_match<br/>AND ref coverage?"}
+    P3DelCheck -->|Yes| Complex2([🔄 check_complex<br/>Phase 3 SW]):::fallback
+    P3DelCheck -->|No| Interior{"Interior read?<br/>(≥50bp del, read starts inside span)"}
     Interior -->|Yes| IntRef([✅ REF - interior]):::ref
     Interior -->|No| HasRef{Anchor covered?}
     HasRef -->|Yes| Ref([✅ REF]):::ref
@@ -263,6 +285,24 @@ flowchart TD
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
+
+### Windowed Scan Safeguards {#windowed-scan-safeguards-1}
+
+Three layers of validation prevent false-positive windowed matches:
+
+| Safeguard | Check | Purpose |
+|:----------|:------|:--------|
+| **S1** | Deleted length matches expected `ref_len − 1` (or reciprocal overlap ≥50% for large dels) | Prevents matching wrong-length deletions |
+| **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
+| **S3** | Reference bases at the shifted deletion position match expected deleted sequence | Verifies the shifted Del is biologically the same event |
+| **del_len ≥ 5 guard** | Only flag `has_nearby_length_match` for Dels ≥5bp that fail S3 | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. Longer Dels can fail S3 due to BWA left-alignment shifting the anchor away from the actual CIGAR `D` position |
+
+!!! note "has_nearby_length_match Phase 3 Fallback"
+    When the windowed scan finds a deletion that matches in **length** (≥5bp) but S3 sequence validation fails (BWA left-alignment shifted the anchor further left than where the CIGAR `D` appears), the engine flags `has_nearby_length_match` and falls back to `check_complex` for Phase 3 SW haplotype arbitration.
+
+    Example: **TP53 `GACCGTGCAAGT→-` (12bp)** — left-alignment moves the anchor 3bp left of the actual `D(12)` position in reads. S3 compares the wrong reference slice and fails. Phase 3 correctly classifies these as ALT.
+
+    Short deletions (1–4bp) failing S3 use CIGAR-definitive REF: a 1bp Del in the wrong reference context is almost certainly an unrelated noise deletion, not a left-alignment artifact.
 
 !!! warning "Interior REF Guard"
     For deletions >50bp, reads that fall **entirely within** the deleted region would be incorrectly classified as ALT by Smith-Waterman (because the short ALT haplotype aligns better than the long REF haplotype). The interior REF guard catches these reads early and classifies them as REF before they reach Phase 3.
@@ -356,13 +396,20 @@ The contiguity check is performed **first** (before quality or sequence comparis
 
 ## Complex (Indel + Substitution)
 
-Variants where REF and ALT differ in both sequence **and** length. Uses a sophisticated **three-phase** algorithm with quality-aware matching and Smith-Waterman fallback.
+Variants where REF and ALT differ in both sequence **and** length. Also used for **complex Del+SNV** variants dispatched from the `N×1` path when the anchor base substitutes. Uses a sophisticated **three-phase** algorithm with quality-aware matching and Smith-Waterman fallback.
 
 | Property | Value |
 |:---------|:------|
-| Detection | Fallback for all other combinations |
+| Detection | Fallback for all other combinations; also `N×1` with `alt[0] ≠ ref[0]` |
 | Position | 0-based index of the first reference base |
 | Quality check | Masked comparison — bases below `--min-baseq` are masked |
+
+!!! note "REF Fallback for Large Deletion-Direction Variants"
+    When `check_complex` is invoked for a deletion-direction variant (`ref_len > alt_len`) and `is_worth_realignment()` returns `false` (the read has a clean M-only CIGAR with no indels in the variant window), Phase 3 SW is skipped. Instead, gbcms checks whether **any M-block covers the anchor position**. If yes, the read is classified as **REF**.
+
+    Without this fallback, REF reads for large deletions (e.g., **NF2 ~100bp DEL**) would be misclassified as 'neither' — clean REF reads naturally have no CIGAR evidence warranting realignment, so skipping Phase 3 without a REF fallback silently drops all REF counts.
+
+    See [Case 2 in the Complex Indels guide](complex-indels.md#case-2-nf2-large-deletion-ref-reads-invisible) for the full worked example.
 
 ### Three-Phase Algorithm
 

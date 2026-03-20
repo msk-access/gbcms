@@ -111,35 +111,67 @@ maturin build --release --out dist
 
 ## Regression Testing
 
-### 22-BAM Regression Suite
+### Python Integration Tests (pytest)
 
-For changes to the counting engine (`counting/engine.rs`), run the 22-BAM regression
-to verify no unintended count shifts:
+The primary test suite covers CIGAR parsing, windowed indel detection,
+SNP/MNP/insertion/deletion/complex variant classification, shifted indel handling,
+and CLI validation:
 
-1. Build the release binary:
-   ```bash
-   maturin develop --release
-   ```
+```bash
+pytest -v                                    # Full suite
+pytest tests/test_shifted_indels.py -v      # Windowed + shifted indel-specific
+pytest tests/test_variant_checks.py -v      # Core allele-classification
+```
 
-2. Run the regression script:
-   ```bash
-   python /tmp/run_regression_22.py
-   ```
+### Rust Unit Tests (cargo test)
 
-3. Review the comparison output. Key metrics:
-   - **ALT count diff distribution**: most variants should be within ±2
-   - **C++ higher**: investigate any new variants where C++ ALT > gbcms
-   - **gbcms higher**: expected for windowed indel detection improvements
+Normalization engine tests — left-alignment, repeat detection, adaptive padding,
+homopolymer decomposition:
 
-### Variant-Type-Specific BAM Slices
+```bash
+cd rust && cargo test
+```
 
-When debugging specific variant types, create targeted BAM slices:
+### BAM Slice Regression Suite
 
-| Variant Type | Key Samples | What to Check |
-|:-------------|:------------|:--------------|
-| MNP/DNP | TERT (5bp), BRCA2 (2bp), TP53 (4bp) | ALT recovery vs C++ |
-| Indel | JAK1, ZFHX3 (shifted insertions) | Multi-allelic isolation |
-| Complex | EPHA7, KDM6A (DelIns) | Phase 3 classification |
+For changes to counting logic (`counting/engine.rs`, `counting/variant_checks.rs`),
+run against the BAM slice test set (54 BAM slices × 2 MAFs — see `~/Downloads/bam_slice_v2_8_0/`):
+
+```bash
+# Rebuild first
+pip install -e . --no-build-isolation
+
+# Run on indels MAF
+gbcms dna \
+    --variants filtered_indels_io.maf \
+    --bam-list bam_list.txt \
+    --fasta ref.fa \
+    --format maf \
+    --output-dir /tmp/regression_out/
+
+# Diff against baseline
+python scripts/concordance.py /tmp/regression_baseline/ /tmp/regression_out/
+```
+
+Key invariants to check:
+
+| Check | Expected |
+|:------|:---------|
+| `ref_count + alt_count ≤ total_count` | Must hold for every row (INVARIANT) |
+| Δalt for own-sample covered variants | 0 vs sign-out `t_alt` (except known MAF annotation issues) |
+| Non-own-sample ref_count changes | ≤1 count (non-determinism from parallel windowed scan) |
+
+### Variant-Type-Specific Investigation
+
+When debugging specific variant types, use targeted BAM slices:
+
+| Variant Type | Key Examples | What to Check |
+|:-------------|:-------------|:--------------|
+| Del+SNV (complex) | SOX9 `GC→T`, ABL1 `AG→T` | Routes to `check_complex`, not `check_deletion`; alt > 0 |
+| Large deletion, REF=0 | NF2 ~100bp DEL | M-block REF fallback in `check_complex`; ref > 0 |
+| Shifted large deletion | TP53 `GACCGTGCAAGT→-` | `has_nearby_length_match` Phase 3; alt matches sign-out |
+| MNP/DNP | TERT (5bp), BRCA2 (2bp) | ALT recovery vs sign-out |
+| Shifted insertion | JAK1 `65306997` | Multi-allelic isolation, windowed INS scan |
 
 ---
 
@@ -205,15 +237,35 @@ gitGraph
 
 ---
 
-## Quality Checklist
+## Pre-Commit Checklist
 
-Before committing:
+Before committing, verify all checks pass:
 
-- [ ] `make lint` passes
-- [ ] `pytest` passes
-- [ ] Type hints complete
-- [ ] Docstrings added
-- [ ] No dead code
+- [ ] `ruff check src/ tests/` — Python linting
+- [ ] `black --check src/ tests/` — Python formatting
+- [ ] `mypy src/` — Type checking (no errors)
+- [ ] `cd rust && cargo clippy --all-targets -- -D warnings` — Rust linting (strict, warnings-as-errors)
+- [ ] `cd rust && cargo test` — Rust unit tests
+- [ ] `pytest -v` — Python/integration tests
+- [ ] Type hints complete on all new public functions
+- [ ] Docstrings added (Google style for Python; `///` on public Rust items)
+- [ ] No dead code (removed, not commented out)
+- [ ] No silent failures: missing inputs must fail-fast or require explicit opt-out
+
+To run all Python checks in one pass:
+
+```bash
+ruff check src/ tests/ && \
+black --check src/ tests/ && \
+mypy src/ && \
+pytest -v
+```
+
+To run all Rust checks:
+
+```bash
+cd rust && cargo clippy --all-targets -- -D warnings && cargo test
+```
 
 ---
 
