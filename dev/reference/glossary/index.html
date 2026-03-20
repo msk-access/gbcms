@@ -12,7 +12,7 @@
         <link rel="canonical" href="https://msk-access.github.io/gbcms/dev/reference/glossary/">
       
       
-        <link rel="prev" href="../counting-metrics/">
+        <link rel="prev" href="../complex-indels/">
       
       
         <link rel="next" href="../../development/developer-guide/">
@@ -22,7 +22,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -799,6 +799,8 @@
       
         
       
+        
+      
     
     
     
@@ -999,6 +1001,34 @@
     
   
     Counting &amp; Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../complex-indels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complex Indels
   
 
     
@@ -1999,12 +2029,29 @@
 <td style="text-align: left;"><strong>Parity test</strong></td>
 <td style="text-align: left;">Test verifying <code>count_bam</code> and <code>count_bam_binned</code> produce identical results</td>
 </tr>
+<tr>
+<td style="text-align: left;"><strong>Complex Del+SNV</strong></td>
+<td style="text-align: left;">A deletion-format variant (<code>len(REF) &gt; len(ALT) == 1</code>) where the anchor base also substitutes (<code>alt[0] ≠ ref[0]</code>). Examples: <code>GC→T</code>, <code>AG→T</code>. Routed to <code>check_complex</code> instead of <code>check_deletion</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>has_nearby_length_match</strong></td>
+<td style="text-align: left;">Flag set in <code>check_deletion</code> when a windowed Del matches in length (≥5bp) but fails S3 sequence validation. Triggers Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback to handle <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifts.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>left-alignment shift</strong></td>
+<td style="text-align: left;"><abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> repositions an indel's anchor to the leftmost equivalent position. For partial-repeat regions, this places the anchor several bases left of where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> operation appears in reads.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>is_worth_realignment</strong></td>
+<td style="text-align: left;">Predicate in <code>check_complex</code> returning <code>true</code> when a read's <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> contains indel evidence in the variant window. If <code>false</code>, M-block anchor coverage check classifies clean REF reads for deletion-direction variants.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">¶</a></h2>
 <ul>
 <li><a href="../architecture/">Architecture</a> — System design</li>
 <li><a href="../input-formats/">Input Formats</a> — File specifications</li>
+<li><a href="../complex-indels/">Complex Indels</a> — Real-world case studies (Del+SNV, large DEL, shifted deletion)</li>
 <li><a href="../../cli/rna/">RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a> — RNA-specific options</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
@@ -2032,7 +2079,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 18, 2026 22:10:23 UTC"><span class="timeago" datetime="2026-03-18T22:10:23+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 18, 2026 22:10:23 UTC">2026-03-18</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 03:12:42 UTC"><span class="timeago" datetime="2026-03-20T03:12:42+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 03:12:42 UTC">2026-03-20</span>
   </span>
 
     

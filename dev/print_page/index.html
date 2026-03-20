@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -791,6 +791,8 @@
       
         
       
+        
+      
     
     
     
@@ -993,6 +995,34 @@
     
   
     Counting & Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/complex-indels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complex Indels
   
 
     
@@ -1428,7 +1458,7 @@
   <a href="#getting-started" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        Choose Your Mode
       
     </span>
   </a>
@@ -1656,6 +1686,17 @@
     <span class="md-ellipsis">
       
         Counting & Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reference-complex-indels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complex Indels
       
     </span>
   </a>
@@ -2123,23 +2164,133 @@ Use mouse to pan and zoom
             remove_material_navigation();remove_mkdocs_theme_navigation();
         })
         </script>
-        </head><body><div><h1 id="getting-started">Getting Started<a class="headerlink" href="#getting-started-getting-started" title="Permanent link">¶</a></h1>
-<p>Welcome to gbcms! This section will help you get up and running quickly.</p>
-<h2 id="getting-started-what-youll-learn">What You'll Learn<a class="headerlink" href="#getting-started-what-youll-learn" title="Permanent link">¶</a></h2>
+        </head><body><div><h1 id="choose-your-mode">Choose Your Mode<a class="headerlink" href="#getting-started-choose-your-mode" title="Permanent link">¶</a></h1>
+<p>gbcms supports two sequencing contexts. Pick the one that matches your data — the rest of the setup follows from there.</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>flowchart TD
+    Start{What sequencing data?}
+    Start --&gt;|"DNA / cfDNA / WGS / WES / Panel"| DNA([gbcms dna]):::dna
+    Start --&gt;|"RNA-seq (STAR-aligned)"| RNA([gbcms rna]):::rna
+
+    classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef rna fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="" id="getting-started-__tabbed_1_1" name="getting-started-__tabbed_1" type="radio"><input id="getting-started-__tabbed_1_2" name="getting-started-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="getting-started-__tabbed_1_1">gbcms dna — DNA / <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></label><label for="getting-started-__tabbed_1_2">gbcms rna — RNA-seq</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p><strong>Use for:</strong> <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> (MSK-ACCESS, IMPACT), WGS, WES, targeted gene panels</p>
+<p><strong>Key capabilities:</strong></p>
 <ul>
-<li><strong><a href="#getting-started-installation">Installation</a></strong> — Install via PyPI, Docker, or from source</li>
-<li><strong><a href="#getting-started-quickstart">Quick Start</a></strong> — Run your first variant counting job</li>
+<li>Windowed indel detection with 3-layer safeguards (±5bp, adaptively extended in repeats)</li>
+<li>Mutant Fragment Size Distribution (<code>--mfsd</code>) for short-fragment enrichment analysis</li>
+<li><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>-aware fragment deduplication (<code>--umi-tag</code>)</li>
+<li>Multi-allelic sibling exclusion to prevent REF inflation at complex loci</li>
 </ul>
+<p><strong>Defaults:</strong> <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20 · base quality 20 · duplicates filtered · <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> standard gap penalties</p>
+<p>→ <a href="#getting-started-quickstart">Quick Start</a> | <a href="#cli-dna">Full <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></p>
+</div>
+<div class="tabbed-block">
+<p><strong>Use for:</strong> <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aligned RNA-seq (<abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> stranded or unstranded)</p>
+<p><strong>Key capabilities:</strong></p>
+<ul>
+<li><abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> rescue for novel splice junction reads</li>
+<li><abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strandedness filtering (disable with <code>--no-strandedness</code> for unstranded libraries)</li>
+<li>A-to-I RNA editing site flagging via REDIportal (<code>--rna-editing-db</code>)</li>
+<li>Splice junction tracking (<code>rna_splice_spanning_count</code>)</li>
+</ul>
+<p><strong>Defaults:</strong> <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 1 · base quality 20 · secondary/supplementary/QC-failed reads filtered · <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> relaxed <abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr> gap penalties</p>
+<p>→ <a href="#getting-started-quickstart-rna-seq">Quick Start</a> | <a href="#cli-rna">Full <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></p>
+</div>
+</div>
+</div>
+<hr>
 <h2 id="getting-started-prerequisites">Prerequisites<a class="headerlink" href="#getting-started-prerequisites" title="Permanent link">¶</a></h2>
-<ul>
-<li>Python 3.10+</li>
-<li><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file(s) with index (.bai)</li>
-<li>Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> with index (.fai)</li>
-<li><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> or <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> file with variant positions</li>
-</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Requirement</th>
+<th style="text-align: center;">DNA</th>
+<th style="text-align: center;">RNA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Python 3.10+</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file with <code>.bai</code> index</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> with <code>.fai</code> index</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> or <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with variant positions</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aligned <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> (<abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr> tag)</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td style="text-align: left;">Gene strand annotation in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (<code>gene_strand</code> column)</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">Recommended</td>
+</tr>
+<tr>
+<td style="text-align: left;">REDIportal TABLE1 file</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">Optional</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Index</p>
+<p>If your <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> lacks an index: <code>samtools index sample.bam</code></p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title"><abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> Index</p>
+<p>If your <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> lacks an index: <code>samtools faidx reference.fa</code></p>
+</div>
+<hr>
 <h2 id="getting-started-next-steps">Next Steps<a class="headerlink" href="#getting-started-next-steps" title="Permanent link">¶</a></h2>
-<p>Once installed, try the <a href="#getting-started-quickstart">Quick Start</a> guide to run your first job.</p>
-<p>For processing many samples in parallel, see the <a href="#nextflow">Nextflow Pipeline</a>.</p>
+<ol>
+<li><strong><a href="#getting-started-installation">Installation</a></strong> — Install via PyPI, Docker, or from source</li>
+<li><strong><a href="#getting-started-quickstart">Quick Start</a></strong> — Run your first counting job (DNA and RNA examples)</li>
+<li><strong><a href="#cli-dna"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></strong> — Full option reference for <code>gbcms dna</code></li>
+<li><strong><a href="#nextflow">Nextflow Pipeline</a></strong> — For processing many samples in parallel on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr></li>
+</ol>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
 <p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="getting-started-installation" heading-number="2.2"><html><head>
@@ -2312,14 +2463,16 @@ provides these dependencies.</p>
             remove_material_navigation();remove_mkdocs_theme_navigation();
         })
         </script>
-        </head><body><div><h1 id="cli-quick-start"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Quick Start<a class="headerlink" href="#getting-started-quickstart-cli-quick-start" title="Permanent link">¶</a></h1>
-<p>Process variants with the standalone <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>.</p>
+        </head><body><div><h1 id="rna-seq">Quick Start<a class="headerlink" href="#getting-started-quickstart-rna-seq" title="Permanent link">¶</a></h1>
+<p>Get up and running in minutes. All examples below assume gbcms is <a href="#getting-started-installation">installed</a>.</p>
 <blockquote>
 <p><strong>Many samples on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>?</strong> Use <a href="#nextflow">Nextflow</a> instead.</p>
 </blockquote>
 <hr>
 <h2 id="getting-started-quickstart-basic-usage">Basic Usage<a class="headerlink" href="#getting-started-quickstart-basic-usage" title="Permanent link">¶</a></h2>
-<h3 id="getting-started-quickstart-dna-cfdna">DNA / <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr><a class="headerlink" href="#getting-started-quickstart-dna-cfdna" title="Permanent link">¶</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="" id="getting-started-quickstart-__tabbed_1_1" name="getting-started-quickstart-__tabbed_1" type="radio"><input id="getting-started-quickstart-__tabbed_1_2" name="getting-started-quickstart-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="getting-started-quickstart-__tabbed_1_1">DNA / <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></label><label for="getting-started-quickstart-__tabbed_1_2">RNA-seq</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#getting-started-quickstart-__codelineno-0-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#getting-started-quickstart-__codelineno-0-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#getting-started-quickstart-__codelineno-0-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
@@ -2327,113 +2480,173 @@ provides these dependencies.</p>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#getting-started-quickstart-__codelineno-0-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <p><strong>Output:</strong> <code>results/sample.vcf</code></p>
-<h3 id="getting-started-quickstart-rna-seq">RNA-seq<a class="headerlink" href="#getting-started-quickstart-rna-seq" title="Permanent link">¶</a></h3>
+</div>
+<div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#getting-started-quickstart-__codelineno-1-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#getting-started-quickstart-__codelineno-1-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#getting-started-quickstart-__codelineno-1-3"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:star_aligned.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#getting-started-quickstart-__codelineno-1-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#getting-started-quickstart-__codelineno-1-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
-<p><strong>Output:</strong> <code>results/rna_sample.vcf</code> (with RNA-specific columns)</p>
+<p><strong>Output:</strong> <code>results/rna_sample.vcf</code> (with 5 RNA-specific columns)</p>
+</div>
+</div>
+</div>
 <hr>
-<h2 id="getting-started-quickstart-common-options">Common Options<a class="headerlink" href="#getting-started-quickstart-common-options" title="Permanent link">¶</a></h2>
-<h3 id="getting-started-quickstart-output-format">Output Format<a class="headerlink" href="#getting-started-quickstart-output-format" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#getting-started-quickstart-__codelineno-2-1"></a><span class="c1"># VCF output (default)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#getting-started-quickstart-__codelineno-2-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>-v<span class="w"> </span>variants.vcf<span class="w"> </span>-b<span class="w"> </span>sample.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>out/<span class="w"> </span>--format<span class="w"> </span>vcf
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#getting-started-quickstart-__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#getting-started-quickstart-__codelineno-2-4"></a><span class="c1"># MAF output</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#getting-started-quickstart-__codelineno-2-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>-v<span class="w"> </span>variants.maf<span class="w"> </span>-b<span class="w"> </span>sample.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>out/<span class="w"> </span>--format<span class="w"> </span>maf
-</code></pre></div>
-<h3 id="getting-started-quickstart-multiple-samples">Multiple Samples<a class="headerlink" href="#getting-started-quickstart-multiple-samples" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#getting-started-quickstart-__codelineno-3-1"></a><span class="c1"># Using BAM list file</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#getting-started-quickstart-__codelineno-3-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"sample1 /path/to/sample1.bam"</span><span class="w"> </span>&gt;<span class="w"> </span>bam_list.txt
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#getting-started-quickstart-__codelineno-3-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"sample2 /path/to/sample2.bam"</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>bam_list.txt
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#getting-started-quickstart-__codelineno-3-4"></a>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#getting-started-quickstart-__codelineno-3-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#getting-started-quickstart-__codelineno-3-6"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#getting-started-quickstart-__codelineno-3-7"></a><span class="w">    </span>--bam-list<span class="w"> </span>bam_list.txt<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#getting-started-quickstart-__codelineno-3-8"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#getting-started-quickstart-__codelineno-3-9"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
-</code></pre></div>
-<h3 id="getting-started-quickstart-custom-sample-id">Custom Sample ID<a class="headerlink" href="#getting-started-quickstart-custom-sample-id" title="Permanent link">¶</a></h3>
-<p></p><div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#getting-started-quickstart-__codelineno-4-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#getting-started-quickstart-__codelineno-4-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#getting-started-quickstart-__codelineno-4-3"></a><span class="w">    </span>--bam<span class="w"> </span>MySample:sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#getting-started-quickstart-__codelineno-4-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#getting-started-quickstart-__codelineno-4-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
-</code></pre></div>
-<strong>Output:</strong> <code>results/MySample.vcf</code>
-<h3 id="getting-started-quickstart-quality-filters">Quality Filters<a class="headerlink" href="#getting-started-quickstart-quality-filters" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#getting-started-quickstart-__codelineno-5-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#getting-started-quickstart-__codelineno-5-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#getting-started-quickstart-__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#getting-started-quickstart-__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#getting-started-quickstart-__codelineno-5-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#getting-started-quickstart-__codelineno-5-6"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#getting-started-quickstart-__codelineno-5-7"></a><span class="w">    </span>--min-baseq<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#getting-started-quickstart-__codelineno-5-8"></a><span class="w">    </span>--filter-duplicates<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#getting-started-quickstart-__codelineno-5-9"></a><span class="w">    </span>--filter-secondary
-</code></pre></div>
-<h3 id="getting-started-quickstart-threading">Threading<a class="headerlink" href="#getting-started-quickstart-threading" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#getting-started-quickstart-__codelineno-6-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>...<span class="w"> </span>--threads<span class="w"> </span><span class="m">8</span>
-</code></pre></div>
-<hr>
-<h2 id="getting-started-quickstart-complete-example">Complete Example<a class="headerlink" href="#getting-started-quickstart-complete-example" title="Permanent link">¶</a></h2>
-<h3 id="getting-started-quickstart-dna">DNA<a class="headerlink" href="#getting-started-quickstart-dna" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#getting-started-quickstart-__codelineno-7-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#getting-started-quickstart-__codelineno-7-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#getting-started-quickstart-__codelineno-7-3"></a><span class="w">    </span>--bam<span class="w"> </span>TumorSample:tumor.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#getting-started-quickstart-__codelineno-7-4"></a><span class="w">    </span>--fasta<span class="w"> </span>hg38.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#getting-started-quickstart-__codelineno-7-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>genotyped/<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#getting-started-quickstart-__codelineno-7-6"></a><span class="w">    </span>--format<span class="w"> </span>vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#getting-started-quickstart-__codelineno-7-7"></a><span class="w">    </span>--suffix<span class="w"> </span>.genotyped<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#getting-started-quickstart-__codelineno-7-8"></a><span class="w">    </span>--threads<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#getting-started-quickstart-__codelineno-7-9"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#getting-started-quickstart-__codelineno-7-10"></a><span class="w">    </span>--min-baseq<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#getting-started-quickstart-__codelineno-7-11"></a><span class="w">    </span>--filter-duplicates<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-12" name="__codelineno-7-12" href="#getting-started-quickstart-__codelineno-7-12"></a><span class="w">    </span>--filter-secondary<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-13" name="__codelineno-7-13" href="#getting-started-quickstart-__codelineno-7-13"></a><span class="w">    </span>--filter-supplementary
-</code></pre></div>
-<p><strong>Output:</strong> <code>genotyped/TumorSample.genotyped.vcf</code></p>
-<h3 id="getting-started-quickstart-rna-with-editing-database">RNA with Editing Database<a class="headerlink" href="#getting-started-quickstart-rna-with-editing-database" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#getting-started-quickstart-__codelineno-8-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#getting-started-quickstart-__codelineno-8-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#getting-started-quickstart-__codelineno-8-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor_rna:aligned.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#getting-started-quickstart-__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>hg38.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#getting-started-quickstart-__codelineno-8-5"></a><span class="w">    </span>--rna-editing-db<span class="w"> </span>TABLE1_hg38.txt.gz<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#getting-started-quickstart-__codelineno-8-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#getting-started-quickstart-__codelineno-8-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
-</code></pre></div>
-<p><strong>Output:</strong> <code>results/tumor_rna.maf</code> (with 5 RNA-specific columns)</p>
-<hr>
-<h2 id="getting-started-quickstart-docker">Docker<a class="headerlink" href="#getting-started-quickstart-docker" title="Permanent link">¶</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="" id="getting-started-quickstart-__tabbed_1_1" name="getting-started-quickstart-__tabbed_1" type="radio"><input id="getting-started-quickstart-__tabbed_1_2" name="getting-started-quickstart-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="getting-started-quickstart-__tabbed_1_1">DNA</label><label for="getting-started-quickstart-__tabbed_1_2">RNA</label></div>
+<h2 id="getting-started-quickstart-output-format">Output Format<a class="headerlink" href="#getting-started-quickstart-output-format" title="Permanent link">¶</a></h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="" id="getting-started-quickstart-__tabbed_2_1" name="getting-started-quickstart-__tabbed_2" type="radio"><input id="getting-started-quickstart-__tabbed_2_2" name="getting-started-quickstart-__tabbed_2" type="radio"><div class="tabbed-labels"><label for="getting-started-quickstart-__tabbed_2_1">DNA / <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></label><label for="getting-started-quickstart-__tabbed_2_2">RNA-seq</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#getting-started-quickstart-__codelineno-9-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#getting-started-quickstart-__codelineno-9-2"></a><span class="w">    </span>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#getting-started-quickstart-__codelineno-9-3"></a><span class="w">    </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#getting-started-quickstart-__codelineno-9-4"></a><span class="w">    </span>--bam<span class="w"> </span>/data/sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#getting-started-quickstart-__codelineno-9-5"></a><span class="w">    </span>--fasta<span class="w"> </span>/data/reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#getting-started-quickstart-__codelineno-9-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>/data/results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#getting-started-quickstart-__codelineno-2-1"></a><span class="c1"># VCF output (default)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#getting-started-quickstart-__codelineno-2-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>-v<span class="w"> </span>variants.vcf<span class="w"> </span>-b<span class="w"> </span>sample.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>out/
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#getting-started-quickstart-__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#getting-started-quickstart-__codelineno-2-4"></a><span class="c1"># MAF output — preserves all input columns, appends gbcms counts</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#getting-started-quickstart-__codelineno-2-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>-v<span class="w"> </span>variants.maf<span class="w"> </span>-b<span class="w"> </span>sample.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>out/<span class="w"> </span>--format<span class="w"> </span>maf
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#getting-started-quickstart-__codelineno-10-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#getting-started-quickstart-__codelineno-10-2"></a><span class="w">    </span>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#getting-started-quickstart-__codelineno-10-3"></a><span class="w">    </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#getting-started-quickstart-__codelineno-10-4"></a><span class="w">    </span>--bam<span class="w"> </span>/data/aligned.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#getting-started-quickstart-__codelineno-10-5"></a><span class="w">    </span>--fasta<span class="w"> </span>/data/reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#getting-started-quickstart-__codelineno-10-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>/data/results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#getting-started-quickstart-__codelineno-3-1"></a><span class="c1"># VCF output (default)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#getting-started-quickstart-__codelineno-3-2"></a>gbcms<span class="w"> </span>rna<span class="w"> </span>-v<span class="w"> </span>variants.vcf<span class="w"> </span>-b<span class="w"> </span>rna:aligned.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>out/
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#getting-started-quickstart-__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#getting-started-quickstart-__codelineno-3-4"></a><span class="c1"># MAF output — includes 5 RNA-specific columns</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#getting-started-quickstart-__codelineno-3-5"></a>gbcms<span class="w"> </span>rna<span class="w"> </span>-v<span class="w"> </span>variants.maf<span class="w"> </span>-b<span class="w"> </span>rna:aligned.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>out/<span class="w"> </span>--format<span class="w"> </span>maf
 </code></pre></div>
 </div>
 </div>
 </div>
 <hr>
-<h2 id="getting-started-quickstart-cli-reference"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference<a class="headerlink" href="#getting-started-quickstart-cli-reference" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#getting-started-quickstart-__codelineno-11-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--help
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#getting-started-quickstart-__codelineno-11-2"></a>gbcms<span class="w"> </span>rna<span class="w"> </span>--help
+<h2 id="getting-started-quickstart-multiple-samples">Multiple Samples<a class="headerlink" href="#getting-started-quickstart-multiple-samples" title="Permanent link">¶</a></h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="" id="getting-started-quickstart-__tabbed_3_1" name="getting-started-quickstart-__tabbed_3" type="radio"><input id="getting-started-quickstart-__tabbed_3_2" name="getting-started-quickstart-__tabbed_3" type="radio"><div class="tabbed-labels"><label for="getting-started-quickstart-__tabbed_3_1">DNA / <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></label><label for="getting-started-quickstart-__tabbed_3_2">RNA-seq</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#getting-started-quickstart-__codelineno-4-1"></a><span class="c1"># BAM list file: each line is "sample_name /path/to/sample.bam"</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#getting-started-quickstart-__codelineno-4-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"tumor   /path/to/tumor.bam"</span><span class="w">  </span>&gt;<span class="w"> </span>bam_list.txt
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#getting-started-quickstart-__codelineno-4-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"normal  /path/to/normal.bam"</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>bam_list.txt
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#getting-started-quickstart-__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#getting-started-quickstart-__codelineno-4-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#getting-started-quickstart-__codelineno-4-6"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#getting-started-quickstart-__codelineno-4-7"></a><span class="w">    </span>--bam-list<span class="w"> </span>bam_list.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#getting-started-quickstart-__codelineno-4-8"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#getting-started-quickstart-__codelineno-4-9"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#getting-started-quickstart-__codelineno-5-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"rna_tumor /path/to/rna.bam"</span><span class="w"> </span>&gt;<span class="w"> </span>bam_list.txt
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#getting-started-quickstart-__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#getting-started-quickstart-__codelineno-5-3"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#getting-started-quickstart-__codelineno-5-4"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#getting-started-quickstart-__codelineno-5-5"></a><span class="w">    </span>--bam-list<span class="w"> </span>bam_list.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#getting-started-quickstart-__codelineno-5-6"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#getting-started-quickstart-__codelineno-5-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+</code></pre></div>
+</div>
+</div>
+</div>
+<hr>
+<h2 id="getting-started-quickstart-quality-filters">Quality Filters<a class="headerlink" href="#getting-started-quickstart-quality-filters" title="Permanent link">¶</a></h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="" id="getting-started-quickstart-__tabbed_4_1" name="getting-started-quickstart-__tabbed_4" type="radio"><input id="getting-started-quickstart-__tabbed_4_2" name="getting-started-quickstart-__tabbed_4" type="radio"><div class="tabbed-labels"><label for="getting-started-quickstart-__tabbed_4_1">DNA / <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></label><label for="getting-started-quickstart-__tabbed_4_2">RNA-seq</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#getting-started-quickstart-__codelineno-6-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#getting-started-quickstart-__codelineno-6-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#getting-started-quickstart-__codelineno-6-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#getting-started-quickstart-__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#getting-started-quickstart-__codelineno-6-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#getting-started-quickstart-__codelineno-6-6"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#getting-started-quickstart-__codelineno-6-7"></a><span class="w">    </span>--min-baseq<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#getting-started-quickstart-__codelineno-6-8"></a><span class="w">    </span>--filter-duplicates<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#getting-started-quickstart-__codelineno-6-9"></a><span class="w">    </span>--filter-secondary<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#getting-started-quickstart-__codelineno-6-10"></a><span class="w">    </span>--filter-supplementary
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#getting-started-quickstart-__codelineno-7-1"></a><span class="c1"># RNA defaults: secondary + supplementary + qc-failed already filtered</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#getting-started-quickstart-__codelineno-7-2"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#getting-started-quickstart-__codelineno-7-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#getting-started-quickstart-__codelineno-7-4"></a><span class="w">    </span>--bam<span class="w"> </span>rna:aligned.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#getting-started-quickstart-__codelineno-7-5"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#getting-started-quickstart-__codelineno-7-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#getting-started-quickstart-__codelineno-7-7"></a><span class="w">    </span>--min-baseq<span class="w"> </span><span class="m">20</span><span class="w">   </span><span class="c1"># MAPQ default is 1 with NH:i:1 rescue</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<hr>
+<h2 id="getting-started-quickstart-complete-example">Complete Example<a class="headerlink" href="#getting-started-quickstart-complete-example" title="Permanent link">¶</a></h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="5:3"><input checked="" id="getting-started-quickstart-__tabbed_5_1" name="getting-started-quickstart-__tabbed_5" type="radio"><input id="getting-started-quickstart-__tabbed_5_2" name="getting-started-quickstart-__tabbed_5" type="radio"><input id="getting-started-quickstart-__tabbed_5_3" name="getting-started-quickstart-__tabbed_5" type="radio"><div class="tabbed-labels"><label for="getting-started-quickstart-__tabbed_5_1">DNA with <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></label><label for="getting-started-quickstart-__tabbed_5_2">RNA with Editing DB</label><label for="getting-started-quickstart-__tabbed_5_3">Unstranded RNA-seq</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#getting-started-quickstart-__codelineno-8-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#getting-started-quickstart-__codelineno-8-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#getting-started-quickstart-__codelineno-8-3"></a><span class="w">    </span>--bam<span class="w"> </span>TumorSample:tumor.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#getting-started-quickstart-__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>hg38.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#getting-started-quickstart-__codelineno-8-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>genotyped/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#getting-started-quickstart-__codelineno-8-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#getting-started-quickstart-__codelineno-8-7"></a><span class="w">    </span>--suffix<span class="w"> </span>.genotyped<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#getting-started-quickstart-__codelineno-8-8"></a><span class="w">    </span>--threads<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#getting-started-quickstart-__codelineno-8-9"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#getting-started-quickstart-__codelineno-8-10"></a><span class="w">    </span>--min-baseq<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#getting-started-quickstart-__codelineno-8-11"></a><span class="w">    </span>--filter-duplicates<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#getting-started-quickstart-__codelineno-8-12"></a><span class="w">    </span>--filter-secondary<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#getting-started-quickstart-__codelineno-8-13"></a><span class="w">    </span>--filter-supplementary<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#getting-started-quickstart-__codelineno-8-14"></a><span class="w">    </span>--mfsd<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#getting-started-quickstart-__codelineno-8-15"></a><span class="w">    </span>--mfsd-parquet
+</code></pre></div>
+<p><strong>Output:</strong>
+- <code>genotyped/TumorSample.genotyped.maf</code> — allele counts + 34 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns
+- <code>genotyped/TumorSample.genotyped.fsd.parquet</code> — raw fragment size arrays</p>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#getting-started-quickstart-__codelineno-9-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#getting-started-quickstart-__codelineno-9-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#getting-started-quickstart-__codelineno-9-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor_rna:aligned.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#getting-started-quickstart-__codelineno-9-4"></a><span class="w">    </span>--fasta<span class="w"> </span>hg38.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#getting-started-quickstart-__codelineno-9-5"></a><span class="w">    </span>--rna-editing-db<span class="w"> </span>TABLE1_hg38.txt.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#getting-started-quickstart-__codelineno-9-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#getting-started-quickstart-__codelineno-9-7"></a><span class="w">    </span>--threads<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#getting-started-quickstart-__codelineno-9-8"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+</code></pre></div>
+<p><strong>Output:</strong> <code>results/tumor_rna.maf</code> — standard counts + 5 RNA columns:
+<code>rna_sense_depth</code>, <code>rna_antisense_depth</code>, <code>rna_sense_strand_alt_count</code>,
+<code>rna_editing_site_overlap</code>, <code>rna_splice_spanning_count</code></p>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#getting-started-quickstart-__codelineno-10-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#getting-started-quickstart-__codelineno-10-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#getting-started-quickstart-__codelineno-10-3"></a><span class="w">    </span>--bam<span class="w"> </span>unstranded:aligned.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#getting-started-quickstart-__codelineno-10-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#getting-started-quickstart-__codelineno-10-5"></a><span class="w">    </span>--no-strandedness<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#getting-started-quickstart-__codelineno-10-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+</code></pre></div>
+</div>
+</div>
+</div>
+<hr>
+<h2 id="getting-started-quickstart-docker">Docker<a class="headerlink" href="#getting-started-quickstart-docker" title="Permanent link">¶</a></h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="" id="getting-started-quickstart-__tabbed_6_1" name="getting-started-quickstart-__tabbed_6" type="radio"><input id="getting-started-quickstart-__tabbed_6_2" name="getting-started-quickstart-__tabbed_6" type="radio"><div class="tabbed-labels"><label for="getting-started-quickstart-__tabbed_6_1">DNA</label><label for="getting-started-quickstart-__tabbed_6_2">RNA</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#getting-started-quickstart-__codelineno-11-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#getting-started-quickstart-__codelineno-11-2"></a><span class="w">    </span>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#getting-started-quickstart-__codelineno-11-3"></a><span class="w">    </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#getting-started-quickstart-__codelineno-11-4"></a><span class="w">    </span>--bam<span class="w"> </span>/data/sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#getting-started-quickstart-__codelineno-11-5"></a><span class="w">    </span>--fasta<span class="w"> </span>/data/reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#getting-started-quickstart-__codelineno-11-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>/data/results/
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#getting-started-quickstart-__codelineno-12-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#getting-started-quickstart-__codelineno-12-2"></a><span class="w">    </span>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#getting-started-quickstart-__codelineno-12-3"></a><span class="w">    </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#getting-started-quickstart-__codelineno-12-4"></a><span class="w">    </span>--bam<span class="w"> </span>/data/rna:aligned.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#getting-started-quickstart-__codelineno-12-5"></a><span class="w">    </span>--fasta<span class="w"> </span>/data/reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#getting-started-quickstart-__codelineno-12-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>/data/results/
+</code></pre></div>
+</div>
+</div>
+</div>
+<hr>
+<h2 id="getting-started-quickstart-common-cli-options">Common <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Options<a class="headerlink" href="#getting-started-quickstart-common-cli-options" title="Permanent link">¶</a></h2>
 <table>
 <thead>
 <tr>
@@ -2451,7 +2664,12 @@ provides these dependencies.</p>
 <tr>
 <td style="text-align: left;"><code>--bam</code></td>
 <td style="text-align: left;">Required</td>
-<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file(s)</td>
+<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file(s). Prefix with <code>name:</code> to set sample ID</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--bam-list</code></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">File with <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> paths (one per line)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--fasta</code></td>
@@ -2465,8 +2683,8 @@ provides these dependencies.</p>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--format</code></td>
-<td style="text-align: left;">vcf</td>
-<td style="text-align: left;">Output format (vcf/maf)</td>
+<td style="text-align: left;"><code>vcf</code></td>
+<td style="text-align: left;">Output format (<code>vcf</code> or <code>maf</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--min-mapq</code></td>
@@ -2486,15 +2704,16 @@ provides these dependencies.</p>
 </tbody>
 </table>
 <blockquote>
-<p>📖 See <a href="#cli-dna">DNA Reference</a> and <a href="#cli-rna">RNA Reference</a> for the complete list of options.</p>
+<p>📖 Full option reference: <a href="#cli-dna">DNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr></a> · <a href="#cli-rna">RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr></a></p>
 </blockquote>
 <hr>
 <h2 id="getting-started-quickstart-next-steps">Next Steps<a class="headerlink" href="#getting-started-quickstart-next-steps" title="Permanent link">¶</a></h2>
 <ul>
-<li><strong><a href="#cli-rna">RNA Mode</a></strong> — Transcriptome-aware counting</li>
-<li><strong><a href="#nextflow">Nextflow</a></strong> — Process many samples in parallel</li>
-<li><strong><a href="#reference-architecture">Architecture</a></strong> — How it works</li>
-<li><strong><a href="#reference-allele-classification">Allele Classification</a></strong> — How each variant type is counted</li>
+<li><strong><a href="#cli-dna">DNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></strong> — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>, alignment backend options</li>
+<li><strong><a href="#cli-rna">RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></strong> — Strandedness, editing DB, splice junction options  </li>
+<li><strong><a href="#nextflow">Nextflow Pipeline</a></strong> — Process many samples in parallel on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr></li>
+<li><strong><a href="#reference-allele-classification">How It Works</a></strong> — Allele classification algorithms</li>
+<li><strong><a href="#resources-troubleshooting">Troubleshooting</a></strong> — Common issues and solutions</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -5336,7 +5555,7 @@ Use mouse to pan and zoom
 <h3 id="reference-variant-normalization-adaptive-context-padding">Adaptive Context Padding<a class="headerlink" href="#reference-variant-normalization-adaptive-context-padding" title="Permanent link">¶</a></h3>
 <p>By default, gbcms <strong>dynamically adjusts</strong> the context padding based on nearby tandem repeats. This prevents ambiguous <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignments in repetitive regions where a fixed padding might consist entirely of the repeat motif.</p>
 <h4 id="reference-variant-normalization-multi-anchor-footprint-sweep">Multi-Anchor Footprint Sweep<a class="headerlink" href="#reference-variant-normalization-multi-anchor-footprint-sweep" title="Permanent link">¶</a></h4>
-<p>Historically, scanning only the variant's strict <code>anchor</code> base caused miscalculations for left-aligned INDELs, as the trailing INDEL mutations generated by BWA mapping often fell outside the default <code>5bp</code> padding window.</p>
+<p>Historically, scanning only the variant's strict <code>anchor</code> base caused miscalculations for left-aligned INDELs, as the trailing INDEL mutations generated by <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> mapping often fell outside the default <code>5bp</code> padding window.</p>
 <p>The engine now performs a <strong>Multi-Anchor Footprint Sweep</strong>. It scans across the entire variant footprint (<code>pos</code> through <code>pos + ref_len</code>) looking for tandem repeats, and extracts the maximum necessary padding to clear the repeat entirely.</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
@@ -6015,11 +6234,12 @@ Use mouse to pan and zoom
     Dispatch --&gt;|"1 × 1"| SNP[check_snp]
     Dispatch --&gt;|"N × N"| MNP[check_mnp]
     Dispatch --&gt;|"1 × N"| INS[check_insertion]
-    Dispatch --&gt;|"N × 1"| DEL[check_deletion]
-    Dispatch --&gt;|"else"| CPX[check_complex]
+    Dispatch --&gt;|"N × 1\nalt[0] == ref[0]\n(pure DEL)"| DEL[check_deletion]
+    Dispatch --&gt;|"N × 1\nalt[0] ≠ ref[0]\n(Del+SNV)"| CPX[check_complex]
+    Dispatch --&gt;|"else"| CPX
     MNP -.-&gt;|"inconclusive"| CPX
     INS -.-&gt;|"Phase 3 fallback"| CPX
-    DEL -.-&gt;|"fallback (CIGAR mismatch)"| CPX
+    DEL -.-&gt;|"fallback (del_len ≥ 5,\nS3 mismatch → Phase 3)"| CPX
     SNP --&gt; Count([📊 Update Counts]):::count
     INS --&gt; Count
     DEL --&gt; Count
@@ -6035,8 +6255,14 @@ Use mouse to pan and zoom
 </div>
 </div>
 <div class="admonition info">
-<p class="admonition-title">Allele-Length Routing</p>
-<p>Dispatch uses <code>ref_allele.len()</code> and <code>alt_allele.len()</code> to determine the variant class. This means even if upstream callers emit inconsistent type strings (e.g., <code>"COMPLEX"</code> for what is really a pure deletion after normalization), the correct checker is always selected.</p>
+<p class="admonition-title">Allele-Length and Anchor-Base Routing</p>
+<p>Dispatch uses <code>ref_allele.len()</code> and <code>alt_allele.len()</code> as the primary selector. For <code>N×1</code> variants (deletion format), it additionally checks whether the anchor base substitutes (<code>alt_allele[0] ≠ ref_allele[0]</code>):</p>
+<ul>
+<li><strong>Pure deletion</strong> (<code>alt[0] == ref[0]</code>) → <code>check_deletion</code> — e.g., <code>AC→A</code> where anchor A is preserved</li>
+<li><strong>Complex Del+SNV</strong> (<code>alt[0] ≠ ref[0]</code>) → <code>check_complex</code> — e.g., <code>GC→T</code> where anchor G also substitutes to T</li>
+</ul>
+<p>This distinction is critical: <code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. <code>check_complex</code> handles these via Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> haplotype alignment.</p>
+<p><code>check_deletion</code> also falls back to <code>check_complex</code> for large deletions (≥5bp) where S3 sequence validation fails due to <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifting the anchor position (see <a href="#reference-allele-classification-windowed-scan-safeguards-1">Deletion — Windowed Safeguards</a>).</p>
 </div>
 <hr>
 <h2 id="reference-allele-classification-snp-single-nucleotide-polymorphism"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (Single Nucleotide Polymorphism)<a class="headerlink" href="#reference-allele-classification-snp-single-nucleotide-polymorphism" title="Permanent link">¶</a></h2>
@@ -6252,7 +6478,7 @@ Use mouse to pan and zoom
 </tbody>
 </table>
 <div class="admonition note">
-<p class="admonition-title">Phase 3 Haplotype Fallback</p>
+<p class="admonition-title">Phase 3 Haplotype Fallback (has_nearby_length_match)</p>
 <p>When the windowed scan finds an insertion that matches in <strong>length</strong> but not <strong>sequence</strong> (e.g., aligner represents the biological event with shifted bases in a repeat), the engine flags <code>has_nearby_length_match</code> and falls back to <code>check_complex</code> for <strong>Smith-Waterman arbitration</strong>. This ensures ambiguous cases are resolved by haplotype comparison rather than strict sequence matching.</p>
 </div>
 <h3 id="reference-allele-classification-visual-example_1">Visual Example<a class="headerlink" href="#reference-allele-classification-visual-example_1" title="Permanent link">¶</a></h3>
@@ -6291,7 +6517,7 @@ Use mouse to pan and zoom
 <tbody>
 <tr>
 <td style="text-align: left;">Detection</td>
-<td style="text-align: left;"><code>len(REF) &gt; 1 &amp;&amp; len(ALT) == 1</code></td>
+<td style="text-align: left;"><code>len(REF) &gt; 1 &amp;&amp; len(ALT) == 1</code> AND <code>alt[0] == ref[0]</code> (pure deletion)</td>
 </tr>
 <tr>
 <td style="text-align: left;">Position</td>
@@ -6303,8 +6529,17 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
+<div class="admonition warning">
+<p class="admonition-title">Complex Del+SNV: Routed to <code>check_complex</code></p>
+<p>When <code>len(REF) &gt; 1 &amp;&amp; len(ALT) == 1</code> but the anchor base <strong>also substitutes</strong> (<code>alt[0] ≠ ref[0]</code>), the variant is a <strong>complex Del+SNV</strong> and is routed directly to <code>check_complex</code> — not <code>check_deletion</code>. This handles variants such as:</p>
+<ul>
+<li><strong>SOX9</strong> <code>GC→T</code>: anchor G substitutes to T, C is deleted. D(1) reads classified as ALT via Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>.</li>
+<li><strong>ABL1</strong> <code>AG→T</code>: anchor A substitutes to T, G is deleted.</li>
+</ul>
+<p><code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards compare anchor bases assuming the anchor is preserved. For these variants, the anchor changes — feeding them to <code>check_deletion</code> would incorrectly classify all DEL reads as REF (alt=0).</p>
+</div>
 <h3 id="reference-allele-classification-algorithm_2">Algorithm<a class="headerlink" href="#reference-allele-classification-algorithm_2" title="Permanent link">¶</a></h3>
-<p>Same single-walk strategy as insertion, with three additional features:</p>
+<p>Same single-walk strategy as insertion, with four additional features:</p>
 <ol>
 <li>
 <p><strong>Reciprocal overlap matching</strong> — For large deletions (≥50bp), if the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> shows a deletion at the anchor but with a different length, gbcms accepts it if the reciprocal overlap is ≥50% (SV-caller standard, used by SURVIVOR):</p>
@@ -6314,6 +6549,9 @@ Use mouse to pan and zoom
 </li>
 <li>
 <p><strong>Interior REF guard</strong> — For large deletions (≥50bp), reads that start <em>inside</em> the deleted region are classified as REF directly, without falling back to Smith-Waterman. This prevents overcounting caused by the <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> aligner's bias toward shorter ALT haplotypes.</p>
+</li>
+<li>
+<p><strong>Left-alignment Phase 3 fallback</strong> — For large deletions (≥5bp) where the windowed scan finds a matching-length Del but S3 sequence validation fails (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifted the anchor further left than the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position), the engine flags <code>has_nearby_length_match</code> and routes to <code>check_complex</code> for Phase 3 arbitration. Short deletions (&lt;5bp) with failed S3 remain <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF — they are almost certainly unrelated spurious deletions, not left-alignment artifacts. See <a href="#reference-complex-indels-case-3-tp53-12bp-left-alignment-shifted-deletion">Case 3 in the Complex Indels guide</a>.</p>
 </li>
 <li>
 <p><strong>Haplotype fallback</strong> — When no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found and the read doesn't cover the anchor, falls back to <code>check_complex</code> for haplotype-based comparison.</p>
@@ -6362,15 +6600,19 @@ Use mouse to pan and zoom
     S1 --&gt;|"≥50bp + overlap ≥50%"| S2Track[S2: Track closest]
     S1 --&gt;|No match| Continue
     S3 --&gt;|Yes| S2[S2: Track closest]
-    S3 --&gt;|No| Continue
+    S3 --&gt;|"No AND del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 --&gt;|"No AND del_len &lt; 5"| Continue
     S2Track --&gt; Continue
     S2 --&gt; Continue
+    FlagP3 --&gt; Continue
 
     Continue --&gt; MoreOps{More ops?}
     MoreOps --&gt;|Yes| Walk
     MoreOps --&gt;|No| Eval{Windowed match?}
     Eval --&gt;|Yes| WinAlt([🔴 ALT]):::alt
-    Eval --&gt;|No| Interior{"Interior read?<br>(≥50bp del, read starts inside span)"}
+    Eval --&gt;|No| P3DelCheck{"has_nearby_length_match<br>AND ref coverage?"}
+    P3DelCheck --&gt;|Yes| Complex2([🔄 check_complex<br>Phase 3 SW]):::fallback
+    P3DelCheck --&gt;|No| Interior{"Interior read?<br>(≥50bp del, read starts inside span)"}
     Interior --&gt;|Yes| IntRef([✅ REF - interior]):::ref
     Interior --&gt;|No| HasRef{Anchor covered?}
     HasRef --&gt;|Yes| Ref([✅ REF]):::ref
@@ -6385,6 +6627,45 @@ Use mouse to pan and zoom
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
+</div>
+<h3 id="reference-allele-classification-windowed-scan-safeguards-1">Windowed Scan Safeguards<a class="headerlink" href="#reference-allele-classification-windowed-scan-safeguards-1" title="Permanent link">¶</a></h3>
+<p>Three layers of validation prevent false-positive windowed matches:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Safeguard</th>
+<th style="text-align: left;">Check</th>
+<th style="text-align: left;">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>S1</strong></td>
+<td style="text-align: left;">Deleted length matches expected <code>ref_len − 1</code> (or reciprocal overlap ≥50% for large dels)</td>
+<td style="text-align: left;">Prevents matching wrong-length deletions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>S2</strong></td>
+<td style="text-align: left;">Closest match wins (minimum distance from anchor)</td>
+<td style="text-align: left;">When multiple candidates exist, picks the most likely</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>S3</strong></td>
+<td style="text-align: left;">Reference bases at the shifted deletion position match expected deleted sequence</td>
+<td style="text-align: left;">Verifies the shifted Del is biologically the same event</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>del_len ≥ 5 guard</strong></td>
+<td style="text-align: left;">Only flag <code>has_nearby_length_match</code> for Dels ≥5bp that fail S3</td>
+<td style="text-align: left;">Short (1–4bp) Dels failing S3 are almost certainly spurious noise — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> remains definitive. Longer Dels can fail S3 due to <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifting the anchor away from the actual <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">has_nearby_length_match Phase 3 Fallback</p>
+<p>When the windowed scan finds a deletion that matches in <strong>length</strong> (≥5bp) but S3 sequence validation fails (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifted the anchor further left than where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> appears), the engine flags <code>has_nearby_length_match</code> and falls back to <code>check_complex</code> for Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> haplotype arbitration.</p>
+<p>Example: <strong>TP53 <code>GACCGTGCAAGT→-</code> (12bp)</strong> — left-alignment moves the anchor 3bp left of the actual <code>D(12)</code> position in reads. S3 compares the wrong reference slice and fails. Phase 3 correctly classifies these as ALT.</p>
+<p>Short deletions (1–4bp) failing S3 use <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF: a 1bp Del in the wrong reference context is almost certainly an unrelated noise deletion, not a left-alignment artifact.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Interior REF Guard</p>
@@ -6508,7 +6789,7 @@ Use mouse to pan and zoom
 <p>The contiguity check is performed <strong>first</strong> (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> base — if the distance doesn't equal <code>len - 1</code>, an indel exists within the block and the read is routed to <code>check_complex</code> for haplotype-based resolution.</p>
 <hr>
 <h2 id="reference-allele-classification-complex-indel-substitution">Complex (Indel + Substitution)<a class="headerlink" href="#reference-allele-classification-complex-indel-substitution" title="Permanent link">¶</a></h2>
-<p>Variants where REF and ALT differ in both sequence <strong>and</strong> length. Uses a sophisticated <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
+<p>Variants where REF and ALT differ in both sequence <strong>and</strong> length. Also used for <strong>complex Del+SNV</strong> variants dispatched from the <code>N×1</code> path when the anchor base substitutes. Uses a sophisticated <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
 <table>
 <thead>
 <tr>
@@ -6519,7 +6800,7 @@ Use mouse to pan and zoom
 <tbody>
 <tr>
 <td style="text-align: left;">Detection</td>
-<td style="text-align: left;">Fallback for all other combinations</td>
+<td style="text-align: left;">Fallback for all other combinations; also <code>N×1</code> with <code>alt[0] ≠ ref[0]</code></td>
 </tr>
 <tr>
 <td style="text-align: left;">Position</td>
@@ -6531,6 +6812,12 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">REF Fallback for Large Deletion-Direction Variants</p>
+<p>When <code>check_complex</code> is invoked for a deletion-direction variant (<code>ref_len &gt; alt_len</code>) and <code>is_worth_realignment()</code> returns <code>false</code> (the read has a clean M-only <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> with no indels in the variant window), Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> is skipped. Instead, gbcms checks whether <strong>any M-block covers the anchor position</strong>. If yes, the read is classified as <strong>REF</strong>.</p>
+<p>Without this fallback, REF reads for large deletions (e.g., <strong>NF2 ~100bp DEL</strong>) would be misclassified as 'neither' — clean REF reads naturally have no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence warranting realignment, so skipping Phase 3 without a REF fallback silently drops all REF counts.</p>
+<p>See <a href="#reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible">Case 2 in the Complex Indels guide</a> for the full worked example.</p>
+</div>
 <h3 id="reference-allele-classification-three-phase-algorithm">Three-Phase Algorithm<a class="headerlink" href="#reference-allele-classification-three-phase-algorithm" title="Permanent link">¶</a></h3>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
@@ -7825,7 +8112,307 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-glossary" heading-number="5.7"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-complex-indels" heading-number="5.7"><html><head>
+        <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function () {
+            remove_material_navigation();remove_mkdocs_theme_navigation();
+        })
+        </script>
+        </head><body><div><h1 id="complex-indels">Complex Indels<a class="headerlink" href="#reference-complex-indels-complex-indels" title="Permanent link">¶</a></h1>
+<p>Real-world case studies of how gbcms handles the three most common complex indel classification scenarios. Each case shows the biological event, why a naive approach fails, and exactly which engine component resolves it.</p>
+<blockquote>
+<p>📖 See <a href="#reference-allele-classification">Allele Classification</a> for the complete algorithm reference.</p>
+</blockquote>
+<hr>
+<h2 id="reference-complex-indels-overview">Overview<a class="headerlink" href="#reference-complex-indels-overview" title="Permanent link">¶</a></h2>
+<p>Complex indels fall into three categories that require special handling beyond the standard <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Case</th>
+<th style="text-align: left;">Example</th>
+<th style="text-align: left;">Root Cause</th>
+<th style="text-align: left;">Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><a href="#reference-complex-indels-case-1-complex-delsnv-sox9-gc%D1%82">Del+SNV routing</a></td>
+<td style="text-align: left;">SOX9 <code>GC→T</code>, ABL1 <code>AG→T</code></td>
+<td style="text-align: left;">Deletion-format variant with anchor substitution sent to <code>check_deletion</code></td>
+<td style="text-align: left;">Route to <code>check_complex</code> when <code>alt[0] ≠ ref[0]</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="#reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible">Clean-<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> REF reads</a></td>
+<td style="text-align: left;">NF2 ~100bp DEL</td>
+<td style="text-align: left;">REF reads skipped by <code>is_worth_realignment()</code> → misclassified as 'neither'</td>
+<td style="text-align: left;">M-block anchor coverage REF fallback in <code>check_complex</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="#reference-complex-indels-case-3-tp53-12bp-left-alignment-shifted-deletion">Left-alignment shift</a></td>
+<td style="text-align: left;">TP53 12bp DEL</td>
+<td style="text-align: left;"><abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> anchor 3bp left of <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position → S3 validates wrong bases</td>
+<td style="text-align: left;"><code>has_nearby_length_match</code> (del_len ≥ 5) → Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="reference-complex-indels-case-1-complex-delsnv-sox9">Case 1: Complex Del+SNV — SOX9 (<code>GC→T</code>)<a class="headerlink" href="#reference-complex-indels-case-1-complex-delsnv-sox9" title="Permanent link">¶</a></h2>
+<h3 id="reference-complex-indels-the-variant">The Variant<a class="headerlink" href="#reference-complex-indels-the-variant" title="Permanent link">¶</a></h3>
+<p><strong>Gene:</strong> SOX9 · <strong>Position:</strong> chr17:70119766 · <strong>REF:</strong> <code>GC</code> · <strong>ALT:</strong> <code>T</code></p>
+<p>This is a deletion-format variant (<code>len(REF)=2 &gt; len(ALT)=1</code>), but it is <strong>not</strong> a pure deletion:
+the anchor base G also changes to T. This makes it a complex Del+SNV — one net base is deleted
+AND the anchor substitutes simultaneously.</p>
+<h3 id="reference-complex-indels-why-the-old-code-returned-alt0">Why the Old Code Returned alt=0<a class="headerlink" href="#reference-complex-indels-why-the-old-code-returned-alt0" title="Permanent link">¶</a></h3>
+<p>The dispatch logic routed all <code>N×1</code> variants to <code>check_deletion</code>. <code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk:
+1. Finds a <code>D(1)</code> at the anchor position in reads carrying the deletion
+2. Applies <strong>Safeguard S3</strong>: checks whether the anchor base in the read matches the expected anchor (<code>G</code>)
+3. The ALT read has anchor base <code>T</code> (not <code>G</code>) — S3 rejects it
+4. <code>found_ref_coverage = true</code> → classified as <strong>REF</strong></p>
+<p>Result: all DEL reads classified as REF → <code>alt = 0</code>.</p>
+<h3 id="reference-complex-indels-the-fix-fix-2-enginers">The Fix (Fix 2 — <code>engine.rs</code>)<a class="headerlink" href="#reference-complex-indels-the-fix-fix-2-enginers" title="Permanent link">¶</a></h3>
+<p>Before routing <code>N×1</code> variants, <code>engine.rs</code> now checks <code>alt_allele[0] != ref_allele[0]</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-complex-indels-__codelineno-0-1"></a>REF = GC  →  ref[0] = G
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-complex-indels-__codelineno-0-2"></a>ALT = T   →  alt[0] = T
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#reference-complex-indels-__codelineno-0-3"></a>Since G ≠ T → route to check_complex (not check_deletion)
+</code></pre></div>
+<p><code>check_complex</code> builds <code>REF_haplotype = ...GC...</code> and <code>ALT_haplotype = ...T...</code> and runs Phase 3
+Smith-Waterman. ALT reads align better to <code>ALT_hap</code> → classified as <strong>ALT</strong>.</p>
+<h3 id="reference-complex-indels-read-level-example">Read-Level Example<a class="headerlink" href="#reference-complex-indels-read-level-example" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-complex-indels-__codelineno-1-1"></a>Variant: chr17:70119766  GC → T
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#reference-complex-indels-__codelineno-1-2"></a>Reference:  ... A  G  C  T  A  T ...
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#reference-complex-indels-__codelineno-1-3"></a>                   ↑
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-complex-indels-__codelineno-1-4"></a>               anchor pos (G)
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-complex-indels-__codelineno-1-5"></a>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#reference-complex-indels-__codelineno-1-6"></a>ALT read CIGAR: 5M 1D 4M
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-complex-indels-__codelineno-1-7"></a>    ... A [T] ── T  A  T ...
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#reference-complex-indels-__codelineno-1-8"></a>         ↑  ↑
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#reference-complex-indels-__codelineno-1-9"></a>         T  D(1): anchor substitutes G→T, C is deleted
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#reference-complex-indels-__codelineno-1-10"></a>    → check_deletion S3: base at anchor = T ≠ G → REJECTED (old)
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#reference-complex-indels-__codelineno-1-11"></a>    → check_complex Phase 3: ALT haplotype wins        → ALT ✅ (new)
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#reference-complex-indels-__codelineno-1-12"></a>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#reference-complex-indels-__codelineno-1-13"></a>REF read CIGAR: 9M
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#reference-complex-indels-__codelineno-1-14"></a>    ... A  G  C  T  A  T ...
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#reference-complex-indels-__codelineno-1-15"></a>    → check_complex Phase 3: REF haplotype wins        → REF ✅
+</code></pre></div>
+<h3 id="reference-complex-indels-affected-variants">Affected Variants<a class="headerlink" href="#reference-complex-indels-affected-variants" title="Permanent link">¶</a></h3>
+<p>The same fix handles any Del+SNV with this anatomy:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Gene</th>
+<th style="text-align: left;">REF</th>
+<th style="text-align: left;">ALT</th>
+<th style="text-align: center;">del_len</th>
+<th style="text-align: center;">anchor change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">SOX9</td>
+<td style="text-align: left;"><code>GC</code></td>
+<td style="text-align: left;"><code>T</code></td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">G→T</td>
+</tr>
+<tr>
+<td style="text-align: left;">ABL1</td>
+<td style="text-align: left;"><code>AG</code></td>
+<td style="text-align: left;"><code>T</code></td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">A→T</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible">Case 2: NF2 Large Deletion — REF Reads Invisible<a class="headerlink" href="#reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible" title="Permanent link">¶</a></h2>
+<h3 id="reference-complex-indels-the-variant_1">The Variant<a class="headerlink" href="#reference-complex-indels-the-variant_1" title="Permanent link">¶</a></h3>
+<p><strong>Gene:</strong> NF2 · <strong>Position:</strong> chr22:30038094 · <strong>Type:</strong> ~100bp deletion</p>
+<h3 id="reference-complex-indels-why-the-old-code-returned-ref0">Why the Old Code Returned ref=0<a class="headerlink" href="#reference-complex-indels-why-the-old-code-returned-ref0" title="Permanent link">¶</a></h3>
+<p>The flow for large deletions reaching <code>check_complex</code>:</p>
+<ol>
+<li><code>check_deletion</code> routes to <code>check_complex</code> when no windowed <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found</li>
+<li><code>check_complex</code> Phase 1 reconstructs the read's sequence for the variant region</li>
+<li><strong><code>is_worth_realignment()</code></strong> — returns <code>false</code> for reads with clean M-only CIGARs
+   (no I/D/S/N operations in the variant window)</li>
+<li>Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> is skipped for clean CIGARs</li>
+<li>Old code: return <code>Neither</code> when Phase 3 is skipped → REF reads become 'neither'</li>
+</ol>
+<p>REF reads for large deletions naturally have clean M CIGARs — they don't have a deletion
+because they support the reference. Skipping Phase 3 without a fallback silently discards all REF evidence.</p>
+<h3 id="reference-complex-indels-the-fix-fix-3-variant_checksrs-check_complex">The Fix (Fix 3 — <code>variant_checks.rs</code> <code>check_complex</code>)<a class="headerlink" href="#reference-complex-indels-the-fix-fix-3-variant_checksrs-check_complex" title="Permanent link">¶</a></h3>
+<p>After <code>is_worth_realignment()</code> returns <code>false</code>, gbcms now checks:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#reference-complex-indels-__codelineno-2-1"></a>if ref_len &gt; alt_len           # deletion-direction variant
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#reference-complex-indels-__codelineno-2-2"></a>   AND any M-block covers anchor_pos:
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#reference-complex-indels-__codelineno-2-3"></a>   → classify as REF
+</code></pre></div>
+<p>The M-block coverage check confirms the read spans the anchor position, establishing REF support
+without needing haplotype alignment.</p>
+<h3 id="reference-complex-indels-read-level-example_1">Read-Level Example<a class="headerlink" href="#reference-complex-indels-read-level-example_1" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-complex-indels-__codelineno-3-1"></a>Variant: chr22:30038094  A[100bp]→A (100bp deletion)
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-complex-indels-__codelineno-3-2"></a>Anchor position: 30038094
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#reference-complex-indels-__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#reference-complex-indels-__codelineno-3-4"></a>REF read CIGAR: 150M  (spans anchor at 30038094)
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#reference-complex-indels-__codelineno-3-5"></a>    M-block: [30038040 ── 30038190]  ← covers anchor ✅
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#reference-complex-indels-__codelineno-3-6"></a>    is_worth_realignment = false (clean CIGAR)
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#reference-complex-indels-__codelineno-3-7"></a>    Old: return Neither
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#reference-complex-indels-__codelineno-3-8"></a>    New: M-block covers anchor AND ref_len(101) &gt; alt_len(1) → REF ✅
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#reference-complex-indels-__codelineno-3-9"></a>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#reference-complex-indels-__codelineno-3-10"></a>ALT read CIGAR: 50M 100D 50M  (carries the deletion)
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#reference-complex-indels-__codelineno-3-11"></a>    Deletion at anchor → classified via windowed scan or Phase 3 → ALT ✅
+</code></pre></div>
+<h3 id="reference-complex-indels-impact">Impact<a class="headerlink" href="#reference-complex-indels-impact" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric</th>
+<th style="text-align: center;">Before Fix</th>
+<th style="text-align: center;">After Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ref_count</code></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">56</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt_count</code></td>
+<td style="text-align: center;">49</td>
+<td style="text-align: center;">49 (unchanged)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dp</code></td>
+<td style="text-align: center;">49</td>
+<td style="text-align: center;">105 (correct)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="reference-complex-indels-case-3-tp53-12bp-left-alignment-shifted-deletion">Case 3: TP53 12bp Left-Alignment Shifted Deletion<a class="headerlink" href="#reference-complex-indels-case-3-tp53-12bp-left-alignment-shifted-deletion" title="Permanent link">¶</a></h2>
+<h3 id="reference-complex-indels-the-variant_2">The Variant<a class="headerlink" href="#reference-complex-indels-the-variant_2" title="Permanent link">¶</a></h3>
+<p><strong>Gene:</strong> TP53 · <strong>Position:</strong> chr17:7579309 · <strong>REF:</strong> <code>GACCGTGCAAGT</code> (12bp) · <strong>ALT:</strong> <code>-</code> (deletion)</p>
+<h3 id="reference-complex-indels-root-cause-bwa-left-alignment">Root Cause: <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> Left-Alignment<a class="headerlink" href="#reference-complex-indels-root-cause-bwa-left-alignment" title="Permanent link">¶</a></h3>
+<p><abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-aligns indels to the leftmost equivalent position in the genome. For this 12bp deletion in
+a region with a partial repeat (<code>ACC</code> motif), <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> places the anchor 3bp <strong>left</strong> of where the
+<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D(12)</code> operation actually appears in the reads.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#reference-complex-indels-__codelineno-4-1"></a>Left-aligned anchor position (what MAF/gbcms sees):  chr17:7579309
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#reference-complex-indels-__codelineno-4-2"></a>Actual CIGAR D(12) position in reads:                chr17:7579312  (+3bp right)
+</code></pre></div>
+<h3 id="reference-complex-indels-why-the-old-code-returned-alt0_1">Why the Old Code Returned alt=0<a class="headerlink" href="#reference-complex-indels-why-the-old-code-returned-alt0_1" title="Permanent link">¶</a></h3>
+<p><code>check_deletion</code> windowed scan:
+1. Finds <code>D(12)</code> within the ±5bp window (at position 7579312)
+2. Passes <strong>S1</strong>: length matches (12bp)
+3. Applies <strong>S3</strong>: compares reference bases at <code>7579312</code> against expected deleted sequence <code>GACCGTGCAAGT</code>
+4. Reference at <code>7579312</code> is <code>CGTGCAAGT...</code>, not <code>GACCGTGCAAGT</code> → <strong>S3 fails</strong>
+5. Old code: S3 fail → Continue → read not counted → <code>found_ref_coverage = true</code> → REF</p>
+<p>All 221 ALT reads fail S3 → <code>alt = 0</code>, <code>ref = 775</code>.</p>
+<h3 id="reference-complex-indels-the-fix-fix-4-variant_checksrs-check_deletion">The Fix (Fix 4 — <code>variant_checks.rs</code> <code>check_deletion</code>)<a class="headerlink" href="#reference-complex-indels-the-fix-fix-4-variant_checksrs-check_deletion" title="Permanent link">¶</a></h3>
+<p>When a windowed <code>D(12)</code> matches in <strong>length</strong> but fails S3, and <code>del_len ≥ 5</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#reference-complex-indels-__codelineno-5-1"></a>has_nearby_length_match = true
+</code></pre></div>
+<p>After the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk, if <code>has_nearby_length_match AND found_ref_coverage</code>:
+- Route to <code>check_complex</code> for Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> arbitration
+- Phase 3 builds correct haplotypes using the left-aligned anchor
+- <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> correctly aligns ALT reads to the ALT haplotype → <strong>ALT</strong> ✅</p>
+<h3 id="reference-complex-indels-why-del_len-5">Why del_len ≥ 5?<a class="headerlink" href="#reference-complex-indels-why-del_len-5" title="Permanent link">¶</a></h3>
+<p>Short (1–4bp) same-length Dels failing S3 are almost certainly <strong>unrelated spurious deletions</strong>
+in the wrong reference context — not left-alignment artifacts. <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF is correct
+for these cases.</p>
+<p>Large deletions (≥5bp) failing S3 are more likely to be genuine left-alignment shifts: <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>'s
+left-alignment can move the anchor up to <code>repeat_span</code> positions left, and 5bp is the minimum
+spanning a small repeat motif (e.g., dinucleotide repeat <code>ACAC</code>).</p>
+<h3 id="reference-complex-indels-read-level-example_2">Read-Level Example<a class="headerlink" href="#reference-complex-indels-read-level-example_2" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#reference-complex-indels-__codelineno-6-1"></a>Variant (left-aligned): chr17:7579309  GACCGTGCAAGT → -
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#reference-complex-indels-__codelineno-6-2"></a>Anchor (gbcms):          pos = 7579309
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#reference-complex-indels-__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#reference-complex-indels-__codelineno-6-4"></a>ALT read CIGAR: 48M 12D 52M
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#reference-complex-indels-__codelineno-6-5"></a>    D(12) at pos 7579312  (3bp right of anchor)
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#reference-complex-indels-__codelineno-6-6"></a>    S1: length 12 == 12 ✅
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#reference-complex-indels-__codelineno-6-7"></a>    S3: ref[7579312..7579324] = "CGTGCAAGT..." ≠ "GACCGTGCAAGT" ❌
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#reference-complex-indels-__codelineno-6-8"></a>    Old: Continue → REF (incorrect)
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#reference-complex-indels-__codelineno-6-9"></a>    New: del_len(12) ≥ 5 → has_nearby_length_match = true
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#reference-complex-indels-__codelineno-6-10"></a>    → Phase 3 SW: ALT haplotype aligns correctly → ALT ✅
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#reference-complex-indels-__codelineno-6-11"></a>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#reference-complex-indels-__codelineno-6-12"></a>REF read CIGAR: 150M  (no deletion)
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#reference-complex-indels-__codelineno-6-13"></a>    → M-block covers anchor → REF ✅
+</code></pre></div>
+<h3 id="reference-complex-indels-impact_1">Impact<a class="headerlink" href="#reference-complex-indels-impact_1" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric</th>
+<th style="text-align: center;">Before Fix</th>
+<th style="text-align: center;">After Fix</th>
+<th style="text-align: center;">Sign-out</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ref_count</code></td>
+<td style="text-align: center;">775</td>
+<td style="text-align: center;">554</td>
+<td style="text-align: center;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt_count</code></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;"><strong>221</strong></td>
+<td style="text-align: center;">222 (Δ=-1)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dp</code></td>
+<td style="text-align: center;">775</td>
+<td style="text-align: center;">775 (unchanged)</td>
+<td style="text-align: center;">—</td>
+</tr>
+</tbody>
+</table>
+<p>The Δalt=-1 is explained by one read landing in the ties (Phase 3 score margin &lt; 2).</p>
+<hr>
+<h2 id="reference-complex-indels-diagnostic-commands">Diagnostic Commands<a class="headerlink" href="#reference-complex-indels-diagnostic-commands" title="Permanent link">¶</a></h2>
+<h3 id="reference-complex-indels-identify-which-checker-handles-a-variant">Identify which checker handles a variant<a class="headerlink" href="#reference-complex-indels-identify-which-checker-handles-a-variant" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#reference-complex-indels-__codelineno-7-1"></a><span class="c1"># --trace shows check_deletion vs check_complex routing per read</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#reference-complex-indels-__codelineno-7-2"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#reference-complex-indels-__codelineno-7-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#reference-complex-indels-__codelineno-7-4"></a><span class="w">    </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#reference-complex-indels-__codelineno-7-5"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#reference-complex-indels-__codelineno-7-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#reference-complex-indels-__codelineno-7-7"></a><span class="w">    </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"7579309\|check_deletion\|check_complex"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-30
+</code></pre></div>
+<h3 id="reference-complex-indels-verify-left-alignment-shift">Verify left-alignment shift<a class="headerlink" href="#reference-complex-indels-verify-left-alignment-shift" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#reference-complex-indels-__codelineno-8-1"></a><span class="c1"># See the normalized position vs original</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#reference-complex-indels-__codelineno-8-2"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#reference-complex-indels-__codelineno-8-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#reference-complex-indels-__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#reference-complex-indels-__codelineno-8-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>/tmp/norm/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#reference-complex-indels-__codelineno-8-6"></a><span class="w">    </span>--show-normalization
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#reference-complex-indels-__codelineno-8-7"></a>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#reference-complex-indels-__codelineno-8-8"></a><span class="c1"># If norm_pos ≠ Start_Position, left-alignment shifted the anchor</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#reference-complex-indels-__codelineno-8-9"></a>grep<span class="w"> </span><span class="s2">"TP53"</span><span class="w"> </span>/tmp/norm/normalized.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-f5,6,11,12<span class="w">  </span><span class="c1"># pos, ref, norm_pos, norm_ref</span>
+</code></pre></div>
+<h3 id="reference-complex-indels-check-cigar-d-position-vs-anchor">Check <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> D position vs anchor<a class="headerlink" href="#reference-complex-indels-check-cigar-d-position-vs-anchor" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#reference-complex-indels-__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pysam</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#reference-complex-indels-__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#reference-complex-indels-__codelineno-9-3"></a><span class="n">bam</span> <span class="o">=</span> <span class="n">pysam</span><span class="o">.</span><span class="n">AlignmentFile</span><span class="p">(</span><span class="s2">"sample.bam"</span><span class="p">)</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#reference-complex-indels-__codelineno-9-4"></a><span class="n">anchor</span> <span class="o">=</span> <span class="mi">7579308</span>  <span class="c1"># 0-based</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#reference-complex-indels-__codelineno-9-5"></a>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#reference-complex-indels-__codelineno-9-6"></a><span class="k">for</span> <span class="n">read</span> <span class="ow">in</span> <span class="n">bam</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="s2">"chr17"</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">-</span> <span class="mi">10</span><span class="p">,</span> <span class="n">anchor</span> <span class="o">+</span> <span class="mi">15</span><span class="p">):</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#reference-complex-indels-__codelineno-9-7"></a>    <span class="k">for</span> <span class="n">op</span><span class="p">,</span> <span class="n">length</span> <span class="ow">in</span> <span class="n">read</span><span class="o">.</span><span class="n">cigartuples</span><span class="p">:</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#reference-complex-indels-__codelineno-9-8"></a>        <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>  <span class="c1"># D (deletion)</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#reference-complex-indels-__codelineno-9-9"></a>            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">length</span><span class="si">}</span><span class="s2">) at ref_pos ~ </span><span class="si">{</span><span class="n">read</span><span class="o">.</span><span class="n">reference_start</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<hr>
+<h2 id="reference-complex-indels-related">Related<a class="headerlink" href="#reference-complex-indels-related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="#reference-allele-classification">Allele Classification</a> — Full dispatch and algorithm reference</li>
+<li><a href="#reference-variant-normalization">Variant Normalization</a> — How left-alignment works</li>
+<li><a href="#resources-troubleshooting">Troubleshooting</a> — Common count issues and diagnosis steps</li>
+<li><a href="#reference-read-filters">Read Filters</a> — Which reads reach the allele checker</li>
+</ul>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-glossary" heading-number="5.8"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -8086,12 +8673,29 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
 <td style="text-align: left;"><strong>Parity test</strong></td>
 <td style="text-align: left;">Test verifying <code>count_bam</code> and <code>count_bam_binned</code> produce identical results</td>
 </tr>
+<tr>
+<td style="text-align: left;"><strong>Complex Del+SNV</strong></td>
+<td style="text-align: left;">A deletion-format variant (<code>len(REF) &gt; len(ALT) == 1</code>) where the anchor base also substitutes (<code>alt[0] ≠ ref[0]</code>). Examples: <code>GC→T</code>, <code>AG→T</code>. Routed to <code>check_complex</code> instead of <code>check_deletion</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>has_nearby_length_match</strong></td>
+<td style="text-align: left;">Flag set in <code>check_deletion</code> when a windowed Del matches in length (≥5bp) but fails S3 sequence validation. Triggers Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback to handle <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifts.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>left-alignment shift</strong></td>
+<td style="text-align: left;"><abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> repositions an indel's anchor to the leftmost equivalent position. For partial-repeat regions, this places the anchor several bases left of where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> operation appears in reads.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>is_worth_realignment</strong></td>
+<td style="text-align: left;">Predicate in <code>check_complex</code> returning <code>true</code> when a read's <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> contains indel evidence in the variant window. If <code>false</code>, M-block anchor coverage check classifies clean REF reads for deletion-direction variants.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="reference-glossary-related">Related<a class="headerlink" href="#reference-glossary-related" title="Permanent link">¶</a></h2>
 <ul>
 <li><a href="#reference-architecture">Architecture</a> — System design</li>
 <li><a href="#reference-input-formats">Input Formats</a> — File specifications</li>
+<li><a href="#reference-complex-indels">Complex Indels</a> — Real-world case studies (Del+SNV, large DEL, shifted deletion)</li>
 <li><a href="#cli-rna">RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a> — RNA-specific options</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
@@ -8231,52 +8835,94 @@ Use mouse to pan and zoom
 </code></pre></div>
 <hr>
 <h2 id="development-developer-guide-regression-testing">Regression Testing<a class="headerlink" href="#development-developer-guide-regression-testing" title="Permanent link">¶</a></h2>
-<h3 id="development-developer-guide-22-bam-regression-suite">22-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Regression Suite<a class="headerlink" href="#development-developer-guide-22-bam-regression-suite" title="Permanent link">¶</a></h3>
-<p>For changes to the counting engine (<code>counting/engine.rs</code>), run the 22-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> regression
-to verify no unintended count shifts:</p>
-<ol>
-<li>
-<p>Build the release binary:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#development-developer-guide-__codelineno-4-1"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
+<h3 id="development-developer-guide-python-integration-tests-pytest">Python Integration Tests (pytest)<a class="headerlink" href="#development-developer-guide-python-integration-tests-pytest" title="Permanent link">¶</a></h3>
+<p>The primary test suite covers <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> parsing, windowed indel detection,
+<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/insertion/deletion/complex variant classification, shifted indel handling,
+and <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> validation:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#development-developer-guide-__codelineno-4-1"></a>pytest<span class="w"> </span>-v<span class="w">                                    </span><span class="c1"># Full suite</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#development-developer-guide-__codelineno-4-2"></a>pytest<span class="w"> </span>tests/test_shifted_indels.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Windowed + shifted indel-specific</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#development-developer-guide-__codelineno-4-3"></a>pytest<span class="w"> </span>tests/test_variant_checks.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Core allele-classification</span>
 </code></pre></div>
-</li>
-<li>
-<p>Run the regression script:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#development-developer-guide-__codelineno-5-1"></a>python<span class="w"> </span>/tmp/run_regression_22.py
+<h3 id="development-developer-guide-rust-unit-tests-cargo-test">Rust Unit Tests (cargo test)<a class="headerlink" href="#development-developer-guide-rust-unit-tests-cargo-test" title="Permanent link">¶</a></h3>
+<p>Normalization engine tests — left-alignment, repeat detection, adaptive padding,
+homopolymer decomposition:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#development-developer-guide-__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
 </code></pre></div>
-</li>
-<li>
-<p>Review the comparison output. Key metrics:</p>
-</li>
-<li><strong>ALT count diff distribution</strong>: most variants should be within ±2</li>
-<li><strong>C++ higher</strong>: investigate any new variants where C++ ALT &gt; gbcms</li>
-<li><strong>gbcms higher</strong>: expected for windowed indel detection improvements</li>
-</ol>
-<h3 id="development-developer-guide-variant-type-specific-bam-slices">Variant-Type-Specific <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Slices<a class="headerlink" href="#development-developer-guide-variant-type-specific-bam-slices" title="Permanent link">¶</a></h3>
-<p>When debugging specific variant types, create targeted <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slices:</p>
+<h3 id="development-developer-guide-bam-slice-regression-suite"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Slice Regression Suite<a class="headerlink" href="#development-developer-guide-bam-slice-regression-suite" title="Permanent link">¶</a></h3>
+<p>For changes to counting logic (<code>counting/engine.rs</code>, <code>counting/variant_checks.rs</code>),
+run against the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice test set (54 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slices × 2 MAFs — see <code>~/Downloads/bam_slice_v2_8_0/</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#development-developer-guide-__codelineno-6-1"></a><span class="c1"># Rebuild first</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#development-developer-guide-__codelineno-6-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--no-build-isolation
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#development-developer-guide-__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#development-developer-guide-__codelineno-6-4"></a><span class="c1"># Run on indels MAF</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#development-developer-guide-__codelineno-6-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#development-developer-guide-__codelineno-6-6"></a><span class="w">    </span>--variants<span class="w"> </span>filtered_indels_io.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#development-developer-guide-__codelineno-6-7"></a><span class="w">    </span>--bam-list<span class="w"> </span>bam_list.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#development-developer-guide-__codelineno-6-8"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#development-developer-guide-__codelineno-6-9"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#development-developer-guide-__codelineno-6-10"></a><span class="w">    </span>--output-dir<span class="w"> </span>/tmp/regression_out/
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#development-developer-guide-__codelineno-6-11"></a>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#development-developer-guide-__codelineno-6-12"></a><span class="c1"># Diff against baseline</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#development-developer-guide-__codelineno-6-13"></a>python<span class="w"> </span>scripts/concordance.py<span class="w"> </span>/tmp/regression_baseline/<span class="w"> </span>/tmp/regression_out/
+</code></pre></div>
+<p>Key invariants to check:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Check</th>
+<th style="text-align: left;">Expected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ref_count + alt_count ≤ total_count</code></td>
+<td style="text-align: left;">Must hold for every row (INVARIANT)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Δalt for own-sample covered variants</td>
+<td style="text-align: left;">0 vs sign-out <code>t_alt</code> (except known <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation issues)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Non-own-sample ref_count changes</td>
+<td style="text-align: left;">≤1 count (non-determinism from parallel windowed scan)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="development-developer-guide-variant-type-specific-investigation">Variant-Type-Specific Investigation<a class="headerlink" href="#development-developer-guide-variant-type-specific-investigation" title="Permanent link">¶</a></h3>
+<p>When debugging specific variant types, use targeted <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slices:</p>
 <table>
 <thead>
 <tr>
 <th style="text-align: left;">Variant Type</th>
-<th style="text-align: left;">Key Samples</th>
+<th style="text-align: left;">Key Examples</th>
 <th style="text-align: left;">What to Check</th>
 </tr>
 </thead>
 <tbody>
 <tr>
+<td style="text-align: left;">Del+SNV (complex)</td>
+<td style="text-align: left;">SOX9 <code>GC→T</code>, ABL1 <code>AG→T</code></td>
+<td style="text-align: left;">Routes to <code>check_complex</code>, not <code>check_deletion</code>; alt &gt; 0</td>
+</tr>
+<tr>
+<td style="text-align: left;">Large deletion, REF=0</td>
+<td style="text-align: left;">NF2 ~100bp DEL</td>
+<td style="text-align: left;">M-block REF fallback in <code>check_complex</code>; ref &gt; 0</td>
+</tr>
+<tr>
+<td style="text-align: left;">Shifted large deletion</td>
+<td style="text-align: left;">TP53 <code>GACCGTGCAAGT→-</code></td>
+<td style="text-align: left;"><code>has_nearby_length_match</code> Phase 3; alt matches sign-out</td>
+</tr>
+<tr>
 <td style="text-align: left;"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/DNP</td>
-<td style="text-align: left;">TERT (5bp), BRCA2 (2bp), TP53 (4bp)</td>
-<td style="text-align: left;">ALT recovery vs C++</td>
+<td style="text-align: left;">TERT (5bp), BRCA2 (2bp)</td>
+<td style="text-align: left;">ALT recovery vs sign-out</td>
 </tr>
 <tr>
-<td style="text-align: left;">Indel</td>
-<td style="text-align: left;">JAK1, ZFHX3 (shifted insertions)</td>
-<td style="text-align: left;">Multi-allelic isolation</td>
-</tr>
-<tr>
-<td style="text-align: left;">Complex</td>
-<td style="text-align: left;">EPHA7, KDM6A (DelIns)</td>
-<td style="text-align: left;">Phase 3 classification</td>
+<td style="text-align: left;">Shifted insertion</td>
+<td style="text-align: left;">JAK1 <code>65306997</code></td>
+<td style="text-align: left;">Multi-allelic isolation, windowed INS scan</td>
 </tr>
 </tbody>
 </table>
@@ -8418,15 +9064,29 @@ Use mouse to pan and zoom
 </tbody>
 </table>
 <hr>
-<h2 id="development-developer-guide-quality-checklist">Quality Checklist<a class="headerlink" href="#development-developer-guide-quality-checklist" title="Permanent link">¶</a></h2>
-<p>Before committing:</p>
+<h2 id="development-developer-guide-pre-commit-checklist">Pre-Commit Checklist<a class="headerlink" href="#development-developer-guide-pre-commit-checklist" title="Permanent link">¶</a></h2>
+<p>Before committing, verify all checks pass:</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> <code>make lint</code> passes</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> <code>pytest</code> passes</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> Type hints complete</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> Docstrings added</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> No dead code</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> <code>ruff check src/ tests/</code> — Python linting</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> <code>black --check src/ tests/</code> — Python formatting</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> <code>mypy src/</code> — Type checking (no errors)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> <code>cd rust &amp;&amp; cargo clippy --all-targets -- -D warnings</code> — Rust linting (strict, warnings-as-errors)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> <code>cd rust &amp;&amp; cargo test</code> — Rust unit tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> <code>pytest -v</code> — Python/integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> Type hints complete on all new public functions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> Docstrings added (Google style for Python; <code>///</code> on public Rust items)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> No dead code (removed, not commented out)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> No silent failures: missing inputs must fail-fast or require explicit opt-out</li>
 </ul>
+<p>To run all Python checks in one pass:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#development-developer-guide-__codelineno-7-1"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#development-developer-guide-__codelineno-7-2"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#development-developer-guide-__codelineno-7-3"></a>mypy<span class="w"> </span>src/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#development-developer-guide-__codelineno-7-4"></a>pytest<span class="w"> </span>-v
+</code></pre></div>
+<p>To run all Rust checks:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-developer-guide-__codelineno-8-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
+</code></pre></div>
 <hr>
 <h2 id="development-developer-guide-environment-variables">Environment Variables<a class="headerlink" href="#development-developer-guide-environment-variables" title="Permanent link">¶</a></h2>
 <table>
@@ -8450,7 +9110,7 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#development-developer-guide-__codelineno-6-1"></a><span class="nv">GBCMS_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span><span class="nv">RUST_LOG</span><span class="o">=</span>debug<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-developer-guide-__codelineno-9-1"></a><span class="nv">GBCMS_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span><span class="nv">RUST_LOG</span><span class="o">=</span>debug<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...
 </code></pre></div>
 <hr>
 <h2 id="development-developer-guide-generating-a-pdf">Generating a PDF<a class="headerlink" href="#development-developer-guide-generating-a-pdf" title="Permanent link">¶</a></h2>
@@ -8459,7 +9119,7 @@ Use mouse to pan and zoom
 <ol>
 <li>
 <p>Start the docs server:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#development-developer-guide-__codelineno-7-1"></a>mkdocs<span class="w"> </span>serve
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#development-developer-guide-__codelineno-10-1"></a>mkdocs<span class="w"> </span>serve
 </code></pre></div>
 </li>
 <li>
@@ -8467,12 +9127,12 @@ Use mouse to pan and zoom
 </li>
 <li>
 <p>Open the DevTools console (<code>F12</code> → Console tab) and paste:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-developer-guide-__codelineno-8-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#development-developer-guide-__codelineno-8-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#development-developer-guide-__codelineno-8-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#development-developer-guide-__codelineno-8-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#development-developer-guide-__codelineno-8-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#development-developer-guide-__codelineno-8-6"></a><span class="p">});</span>
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#development-developer-guide-__codelineno-11-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#development-developer-guide-__codelineno-11-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#development-developer-guide-__codelineno-11-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#development-developer-guide-__codelineno-11-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#development-developer-guide-__codelineno-11-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#development-developer-guide-__codelineno-11-6"></a><span class="p">});</span>
 </code></pre></div>
 </li>
 <li>
@@ -9799,50 +10459,334 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
         })
         </script>
         </head><body><div><h1 id="troubleshooting">Troubleshooting<a class="headerlink" href="#resources-troubleshooting-troubleshooting" title="Permanent link">¶</a></h1>
-<p>Common issues and solutions for gbcms.</p>
+<p>Common issues and solutions for gbcms. Issues are grouped by phase — work top-to-bottom for systematic diagnosis.</p>
+<hr>
 <h2 id="resources-troubleshooting-installation-issues">Installation Issues<a class="headerlink" href="#resources-troubleshooting-installation-issues" title="Permanent link">¶</a></h2>
-<h3 id="resources-troubleshooting-rust-compilation-fails">Rust Compilation Fails<a class="headerlink" href="#resources-troubleshooting-rust-compilation-fails" title="Permanent link">¶</a></h3>
-<p><strong>Error:</strong> <code>error: linker 'cc' not found</code></p>
-<p><strong>Solution:</strong> Install build tools:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#resources-troubleshooting-__codelineno-0-1"></a><span class="c1"># macOS</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#resources-troubleshooting-__codelineno-0-2"></a>xcode-select<span class="w"> </span>--install
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#resources-troubleshooting-__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#resources-troubleshooting-__codelineno-0-4"></a><span class="c1"># Ubuntu/Debian</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#resources-troubleshooting-__codelineno-0-5"></a>apt-get<span class="w"> </span>install<span class="w"> </span>build-essential
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#resources-troubleshooting-__codelineno-0-6"></a>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#resources-troubleshooting-__codelineno-0-7"></a><span class="c1"># CentOS/RHEL</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#resources-troubleshooting-__codelineno-0-8"></a>yum<span class="w"> </span>groupinstall<span class="w"> </span><span class="s2">"Development Tools"</span>
+<details class="question">
+<summary>Rust compilation fails: <code>error: linker 'cc' not found</code></summary>
+<p>Install system build tools:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="" id="resources-troubleshooting-__tabbed_1_1" name="resources-troubleshooting-__tabbed_1" type="radio"><input id="resources-troubleshooting-__tabbed_1_2" name="resources-troubleshooting-__tabbed_1" type="radio"><input id="resources-troubleshooting-__tabbed_1_3" name="resources-troubleshooting-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="resources-troubleshooting-__tabbed_1_1">macOS</label><label for="resources-troubleshooting-__tabbed_1_2">Ubuntu / Debian</label><label for="resources-troubleshooting-__tabbed_1_3">CentOS / RHEL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#resources-troubleshooting-__codelineno-0-1"></a>xcode-select<span class="w"> </span>--install
 </code></pre></div>
-<h3 id="resources-troubleshooting-htslib-linking-error">htslib Linking Error<a class="headerlink" href="#resources-troubleshooting-htslib-linking-error" title="Permanent link">¶</a></h3>
-<p><strong>Error:</strong> <code>cannot find -lhts</code></p>
-<p><strong>Solution:</strong> The Rust backend compiles htslib statically. Ensure you have:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#resources-troubleshooting-__codelineno-1-1"></a><span class="c1"># Dependencies</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#resources-troubleshooting-__codelineno-1-2"></a>apt-get<span class="w"> </span>install<span class="w"> </span>zlib1g-dev<span class="w"> </span>libbz2-dev<span class="w"> </span>liblzma-dev<span class="w"> </span>libcurl4-openssl-dev
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#resources-troubleshooting-__codelineno-1-1"></a>apt-get<span class="w"> </span>install<span class="w"> </span>build-essential
 </code></pre></div>
-<h2 id="resources-troubleshooting-runtime-issues">Runtime Issues<a class="headerlink" href="#resources-troubleshooting-runtime-issues" title="Permanent link">¶</a></h2>
-<h3 id="resources-troubleshooting-bai-not-found"><abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> Not Found<a class="headerlink" href="#resources-troubleshooting-bai-not-found" title="Permanent link">¶</a></h3>
-<p><strong>Error:</strong> <code>BAI index not found for sample.bam</code></p>
-<p><strong>Solution:</strong> Create or verify index:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#resources-troubleshooting-__codelineno-2-1"></a>samtools<span class="w"> </span>index<span class="w"> </span>sample.bam
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#resources-troubleshooting-__codelineno-2-1"></a>yum<span class="w"> </span>groupinstall<span class="w"> </span><span class="s2">"Development Tools"</span>
 </code></pre></div>
-<h3 id="resources-troubleshooting-chromosome-mismatch">Chromosome Mismatch<a class="headerlink" href="#resources-troubleshooting-chromosome-mismatch" title="Permanent link">¶</a></h3>
-<p><strong>Error:</strong> <code>Chromosome X not found in reference</code></p>
-<p><strong>Solution:</strong> Ensure chromosome naming matches between <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, and <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (e.g., <code>chr1</code> vs <code>1</code>).</p>
+</div>
+</div>
+</div>
+</details>
+<details class="question">
+<summary>htslib linking error: <code>cannot find -lhts</code></summary>
+<p>The Rust backend compiles htslib statically. Ensure compression library headers are present:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#resources-troubleshooting-__codelineno-3-1"></a>apt-get<span class="w"> </span>install<span class="w"> </span>zlib1g-dev<span class="w"> </span>libbz2-dev<span class="w"> </span>liblzma-dev<span class="w"> </span>libcurl4-openssl-dev
+</code></pre></div>
+</details>
+<details class="question">
+<summary><code>GLIBC_2.34 not found</code> when installing via pip</summary>
+<p>Your system has an older glibc (RHEL 8 / CentOS 8 / <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>). PyPI wheels require glibc 2.34+.
+Use the <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux</a> install path
+(micromamba + clangdev + source install).</p>
+</details>
+<details class="question">
+<summary><code>LIBCLANG_PATH</code> not set error during build</summary>
+<p>Required for <code>bindgen</code> (htslib headers). Set:
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#resources-troubleshooting-__codelineno-4-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LIBCLANG_PATH</span><span class="o">=</span><span class="nv">$CONDA_PREFIX</span>/lib
+</code></pre></div>
+Make sure you have <code>clangdev</code> (not <code>clang</code>) from conda-forge in your environment.
+</details>
+<hr>
+<h2 id="resources-troubleshooting-bam-input-issues"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> / Input Issues<a class="headerlink" href="#resources-troubleshooting-bam-input-issues" title="Permanent link">¶</a></h2>
+<details class="question">
+<summary><abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> index not found for <code>sample.bam</code></summary>
+<p>Create or verify the index:
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#resources-troubleshooting-__codelineno-5-1"></a>samtools<span class="w"> </span>index<span class="w"> </span>sample.bam
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#resources-troubleshooting-__codelineno-5-2"></a><span class="c1"># Expected: creates sample.bam.bai (or sample.bai)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#resources-troubleshooting-__codelineno-5-3"></a>samtools<span class="w"> </span>quickcheck<span class="w"> </span>sample.bam<span class="w">  </span><span class="c1"># Sanity check the BAM</span>
+</code></pre></div>
+</details>
+<details class="question">
+<summary>Chromosome <code>X</code> not found in reference / chromosome mismatch</summary>
+<p>gbcms looks up reference sequence by the chromosome name in the variant file. Ensure
+chromosome naming is consistent across <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, and <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#resources-troubleshooting-__codelineno-6-1"></a><span class="c1"># Check names in FASTA</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#resources-troubleshooting-__codelineno-6-2"></a>grep<span class="w"> </span><span class="s2">"^&gt;"</span><span class="w"> </span>reference.fa<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#resources-troubleshooting-__codelineno-6-3"></a><span class="c1"># Check names in BAM</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#resources-troubleshooting-__codelineno-6-4"></a>samtools<span class="w"> </span>view<span class="w"> </span>-H<span class="w"> </span>sample.bam<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"^@SQ"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#resources-troubleshooting-__codelineno-6-5"></a><span class="c1"># Check names in MAF/VCF</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#resources-troubleshooting-__codelineno-6-6"></a>head<span class="w"> </span>-20<span class="w"> </span>variants.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-f5<span class="w">   </span><span class="c1"># Chromosome column</span>
+</code></pre></div>
+<p>Common mismatch: <code>chr1</code> vs <code>1</code>. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> and variant file must match.</p>
+</details>
+<details class="question">
+<summary><code>FETCH_FAILED</code> in <code>validation_status</code> for all variants on a chromosome</summary>
+<p>See chromosome mismatch above. Also check:
+- <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> <code>.fai</code> index is present (<code>samtools faidx reference.fa</code>)
+- No truncated / corrupted <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></p>
+</details>
+<hr>
+<h2 id="resources-troubleshooting-allele-count-issues">Allele Count Issues<a class="headerlink" href="#resources-troubleshooting-allele-count-issues" title="Permanent link">¶</a></h2>
+<details class="question">
+<summary><code>alt_count = 0</code> for a variant I can see reads for in IGV</summary>
+<p>Check in this order:</p>
+<ol>
+<li>
+<p><strong><code>validation_status</code></strong> column — if <code>REF_MISMATCH</code> or <code>FETCH_FAILED</code>, the variant
+   was excluded from counting. See <a href="#resources-troubleshooting-normalization-issues">Normalization Issues</a>.</p>
+</li>
+<li>
+<p><strong>Complex Del+SNV routing</strong> — if your variant has deletion format (<code>REF</code> longer than <code>ALT</code>,
+   <code>ALT</code> is a single base) but the anchor base also changes (e.g., <code>GC→T</code>, <code>AG→T</code>), it is a
+   <strong>complex Del+SNV</strong> routed to <code>check_complex</code>, not <code>check_deletion</code>.
+   Use <code>--trace</code> logging to confirm:
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#resources-troubleshooting-__codelineno-7-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#resources-troubleshooting-__codelineno-7-2"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"check_complex\|check_deletion"</span>
+</code></pre></div>
+   See <a href="#reference-complex-indels">Complex Indels</a> for detailed case studies.
+</li>
+<li>
+<p><strong>Left-alignment shift</strong> — for large deletions (≥5bp), <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-aligns the anchor;
+   the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position may be several bases right of the anchor.
+   Run normalization to see the left-aligned coordinates:
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#resources-troubleshooting-__codelineno-8-1"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/norm/
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#resources-troubleshooting-__codelineno-8-2"></a><span class="c1"># Check norm_pos vs original Start_Position</span>
+</code></pre></div>
+</li>
+<li>
+<p><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> coverage</strong> — verify the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> actually has reads at this position:
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#resources-troubleshooting-__codelineno-9-1"></a>samtools<span class="w"> </span>view<span class="w"> </span>-c<span class="w"> </span>sample.bam<span class="w"> </span><span class="s2">"chr17:7579309-7579322"</span>
+</code></pre></div>
+</li>
+<li>
+<p><strong>Verbose per-read trace</strong> — most diagnostic tool:
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#resources-troubleshooting-__codelineno-10-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"7579309"</span><span class="w">  </span><span class="c1"># Filter to specific position</span>
+</code></pre></div>
+</li>
+</ol>
+</details>
+<details class="question">
+<summary><code>ref_count = 0</code> for a large deletion</summary>
+<p>For large deletions (~100bp+), REF reads have clean M-only CIGARs. gbcms's
+<code>is_worth_realignment()</code> skips Phase 3 for clean CIGARs, and the <strong>M-block REF fallback</strong>
+in <code>check_complex</code> classifies these as REF.</p>
+<p>If <code>ref = 0</code>, check:
+- The variant was normalized correctly (M-block REF fallback only applies in <code>check_complex</code>)
+- The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the anchor position (<code>samtools depth -a sample.bam -r chr22:30038094-30038095</code>)
+- The deletion is ≥50bp (interior REF guard applies; smaller deletions use the normal path)</p>
+<p>See <a href="#reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible">NF2 Case Study</a>.</p>
+</details>
+<details class="question">
+<summary><code>alt_count</code> is lower than expected for a deletion ≥5bp</summary>
+<p><abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment can shift the anchor further left than where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> appears.
+The <code>has_nearby_length_match</code> Phase 3 fallback handles this for deletions ≥5bp.</p>
+<p>For deletions &lt;5bp failing S3 sequence validation, <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF is used — this is
+intentional. A 1-4bp deletion in the wrong reference context is almost certainly spurious noise,
+not a left-alignment artifact.</p>
+<p>To diagnose deletion ≥5bp still returning low alt:
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#resources-troubleshooting-__codelineno-11-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"has_nearby_length_match\|S3.*fail"</span>
+</code></pre></div>
+</details>
+<details class="question">
+<summary>Large Δalt vs sign-out <code>t_alt</code> for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> / ONP / DNP variants</summary>
+<p>Several expected causes — not gbcms bugs:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Cause</th>
+<th style="text-align: left;">Pattern</th>
+<th style="text-align: left;">Diagnosis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>TRANS configuration</strong></td>
+<td style="text-align: left;">Two <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> alleles on opposite chromosomes; sign-out counts 2× reads</td>
+<td style="text-align: left;"><abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> ~2× expected</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact</strong></td>
+<td style="text-align: left;">ONP defined at wrong position or missing adjacent SNV</td>
+<td style="text-align: left;"><code>gbcms normalize</code> shows position shift</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Sign-out duplication</strong></td>
+<td style="text-align: left;">Variant captured by two <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> entries (DEL+INS pair both counted</td>
+<td style="text-align: left;">Two nearby rows in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with same gene</td>
+</tr>
+</tbody>
+</table>
+<p>Use <code>--verbose</code> to log per-variant read counts, or <code>--trace</code> for per-read detail.</p>
+</details>
+<details class="question">
+<summary><code>dp = 0</code> for a variant</summary>
+<ul>
+<li><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice doesn't cover this sample</strong>: <code>samtools view -c sample.bam "chrom:pos-pos"</code> returns 0</li>
+<li><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> index missing</strong>: see <abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> issue above</li>
+<li><strong>Chromosome mismatch</strong>: see above</li>
+<li><strong>Variant outside <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> region</strong>: the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file only covers certain genomic regions</li>
+</ul>
+</details>
+<details class="question">
+<summary><code>DPF</code> is much lower than <code>DP</code> (large gap)</summary>
+<p>The gap <code>DPF − (RDF + ADF)</code> does <strong>not</strong> mean data loss — it counts fragments discarded
+due to R1/R2 disagreement within the quality threshold.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#resources-troubleshooting-__codelineno-12-1"></a>DPF - (RDF + ADF) = ambiguous fragments (both R1 and R2 covered but base quality within --fragment-qual-threshold)
+</code></pre></div>
+<p>A large gap at a specific locus is a <strong>quality signal</strong> indicating the site has many
+discordant fragments — typical of noisy or error-prone positions. Adjust with
+<code>--fragment-qual-threshold</code> (default 10).</p>
+</details>
+<details class="question">
+<summary><code>ref_count + alt_count &gt; total_count</code> (INVARIANT violation)</summary>
+<p>This should <strong>never</strong> happen. If observed:</p>
+<ol>
+<li>Record the exact <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row (<code>chrom</code>, <code>pos</code>, <code>ref</code>, <code>alt</code>, <code>Tumor_Sample_Barcode</code>)</li>
+<li>Run with <code>--trace</code> to capture per-read classification</li>
+<li>File a bug report at <a href="https://github.com/msk-access/gbcms/issues">github.com/msk-access/gbcms/issues</a>
+   with the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row, <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> details, and trace log</li>
+</ol>
+<p>The invariant <code>ref_count + alt_count ≤ total_count</code> is enforced throughout the counting engine.</p>
+</details>
+<hr>
+<h2 id="resources-troubleshooting-normalization-issues">Normalization Issues<a class="headerlink" href="#resources-troubleshooting-normalization-issues" title="Permanent link">¶</a></h2>
+<details class="question">
+<summary><code>REF_MISMATCH</code> in <code>validation_status</code> — what does it mean?</summary>
+<p>The REF allele in the variant file does not match the reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> at the stated position.
+gbcms requires ≥90% base match to auto-correct; below that, the variant is excluded.</p>
+<p>Common causes:
+- Wrong reference genome build (GRCh37 data with GRCh38 reference or vice versa)
+- Chromosome naming mismatch (<code>chr1</code> vs <code>1</code>)
+- Trailing-base error in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation (fixed by tolerant validation if ≥90% match)</p>
+<p>Diagnose with:
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#resources-troubleshooting-__codelineno-13-1"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/norm/
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#resources-troubleshooting-__codelineno-13-2"></a>grep<span class="w"> </span><span class="s2">"REF_MISMATCH"</span><span class="w"> </span>/tmp/norm/normalized.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
+</code></pre></div>
+</details>
+<details class="question">
+<summary><code>PASS_WARN_REF_CORRECTED</code> — is this a problem?</summary>
+<p>The REF allele was ≥90% match — corrected to <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> sequence and counting proceeded normally.
+The original <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF is preserved in the <code>original_ref</code> column (when <code>--show-normalization</code> is set).</p>
+<p>This is <strong>not</strong> a problem in most cases. Common benign cause: 27bp EGFR exon 19 deletion
+with 26/27 bases correct and 1 trailing base that's a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact.</p>
+<p>If you want to audit all corrected variants:
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#resources-troubleshooting-__codelineno-14-1"></a>grep<span class="w"> </span><span class="s2">"PASS_WARN_REF_CORRECTED"</span><span class="w"> </span>output.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+</code></pre></div>
+</details>
+<details class="question">
+<summary><code>PASS_WARN_HOMOPOLYMER_DECOMP</code> — what changed?</summary>
+<p>The variant overlapped a homopolymer, and the corrected allele (e.g., <code>CCCCCC→CCCCT</code> instead
+of <code>CCCCCC→T</code>) got more ALT support. The corrected allele counts were used.
+<code>used_decomposed = True</code> in the output.</p>
+<p>This is <strong>correct behavior</strong> — it means the variant caller collapsed a D(1)+SNV into a single
+complex variant, and gbcms detected and corrected for this.</p>
+</details>
+<hr>
+<h2 id="resources-troubleshooting-rna-mode-issues">RNA Mode Issues<a class="headerlink" href="#resources-troubleshooting-rna-mode-issues" title="Permanent link">¶</a></h2>
+<details class="question">
+<summary>All counts are 0 in RNA mode</summary>
+<ol>
+<li>
+<p><strong>Strandedness filter with missing gene annotation</strong> — if your <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> lacks a <code>gene_strand</code>
+   column, all reads fail the strandedness filter (defaulted to on).
+   Disable with <code>--no-strandedness</code> for unstranded libraries or MAFs without strand annotation.</p>
+</li>
+<li>
+<p><strong><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> filter too strict</strong> — default <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=1 with <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 rescue is correct for <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>.
+   If your aligner assigns <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> differently, check <code>--min-mapq</code>.</p>
+</li>
+<li>
+<p><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> not <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aligned</strong> — RNA mode assumes <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> BAMs with <code>NH</code> tag. Other aligners
+   may lack the <code>NH:i:1</code> tag needed for <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> rescue. Check:
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#resources-troubleshooting-__codelineno-15-1"></a>samtools<span class="w"> </span>view<span class="w"> </span>sample.bam<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span><span class="s1">'\t'</span><span class="w"> </span><span class="s1">'\n'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"NH"</span>
+</code></pre></div>
+</li>
+</ol>
+</details>
+<details class="question">
+<summary><code>rna_sense_depth</code> and <code>rna_antisense_depth</code> are both 0</summary>
+<p>The <code>gene_strand</code> column is missing from the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> or all variants have <code>gene_strand = NA</code>.
+gbcms cannot assign sense/antisense without strand annotation.</p>
+<p>Solutions:
+- Add strand annotation to the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (from gene model GFF/GTF)
+- Use <code>--no-strandedness</code> to count all reads regardless of strand</p>
+</details>
+<details class="question">
+<summary>RNA editing flag (<code>rna_editing_site_overlap</code>) is always False</summary>
+<p>Ensure <code>--rna-editing-db</code> points to a valid REDIportal TABLE1 file:
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#resources-troubleshooting-__codelineno-16-1"></a><span class="c1"># Verify file exists and is readable</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#resources-troubleshooting-__codelineno-16-2"></a>head<span class="w"> </span>-3<span class="w"> </span>TABLE1_hg38.txt.gz<span class="w"> </span><span class="p">|</span><span class="w"> </span>zcat<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-3
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#resources-troubleshooting-__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#resources-troubleshooting-__codelineno-16-4"></a><span class="c1"># Download if missing</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#resources-troubleshooting-__codelineno-16-5"></a>wget<span class="w"> </span>http://srv00.recas.ba.infn.it/atlas/download/TABLE1_hg38.txt.gz
+</code></pre></div>
+<p>Also verify chromosome naming matches (REDIportal uses <code>chr</code>-prefixed names).</p>
+</details>
+<hr>
 <h2 id="resources-troubleshooting-nextflow-issues">Nextflow Issues<a class="headerlink" href="#resources-troubleshooting-nextflow-issues" title="Permanent link">¶</a></h2>
-<h3 id="resources-troubleshooting-container-not-found">Container Not Found<a class="headerlink" href="#resources-troubleshooting-container-not-found" title="Permanent link">¶</a></h3>
-<p><strong>Error:</strong> <code>Unable to find image 'ghcr.io/msk-access/gbcms:X.Y.Z'</code></p>
-<p><strong>Solution:</strong> Pull manually:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#resources-troubleshooting-__codelineno-3-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#resources-troubleshooting-__codelineno-3-2"></a><span class="c1"># or</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#resources-troubleshooting-__codelineno-3-3"></a>singularity<span class="w"> </span>pull<span class="w"> </span>docker://ghcr.io/msk-access/gbcms:X.Y.Z
+<details class="question">
+<summary>Container not found: <code>Unable to find image 'ghcr.io/msk-access/gbcms:X.Y.Z'</code></summary>
+<p>Pull manually:
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#resources-troubleshooting-__codelineno-17-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#resources-troubleshooting-__codelineno-17-2"></a><span class="c1"># or for Singularity</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#resources-troubleshooting-__codelineno-17-3"></a>singularity<span class="w"> </span>pull<span class="w"> </span>docker://ghcr.io/msk-access/gbcms:X.Y.Z
 </code></pre></div>
-<h3 id="resources-troubleshooting-task-metrics-error">Task Metrics Error<a class="headerlink" href="#resources-troubleshooting-task-metrics-error" title="Permanent link">¶</a></h3>
-<p><strong>Error:</strong> <code>Command 'ps' required by nextflow to collect task metrics</code></p>
-<p>This occurs when running containers that lack <code>procps</code>. Use a newer image with procps installed.</p>
+</details>
+<details class="question">
+<summary>Task metrics error: <code>Command 'ps' required by nextflow</code></summary>
+<p>Use a newer container image with <code>procps</code> installed. This occurs with minimal base images
+that lack the <code>ps</code> command needed for Nextflow resource tracking.</p>
+</details>
+<details class="question">
+<summary>Docker permission denied</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#resources-troubleshooting-__codelineno-18-1"></a>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>docker<span class="w"> </span><span class="nv">$USER</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>newgrp<span class="w"> </span>docker
+</code></pre></div>
+</details>
+<hr>
+<h2 id="resources-troubleshooting-debugging-tools">Debugging Tools<a class="headerlink" href="#resources-troubleshooting-debugging-tools" title="Permanent link">¶</a></h2>
+<p>gbcms has two levels of diagnostic output:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Output</th>
+<th style="text-align: left;">Use When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--verbose</code></td>
+<td style="text-align: left;">Per-variant summary: read counts, classification decisions</td>
+<td style="text-align: left;">First-pass diagnosis</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--trace</code></td>
+<td style="text-align: left;">Per-read detail: <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk, S1/S2/S3 checks, Phase 2/3 scores</td>
+<td style="text-align: left;">Deep debugging a specific variant</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#resources-troubleshooting-__codelineno-19-1"></a><span class="c1"># Verbose: see per-variant decisions</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#resources-troubleshooting-__codelineno-19-2"></a><span class="nv">RUST_LOG</span><span class="o">=</span>info<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--verbose<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#resources-troubleshooting-__codelineno-19-3"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tee<span class="w"> </span>debug.log
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#resources-troubleshooting-__codelineno-19-4"></a>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#resources-troubleshooting-__codelineno-19-5"></a><span class="c1"># Trace: per-read detail (slow — run on small BAMs or specific regions)</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#resources-troubleshooting-__codelineno-19-6"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#resources-troubleshooting-__codelineno-19-7"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"7579309"</span><span class="w"> </span>&gt;<span class="w"> </span>tp53_trace.log
+</code></pre></div>
+<hr>
 <h2 id="resources-troubleshooting-related">Related<a class="headerlink" href="#resources-troubleshooting-related" title="Permanent link">¶</a></h2>
 <ul>
 <li><a href="#getting-started-installation">Installation</a> — Setup guide</li>
-<li><a href="#nextflow-parameters">Nextflow Parameters</a> — Resource options</li>
+<li><a href="#reference-variant-normalization">Variant Normalization</a> — Validation status reference</li>
+<li><a href="#reference-allele-classification">Allele Classification</a> — How variant types are classified</li>
+<li><a href="#reference-complex-indels">Complex Indels</a> — Complex Del+SNV, large DEL, shifted deletion case studies</li>
+<li><a href="#nextflow-parameters">Nextflow Parameters</a> — Resource configuration</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -9973,9 +10917,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
                 .print-site-enumerate-headings #reference-counting-metrics h2:before { content: '5.6.' counter(counter-reference-counting-metrics-2) ' ' }
                 .print-site-enumerate-headings #reference-counting-metrics h2 {  counter-increment: counter-reference-counting-metrics-2 }
             
-.print-site-enumerate-headings #reference-glossary > h1:before { content: '5.7 ' }
+.print-site-enumerate-headings #reference-complex-indels > h1:before { content: '5.7 ' }
 
-                .print-site-enumerate-headings #reference-glossary h2:before { content: '5.7.' counter(counter-reference-glossary-2) ' ' }
+                .print-site-enumerate-headings #reference-complex-indels h2:before { content: '5.7.' counter(counter-reference-complex-indels-2) ' ' }
+                .print-site-enumerate-headings #reference-complex-indels h2 {  counter-increment: counter-reference-complex-indels-2 }
+            
+.print-site-enumerate-headings #reference-glossary > h1:before { content: '5.8 ' }
+
+                .print-site-enumerate-headings #reference-glossary h2:before { content: '5.8.' counter(counter-reference-glossary-2) ' ' }
                 .print-site-enumerate-headings #reference-glossary h2 {  counter-increment: counter-reference-glossary-2 }
             
 .print-site-enumerate-headings #section-6 > h1:before { content: '6 ' }
