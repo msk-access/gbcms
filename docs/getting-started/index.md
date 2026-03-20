@@ -68,9 +68,9 @@ flowchart TD
 
 ---
 
-## Next Steps
+## Related
 
-1. **[Installation](installation.md)** — Install via PyPI, Docker, or from source
-2. **[Quick Start](quickstart.md)** — Run your first counting job (DNA and RNA examples)
-3. **[CLI Reference](../cli/dna.md)** — Full option reference for `gbcms dna`
-4. **[Nextflow Pipeline](../nextflow/index.md)** — For processing many samples in parallel on HPC
+- [Installation](installation.md) — Install via PyPI, Docker, or from source
+- [Quick Start](quickstart.md) — Run your first counting job (DNA and RNA examples)
+- [CLI Reference — DNA](../cli/dna.md) — Full option reference for `gbcms dna`
+- [Nextflow Pipeline](../nextflow/index.md) — For processing many samples in parallel on HPC

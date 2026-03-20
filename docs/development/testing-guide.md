@@ -233,3 +233,12 @@ Run coverage report:
 pytest --cov=gbcms --cov-report=html
 open htmlcov/index.html
 ```
+
+---
+
+## Related
+
+- [Developer Guide](developer-guide.md) — Setup, build commands, and project layout
+- [Contributing](contributing.md) — Code standards and pull request process
+- [Architecture](../reference/architecture.md) — Module structure and data flow
+- [Allele Classification](../reference/allele-classification.md) — Engine logic being tested

@@ -1,8 +1,9 @@
-# Quick Start { #rna-seq }
+# Quick Start
 
 Get up and running in minutes. All examples below assume gbcms is [installed](installation.md).
 
-> **Many samples on HPC?** Use [Nextflow](../nextflow/index.md) instead.
+!!! tip "Many samples on HPC?"
+    Use the [Nextflow pipeline](../nextflow/index.md) instead of the CLI for parallel processing on a cluster.
 
 ---
 
@@ -219,10 +220,10 @@ Get up and running in minutes. All examples below assume gbcms is [installed](in
 
 ---
 
-## Next Steps
+## Related
 
-- **[DNA CLI Reference](../cli/dna.md)** — mFSD, UMI, alignment backend options
-- **[RNA CLI Reference](../cli/rna.md)** — Strandedness, editing DB, splice junction options  
-- **[Nextflow Pipeline](../nextflow/index.md)** — Process many samples in parallel on HPC
-- **[How It Works](../reference/allele-classification.md)** — Allele classification algorithms
-- **[Troubleshooting](../resources/troubleshooting.md)** — Common issues and solutions
+- [DNA CLI Reference](../cli/dna.md) — mFSD, UMI, alignment backend options
+- [RNA CLI Reference](../cli/rna.md) — Strandedness, editing DB, splice junction options
+- [Nextflow Pipeline](../nextflow/index.md) — Process many samples in parallel on HPC
+- [Allele Classification](../reference/allele-classification.md) — How the counting engine works
+- [Troubleshooting](../resources/troubleshooting.md) — Common issues and solutions

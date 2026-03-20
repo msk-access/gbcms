@@ -158,7 +158,10 @@ pip install --upgrade gbcms
 
 ---
 
-## Next Steps
+## Related
 
-- **[CLI Quick Start](quickstart.md)** — Command examples
-- **[Nextflow Guide](../nextflow/index.md)** — HPC pipeline
+- [Quick Start](quickstart.md) — Common usage patterns with DNA and RNA examples
+- [CLI Reference — DNA](../cli/dna.md) — Full option reference for `gbcms dna`
+- [CLI Reference — RNA](../cli/rna.md) — Full option reference for `gbcms rna`
+- [Nextflow Pipeline](../nextflow/index.md) — Running many samples in parallel on HPC
+- [Troubleshooting](../resources/troubleshooting.md) — Installation issues and common errors

@@ -235,3 +235,12 @@ Interactive helper for git-flow operations:
 
 - Verify `mkdocs-mermaid2-plugin` is installed in workflow
 - Check snippet paths are correct (relative to root)
+
+---
+
+## Related
+
+- [Developer Guide](developer-guide.md) — Setup, build commands, and project layout
+- [Contributing](contributing.md) — Contribution workflow and code standards
+- [Testing Guide](testing-guide.md) — Running and writing tests before a release
+- [Changelog](changelog.md) — Version history

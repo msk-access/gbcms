@@ -337,3 +337,12 @@ The docs include a combined print page (via `mkdocs-print-site-plugin`) that can
 
 !!! tip "Automated PDF"
     For a headless/automated version, see `~/Downloads/gbcms-pdf-generator/` (local archive, not in repo) — generates `site/documentation.pdf` via `node generate_pdf.mjs`.
+
+---
+
+## Related
+
+- [Testing Guide](testing-guide.md) — Running tests and adding new test cases
+- [Release Guide](release-guide.md) — Release process and versioning
+- [Contributing](contributing.md) — Contribution workflow and code standards
+- [Architecture](../reference/architecture.md) — System design and module structure
