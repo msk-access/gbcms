@@ -2,7 +2,7 @@
 Test alignment backend CLI flags and AlignmentConfig model.
 
 Tests that:
-1. Default backend is 'sw' with correct PairHMM parameter defaults
+1. Default backend is 'pairhmm' (normalized to 'hmm') with correct PairHMM parameter defaults
 2. --alignment-backend hmm propagates to GbcmsConfig.alignment
 3. Custom PairHMM parameters propagate correctly
 4. Invalid backend name is rejected with clear error
@@ -23,9 +23,9 @@ runner = CliRunner()
 
 
 def test_alignment_config_defaults():
-    """Default AlignmentConfig uses SW with documented PairHMM defaults."""
+    """Default AlignmentConfig uses PairHMM (normalized to 'hmm') with documented defaults."""
     config = AlignmentConfig()
-    assert config.backend == "sw"
+    assert config.backend == "pairhmm"  # default; normalized to 'hmm' only when explicitly passed
     assert config.hmm_llr_threshold == 2.3
     assert config.hmm_gap_open == 1e-4
     assert config.hmm_gap_extend == 0.1
@@ -34,12 +34,17 @@ def test_alignment_config_defaults():
 
 
 def test_alignment_config_hmm():
-    """AlignmentConfig accepts 'hmm' and 'pairhmm' backend values."""
+    """AlignmentConfig accepts 'hmm' and 'pairhmm' backend values.
+
+    'pairhmm' is the user-facing name (CLI --alignment-backend pairhmm),
+    but the model normalizes it to 'hmm' for the Rust engine.
+    """
     config_hmm = AlignmentConfig(backend="hmm")
     assert config_hmm.backend == "hmm"
 
+    # 'pairhmm' → normalized to 'hmm' for Rust engine compatibility
     config_pairhmm = AlignmentConfig(backend="pairhmm")
-    assert config_pairhmm.backend == "pairhmm"
+    assert config_pairhmm.backend == "hmm"
 
 
 def test_alignment_config_invalid_backend():
@@ -90,7 +95,7 @@ def _base_args(vcf, bam, fasta, output_dir):
 
 @patch("gbcms.cli.Pipeline")
 def test_cli_default_backend(mock_pipeline_cls, tmp_path):
-    """Default invocation uses SW backend with PairHMM defaults."""
+    """Default invocation uses PairHMM backend."""
     vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
     mock_pipeline_cls.return_value = MagicMock()
 
@@ -99,7 +104,7 @@ def test_cli_default_backend(mock_pipeline_cls, tmp_path):
 
     config = mock_pipeline_cls.call_args[0][0]
     assert isinstance(config, GbcmsConfig)
-    assert config.alignment.backend == "sw"
+    assert config.alignment.backend == "hmm"  # CLI passes explicitly → validator normalizes
     assert config.alignment.hmm_llr_threshold == 2.3
     assert config.alignment.hmm_gap_open == 1e-4
 

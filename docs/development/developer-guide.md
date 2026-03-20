@@ -75,21 +75,43 @@ Guide for contributing to gbcms.
 ```mermaid
 flowchart LR
     subgraph Python["src/gbcms/"]
-        CLI[cli.py] --> Pipeline[pipeline.py]
-        CLI --> Normalize[normalize.py]
-        Pipeline --> IO[io/]
-        Pipeline --> Models[models/]
+        CLI["cli.py"] --> Pipeline["pipeline.py"]
+        CLI --> Normalize["normalize.py"]
+        Pipeline --> IO["io/"]
+        Pipeline --> Models["models/"]
     end
-    
+
     subgraph Rust["rust/src/"]
-        Lib[lib.rs] --> Count[counting.rs]
-        Lib --> Norm[normalize.rs]
-        Count --> Stats[stats.rs]
+        Lib["lib.rs"] --> Count["counting/"]
+        Lib --> Norm["normalize/"]
+        Lib --> Shared["shared/"]
+        Count --> Eng["engine.rs"]
+        Count --> VC["variant_checks.rs"]
+        Count --> PH["pairhmm.rs"]
+        Count --> WFA["wfa_router.rs"]
+        Count --> RNA["rna.rs"]
+        Count --> Parquet["parquet_writer.rs"]
+        Norm --> LA["left_align.rs"]
+        Norm --> DC["decomp.rs"]
+        Shared --> Frag["fragment.rs"]
+        Shared --> Stats["stats.rs"]
+        Shared --> Filters["filters.rs"]
+        Shared --> BAQ["baq.rs"]
+        Shared --> BamU["bam_utils.rs"]
     end
-    
+
     Pipeline --> Rust
     Normalize --> Rust
 ```
+
+!!! tip "Performance: Genomic Binning"
+    The counting engine (`counting/engine.rs`) groups variants into **~10kb genomic bins** before BAM traversal. Each bin issues **one** `bam.fetch()` call instead of one per variant, reducing I/O dramatically for clustered inputs (e.g., a MAF with hundreds of variants on the same gene). See [Architecture → Genomic Binning](../reference/architecture.md#genomic-binning).
+
+    To observe binning at runtime:
+    ```bash
+    RUST_LOG=info gbcms dna ... 2>&1 | grep "Built.*bins"
+    # Example: "Built 42 genomic bins from 1247 variants (window=10000bp)"
+    ```
 
 ---
 
@@ -110,35 +132,67 @@ maturin build --release --out dist
 
 ## Regression Testing
 
-### 22-BAM Regression Suite
+### Python Integration Tests (pytest)
 
-For changes to the counting engine (`counting.rs`), run the 22-BAM regression
-to verify no unintended count shifts:
+The primary test suite covers CIGAR parsing, windowed indel detection,
+SNP/MNP/insertion/deletion/complex variant classification, shifted indel handling,
+and CLI validation:
 
-1. Build the release binary:
-   ```bash
-   maturin develop --release
-   ```
+```bash
+pytest -v                                    # Full suite
+pytest tests/test_shifted_indels.py -v      # Windowed + shifted indel-specific
+pytest tests/test_variant_checks.py -v      # Core allele-classification
+```
 
-2. Run the regression script:
-   ```bash
-   python /tmp/run_regression_22.py
-   ```
+### Rust Unit Tests (cargo test)
 
-3. Review the comparison output. Key metrics:
-   - **ALT count diff distribution**: most variants should be within ±2
-   - **C++ higher**: investigate any new variants where C++ ALT > gbcms
-   - **gbcms higher**: expected for windowed indel detection improvements
+Normalization engine tests — left-alignment, repeat detection, adaptive padding,
+homopolymer decomposition:
 
-### Variant-Type-Specific BAM Slices
+```bash
+cd rust && cargo test
+```
 
-When debugging specific variant types, create targeted BAM slices:
+### BAM Slice Regression Suite
 
-| Variant Type | Key Samples | What to Check |
-|:-------------|:------------|:--------------|
-| MNP/DNP | TERT (5bp), BRCA2 (2bp), TP53 (4bp) | ALT recovery vs C++ |
-| Indel | JAK1, ZFHX3 (shifted insertions) | Multi-allelic isolation |
-| Complex | EPHA7, KDM6A (DelIns) | Phase 3 classification |
+For changes to counting logic (`counting/engine.rs`, `counting/variant_checks.rs`),
+run against the BAM slice test set (54 BAM slices × 2 MAFs — see `~/Downloads/bam_slice_v2_8_0/`):
+
+```bash
+# Rebuild first
+pip install -e . --no-build-isolation
+
+# Run on indels MAF
+gbcms dna \
+    --variants filtered_indels_io.maf \
+    --bam-list bam_list.txt \
+    --fasta ref.fa \
+    --format maf \
+    --output-dir /tmp/regression_out/
+
+# Diff against baseline
+python scripts/concordance.py /tmp/regression_baseline/ /tmp/regression_out/
+```
+
+Key invariants to check:
+
+| Check | Expected |
+|:------|:---------|
+| `ref_count + alt_count ≤ total_count` | Must hold for every row (INVARIANT) |
+| Δalt for own-sample covered variants | 0 vs sign-out `t_alt` (except known MAF annotation issues) |
+| Non-own-sample ref_count changes | ≤1 count (non-determinism from parallel windowed scan) |
+
+### Variant-Type-Specific Investigation
+
+When debugging specific variant types, use targeted BAM slices:
+
+| Variant Type | Key Examples | What to Check |
+|:-------------|:-------------|:--------------|
+| Del+SNV (complex) | SOX9 `GC→T`, ABL1 `AG→T` | Routes to `check_complex`, not `check_deletion`; alt > 0 |
+| Large deletion, REF=0 | NF2 ~100bp DEL | M-block REF fallback in `check_complex`; ref > 0 |
+| Shifted large deletion | TP53 `GACCGTGCAAGT→-` | `has_nearby_length_match` Phase 3; alt matches sign-out |
+| MNP/DNP | TERT (5bp), BRCA2 (2bp) | ALT recovery vs sign-out |
+| Shifted insertion | JAK1 `65306997` | Multi-allelic isolation, windowed INS scan |
 
 ---
 
@@ -192,6 +246,13 @@ gitGraph
     merge release/X.Y.Z tag: "X.Y.Z"
     checkout develop
     merge release/X.Y.Z
+    checkout main
+    branch hotfix/urgent-fix
+    commit id: "critical fix"
+    checkout main
+    merge hotfix/urgent-fix tag: "X.Y.Z+1"
+    checkout develop
+    merge hotfix/urgent-fix
 ```
 
 | Branch | Purpose |
@@ -204,15 +265,35 @@ gitGraph
 
 ---
 
-## Quality Checklist
+## Pre-Commit Checklist
 
-Before committing:
+Before committing, verify all checks pass:
 
-- [ ] `make lint` passes
-- [ ] `pytest` passes
-- [ ] Type hints complete
-- [ ] Docstrings added
-- [ ] No dead code
+- [ ] `ruff check src/ tests/` — Python linting
+- [ ] `black --check src/ tests/` — Python formatting
+- [ ] `mypy src/` — Type checking (no errors)
+- [ ] `cd rust && cargo clippy --all-targets -- -D warnings` — Rust linting (strict, warnings-as-errors)
+- [ ] `cd rust && cargo test` — Rust unit tests
+- [ ] `pytest -v` — Python/integration tests
+- [ ] Type hints complete on all new public functions
+- [ ] Docstrings added (Google style for Python; `///` on public Rust items)
+- [ ] No dead code (removed, not commented out)
+- [ ] No silent failures: missing inputs must fail-fast or require explicit opt-out
+
+To run all Python checks in one pass:
+
+```bash
+ruff check src/ tests/ && \
+black --check src/ tests/ && \
+mypy src/ && \
+pytest -v
+```
+
+To run all Rust checks:
+
+```bash
+cd rust && cargo clippy --all-targets -- -D warnings && cargo test
+```
 
 ---
 
@@ -224,7 +305,7 @@ Before committing:
 | `RUST_LOG` | — | Rust logging |
 
 ```bash
-GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms run ...
+GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms dna ...
 ```
 
 ---
@@ -256,3 +337,12 @@ The docs include a combined print page (via `mkdocs-print-site-plugin`) that can
 
 !!! tip "Automated PDF"
     For a headless/automated version, see `~/Downloads/gbcms-pdf-generator/` (local archive, not in repo) — generates `site/documentation.pdf` via `node generate_pdf.mjs`.
+
+---
+
+## Related
+
+- [Testing Guide](testing-guide.md) — Running tests and adding new test cases
+- [Release Guide](release-guide.md) — Release process and versioning
+- [Contributing](contributing.md) — Contribution workflow and code standards
+- [Architecture](../reference/architecture.md) — System design and module structure

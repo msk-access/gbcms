@@ -74,6 +74,15 @@ class MockCounts:
         self.mfsd_ks_nonref_n = _nan
         self.mfsd_pval_nonref_n = _nan
 
+        # ── RNA-specific fields ───────────────────────────────────────────────
+        # Required by both VcfWriter(mode="rna") and MafWriter(mode="rna").
+        # Use realistic non-zero values so formatting code paths are exercised.
+        self.sense_depth = 12
+        self.antisense_depth = 3
+        self.sense_strand_alt_count = 4
+        self.rna_editing_site_overlap = False
+        self.splice_spanning_count = 2
+
 
 @pytest.fixture
 def mock_variant():

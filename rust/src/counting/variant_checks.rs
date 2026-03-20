@@ -12,28 +12,114 @@ use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 use bio::alignment::distance::levenshtein;
 use bio::alignment::pairwise::Aligner;
-use log::{trace, warn};
+use log::{debug, trace, warn};
 
 use crate::types::Variant;
 use super::alignment::{classify_by_alignment, extract_raw_read_window, is_worth_realignment};
-use super::pairhmm::{classify_by_pairhmm, ConfigurableGapParams};
+use super::pairhmm::{classify_by_marginalized_pairhmm, ConfigurableGapParams};
+use super::pangenome::build_haplotype_matrix;
+use super::wfa_router::wfa_fast_path;
 use super::utils::{find_read_pos, masked_dual_compare, masked_single_compare, median_qual, ClassifyResult, ClassifyPhase};
 use super::AlignmentBackend;
 
 
+/// Pangenomic WFA + marginalized PairHMM classification pipeline.
+///
+/// Standalone helper that takes pre-extracted read data and attempts
+/// classification against the full sibling-aware haplotype matrix.
+///
+/// ## Pipeline
+///
+/// 1. Build pangenomic haplotype matrix (H0/H1/H2..H2n) from variant + siblings
+/// 2. WFA edit-distance triage — resolves ~70-80% of reads instantly
+/// 3. Ambiguous reads → marginalized PairHMM (BQ-aware probabilistic)
+///
+/// ## Returns
+///
+/// - `Some(ClassifyResult)` if classification succeeded
+/// - `None` if the pipeline cannot produce a result (matrix build failure,
+///   no ref_context, etc.) — caller should fall back to SW
+///
+/// ## Usage
+///
+/// Called from:
+/// - `phase3_classify()` — for insertion/deletion fallbacks
+/// - `check_complex()` — Phase 0 (structural bypass) and Phase 3 (fallback)
+#[allow(clippy::too_many_arguments)]
+fn pangenomic_classify(
+    sub_seq: &[u8],
+    sub_quals: &[u8],
+    variant: &Variant,
+    siblings: &[Variant],
+    min_baseq: u8,
+    gap_open: f64,
+    gap_extend: f64,
+    gap_open_repeat: f64,
+    gap_extend_repeat: f64,
+    llr_threshold: f64,
+) -> Option<ClassifyResult> {
+    // Step 1: Build multi-haplotype evaluation matrix.
+    //   H0=REF, H1=ALT, H2..H2n=sibling germline combos
+    let matrix = match build_haplotype_matrix(variant, siblings) {
+        Some(m) => m,
+        None => {
+            debug!(
+                "pangenomic_classify: matrix construction failed for {}:{} (siblings={})",
+                variant.chrom, variant.pos + 1, siblings.len(),
+            );
+            return None;
+        }
+    };
+
+    // Step 2: WFA fast-path triage (edit distance).
+    // Clear-cut reads classified without PairHMM.
+    let med_qual = median_qual(sub_quals, min_baseq);
+    if let Some(result) = wfa_fast_path(sub_seq, &matrix, med_qual) {
+        trace!(
+            "pangenomic_classify: WFA resolved → is_ref={} is_alt={} qual={} at {}:{}",
+            result.is_ref, result.is_alt, result.qual,
+            variant.chrom, variant.pos + 1,
+        );
+        return Some(result);
+    }
+
+    // Step 3: Ambiguous reads → marginalized PairHMM.
+    // Evaluates read against ALL haplotypes in the matrix,
+    // taking max LL over REF/ALT classes.
+    trace!(
+        "pangenomic_classify: WFA ambiguous → escalating to marginalized PairHMM at {}:{} (haplotypes={})",
+        variant.chrom, variant.pos + 1, matrix.len(),
+    );
+    let gap_params = ConfigurableGapParams::dynamic(
+        variant.repeat_span,
+        gap_open, gap_extend,
+        gap_open_repeat, gap_extend_repeat,
+    );
+    Some(classify_by_marginalized_pairhmm(
+        sub_seq, sub_quals, &matrix,
+        min_baseq, &gap_params, llr_threshold,
+    ))
+}
+
+
 /// Backend-aware Phase 3 classification.
 ///
-/// Routes to Smith-Waterman (`classify_by_alignment`) or PairHMM
-/// (`classify_by_pairhmm`) based on the active backend. Called from all
+/// Routes to Smith-Waterman (`classify_by_alignment`) or the pangenomic
+/// WFA+PairHMM pipeline based on the active backend. Called from all
 /// Phase 3 fallback sites in variant_checks (check_complex, check_insertion,
 /// check_deletion).
 ///
-/// For PairHMM: extracts the raw read window and computes LLR-based
-/// classification. Falls back to SW if extraction fails or the read
-/// window is too short.
+/// For PairHMM backend:
+/// 1. Build pangenomic haplotype matrix (H0/H1/H2..H2n) from variant + siblings
+/// 2. Try WFA fast-path triage (edit distance; resolves ~70-80% of reads)
+/// 3. Ambiguous reads fall through to marginalized PairHMM (BQ-aware)
+/// 4. If haplotype matrix construction fails, falls back to SW
+#[allow(clippy::too_many_arguments)]
 fn phase3_classify<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
@@ -42,7 +128,7 @@ fn phase3_classify<F: Fn(u8, u8) -> i32>(
     match backend {
         AlignmentBackend::SmithWaterman => {
             // Full Phases 0-2.5 then Phase 3 SW
-            check_complex(record, variant, min_baseq, alt_aligner, ref_aligner, backend)
+            check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
         }
         AlignmentBackend::PairHMM {
             llr_threshold,
@@ -51,30 +137,49 @@ fn phase3_classify<F: Fn(u8, u8) -> i32>(
             gap_open_repeat,
             gap_extend_repeat,
         } => {
-            // Try PairHMM directly with extracted read window
+            // Try pangenomic WFA+PairHMM pipeline via pangenomic_classify().
+            // Handles: matrix build → WFA triage → marginalized PairHMM.
             if let Some(ref _ctx) = variant.ref_context {
                 let win_start = variant.ref_context_start;
                 let win_end = win_start + variant.ref_context.as_ref().unwrap().len() as i64;
 
                 if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
-                    record, win_start, win_end, variant.pos, variant.ref_allele.len()
+                    record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
                 ) {
                     if sub_seq.len() >= 3 {
-                        let gap_params = if variant.repeat_span >= 10 {
-                            ConfigurableGapParams::repeat(*gap_open_repeat, *gap_extend_repeat)
-                        } else {
-                            ConfigurableGapParams::standard(*gap_open, *gap_extend)
-                        };
-
-                        return classify_by_pairhmm(
-                            &sub_seq, &sub_quals, variant, min_baseq,
-                            &gap_params, *llr_threshold,
+                        if let Some(result) = pangenomic_classify(
+                            &sub_seq, &sub_quals, variant, siblings,
+                            min_baseq, *gap_open, *gap_extend,
+                            *gap_open_repeat, *gap_extend_repeat, *llr_threshold,
+                        ) {
+                            return result;
+                        }
+                        // pangenomic_classify returned None (matrix build failed) —
+                        // fall through to SW fallback below.
+                    } else {
+                        trace!(
+                            "phase3: sub_seq too short ({} < 3) → SW fallback at {}:{}",
+                            sub_seq.len(), variant.chrom, variant.pos + 1,
                         );
                     }
+                } else {
+                    trace!(
+                        "phase3: read window extraction failed → SW fallback at {}:{}",
+                        variant.chrom, variant.pos + 1,
+                    );
                 }
+            } else {
+                debug!(
+                    "phase3: variant {}:{} has no ref_context → SW fallback",
+                    variant.chrom, variant.pos + 1,
+                );
             }
-            // Fallback: if extraction fails, use check_complex (SW path)
-            check_complex(record, variant, min_baseq, alt_aligner, ref_aligner, backend)
+            // Fallback: if pangenomic pipeline fails at any stage, use SW via check_complex
+            trace!(
+                "phase3: using check_complex (SW) fallback for {}:{}",
+                variant.chrom, variant.pos + 1,
+            );
+            check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
         }
     }
 }
@@ -113,13 +218,13 @@ pub enum MnpResult {
 
 /// Returns `ClassifyResult` for SNP variants. Always Phase 0 (Structural).
 /// Quality is the base quality at the variant position.
-pub fn check_snp(record: &Record, variant: &Variant, min_baseq: u8) -> ClassifyResult {
+pub fn check_snp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8) -> ClassifyResult {
     let read_pos = match find_read_pos(record, variant.pos) {
         Some(p) => p,
         None => return ClassifyResult::neither(ClassifyPhase::Structural),
     };
 
-    let qual = record.qual()[read_pos];
+    let qual = quals[read_pos];
     if qual < min_baseq {
         return ClassifyResult::neither(ClassifyPhase::Structural);
     }
@@ -154,7 +259,7 @@ pub fn check_snp(record: &Record, variant: &Variant, min_baseq: u8) -> ClassifyR
 ///
 /// The contiguity check is performed FIRST (fail-fast for structural
 /// issues) before quality and sequence comparison.
-pub fn check_mnp(record: &Record, variant: &Variant, min_baseq: u8) -> MnpResult {
+pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8) -> MnpResult {
     let len = variant.ref_allele.len();
 
     // ── Step 1: Find read position of the first MNP base ──
@@ -180,7 +285,7 @@ pub fn check_mnp(record: &Record, variant: &Variant, min_baseq: u8) -> MnpResult
     }
 
     // ── Step 4: Min-BQ-across-block quality gate (C++ strategy) ──
-    let quals = record.qual();
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut min_qual = u8::MAX;
     for i in 0..len {
         min_qual = min_qual.min(quals[start_read_pos + i]);
@@ -242,9 +347,12 @@ pub fn check_mnp(record: &Record, variant: &Variant, min_baseq: u8) -> MnpResult
 ///
 /// Returns `ClassifyResult` where base_qual is the median quality
 /// across the reconstructed haplotype bases, used for fragment consensus.
+#[allow(clippy::too_many_arguments)]
 pub fn check_complex<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
@@ -257,7 +365,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
     let seq = record.seq();
-    let quals = record.qual();
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
 
     // Pre-allocate reconstruction buffers for performance
     let capacity = seq.len();
@@ -275,19 +383,19 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     // or garbaged sequence. Phase 2 (masked comparison) then artificially matches
     // this truncated string perfectly to REF, erroneously rejecting complex ALT reads!
     // To prevent this false REF classification, we IMMEDIATELY route all
-    // structurally anomalous reads (is_worth_realignment) to Phase 3 SW, which natively
-    // extracts the raw unstructured bases and aligns against the full haplotype geometries.
+    // structurally anomalous reads (is_worth_realignment) to alignment-based
+    // classification, which extracts raw bases and aligns against full haplotypes.
     if let Some(ref ctx) = variant.ref_context {
         let win_start = variant.ref_context_start;
         let win_end = win_start + ctx.len() as i64;
 
         if is_worth_realignment(record, win_start, win_end) {
             if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
-                record, win_start, win_end, variant.pos, variant.ref_allele.len()
+                record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
             ) {
                 if sub_seq.len() >= 3 {
                     trace!(
-                        "check_complex: bypassing Phase 1/2 due to soft-clips/indels, Phase 3 extracted {} bases",
+                        "check_complex: Phase 0 bypass (soft-clips/indels), extracted {} bases",
                         sub_seq.len()
                     );
                     return match backend {
@@ -299,15 +407,22 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                             llr_threshold, gap_open, gap_extend,
                             gap_open_repeat, gap_extend_repeat,
                         } => {
-                            let gap_params = if variant.repeat_span >= 10 {
-                                ConfigurableGapParams::repeat(*gap_open_repeat, *gap_extend_repeat)
-                            } else {
-                                ConfigurableGapParams::standard(*gap_open, *gap_extend)
-                            };
-                            classify_by_pairhmm(
-                                &sub_seq, &sub_quals, variant, min_baseq,
-                                &gap_params, *llr_threshold,
-                            )
+                            // Pangenomic WFA → marginalized PairHMM pipeline.
+                            // Falls back to SW if matrix construction fails.
+                            pangenomic_classify(
+                                &sub_seq, &sub_quals, variant, siblings,
+                                min_baseq, *gap_open, *gap_extend,
+                                *gap_open_repeat, *gap_extend_repeat, *llr_threshold,
+                            ).unwrap_or_else(|| {
+                                trace!(
+                                    "check_complex: Phase 0 pangenomic failed, SW fallback at {}:{}",
+                                    variant.chrom, variant.pos + 1,
+                                );
+                                classify_by_alignment(
+                                    &sub_seq, &sub_quals, variant, min_baseq,
+                                    alt_aligner, ref_aligner,
+                                )
+                            })
                         }
                     };
                 }
@@ -550,15 +665,18 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
 
     // --- Phase 3: Alignment-based fallback (indelpost approach) ---
     // When narrow-window reconstruction fails (FM1: D-truncation, FM2: adjacent I),
-    // expand to the full ref_context window and use dual-haplotype SW alignment.
+    // expand to the full ref_context window and use alignment-based classification.
     //
     // CRITICAL: Use raw read window extraction (not CIGAR-projected) to preserve
     // the true biological sequence. For complex variants (e.g. EPHA7 REF=TCC ALT=CT),
     // BWA represents ALT reads as DEL+INS CIGARs. CIGAR-projected extraction
     // produces a hybrid sequence matching neither REF nor ALT haplotype.
-    // Raw extraction gives the contiguous read bases that SW can correctly align.
+    // Raw extraction gives the contiguous read bases that alignment can correctly classify.
     //
-    // Pre-filter (indelpost pattern): only attempt SW for reads showing
+    // For PairHMM backend: uses pangenomic WFA → marginalized PairHMM pipeline,
+    // which evaluates the read against ALL sibling haplotypes, not just H0/H1.
+    //
+    // Pre-filter (indelpost pattern): only attempt alignment for reads showing
     // evidence of carrying the variant (soft-clips, indels near window).
     // This eliminates ~80-90% of clean REF reads from expensive alignment.
     if let Some(ref ctx) = variant.ref_context {
@@ -568,6 +686,90 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         let is_mnp = variant.ref_allele.len() == variant.alt_allele.len() && variant.ref_allele.len() > 1;
 
         if !is_mnp && !is_worth_realignment(record, win_start, win_end) {
+            // Clean CIGAR over the window: no indels or soft-clips near the
+            // variant, so expensive realignment is not needed.
+            //
+            // For deletion-direction complex alleles (ref_len > alt_len, e.g.
+            // a 100bp deletion with 7bp replacement like NF2), REF reads have
+            // no CIGAR deletion and land here. Returning `neither` for them
+            // causes ref=0 even when 56 true REF reads are visible in IGV.
+            //
+            // Fix: if the variant removes bases (ref_len > alt_len) and the
+            // read's M-blocks cover the anchor, classify the read as REF.
+            // This mirrors the `found_ref_coverage → REF` logic in
+            // check_deletion, but applied here for complex alleles that arrive
+            // via the `else` routing (both ref_len > 1 and alt_len > 1).
+            //
+            // Precondition: is_worth_realignment is false, so the read has a
+            // clean CIGAR with no nearby indels — we can trust M coverage.
+            if ref_bytes.len() > alt_bytes.len() {
+                let anchor_pos = variant.pos;
+                let mut rpos = record.pos();
+                let mut anchor_qual: Option<u8> = None;
+                'cigar_walk: for op in record.cigar().iter() {
+                    match op {
+                        rust_htslib::bam::record::Cigar::Match(len)
+                        | rust_htslib::bam::record::Cigar::Equal(len)
+                        | rust_htslib::bam::record::Cigar::Diff(len) => {
+                            let block_end = rpos + *len as i64;
+                            if anchor_pos >= rpos && anchor_pos < block_end {
+                                // Compute read position for this anchor
+                                let qp = {
+                                    let mut q_off = 0usize;
+                                    let mut r_off = record.pos();
+                                    for op2 in record.cigar().iter() {
+                                        match op2 {
+                                            rust_htslib::bam::record::Cigar::Match(l)
+                                            | rust_htslib::bam::record::Cigar::Equal(l)
+                                            | rust_htslib::bam::record::Cigar::Diff(l) => {
+                                                if anchor_pos >= r_off && anchor_pos < r_off + *l as i64 {
+                                                    q_off += (anchor_pos - r_off) as usize;
+                                                    break;
+                                                }
+                                                r_off += *l as i64;
+                                                q_off += *l as usize;
+                                            }
+                                            rust_htslib::bam::record::Cigar::Del(l)
+                                            | rust_htslib::bam::record::Cigar::RefSkip(l) => {
+                                                r_off += *l as i64;
+                                            }
+                                            rust_htslib::bam::record::Cigar::Ins(l)
+                                            | rust_htslib::bam::record::Cigar::SoftClip(l)
+                                            | rust_htslib::bam::record::Cigar::HardClip(l) => {
+                                                q_off += *l as usize;
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    q_off
+                                };
+                                let qual_val = if qp < quals.len() { quals[qp] } else { 0 };
+                                if qual_val >= min_baseq {
+                                    anchor_qual = Some(qual_val);
+                                }
+                                break 'cigar_walk;
+                            }
+                            rpos = block_end;
+                        }
+                        rust_htslib::bam::record::Cigar::Del(len)
+                        | rust_htslib::bam::record::Cigar::RefSkip(len) => {
+                            rpos += *len as i64;
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(aq) = anchor_qual {
+                    trace!(
+                        "check_complex: clean M covers anchor {} for del-direction complex \
+                         allele (ref_len={} > alt_len={}) → REF",
+                        anchor_pos,
+                        ref_bytes.len(),
+                        alt_bytes.len(),
+                    );
+                    return ClassifyResult::is_ref(aq, ClassifyPhase::Alignment);
+                }
+            }
+
             trace!(
                 "Phase 3 skipped: read has clean CIGAR over [{}, {})",
                 win_start, win_end
@@ -576,7 +778,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         }
 
         if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
-            record, win_start, win_end, variant.pos, variant.ref_allele.len()
+            record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
         ) {
             if sub_seq.len() >= 3 {
                 trace!(
@@ -592,15 +794,22 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                         llr_threshold, gap_open, gap_extend,
                         gap_open_repeat, gap_extend_repeat,
                     } => {
-                        let gap_params = if variant.repeat_span >= 10 {
-                            ConfigurableGapParams::repeat(*gap_open_repeat, *gap_extend_repeat)
-                        } else {
-                            ConfigurableGapParams::standard(*gap_open, *gap_extend)
-                        };
-                        classify_by_pairhmm(
-                            &sub_seq, &sub_quals, variant, min_baseq,
-                            &gap_params, *llr_threshold,
-                        )
+                        // Pangenomic WFA → marginalized PairHMM pipeline.
+                        // Falls back to SW if matrix construction fails.
+                        pangenomic_classify(
+                            &sub_seq, &sub_quals, variant, siblings,
+                            min_baseq, *gap_open, *gap_extend,
+                            *gap_open_repeat, *gap_extend_repeat, *llr_threshold,
+                        ).unwrap_or_else(|| {
+                            trace!(
+                                "check_complex: Phase 3 pangenomic failed, SW fallback at {}:{}",
+                                variant.chrom, variant.pos + 1,
+                            );
+                            classify_by_alignment(
+                                &sub_seq, &sub_quals, variant, min_baseq,
+                                alt_aligner, ref_aligner,
+                            )
+                        })
                     }
                 };
             }
@@ -632,16 +841,19 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
 ///    nearby but fails the sequence check (e.g., same biological event
 ///    represented differently by caller vs aligner), falls back to
 ///    check_complex for Smith-Waterman haplotype comparison.
+#[allow(clippy::too_many_arguments)]
 pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
     let cigar_view = record.cigar();
-    let quals = record.qual();
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
@@ -861,7 +1073,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
              falling back to check_complex for Phase 3 SW",
             expected_ins_len, anchor_pos
         );
-        return phase3_classify(record, variant, min_baseq, alt_aligner, ref_aligner, backend);
+        return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
     }
 
     if found_ref_coverage {
@@ -893,16 +1105,19 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
 /// 3. **Haplotype fallback:** When CIGAR geometry doesn't match (e.g. different
 ///    breakpoint placement or wrong deletion length), delegates to `check_complex`
 ///    for quality-aware haplotype comparison.
+#[allow(clippy::too_many_arguments)]
 pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
     min_baseq: u8,
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
     let cigar_view = record.cigar();
-    let quals = record.qual();
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
@@ -919,6 +1134,11 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     let mut found_ref_coverage = false;
     let mut anchor_read_pos: Option<usize> = None; // read position of anchor base
     let mut best_windowed_match: Option<u64> = None;
+    // Tracks a windowed Del with matching length but failed S3 sequence check.
+    // When set alongside found_ref_coverage, the read carries a same-length deletion
+    // placed at a different position by the aligner (often due to left-alignment
+    // in a repeat context) — Phase 3 SW can arbitrate correctly.
+    let mut has_nearby_length_match = false;
 
 
     for (i, op) in cigar_view.iter().enumerate() {
@@ -994,7 +1214,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                                     expected_del_len,
                                     reciprocal_overlap
                                 );
-                                return phase3_classify(record, variant, min_baseq, alt_aligner, ref_aligner, backend);
+                                return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
                             }
                         }
                         found_ref_coverage = true;
@@ -1094,11 +1314,37 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                                     best_windowed_match = Some(distance);
                                 }
                             } else {
-                                trace!(
-                                    "check_deletion: S3 reject at shifted pos {} \
-                                     (deleted bases mismatch)",
-                                    del_ref_pos
-                                );
+                                // S3 failed: deleted bases at the shifted position
+                                // don't match expected_del_seq. This happens when
+                                // left-alignment moves the anchor further left than
+                                // the aligner's CIGAR Del position, so the reference
+                                // slice at del_ref_pos encodes different bases than
+                                // expected_del_seq (e.g. TP53 GACCGTGCAAGT→- where
+                                // left-alignment shifts anchor 3bp left of the actual
+                                // D(12) in reads). Track for Phase 3 fallback.
+                                //
+                                // Only flag for Phase 3 when del_len >= 5bp.
+                                // Short (1-4bp) same-length deletions that fail S3
+                                // are almost certainly spurious/unrelated noise —
+                                // CIGAR remains definitive for them. Longer deletions
+                                // are more susceptible to BWA left-alignment shifting
+                                // the anchor multiple positions away from the CIGAR D.
+                                if del_len_usize >= 5 {
+                                    has_nearby_length_match = true;
+                                    trace!(
+                                        "check_deletion: S3 reject at shifted pos {} \
+                                         (deleted bases mismatch, del_len={} >= 5), \
+                                         flagging for Phase 3 fallback",
+                                        del_ref_pos, del_len_usize
+                                    );
+                                } else {
+                                    trace!(
+                                        "check_deletion: S3 reject at shifted pos {} \
+                                         (deleted bases mismatch, del_len={} < 5, \
+                                         CIGAR definitive — not flagging Phase 3)",
+                                        del_ref_pos, del_len_usize
+                                    );
+                                }
                             }
                         }
                     }
@@ -1179,9 +1425,24 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                 "check_deletion: no CIGAR match at pos {}, falling back to check_complex",
                 anchor_pos
             );
-            return phase3_classify(record, variant, min_baseq, alt_aligner, ref_aligner, backend);
+            return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         }
         // Otherwise: read doesn't overlap the anchor → no variant info
+    }
+
+    // Phase 3 fallback: when a length-matching deletion exists nearby but the
+    // S3 reference-sequence check failed (mismatched bases at the shifted position),
+    // the aligner may have placed the D op further right than the left-aligned
+    // anchor (e.g. TP53:7579309 DEL left-aligns anchor 3bp left of CIGAR D(12)).
+    // Suppress found_ref_coverage and route to Phase 3 SW for haplotype arbitration,
+    // mirroring the identical pattern in check_insertion.
+    if has_nearby_length_match && found_ref_coverage {
+        trace!(
+            "check_deletion: nearby D({}) with seq mismatch at pos {}, \
+             falling back to check_complex for Phase 3 SW",
+            expected_del_len, anchor_pos
+        );
+        return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
     }
 
     if found_ref_coverage {

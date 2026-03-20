@@ -10,10 +10,15 @@
 
 - 🚀 **High Performance**: Rust-powered core engine with multi-threading
 - 🧬 **Complete Variant Support**: SNP, MNP, insertion, deletion, and complex variants (DelIns, SNP+Indel)
+- 🧪 **WFA + PairHMM Phase 3**: Pangenomic fast-path WFA alignment with PairHMM fallback for complex multi-allelic classification
 - 📊 **Orientation-Aware**: Forward and reverse strand analysis with fragment counting
-- 🔬 **Statistical Analysis**: Fisher's exact test for strand bias
+- 📏 **mFSD (Mutant Fragment Size Distribution)**: Per-allele cfDNA fragment size profiling with KS test and log-likelihood ratio
+- 🔬 **Statistical Analysis**: Fisher's exact test for strand bias (read-level and fragment-level)
 - 📁 **Flexible I/O**: VCF and MAF input/output formats
-- 🎯 **Quality Filters**: 8 configurable read and quality filtering options
+- 🎯 **Quality Filters**: 8 configurable read and quality filtering options with heuristic BAQ
+- 🧬 **RNA Mode**: Transcriptome-aware counting with strandedness, splice detection, and A-to-I editing
+- 🔗 **UMI Support**: Molecule-level deduplication with UMI-aware fragment grouping
+- 🔧 **Normalize Command**: Standalone variant normalization (left-align + REF validation) without counting
 
 ## Installation
 
@@ -49,7 +54,7 @@ docker pull ghcr.io/msk-access/gbcms:X.Y.Z  # Replace X.Y.Z with latest from PyP
 **Best for:** Quick analysis, local processing, direct control
 
 ```bash
-gbcms run \
+gbcms dna \
     --variants variants.vcf \
     --bam sample1.bam \
     --fasta reference.fa \
@@ -60,7 +65,9 @@ gbcms run \
 
 **Learn more:**
 - 📘 [CLI Quick Start](https://msk-access.github.io/gbcms/getting-started/quickstart/)
-- 📖 [CLI Reference](https://msk-access.github.io/gbcms/cli/run/)
+- 📖 [CLI Reference — DNA](https://msk-access.github.io/gbcms/cli/dna/)
+- 📖 [CLI Reference — RNA](https://msk-access.github.io/gbcms/cli/rna/)
+- 📖 [CLI Reference — Normalize](https://msk-access.github.io/gbcms/cli/normalize/)
 
 ---
 
@@ -73,6 +80,7 @@ nextflow run nextflow/main.nf \
     --input samplesheet.csv \
     --variants variants.vcf \
     --fasta reference.fa \
+    --mode dna \
     -profile slurm
 ```
 
@@ -103,9 +111,9 @@ nextflow run nextflow/main.nf \
 
 ## Quick Examples
 
-### CLI: Single Sample
+### CLI: DNA Single Sample
 ```bash
-gbcms run \
+gbcms dna \
     --variants variants.vcf \
     --bam tumor.bam \
     --fasta hg19.fa \
@@ -113,9 +121,27 @@ gbcms run \
     --threads 4
 ```
 
+### CLI: RNA-seq
+```bash
+gbcms rna \
+    --variants variants.vcf \
+    --bam rna_sample:aligned.bam \
+    --fasta hg19.fa \
+    --rna-editing-db TABLE1_hg38.txt.gz \
+    --output-dir results/
+```
+
+### CLI: Normalize Variants
+```bash
+gbcms normalize \
+    --variants variants.vcf \
+    --fasta hg19.fa \
+    --output-dir results/
+```
+
 ### CLI: Multiple Samples (Sequential)
 ```bash
-gbcms run \
+gbcms dna \
     --variants variants.vcf \
     --bam-list samples.txt \
     --fasta hg19.fa \
@@ -133,6 +159,7 @@ nextflow run nextflow/main.nf \
     --input samplesheet.csv \
     --variants variants.vcf \
     --fasta hg19.fa \
+    --mode dna \
     --outdir results \
     -profile slurm
 ```
@@ -147,8 +174,11 @@ nextflow run nextflow/main.nf \
 - [Installation](https://msk-access.github.io/gbcms/getting-started/installation/)
 - [CLI Quick Start](https://msk-access.github.io/gbcms/getting-started/quickstart/)
 - [Nextflow Workflow](https://msk-access.github.io/gbcms/nextflow/)
-- [CLI Reference](https://msk-access.github.io/gbcms/cli/run/)
-- [Input & Output Formats](https://msk-access.github.io/gbcms/reference/input-formats/)
+- [CLI Reference — DNA](https://msk-access.github.io/gbcms/cli/dna/)
+- [CLI Reference — RNA](https://msk-access.github.io/gbcms/cli/rna/)
+- [CLI Reference — Normalize](https://msk-access.github.io/gbcms/cli/normalize/)
+- [Input Formats](https://msk-access.github.io/gbcms/reference/input-formats/)
+- [Output Formats](https://msk-access.github.io/gbcms/reference/output-formats/)
 - [Architecture](https://msk-access.github.io/gbcms/reference/architecture/)
 
 ---
@@ -165,14 +195,14 @@ To contribute to documentation, see the [`gh-pages` branch](https://github.com/m
 
 If you use `gbcms` in your research, please cite:
 
-> Shah, R. et al. (2025). *gbcms: A high-performance orientation-aware genotype counting system for genomic variants.* Available at: https://github.com/msk-access/gbcms
+> Shah, R. et al. (2026). *gbcms: A high-performance orientation-aware genotype counting system for genomic variants.* Available at: https://github.com/msk-access/gbcms
 
 **BibTeX:**
 ```bibtex
 @software{pygbcms,
   author       = {Shah, Ronak and contributors},
   title        = {gbcms: A high-performance orientation-aware genotype counting system for genomic variants},
-  year         = {2025},
+  year         = {2026},
   url          = {https://github.com/msk-access/gbcms},
   note         = {GitHub repository}
 }

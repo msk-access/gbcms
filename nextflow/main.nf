@@ -11,6 +11,9 @@ nextflow.enable.dsl = 2
 if (!params.input)    { exit 1, 'Input samplesheet not specified! Use --input' }
 if (!params.variants) { exit 1, 'Variants file not specified! Use --variants' }
 if (!params.fasta)    { exit 1, 'Reference FASTA not specified! Use --fasta' }
+if (!(params.mode in ['dna', 'rna'])) {
+    exit 1, "Invalid mode '${params.mode}'. Must be 'dna' or 'rna'. Use --mode dna|rna"
+}
 
 /*
 ========================================================================================
@@ -18,9 +21,10 @@ if (!params.fasta)    { exit 1, 'Reference FASTA not specified! Use --fasta' }
 ========================================================================================
 */
 
-include { GBCMS }             from './workflows/gbcms'
-include { FILTER_MAF }        from './modules/local/gbcms/filter_maf/main'
-include { PIPELINE_SUMMARY }  from './modules/local/gbcms/pipeline_summary/main'
+include { GBCMS_DNA_WF }     from './workflows/dna'
+include { GBCMS_RNA_WF }     from './workflows/rna'
+include { FILTER_MAF }       from './modules/local/gbcms/filter_maf/main'
+include { PIPELINE_SUMMARY } from './modules/local/gbcms/pipeline_summary/main'
 
 // Helper: Check if a MAF file has at least one data row (not just header/comments)
 def hasData = { file ->
@@ -43,6 +47,16 @@ def hasData = { file ->
 */
 
 workflow {
+
+    log.info """
+    ============================================================
+      gbcms v4.0.0 — Nextflow Pipeline
+      Mode:     ${params.mode.toUpperCase()}
+      Variants: ${params.variants}
+      Output:   ${params.outdir}
+      Backend:  ${params.alignment_backend}
+    ============================================================
+    """.stripIndent()
 
     //
     // STEP 1: Parse samplesheet
@@ -93,7 +107,7 @@ workflow {
     ch_fasta_tuple = [ ch_fasta_file, ch_fai_file ]
 
     //
-    // STEP 2: Conditional MAF filtering
+    // STEP 2: Conditional MAF filtering (shared by DNA and RNA)
     //
     if (params.filter_by_sample && ch_variants_file.name.endsWith('.maf')) {
 
@@ -106,7 +120,7 @@ workflow {
         ch_filtered_valid = FILTER_MAF.out.maf
             .filter { meta, maf ->
                 if (!hasData(maf)) {
-                    log.warn "Sample ${meta.id}: 0 variants after MAF filtering — skipping GBCMS_RUN"
+                    log.warn "Sample ${meta.id}: 0 variants after MAF filtering — skipping"
                     return false
                 }
                 return true
@@ -132,10 +146,17 @@ workflow {
     }
 
     //
-    // STEP 3: Run gbcms
+    // STEP 3: Run the appropriate workflow based on mode
     //
-    GBCMS (
-        ch_ready,
-        ch_fasta_tuple
-    )
+    if (params.mode == 'rna') {
+        GBCMS_RNA_WF (
+            ch_ready,
+            ch_fasta_tuple
+        )
+    } else {
+        GBCMS_DNA_WF (
+            ch_ready,
+            ch_fasta_tuple
+        )
+    }
 }

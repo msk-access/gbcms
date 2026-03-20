@@ -53,6 +53,7 @@ plugins:
   - git-revision-date-localized:
       enable_creation_date: true
       enable_git_follow: false
+      fallback_to_build_date: true
       type: timeago
   - panzoom:
       full_screen: True
@@ -73,13 +74,14 @@ nav:
   - Home: index.md
   
   - Getting Started:
-    - Overview: getting-started/index.md
+    - Choose Your Mode: getting-started/index.md
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quickstart.md
   
   - CLI Reference:
     - Overview: cli/index.md
-    - Run Command: cli/run.md
+    - DNA Command: cli/dna.md
+    - RNA Command: cli/rna.md
     - Normalize Command: cli/normalize.md
   
   - Nextflow Pipeline:
@@ -91,10 +93,12 @@ nav:
   - How It Works:
     - Architecture: reference/architecture.md
     - Input Formats: reference/input-formats.md
+    - Output Formats: reference/output-formats.md
     - Variant Normalization: reference/variant-normalization.md
     - Read Filters: reference/read-filters.md
     - Allele Classification: reference/allele-classification.md
     - Counting & Metrics: reference/counting-metrics.md
+    - Complex Indels: reference/complex-indels.md
     - Glossary: reference/glossary.md
   
   - Development:

@@ -80,6 +80,7 @@ class MafWriter(OutputWriter):
         preserve_barcode: bool = False,
         show_normalization: bool = False,
         mfsd: bool = False,
+        mode: str = "dna",
     ):
         """
         Initialize MafWriter.
@@ -92,25 +93,29 @@ class MafWriter(OutputWriter):
                 Only applies to MAF→MAF; VCF→MAF always uses BAM name.
             show_normalization: If True, append norm_* columns showing
                 left-aligned coordinates in the output.
-            mfsd: If True, append 31 mFSD columns (KS test, LLR, mean sizes,
+            mfsd: If True, append 34 mFSD columns (KS test, LLR, mean sizes,
                 pairwise comparisons, derived metrics). Controlled by --mfsd flag.
+            mode: Counting mode ('dna' or 'rna'). In RNA mode, 5 RNA-specific
+                columns are appended instead of mFSD columns.
         """
         self.path = path
         self.column_prefix = column_prefix
         self.preserve_barcode = preserve_barcode
         self.show_normalization = show_normalization
         self.mfsd = mfsd
+        self.mode = mode
         self.file = open(path, "w")
         self.writer: csv.DictWriter | None = None
         self._headers_written = False
         logger.debug(
             "MafWriter initialized: path=%s, column_prefix='%s', "
-            "preserve_barcode=%s, show_normalization=%s, mfsd=%s",
+            "preserve_barcode=%s, show_normalization=%s, mfsd=%s, mode=%s",
             path,
             column_prefix,
             preserve_barcode,
             show_normalization,
             mfsd,
+            mode,
         )
 
     def _gbcms_column_names(self) -> list[str]:
@@ -196,6 +201,19 @@ class MafWriter(OutputWriter):
             ]
         if self.show_normalization:
             cols.extend(self._norm_column_names())
+
+        # ── RNA-specific columns (5) ──────────────────────────────────────────
+        # Only appended in RNA mode. These replace mFSD as the RNA-specific
+        # diagnostic columns. When mode="dna" these are completely absent.
+        if self.mode == "rna":
+            cols += [
+                "rna_sense_depth",
+                "rna_antisense_depth",
+                "rna_alt_sense_count",
+                "rna_editing_site",
+                "rna_splice_spanning",
+            ]
+
         return cols
 
     def _norm_column_names(self) -> list[str]:
@@ -290,6 +308,18 @@ class MafWriter(OutputWriter):
             f"{p}alt_count_fragment_forward": str(counts.adf_fwd),
             f"{p}alt_count_fragment_reverse": str(counts.adf_rev),
         }
+
+        # ── RNA-specific count columns ─────────────────────────────────────────
+        if self.mode == "rna":
+            result.update(
+                {
+                    "rna_sense_depth": str(counts.sense_depth),
+                    "rna_antisense_depth": str(counts.antisense_depth),
+                    "rna_alt_sense_count": str(counts.sense_strand_alt_count),
+                    "rna_editing_site": str(counts.rna_editing_site_overlap),
+                    "rna_splice_spanning": str(counts.splice_spanning_count),
+                }
+            )
 
         if self.mfsd:
             # ── mFSD derived metrics ───────────────────────────────────────────
@@ -470,19 +500,22 @@ class VcfWriter(OutputWriter):
         sample_name: str = "SAMPLE",
         show_normalization: bool = False,
         mfsd: bool = False,
+        mode: str = "dna",
     ):
         self.path = path
         self.sample_name = sample_name
         self.show_normalization = show_normalization
         self.mfsd = mfsd
+        self.mode = mode
         self.file = open(path, "w")
         self._headers_written = False
         logger.debug(
-            "VcfWriter initialized: path=%s, sample=%s, show_normalization=%s, mfsd=%s",
+            "VcfWriter initialized: path=%s, sample=%s, show_normalization=%s, mfsd=%s, mode=%s",
             path,
             sample_name,
             show_normalization,
             mfsd,
+            mode,
         )
 
     def _write_header(self):
@@ -492,7 +525,7 @@ class VcfWriter(OutputWriter):
         """
         headers = [
             "##fileformat=VCFv4.2",
-            "##source=gbcms_v2",
+            "##source=gbcms",
             '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
             '##INFO=<ID=VS,Number=1,Type=String,Description="Validation status from prepare_variants">',
             '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">',
@@ -522,6 +555,17 @@ class VcfWriter(OutputWriter):
                     '##INFO=<ID=NORM_ALT,Number=1,Type=String,Description="Left-aligned ALT allele">',
                 ]
             )
+        # ── RNA-specific INFO/FORMAT headers ────────────────────────────────
+        if self.mode == "rna":
+            headers.extend(
+                [
+                    '##INFO=<ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand">',
+                    '##INFO=<ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand">',
+                    '##INFO=<ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand">',
+                    '##INFO=<ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site (A>G on + strand or T>C on - strand)">',
+                    '##INFO=<ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)">',
+                ]
+            )
         headers.extend(
             [
                 '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
@@ -532,9 +576,18 @@ class VcfWriter(OutputWriter):
                 '##FORMAT=<ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)">',
                 '##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)">',
                 '##FORMAT=<ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)">',
-                f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{self.sample_name}",
             ]
         )
+        if self.mode == "rna":
+            headers.extend(
+                [
+                    '##FORMAT=<ID=SEN,Number=1,Type=Integer,Description="Sense strand depth">',
+                    '##FORMAT=<ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth">',
+                    '##FORMAT=<ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count">',
+                    '##FORMAT=<ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count">',
+                ]
+            )
+        headers.append(f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{self.sample_name}")
         self.file.write("\n".join(headers) + "\n")
         self._headers_written = True
 
@@ -583,6 +636,18 @@ class VcfWriter(OutputWriter):
                     f"NORM_ALT={norm_variant.alt}",
                 ]
             )
+        # ── RNA-specific INFO fields ──────────────────────────────────────
+        if self.mode == "rna":
+            info_parts.extend(
+                [
+                    f"SEN={counts.sense_depth}",
+                    f"ANT={counts.antisense_depth}",
+                    f"ASEN={counts.sense_strand_alt_count}",
+                    f"SPL={counts.splice_spanning_count}",
+                ]
+            )
+            if counts.rna_editing_site_overlap:
+                info_parts.append("RED")
         info = ";".join(info_parts)
 
         # FORMAT fields
@@ -599,8 +664,16 @@ class VcfWriter(OutputWriter):
         total_frags = counts.rdf + counts.adf
         faf = counts.adf / total_frags if total_frags > 0 else 0.0
 
-        format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF"
-        sample_data = f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}"
+        if self.mode == "rna":
+            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:SEN:ANT:ASEN:SPL"
+            sample_data = (
+                f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}"
+                f":{counts.sense_depth}:{counts.antisense_depth}"
+                f":{counts.sense_strand_alt_count}:{counts.splice_spanning_count}"
+            )
+        else:
+            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF"
+            sample_data = f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}"
 
         row = [
             variant.chrom,

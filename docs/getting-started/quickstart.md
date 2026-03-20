@@ -1,143 +1,229 @@
-# CLI Quick Start
+# Quick Start
 
-Process variants with the standalone CLI.
+Get up and running in minutes. All examples below assume gbcms is [installed](installation.md).
 
-> **Many samples on HPC?** Use [Nextflow](../nextflow/index.md) instead.
+!!! tip "Many samples on HPC?"
+    Use the [Nextflow pipeline](../nextflow/index.md) instead of the CLI for parallel processing on a cluster.
 
 ---
 
 ## Basic Usage
 
-```bash
-gbcms run \
-    --variants variants.vcf \
-    --bam sample.bam \
-    --fasta reference.fa \
-    --output-dir results/
-```
+=== "DNA / cfDNA"
 
-**Output:** `results/sample.vcf`
+    ```bash
+    gbcms dna \
+        --variants variants.vcf \
+        --bam sample.bam \
+        --fasta reference.fa \
+        --output-dir results/
+    ```
+
+    **Output:** `results/sample.vcf`
+
+=== "RNA-seq"
+
+    ```bash
+    gbcms rna \
+        --variants variants.vcf \
+        --bam rna_sample:star_aligned.bam \
+        --fasta reference.fa \
+        --output-dir results/
+    ```
+
+    **Output:** `results/rna_sample.vcf` (with 5 RNA-specific columns)
 
 ---
 
-## Common Options
+## Output Format
 
-### Output Format
+=== "DNA / cfDNA"
 
-```bash
-# VCF output (default)
-gbcms run -v variants.vcf -b sample.bam -f ref.fa -o out/ --format vcf
+    ```bash
+    # VCF output (default)
+    gbcms dna -v variants.vcf -b sample.bam -f ref.fa -o out/
 
-# MAF output
-gbcms run -v variants.maf -b sample.bam -f ref.fa -o out/ --format maf
-```
+    # MAF output — preserves all input columns, appends gbcms counts
+    gbcms dna -v variants.maf -b sample.bam -f ref.fa -o out/ --format maf
+    ```
 
-### Multiple Samples
+=== "RNA-seq"
 
-```bash
-# Using BAM list file
-echo "sample1 /path/to/sample1.bam" > bam_list.txt
-echo "sample2 /path/to/sample2.bam" >> bam_list.txt
+    ```bash
+    # VCF output (default)
+    gbcms rna -v variants.vcf -b rna:aligned.bam -f ref.fa -o out/
 
-gbcms run \
-    --variants variants.vcf \
-    --bam-list bam_list.txt \
-    --fasta reference.fa \
-    --output-dir results/
-```
+    # MAF output — includes 5 RNA-specific columns
+    gbcms rna -v variants.maf -b rna:aligned.bam -f ref.fa -o out/ --format maf
+    ```
 
-### Custom Sample ID
+---
 
-```bash
-gbcms run \
-    --variants variants.vcf \
-    --bam MySample:sample.bam \
-    --fasta reference.fa \
-    --output-dir results/
-```
-**Output:** `results/MySample.vcf`
+## Multiple Samples
 
-### Quality Filters
+=== "DNA / cfDNA"
 
-```bash
-gbcms run \
-    --variants variants.vcf \
-    --bam sample.bam \
-    --fasta reference.fa \
-    --output-dir results/ \
-    --min-mapq 30 \
-    --min-baseq 20 \
-    --filter-duplicates \
-    --filter-secondary
-```
+    ```bash
+    # BAM list file: each line is "sample_name /path/to/sample.bam"
+    echo "tumor   /path/to/tumor.bam"  > bam_list.txt
+    echo "normal  /path/to/normal.bam" >> bam_list.txt
 
-### Threading
+    gbcms dna \
+        --variants variants.vcf \
+        --bam-list bam_list.txt \
+        --fasta reference.fa \
+        --output-dir results/
+    ```
 
-```bash
-gbcms run ... --threads 8
-```
+=== "RNA-seq"
+
+    ```bash
+    echo "rna_tumor /path/to/rna.bam" > bam_list.txt
+
+    gbcms rna \
+        --variants variants.vcf \
+        --bam-list bam_list.txt \
+        --fasta reference.fa \
+        --output-dir results/
+    ```
+
+---
+
+## Quality Filters
+
+=== "DNA / cfDNA"
+
+    ```bash
+    gbcms dna \
+        --variants variants.vcf \
+        --bam sample.bam \
+        --fasta reference.fa \
+        --output-dir results/ \
+        --min-mapq 30 \
+        --min-baseq 20 \
+        --filter-duplicates \
+        --filter-secondary \
+        --filter-supplementary
+    ```
+
+=== "RNA-seq"
+
+    ```bash
+    # Both DNA and RNA filter secondary, supplementary, and QC-failed by default
+    gbcms rna \
+        --variants variants.vcf \
+        --bam rna:aligned.bam \
+        --fasta reference.fa \
+        --output-dir results/ \
+        --min-baseq 20   # MAPQ default is 1 with NH:i:1 rescue
+    ```
 
 ---
 
 ## Complete Example
 
-```bash
-gbcms run \
-    --variants variants.vcf \
-    --bam TumorSample:tumor.bam \
-    --fasta hg38.fa \
-    --output-dir genotyped/ \
-    --format vcf \
-    --suffix .genotyped \
-    --threads 8 \
-    --min-mapq 30 \
-    --min-baseq 20 \
-    --filter-duplicates \
-    --filter-secondary \
-    --filter-supplementary
-```
+=== "DNA with mFSD"
 
-**Output:** `genotyped/TumorSample.genotyped.vcf`
+    ```bash
+    gbcms dna \
+        --variants variants.vcf \
+        --bam TumorSample:tumor.bam \
+        --fasta hg38.fa \
+        --output-dir genotyped/ \
+        --format maf \
+        --suffix .genotyped \
+        --threads 8 \
+        --min-mapq 30 \
+        --min-baseq 20 \
+        --filter-duplicates \
+        --filter-secondary \
+        --filter-supplementary \
+        --mfsd \
+        --mfsd-parquet
+    ```
+
+    **Output:**
+    - `genotyped/TumorSample.genotyped.maf` — allele counts + 34 mFSD columns
+    - `genotyped/TumorSample.genotyped.fsd.parquet` — raw fragment size arrays
+
+=== "RNA with Editing DB"
+
+    ```bash
+    gbcms rna \
+        --variants mutations.maf \
+        --bam tumor_rna:aligned.bam \
+        --fasta hg38.fa \
+        --rna-editing-db TABLE1_hg38.txt.gz \
+        --format maf \
+        --threads 8 \
+        --output-dir results/
+    ```
+
+    **Output:** `results/tumor_rna.maf` — standard counts + 5 RNA columns:
+    `rna_sense_depth`, `rna_antisense_depth`, `rna_sense_strand_alt_count`,
+    `rna_editing_site_overlap`, `rna_splice_spanning_count`
+
+=== "Unstranded RNA-seq"
+
+    ```bash
+    gbcms rna \
+        --variants variants.vcf \
+        --bam unstranded:aligned.bam \
+        --fasta reference.fa \
+        --no-strandedness \
+        --output-dir results/
+    ```
 
 ---
 
 ## Docker
 
-```bash
-docker run --rm -v $(pwd):/data ghcr.io/msk-access/gbcms:X.Y.Z \
-    gbcms run \
-    --variants /data/variants.vcf \
-    --bam /data/sample.bam \
-    --fasta /data/reference.fa \
-    --output-dir /data/results/
-```
+=== "DNA"
+
+    ```bash
+    docker run --rm -v $(pwd):/data ghcr.io/msk-access/gbcms:X.Y.Z \
+        gbcms dna \
+        --variants /data/variants.vcf \
+        --bam /data/sample.bam \
+        --fasta /data/reference.fa \
+        --output-dir /data/results/
+    ```
+
+=== "RNA"
+
+    ```bash
+    docker run --rm -v $(pwd):/data ghcr.io/msk-access/gbcms:X.Y.Z \
+        gbcms rna \
+        --variants /data/variants.vcf \
+        --bam /data/rna:aligned.bam \
+        --fasta /data/reference.fa \
+        --output-dir /data/results/
+    ```
 
 ---
 
-## CLI Reference
-
-```bash
-gbcms run --help
-```
+## Common CLI Options
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `--variants` | Required | VCF or MAF file |
-| `--bam` | Required | BAM file(s) |
+| `--bam` | Required | BAM file(s). Prefix with `name:` to set sample ID |
+| `--bam-list` | — | File with BAM paths (one per line) |
 | `--fasta` | Required | Reference FASTA |
 | `--output-dir` | Required | Output directory |
-| `--format` | vcf | Output format (vcf/maf) |
-| `--min-mapq` | 20 | Minimum mapping quality |
+| `--format` | `vcf` | Output format (`vcf` or `maf`) |
+| `--min-mapq` | 20 (DNA) / 1 (RNA) | Minimum mapping quality |
 | `--min-baseq` | 20 | Minimum base quality |
 | `--threads` | 1 | Number of threads |
 
-
-> 📖 See [CLI Reference](../cli/run.md) for the complete list of options including alignment backend, debugging, and advanced filtering parameters.
+> 📖 Full option reference: [DNA CLI](../cli/dna.md) · [RNA CLI](../cli/rna.md)
 
 ---
 
-## Next Steps
+## Related
 
-- **[Nextflow](../nextflow/index.md)** — Process many samples in parallel
-- **[Architecture](../reference/architecture.md)** — How it works
-- **[Allele Classification](../reference/allele-classification.md)** — How each variant type is counted
+- [DNA CLI Reference](../cli/dna.md) — mFSD, UMI, alignment backend options
+- [RNA CLI Reference](../cli/rna.md) — Strandedness, editing DB, splice junction options
+- [Nextflow Pipeline](../nextflow/index.md) — Process many samples in parallel on HPC
+- [Allele Classification](../reference/allele-classification.md) — How the counting engine works
+- [Troubleshooting](../resources/troubleshooting.md) — Common issues and solutions

@@ -7,13 +7,17 @@ gbcms uses a hybrid Python/Rust architecture for maximum performance.
 ```mermaid
 flowchart TB
     subgraph Python [🐍 Python Layer]
-        CLI[CLI - cli.py] --> Pipeline[Orchestration - pipeline.py]
+        CLI[CLI - cli.py] -->|dna / rna| Pipeline[Orchestration - pipeline.py]
         Pipeline --> Reader[Input Adapters]
         Pipeline --> Writer[Output Writers]
     end
     
     subgraph Rust [🦀 Rust Layer]
-        Counter[count_bam - counting/engine.rs] --> CIGAR[CIGAR Parser]
+        Counter[count_bam_binned - counting/engine.rs] --> CIGAR[CIGAR Parser]
+        Counter --> RNA[RNA Filters - rna.rs]
+        Counter --> Pangenome[Haplotype Matrix - pangenome.rs]
+        Counter --> WFA[WFA Fast Path - wfa_router.rs]
+        Counter --> PairHMM[PairHMM Backend - pairhmm.rs]
         Counter --> Stats[Strand Bias - stats.rs]
         ParquetWriter[write_fsd_parquet - parquet_writer.rs]
     end
@@ -35,22 +39,25 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Input
-        VCF[VCF/MAF]
-        BAM[BAM Files]
-        FASTA[Reference]
+        VCF["VCF/MAF"]
+        BAM["BAM Files"]
+        FASTA["Reference FASTA"]
     end
-    
+
     subgraph Process
-        Load[Load Variants]
-        Prepare["Prepare (validate + left-align + decomp detect)"]
-        Count[Count Reads]
+        Load["Load Variants"]
+        Prepare["Prepare\n(validate + left-align + decomp detect)"]
+        Count["Count Reads"]
     end
-    
-    subgraph Output
-        Result[VCF/MAF + Counts]
-        Parquet["<sample>.fsd.parquet (optional, --mfsd-parquet)"]
+
+    subgraph Output ["Required Output"]
+        Result["VCF/MAF + Counts"]
     end
-    
+
+    subgraph OptOut ["Optional Output (--mfsd-parquet)"]
+        Parquet["<sample>.fsd.parquet"]
+    end
+
     VCF --> Load --> Prepare
     FASTA --> Prepare
     Prepare --> Count
@@ -61,16 +68,60 @@ flowchart LR
 
 ---
 
+## Genomic Binning
+
+To minimise BAM I/O, the Rust engine groups co-located variants into **genomic bins** before counting. A single `bam.fetch()` is issued per bin, and reads fetched for that region are classified against **all variants in the bin** in one pass. For clustered inputs (e.g. a MAF with hundreds of variants on the same gene) this reduces BAM seeks from O(N) per-variant to O(B) per-bin — typically 5-20× fewer I/O operations.
+
+This design mirrors the original C++ GBCMS `--max_block_size` / `--max_block_dist` architecture, re-implemented as a pure Rust streaming algorithm.
+
+```mermaid
+flowchart LR
+    Variants(["📋 Variants (any order)"]):::start --> Sort["Sort indices\nby chrom + pos"]
+    Sort --> NewBin["Open new bin\nat variant pos"]
+    NewBin --> Extend{"Next variant\nwithin window\n& same chrom?"}
+    Extend -->|"Yes"| MaxCheck{"≥ 200 variants\nin bin?"}
+    MaxCheck -->|"No — extend"| GrowBin["Add variant\nextend bin_end"]
+    GrowBin --> Extend
+    MaxCheck -->|"Yes — split"| NewBin
+    Extend -->|"No / new chrom"| Pad["Pad bin:\nmax(repeat_span+2, 5)bp"]
+    Pad --> Fetch["bam.fetch(bin_start, bin_end)\n— 1 I/O per bin ⚡"]:::io
+    Fetch --> Classify["Classify each read\nagainst all variants in bin\n(Rayon parallel across bins)"]:::parallel
+    Classify --> Out(["📊 BaseCounts per variant"]):::pass
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef io fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef parallel fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+```
+
+### Binning Parameters
+
+| Parameter | Value | Notes |
+|:----------|:------|:-------|
+| `BIN_WINDOW` | **10,000 bp** | Maximum span of a single bin. Variants beyond this distance start a new bin. |
+| `BIN_MAX_VARIANTS` | **200** | Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop. |
+| Bin padding | `max(repeat_span + 2, 5)` bp | Ensures reads overlapping bin edges are captured. Uses each variant's detected tandem-repeat span. |
+| Parallelism | Rayon `par_iter()` over bins | Each thread owns its own `BamReader` handle; no locking required across bins. |
+| Output order | Preserved | Variants are sorted by index internally; results are written back in original input order. |
+
+!!! tip "Performance Implication"
+    For a MAF with 500 variants on *TP53* (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual `bam.fetch()` calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.
+
+!!! info "Not a CLI flag"
+    `BIN_WINDOW` and `BIN_MAX_VARIANTS` are internal performance constants — they do not affect output values. Parity testing (`D1` regression suite) validates that binned and per-variant paths produce identical `BaseCounts`.
+
+---
+
 ## Coordinate System
 
 All coordinates normalized to **0-based, half-open** internally:
 
 ```mermaid
 flowchart LR
-    VCF["VCF (1-based)"] -->|"-1"| Internal["Internal (0-based)"]
+    VCF["VCF (1-based)"] -->|"-1 (e.g. VCF:100 → internal:99)"| Internal["Internal (0-based)"]
     MAF["MAF (1-based)"] -->|"-1"| Internal
-    Internal -->|"to Rust"| Rust["gbcms._rs"]
-    Rust -->|"+1"| Output["Output (1-based)"]
+    Internal -->|"→ Rust engine"| Rust["gbcms._rs"]
+    Rust -->|"+1 (e.g. internal:99 → output:100)"| Output["Output (1-based)"]
 ```
 
 | Format | System | Example |
@@ -113,30 +164,33 @@ Low p-value (< 0.05) indicates potential strand bias artifact.
 
 ```
 src/gbcms/
-├── cli.py           # Typer CLI (~350 LOC)
+├── cli.py           # Typer CLI (dna, rna, normalize, run commands)
 ├── pipeline.py      # Orchestration (~450 LOC)
 ├── normalize.py     # Standalone normalization workflow
 ├── core/
 │   └── kernel.py    # Coordinate normalization
 ├── io/
 │   ├── input.py     # VcfReader, MafReader
-│   └── output.py    # VcfWriter, MafWriter
+│   └── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
 ├── models/
-│   └── core.py      # Pydantic config (GbcmsConfig, AlignmentConfig)
+│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, AlignmentConfig)
 └── utils/
     └── logging.py   # Structured logging
 
 rust/src/
 ├── lib.rs                    # PyO3 module exports
-├── parquet_writer.rs         # write_fsd_parquet() — native Parquet via ZSTD (--mfsd-parquet)
 ├── counting/
 │   ├── mod.rs                # Submodule re-exports
-│   ├── engine.rs             # Main loop, DP gating, read iteration
-│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex
+│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
 │   ├── alignment.rs          # Smith-Waterman implementation
-│   ├── pairhmm.rs            # PairHMM alignment backend
-│   ├── fragment.rs           # FragmentEvidence, quality consensus
+│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+│   ├── pangenome.rs          # Haplotype matrix construction
+│   ├── wfa_router.rs         # WFA2 fast-path alignment
+│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
 │   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
 │   └── utils.rs              # Helpers, reconstruction, soft-clip
 ├── normalize/
 │   ├── mod.rs                # Submodule re-exports
@@ -146,7 +200,13 @@ rust/src/
 │   ├── fasta.rs              # Reference sequence fetcher
 │   ├── repeat.rs             # Tandem repeat detection
 │   └── types.rs              # NormResult enum
-├── stats.rs                  # Fisher's exact test
+├── shared/
+│   ├── mod.rs                # Submodule re-exports
+│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+│   ├── stats.rs              # Fisher's exact test (strand bias)
+│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
+│   ├── baq.rs                # BAQ heuristic (Li 2011)
+│   └── bam_utils.rs          # median_qual, find_read_pos
 └── types.rs                  # Variant, BaseCounts, PyO3 bindings
 ```
 
@@ -154,19 +214,28 @@ rust/src/
 
 ## Configuration
 
-All settings via `GbcmsConfig` (Pydantic model):
+All settings via mode-specific Pydantic models:
 
 ```mermaid
 flowchart TB
-    GbcmsConfig --> OutputConfig[Output Settings]
-    GbcmsConfig --> ReadFilters[Read Filters]
-    GbcmsConfig --> QualityThresholds[Quality Thresholds]
-    GbcmsConfig --> AlignmentConfig[Alignment Backend]
-    
-    OutputConfig --> D1["output_dir, format, suffix, column_prefix, mfsd, mfsd_parquet"]
-    ReadFilters --> D2[exclude_secondary, exclude_duplicates]
-    QualityThresholds --> D3["min_mapq, min_baseq, fragment_qual_threshold"]
-    AlignmentConfig --> D4["backend: sw|hmm, llr_threshold, gap_*_prob"]
+    Base["GbcmsBaseConfig"]:::base --> DnaConfig["GbcmsDnaConfig"]
+    Base --> RnaConfig["GbcmsRnaConfig"]
+
+    DnaConfig --> DnaD["mode=dna\nMAPQ=20"]
+    RnaConfig --> RnaD["mode=rna, MAPQ=1\npairhmm relaxed RT gaps"]
+    RnaConfig --> RnaX["enforce_strandedness\nrna_editing_db"]
+
+    Base --> Filters["ReadFilters"]
+    Base --> Quality["QualityThresholds"]
+    Base --> Output2["OutputConfig"]
+    Base --> Align["AlignmentConfig"]
+
+    Filters --> FD["secondary · duplicates\nsupplementary · qc_failed\nimproper_pair · indel"]
+    Quality --> QD["min_mapq · min_baseq\nfragment_qual_threshold"]
+    Output2 --> OD["output_dir · format · suffix\ncolumn_prefix · mfsd · mfsd_parquet"]
+    Align --> AD["backend: pairhmm|sw\nllr_threshold · gap_*_prob"]
+
+    classDef base fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
 ```
 
 See [models/core.py](file:///src/gbcms/models/core.py) for definitions.
@@ -193,13 +262,16 @@ sequenceDiagram
     Reader-->>Pipeline: List[Variant]
 
     loop For each BAM sample
-        Pipeline->>Rust: count_bam(bam, variants, filters)
-        loop For each variant (parallel via Rayon)
+        Pipeline->>Rust: count_bam_binned(bam, variants, config)
+        loop For each genomic bin (parallel via Rayon)
             Rust->>BAM: fetch(chrom, pos−5, pos+ref_len+5)
             BAM-->>Rust: Iterator of reads
             loop For each read
                 Note over Rust: Apply filter cascade
                 Note over Rust: Dispatch to type checker
+                Note over Rust: Phase 1+2 haplotype reconstruction
+                Note over Rust: Phase 2.5 edit-distance fast-path
+                Note over Rust: Phase 3 WFA triage → PairHMM LLR
                 Note over Rust: Update read + fragment counts
             end
             Note over Rust: Compute Fisher strand bias

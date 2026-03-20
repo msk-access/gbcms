@@ -2,11 +2,7 @@
 
 How allele classifications become counts — read-level metrics, fragment counting, strand bias, and output columns.
 
-!!! info "Visual Overview"
-    <figure markdown="span">
-      ![Read filter and counting metrics poster](../assets/posters/Read_Filter_and_Counting_Metrics.jpg){ loading=lazy width="100%" }
-      <figcaption>The read-filter cascade and counting metrics — click to enlarge</figcaption>
-    </figure>
+
 
 ## Overview
 
@@ -14,15 +10,24 @@ After each read is [classified](allele-classification.md) as REF, ALT, or neithe
 
 ```mermaid
 flowchart LR
-    Class([🧬 Allele Classification]) --> ReadCount([📖 Read-Level Counts])
-    Class --> FragTrack([🔗 Fragment Tracking])
-    FragTrack --> Consensus([⚖️ Quality-Weighted Consensus])
-    Consensus --> FragCount([🧬 Fragment-Level Counts])
-    ReadCount --> SB([📊 Strand Bias])
-    FragCount --> FSB([📊 Fragment Strand Bias])
+    Class(["🧬 Classification"]):::start
 
+    subgraph ReadLevel ["📖 Read-Level Path"]
+        direction LR
+        RL1["Read Counts\nDP / RD / AD"] --> SB["Strand Bias\n(Fisher's test)"]
+    end
+
+    subgraph FragLevel ["🔗 Fragment-Level Path"]
+        direction LR
+        FL1["Fragment Tracking\n(QNAME hash)"] --> FL2["Quality Consensus\n(R1 vs R2 resolve)"] --> FL3["Fragment Counts\nDPF / RDF / ADF"] --> FSB["Fragment Strand Bias\n(Fisher's test)"]
+    end
+
+    Class --> ReadLevel
+    Class --> FragLevel
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef metrics fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    class ReadCount,FragCount,SB,FSB metrics;
+    class SB,FSB metrics;
 ```
 
 ---
@@ -33,22 +38,23 @@ Each read passing filters is counted independently. No deduplication is applied 
 
 ```mermaid
 flowchart TD
-    Fetch(["📥 Fetch reads from<br/>±5bp window"]) --> Filters["🔍 Apply read filters<br/>(MAPQ, dup, etc.)"]
-    Filters --> Classify["🧬 Allele classification<br/>(check_snp / check_insertion / etc.)"]
-    Classify --> Anchor{"Read start ≤<br/>variant POS?"}
-    Anchor -->|"Yes"| DP["✅ Count in DP<br/>(REF, ALT, or neither)"]
-    Anchor -->|"No"| ClassCheck{"Classified as<br/>REF or ALT?"}
-    ClassCheck -->|"Yes (shifted indel)"| DP
-    ClassCheck -->|"No"| Skip(["⏭️ Skip — outside<br/>variant footprint"]):::skip
+    Fetch(["📥 Fetch reads ±5bp window"]) --> Classify["🧬 Allele classification"]
+    Classify --> Anchor{"Read start ≤ variant POS?"}
+    Anchor -->|"Yes — normal"| DP["✅ Count in DP"]
+    Anchor -->|"No"| ClassCheck{"Classified as REF or ALT?"}
+    ClassCheck -->|"Yes — shifted indel"| DPShifted["✅ Count in DP"]:::shifted
+    ClassCheck -->|"No"| Skip(["⏭️ Skip — outside footprint"]):::skip
     DP --> Allele{"Allele?"}
+    DPShifted --> Allele
     Allele -->|REF| RD["RD += 1"]:::ref
     Allele -->|ALT| AD["AD += 1"]:::alt
-    Allele -->|Neither| Neither["DP only<br/>(no RD/AD)"]:::neither
+    Allele -->|Neither| Neither["DP only (no RD/AD)"]:::neither
 
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
     classDef skip fill:#bdc3c7,color:#000,stroke:#95a5a6;
+    classDef shifted fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
 ```
 
 
@@ -75,30 +81,43 @@ Fragment counting collapses read pairs into a single observation per fragment. T
 
 Fragments are tracked using **QNAME hashing** — each read's QNAME is hashed to a `u64` key for memory-efficient lookup. The `FragmentEvidence` struct records the best base quality seen for REF and ALT across both reads in the pair.
 
+**Phase A — Fragment Tracking** (per-read pass):
+
+```mermaid
+flowchart LR
+    Read(["📖 Read passes filters"]):::start --> Hash["Hash QNAME → u64 key"]
+    Hash --> Seen{"Fragment seen before?"}
+    Seen -->|No| Create["Create FragmentEvidence\n{ref_qual=0, alt_qual=0}"]
+    Seen -->|Yes| Update["Update best quality score"]
+    Create --> Store["Store allele + base quality"]
+    Update --> Store
+    Store --> Next(["→ next read …"]):::next
+
+    classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+```
+
+**Phase B — Quality-Weighted Consensus** (after all reads loaded):
+
 ```mermaid
 flowchart TD
-    Start([For each read passing filters]):::start
-    Start --> Hash["Hash QNAME → u64 key"]
-    Hash --> Observe["Record allele + base quality into FragmentEvidence"]
-    Observe --> Done[After all reads processed]
-    Done --> ForEach[For each unique fragment]
-    ForEach --> HasBoth{Both REF and ALT evidence?}
-    HasBoth -->|No| Direct[Assign to whichever allele was seen]
+    ForEach(["For each unique fragment"]):::start --> HasBoth{"Both REF and ALT evidence?"}
+    HasBoth -->|No| Direct["Assign to whichever allele was seen"]
     HasBoth -->|Yes| QualCheck{"Quality difference > threshold?"}
-    QualCheck -->|"REF qual >> ALT qual"| Ref([✅ Count as REF]):::ref
-    QualCheck -->|"ALT qual >> REF qual"| Alt([🔴 Count as ALT]):::alt
-    QualCheck -->|"Within threshold"| Discard([⚪ Discard — ambiguous]):::discard
+    QualCheck -->|"REF qual >> ALT"| Ref(["✅ Count as REF"]):::ref
+    QualCheck -->|"ALT qual >> REF"| Alt(["🔴 Count as ALT"]):::alt
+    QualCheck -->|"Within threshold"| Discard(["⚪ Discard — ambiguous"]):::discard
     Direct --> Count
     Ref --> Count
     Alt --> Count
-    Discard --> DPF["Still counted in DPF"]:::info
-    Count[Update RDF / ADF / DPF + strand counts]
+    Discard --> DPF["Counted in DPF only"]:::info
+    Count["Update RDF / ADF / DPF + strand counts"]
 
     classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef discard fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
-    classDef info fill:#3498db15,stroke:#3498db;
+    classDef info fill:#3498db25,stroke:#3498db;
 ```
 
 ### Quality-Weighted Consensus
@@ -146,26 +165,23 @@ Where **AD** and **RD** are the read-level alternate and reference counts. Fragm
 
 ## Strand Bias (Fisher's Exact Test)
 
-Strand bias detects when an allele is disproportionately supported by reads on one strand — a common sequencing artifact.
+Strand bias is detected by building a **2×2 contingency table** from strand-specific counts and running Fisher's exact test:
+
+| · | Fwd strand | Rev strand |
+|:--|:----------:|:----------:|
+| **REF** | `RD_fwd` (a) | `RD_rev` (b) |
+| **ALT** | `AD_fwd` (c) | `AD_rev` (d) |
 
 ```mermaid
 flowchart LR
-    subgraph Table ["2×2 Contingency Table"]
-        direction TB
-        Header["| · | Fwd | Rev |"]
-        RefRow["| REF | a | b |"]
-        AltRow["| ALT | c | d |"]
-    end
+    Counts(["2×2 Strand Counts"]):::start --> Fisher["Fisher's Exact Test"]
+    Fisher --> PVal["SB_pval"]
+    Fisher --> OR["SB_OR"]
+    PVal --> Interp{"p < 0.05?"}
+    Interp -->|Yes| Bias(["⚠️ Possible Strand Bias"]):::warn
+    Interp -->|No| NoBias(["✅ No Strand Bias"]):::pass
 
-    Table --> Fisher([Fisher Exact Test]):::test
-    Fisher --> Pval[SB_pval]
-    Fisher --> OR[SB_OR]
-
-    Pval --> Interpret{p < 0.05?}
-    Interpret -->|Yes| Bias{{⚠️ Possible Strand Bias}}:::warn
-    Interpret -->|No| NoBias([✅ No Strand Bias]):::pass
-
-    classDef test fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef warn fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 ```
@@ -187,7 +203,7 @@ Computed at **both** levels:
 
 ## Complete Output Column Reference
 
-All fields in the `BaseCounts` struct returned by `count_bam()`:
+All fields in the `BaseCounts` struct returned by `count_bam_binned()` — the binned counting entry point that groups variants into ~10kb genomic bins for a single `bam.fetch()` per bin before classifying reads. See [Architecture → Genomic Binning](architecture.md#genomic-binning) for how bins are built.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
@@ -308,6 +324,55 @@ Written natively by the Rust engine (no `pyarrow` dependency).
 
 ---
 
+## RNA-Specific Output Columns
+
+When running in RNA mode (`gbcms rna`), additional columns capture transcriptome-specific metrics. These columns are **absent** from DNA mode output.
+
+### Biological Context
+
+RNA-seq reads exhibit orientation biases (dUTP strandedness), splice junctions (CIGAR `N` operations representing intron skips), and post-transcriptional modifications (A-to-I editing by ADAR enzymes). These metrics enable downstream filtering of RNA-specific artifacts and biological characterization of variants.
+
+### MAF Columns (5 additional)
+
+| Column | Type | Description |
+|:-------|:-----|:------------|
+| `rna_sense_depth` | u32 | Reads aligning to the gene **sense** strand |
+| `rna_antisense_depth` | u32 | Reads aligning to the gene **antisense** strand |
+| `rna_alt_sense_count` | u32 | ALT-classified reads on the sense strand |
+| `rna_editing_site` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
+| `rna_splice_spanning` | u32 | ALT-classified reads containing splice junctions (CIGAR `N`) spanning the variant |
+
+### VCF Fields
+
+| Field | Scope | Type | Description |
+|:------|:------|:-----|:------------|
+| `SEN` | INFO + FORMAT | Integer | Sense strand depth |
+| `ANT` | INFO + FORMAT | Integer | Antisense strand depth |
+| `ASEN` | INFO + FORMAT | Integer | ALT sense strand count |
+| `RED` | INFO only | Flag | Variant overlaps a known A→I RNA editing site (A>G on + strand or T>C on − strand) |
+| `SPL` | INFO + FORMAT | Integer | Splice-spanning ALT read count |
+
+!!! tip "Using RNA Columns for Filtering"
+    - **Strandedness ratio**: `rna_sense_depth / (rna_sense_depth + rna_antisense_depth)` — values near 0 or 1 indicate strong strand bias, consistent with dUTP libraries
+    - **Editing site flag**: Variants at known A→I sites (`rna_editing_site = True`) are likely RNA editing, not somatic mutations
+    - **Splice-spanning ALT**: `rna_splice_spanning > 0` indicates the variant is supported by reads crossing exon-exon boundaries
+
+---
+
+## UMI-Aware Fragment Counting
+
+When `--umi-tag` is specified (e.g., `--umi-tag RX`), fragment identity incorporates the UMI barcode in addition to the QNAME:
+
+| Mode | Fragment Key | Use Case |
+|:-----|:-------------|:---------|
+| Default | QNAME hash | Standard paired-end sequencing |
+| UMI-aware | QNAME + UMI hash | UMI-tagged libraries (fgbio, gencore) |
+
+!!! info "Why UMI-Aware Grouping?"
+    In UMI-tagged libraries, multiple original molecules can share the same QNAME after consensus calling. Without UMI-aware grouping, reads from different molecules would be incorrectly merged into a single fragment, deflating fragment-level allele counts and distorting VAF.
+
+---
+
 ## Comparison with Original GBCMS
 
 | Feature | Original GBCMS | gbcms |
@@ -322,12 +387,15 @@ Written natively by the Rust engine (no `pyarrow` dependency).
 | Positive strand counts | Optional (`--positive_count`) | Always computed |
 | Strand bias | Not computed | Fisher's exact test (read + fragment level) |
 | Fractional depth | `--fragment_fractional_weight` | Not implemented |
-| Parallelism | OpenMP block-based | Rayon per-variant |
+| Parallelism | OpenMP block-based | [Rayon per-bin](architecture.md#genomic-binning) — variants grouped into ~10kb windows, 1 `bam.fetch()` per bin |
+| RNA mode | Not available | Dedicated `gbcms rna` with transcriptome filters |
+| UMI support | Not available | `--umi-tag` for molecule-level deduplication |
 
 ---
 
 ## Related
 
+- [Output Formats](output-formats.md) — Column schemas for VCF and MAF output (DNA and RNA)
 - [Allele Classification](allele-classification.md) — How reads are classified
 - [Read Filters](read-filters.md) — Which reads reach counting
 - [Architecture](architecture.md) — System design

@@ -79,7 +79,7 @@ For RHEL 8, CentOS 8, or HPC systems with glibc < 2.34:
     singularity exec gbcms_X.Y.Z.sif gbcms --help
     
     # With data binding
-    singularity exec -B /path/to/data:/data gbcms_X.Y.Z.sif gbcms run \
+    singularity exec -B /path/to/data:/data gbcms_X.Y.Z.sif gbcms dna \
       --variants /data/variants.vcf --bam /data/sample.bam \
       --fasta /data/ref.fa --output-dir /data/results/
     ```
@@ -116,7 +116,7 @@ gbcms --help
 docker run --rm \
   -v $(pwd):/data \
   ghcr.io/msk-access/gbcms:X.Y.Z \
-  gbcms run \
+  gbcms dna \
     --variants /data/variants.vcf \
     --bam /data/sample.bam \
     --fasta /data/reference.fa \
@@ -130,23 +130,23 @@ docker run --rm \
 
 ## Troubleshooting
 
-### Module Not Found
-```bash
-pip uninstall gbcms && pip install gbcms
-```
+See the **[full Troubleshooting Guide](../resources/troubleshooting.md)** for detailed solutions.
 
-### BAM Index Missing
+Quick checks:
+
 ```bash
+# BAM index missing
 samtools index sample.bam
+
+# FASTA index missing
+samtools faidx reference.fa
+
+# Chromosome mismatch — compare names between FASTA, BAM, VCF/MAF
+grep "^>" reference.fa | head -5
+samtools view -H sample.bam | grep "^@SQ" | head -5
 ```
 
-### Docker Permission Denied
-```bash
-sudo usermod -aG docker $USER && newgrp docker
-```
-
-### glibc Version Error
-If you see `GLIBC_2.34 not found`, use the [Legacy Linux](#legacy-linux-rhel-8-hpc) instructions.
+For glibc errors, installation failures, or Docker permission issues, see [Troubleshooting → Installation Issues](../resources/troubleshooting.md#installation-issues).
 
 ---
 
@@ -158,7 +158,10 @@ pip install --upgrade gbcms
 
 ---
 
-## Next Steps
+## Related
 
-- **[CLI Quick Start](quickstart.md)** — Command examples
-- **[Nextflow Guide](../nextflow/index.md)** — HPC pipeline
+- [Quick Start](quickstart.md) — Common usage patterns with DNA and RNA examples
+- [CLI Reference — DNA](../cli/dna.md) — Full option reference for `gbcms dna`
+- [CLI Reference — RNA](../cli/rna.md) — Full option reference for `gbcms rna`
+- [Nextflow Pipeline](../nextflow/index.md) — Running many samples in parallel on HPC
+- [Troubleshooting](../resources/troubleshooting.md) — Installation issues and common errors

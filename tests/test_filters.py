@@ -1,5 +1,6 @@
 import pysam
 import pytest
+from helpers import count_both
 
 from gbcms import _rs as gbcms_rs
 from gbcms.models.core import Variant, VariantType
@@ -211,4 +212,40 @@ def test_filters(mock_bam_with_flags):
         threads=1,
     )[0]
     # Only read1 remains. Total = 1
+    assert counts.dp == 1
+
+
+# ── count_bam_binned parity tests ────────────────────────────────────────
+
+
+def test_filters_binned(mock_bam_with_flags):
+    """count_bam_binned filter behavior matches count_bam for all 6 filter cases."""
+    variant = gbcms_rs.Variant("chr1", 150, "A", "T", "SNP")
+
+    # No filters: all 5 reads
+    counts = count_both(
+        str(mock_bam_with_flags),
+        [variant],
+        min_mapq=0,
+        min_baseq=0,
+        filter_secondary=False,
+        filter_supplementary=False,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert counts.dp == 5
+
+    # All filters: only read1 remains
+    counts = count_both(
+        str(mock_bam_with_flags),
+        [variant],
+        min_mapq=0,
+        min_baseq=0,
+        filter_secondary=True,
+        filter_supplementary=True,
+        filter_qc_failed=True,
+        filter_improper_pair=True,
+        filter_indel=True,
+    )[0]
     assert counts.dp == 1

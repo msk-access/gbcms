@@ -39,16 +39,19 @@ All these files must be updated with the new version (5 references total):
 ## Release Workflow
 
 ```mermaid
-flowchart LR
-    develop -->|1. Create release branch| release/X.Y.Z
-    release/X.Y.Z -->|2. Update versions| release/X.Y.Z
-    release/X.Y.Z -->|3. PR to main| main
-    main -->|4. Tag triggers CI| CI
-    CI --> PyPI
-    CI --> Docker/GHCR
-    CI --> gh-pages
-    main -->|5. Merge back| develop
+gitGraph LR:
+   commit id: "ongoing develop work"
+   branch release/X.Y.Z
+   commit id: "bump versions (5 files)"
+   commit id: "update CHANGELOG.md"
+   checkout main
+   merge release/X.Y.Z id: "PR merged" tag: "vX.Y.Z"
+   checkout develop
+   merge release/X.Y.Z id: "back-merge"
 ```
+
+!!! info "Tag triggers CI"
+    Pushing the tag `vX.Y.Z` automatically triggers the CI pipeline which publishes to **PyPI**, **Docker/GHCR**, and deploys **gh-pages** docs.
 
 ---
 
@@ -95,17 +98,16 @@ Add new section at top:
 ### 4. Run Pre-Release Checks
 
 ```bash
-# Lint
-make lint
+# Python linting + type checking
+ruff check src/ tests/
+black --check src/ tests/
+mypy src/
 
-# Format
-make format
+# Rust linting + unit tests
+cd rust && cargo clippy --all-targets -- -D warnings && cargo test && cd ..
 
-# Tests
-make test
-
-# Local build test
-make docker-build
+# Integration tests
+pytest -v
 ```
 
 ### 5. Commit and Push
@@ -196,11 +198,14 @@ Interactive helper for git-flow operations:
 
 | Target | Description |
 |:-------|:------------|
-| `make lint` | Run ruff and mypy |
-| `make format` | Run black and ruff --fix |
-| `make test` | Run pytest |
-| `make test-cov` | Run tests with coverage |
+| `make lint` | Run `ruff check` and `mypy` (Python only) |
+| `make format` | Run `black` and `ruff --fix` |
+| `make test` | Run `pytest` |
+| `make test-cov` | Run tests with coverage report |
 | `make docker-build` | Build Docker image locally |
+
+!!! note
+    `make lint` covers Python only. Always run `cargo clippy --all-targets -- -D warnings` separately to catch Rust linting errors before releasing.
 
 ---
 
@@ -230,3 +235,12 @@ Interactive helper for git-flow operations:
 
 - Verify `mkdocs-mermaid2-plugin` is installed in workflow
 - Check snippet paths are correct (relative to root)
+
+---
+
+## Related
+
+- [Developer Guide](developer-guide.md) — Setup, build commands, and project layout
+- [Contributing](contributing.md) — Contribution workflow and code standards
+- [Testing Guide](testing-guide.md) — Running and writing tests before a release
+- [Changelog](changelog.md) — Version history

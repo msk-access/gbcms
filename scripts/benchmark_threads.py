@@ -34,7 +34,7 @@ def setup():
 def run_benchmark(threads, output_format):
     cmd = [
         "gbcms",
-        "run",
+        "dna",
         "--variants",
         str(VCF_INPUT),
         "--fasta",

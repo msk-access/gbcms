@@ -135,7 +135,7 @@ echo "gbcms is ready to use:"
 echo "  gbcms --help"
 echo "  gbcms version"
 echo "  gbcms info"
-echo "  gbcms count run --help"
+echo "  gbcms dna --help"
 echo
 echo "Documentation:"
 echo "  README.md - Main documentation"

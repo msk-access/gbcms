@@ -5,6 +5,102 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-03-20
+
+### ⚠️ Breaking Changes
+
+- **Nextflow module split**: Single `run/main.nf` replaced by three dedicated
+  modules — `dna/main.nf`, `rna/main.nf`, `normalize/main.nf`. Consumer
+  pipelines must update `include` paths and use `GBCMS_DNA`, `GBCMS_RNA`, or
+  `GBCMS_NORMALIZE` process names.
+- **Rust `shared/` module**: Common BAM utilities, BAQ, filters, fragment
+  logic, and statistics extracted from `counting/` into `shared/`. Any Rust
+  consumer crate linking against gbcms internals must update import paths.
+
+### ✨ Added
+
+- **Phase 3 WFA+PairHMM unification** (`feat: unify check_complex Phase 3`):
+  Complex indel classification now routes through a unified pangenomic pipeline
+  — fast-path WFA alignment with PairHMM fallback. Haplotype matrix
+  construction via `pangenome.rs`, WFA routing via `wfa_router.rs`.
+  Significantly improves classification accuracy on complex multi-allelic
+  variants.
+- **RNA mode output columns** (`fix(rna): pass mode= to VcfWriter/MafWriter`):
+  `gbcms rna` now correctly emits RNA-specific columns in both VCF and MAF
+  output. Previously, all RNA columns (`SEN`, `ANT`, `ASEN`, `RED`, `SPL` in
+  VCF; `rna_sense_depth`, `rna_antisense_depth`, `rna_alt_sense_count`,
+  `rna_editing_site`, `rna_splice_spanning` in MAF) were silently absent
+  regardless of mode. Regression tests added.
+- **`gbcms normalize` Nextflow module**: New `normalize/main.nf` for standalone
+  variant normalization without counting in Nextflow pipelines.
+- **Output Formats reference doc**: `docs/reference/output-formats.md` — complete
+  column-level schema reference for VCF and MAF output under all mode/flag
+  combinations (DNA vs RNA, with mFSD, with normalization columns).
+
+### 🔧 Fixed
+
+- **Complex indel classification** (`fix: correctly classify complex indels`):
+  Fixes for Phase 3 dispatch cases 2, 3, and 4 — previously misclassified
+  complex variants where `ref_len ≠ alt_len` and the CIGAR structure doesn't
+  map cleanly to pure insertion or deletion.
+- **`rna_editing_db` log leakage** (`fix: gate rna_editing_db from DNA mode`):
+  DNA mode no longer emits a log line referencing `rna_editing_db`.
+- **CliRunner terminal width** (`fix: widen CliRunner terminal`): CI help
+  output truncation resolved — `CliRunner(mix_stderr=False, terminal_width=120)`
+  prevents Typer/Rich from hiding options in the middle of the params list.
+- **Filter defaults documentation**: Secondary, supplementary, and QC-failed
+  filters are on by default for DNA mode — corrected in `cli/dna.md`,
+  `cli/rna.md`, and `read-filters.md`.
+- **RNA mode output pipe wiring** (critical silent bug): `Pipeline._write_output()`
+  now passes `mode=self.config.mode` to both `VcfWriter` and `MafWriter`.
+
+### 🏗️ Refactored
+
+- **Rust `shared/` module extraction**: `bam_utils`, `baq`, `filters`, `fragment`,
+  `stats` extracted from the `counting/` directory into a new top-level
+  `shared/` module, enabling reuse across `counting/` and `normalize/`.
+- **`parquet_writer.rs` relocated**: Moved from `counting/` into `shared/` during
+  module extraction.
+
+### 📚 Documentation
+
+Major documentation overhaul — 28+ files updated:
+- Complete MkDocs plugin utilization pass (tabbed, details, admonitions,
+  mermaid, code annotations, glightbox) across all reference pages
+- WFA fast-path Phase 3 documented in `allele-classification.md`
+- Complex indels guide: RNA compatibility and exon-boundary limitation (D6)
+  documented with cross-links
+- Architecture module tree corrected for `shared/` and new Nextflow modules
+- Filter defaults corrected across `cli/dna.md`, `cli/rna.md`, `read-filters.md`
+- Mermaid diagrams fixed: raw unicode escapes removed, `\\n` → `<br/>`,
+  backslash-escaped quotes removed
+- NEW: `docs/reference/output-formats.md` — authoritative output schema reference
+- **Versioned docs assets**: old opaque-named binary files replaced with
+  `{name}_{version}.{ext}` convention (`overview_4.0.0.pdf`,
+  `allele_classification_4.0.0.pdf`, `read_filter_4.0.0.jpg`); 5 stale files
+  deleted; poster references corrected to match page content
+
+### 🧹 Chores
+
+- All Clippy `-D warnings` resolved across `engine.rs`, `rna.rs`,
+  `variant_checks.rs`, `pairhmm.rs`
+- `ruff`, `black`, `mypy` all pass with 0 errors (38 source files checked)
+- Auto-generated mermaid SVGs removed from git (added to `.gitignore`)
+- `fallback_to_build_date=true` added to `git-revision-date-localized` plugin
+- `test_cli_dna_rna.py`: mypy `attr-defined` fixed by annotating `_click_app`
+  as `click.Group`; `Set[str | None]` → `Set[str]` via `if p.name is not None`
+
+### 🧪 Tests
+
+- `tests/test_pipeline_rna.py` (NEW): 7 pipeline-level integration tests for
+  RNA mode output — VCF INFO headers, INFO values, FORMAT field, MAF column
+  headers, MAF values, and negative DNA assertions
+- `tests/test_rna_output.py`: 4 write round-trip tests added (VCF INFO values,
+  RED flag on/off, MAF RNA column values)
+- `tests/test_maf_preservation.py`: `test_vcf_to_maf_always_uses_sample_name` added
+- `tests/test_cli_dna_rna.py`: mypy fixes (click.Group cast, None guard)
+- All test `MockCounts` helpers updated with RNA fields
+
 ## [3.0.0] - 2026-03-05
 
 ### ⚠️ Breaking Changes

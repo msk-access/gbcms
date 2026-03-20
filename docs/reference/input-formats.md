@@ -46,31 +46,19 @@ MAF represents indels using `-` dashes, while gbcms internally uses VCF-style **
 
 ```mermaid
 flowchart TD
-    MAF([📄 MAF Row]):::start --> Check{REF or ALT is '-'?}
-    Check -->|No: SNP/MNP| Direct[Use Start_Position as VCF POS]
-    Check -->|Yes: Indel| Type{Which is '-'?}
+    MAF(["📄 MAF Row"]):::start --> Check{"REF or ALT is '-'?"}
+    Check -->|"No — SNP/MNP"| Direct["VCF POS = Start_Position"]
+    Check -->|"Yes — Indel"| Type{"Which is '-'?"}
 
-    Type -->|"REF = '-'"| Ins[Insertion]
-    Type -->|"ALT = '-'"| Del[Deletion]
+    Type -->|"REF = '-' (Insertion)"| InsResult["POS = Start_Position\nAnchor @ Start_Position (from FASTA)\nREF = anchor\nALT = anchor + inserted seq"]
+    Type -->|"ALT = '-' (Deletion)\n-1 for anchor"| DelResult["POS = Start_Position − 1\nAnchor @ Start_Position−1 (from FASTA)\nREF = anchor + deleted seq\nALT = anchor"]
 
-    subgraph Insertion
-        Ins --> InsAnchor["Anchor = Start_Position"]
-        InsAnchor --> InsFetch["Fetch anchor base from FASTA"]
-        InsFetch --> InsResult["REF = anchor base\nALT = anchor + inserted seq"]
-    end
-
-    subgraph Deletion
-        Del --> DelAnchor["Anchor = Start_Position − 1"]
-        DelAnchor --> DelFetch["Fetch anchor base from FASTA"]
-        DelFetch --> DelResult["REF = anchor + deleted seq\nALT = anchor base"]
-    end
-
-    Direct --> Out([🧬 Internal Variant]):::success
+    Direct --> Out(["🧬 Internal Variant"]):::pass
     InsResult --> Out
     DelResult --> Out
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
-    classDef success fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 ```
 
 #### Insertion Example
@@ -126,7 +114,7 @@ samtools faidx reference.fa
 
 ## Related
 
-- [CLI Run Command](../cli/run.md) — Usage examples
+- [DNA CLI Reference](../cli/dna.md) — Usage examples
 - [Variant Normalization](variant-normalization.md) — How variants are prepared
 - [Allele Classification](allele-classification.md) — How counting works
 - [Glossary](glossary.md) — Term definitions

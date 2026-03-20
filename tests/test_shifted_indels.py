@@ -12,59 +12,20 @@ Reference genome: chr1, 500 bases of 'A' (all A's for homopolymer tests).
   - Deletion tests:  pos 200, REF=AT, ALT=A (delete T after anchor A)
 """
 
-import pysam
+from helpers import (
+    build_bam as _build_bam,
+)
+from helpers import (
+    count_one as _count_one,
+)
+from helpers import (
+    count_one_both as _count_one_both,
+)
+from helpers import (
+    make_read as _make_read,
+)
 
-from gbcms._rs import Variant, count_bam
-
-
-# ---------------------------------------------------------------------------
-# Helper: build a sorted, indexed BAM from a list of AlignedSegments
-# ---------------------------------------------------------------------------
-def _build_bam(tmp_path, reads, filename="test.bam"):
-    """Write reads to a sorted, indexed BAM. Returns path string."""
-    bam_path = tmp_path / filename
-    header = {"HD": {"VN": "1.0", "SO": "coordinate"}, "SQ": [{"LN": 500, "SN": "chr1"}]}
-    with pysam.AlignmentFile(bam_path, "wb", header=header) as outf:
-        for r in reads:
-            outf.write(r)
-    sorted_bam = tmp_path / filename.replace(".bam", ".sorted.bam")
-    pysam.sort("-o", str(sorted_bam), str(bam_path))
-    pysam.index(str(sorted_bam))
-    return str(sorted_bam)
-
-
-def _make_read(name, seq, start, cigar, flag=0, mapq=60, quals=None):
-    """Create an AlignedSegment with sensible defaults."""
-    a = pysam.AlignedSegment()
-    a.query_name = name
-    a.query_sequence = seq
-    a.flag = flag
-    a.reference_id = 0
-    a.reference_start = start
-    a.mapping_quality = mapq
-    a.cigartuples = cigar
-    a.query_qualities = quals if quals else [30] * len(seq)  # type: ignore[assignment]
-    return a
-
-
-def _count_one(bam_path, variant):
-    """Count a single variant and return the BaseCounts object."""
-    results = count_bam(
-        bam_path,
-        [variant],
-        decomposed=[None],
-        min_mapq=20,
-        min_baseq=20,
-        filter_duplicates=True,
-        filter_secondary=True,
-        filter_supplementary=True,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-        threads=1,
-    )
-    return results[0]
-
+from gbcms._rs import Variant, count_bam  # noqa: F401 — count_bam referenced in comments
 
 # ==========================================================================
 # INSERTION TESTS — Variant: chr1:100, REF=A, ALT=AT
@@ -301,14 +262,15 @@ class TestDeletionWindowed:
     def test_deletion_wrong_ref_context_s3(self, tmp_path):
         """DEL within window but ref base at shifted pos doesn't match → S3 rejects
         the windowed CIGAR match. The read covers the anchor with a Match op and
-        no deletion at the expected position → REF.
+        no deletion at the expected position → REF (CIGAR definitive).
 
-        Previously this fell through to Phase 3 SW via is_worth_realignment(),
-        but CIGAR is definitive for pure deletions: if the Match op covers the
-        anchor and no matching D op was found, the read is REF.
+        Fix 4 (has_nearby_length_match) only applies to deletions ≥5bp —
+        short deletions (1-4bp) failing S3 are almost certainly spurious noise,
+        so CIGAR remains definitive for them. A 1bp S3-rejected windowed Del
+        does NOT trigger Phase 3; found_ref_coverage=True → REF.
         """
         # ref_context: "AAAAAATGAAAAAAAA" covering [195, 210)
-        # pos 201='T', 202='G'. If deletion shifts to 202, ref='G' but expected='T' → S3 reject.
+        # pos 201='T', 202='G'. Deletion shifts to 203 → ref='A' but expected='T' → S3 reject.
         variant = Variant(
             chrom="chr1",
             pos=200,
@@ -321,13 +283,14 @@ class TestDeletionWindowed:
         # Read with deletion at pos 203: 7M 1D 3M, starts at 196.
         # Block end = 203. del_ref_pos = 203.
         # ref_context[203-195] = ref_context[8] = 'A'. expected_del_seq = 'T'. 'A' ≠ 'T' → S3 reject.
-        # The read has a Match op covering the anchor (pos 200) → found_ref_coverage=true.
-        # CIGAR is definitive for pure DEL: no matching D at anchor → REF.
+        # del_len_usize = 1 < 5 → has_nearby_length_match stays False.
+        # found_ref_coverage = True (M covers anchor at 200) → CIGAR definitive REF.
         reads = [_make_read("r1", "AAAAAAAAAA", 196, ((0, 7), (2, 1), (0, 3)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, variant)
-        # CIGAR definitive: read covers anchor with Match, no deletion → REF
+        # CIGAR definitive: 1bp del, S3 reject, short del → REF
         assert counts.rd == 1, f"Expected rd=1 (CIGAR definitive REF), got {counts.rd}"
+        assert counts.ad == 0
 
 
 class TestNoRefContext:
@@ -377,3 +340,33 @@ class TestReadDoesNotCover:
         assert counts.rd == 0
         assert counts.ad == 0
         assert counts.dp == 0
+
+
+# ── count_bam_binned parity tests ────────────────────────────────────────
+
+
+# _count_one_both imported from helpers.py above
+
+
+class TestBinnedParity:
+    """Verify count_bam_binned matches count_bam for shifted indel scenarios."""
+
+    def test_insertion_strict_binned(self, tmp_path):
+        reads = [_make_read("r1", "AAAAATAAAA", 96, ((0, 5), (1, 1), (0, 4)))]
+        bam = _build_bam(tmp_path, reads)
+        counts = _count_one_both(bam, INS_VARIANT)
+        assert counts.ad == 1
+        assert counts.rd == 0
+
+    def test_insertion_windowed_binned(self, tmp_path):
+        reads = [_make_read("r1", "AAAAAAATAA", 96, ((0, 7), (1, 1), (0, 2)))]
+        bam = _build_bam(tmp_path, reads)
+        counts = _count_one_both(bam, INS_VARIANT)
+        assert counts.ad == 1
+
+    def test_deletion_strict_binned(self, tmp_path):
+        reads = [_make_read("r1", "AAAAAAAAAA", 196, ((0, 5), (2, 1), (0, 5)))]
+        bam = _build_bam(tmp_path, reads)
+        counts = _count_one_both(bam, DEL_VARIANT)
+        assert counts.ad == 1
+        assert counts.rd == 0

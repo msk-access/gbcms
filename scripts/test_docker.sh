@@ -133,7 +133,7 @@ echo "  docker run --rm gbcms:test-build --help"
 echo
 echo "To tag and use:"
 echo "  docker tag gbcms:test-build gbcms:latest"
-echo "  docker run --rm -v \$(pwd)/data:/data gbcms:latest count run ..."
+echo "  docker run --rm -v \$(pwd)/data:/data gbcms:latest dna ..."
 echo
 
 # Cleanup option

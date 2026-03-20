@@ -74,6 +74,7 @@ def normalize_variants(
         context_padding,
         is_maf,
         threads,
+        True,  # adaptive_context — always enabled for standalone normalization
     )
 
     # 3. Write TSV

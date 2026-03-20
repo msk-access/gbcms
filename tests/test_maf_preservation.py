@@ -68,6 +68,14 @@ class MockCounts:
         self.mfsd_ks_nonref_n = _nan
         self.mfsd_pval_nonref_n = _nan
 
+        # ── RNA-specific fields ───────────────────────────────────────────────
+        # Needed so this MockCounts works with MafWriter(mode='rna') without AttributeError.
+        self.sense_depth = 0
+        self.antisense_depth = 0
+        self.sense_strand_alt_count = 0
+        self.rna_editing_site_overlap = False
+        self.splice_spanning_count = 0
+
 
 def test_maf_column_preservation(tmp_path):
     """Original MAF columns must be preserved in output, including extras."""
@@ -243,3 +251,37 @@ def test_maf_preserve_barcode(tmp_path):
         assert (
             row["Tumor_Sample_Barcode"] == "C-XULUC7-L001-d01"
         ), "preserve_barcode=True should keep original barcode"
+
+
+def test_vcf_to_maf_always_uses_sample_name(tmp_path):
+    """VCF→MAF path always uses BAM sample name regardless of preserve_barcode.
+
+    VCF records have no Tumor_Sample_Barcode field, so MafWriter must always
+    populate it from the sample_name argument. The preserve_barcode flag only
+    applies to MAF→MAF (variant.metadata is populated from MAF input rows).
+    """
+    from gbcms.models.core import Variant, VariantType
+
+    # VCF-origin variant: metadata is empty (no MAF row dict)
+    vcf_variant = Variant(
+        chrom="chr1",
+        pos=99,
+        ref="C",
+        alt="G",
+        variant_type=VariantType.SNP,
+        original_id="rs42",
+    )
+    assert not vcf_variant.metadata, "VCF-origin variant must have no metadata"
+
+    out_vcf_maf = tmp_path / "vcf_origin.maf"
+    # preserve_barcode=True should NOT affect VCF→MAF — no metadata to preserve
+    w = MafWriter(out_vcf_maf, preserve_barcode=True)
+    w.write(vcf_variant, MockCounts(), sample_name="RNASample_01")
+    w.close()
+
+    with open(out_vcf_maf) as f:
+        row = next(csv.DictReader(f, delimiter="\t"))
+    assert row["Tumor_Sample_Barcode"] == "RNASample_01", (
+        "VCF→MAF must always use BAM sample_name for Tumor_Sample_Barcode, "
+        f"got: {row['Tumor_Sample_Barcode']!r}"
+    )

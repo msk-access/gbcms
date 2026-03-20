@@ -1,6 +1,6 @@
 [project]
 name = "gbcms"
-version = "3.0.0"
+version = "4.0.0"
 description = "Python implementation of GetBaseCountsMultiSample (gbcms) for calculating base counts in BAM files"
 authors = [
     {name = "MSK-ACCESS", email = "shahr2@mskcc.org"}
@@ -121,6 +121,7 @@ disable_error_code = ["call-arg"]
 module = [
     "pysam.*",
     "gbcms._rs",
+    "helpers",
 ]
 ignore_missing_imports = true
 

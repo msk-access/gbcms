@@ -153,7 +153,7 @@ main          ← stable releases (tagged)
 
 ## Real-Data Integration Test (22-BAM Suite)
 
-For changes to counting engine, mFSD, or output writers:
+For changes to counting engine, mFSD, shared/, or output writers:
 
 ```bash
 maturin develop --release
