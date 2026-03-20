@@ -3172,7 +3172,7 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 <li><strong><abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr></strong> (variant allele frequency)</li>
 <li><strong>Strand bias</strong> (Fisher's exact test)</li>
 <li><strong>Fragment counts</strong> (deduplicated)</li>
-<li><strong>Validation status</strong> (<code>PASS</code>, <code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>REF_MISMATCH</code>, or <code>FETCH_FAILED</code>)</li>
+<li><strong>Validation status</strong> (<code>PASS</code>, <code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS_WARN_REF_CORRECTED</code>, <code>REF_MISMATCH</code>, or <code>FETCH_FAILED</code>). See <a href="#reference-variant-normalization-step-2-ref-validation">Variant Normalization → REF Validation</a>.</li>
 <li><strong>Normalization columns</strong> (with <code>--show-normalization</code>): left-aligned position, REF, and ALT</li>
 </ul>
 <h2 id="cli-dna-related">Related<a class="headerlink" href="#cli-dna-related" title="Permanent link">¶</a></h2>
@@ -3621,17 +3621,17 @@ Use mouse to pan and zoom
 <td style="text-align: left;">Reads aligning to the gene <strong>antisense</strong> strand</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>rna_sense_strand_alt_count</code></td>
+<td style="text-align: left;"><code>rna_alt_sense_count</code></td>
 <td style="text-align: left;">u32</td>
 <td style="text-align: left;">ALT-classified reads on the sense strand</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>rna_editing_site_overlap</code></td>
+<td style="text-align: left;"><code>rna_editing_site</code></td>
 <td style="text-align: left;">bool</td>
 <td style="text-align: left;">Variant overlaps a known A→I editing site from <code>--rna-editing-db</code></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>rna_splice_spanning_count</code></td>
+<td style="text-align: left;"><code>rna_splice_spanning</code></td>
 <td style="text-align: left;">u32</td>
 <td style="text-align: left;">ALT-classified reads containing splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> operations) spanning the variant</td>
 </tr>
@@ -3664,8 +3664,8 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><code>RED</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">RNA editing site overlap (0 or 1)</td>
+<td style="text-align: left;">Flag</td>
+<td style="text-align: left;">Known A→I RNA editing site overlap (flag; present if true)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>SPL</code></td>
@@ -3707,6 +3707,10 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">RED is INFO-only</p>
+<p>The <code>RED</code> editing-site flag appears only in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO column (as a flag field), not in the per-sample FORMAT column.</p>
+</div>
 </details>
 <hr>
 <h2 id="cli-rna-examples">Examples<a class="headerlink" href="#cli-rna-examples" title="Permanent link">¶</a></h2>
@@ -4963,7 +4967,7 @@ Use mouse to pan and zoom
     Base --&gt; AlignmentConfig[Alignment Backend]
 
     OutputConfig --&gt; D1["output_dir, format, suffix, column_prefix, mfsd, mfsd_parquet"]
-    ReadFilters --&gt; D2["exclude_secondary, exclude_duplicates"]
+    ReadFilters --&gt; D2["secondary, duplicates, supplementary, qc_failed, improper_pair, indel"]
     QualityThresholds --&gt; D3["min_mapq, min_baseq, fragment_qual_threshold"]
     AlignmentConfig --&gt; D4["backend: pairhmm|sw, llr_threshold, gap_*_prob"]
 </code></pre> 
@@ -5564,7 +5568,7 @@ Use mouse to pan and zoom
 <p>For indels and complex variants, a flanking reference sequence is fetched around the (possibly normalized) position. This context serves two purposes:</p>
 <ol>
 <li><strong>Windowed indel detection</strong> — Safeguard 3 uses <code>ref_context</code> to verify that shifted indels delete/insert the expected reference bases</li>
-<li><strong>Phase 3 Smith-Waterman alignment</strong> — the context is used to build REF and ALT haplotypes for dual-haplotype alignment</li>
+<li><strong>Phase 3 alignment</strong> — the context is used to build REF and ALT haplotypes for dual-haplotype alignment (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> triage → <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>). See <a href="#reference-allele-classification-phase-3-alignment-fallback">Phase 3: Alignment Fallback</a>.</li>
 </ol>
 <h3 id="reference-variant-normalization-adaptive-context-padding">Adaptive Context Padding<a class="headerlink" href="#reference-variant-normalization-adaptive-context-padding" title="Permanent link">¶</a></h3>
 <p>By default, gbcms <strong>dynamically adjusts</strong> the context padding based on nearby tandem repeats. This prevents ambiguous <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignments in repetitive regions where a fixed padding might consist entirely of the repeat motif.</p>
@@ -7952,17 +7956,17 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
 <td style="text-align: left;">Reads aligning to the gene <strong>antisense</strong> strand</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>rna_sense_strand_alt_count</code></td>
+<td style="text-align: left;"><code>rna_alt_sense_count</code></td>
 <td style="text-align: left;">u32</td>
 <td style="text-align: left;">ALT-classified reads on the sense strand</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>rna_editing_site_overlap</code></td>
+<td style="text-align: left;"><code>rna_editing_site</code></td>
 <td style="text-align: left;">bool</td>
 <td style="text-align: left;">Variant overlaps a known A→I editing site from <code>--rna-editing-db</code></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>rna_splice_spanning_count</code></td>
+<td style="text-align: left;"><code>rna_splice_spanning</code></td>
 <td style="text-align: left;">u32</td>
 <td style="text-align: left;">ALT-classified reads containing splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>) spanning the variant</td>
 </tr>
@@ -7999,9 +8003,9 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
 </tr>
 <tr>
 <td style="text-align: left;"><code>RED</code></td>
-<td style="text-align: left;">INFO</td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">RNA editing site overlap (0 or 1)</td>
+<td style="text-align: left;">INFO only</td>
+<td style="text-align: left;">Flag</td>
+<td style="text-align: left;">Variant overlaps a known A→I RNA editing site (A&gt;G on + strand or T&gt;C on − strand)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>SPL</code></td>
@@ -8015,8 +8019,8 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
 <p class="admonition-title">Using RNA Columns for Filtering</p>
 <ul>
 <li><strong>Strandedness ratio</strong>: <code>rna_sense_depth / (rna_sense_depth + rna_antisense_depth)</code> — values near 0 or 1 indicate strong strand bias, consistent with <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> libraries</li>
-<li><strong>Editing site flag</strong>: Variants at known A→I sites (<code>rna_editing_site_overlap = true</code>) are likely RNA editing, not somatic mutations</li>
-<li><strong>Splice-spanning ALT</strong>: <code>rna_splice_spanning_count &gt; 0</code> indicates the variant is supported by reads crossing exon-exon boundaries</li>
+<li><strong>Editing site flag</strong>: Variants at known A→I sites (<code>rna_editing_site = True</code>) are likely RNA editing, not somatic mutations</li>
+<li><strong>Splice-spanning ALT</strong>: <code>rna_splice_spanning &gt; 0</code> indicates the variant is supported by reads crossing exon-exon boundaries</li>
 </ul>
 </div>
 <hr>
