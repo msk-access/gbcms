@@ -92,3 +92,4 @@ test_samplesheet*.csv
 
 # Documentation
 site/
+docs/assets/images/*_mermaid_*.svg
