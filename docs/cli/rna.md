@@ -178,6 +178,16 @@ RNA mode uses the **same filter defaults** as DNA mode — duplicates, secondary
 | `--filter-supplementary` | on | on (same) |
 | `--filter-qc-failed` | on | on (same) |
 
+!!! caution "Known Limitation: Variants at Exon-Intron Boundaries"
+    For variants positioned very close to a splice junction, the D6 consensus intron-snipping step (which removes introns from the `ref_context` before Phase 3 alignment) requires **>50% of local reads to carry a CIGAR `N` op** at the same position. If the variant sits at a boundary where only ~40% of reads span the junction with an `N` op — e.g., because many soft-clipped reads end just before the junction — the intron is **not snipped**.
+
+    In this case Phase 3 aligns the read against an unspliced (intron-containing) reference context. The alignment score is lower than it would be against the mature mRNA sequence, and the read may fall back to `neither` rather than being classified as REF or ALT. This affects `dp` (depth) but not correctness for reads that *do* span the junction cleanly.
+
+    **Workaround:** Use `--trace` logging and grep for `D6 splice` to confirm whether intron snipping fired for the variant of interest:
+    ```bash
+    RUST_LOG=trace gbcms rna ... 2>&1 | grep "D6 splice\|<chrom>:<pos>"
+    ```
+
 ---
 
 ## Alignment Backend
@@ -197,6 +207,13 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 
 !!! info "Biological Context: RT Stutter"
     Reverse transcriptase (used in cDNA synthesis) has lower fidelity than DNA polymerases and frequently introduces insertions/deletions at homopolymer runs and microsatellite regions. The relaxed gap penalties prevent these artifacts from being classified as ALT-supporting reads.
+
+!!! info "Complex Indel Support in RNA Mode"
+    All complex indel classification improvements — Del+SNV routing (`GC→T` pattern), large deletion REF visibility, and left-alignment shifted deletion rescue — apply identically to RNA mode. The allele classification engine (`variant_checks.rs`) has no mode branches; RNA reads go through the same Phase 1/2/3 pipeline as DNA reads.
+
+    See [Complex Indels](../reference/complex-indels.md) for case studies and read-level examples.
+
+    **Note on left-alignment shift (Fix 4):** This fix was motivated by BWA's indel left-alignment behaviour, where the variant anchor can sit several bases left of where the CIGAR `D` op appears in reads. STAR does not left-align indels in the same way, so this scenario is less common in RNA BAMs — but it still applies when STAR places a CIGAR `D` slightly offset from the annotated position, or when the input MAF was derived from a BWA-aligned DNA call set being counted against an RNA BAM.
 
 ---
 
