@@ -319,6 +319,23 @@ RUST_LOG=trace gbcms dna --trace --variants variants.maf --bam sample.bam \
     --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep "7579309" > tp53_trace.log
 ```
 
+### Inspecting Genomic Bin Construction
+
+gbcms groups variants into **~10kb genomic bins** before BAM traversal to reduce `bam.fetch()` calls (see [Architecture → Genomic Binning](../reference/architecture.md#genomic-binning)). Enable `RUST_LOG=info` to observe bin construction:
+
+```bash
+RUST_LOG=info gbcms dna --variants variants.maf --bam sample.bam \
+    --fasta ref.fa --output-dir /tmp/out/ 2>&1 | grep -i "bin"
+# Example:
+# [INFO  gbcms] Built 42 genomic bins from 1247 variants (window=10000bp, max_per_bin=200)
+# [INFO  gbcms] Bin chr17:7571720-7579309 → 83 variants (1 fetch)
+```
+
+!!! tip "Expected bin counts"
+    - **Targeted panels** (MSK-ACCESS, IMPACT): many variants per gene → very few bins per chromosome — optimal I/O
+    - **Sparse WGS** variants: ~1 variant per bin ≈ per-variant I/O (expected, not a bug)
+    - Unexpectedly many bins for a clustered MAF? Check for chromosome name mismatches (`chr1` vs `1`) — the binner treats different chromosome names as separate bins regardless of coordinate proximity.
+
 ---
 
 ## Related

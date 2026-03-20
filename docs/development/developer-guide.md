@@ -84,19 +84,33 @@ flowchart LR
     subgraph Rust["rust/src/"]
         Lib["lib.rs"] --> Count["counting/"]
         Lib --> Norm["normalize/"]
+        Lib --> Shared["shared/"]
         Count --> Eng["engine.rs"]
         Count --> VC["variant_checks.rs"]
         Count --> PH["pairhmm.rs"]
         Count --> WFA["wfa_router.rs"]
         Count --> RNA["rna.rs"]
-        Count --> Frag["fragment.rs"]
         Norm --> LA["left_align.rs"]
         Norm --> DC["decomp.rs"]
+        Shared --> Frag["fragment.rs"]
+        Shared --> Stats["stats.rs"]
+        Shared --> Filters["filters.rs"]
+        Shared --> BAQ["baq.rs"]
+        Shared --> BamU["bam_utils.rs"]
     end
 
     Pipeline --> Rust
     Normalize --> Rust
 ```
+
+!!! tip "Performance: Genomic Binning"
+    The counting engine (`counting/engine.rs`) groups variants into **~10kb genomic bins** before BAM traversal. Each bin issues **one** `bam.fetch()` call instead of one per variant, reducing I/O dramatically for clustered inputs (e.g., a MAF with hundreds of variants on the same gene). See [Architecture → Genomic Binning](../reference/architecture.md#genomic-binning).
+
+    To observe binning at runtime:
+    ```bash
+    RUST_LOG=info gbcms dna ... 2>&1 | grep "Built.*bins"
+    # Example: "Built 42 genomic bins from 1247 variants (window=10000bp)"
+    ```
 
 ---
 

@@ -207,7 +207,7 @@ Computed at **both** levels:
 
 ## Complete Output Column Reference
 
-All fields in the `BaseCounts` struct returned by `count_bam_binned()`:
+All fields in the `BaseCounts` struct returned by `count_bam_binned()` — the binned counting entry point that groups variants into ~10kb genomic bins for a single `bam.fetch()` per bin before classifying reads. See [Architecture → Genomic Binning](architecture.md#genomic-binning) for how bins are built.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
@@ -391,7 +391,7 @@ When `--umi-tag` is specified (e.g., `--umi-tag RX`), fragment identity incorpor
 | Positive strand counts | Optional (`--positive_count`) | Always computed |
 | Strand bias | Not computed | Fisher's exact test (read + fragment level) |
 | Fractional depth | `--fragment_fractional_weight` | Not implemented |
-| Parallelism | OpenMP block-based | Rayon per-variant |
+| Parallelism | OpenMP block-based | [Rayon per-bin](architecture.md#genomic-binning) — variants grouped into ~10kb windows, 1 `bam.fetch()` per bin |
 | RNA mode | Not available | Dedicated `gbcms rna` with transcriptome filters |
 | UMI support | Not available | `--umi-tag` for molecule-level deduplication |
 

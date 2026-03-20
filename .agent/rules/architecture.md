@@ -38,10 +38,13 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 │                   Rust Engine (gbcms._rs)                    │
 │                                                             │
 │  counting/                                                   │
-│    engine.rs         — Main loop, DP gating, read iteration  │
+│    engine.rs         — Main loop, genomic binning, UMI, BAQ  │
 │    variant_checks.rs — check_snp/mnp/ins/del/complex         │
 │    alignment.rs      — Smith-Waterman backend                │
 │    pairhmm.rs        — PairHMM backend (--alignment-backend) │
+│    pangenome.rs      — Haplotype matrix construction          │
+│    wfa_router.rs     — WFA2 fast-path alignment              │
+│    rna.rs            — RNA validation, splicing, editing      │
 │    mfsd.rs           — Mutant Fragment Size Distribution      │
 │    utils.rs          — ClassifyResult, haplotype helpers     │
 │    parquet_writer.rs — write_fsd_parquet() via ZSTD Parquet  │
@@ -75,7 +78,7 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 | mFSD analysis (KS test, LLR) | Workflow coordination |
 | Native Parquet writing (Arrow + ZSTD) | Logging setup |
 | Normalization (left-align, decomp) | |
-| Rayon parallelism per-variant | |
+| Rayon parallelism **per-bin** (10kb windows) | |
 
 ## Module Reference
 
@@ -89,13 +92,16 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 | `core/kernel.py` | CoordinateKernel — VCF/MAF → 0-based conversion |
 | `models/core.py` | GbcmsConfig, OutputConfig, AlignmentConfig (Pydantic) |
 | `utils/logging.py` | Structured logging setup |
-| `rust/counting/engine.rs` | Main counting loop, DP gating, Rayon parallelism |
+| `rust/counting/engine.rs` | Main counting loop, genomic binning (~10kb bins), DP gating, Rayon par_iter() |
 | `rust/counting/variant_checks.rs` | check_snp/mnp/ins/del/complex, windowed scan |
 | `rust/counting/alignment.rs` | Smith-Waterman implementation |
 | `rust/counting/pairhmm.rs` | PairHMM backend, LLR scoring |
+| `rust/counting/pangenome.rs` | Haplotype matrix construction for complex phase |
+| `rust/counting/wfa_router.rs` | WFA2 fast-path alignment (Phase 3 triage) |
+| `rust/counting/rna.rs` | RNA validation, strandedness, splice junction tracking, editing |
 | `rust/counting/mfsd.rs` | Fragment size distribution analysis (KS test, LLR) |
 | `rust/counting/parquet_writer.rs` | write_fsd_parquet(), Arrow/ZSTD native Parquet |
-| `rust/shared/fragment.rs` | FragmentEvidence, quality-weighted consensus, QNAME hashing |
+| `rust/shared/fragment.rs` | FragmentEvidence, quality-weighted consensus, QNAME/UMI hashing |
 | `rust/shared/stats.rs` | Fisher's exact test (strand bias) |
 | `rust/shared/bam_utils.rs` | median_qual, find_read_pos |
 | `rust/shared/filters.rs` | ReadFilter struct, FilterCounts (universal BAM flag checks) |
@@ -105,7 +111,7 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 
 ## Key Design Decisions
 
-1. **Rust for counting**: rust-htslib for BAM; Rayon for per-variant parallelism.
+1. **Rust for counting**: rust-htslib for BAM; Rayon for per-**bin** parallelism (`par_iter()` over ~10kb genomic bins).
 2. **0-based internal coordinates**: 1-based in VCF/MAF externally; converted at boundary.
 3. **mFSD is opt-in** (`--mfsd`): Writers gate 34 MAF cols and 7 VCF INFO fields behind `self.mfsd`. When off, columns are **absent** (not NA-filled).
 4. **Rust-native Parquet** (`--mfsd-parquet`): `write_fsd_parquet()` in Rust via `arrow`/`parquet` crates with ZSTD(1). No `pyarrow`. `ref_sizes`/`alt_sizes` are **Rust-internal** — no `#[pyo3(get)]`.
@@ -115,6 +121,7 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 8. **Windowed indel detection**: ±5bp scan (expanding to `max(5, repeat_span + 2)`) with 3-layer safeguards.
 9. **Dual alignment backends**: SW (default) or PairHMM (`--alignment-backend hmm`).
 10. **Parquet dispatched from pipeline.py**: `write_fsd_parquet()` is called after `count_bam()`, not inside the counting engine.
+11. **Genomic binning**: Variants grouped into ~10kb bins (`BIN_WINDOW = 10_000`); one `bam.fetch()` per bin (not per variant). Max 200 variants/bin before forced split (`BIN_MAX_VARIANTS = 200`). Padding = `max(repeat_span + 2, 5)`. See `build_genomic_bins()` in `engine.rs`.
 
 ## Critical Algorithmic Features
 
