@@ -8605,13 +8605,6 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
         </script>
         </head><body><div><h1 id="counting-metrics">Counting &amp; Metrics<a class="headerlink" href="#reference-counting-metrics-counting-metrics" title="Permanent link">¶</a></h1>
 <p>How allele classifications become counts — read-level metrics, fragment counting, strand bias, and output columns.</p>
-<div class="admonition info">
-<p class="admonition-title">Visual Overview</p>
-<p></p><figure markdown="span">
-  <a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../assets/posters/read_filter_4.0.0.jpg" data-desc-position="bottom"><img alt="Read filter and counting metrics poster"  src="../assets/posters/read_filter_4.0.0.jpg" width="100%"></a>
-  <figcaption>The read-filter cascade and counting metrics — click to enlarge</figcaption>
-</figure><p></p>
-</div>
 <h2 id="reference-counting-metrics-overview">Overview<a class="headerlink" href="#reference-counting-metrics-overview" title="Permanent link">¶</a></h2>
 <p>After each read is <a href="#reference-allele-classification">classified</a> as REF, ALT, or neither, gbcms accumulates counts at <strong>two levels</strong>: individual reads and collapsed fragments. It then computes strand bias statistics using Fisher's exact test.</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
