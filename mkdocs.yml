@@ -93,6 +93,7 @@ nav:
   - How It Works:
     - Architecture: reference/architecture.md
     - Input Formats: reference/input-formats.md
+    - Output Formats: reference/output-formats.md
     - Variant Normalization: reference/variant-normalization.md
     - Read Filters: reference/read-filters.md
     - Allele Classification: reference/allele-classification.md

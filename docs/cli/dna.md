@@ -192,14 +192,12 @@ Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
 
 ## Output
 
-The command produces a VCF or MAF file with:
+See [Output Formats](../reference/output-formats.md) for a complete column-level schema reference covering:
 
-- **Allele counts** (reference and alternate depth)
-- **VAF** (variant allele frequency)
-- **Strand bias** (Fisher's exact test)
-- **Fragment counts** (deduplicated)
-- **Validation status** (`PASS`, `PASS_WARN_HOMOPOLYMER_DECOMP`, `PASS_WARN_REF_CORRECTED`, `REF_MISMATCH`, or `FETCH_FAILED`). See [Variant Normalization → REF Validation](../reference/variant-normalization.md#step-2-ref-validation).
-- **Normalization columns** (with `--show-normalization`): left-aligned position, REF, and ALT
+- **VCF** output: `##INFO` fields, `##FORMAT` fields, and annotated examples
+- **MAF** output: VCF→MAF vs MAF→MAF column sets, `Tumor_Sample_Barcode` behaviour, and column prefix options
+- **mFSD columns** (with `--mfsd`): all 34 mFSD fields
+- **Normalization columns** (with `--show-normalization`)
 
 ## Related
 
@@ -208,4 +206,5 @@ The command produces a VCF or MAF file with:
 - [gbcms normalize](normalize.md) — Standalone normalization (no counting)
 - [Nextflow Pipeline](../nextflow/index.md) — For many samples
 - [Input Formats](../reference/input-formats.md) — VCF/MAF specs
+- [Output Formats](../reference/output-formats.md) — Complete column-level output reference
 - [Variant Counting](../reference/allele-classification.md) — How each variant type is counted

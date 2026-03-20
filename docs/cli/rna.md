@@ -337,6 +337,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 
 - [gbcms dna](dna.md) — DNA/cfDNA counting
 - [Quick Start](../getting-started/quickstart.md) — Common patterns
+- [Output Formats](../reference/output-formats.md) — Complete VCF and MAF column-level schema (RNA columns, INFO/FORMAT fields)
 - [Read Filters](../reference/read-filters.md) — Filter cascade details
-- [Counting & Metrics](../reference/counting-metrics.md) — Output column reference
+- [Counting & Metrics](../reference/counting-metrics.md) — How reads become counts
 - [Allele Classification](../reference/allele-classification.md) — How each variant type is counted

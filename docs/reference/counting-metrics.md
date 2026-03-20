@@ -399,6 +399,7 @@ When `--umi-tag` is specified (e.g., `--umi-tag RX`), fragment identity incorpor
 
 ## Related
 
+- [Output Formats](output-formats.md) — Column schemas for VCF and MAF output (DNA and RNA)
 - [Allele Classification](allele-classification.md) — How reads are classified
 - [Read Filters](read-filters.md) — Which reads reach counting
 - [Architecture](architecture.md) — System design

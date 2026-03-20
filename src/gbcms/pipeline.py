@@ -489,20 +489,35 @@ class Pipeline:
 
         writer: VcfWriter | MafWriter
         if self.config.output.format == OutputFormat.VCF:
+            # mode= is required so RNA-specific INFO/FORMAT headers and data fields
+            # (SEN, ANT, ASEN, RED, SPL) are included when self.config.mode == "rna".
+            # Without it, VcfWriter defaults to mode="dna" and RNA columns are silently absent.
             writer = VcfWriter(
                 output_path,
                 sample_name=sample_name,
                 show_normalization=self.config.show_normalization,
                 mfsd=self.config.output.mfsd,
+                mode=self.config.mode,
             )
         else:
+            # mode= is required so RNA-specific MAF columns (rna_sense_depth, etc.)
+            # are appended when self.config.mode == "rna".
+            # Without it, MafWriter defaults to mode="dna" and RNA columns are silently absent.
             writer = MafWriter(
                 output_path,
                 column_prefix=self.config.output.column_prefix,
                 preserve_barcode=self.config.output.preserve_barcode,
                 show_normalization=self.config.show_normalization,
                 mfsd=self.config.output.mfsd,
+                mode=self.config.mode,
             )
+        logger.debug(
+            "Writer initialised: format=%s, mode=%s, sample=%s, path=%s",
+            self.config.output.format.value,
+            self.config.mode,
+            sample_name,
+            output_path,
+        )
 
         for i, (v, counts) in enumerate(zip(variants, counts_list, strict=True)):
             pv = prepared[i] if prepared else None
