@@ -6933,12 +6933,18 @@ Use mouse to pan and zoom
         IsMNP --&gt;|Yes| Extract[Extract raw read window]
         IsMNP --&gt;|No| Extract
         Extract --&gt; Backend{"--alignment-backend?"}
-        Backend --&gt;|"sw (default)"| SW["Semiglobal SW alignment<br>vs REF and ALT haplotypes"]
-        Backend --&gt;|"hmm"| HMM["PairHMM likelihood<br>vs REF and ALT haplotypes"]
-        SW --&gt; Margin{"Score difference ≥ 2?"}
+        Backend --&gt;|"pairhmm (default)"| WFA["WFA edit-distance triage<br>vs pangenomic haplotype matrix"]
+        WFA --&gt; WFAClear{"Clear winner?"}
+        WFAClear --&gt;|"Yes (~70-80%)"| WFAResult["Classified instantly"]
+        WFAClear --&gt;|"Ambiguous"| HMM["Marginalized PairHMM LLR<br>vs REF and ALT haplotypes"]
         HMM --&gt; LLR{"LLR &gt; threshold?"}
         LLR --&gt;|"Confident"| ConfResult2
         LLR --&gt;|"Below threshold"| Neither4([Neither]):::neither
+        WFAResult --&gt;|ALT| Alt3w([🔴 ALT]):::alt
+        WFAResult --&gt;|REF| Ref3w([✅ REF]):::ref
+
+        Backend --&gt;|"sw"| SW["Semiglobal SW alignment<br>vs REF and ALT haplotypes"]
+        SW --&gt; Margin{"Score difference ≥ 2?"}
         Margin --&gt;|"Confident call"| ConfCheck
         Margin --&gt;|"Within margin"| Neither3([Neither]):::neither
 
@@ -7068,7 +7074,15 @@ Use mouse to pan and zoom
 <p>Phase 2.5 helps edge cases with longer reconstructions. For variants like EPHA7 where the strict reconstruction is only 1bp (<code>"C"</code>), the <code>recon_len &gt;= 2</code> guard skips Phase 2.5 entirely — the fix comes from Phase 3's local fallback instead.</p>
 </div>
 <h3 id="reference-allele-classification-phase-3-alignment-fallback">Phase 3: Alignment Fallback<a class="headerlink" href="#reference-allele-classification-phase-3-alignment-fallback" title="Permanent link">¶</a></h3>
-<p>When Phase 2 and Phase 2.5 both fail, the engine expands to the full <code>ref_context</code> window and performs <strong>dual-haplotype alignment</strong> using one of two backends:</p>
+<p>When Phase 2 and Phase 2.5 both fail, the engine expands to the full <code>ref_context</code> window and performs <strong>dual-haplotype alignment</strong> against both REF and ALT haplotypes.</p>
+<p><strong>Default backend: <code>pairhmm</code> (two-stage <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> + <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>)</strong></p>
+<ol>
+<li><strong>Pangenomic haplotype matrix</strong> — build <code>REF_hap</code> and <code>ALT_hap</code> extended with flanking context</li>
+<li><strong><abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> fast-path triage</strong> (<code>wfa2lib-rs</code>) — edit-distance alignment resolves ~70-80% of reads instantly at O(s²) cost; if the edit-distance gap between REF and ALT is unambiguous, the read is classified immediately</li>
+<li><strong>Marginalized <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> (escalated only when <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a Log-Likelihood Ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) confidence score; default threshold 2.3 ≈ ln(10)</li>
+</ol>
+<p><strong>Alternative backend: <code>sw</code></strong></p>
+<p>Runs Smith-Waterman directly on every Phase 3 read (no <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> pre-filter):</p>
 <ol>
 <li><strong>Build haplotypes</strong>: <code>REF_hap = left_ctx + REF + right_ctx</code>, <code>ALT_hap = left_ctx + ALT + right_ctx</code></li>
 <li><strong>Mask</strong>: Replace low-quality bases with <code>N</code> (scores 0 against any base)</li>
@@ -7080,46 +7094,36 @@ Use mouse to pan and zoom
 <thead>
 <tr>
 <th style="text-align: left;">Parameter</th>
-<th style="text-align: left;">Value</th>
-<th style="text-align: left;">Rationale</th>
+<th style="text-align: left;"><code>pairhmm</code></th>
+<th style="text-align: left;"><code>sw</code></th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">Scoring</td>
-<td style="text-align: left;">+1 match, −1 mismatch</td>
-<td style="text-align: left;">Standard</td>
+<td style="text-align: left;">Fast-path</td>
+<td style="text-align: left;"><abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> edit-distance (~70-80% resolved)</td>
+<td style="text-align: left;">None (every read goes to full alignment)</td>
 </tr>
 <tr>
-<td style="text-align: left;">N vs anything</td>
-<td style="text-align: left;">0</td>
-<td style="text-align: left;">Low-quality bases don't bias</td>
+<td style="text-align: left;">Confidence score</td>
+<td style="text-align: left;"><abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> (quality-weighted)</td>
+<td style="text-align: left;">Score margin ≥ 2</td>
 </tr>
 <tr>
-<td style="text-align: left;">Gap open</td>
-<td style="text-align: left;">−5</td>
-<td style="text-align: left;">Affine gap penalties</td>
+<td style="text-align: left;">Tunable gap probs</td>
+<td style="text-align: left;">Yes (<code>--gap-open-prob</code> etc.)</td>
+<td style="text-align: left;">Fixed affine: open −5, extend −1</td>
 </tr>
 <tr>
-<td style="text-align: left;">Gap extend</td>
-<td style="text-align: left;">−1</td>
-<td style="text-align: left;">Affine gap penalties</td>
-</tr>
-<tr>
-<td style="text-align: left;">Score margin</td>
-<td style="text-align: left;">≥2</td>
-<td style="text-align: left;">Prevents ambiguous calls</td>
-</tr>
-<tr>
-<td style="text-align: left;">Min usable bases</td>
-<td style="text-align: left;">3</td>
-<td style="text-align: left;">Reads with &lt;3 usable bases are skipped</td>
+<td style="text-align: left;">Default threshold</td>
+<td style="text-align: left;"><code>--llr-threshold 2.3</code></td>
+<td style="text-align: left;">Margin ≥ 2</td>
 </tr>
 </tbody>
 </table>
-<div class="admonition tip">
-<p class="admonition-title">Alternative: <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> Backend</p>
-<p><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> is the <strong>default</strong> Phase 3 alignment backend. It integrates base quality probabilities directly into the alignment score, using Log-Likelihood Ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) instead of edit-distance scoring. Default <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold: 2.3 (≈ ln(10), i.e., 10:1 odds). Gap probabilities are tunable separately for repeat vs non-repeat regions. Use <code>--alignment-backend sw</code> for Smith-Waterman instead. See <a href="#cli-dna-alignment-backend"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a>.</p>
+<div class="admonition note">
+<p class="admonition-title">When to use <code>sw</code></p>
+<p>Use <code>--alignment-backend sw</code> only if you need exact reproducibility with gbcms &lt;3.0.0. The <code>pairhmm</code> default is faster (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> pre-filter) and more accurate in low-quality or repeat-dense regions (quality-weighted <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> scoring).</p>
 </div>
 <h4 id="reference-allele-classification-dual-trigger-local-fallback">Dual-Trigger Local Fallback<a class="headerlink" href="#reference-allele-classification-dual-trigger-local-fallback" title="Permanent link">¶</a></h4>
 <p>For <strong>complex variants</strong> (both alleles &gt; 1bp with different lengths), semiglobal alignment can produce confident but incorrect calls when the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> definition is incomplete (e.g., a complex variant missing an adjacent SNV). The ALT haplotype then has a "frameshifted flank" — right-context bases that don't match the biological read. Semiglobal forces gap penalties through this invalid flank.</p>
