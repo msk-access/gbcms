@@ -488,12 +488,18 @@ flowchart TD
         IsMNP -->|Yes| Extract[Extract raw read window]
         IsMNP -->|No| Extract
         Extract --> Backend{"--alignment-backend?"}
-        Backend -->|"sw (default)"| SW["Semiglobal SW alignment<br/>vs REF and ALT haplotypes"]
-        Backend -->|"hmm"| HMM["PairHMM likelihood<br/>vs REF and ALT haplotypes"]
-        SW --> Margin{"Score difference ≥ 2?"}
+        Backend -->|"pairhmm (default)"| WFA["WFA edit-distance triage<br/>vs pangenomic haplotype matrix"]
+        WFA --> WFAClear{"Clear winner?"}
+        WFAClear -->|"Yes (~70-80%)"| WFAResult["Classified instantly"]
+        WFAClear -->|"Ambiguous"| HMM["Marginalized PairHMM LLR<br/>vs REF and ALT haplotypes"]
         HMM --> LLR{"LLR > threshold?"}
         LLR -->|"Confident"| ConfResult2
         LLR -->|"Below threshold"| Neither4([Neither]):::neither
+        WFAResult -->|ALT| Alt3w([🔴 ALT]):::alt
+        WFAResult -->|REF| Ref3w([✅ REF]):::ref
+
+        Backend -->|"sw"| SW["Semiglobal SW alignment<br/>vs REF and ALT haplotypes"]
+        SW --> Margin{"Score difference ≥ 2?"}
         Margin -->|"Confident call"| ConfCheck
         Margin -->|"Within margin"| Neither3([Neither]):::neither
 
@@ -560,7 +566,17 @@ When Phase 2's strict length comparison fails (Case A/B/C don't match), gbcms me
 
 ### Phase 3: Alignment Fallback
 
-When Phase 2 and Phase 2.5 both fail, the engine expands to the full `ref_context` window and performs **dual-haplotype alignment** using one of two backends:
+When Phase 2 and Phase 2.5 both fail, the engine expands to the full `ref_context` window and performs **dual-haplotype alignment** against both REF and ALT haplotypes.
+
+**Default backend: `pairhmm` (two-stage WFA + PairHMM)**
+
+1. **Pangenomic haplotype matrix** — build `REF_hap` and `ALT_hap` extended with flanking context
+2. **WFA fast-path triage** (`wfa2lib-rs`) — edit-distance alignment resolves ~70-80% of reads instantly at O(s²) cost; if the edit-distance gap between REF and ALT is unambiguous, the read is classified immediately
+3. **Marginalized PairHMM** (escalated only when WFA is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a Log-Likelihood Ratio (LLR) confidence score; default threshold 2.3 ≈ ln(10)
+
+**Alternative backend: `sw`**
+
+Runs Smith-Waterman directly on every Phase 3 read (no WFA pre-filter):
 
 1. **Build haplotypes**: `REF_hap = left_ctx + REF + right_ctx`, `ALT_hap = left_ctx + ALT + right_ctx`
 2. **Mask**: Replace low-quality bases with `N` (scores 0 against any base)
@@ -568,17 +584,15 @@ When Phase 2 and Phase 2.5 both fail, the engine expands to the full `ref_contex
 4. **Score**: ALT wins if `alt_score ≥ ref_score + 2`; REF wins if `ref_score ≥ alt_score + 2`
 5. **Dual-trigger check**: For indel/complex variants, if the semiglobal result is low-confidence, retry with local alignment
 
-| Parameter | Value | Rationale |
-|:----------|:------|:----------|
-| Scoring | +1 match, −1 mismatch | Standard |
-| N vs anything | 0 | Low-quality bases don't bias |
-| Gap open | −5 | Affine gap penalties |
-| Gap extend | −1 | Affine gap penalties |
-| Score margin | ≥2 | Prevents ambiguous calls |
-| Min usable bases | 3 | Reads with <3 usable bases are skipped |
+| Parameter | `pairhmm` | `sw` |
+|:----------|:----------|:-----|
+| Fast-path | WFA edit-distance (~70-80% resolved) | None (every read goes to full alignment) |
+| Confidence score | LLR (quality-weighted) | Score margin ≥ 2 |
+| Tunable gap probs | Yes (`--gap-open-prob` etc.) | Fixed affine: open −5, extend −1 |
+| Default threshold | `--llr-threshold 2.3` | Margin ≥ 2 |
 
-!!! tip "Alternative: PairHMM Backend"
-    PairHMM is the **default** Phase 3 alignment backend. It integrates base quality probabilities directly into the alignment score, using Log-Likelihood Ratio (LLR) instead of edit-distance scoring. Default LLR threshold: 2.3 (≈ ln(10), i.e., 10:1 odds). Gap probabilities are tunable separately for repeat vs non-repeat regions. Use `--alignment-backend sw` for Smith-Waterman instead. See [CLI Reference](../cli/dna.md#alignment-backend).
+!!! note "When to use `sw`"
+    Use `--alignment-backend sw` only if you need exact reproducibility with gbcms <3.0.0. The `pairhmm` default is faster (WFA pre-filter) and more accurate in low-quality or repeat-dense regions (quality-weighted LLR scoring).
 
 #### Dual-Trigger Local Fallback
 
