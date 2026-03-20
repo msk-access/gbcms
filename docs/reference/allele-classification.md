@@ -3,7 +3,7 @@
 How gbcms classifies each read as supporting the **reference** allele, the **alternate** allele, or **neither**.
 
 !!! tip "Detailed Visual Reference (PDF)"
-    ![Allele Classification Visual Guide](../assets/posters/Allele_Classification_factory_cmp.pdf){ type=application/pdf style="min-height:75vh;width:100%" }
+    ![Allele Classification Visual Guide](../assets/posters/allele_classification_4.0.0.pdf){ type=application/pdf style="min-height:75vh;width:100%" }
 
 ## Dispatch
 

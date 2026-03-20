@@ -28,14 +28,7 @@ block-beta
 
 ## Visual Overview
 
-<figure markdown="span">
-  ![gbcms overview poster](assets/posters/gbcms-overview-poster.jpg){ loading=lazy width="100%" }
-  <figcaption>gbcms end-to-end pipeline — click to enlarge</figcaption>
-</figure>
-
-### Detailed Overview (PDF)
-
-![Detailed overview of gbcms](assets/posters/High_Performance_cfDNA_Variant_Counting_cmp.pdf){ type=application/pdf style="min-height:75vh;width:100%" }
+![gbcms overview — architecture, counting, and output](assets/posters/overview_4.0.0.pdf){ type=application/pdf style="min-height:75vh;width:100%" }
 
 ### Key Metrics
 

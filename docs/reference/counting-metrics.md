@@ -4,7 +4,7 @@ How allele classifications become counts — read-level metrics, fragment counti
 
 !!! info "Visual Overview"
     <figure markdown="span">
-      ![Read filter and counting metrics poster](../assets/posters/Read_Filter_and_Counting_Metrics.jpg){ loading=lazy width="100%" }
+      ![Read filter and counting metrics poster](../assets/posters/read_filter_4.0.0.jpg){ loading=lazy width="100%" }
       <figcaption>The read-filter cascade and counting metrics — click to enlarge</figcaption>
     </figure>
 
