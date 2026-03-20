@@ -2004,13 +2004,7 @@ Use mouse to pan and zoom
 </div>
 </div>
 <h2 id="index-visual-overview">Visual Overview<a class="headerlink" href="#index-visual-overview" title="Permanent link">¶</a></h2>
-<figure>
-  <a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../assets/posters/gbcms-overview-poster.jpg" data-desc-position="bottom"><img alt="gbcms overview poster"  src="../assets/posters/gbcms-overview-poster.jpg" width="100%"></a>
-<br>
-<figcaption>gbcms end-to-end pipeline — click to enlarge</figcaption>
-</figure>
-<h3 id="index-detailed-overview-pdf">Detailed Overview (PDF)<a class="headerlink" href="#index-detailed-overview-pdf" title="Permanent link">¶</a></h3>
-<p><embed alt="Detailed overview of gbcms" src="assets/posters/High_Performance_cfDNA_Variant_Counting_cmp.pdf" style="min-height:75vh;width:100%" type="application/pdf"></p>
+<p><embed alt="gbcms overview — architecture, counting, and output" src="assets/posters/overview_4.0.0.pdf" style="min-height:75vh;width:100%" type="application/pdf"></p>
 <h3 id="index-key-metrics">Key Metrics<a class="headerlink" href="#index-key-metrics" title="Permanent link">¶</a></h3>
 <table>
 <thead>
@@ -6524,13 +6518,6 @@ during preparation (all counts are zero-filled in that case).</p>
         </script>
         </head><body><div><h1 id="variant-normalization">Variant Normalization<a class="headerlink" href="#reference-variant-normalization-variant-normalization" title="Permanent link">¶</a></h1>
 <p>How gbcms prepares variants before counting — validation, left-alignment, and homopolymer decomposition.</p>
-<div class="admonition info">
-<p class="admonition-title">Visual Overview</p>
-<p></p><figure markdown="span">
-  <a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../assets/posters/gbcms_normalize_poster.jpg" data-desc-position="bottom"><img alt="Normalization pipeline poster"  src="../assets/posters/gbcms_normalize_poster.jpg" width="100%"></a>
-  <figcaption>The 5-step variant normalization pipeline — click to enlarge</figcaption>
-</figure><p></p>
-</div>
 <h2 id="reference-variant-normalization-overview">Overview<a class="headerlink" href="#reference-variant-normalization-overview" title="Permanent link">¶</a></h2>
 <p>Before counting any reads, every variant passes through the <strong>preparation pipeline</strong> in <code>prepare_variants()</code>. This ensures consistent, biologically correct coordinates regardless of how the input was generated.</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
@@ -7046,7 +7033,7 @@ Corrected wins → <code>validation_status = PASS_WARN_HOMOPOLYMER_DECOMP</code>
 <div class="admonition info">
 <p class="admonition-title">Visual Overview</p>
 <p></p><figure markdown="span">
-  <a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../assets/posters/Read_Filter_and_Counting_Metrics.jpg" data-desc-position="bottom"><img alt="Read filter and counting metrics poster"  src="../assets/posters/Read_Filter_and_Counting_Metrics.jpg" width="100%"></a>
+  <a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../assets/posters/read_filter_4.0.0.jpg" data-desc-position="bottom"><img alt="Read filter and counting metrics poster"  src="../assets/posters/read_filter_4.0.0.jpg" width="100%"></a>
   <figcaption>The read-filter cascade and counting metrics — click to enlarge</figcaption>
 </figure><p></p>
 </div>
@@ -7405,7 +7392,7 @@ Use mouse to pan and zoom
 <p>How gbcms classifies each read as supporting the <strong>reference</strong> allele, the <strong>alternate</strong> allele, or <strong>neither</strong>.</p>
 <div class="admonition tip">
 <p class="admonition-title">Detailed Visual Reference (PDF)</p>
-<p><embed alt="Allele Classification Visual Guide" src="../../assets/posters/Allele_Classification_factory_cmp.pdf" style="min-height:75vh;width:100%" type="application/pdf"></p>
+<p><embed alt="Allele Classification Visual Guide" src="../../assets/posters/allele_classification_4.0.0.pdf" style="min-height:75vh;width:100%" type="application/pdf"></p>
 </div>
 <h2 id="reference-allele-classification-dispatch">Dispatch<a class="headerlink" href="#reference-allele-classification-dispatch" title="Permanent link">¶</a></h2>
 <p>After passing <a href="#reference-read-filters">read filters</a>, each read is dispatched to a <strong>type-specific</strong> allele checker based on the variant's <strong>allele lengths</strong> (<code>ref_len</code> × <code>alt_len</code>), not on the <code>variant_type</code> string. This makes dispatch robust against inconsistent upstream type labels:</p>
@@ -8621,7 +8608,7 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <div class="admonition info">
 <p class="admonition-title">Visual Overview</p>
 <p></p><figure markdown="span">
-  <a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../assets/posters/Read_Filter_and_Counting_Metrics.jpg" data-desc-position="bottom"><img alt="Read filter and counting metrics poster"  src="../assets/posters/Read_Filter_and_Counting_Metrics.jpg" width="100%"></a>
+  <a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../assets/posters/read_filter_4.0.0.jpg" data-desc-position="bottom"><img alt="Read filter and counting metrics poster"  src="../assets/posters/read_filter_4.0.0.jpg" width="100%"></a>
   <figcaption>The read-filter cascade and counting metrics — click to enlarge</figcaption>
 </figure><p></p>
 </div>
