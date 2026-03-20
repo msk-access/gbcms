@@ -262,14 +262,15 @@ class TestDeletionWindowed:
     def test_deletion_wrong_ref_context_s3(self, tmp_path):
         """DEL within window but ref base at shifted pos doesn't match → S3 rejects
         the windowed CIGAR match. The read covers the anchor with a Match op and
-        no deletion at the expected position → REF.
+        no deletion at the expected position → REF (CIGAR definitive).
 
-        Previously this fell through to Phase 3 SW via is_worth_realignment(),
-        but CIGAR is definitive for pure deletions: if the Match op covers the
-        anchor and no matching D op was found, the read is REF.
+        Fix 4 (has_nearby_length_match) only applies to deletions ≥5bp —
+        short deletions (1-4bp) failing S3 are almost certainly spurious noise,
+        so CIGAR remains definitive for them. A 1bp S3-rejected windowed Del
+        does NOT trigger Phase 3; found_ref_coverage=True → REF.
         """
         # ref_context: "AAAAAATGAAAAAAAA" covering [195, 210)
-        # pos 201='T', 202='G'. If deletion shifts to 202, ref='G' but expected='T' → S3 reject.
+        # pos 201='T', 202='G'. Deletion shifts to 203 → ref='A' but expected='T' → S3 reject.
         variant = Variant(
             chrom="chr1",
             pos=200,
@@ -282,13 +283,14 @@ class TestDeletionWindowed:
         # Read with deletion at pos 203: 7M 1D 3M, starts at 196.
         # Block end = 203. del_ref_pos = 203.
         # ref_context[203-195] = ref_context[8] = 'A'. expected_del_seq = 'T'. 'A' ≠ 'T' → S3 reject.
-        # The read has a Match op covering the anchor (pos 200) → found_ref_coverage=true.
-        # CIGAR is definitive for pure DEL: no matching D at anchor → REF.
+        # del_len_usize = 1 < 5 → has_nearby_length_match stays False.
+        # found_ref_coverage = True (M covers anchor at 200) → CIGAR definitive REF.
         reads = [_make_read("r1", "AAAAAAAAAA", 196, ((0, 7), (2, 1), (0, 3)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, variant)
-        # CIGAR definitive: read covers anchor with Match, no deletion → REF
+        # CIGAR definitive: 1bp del, S3 reject, short del → REF
         assert counts.rd == 1, f"Expected rd=1 (CIGAR definitive REF), got {counts.rd}"
+        assert counts.ad == 0
 
 
 class TestNoRefContext:

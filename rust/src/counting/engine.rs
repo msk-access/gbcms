@@ -1001,24 +1001,28 @@ fn count_variant_from_cache(
             }
         }
 
-        // ── ANCHOR OVERLAP CHECK: DP is defined as depth at the variant's
-        // anchor position (VCF POS), consistent with Mutect2, VarDict, and
-        // samtools pileup. For large deletions the REF span can be hundreds
-        // or thousands of bases; reads deep inside that span carry no
-        // information about the breakpoint and must NOT inflate DP/DPF.
+        // ── ANCHOR OVERLAP CHECK (strict): DP, RD, and AD are all defined
+        // exclusively as depth at the variant anchor position (VCF POS).
+        // This matches samtools pileup, GATK FORMAT/DP, and VarDict conventions.
         //
-        // Reads classified as REF or ALT always pass (the !is_ref && !is_alt
-        // guard below), so windowed-indel matches and shifted reads still
-        // contribute to allele counts and depth.
+        // Reads that are in the classification window (±window_pad) but do NOT
+        // overlap the anchor are used solely for haplotype evidence during
+        // allele classification above. They must NOT contribute to DP/RD/AD,
+        // because:
+        //   1. Their bases are not at the locus being reported.
+        //   2. Including them inflates DP above the true pileup depth.
+        //   3. It makes VAF (AD/DP) inconsistent with standard tools.
+        //
+        // REF+ALT ≤ DP is guaranteed because RD and AD are strict subsets
+        // of the anchor-overlap read set counted in DP here.
         let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;
-        if !overlaps_anchor && !is_ref && !is_alt {
+        if !overlaps_anchor {
             continue;
         }
 
-        // ── TOTAL DEPTH: count all reads that overlap the variant anchor,
-        // regardless of allele classification. This ensures DP reflects true
-        // physical coverage even for reads that are neither REF nor ALT
-        // (e.g., duplex N bases, third alleles at multi-allelic sites).
+        // ── TOTAL DEPTH: all anchor-overlapping reads count toward DP,
+        // regardless of allele classification (REF, ALT, or other/ambiguous).
+        // This ensures DP reflects true physical coverage at the locus.
         counts.dp += 1;
         let is_reverse = record.is_reverse();
         if is_reverse {
@@ -1439,27 +1443,30 @@ fn count_single_variant(
             }
         }
 
-        // ── ANCHOR OVERLAP CHECK: DP is defined as depth at the variant's
-        // anchor position (VCF POS), consistent with Mutect2, VarDict, and
-        // samtools pileup.  For large deletions the REF span can be hundreds
-        // or thousands of bases; reads deep inside that span carry no
-        // information about the breakpoint and must NOT inflate DP/DPF.
+        // ── ANCHOR OVERLAP CHECK (strict): DP, RD, and AD are all defined
+        // exclusively as depth at the variant anchor position (VCF POS).
+        // This matches samtools pileup, GATK FORMAT/DP, and VarDict conventions.
         //
-        // Reads classified as REF or ALT always pass (the !is_ref && !is_alt
-        // guard below), so windowed-indel matches and shifted reads still
-        // contribute to allele counts and depth.
+        // Reads that are in the classification window (±window_pad) but do NOT
+        // overlap the anchor are used solely for haplotype evidence during
+        // allele classification above. They must NOT contribute to DP/RD/AD,
+        // because:
+        //   1. Their bases are not at the locus being reported.
+        //   2. Including them inflates DP above the true pileup depth.
+        //   3. It makes VAF (AD/DP) inconsistent with standard tools.
+        //
+        // REF+ALT ≤ DP is guaranteed because RD and AD are strict subsets
+        // of the anchor-overlap read set counted in DP here.
         let read_start = record.pos();
         let read_end = read_ref_end(&record);
-        let overlaps_anchor = read_start <= variant.pos
-            && read_end > variant.pos;
-        if !overlaps_anchor && !is_ref && !is_alt {
+        let overlaps_anchor = read_start <= variant.pos && read_end > variant.pos;
+        if !overlaps_anchor {
             continue;
         }
 
-        // ── TOTAL DEPTH: count all reads that overlap the variant anchor,
-        // regardless of allele classification. This ensures DP reflects true
-        // physical coverage even for reads that are neither REF nor ALT
-        // (e.g., duplex N bases, third alleles at multi-allelic sites).
+        // ── TOTAL DEPTH: all anchor-overlapping reads count toward DP,
+        // regardless of allele classification (REF, ALT, or other/ambiguous).
+        // This ensures DP reflects true physical coverage at the locus.
         counts.dp += 1;
         let is_reverse = record.is_reverse();
 
@@ -1799,8 +1806,50 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // Pure insertion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
         check_insertion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     } else if alt_len == 1 {
-        // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
-        check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        // Distinguish pure deletion (anchor base preserved) from complex Del+SNV
+        // (anchor base also substituted, e.g. GC→T where G is both the anchor
+        // AND changes to T).
+        //
+        // Pure deletion example:  GC → G  (anchor G kept, C deleted)
+        // Complex Del+SNV:        GC → T  (C deleted AND G→T at anchor position)
+        //
+        // check_deletion's S3 safeguard validates shifted deletions by comparing
+        // the deleted reference bases against `expected_del_seq` (ref_allele[1..]).
+        // For complex Del+SNV the anchor mismatch causes a cascade: reads whose
+        // deletion left-shifts away from the anchor pass the S3 check at the
+        // shifted position only if the reference base there matches expected_del_seq;
+        // when it doesn't S3 rejects the windowed match, `found_ref_coverage` is
+        // set to true (the anchor M-block still covers the anchor), and the read
+        // is definitively classified as REF — hiding the true ALT reads.
+        //
+        // Routing complex Del+SNV to check_complex lets Phase 3 (PairHMM/SW)
+        // align the read against the full REF and ALT haplotype contexts where
+        // both the deletion and the anchor substitution are captured correctly.
+        let anchor_preserved = variant
+            .alt_allele
+            .as_bytes()
+            .first()
+            .map(|b| b.to_ascii_uppercase())
+            == variant
+                .ref_allele
+                .as_bytes()
+                .first()
+                .map(|b| b.to_ascii_uppercase());
+
+        if anchor_preserved {
+            // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
+            check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        } else {
+            // Complex Del+SNV: anchor base also substituted — route to Phase 3
+            trace!(
+                "Complex Del+SNV at {}:{} (ref[0]={} ≠ alt[0]={}): routing to check_complex",
+                variant.chrom,
+                variant.pos + 1,
+                variant.ref_allele.chars().next().unwrap_or('?'),
+                variant.alt_allele.chars().next().unwrap_or('?'),
+            );
+            check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        }
     } else {
         // Complex: ref_len != alt_len, both > 1 (e.g., DelIns)
         check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)

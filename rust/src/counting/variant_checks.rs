@@ -686,6 +686,90 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         let is_mnp = variant.ref_allele.len() == variant.alt_allele.len() && variant.ref_allele.len() > 1;
 
         if !is_mnp && !is_worth_realignment(record, win_start, win_end) {
+            // Clean CIGAR over the window: no indels or soft-clips near the
+            // variant, so expensive realignment is not needed.
+            //
+            // For deletion-direction complex alleles (ref_len > alt_len, e.g.
+            // a 100bp deletion with 7bp replacement like NF2), REF reads have
+            // no CIGAR deletion and land here. Returning `neither` for them
+            // causes ref=0 even when 56 true REF reads are visible in IGV.
+            //
+            // Fix: if the variant removes bases (ref_len > alt_len) and the
+            // read's M-blocks cover the anchor, classify the read as REF.
+            // This mirrors the `found_ref_coverage → REF` logic in
+            // check_deletion, but applied here for complex alleles that arrive
+            // via the `else` routing (both ref_len > 1 and alt_len > 1).
+            //
+            // Precondition: is_worth_realignment is false, so the read has a
+            // clean CIGAR with no nearby indels — we can trust M coverage.
+            if ref_bytes.len() > alt_bytes.len() {
+                let anchor_pos = variant.pos;
+                let mut rpos = record.pos();
+                let mut anchor_qual: Option<u8> = None;
+                'cigar_walk: for op in record.cigar().iter() {
+                    match op {
+                        rust_htslib::bam::record::Cigar::Match(len)
+                        | rust_htslib::bam::record::Cigar::Equal(len)
+                        | rust_htslib::bam::record::Cigar::Diff(len) => {
+                            let block_end = rpos + *len as i64;
+                            if anchor_pos >= rpos && anchor_pos < block_end {
+                                // Compute read position for this anchor
+                                let qp = {
+                                    let mut q_off = 0usize;
+                                    let mut r_off = record.pos();
+                                    for op2 in record.cigar().iter() {
+                                        match op2 {
+                                            rust_htslib::bam::record::Cigar::Match(l)
+                                            | rust_htslib::bam::record::Cigar::Equal(l)
+                                            | rust_htslib::bam::record::Cigar::Diff(l) => {
+                                                if anchor_pos >= r_off && anchor_pos < r_off + *l as i64 {
+                                                    q_off += (anchor_pos - r_off) as usize;
+                                                    break;
+                                                }
+                                                r_off += *l as i64;
+                                                q_off += *l as usize;
+                                            }
+                                            rust_htslib::bam::record::Cigar::Del(l)
+                                            | rust_htslib::bam::record::Cigar::RefSkip(l) => {
+                                                r_off += *l as i64;
+                                            }
+                                            rust_htslib::bam::record::Cigar::Ins(l)
+                                            | rust_htslib::bam::record::Cigar::SoftClip(l)
+                                            | rust_htslib::bam::record::Cigar::HardClip(l) => {
+                                                q_off += *l as usize;
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    q_off
+                                };
+                                let qual_val = if qp < quals.len() { quals[qp] } else { 0 };
+                                if qual_val >= min_baseq {
+                                    anchor_qual = Some(qual_val);
+                                }
+                                break 'cigar_walk;
+                            }
+                            rpos = block_end;
+                        }
+                        rust_htslib::bam::record::Cigar::Del(len)
+                        | rust_htslib::bam::record::Cigar::RefSkip(len) => {
+                            rpos += *len as i64;
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(aq) = anchor_qual {
+                    trace!(
+                        "check_complex: clean M covers anchor {} for del-direction complex \
+                         allele (ref_len={} > alt_len={}) → REF",
+                        anchor_pos,
+                        ref_bytes.len(),
+                        alt_bytes.len(),
+                    );
+                    return ClassifyResult::is_ref(aq, ClassifyPhase::Alignment);
+                }
+            }
+
             trace!(
                 "Phase 3 skipped: read has clean CIGAR over [{}, {})",
                 win_start, win_end
@@ -1050,6 +1134,11 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     let mut found_ref_coverage = false;
     let mut anchor_read_pos: Option<usize> = None; // read position of anchor base
     let mut best_windowed_match: Option<u64> = None;
+    // Tracks a windowed Del with matching length but failed S3 sequence check.
+    // When set alongside found_ref_coverage, the read carries a same-length deletion
+    // placed at a different position by the aligner (often due to left-alignment
+    // in a repeat context) — Phase 3 SW can arbitrate correctly.
+    let mut has_nearby_length_match = false;
 
 
     for (i, op) in cigar_view.iter().enumerate() {
@@ -1225,11 +1314,37 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                                     best_windowed_match = Some(distance);
                                 }
                             } else {
-                                trace!(
-                                    "check_deletion: S3 reject at shifted pos {} \
-                                     (deleted bases mismatch)",
-                                    del_ref_pos
-                                );
+                                // S3 failed: deleted bases at the shifted position
+                                // don't match expected_del_seq. This happens when
+                                // left-alignment moves the anchor further left than
+                                // the aligner's CIGAR Del position, so the reference
+                                // slice at del_ref_pos encodes different bases than
+                                // expected_del_seq (e.g. TP53 GACCGTGCAAGT→- where
+                                // left-alignment shifts anchor 3bp left of the actual
+                                // D(12) in reads). Track for Phase 3 fallback.
+                                //
+                                // Only flag for Phase 3 when del_len >= 5bp.
+                                // Short (1-4bp) same-length deletions that fail S3
+                                // are almost certainly spurious/unrelated noise —
+                                // CIGAR remains definitive for them. Longer deletions
+                                // are more susceptible to BWA left-alignment shifting
+                                // the anchor multiple positions away from the CIGAR D.
+                                if del_len_usize >= 5 {
+                                    has_nearby_length_match = true;
+                                    trace!(
+                                        "check_deletion: S3 reject at shifted pos {} \
+                                         (deleted bases mismatch, del_len={} >= 5), \
+                                         flagging for Phase 3 fallback",
+                                        del_ref_pos, del_len_usize
+                                    );
+                                } else {
+                                    trace!(
+                                        "check_deletion: S3 reject at shifted pos {} \
+                                         (deleted bases mismatch, del_len={} < 5, \
+                                         CIGAR definitive — not flagging Phase 3)",
+                                        del_ref_pos, del_len_usize
+                                    );
+                                }
                             }
                         }
                     }
@@ -1313,6 +1428,21 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
             return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         }
         // Otherwise: read doesn't overlap the anchor → no variant info
+    }
+
+    // Phase 3 fallback: when a length-matching deletion exists nearby but the
+    // S3 reference-sequence check failed (mismatched bases at the shifted position),
+    // the aligner may have placed the D op further right than the left-aligned
+    // anchor (e.g. TP53:7579309 DEL left-aligns anchor 3bp left of CIGAR D(12)).
+    // Suppress found_ref_coverage and route to Phase 3 SW for haplotype arbitration,
+    // mirroring the identical pattern in check_insertion.
+    if has_nearby_length_match && found_ref_coverage {
+        trace!(
+            "check_deletion: nearby D({}) with seq mismatch at pos {}, \
+             falling back to check_complex for Phase 3 SW",
+            expected_del_len, anchor_pos
+        );
+        return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
     }
 
     if found_ref_coverage {
