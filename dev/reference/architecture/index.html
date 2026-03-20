@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -416,6 +416,28 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#genomic-binning">
+<span class="md-ellipsis">
+      
+        Genomic Binning
+      
+    </span>
+</a>
+<nav aria-label="Genomic Binning" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#binning-parameters">
+<span class="md-ellipsis">
+      
+        Binning Parameters
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#coordinate-system">
 <span class="md-ellipsis">
       
@@ -759,6 +781,28 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#genomic-binning">
+<span class="md-ellipsis">
+      
+        Genomic Binning
+      
+    </span>
+</a>
+<nav aria-label="Genomic Binning" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#binning-parameters">
+<span class="md-ellipsis">
+      
+        Binning Parameters
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#coordinate-system">
 <span class="md-ellipsis">
       
@@ -976,6 +1020,97 @@ Use mouse to pan and zoom
 </div>
 </div>
 <hr>
+<h2 id="genomic-binning">Genomic Binning<a class="headerlink" href="#genomic-binning" title="Permanent link">¶</a></h2>
+<p>To minimise <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> I/O, the Rust engine groups co-located variants into <strong>genomic bins</strong> before counting. A single <code>bam.fetch()</code> is issued per bin, and reads fetched for that region are classified against <strong>all variants in the bin</strong> in one pass. For clustered inputs (e.g. a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with hundreds of variants on the same gene) this reduces <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> seeks from O(N) per-variant to O(B) per-bin — typically 5-20× fewer I/O operations.</p>
+<p>This design mirrors the original C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>--max_block_size</code> / <code>--max_block_dist</code> architecture, re-implemented as a pure Rust streaming algorithm.</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    Variants(["📋 Variants (any order)"]):::start --&gt; Sort["Sort indices\nby chrom + pos"]
+    Sort --&gt; NewBin["Open new bin\nat variant pos"]
+    NewBin --&gt; Extend{"Next variant\nwithin window\n&amp; same chrom?"}
+    Extend --&gt;|"Yes"| MaxCheck{"≥ 200 variants\nin bin?"}
+    MaxCheck --&gt;|"No — extend"| GrowBin["Add variant\nextend bin_end"]
+    GrowBin --&gt; Extend
+    MaxCheck --&gt;|"Yes — split"| NewBin
+    Extend --&gt;|"No / new chrom"| Pad["Pad bin:\nmax(repeat_span+2, 5)bp"]
+    Pad --&gt; Fetch["bam.fetch(bin_start, bin_end)\n— 1 I/O per bin ⚡"]:::io
+    Fetch --&gt; Classify["Classify each read\nagainst all variants in bin\n(Rayon parallel across bins)"]:::parallel
+    Classify --&gt; Out(["📊 BaseCounts per variant"]):::pass
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef io fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef parallel fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h3 id="binning-parameters">Binning Parameters<a class="headerlink" href="#binning-parameters" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Value</th>
+<th style="text-align: left;">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>BIN_WINDOW</code></td>
+<td style="text-align: left;"><strong>10,000 bp</strong></td>
+<td style="text-align: left;">Maximum span of a single bin. Variants beyond this distance start a new bin.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>BIN_MAX_VARIANTS</code></td>
+<td style="text-align: left;"><strong>200</strong></td>
+<td style="text-align: left;">Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Bin padding</td>
+<td style="text-align: left;"><code>max(repeat_span + 2, 5)</code> bp</td>
+<td style="text-align: left;">Ensures reads overlapping bin edges are captured. Uses each variant's detected tandem-repeat span.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Parallelism</td>
+<td style="text-align: left;">Rayon <code>par_iter()</code> over bins</td>
+<td style="text-align: left;">Each thread owns its own <code>BamReader</code> handle; no locking required across bins.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Output order</td>
+<td style="text-align: left;">Preserved</td>
+<td style="text-align: left;">Variants are sorted by index internally; results are written back in original input order.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Performance Implication</p>
+<p>For a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 500 variants on <em>TP53</em> (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual <code>bam.fetch()</code> calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Not a <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</p>
+<p><code>BIN_WINDOW</code> and <code>BIN_MAX_VARIANTS</code> are internal performance constants — they do not affect output values. Parity testing (<code>D1</code> regression suite) validates that binned and per-variant paths produce identical <code>BaseCounts</code>.</p>
+</div>
+<hr>
 <h2 id="coordinate-system">Coordinate System<a class="headerlink" href="#coordinate-system" title="Permanent link">¶</a></h2>
 <p>All coordinates normalized to <strong>0-based, half-open</strong> internally:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
@@ -999,10 +1134,10 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart LR
-    VCF["VCF (1-based)"] --&gt;|"-1"| Internal["Internal (0-based)"]
+    VCF["VCF (1-based)"] --&gt;|"-1 (e.g. VCF:100 → internal:99)"| Internal["Internal (0-based)"]
     MAF["MAF (1-based)"] --&gt;|"-1"| Internal
-    Internal --&gt;|"to Rust"| Rust["gbcms._rs"]
-    Rust --&gt;|"+1"| Output["Output (1-based)"]
+    Internal --&gt;|"→ Rust engine"| Rust["gbcms._rs"]
+    Rust --&gt;|"+1 (e.g. internal:99 → output:100)"| Output["Output (1-based)"]
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -1118,21 +1253,24 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TB
-    Base[GbcmsBaseConfig] --&gt; DnaConfig[GbcmsDnaConfig]
-    Base --&gt; RnaConfig[GbcmsRnaConfig]
-    DnaConfig --&gt; DnaDefaults["mode=dna, MAPQ=20"]
-    RnaConfig --&gt; RnaDefaults["mode=rna, MAPQ=1, pairhmm relaxed"]
-    RnaConfig --&gt; RnaSpecific["enforce_strandedness, rna_editing_db"]
+    Base["GbcmsBaseConfig"]:::base --&gt; DnaConfig["GbcmsDnaConfig"]
+    Base --&gt; RnaConfig["GbcmsRnaConfig"]
 
-    Base --&gt; OutputConfig[Output Settings]
-    Base --&gt; ReadFilters[Read Filters]
-    Base --&gt; QualityThresholds[Quality Thresholds]
-    Base --&gt; AlignmentConfig[Alignment Backend]
+    DnaConfig --&gt; DnaD["mode=dna\nMAPQ=20"]
+    RnaConfig --&gt; RnaD["mode=rna, MAPQ=1\npairhmm relaxed RT gaps"]
+    RnaConfig --&gt; RnaX["enforce_strandedness\nrna_editing_db"]
 
-    OutputConfig --&gt; D1["output_dir, format, suffix, column_prefix, mfsd, mfsd_parquet"]
-    ReadFilters --&gt; D2["secondary, duplicates, supplementary, qc_failed, improper_pair, indel"]
-    QualityThresholds --&gt; D3["min_mapq, min_baseq, fragment_qual_threshold"]
-    AlignmentConfig --&gt; D4["backend: pairhmm|sw, llr_threshold, gap_*_prob"]
+    Base --&gt; Filters["ReadFilters"]
+    Base --&gt; Quality["QualityThresholds"]
+    Base --&gt; Output2["OutputConfig"]
+    Base --&gt; Align["AlignmentConfig"]
+
+    Filters --&gt; FD["secondary · duplicates\nsupplementary · qc_failed\nimproper_pair · indel"]
+    Quality --&gt; QD["min_mapq · min_baseq\nfragment_qual_threshold"]
+    Output2 --&gt; OD["output_dir · format · suffix\ncolumn_prefix · mfsd · mfsd_parquet"]
+    Align --&gt; AD["backend: pairhmm|sw\nllr_threshold · gap_*_prob"]
+
+    classDef base fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -1284,7 +1422,7 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 04:52:42 UTC"><span class="timeago" datetime="2026-03-20T04:52:42+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 04:52:42 UTC">2026-03-20</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 05:02:49 UTC"><span class="timeago" datetime="2026-03-20T05:02:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 05:02:49 UTC">2026-03-20</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

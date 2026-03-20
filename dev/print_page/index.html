@@ -1944,18 +1944,16 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
     </svg>
 </button>
     </nav>
-    <pre class="mermaid"><code>flowchart LR
-    subgraph Input
-        VCF[VCF/MAF]
-        BAM[BAM Files]
-    end
+    <pre class="mermaid"><code>block-beta
+    columns 3
+    VCF["📄 VCF/MAF\nVariant positions"]:1
+    Engine["⚡ gbcms\nPython + Rust"]:1
+    Counts["📊 Allele Counts\nDP · RD · AD · VAF"]:1
+    BAM["🗂️ BAM Files\n(1 to N samples)"]:1
+    space:1
+    Metrics["🧬 Fragment Counts\nStrand bias · mFSD"]:1
 
-    subgraph Output
-        Counts[Allele Counts]
-        Metrics[VAF, Strand Bias]
-    end
-
-    VCF --&gt; Engine[gbcms]
+    VCF --&gt; Engine
     BAM --&gt; Engine
     Engine --&gt; Counts
     Engine --&gt; Metrics
@@ -2035,17 +2033,28 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Start[How many samples?] --&gt; Few{1-10 samples}
-    Start --&gt; Many{10+ samples}
+    Start(["What data?"]):::start
+    Start --&gt;|"DNA / cfDNA\nWGS / WES / Panel"| DNA(["gbcms dna"]):::dna
+    Start --&gt;|"RNA-seq\n(STAR-aligned, dUTP)"| RNA(["gbcms rna"]):::rna
 
-    Few --&gt; CLI([Use CLI]):::cli
-    Many --&gt; HPC{HPC cluster?}
+    DNA --&gt; NsamD{"Many samples?
+≥10 BAMs"}
+    RNA --&gt; NsamR{"Many samples?
+≥10 BAMs"}
 
-    HPC --&gt; |Yes| Nextflow([Use Nextflow]):::nf
-    HPC --&gt; |No| CLI
+    NsamD --&gt;|"No"| CLI(["🖥️ CLI"]):::cli
+    NsamD --&gt;|"Yes"| HPC{"HPC / SLURM?"}
+    NsamR --&gt;|"No"| CLI
+    NsamR --&gt;|"Yes"| HPC
 
-    classDef cli fill:#4caf50,color:white,stroke:#388e3c,stroke-width:2px;
-    classDef nf fill:#2196f3,color:white,stroke:#1565c0,stroke-width:2px;
+    HPC --&gt;|"Yes"| NF(["🔷 Nextflow"]):::nf
+    HPC --&gt;|"No"| CLI
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef rna fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef cli fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
+    classDef nf fill:#2c3e50,color:#fff,stroke:#1a2530,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -2075,50 +2084,7 @@ Use mouse to pan and zoom
 <hr>
 <h2 id="index-architecture">Architecture<a class="headerlink" href="#index-architecture" title="Permanent link">¶</a></h2>
 <p>Python/Rust hybrid for maximum performance:</p>
-<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
-    
-    <nav class="panzoom-nav">
-    <button class="panzoom-info panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
-    </svg>
-</button><button class="panzoom-reset panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
-    </svg>
-</button><button class="panzoom-max panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
-    </svg>
-</button><button class="panzoom-min panzoom-button panzoom-hidden">
-    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
-    </svg>
-</button>
-    </nav>
-    <pre class="mermaid"><code>flowchart TB
-    subgraph Python [🐍 Python]
-        CLI[CLI] --&gt; Pipeline[Orchestration]
-        Pipeline --&gt; IO[VCF/MAF I/O]
-    end
-
-    subgraph Rust [🦀 Rust]
-        Counter[BAM Counting]
-        Stats[Fisher Test]
-    end
-
-    Pipeline --&gt; Counter
-    Counter --&gt; Stats
-
-    classDef pythonStyle fill:#3776ab,color:#fff,stroke:#2c5f8a,stroke-width:2px;
-    classDef rustStyle fill:#dea584,color:#000,stroke:#c48a6a,stroke-width:2px;
-    class Python pythonStyle;
-    class Rust rustStyle;
-</code></pre> 
-    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
-Use mouse to pan and zoom
-</div>
-</div>
+<p>See <strong><a href="#reference-architecture">Architecture Reference →</a></strong> for full diagrams covering system layers, data flow, genomic binning, coordinate system, config hierarchy, and end-to-end sequence.</p>
 <p><strong>→ <a href="#reference-architecture">Technical Details</a></strong> | <strong>→ <a href="#reference-allele-classification">How It Works</a></strong></p>
 <hr>
 <h2 id="index-documentation">Documentation<a class="headerlink" href="#index-documentation" title="Permanent link">¶</a></h2>
@@ -2188,12 +2154,16 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Start{What sequencing data?}
-    Start --&gt;|"DNA / cfDNA / WGS / WES / Panel"| DNA([gbcms dna]):::dna
-    Start --&gt;|"RNA-seq (STAR-aligned)"| RNA([gbcms rna]):::rna
+    Start(["What sequencing data?"]):::start
 
+    Start --&gt;|"cfDNA · IMPACT · WGS\nWES · Panel"| DNA(["gbcms dna"]):::dna
+    Start --&gt;|"STAR-aligned RNA-seq\ndUTP stranded"| RNA(["gbcms rna"]):::rna
+    Start --&gt;|"Unstranded RNA-seq\n(random orientation)"| RNAL(["gbcms rna\n--no-strandedness"]):::rnal
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef rna fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef rnal fill:#2471a3,color:#fff,stroke:#1a5276,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -3248,23 +3218,26 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    subgraph Input
-        BAM[BAM Files]
-        VCF[VCF/MAF]
-        FASTA[Reference]
-        DB["REDIportal DB\n(optional)"]
+    subgraph Inputs ["Inputs"]
+        direction TB
+        BAM["BAM Files"]
+        VCF["VCF/MAF"]
+        FASTA["Reference"]
+        DB["REDIportal DB"]:::optional
     end
 
-    subgraph Filters [RNA-Specific Filters]
-        NH["NH:i:1 MAPQ\nRescue"]
-        Strand["Strandedness\nFilter"]
+    subgraph Filters ["RNA Filters"]
+        direction TB
+        NH["NH:i:1 MAPQ Rescue"]:::filter
+        Strand["Strandedness Filter"]:::filter
     end
 
-    subgraph Counting [Allele Classification]
-        Classify["Phase 1–3\nClassification"]
-        Sense["Sense/Antisense\nTracking"]
-        Splice["Splice Junction\nDetection"]
-        Edit["RNA Editing\nFlagging"]
+    subgraph Counting ["Allele Classification"]
+        direction TB
+        Classify["Phase 1-3 Classification"]
+        Sense["Sense/Antisense Tracking"]
+        Splice["Splice Junction Detection"]
+        Edit["RNA Editing Flagging"]
     end
 
     BAM --&gt; NH --&gt; Strand --&gt; Classify
@@ -3272,16 +3245,16 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
     FASTA --&gt; Classify
     Classify --&gt; Sense
     Classify --&gt; Splice
-    DB -.-&gt; Edit
     Classify --&gt; Edit
-    Sense --&gt; Output([RNA VCF/MAF])
-    Splice --&gt; Output
-    Edit --&gt; Output
+    DB -.-&gt;|"optional"| Edit
+    Sense --&gt; Out(["RNA VCF/MAF"]):::pass
+    Splice --&gt; Out
+    Edit --&gt; Out
 
     classDef filter fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
-    classDef count fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef optional fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:1px,stroke-dasharray:4;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     class NH,Strand filter;
-    class Classify,Sense,Splice,Edit count;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -3469,11 +3442,12 @@ The file is loaded once at startup and stored as a hash set for O(1) lookup per 
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Read([📖 RNA Read]) --&gt; MAPQ{MAPQ ≥ min_mapq?}
-    MAPQ --&gt;|Yes| Pass([✅ Pass]):::pass
-    MAPQ --&gt;|No| NH{NH:i:1 tag?}
-    NH --&gt;|Yes| Rescue([✅ Rescued — unique alignment]):::rescue
-    NH --&gt;|No| Drop([❌ Discard — multi-mapper]):::drop
+    Read(["📖 RNA Read"])
+    Read --&gt;|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
+    MAPQ --&gt;|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
+    MAPQ --&gt;|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
+    NH --&gt;|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
+    NH --&gt;|"No — NH&gt;1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef rescue fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
@@ -3989,8 +3963,8 @@ left-alignment — but <strong>without</strong> performing any <abbr title="Bina
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    CSV([📄 samplesheet.csv]):::input --&gt; Parse[Parse Samplesheet]
-    MAF([📄 variants.maf]):::input --&gt; FilterCheck{filter_by_sample<br>AND .maf input?}
+    CSV(["📄 samplesheet.csv"]):::input --&gt; Parse[Parse Samplesheet]
+    MAF(["📄 variants.maf"]):::input --&gt; FilterCheck{"filter_by_sample<br>AND .maf input?"}
     Parse --&gt; FilterCheck
 
     FilterCheck --&gt;|Yes| FilterMAF["FILTER_MAF<br>(per-sample MAF extraction)"]
@@ -3998,7 +3972,7 @@ left-alignment — but <strong>without</strong> performing any <abbr title="Bina
 
     FilterMAF --&gt; HasData{Variants found?}
     HasData --&gt;|Yes| Ready2[Join filtered MAF with BAM]
-    HasData --&gt;|No| Skip([⚪ Skip sample]):::skip
+    HasData --&gt;|No| Skip(["⚪ Skip sample"]):::skip
     FilterMAF --&gt; Summary["PIPELINE_SUMMARY<br>(aggregate filter stats)"]
 
     Ready --&gt; ModeCheck{mode?}
@@ -4007,9 +3981,9 @@ left-alignment — but <strong>without</strong> performing any <abbr title="Bina
     ModeCheck --&gt;|dna| DNA["GBCMS_DNA<br>(cfDNA/somatic counting)"]:::dna
     ModeCheck --&gt;|rna| RNA["GBCMS_RNA<br>(RNA-seq counting)"]:::rna
 
-    DNA --&gt; Output([📊 VCF/MAF output]):::output
-    RNA --&gt; Output
-    Summary --&gt; SummaryOut([📋 pipeline_summary.tsv]):::output
+    DNA --&gt; DNAOut(["📊 DNA VCF/MAF"]):::output
+    RNA --&gt; RNAOut(["📊 RNA VCF/MAF"]):::output
+    Summary --&gt; SummaryOut(["📋 pipeline_summary.tsv"]):::output
 
     classDef input fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -4781,6 +4755,98 @@ Use mouse to pan and zoom
 </div>
 </div>
 <hr>
+<h2 id="reference-architecture-genomic-binning">Genomic Binning<a class="headerlink" href="#reference-architecture-genomic-binning" title="Permanent link">¶</a></h2>
+<p>To minimise <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> I/O, the Rust engine groups co-located variants into <strong>genomic bins</strong> before counting. A single <code>bam.fetch()</code> is issued per bin, and reads fetched for that region are classified against <strong>all variants in the bin</strong> in one pass. For clustered inputs (e.g. a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with hundreds of variants on the same gene) this reduces <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> seeks from O(N) per-variant to O(B) per-bin — typically 5-20× fewer I/O operations.</p>
+<p>This design mirrors the original C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>--max_block_size</code> / <code>--max_block_dist</code> architecture, re-implemented as a pure Rust streaming algorithm.</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>flowchart LR
+    Variants(["📋 Variants (any order)"]):::start --&gt; Sort["Sort indices\nby chrom + pos"]
+    Sort --&gt; NewBin["Open new bin\nat variant pos"]
+    NewBin --&gt; Extend{"Next variant\nwithin window\n&amp; same chrom?"}
+    Extend --&gt;|"Yes"| MaxCheck{"≥ 200 variants\nin bin?"}
+    MaxCheck --&gt;|"No — extend"| GrowBin["Add variant\nextend bin_end"]
+    GrowBin --&gt; Extend
+    MaxCheck --&gt;|"Yes — split"| NewBin
+    Extend --&gt;|"No / new chrom"| Pad["Pad bin:\nmax(repeat_span+2, 5)bp"]
+    Pad --&gt; Fetch["bam.fetch(bin_start, bin_end)\n— 1 I/O per bin ⚡"]:::io
+    Fetch --&gt; Classify["Classify each read\nagainst all variants in bin\n(Rayon parallel across bins)"]:::parallel
+    Classify --&gt; Out(["📊 BaseCounts per variant"]):::pass
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef io fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef parallel fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h3 id="reference-architecture-binning-parameters">Binning Parameters<a class="headerlink" href="#reference-architecture-binning-parameters" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Value</th>
+<th style="text-align: left;">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>BIN_WINDOW</code></td>
+<td style="text-align: left;"><strong>10,000 bp</strong></td>
+<td style="text-align: left;">Maximum span of a single bin. Variants beyond this distance start a new bin.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>BIN_MAX_VARIANTS</code></td>
+<td style="text-align: left;"><strong>200</strong></td>
+<td style="text-align: left;">Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Bin padding</td>
+<td style="text-align: left;"><code>max(repeat_span + 2, 5)</code> bp</td>
+<td style="text-align: left;">Ensures reads overlapping bin edges are captured. Uses each variant's detected tandem-repeat span.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Parallelism</td>
+<td style="text-align: left;">Rayon <code>par_iter()</code> over bins</td>
+<td style="text-align: left;">Each thread owns its own <code>BamReader</code> handle; no locking required across bins.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Output order</td>
+<td style="text-align: left;">Preserved</td>
+<td style="text-align: left;">Variants are sorted by index internally; results are written back in original input order.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Performance Implication</p>
+<p>For a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 500 variants on <em>TP53</em> (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual <code>bam.fetch()</code> calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Not a <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</p>
+<p><code>BIN_WINDOW</code> and <code>BIN_MAX_VARIANTS</code> are internal performance constants — they do not affect output values. Parity testing (<code>D1</code> regression suite) validates that binned and per-variant paths produce identical <code>BaseCounts</code>.</p>
+</div>
+<hr>
 <h2 id="reference-architecture-coordinate-system">Coordinate System<a class="headerlink" href="#reference-architecture-coordinate-system" title="Permanent link">¶</a></h2>
 <p>All coordinates normalized to <strong>0-based, half-open</strong> internally:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
@@ -4805,10 +4871,10 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    VCF["VCF (1-based)"] --&gt;|"-1"| Internal["Internal (0-based)"]
+    VCF["VCF (1-based)"] --&gt;|"-1 (e.g. VCF:100 → internal:99)"| Internal["Internal (0-based)"]
     MAF["MAF (1-based)"] --&gt;|"-1"| Internal
-    Internal --&gt;|"to Rust"| Rust["gbcms._rs"]
-    Rust --&gt;|"+1"| Output["Output (1-based)"]
+    Internal --&gt;|"→ Rust engine"| Rust["gbcms._rs"]
+    Rust --&gt;|"+1 (e.g. internal:99 → output:100)"| Output["Output (1-based)"]
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -4925,21 +4991,24 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TB
-    Base[GbcmsBaseConfig] --&gt; DnaConfig[GbcmsDnaConfig]
-    Base --&gt; RnaConfig[GbcmsRnaConfig]
-    DnaConfig --&gt; DnaDefaults["mode=dna, MAPQ=20"]
-    RnaConfig --&gt; RnaDefaults["mode=rna, MAPQ=1, pairhmm relaxed"]
-    RnaConfig --&gt; RnaSpecific["enforce_strandedness, rna_editing_db"]
+    Base["GbcmsBaseConfig"]:::base --&gt; DnaConfig["GbcmsDnaConfig"]
+    Base --&gt; RnaConfig["GbcmsRnaConfig"]
 
-    Base --&gt; OutputConfig[Output Settings]
-    Base --&gt; ReadFilters[Read Filters]
-    Base --&gt; QualityThresholds[Quality Thresholds]
-    Base --&gt; AlignmentConfig[Alignment Backend]
+    DnaConfig --&gt; DnaD["mode=dna\nMAPQ=20"]
+    RnaConfig --&gt; RnaD["mode=rna, MAPQ=1\npairhmm relaxed RT gaps"]
+    RnaConfig --&gt; RnaX["enforce_strandedness\nrna_editing_db"]
 
-    OutputConfig --&gt; D1["output_dir, format, suffix, column_prefix, mfsd, mfsd_parquet"]
-    ReadFilters --&gt; D2["secondary, duplicates, supplementary, qc_failed, improper_pair, indel"]
-    QualityThresholds --&gt; D3["min_mapq, min_baseq, fragment_qual_threshold"]
-    AlignmentConfig --&gt; D4["backend: pairhmm|sw, llr_threshold, gap_*_prob"]
+    Base --&gt; Filters["ReadFilters"]
+    Base --&gt; Quality["QualityThresholds"]
+    Base --&gt; Output2["OutputConfig"]
+    Base --&gt; Align["AlignmentConfig"]
+
+    Filters --&gt; FD["secondary · duplicates\nsupplementary · qc_failed\nimproper_pair · indel"]
+    Quality --&gt; QD["min_mapq · min_baseq\nfragment_qual_threshold"]
+    Output2 --&gt; OD["output_dir · format · suffix\ncolumn_prefix · mfsd · mfsd_parquet"]
+    Align --&gt; AD["backend: pairhmm|sw\nllr_threshold · gap_*_prob"]
+
+    classDef base fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -5167,31 +5236,19 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    MAF([📄 MAF Row]):::start --&gt; Check{REF or ALT is '-'?}
-    Check --&gt;|No: SNP/MNP| Direct[Use Start_Position as VCF POS]
-    Check --&gt;|Yes: Indel| Type{Which is '-'?}
+    MAF(["📄 MAF Row"]):::start --&gt; Check{"REF or ALT is '-'?"}
+    Check --&gt;|"No — SNP/MNP"| Direct["VCF POS = Start_Position"]
+    Check --&gt;|"Yes — Indel"| Type{"Which is '-'?"}
 
-    Type --&gt;|"REF = '-'"| Ins[Insertion]
-    Type --&gt;|"ALT = '-'"| Del[Deletion]
+    Type --&gt;|"REF = '-' (Insertion)"| InsResult["POS = Start_Position\nAnchor @ Start_Position (from FASTA)\nREF = anchor\nALT = anchor + inserted seq"]
+    Type --&gt;|"ALT = '-' (Deletion)\n-1 for anchor"| DelResult["POS = Start_Position − 1\nAnchor @ Start_Position−1 (from FASTA)\nREF = anchor + deleted seq\nALT = anchor"]
 
-    subgraph Insertion
-        Ins --&gt; InsAnchor["Anchor = Start_Position"]
-        InsAnchor --&gt; InsFetch["Fetch anchor base from FASTA"]
-        InsFetch --&gt; InsResult["REF = anchor base\nALT = anchor + inserted seq"]
-    end
-
-    subgraph Deletion
-        Del --&gt; DelAnchor["Anchor = Start_Position − 1"]
-        DelAnchor --&gt; DelFetch["Fetch anchor base from FASTA"]
-        DelFetch --&gt; DelResult["REF = anchor + deleted seq\nALT = anchor base"]
-    end
-
-    Direct --&gt; Out([🧬 Internal Variant]):::success
+    Direct --&gt; Out(["🧬 Internal Variant"]):::pass
     InsResult --&gt; Out
     DelResult --&gt; Out
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
-    classDef success fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -5328,14 +5385,18 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    Input([📄 Input Variant]) --&gt; S1[MAF Anchor Resolution]
-    S1 --&gt; S2[REF Validation]
-    S2 --&gt; S3[Left-Alignment]
-    S3 --&gt; S4[ref_context Fetch]
-    S4 --&gt; S5[Homopolymer Detection]
-    S5 --&gt; Output([✅ PreparedVariant])
+    Input(["📄 Input Variant"]):::start --&gt; S1["Step 1: MAF Anchor"]
+    S1 --&gt; S2["Step 2: REF Validation"]
+    S2 --&gt;|"REF_MISMATCH"| Fail(["❌ Rejected"]):::fail
+    S2 --&gt;|"PASS*"| S3["Step 3: Left-Alignment"]
+    S3 --&gt; S4["Step 4: ref_context Fetch"]
+    S4 --&gt; S5["Step 5: Homopolymer Detection"]
+    S5 --&gt; Output(["✅ PreparedVariant"]):::pass
 
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef step fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef fail fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     class S1,S2,S3,S4,S5 step;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
@@ -5410,15 +5471,15 @@ Use mouse to pan and zoom
     </nav>
     <pre class="mermaid"><code>flowchart TD
     Fetch["Fetch ref bases at pos"] --&gt; Exact{"Exact match?"}
-    Exact -- "Yes" --&gt; Pass([✅ PASS]):::pass
-    Exact -- "No" --&gt; Sim["Compute similarity\n(matching bases / max length)"]
+    Exact --&gt;|"Yes"| Pass(["✅ PASS"]):::pass
+    Exact --&gt;|"No"| Sim["Compute similarity\n(matching bases / max length)"]
     Sim --&gt; Thresh{"≥ 90%?"}
-    Thresh -- "Yes" --&gt; Corrected(["⚠️ PASS_WARN_REF_CORRECTED\n(use FASTA REF)"]):::warn
-    Thresh -- "No" --&gt; Fail([❌ REF_MISMATCH]):::fail
+    Thresh --&gt;|"Yes"| Corrected(["⚠️ PASS_WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
+    Thresh --&gt;|"No"| Fail(["❌ REF_MISMATCH\n→ excluded from counting"]):::fail
 
-    classDef pass fill:#27ae60,color:#fff;
-    classDef warn fill:#f39c12,color:#fff;
-    classDef fail fill:#e74c3c,color:#fff;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef fail fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -5537,9 +5598,9 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    Scan["Scan Footprint\n(pos to pos+ref_len)"] --&gt; Detect{"Repeat\nfound?"}
-    Detect -- "Yes (span=S)" --&gt; Formula["padding = max(default, S/2 + 3)\ncapped at 50bp"]
-    Detect -- "No" --&gt; Default["padding = default (5bp)"]
+    SweepFootprint["Sweep variant footprint\n(pos → pos + ref_len)"] --&gt; RepFound{"Tandem repeat\nfound?"}
+    RepFound --&gt;|"Yes (span = S)"| Formula["padding = max(5, S/2 + 3)\ncapped at 50bp"]
+    RepFound --&gt;|"No"| Default["padding = 5bp (default)"]
     Formula --&gt; Fetch["Fetch ref_context"]
     Default --&gt; Fetch
 </code></pre> 
@@ -6075,11 +6136,12 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Read([📖 RNA Read]) --&gt; MAPQ{MAPQ ≥ min_mapq?}
-    MAPQ --&gt;|Yes| Pass([✅ Pass]):::pass
-    MAPQ --&gt;|No| NH{NH:i:1 tag?}
-    NH --&gt;|Yes| Rescue([✅ Rescued]):::rescue
-    NH --&gt;|No| Drop([❌ Discard]):::drop
+    Read(["📖 RNA Read"])
+    Read --&gt;|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
+    MAPQ --&gt;|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
+    MAPQ --&gt;|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
+    NH --&gt;|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
+    NH --&gt;|"No — NH&gt;1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef rescue fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
@@ -6284,17 +6346,19 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Start([🧬 SNP Check]):::start --&gt; Walk[Walk CIGAR to variant pos]
-    Walk --&gt; Found{Position found?}
-    Found --&gt;|No| Neither1([Neither]):::neither
-    Found --&gt;|Yes| BQ{Base quality ≥ min_baseq?}
-    BQ --&gt;|No| Neither2([Neither]):::neither
-    BQ --&gt;|Yes| Compare[Compare base to REF and ALT]
-    Compare --&gt; IsRef{base == REF?}
-    IsRef --&gt;|Yes| Ref([✅ REF]):::ref
-    IsRef --&gt;|No| IsAlt{base == ALT?}
-    IsAlt --&gt;|Yes| Alt([🔴 ALT]):::alt
-    IsAlt --&gt;|No| Neither3([Neither]):::neither
+    Start(["🧬 SNP Check"]):::start --&gt; Walk["Walk CIGAR to variant pos"]
+    Walk --&gt; CigarOp{"CIGAR op at pos\nis M or X?"}
+    CigarOp --&gt;|"No (I/D/N/S)"| Neither0(["Neither — no consumable base"]):::neither
+    CigarOp --&gt;|"Yes"| Found{"Position found?"}
+    Found --&gt;|No| Neither1(["Neither"]):::neither
+    Found --&gt;|Yes| BQ{"Base quality ≥ min_baseq?"}
+    BQ --&gt;|No| Neither2(["Neither"]):::neither
+    BQ --&gt;|Yes| Compare["Compare base to REF and ALT"]
+    Compare --&gt; IsRef{"base == REF?"}
+    IsRef --&gt;|Yes| Ref(["✅ REF"]):::ref
+    IsRef --&gt;|No| IsAlt{"base == ALT?"}
+    IsAlt --&gt;|Yes| Alt(["🔴 ALT"]):::alt
+    IsAlt --&gt;|No| Neither3(["Neither"]):::neither
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -9025,17 +9089,23 @@ spanning a small repeat motif (e.g., dinucleotide repeat <code>ACAC</code>).</p>
     </nav>
     <pre class="mermaid"><code>flowchart LR
     subgraph Python["src/gbcms/"]
-        CLI[cli.py] --&gt; Pipeline[pipeline.py]
-        CLI --&gt; Normalize[normalize.py]
-        Pipeline --&gt; IO[io/]
-        Pipeline --&gt; Models[models/]
+        CLI["cli.py"] --&gt; Pipeline["pipeline.py"]
+        CLI --&gt; Normalize["normalize.py"]
+        Pipeline --&gt; IO["io/"]
+        Pipeline --&gt; Models["models/"]
     end
 
     subgraph Rust["rust/src/"]
-        Lib[lib.rs] --&gt; Shared["shared/"]
-        Lib --&gt; Count["counting/"]
+        Lib["lib.rs"] --&gt; Count["counting/"]
         Lib --&gt; Norm["normalize/"]
-        Count --&gt; Shared
+        Count --&gt; Eng["engine.rs"]
+        Count --&gt; VC["variant_checks.rs"]
+        Count --&gt; PH["pairhmm.rs"]
+        Count --&gt; WFA["wfa_router.rs"]
+        Count --&gt; RNA["rna.rs"]
+        Count --&gt; Frag["fragment.rs"]
+        Norm --&gt; LA["left_align.rs"]
+        Norm --&gt; DC["decomp.rs"]
     end
 
     Pipeline --&gt; Rust
@@ -9251,6 +9321,13 @@ run against the <abbr title="Binary Alignment Map - Compressed sequence alignmen
     merge release/X.Y.Z tag: "X.Y.Z"
     checkout develop
     merge release/X.Y.Z
+    checkout main
+    branch hotfix/urgent-fix
+    commit id: "critical fix"
+    checkout main
+    merge hotfix/urgent-fix tag: "X.Y.Z+1"
+    checkout develop
+    merge hotfix/urgent-fix
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
