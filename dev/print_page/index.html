@@ -2560,7 +2560,7 @@ provides these dependencies.</p>
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#getting-started-quickstart-__codelineno-7-1"></a><span class="c1"># RNA defaults: secondary + supplementary + qc-failed already filtered</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#getting-started-quickstart-__codelineno-7-1"></a><span class="c1"># Both DNA and RNA filter secondary, supplementary, and QC-failed by default</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#getting-started-quickstart-__codelineno-7-2"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#getting-started-quickstart-__codelineno-7-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#getting-started-quickstart-__codelineno-7-4"></a><span class="w">    </span>--bam<span class="w"> </span>rna:aligned.bam<span class="w"> </span><span class="se">\</span>
@@ -2947,17 +2947,17 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 </tr>
 <tr>
 <td style="text-align: left;"><code>--filter-secondary</code></td>
-<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;"><code>true</code></td>
 <td style="text-align: left;">Filter secondary alignments</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--filter-supplementary</code></td>
-<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;"><code>true</code></td>
 <td style="text-align: left;">Filter supplementary alignments</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--filter-qc-failed</code></td>
-<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;"><code>true</code></td>
 <td style="text-align: left;">Filter QC failed reads</td>
 </tr>
 <tr>
@@ -3433,7 +3433,7 @@ The file is loaded once at startup and stored as a hash set for O(1) lookup per 
 </div>
 <hr>
 <h2 id="cli-rna-quality-thresholds">Quality Thresholds<a class="headerlink" href="#cli-rna-quality-thresholds" title="Permanent link">¶</a></h2>
-<p>RNA mode uses different defaults to accommodate RNA-seq aligner behavior:</p>
+<p>RNA mode uses <strong>different <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> default</strong> to accommodate <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> aligner behavior:</p>
 <table>
 <thead>
 <tr>
@@ -3771,18 +3771,18 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Secondary filter</strong></td>
-<td style="text-align: left;">off</td>
-<td style="text-align: left;"><strong>on</strong></td>
+<td style="text-align: left;">on</td>
+<td style="text-align: left;">on (same)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Supplementary filter</strong></td>
-<td style="text-align: left;">off</td>
-<td style="text-align: left;"><strong>on</strong></td>
+<td style="text-align: left;">on</td>
+<td style="text-align: left;">on (same)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>QC-failed filter</strong></td>
-<td style="text-align: left;">off</td>
-<td style="text-align: left;"><strong>on</strong></td>
+<td style="text-align: left;">on</td>
+<td style="text-align: left;">on (same)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Strandedness filter</strong></td>
