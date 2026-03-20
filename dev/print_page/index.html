@@ -3196,39 +3196,6 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 <p>Count alleles in RNA-seq BAMs with transcriptome-aware filtering.</p>
 <p>RNA mode extends the core DNA counting engine with filters and metrics specific to RNA-seq data: <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aware <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> rescue, <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strandedness filtering, splice junction tracking, and A-to-I RNA editing site flagging.</p>
 <h2 id="cli-rna-when-to-use">When to Use<a class="headerlink" href="#cli-rna-when-to-use" title="Permanent link">¶</a></h2>
-<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
-    
-    <nav class="panzoom-nav">
-    <button class="panzoom-info panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
-    </svg>
-</button><button class="panzoom-reset panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
-    </svg>
-</button><button class="panzoom-max panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
-    </svg>
-</button><button class="panzoom-min panzoom-button panzoom-hidden">
-    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
-    </svg>
-</button>
-    </nav>
-    <pre class="mermaid"><code>flowchart TD
-    Start{What sequencing data?}
-    Start --&gt;|"DNA / cfDNA / WGS / WES"| DNA([Use gbcms dna]):::dna
-    Start --&gt;|"RNA-seq / STAR-aligned"| RNA([Use gbcms rna]):::rna
-
-    classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef rna fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-</code></pre> 
-    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
-Use mouse to pan and zoom
-</div>
-</div>
 <table>
 <thead>
 <tr>
@@ -3399,14 +3366,14 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Read([📖 RNA Read]) --&gt; HasGS{gene_strand\nannotated?}
-    HasGS --&gt;|No| Pass([✅ Pass — no filter]):::pass
-    HasGS --&gt;|Yes| Check{Read orientation\nvs gene strand?}
-    Check --&gt;|Consistent| Sense([✅ Sense — count]):::pass
-    Check --&gt;|Inconsistent| Anti([📊 Antisense — count\nseparately]):::anti
+    Read(["\ud83d\udcd6 RNA Read"]) --&gt; HasGS{"gene_strand annotated?"}
+    HasGS --&gt;|No| Pass(["\u2705 Pass \u2014 no filter"]):::pass
+    HasGS --&gt;|Yes| Check{"Read orientation\nvs gene strand?"}
+    Check --&gt;|"Consistent"| Sense(["\u2705 Sense \u2014 counted in DP/AD/RD"]):::pass
+    Check --&gt;|"Inconsistent"| Anti(["\ud83d\udcca Antisense \u2014 counted in rna_antisense_depth"]):::anti
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef anti fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef anti fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -4783,20 +4750,23 @@ Use mouse to pan and zoom
     </nav>
     <pre class="mermaid"><code>flowchart LR
     subgraph Input
-        VCF[VCF/MAF]
-        BAM[BAM Files]
-        FASTA[Reference]
+        VCF["VCF/MAF"]
+        BAM["BAM Files"]
+        FASTA["Reference FASTA"]
     end
 
     subgraph Process
-        Load[Load Variants]
-        Prepare["Prepare (validate + left-align + decomp detect)"]
-        Count[Count Reads]
+        Load["Load Variants"]
+        Prepare["Prepare\n(validate + left-align + decomp detect)"]
+        Count["Count Reads"]
     end
 
-    subgraph Output
-        Result[VCF/MAF + Counts]
-        Parquet["<sample>.fsd.parquet (optional, --mfsd-parquet)"]
+    subgraph Output ["Required Output"]
+        Result["VCF/MAF + Counts"]
+    end
+
+    subgraph OptOut ["Optional Output (--mfsd-parquet)"]
+        Parquet["\u003csample\u003e.fsd.parquet"]
     end
 
     VCF --&gt; Load --&gt; Prepare
@@ -4805,7 +4775,7 @@ Use mouse to pan and zoom
     BAM --&gt; Count
     Count --&gt; Result
     Count -.-&gt;|"--mfsd-parquet"| Parquet
-</sample></code></pre> 
+</code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
@@ -5022,6 +4992,9 @@ Use mouse to pan and zoom
             loop For each read
                 Note over Rust: Apply filter cascade
                 Note over Rust: Dispatch to type checker
+                Note over Rust: Phase 1+2 haplotype reconstruction
+                Note over Rust: Phase 2.5 edit-distance fast-path
+                Note over Rust: Phase 3 WFA triage → PairHMM LLR
                 Note over Rust: Update read + fragment counts
             end
             Note over Rust: Compute Fisher strand bias
@@ -5469,39 +5442,6 @@ Use mouse to pan and zoom
 <hr>
 <h2 id="reference-variant-normalization-step-3-left-alignment">Step 3: Left-Alignment<a class="headerlink" href="#reference-variant-normalization-step-3-left-alignment" title="Permanent link">¶</a></h2>
 <p>For indels and complex variants, gbcms applies <strong>bcftools-style left-alignment</strong> to ensure consistent positioning in repetitive regions.</p>
-<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
-    
-    <nav class="panzoom-nav">
-    <button class="panzoom-info panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
-    </svg>
-</button><button class="panzoom-reset panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
-    </svg>
-</button><button class="panzoom-max panzoom-button">
-    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
-    </svg>
-</button><button class="panzoom-min panzoom-button panzoom-hidden">
-    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
-    </svg>
-</button>
-    </nav>
-    <pre class="mermaid"><code>flowchart TD
-    Input["Indel: chr1:105 ACG→A<br>(in a CGCG repeat)"]
-    Fetch["Fetch ±100bp flanking sequence"]
-    Align["Shift left through repeat"]
-    Result["chr1:101 ACG→A<br>(leftmost position)"]
-
-    Input --&gt; Fetch --&gt; Align --&gt; Result
-</code></pre> 
-    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
-Use mouse to pan and zoom
-</div>
-</div>
 <table>
 <thead>
 <tr>
@@ -5712,16 +5652,23 @@ Use mouse to pan and zoom
     </svg>
 </button>
     </nav>
-    <pre class="mermaid"><code>flowchart TD
-    C1{"REF is homopolymer?<br>(all same base, ≥3bp)"} -- Yes --&gt; C2{"Net deletion?<br>(ref_len &gt; alt_len)"}
-    C2 -- Yes --&gt; C3{"ALT last base ==<br>next ref base after REF span?"}
-    C3 -- Yes --&gt; C4{"ALT last base ≠<br>homopolymer base?"}
-    C4 -- Yes --&gt; Detected([🔍 Decomposition detected]):::detect
+    <pre class="mermaid"><code>flowchart LR
+    C1{"C1: REF is homopolymer?\n(all same base, \u22653bp)"}
+    C2{"C2: Net deletion?\n(ref_len &gt; alt_len)"}
+    C3{"C3: ALT last base ==\nnext ref base after span?"}
+    C4{"C4: ALT last base \u2260\nhomopolymer base?"}
+    Detected(["\ud83d\udd0d Decomposition detected"]):::detect
+    Skip(["\u23ed\ufe0f Skip \u2014 not a decomposition"]):::skip
 
-    C1 -- No --&gt; Skip([Skip]):::skip
-    C2 -- No --&gt; Skip
-    C3 -- No --&gt; Skip
-    C4 -- No --&gt; Skip
+    C1 --&gt;|Yes| C2
+    C2 --&gt;|Yes| C3
+    C3 --&gt;|Yes| C4
+    C4 --&gt;|Yes| Detected
+
+    C1 --&gt;|No| Skip
+    C2 --&gt;|No| Skip
+    C3 --&gt;|No| Skip
+    C4 --&gt;|No| Skip
 
     classDef detect fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
     classDef skip fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
@@ -5762,18 +5709,22 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    CountOrig["count_bam(original: CCCCCC→T)"]
-    CountDecomp["count_bam(corrected: CCCCCC→CCCCT)"]
-    Compare{"corrected AD &gt; original AD?"}
-    UseDecomp["Return corrected counts"]
-    UseOrig["Return original counts"]
-    FlagWarn["validation_status =<br>PASS_WARN_HOMOPOLYMER_DECOMP"]
-    FlagPass["validation_status = PASS"]
+    Input(["\u26a1 Decomposition detected"]):::warn
+    Input --&gt;|"in parallel"| CountOrig
+    Input --&gt;|"in parallel"| CountDecomp
+
+    CountOrig["count_bam(original: CCCCCC\u2192T)"]
+    CountDecomp["count_bam(corrected: CCCCCC\u2192CCCCT)"]
 
     CountOrig --&gt; Compare
     CountDecomp --&gt; Compare
-    Compare -- "Yes" --&gt; UseDecomp --&gt; FlagWarn
-    Compare -- "No" --&gt; UseOrig --&gt; FlagPass
+    Compare{"corrected AD &gt; original AD?"}
+
+    Compare --&gt;|"Yes"| UseDecomp["Return corrected counts"] --&gt; FlagWarn["validation_status =\nPASS_WARN_HOMOPOLYMER_DECOMP"]:::warn
+    Compare --&gt;|"No"| UseOrig["Return original counts"] --&gt; FlagPass["validation_status = PASS"]:::pass
+
+    classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -5891,50 +5842,46 @@ Corrected wins → <code>validation_status = PASS_WARN_HOMOPOLYMER_DECOMP</code>
     </svg>
 </button>
     </nav>
-    <pre class="mermaid"><code>flowchart TD
-    Start([📖 Read from BAM]):::process
+    <pre class="mermaid"><code>flowchart LR
+    Start(["📖 BAM Read"]):::start
 
-    subgraph Filters [Quality &amp; Alignment Filters]
-        direction TB
-        F1{Duplicate?}:::decision
-        F2{Secondary?}:::decision
-        F3{Supplementary?}:::decision
-        F4{QC Failed?}:::decision
-        F5{Improper pair?}:::decision
-        F6{Contains indel?}:::decision
-        F7{MAPQ ≥ threshold?}:::decision
+    subgraph Auto ["🟢 Auto-On (default enabled)"]
+        direction LR
+        F1{"① Duplicate?\n0x400"}:::on
+        F2{"② Secondary?\n0x100"}:::on
+        F3{"③ Supplementary?\n0x800"}:::on
+        F4{"④ QC Failed?\n0x200"}:::on
+        F5{"⑤ MAPQ &lt; threshold\n(20 DNA / 1 RNA)"}:::on
+        F1 --&gt;|No| F2
+        F2 --&gt;|No| F3
+        F3 --&gt;|No| F4
+        F4 --&gt;|No| F5
     end
 
-    Drop{{❌ Discard Read}}:::discard
-    Pass([✅ Pass to Allele Checker]):::success
+    subgraph Opt ["⚙️ Optional (off by default)"]
+        direction LR
+        O1{"⑥ Improper pair?\n--filter-improper-pair"}:::off
+        O2{"⑦ Contains indel?\n--filter-indel"}:::off
+        O1 --&gt;|No| O2
+    end
 
     Start --&gt; F1
+    F5 --&gt;|Pass| O1
+    O2 --&gt;|Pass| Done(["✅ Allele Classifier"]):::pass
 
-    F1 -- "Yes" --&gt; Drop
-    F1 -- "No" --&gt; F2
+    F1 --&gt;|Yes| Drop(["❌ Discard"]):::drop
+    F2 --&gt;|Yes| Drop
+    F3 --&gt;|Yes| Drop
+    F4 --&gt;|Yes| Drop
+    F5 --&gt;|Below threshold| Drop
+    O1 --&gt;|"Yes (if enabled)"| Drop
+    O2 --&gt;|"Yes (if enabled)"| Drop
 
-    F2 -- "Yes" --&gt; Drop
-    F2 -- "No" --&gt; F3
-
-    F3 -- "Yes" --&gt; Drop
-    F3 -- "No" --&gt; F4
-
-    F4 -- "Yes" --&gt; Drop
-    F4 -- "No" --&gt; F5
-
-    F5 -- "Yes" --&gt; Drop
-    F5 -- "No" --&gt; F6
-
-    F6 -- "Yes" --&gt; Drop
-    F6 -- "No" --&gt; F7
-
-    F7 -- "Below threshold" --&gt; Drop
-    F7 -- "Pass" --&gt; Pass
-
-    classDef process fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
-    classDef decision fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
-    classDef discard fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
-    classDef success fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef on fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef off fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -6252,18 +6199,20 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    Fetch([📥 Fetch Reads]):::fetch --&gt; Filter([🔍 Apply Filters]):::filter
-    Filter --&gt; Dispatch{"ref_len × alt_len?"}
-    Dispatch --&gt;|"1 × 1"| SNP[check_snp]
-    Dispatch --&gt;|"N × N"| MNP[check_mnp]
-    Dispatch --&gt;|"1 × N"| INS[check_insertion]
-    Dispatch --&gt;|"N × 1\nalt[0] == ref[0]\n(pure DEL)"| DEL[check_deletion]
-    Dispatch --&gt;|"N × 1\nalt[0] ≠ ref[0]\n(Del+SNV)"| CPX[check_complex]
-    Dispatch --&gt;|"else"| CPX
+    Fetch(["📥 Fetch Reads"]):::fetch --&gt; Filter(["🔍 Apply Filters"]):::filter
+    Filter --&gt; Dispatch{{"Dispatch\nref_len × alt_len?"}}
+
+    Dispatch --&gt;|"1 × 1"| SNP["check_snp"]
+    Dispatch --&gt;|"N × N"| MNP["check_mnp"]
+    Dispatch --&gt;|"1 × N"| INS["check_insertion"]
+    Dispatch --&gt;|"N × 1, alt[0]==ref[0]"| DEL["check_deletion"]
+    Dispatch --&gt;|"N × 1, alt[0]≠ref[0]\nor complex"| CPX["check_complex"]
+
     MNP -.-&gt;|"inconclusive"| CPX
     INS -.-&gt;|"Phase 3 fallback"| CPX
-    DEL -.-&gt;|"fallback (del_len ≥ 5,\nS3 mismatch → Phase 3)"| CPX
-    SNP --&gt; Count([📊 Update Counts]):::count
+    DEL -.-&gt;|"del_len ≥ 5, S3 fail"| CPX
+
+    SNP --&gt; Count(["📊 Update Counts"]):::count
     INS --&gt; Count
     DEL --&gt; Count
     MNP --&gt; Count
@@ -6403,6 +6352,54 @@ Use mouse to pan and zoom
 </table>
 <h3 id="reference-allele-classification-algorithm_1">Algorithm<a class="headerlink" href="#reference-allele-classification-algorithm_1" title="Permanent link">¶</a></h3>
 <p>The insertion check uses a <strong>single <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk</strong> with four detection strategies:</p>
+<h4 id="reference-allele-classification-part-a-cigar-based-strict-detection">Part A — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict Detection<a class="headerlink" href="#reference-allele-classification-part-a-cigar-based-strict-detection" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>flowchart LR
+    Start(["\ud83e\uddec Insertion Check"]):::start --&gt; Walk["Walk CIGAR \u2192 left to right"]
+    Walk --&gt; MatchBlk{"Match block contains anchor?"}
+    MatchBlk --&gt;|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk --&gt;|Yes| Bwd{"Anchor at block start\nAND prev op = Ins?"}
+    Bwd --&gt;|Yes| BwdMatch{"Length + seq match?\n(quality-masked)"}
+    BwdMatch --&gt;|Yes| BWAlt(["\ud83d\udd34 ALT \u2014 backward"]):::alt
+    BwdMatch --&gt;|No| Fwd
+    Bwd --&gt;|No| Fwd{"Anchor at block end?"}
+    Fwd --&gt;|No| RefCov["Mark ref coverage"]
+    Fwd --&gt;|Yes| Next{"Next op = Ins?"}
+    Next --&gt;|No| RefCov
+    Next --&gt;|Yes| StrictMatch{"Length + seq match?\n(quality-masked)"}
+    StrictMatch --&gt;|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
+    StrictMatch --&gt;|No| RefCov
+    RefCov --&gt; WinCheck
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="reference-allele-classification-part-b-u2014-windowed-scan-s1s2s3-safeguards">Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#reference-allele-classification-part-b-u2014-windowed-scan-s1s2s3-safeguards" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -6425,44 +6422,28 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Start([🧬 Insertion Check]):::start --&gt; Walk[Walk CIGAR left → right]
-    Walk --&gt; Found{Match block contains anchor?}
-    Found --&gt;|No| WindowCheck
-    Found --&gt;|Yes| Backward{Anchor at start of block AND prev op is Ins?}
-    Backward --&gt;|Yes| BWMatch{Length + seq match? quality-masked}
-    BWMatch --&gt;|Yes| BWAlt([🔴 ALT - backward]):::alt
-    BWMatch --&gt;|No| AtEnd
-    Backward --&gt;|No| AtEnd{Anchor at end of block?}
-    AtEnd --&gt;|No| RefCov[Mark ref coverage]
-    AtEnd --&gt;|Yes| NextOp{Next op is Ins?}
-    NextOp --&gt;|No| RefCov
-    NextOp --&gt;|Yes| Strict{"Length + seq match? (quality-masked)"}
-    Strict --&gt;|Yes| StrictAlt([🔴 ALT - strict]):::alt
-    Strict --&gt;|No| RefCov
-    RefCov --&gt; WindowCheck
-
-    WindowCheck{Ins within ±5bp window?}
-    WindowCheck --&gt;|No| Continue[Continue CIGAR walk]
-    WindowCheck --&gt;|Yes| S1{"S1: Seq matches? (quality-masked)"}
-    S1 --&gt;|No| LenMatch{"Same length?"}
-    LenMatch --&gt;|Yes| FlagP3["Flag for Phase 3"]:::fallback
-    LenMatch --&gt;|No| Continue
-    S1 --&gt;|Yes| S3{S3: Anchor base matches ref?}
+    WinIn(["\u2192 from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within \u00b15bp window?"}
+    CheckWin --&gt;|No| Continue["Continue CIGAR walk"]
+    CheckWin --&gt;|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
+    S1 --&gt;|Yes| S3{"S3: Anchor base\nmatches ref?"}
     S3 --&gt;|No| Continue
-    S3 --&gt;|Yes| S2[S2: Track closest match]
+    S3 --&gt;|Yes| S2["S2: Track closest match"]
     S2 --&gt; Continue
+    S1 --&gt;|No| LenMatch{"Same length?"}
+    LenMatch --&gt;|Yes| FlagP3["Flag has_nearby_length_match"]:::fallback
+    LenMatch --&gt;|No| Continue
+    FlagP3 --&gt; Continue
+    Continue --&gt; MoreOps{"More CIGAR ops?"}
+    MoreOps --&gt;|Yes| CheckWin
+    MoreOps --&gt;|No| Eval{"Windowed candidate found?"}
+    Eval --&gt;|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    Eval --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
+    P3Check --&gt;|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    P3Check --&gt;|No| HasRef{"Read covered anchor?"}
+    HasRef --&gt;|Yes| Ref(["\u2705 REF"]):::ref
+    HasRef --&gt;|No| Neither(["\u29ef Neither"]):::neither
 
-    Continue --&gt; MoreOps{More CIGAR ops?}
-    MoreOps --&gt;|Yes| Walk
-    MoreOps --&gt;|No| Eval{Windowed candidate found?}
-    Eval --&gt;|Yes| WinAlt([🔴 ALT - windowed]):::alt
-    Eval --&gt;|No| P3Check{"Phase 3 flagged<br>AND ref coverage?"}
-    P3Check --&gt;|Yes| Complex([🔄 check_complex<br>Phase 3 SW]):::fallback
-    P3Check --&gt;|No| HasRef{Read covered anchor?}
-    HasRef --&gt;|Yes| Ref([✅ REF]):::ref
-    HasRef --&gt;|No| Neither([Neither]):::neither
-
-    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
@@ -6502,7 +6483,7 @@ Use mouse to pan and zoom
 </table>
 <div class="admonition note">
 <p class="admonition-title">Phase 3 Haplotype Fallback (has_nearby_length_match)</p>
-<p>When the windowed scan finds an insertion that matches in <strong>length</strong> but not <strong>sequence</strong> (e.g., aligner represents the biological event with shifted bases in a repeat), the engine flags <code>has_nearby_length_match</code> and falls back to <code>check_complex</code> for <strong>Smith-Waterman arbitration</strong>. This ensures ambiguous cases are resolved by haplotype comparison rather than strict sequence matching.</p>
+<p>When the windowed scan finds an insertion that matches in <strong>length</strong> but not <strong>sequence</strong> (e.g., aligner represents the biological event with shifted bases in a repeat), the engine flags <code>has_nearby_length_match</code> and falls back to <code>check_complex</code> for <strong>Phase 3 <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> arbitration</strong>. This ensures ambiguous cases are resolved by haplotype comparison rather than strict sequence matching.</p>
 </div>
 <h3 id="reference-allele-classification-visual-example_1">Visual Example<a class="headerlink" href="#reference-allele-classification-visual-example_1" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-allele-classification-__codelineno-1-1"></a>Variant: chr1:100 A→ATG (insertion of TG after anchor A)
@@ -6580,6 +6561,53 @@ Use mouse to pan and zoom
 <p><strong>Haplotype fallback</strong> — When no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found and the read doesn't cover the anchor, falls back to <code>check_complex</code> for haplotype-based comparison.</p>
 </li>
 </ol>
+<h4 id="reference-allele-classification-part-a-u2014-cigar-based-strict-reciprocal-overlap-detection">Part A \u2014 <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict + Reciprocal-Overlap Detection<a class="headerlink" href="#reference-allele-classification-part-a-u2014-cigar-based-strict-reciprocal-overlap-detection" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>flowchart LR
+    Start(["\ud83e\uddec Deletion Check"]):::start --&gt; Walk["Walk CIGAR \u2192 left to right"]
+    Walk --&gt; MatchBlk{"Match block contains anchor?"}
+    MatchBlk --&gt;|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk --&gt;|Yes| AtEnd{"Anchor at block end?"}
+    AtEnd --&gt;|No| RefCov["Mark ref coverage"]
+    AtEnd --&gt;|Yes| NextDel{"Next op = Del?"}
+    NextDel --&gt;|No| RefCov
+    NextDel --&gt;|Yes| LenMatch{"Length matches exactly?"}
+    LenMatch --&gt;|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
+    LenMatch --&gt;|No| Recip{"\u226550bp AND\noverlap \u226550%?"}
+    Recip --&gt;|Yes| TolAlt(["\ud83d\udd34 ALT \u2014 tolerant SV"]):::alt
+    Recip --&gt;|No| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    RefCov --&gt; WinCheck
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="reference-allele-classification-part-b-u2014-windowed-scan-s1s2s3-safeguards_1">Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#reference-allele-classification-part-b-u2014-windowed-scan-s1s2s3-safeguards_1" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -6602,49 +6630,66 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Start([🧬 Deletion Check]):::start --&gt; Walk[Walk CIGAR left → right]
-    Walk --&gt; Found{Match block contains anchor?}
-    Found --&gt;|No| WindowCheck
-    Found --&gt;|Yes| AtEnd{Anchor at end of block?}
-    AtEnd --&gt;|No| RefCov[Mark ref coverage]
-    AtEnd --&gt;|Yes| NextOp{Next op is Del?}
-    NextOp --&gt;|No| RefCov
-    NextOp --&gt;|Yes| LenCheck{Length matches?}
-    LenCheck --&gt;|Yes| StrictAlt([🔴 ALT - strict]):::alt
-    LenCheck --&gt;|No| RecipCheck{"≥50bp AND overlap ≥50%?"}
-    RecipCheck --&gt;|Yes| TolAlt([🔴 ALT - tolerant]):::alt
-    RecipCheck --&gt;|No| Fallback1([🔄 check_complex]):::fallback
-    RefCov --&gt; WindowCheck
-
-    WindowCheck{Del within ±5bp window?}
-    WindowCheck --&gt;|No| Continue[Continue walk]
-    WindowCheck --&gt;|Yes| S1{S1: Length check}
-    S1 --&gt;|Match| S3{"S3: Ref bases match?"}
-    S1 --&gt;|"≥50bp + overlap ≥50%"| S2Track[S2: Track closest]
-    S1 --&gt;|No match| Continue
-    S3 --&gt;|Yes| S2[S2: Track closest]
-    S3 --&gt;|"No AND del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
-    S3 --&gt;|"No AND del_len &lt; 5"| Continue
+    WinIn(["\u2192 from CIGAR walk"]):::entry --&gt; CheckWin{"Del within \u00b15bp window?"}
+    CheckWin --&gt;|No| Continue["Continue walk"]
+    CheckWin --&gt;|Yes| S1{"S1: Length check"}
+    S1 --&gt;|"Exact match"| S3{"S3: Ref bases match?"}
+    S1 --&gt;|"\u226550bp + overlap \u226550%"| S2Track["S2: Track closest (SV)"]  
+    S1 --&gt;|"No match"| Continue
+    S3 --&gt;|Yes| S2["S2: Track closest"]
+    S3 --&gt;|"No, del_len \u2265 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 --&gt;|"No, del_len &lt; 5"| Continue
     S2Track --&gt; Continue
     S2 --&gt; Continue
     FlagP3 --&gt; Continue
+    Continue --&gt; MoreOps{"More ops?"}
+    MoreOps --&gt;|Yes| CheckWin
+    MoreOps --&gt;|No| Eval(["\u2192 Evaluation"]):::next
 
-    Continue --&gt; MoreOps{More ops?}
-    MoreOps --&gt;|Yes| Walk
-    MoreOps --&gt;|No| Eval{Windowed match?}
-    Eval --&gt;|Yes| WinAlt([🔴 ALT]):::alt
-    Eval --&gt;|No| P3DelCheck{"has_nearby_length_match<br>AND ref coverage?"}
-    P3DelCheck --&gt;|Yes| Complex2([🔄 check_complex<br>Phase 3 SW]):::fallback
-    P3DelCheck --&gt;|No| Interior{"Interior read?<br>(≥50bp del, read starts inside span)"}
-    Interior --&gt;|Yes| IntRef([✅ REF - interior]):::ref
-    Interior --&gt;|No| HasRef{Anchor covered?}
-    HasRef --&gt;|Yes| Ref([✅ REF]):::ref
-    HasRef --&gt;|No| Fallback2([🔄 check_complex]):::fallback
+    classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="reference-allele-classification-part-c-u2014-evaluation-interior-ref-guard">Part C \u2014 Evaluation + Interior REF Guard<a class="headerlink" href="#reference-allele-classification-part-c-u2014-evaluation-interior-ref-guard" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>flowchart TD
+    EvalIn(["\u2192 from windowed scan"]):::entry --&gt; Win{"Windowed match found?"}
+    Win --&gt;|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    Win --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
+    P3Check --&gt;|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    P3Check --&gt;|No| Interior{"Interior read?\n(\u226750bp del, read starts inside span)"}
+    Interior --&gt;|Yes| IntRef(["\u2705 REF \u2014 interior guard"]):::ref
+    Interior --&gt;|No| HasRef{"Anchor covered?"}
+    HasRef --&gt;|Yes| Ref(["\u2705 REF"]):::ref
+    HasRef --&gt;|No| CPX
 
-    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
-    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
@@ -6765,29 +6810,28 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Start([🧬 MNP Check]):::start --&gt; Find[Find read position of first base]
-    Find --&gt; Found{Position found?}
-    Found --&gt;|No| Structural1([🔄 Structural → check_complex]):::fallback
-    Found --&gt;|Yes| Cover{Read covers entire MNP region?}
-    Cover --&gt;|No| Structural2([🔄 Structural → check_complex]):::fallback
-    Cover --&gt;|Yes| Contig{No indels within MNP block?}
+    Start(["🧬 MNP Check"]):::start --&gt; Find["Find read position of first base"]
+    Find --&gt; Found{"Position found?"}
+    Found --&gt;|No| CPX
+    Found --&gt;|Yes| Cover{"Read covers entire MNP region?"}
+    Cover --&gt;|No| CPX
+    Cover --&gt;|Yes| Contig{"No indels within MNP block?"}
+    Contig --&gt;|"Indel found"| CPX
+    Contig --&gt;|"Contiguous"| MinBQ{"min(BQ across block)\n≥ threshold?"}
+    MinBQ --&gt;|No| CPX
+    MinBQ --&gt;|Yes| Compare["Compare all bases to REF and ALT"]
+    Compare --&gt; Final{"All bases match?"}
+    Final --&gt;|"All match ALT"| Alt(["🔴 ALT"]):::alt
+    Final --&gt;|"All match REF"| Ref(["✅ REF"]):::ref
+    Final --&gt;|"Mixed / Neither"| Neither(["⬜ ThirdAllele — skip read"]):::neither
 
-    Contig --&gt;|Indel found| Structural3([🔄 Structural → check_complex]):::fallback
-    Contig --&gt;|Contiguous| MinBQ{"min(BQ across block) ≥ threshold?"}
-
-    MinBQ --&gt;|No| LowQ(["🔄 LowQuality → check_complex"]):::fallback
-    MinBQ --&gt;|Yes| Compare[Compare all bases to REF and ALT]
-
-    Compare --&gt; Final{All bases match?}
-    Final --&gt;|All match ALT| Alt([🔴 ALT]):::alt
-    Final --&gt;|All match REF| Ref([✅ REF]):::ref
-    Final --&gt;|Mixed / Neither| Third([⬜ ThirdAllele — skip read]):::neither
+    CPX(["🔄 check_complex\n(Phase 3 fallback)"]):::fallback
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
-    classDef fallback fill:#f39c12,color:#fff,stroke:#e67e22,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -6841,7 +6885,57 @@ Use mouse to pan and zoom
 <p>Without this fallback, REF reads for large deletions (e.g., <strong>NF2 ~100bp DEL</strong>) would be misclassified as 'neither' — clean REF reads naturally have no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence warranting realignment, so skipping Phase 3 without a REF fallback silently drops all REF counts.</p>
 <p>See <a href="#reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible">Case 2 in the Complex Indels guide</a> for the full worked example.</p>
 </div>
-<h3 id="reference-allele-classification-three-phase-algorithm">Three-Phase Algorithm<a class="headerlink" href="#reference-allele-classification-three-phase-algorithm" title="Permanent link">¶</a></h3>
+<h4 id="reference-allele-classification-phase-overview">Phase Overview<a class="headerlink" href="#reference-allele-classification-phase-overview" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>stateDiagram-v2
+    direction LR
+    [*] --&gt; Phase1 : read enters check_complex
+
+    Phase1 : Phase 1\nHaplotype Reconstruction\n─ CIGAR walk → read_seq
+    Phase2 : Phase 2\nMasked Comparison\n─ quality-masked haplotype match
+    Phase25 : Phase 2.5\nEdit Distance\n─ Levenshtein fast-path
+    Phase3 : Phase 3\nWFA → PairHMM\n─ dual-haplotype alignment
+
+    Phase1 --&gt; Phase2 : always
+    Phase2 --&gt; REF : exact REF match
+    Phase2 --&gt; ALT : exact ALT match
+    Phase2 --&gt; Phase25 : ambiguous / no match
+    Phase25 --&gt; REF : edit dist REF wins (&gt;1 margin)
+    Phase25 --&gt; ALT : edit dist ALT wins (&gt;1 margin)
+    Phase25 --&gt; Phase3 : tied or large-del skip
+    Phase3 --&gt; REF : confident REF call
+    Phase3 --&gt; ALT : confident ALT call
+    Phase3 --&gt; Neither : below threshold
+
+    REF : ✅ REF
+    ALT : 🔴 ALT
+    Neither : ⚪ Neither
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="reference-allele-classification-phase-1-2-detail">Phase 1 + 2 Detail<a class="headerlink" href="#reference-allele-classification-phase-1-2-detail" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -6864,110 +6958,155 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Start([🧬 Complex Check]):::start
-    Start --&gt; Phase1
+    Start(["🧬 Complex Check"]):::start --&gt; Walk["Walk CIGAR → rebuild read_seq"]
 
-    subgraph Phase1 [Phase 1: Haplotype Reconstruction]
-        direction TB
-        Walk[Walk CIGAR to reconstruct<br>read sequence for variant region]
-        Walk --&gt; Ops{CIGAR op type?}
-        Ops --&gt;|M/=/X| Match[Append overlapping bases + quals]
-        Ops --&gt;|I| Ins[Append inserted bases + quals]
-        Ops --&gt;|D/N| Del[Advance ref_pos only]
-        Ops --&gt;|S| SC{Overlaps variant?}
-        SC --&gt;|Yes| SCAdd[Append soft-clipped bases]
-        SC --&gt;|No| SCSkip[Skip]
-    end
+    Walk --&gt; Ops{"CIGAR op type?"}
+    Ops --&gt;|"M / = / X"| Match["Append overlapping bases + quals"]
+    Ops --&gt;|"I"| InsOp["Append inserted bases + quals"]
+    Ops --&gt;|"D / N"| Del["Advance ref_pos only"]
+    Ops --&gt;|"S (soft-clip)"| SC{"Overlaps variant?"}
+    SC --&gt;|Yes| SCAdd["Append soft-clipped bases"]
+    SC --&gt;|No| SCSkip["Skip"]
+    Match --&gt; LoopBack( )
+    InsOp --&gt; LoopBack
+    Del --&gt; LoopBack
+    SCAdd --&gt; LoopBack
+    SCSkip --&gt; LoopBack
+    LoopBack --&gt; |"more ops?"| Ops
+    LoopBack --&gt; |"done"| Guards
 
-    Phase1 --&gt; LargeGuard{"ref_len &gt; 50 AND<br>recon &lt; 10% of ref?"}
-    LargeGuard --&gt;|Yes| SkipP2[Skip Phase 2<br>unreliable]:::neither
+    Guards["Post-reconstruction guards"]
+    Guards --&gt; LargeGuard{"ref_len &gt; 50 AND<br>recon &lt; 10% of ref?"}
+    LargeGuard --&gt;|Yes| P25(["→ Phase 2.5"]):::next
     LargeGuard --&gt;|No| LenRatio{"ref_len &gt; 2 × alt_len?"}
-    LenRatio --&gt;|Yes| SkipP2B[Skip Phase 2 Case B<br>+ Phase 2.5]:::neither
-    LenRatio --&gt;|No| Phase2
+    LenRatio --&gt;|Yes| P3Direct(["→ Phase 3 directly"]):::next
+    LenRatio --&gt;|No| LenCheck{"Recon length matches?"}
 
-    subgraph Phase2 ["Phase 2: Masked Comparison"]
-        direction TB
-        LenCheck{Recon length matches?}
-        LenCheck --&gt;|"ALT and REF"| CaseA["Case A: Dual compare<br>+ ambiguity detection"]
-        LenCheck --&gt;|"ALT only"| CaseB["Case B: ALT-only compare"]
-        LenCheck --&gt;|"REF only"| CaseC["Case C: REF-only compare"]
-        LenCheck --&gt;|Neither| NoMatch[No match]
-    end
+    LenCheck --&gt;|"ALT and REF"| CaseA["Case A: Dual compare<br>+ ambiguity detection"]
+    LenCheck --&gt;|"ALT only"| CaseB["Case B: ALT-only compare"]
+    LenCheck --&gt;|"REF only"| CaseC["Case C: REF-only compare"]
+    LenCheck --&gt;|"Neither"| P25
 
     CaseA --&gt; Ambig{"Reliable bases<br>match BOTH?"}
-    Ambig --&gt;|Yes| Neither1([Neither - ambiguous]):::neither
-    Ambig --&gt;|No| Matches
-
-    Matches{Which allele matches?}
-    Matches --&gt;|ALT| Alt1([🔴 ALT]):::alt
-    Matches --&gt;|REF| Ref1([✅ REF]):::ref
-    Matches --&gt;|Neither| NoMatch
+    Ambig --&gt;|Yes| Neither1(["⚪ Neither — ambiguous"]):::neither
+    Ambig --&gt;|No| Matches{"Which allele?"}
+    Matches --&gt;|ALT| Alt1(["🔴 ALT"]):::alt
+    Matches --&gt;|REF| Ref1(["✅ REF"]):::ref
+    Matches --&gt;|Neither| P25
 
     CaseB --&gt; AltMatch{"0 mismatches on<br>reliable bases?"}
-    AltMatch --&gt;|Yes| Alt2([🔴 ALT]):::alt
-    AltMatch --&gt;|No| NoMatch
+    AltMatch --&gt;|Yes| Alt2(["🔴 ALT"]):::alt
+    AltMatch --&gt;|No| P25
 
     CaseC --&gt; RefMatch{"0 mismatches on<br>reliable bases?"}
-    RefMatch --&gt;|Yes| Ref2([✅ REF]):::ref
-    RefMatch --&gt;|No| NoMatch
-
-    SkipP2 --&gt; Phase25
-    SkipP2B --&gt; Phase3
-    NoMatch --&gt; Phase25
-
-    subgraph Phase25 ["Phase 2.5: Edit Distance"]
-        direction TB
-        ReconLen{"recon_len ≥ 2?"}
-        ReconLen --&gt;|No| SkipED[Skip to Phase 3]
-        ReconLen --&gt;|Yes| RatioGuard{"ref_len &gt; 2 × alt_len?"}
-        RatioGuard --&gt;|Yes| SkipED
-        RatioGuard --&gt;|No| EditDist["Compute Levenshtein distance<br>to REF and ALT alleles"]
-        EditDist --&gt; EDMargin{"&gt;1 edit margin?"}
-        EDMargin --&gt;|"ALT closer"| Alt25([🔴 ALT]):::alt
-        EDMargin --&gt;|"REF closer"| Ref25([✅ REF]):::ref
-        EDMargin --&gt;|"Ambiguous"| SkipED
-    end
-
-    SkipED --&gt; Phase3
-
-    subgraph Phase3 ["Phase 3: Alignment Fallback"]
-        direction TB
-        IsMNP{"Is cleanly MNP?<br>(ref == alt &gt; 1)"}
-
-        IsMNP --&gt;|Yes| Extract[Extract raw read window]
-        IsMNP --&gt;|No| Extract
-        Extract --&gt; Backend{"--alignment-backend?"}
-        Backend --&gt;|"pairhmm (default)"| WFA["WFA edit-distance triage<br>vs pangenomic haplotype matrix"]
-        WFA --&gt; WFAClear{"Clear winner?"}
-        WFAClear --&gt;|"Yes (~70-80%)"| WFAResult["Classified instantly"]
-        WFAClear --&gt;|"Ambiguous"| HMM["Marginalized PairHMM LLR<br>vs REF and ALT haplotypes"]
-        HMM --&gt; LLR{"LLR &gt; threshold?"}
-        LLR --&gt;|"Confident"| ConfResult2
-        LLR --&gt;|"Below threshold"| Neither4([Neither]):::neither
-        WFAResult --&gt;|ALT| Alt3w([🔴 ALT]):::alt
-        WFAResult --&gt;|REF| Ref3w([✅ REF]):::ref
-
-        Backend --&gt;|"sw"| SW["Semiglobal SW alignment<br>vs REF and ALT haplotypes"]
-        SW --&gt; Margin{"Score difference ≥ 2?"}
-        Margin --&gt;|"Confident call"| ConfCheck
-        Margin --&gt;|"Within margin"| Neither3([Neither]):::neither
-
-        ConfCheck{"Dual trigger?<br>(borderline OR poor)"}
-        ConfCheck --&gt;|"No"| ConfResult
-        ConfCheck --&gt;|"Yes"| LocalSW["Local SW alignment<br>(soft-clips bad flanks)"]
-        LocalSW --&gt; LocalMargin{"Score difference ≥ 2?"}
-        LocalMargin --&gt;|ALT wins| Alt3b([🔴 ALT]):::alt
-        LocalMargin --&gt;|REF wins| Ref3b([✅ REF]):::ref
-        LocalMargin --&gt;|"Ambiguous Tie"| Tie2([Neither]):::neither
-
-        ConfResult --&gt;|ALT| Alt3([🔴 ALT]):::alt
-        ConfResult --&gt;|REF| Ref3([✅ REF]):::ref
-        ConfResult2 --&gt;|ALT| Alt3c([🔴 ALT]):::alt
-        ConfResult2 --&gt;|REF| Ref3c([✅ REF]):::ref
-        Margin --&gt;|"Ambiguous Tie"| Tie1([Neither]):::neither
-    end
+    RefMatch --&gt;|Yes| Ref2(["✅ REF"]):::ref
+    RefMatch --&gt;|No| P25
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="reference-allele-classification-phase-25-detail-edit-distance-fast-path">Phase 2.5 Detail — Edit Distance Fast-Path<a class="headerlink" href="#reference-allele-classification-phase-25-detail-edit-distance-fast-path" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>flowchart TD
+    P25in(["→ from Phase 2"]):::entry
+    P25in --&gt; ReconLen{"recon_len ≥ 2?"}
+    ReconLen --&gt;|No| P3(["→ Phase 3"]):::next
+    ReconLen --&gt;|Yes| RatioGuard{"ref_len &gt; 2 × alt_len?"}
+    RatioGuard --&gt;|Yes| P3
+    RatioGuard --&gt;|No| EditDist["Compute Levenshtein distance<br>to REF and ALT alleles"]
+    EditDist --&gt; EDMargin{"&gt; 1 edit margin?"}
+    EDMargin --&gt;|"ALT closer"| Alt25(["🔴 ALT"]):::alt
+    EDMargin --&gt;|"REF closer"| Ref25(["✅ REF"]):::ref
+    EDMargin --&gt;|"Tied"| P3
+
+    classDef entry fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="reference-allele-classification-phase-3-detail-wfa-pairhmm-see-alignment-fallback">Phase 3 Detail — <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> → <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> (see <a href="#reference-allele-classification-phase-3-alignment-fallback">Alignment Fallback</a>)<a class="headerlink" href="#reference-allele-classification-phase-3-detail-wfa-pairhmm-see-alignment-fallback" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>flowchart LR
+    P3in(["→ from Phase 2.5"]):::entry --&gt; Extract["Extract raw read window"]
+    Extract --&gt; Backend{"--alignment-backend?"}
+
+    Backend --&gt;|"pairhmm (default)"| WFA["WFA edit-distance triage<br>vs pangenomic haplotypes"]
+    WFA --&gt; WFAClear{"Clear winner?"}
+    WFAClear --&gt;|"Yes (~70-80%)"| WFADone{"Which allele?"}
+    WFADone --&gt;|ALT| AltW(["🔴 ALT"]):::alt
+    WFADone --&gt;|REF| RefW(["✅ REF"]):::ref
+    WFAClear --&gt;|"Ambiguous"| HMM["Marginalized PairHMM LLR"]
+    HMM --&gt; LLR{"LLR &gt; threshold?"}
+    LLR --&gt;|Confident| HMMDone{"Which allele?"}
+    LLR --&gt;|"Below threshold"| N4(["⚪ Neither"]):::neither
+    HMMDone --&gt;|ALT| AltH(["🔴 ALT"]):::alt
+    HMMDone --&gt;|REF| RefH(["✅ REF"]):::ref
+
+    Backend --&gt;|"sw"| SW["Semiglobal SW alignment<br>vs REF + ALT haplotypes"]
+    SW --&gt; Margin{"Score diff ≥ 2?"}
+    Margin --&gt;|"Confident"| ConfCheck{"Dual-trigger?<br>(borderline / poor)"}
+    Margin --&gt;|"Tied"| N3(["⚪ Neither"]):::neither
+    ConfCheck --&gt;|No| SWDone{"Which allele?"}
+    ConfCheck --&gt;|Yes| LocalSW["Local SW alignment<br>(soft-clips bad flanks)"]
+    LocalSW --&gt; LocalDone{"Score diff ≥ 2?"}
+    LocalDone --&gt;|ALT| AltL(["🔴 ALT"]):::alt
+    LocalDone --&gt;|REF| RefL(["✅ REF"]):::ref
+    LocalDone --&gt;|"Tied"| N2(["⚪ Neither"]):::neither
+    SWDone --&gt;|ALT| AltS(["🔴 ALT"]):::alt
+    SWDone --&gt;|REF| RefS(["✅ REF"]):::ref
+
+    classDef entry fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
@@ -7276,15 +7415,24 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    Class([🧬 Allele Classification]) --&gt; ReadCount([📖 Read-Level Counts])
-    Class --&gt; FragTrack([🔗 Fragment Tracking])
-    FragTrack --&gt; Consensus([⚖️ Quality-Weighted Consensus])
-    Consensus --&gt; FragCount([🧬 Fragment-Level Counts])
-    ReadCount --&gt; SB([📊 Strand Bias])
-    FragCount --&gt; FSB([📊 Fragment Strand Bias])
+    Class(["\ud83e\uddec Classification"]):::start
 
+    subgraph ReadLevel ["\ud83d\udcd6 Read-Level Path"]
+        direction LR
+        RL1["Read Counts\nDP / RD / AD"] --&gt; SB["Strand Bias\n(Fisher's test)"]
+    end
+
+    subgraph FragLevel ["\ud83d\udd17 Fragment-Level Path"]
+        direction LR
+        FL1["Fragment Tracking\n(QNAME hash)"] --&gt; FL2["Quality Consensus\n(R1 vs R2 resolve)"] --&gt; FL3["Fragment Counts\nDPF / RDF / ADF"] --&gt; FSB["Fragment Strand Bias\n(Fisher's test)"]
+    end
+
+    Class --&gt; ReadLevel
+    Class --&gt; FragLevel
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef metrics fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    class ReadCount,FragCount,SB,FSB metrics;
+    class SB,FSB metrics;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -7315,22 +7463,23 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Fetch(["📥 Fetch reads from<br>±5bp window"]) --&gt; Filters["🔍 Apply read filters<br>(MAPQ, dup, etc.)"]
-    Filters --&gt; Classify["🧬 Allele classification<br>(check_snp / check_insertion / etc.)"]
-    Classify --&gt; Anchor{"Read start ≤<br>variant POS?"}
-    Anchor --&gt;|"Yes"| DP["✅ Count in DP<br>(REF, ALT, or neither)"]
-    Anchor --&gt;|"No"| ClassCheck{"Classified as<br>REF or ALT?"}
-    ClassCheck --&gt;|"Yes (shifted indel)"| DP
-    ClassCheck --&gt;|"No"| Skip(["⏭️ Skip — outside<br>variant footprint"]):::skip
+    Fetch(["📥 Fetch reads ±5bp window"]) --&gt; Classify["🧬 Allele classification"]
+    Classify --&gt; Anchor{"Read start ≤ variant POS?"}
+    Anchor --&gt;|"Yes — normal"| DP["✅ Count in DP"]
+    Anchor --&gt;|"No"| ClassCheck{"Classified as REF or ALT?"}
+    ClassCheck --&gt;|"Yes — shifted indel"| DPShifted["✅ Count in DP"]:::shifted
+    ClassCheck --&gt;|"No"| Skip(["⏭️ Skip — outside footprint"]):::skip
     DP --&gt; Allele{"Allele?"}
+    DPShifted --&gt; Allele
     Allele --&gt;|REF| RD["RD += 1"]:::ref
     Allele --&gt;|ALT| AD["AD += 1"]:::alt
-    Allele --&gt;|Neither| Neither["DP only<br>(no RD/AD)"]:::neither
+    Allele --&gt;|Neither| Neither["DP only (no RD/AD)"]:::neither
 
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
     classDef skip fill:#bdc3c7,color:#000,stroke:#95a5a6;
+    classDef shifted fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -7376,6 +7525,45 @@ Use mouse to pan and zoom
 <p>Fragment counting collapses read pairs into a single observation per fragment. This is critical for <strong><abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> sequencing</strong> (like MSK-ACCESS) where the same DNA fragment is sequenced from both ends — counting reads would double-count each fragment.</p>
 <h3 id="reference-counting-metrics-fragment-tracking">Fragment Tracking<a class="headerlink" href="#reference-counting-metrics-fragment-tracking" title="Permanent link">¶</a></h3>
 <p>Fragments are tracked using <strong>QNAME hashing</strong> — each read's QNAME is hashed to a <code>u64</code> key for memory-efficient lookup. The <code>FragmentEvidence</code> struct records the best base quality seen for REF and ALT across both reads in the pair.</p>
+<p><strong>Phase A — Fragment Tracking</strong> (per-read pass):</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>flowchart LR
+    Read(["📖 Read passes filters"]):::start --&gt; Hash["Hash QNAME → u64 key"]
+    Hash --&gt; Seen{"Fragment seen before?"}
+    Seen --&gt;|No| Create["Create FragmentEvidence\n{ref_qual=0, alt_qual=0}"]
+    Seen --&gt;|Yes| Update["Update best quality score"]
+    Create --&gt; Store["Store allele + base quality"]
+    Update --&gt; Store
+    Store --&gt; Next(["→ next read …"]):::next
+
+    classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<p><strong>Phase B — Quality-Weighted Consensus</strong> (after all reads loaded):</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -7398,28 +7586,23 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    Start([For each read passing filters]):::start
-    Start --&gt; Hash["Hash QNAME → u64 key"]
-    Hash --&gt; Observe["Record allele + base quality into FragmentEvidence"]
-    Observe --&gt; Done[After all reads processed]
-    Done --&gt; ForEach[For each unique fragment]
-    ForEach --&gt; HasBoth{Both REF and ALT evidence?}
-    HasBoth --&gt;|No| Direct[Assign to whichever allele was seen]
+    ForEach(["For each unique fragment"]):::start --&gt; HasBoth{"Both REF and ALT evidence?"}
+    HasBoth --&gt;|No| Direct["Assign to whichever allele was seen"]
     HasBoth --&gt;|Yes| QualCheck{"Quality difference &gt; threshold?"}
-    QualCheck --&gt;|"REF qual &gt;&gt; ALT qual"| Ref([✅ Count as REF]):::ref
-    QualCheck --&gt;|"ALT qual &gt;&gt; REF qual"| Alt([🔴 Count as ALT]):::alt
-    QualCheck --&gt;|"Within threshold"| Discard([⚪ Discard — ambiguous]):::discard
+    QualCheck --&gt;|"REF qual &gt;&gt; ALT"| Ref(["✅ Count as REF"]):::ref
+    QualCheck --&gt;|"ALT qual &gt;&gt; REF"| Alt(["🔴 Count as ALT"]):::alt
+    QualCheck --&gt;|"Within threshold"| Discard(["⚪ Discard — ambiguous"]):::discard
     Direct --&gt; Count
     Ref --&gt; Count
     Alt --&gt; Count
-    Discard --&gt; DPF["Still counted in DPF"]:::info
-    Count[Update RDF / ADF / DPF + strand counts]
+    Discard --&gt; DPF["Counted in DPF only"]:::info
+    Count["Update RDF / ADF / DPF + strand counts"]
 
     classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef discard fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
-    classDef info fill:#3498db15,stroke:#3498db;
+    classDef info fill:#3498db25,stroke:#3498db;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -7498,7 +7681,28 @@ Use mouse to pan and zoom
 <p>Where <strong><abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr></strong> and <strong><abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr></strong> are the read-level alternate and reference counts. Fragment-level <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> can be similarly computed as <code>ADF / (RDF + ADF)</code>.</p>
 <hr>
 <h2 id="reference-counting-metrics-strand-bias-fishers-exact-test">Strand Bias (Fisher's Exact Test)<a class="headerlink" href="#reference-counting-metrics-strand-bias-fishers-exact-test" title="Permanent link">¶</a></h2>
-<p>Strand bias detects when an allele is disproportionately supported by reads on one strand — a common sequencing artifact.</p>
+<p>Strand bias is detected by building a <strong>2×2 contingency table</strong> from strand-specific counts and running Fisher's exact test:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">·</th>
+<th style="text-align: center;">Fwd strand</th>
+<th style="text-align: center;">Rev strand</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>REF</strong></td>
+<td style="text-align: center;"><code>RD_fwd</code> (a)</td>
+<td style="text-align: center;"><code>RD_rev</code> (b)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>ALT</strong></td>
+<td style="text-align: center;"><code>AD_fwd</code> (c)</td>
+<td style="text-align: center;"><code>AD_rev</code> (d)</td>
+</tr>
+</tbody>
+</table>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -7521,22 +7725,14 @@ Use mouse to pan and zoom
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart LR
-    subgraph Table ["2×2 Contingency Table"]
-        direction TB
-        Header["| · | Fwd | Rev |"]
-        RefRow["| REF | a | b |"]
-        AltRow["| ALT | c | d |"]
-    end
+    Counts(["2×2 Strand Counts"]):::start --&gt; Fisher["Fisher's Exact Test"]
+    Fisher --&gt; PVal["SB_pval"]
+    Fisher --&gt; OR["SB_OR"]
+    PVal --&gt; Interp{"p &lt; 0.05?"}
+    Interp --&gt;|Yes| Bias(["⚠️ Possible Strand Bias"]):::warn
+    Interp --&gt;|No| NoBias(["✅ No Strand Bias"]):::pass
 
-    Table --&gt; Fisher([Fisher Exact Test]):::test
-    Fisher --&gt; Pval[SB_pval]
-    Fisher --&gt; OR[SB_OR]
-
-    Pval --&gt; Interpret{p &lt; 0.05?}
-    Interpret --&gt;|Yes| Bias{{⚠️ Possible Strand Bias}}:::warn
-    Interpret --&gt;|No| NoBias([✅ No Strand Bias]):::pass
-
-    classDef test fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef warn fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 </code></pre> 
@@ -9665,19 +9861,23 @@ Use mouse to pan and zoom
     </svg>
 </button>
     </nav>
-    <pre class="mermaid"><code>flowchart LR
-    develop --&gt;|1. Create release branch| release/X.Y.Z
-    release/X.Y.Z --&gt;|2. Update versions| release/X.Y.Z
-    release/X.Y.Z --&gt;|3. PR to main| main
-    main --&gt;|4. Tag triggers CI| CI
-    CI --&gt; PyPI
-    CI --&gt; Docker/GHCR
-    CI --&gt; gh-pages
-    main --&gt;|5. Merge back| develop
+    <pre class="mermaid"><code>gitGraph LR:
+   commit id: "ongoing develop work"
+   branch release/X.Y.Z
+   commit id: "bump versions (5 files)"
+   commit id: "update CHANGELOG.md"
+   checkout main
+   merge release/X.Y.Z id: "PR merged" tag: "vX.Y.Z"
+   checkout develop
+   merge release/X.Y.Z id: "back-merge"
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Tag triggers <abbr title="Continuous Integration - Automated build and test system">CI</abbr></p>
+<p>Pushing the tag <code>vX.Y.Z</code> automatically triggers the <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pipeline which publishes to <strong>PyPI</strong>, <strong>Docker/GHCR</strong>, and deploys <strong>gh-pages</strong> docs.</p>
 </div>
 <hr>
 <h2 id="development-release-guide-step-by-step-instructions">Step-by-Step Instructions<a class="headerlink" href="#development-release-guide-step-by-step-instructions" title="Permanent link">¶</a></h2>

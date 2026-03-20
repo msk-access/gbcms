@@ -1238,15 +1238,24 @@
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart LR
-    Class([🧬 Allele Classification]) --&gt; ReadCount([📖 Read-Level Counts])
-    Class --&gt; FragTrack([🔗 Fragment Tracking])
-    FragTrack --&gt; Consensus([⚖️ Quality-Weighted Consensus])
-    Consensus --&gt; FragCount([🧬 Fragment-Level Counts])
-    ReadCount --&gt; SB([📊 Strand Bias])
-    FragCount --&gt; FSB([📊 Fragment Strand Bias])
+    Class(["\ud83e\uddec Classification"]):::start
 
+    subgraph ReadLevel ["\ud83d\udcd6 Read-Level Path"]
+        direction LR
+        RL1["Read Counts\nDP / RD / AD"] --&gt; SB["Strand Bias\n(Fisher's test)"]
+    end
+
+    subgraph FragLevel ["\ud83d\udd17 Fragment-Level Path"]
+        direction LR
+        FL1["Fragment Tracking\n(QNAME hash)"] --&gt; FL2["Quality Consensus\n(R1 vs R2 resolve)"] --&gt; FL3["Fragment Counts\nDPF / RDF / ADF"] --&gt; FSB["Fragment Strand Bias\n(Fisher's test)"]
+    end
+
+    Class --&gt; ReadLevel
+    Class --&gt; FragLevel
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef metrics fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    class ReadCount,FragCount,SB,FSB metrics;
+    class SB,FSB metrics;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -1276,22 +1285,23 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    Fetch(["📥 Fetch reads from<br>±5bp window"]) --&gt; Filters["🔍 Apply read filters<br>(MAPQ, dup, etc.)"]
-    Filters --&gt; Classify["🧬 Allele classification<br>(check_snp / check_insertion / etc.)"]
-    Classify --&gt; Anchor{"Read start ≤<br>variant POS?"}
-    Anchor --&gt;|"Yes"| DP["✅ Count in DP<br>(REF, ALT, or neither)"]
-    Anchor --&gt;|"No"| ClassCheck{"Classified as<br>REF or ALT?"}
-    ClassCheck --&gt;|"Yes (shifted indel)"| DP
-    ClassCheck --&gt;|"No"| Skip(["⏭️ Skip — outside<br>variant footprint"]):::skip
+    Fetch(["📥 Fetch reads ±5bp window"]) --&gt; Classify["🧬 Allele classification"]
+    Classify --&gt; Anchor{"Read start ≤ variant POS?"}
+    Anchor --&gt;|"Yes — normal"| DP["✅ Count in DP"]
+    Anchor --&gt;|"No"| ClassCheck{"Classified as REF or ALT?"}
+    ClassCheck --&gt;|"Yes — shifted indel"| DPShifted["✅ Count in DP"]:::shifted
+    ClassCheck --&gt;|"No"| Skip(["⏭️ Skip — outside footprint"]):::skip
     DP --&gt; Allele{"Allele?"}
+    DPShifted --&gt; Allele
     Allele --&gt;|REF| RD["RD += 1"]:::ref
     Allele --&gt;|ALT| AD["AD += 1"]:::alt
-    Allele --&gt;|Neither| Neither["DP only<br>(no RD/AD)"]:::neither
+    Allele --&gt;|Neither| Neither["DP only (no RD/AD)"]:::neither
 
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
     classDef skip fill:#bdc3c7,color:#000,stroke:#95a5a6;
+    classDef shifted fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -1337,6 +1347,44 @@ Use mouse to pan and zoom
 <p>Fragment counting collapses read pairs into a single observation per fragment. This is critical for <strong><abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> sequencing</strong> (like MSK-ACCESS) where the same DNA fragment is sequenced from both ends — counting reads would double-count each fragment.</p>
 <h3 id="fragment-tracking">Fragment Tracking<a class="headerlink" href="#fragment-tracking" title="Permanent link">¶</a></h3>
 <p>Fragments are tracked using <strong>QNAME hashing</strong> — each read's QNAME is hashed to a <code>u64</code> key for memory-efficient lookup. The <code>FragmentEvidence</code> struct records the best base quality seen for REF and ALT across both reads in the pair.</p>
+<p><strong>Phase A — Fragment Tracking</strong> (per-read pass):</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    Read(["📖 Read passes filters"]):::start --&gt; Hash["Hash QNAME → u64 key"]
+    Hash --&gt; Seen{"Fragment seen before?"}
+    Seen --&gt;|No| Create["Create FragmentEvidence\n{ref_qual=0, alt_qual=0}"]
+    Seen --&gt;|Yes| Update["Update best quality score"]
+    Create --&gt; Store["Store allele + base quality"]
+    Update --&gt; Store
+    Store --&gt; Next(["→ next read …"]):::next
+
+    classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<p><strong>Phase B — Quality-Weighted Consensus</strong> (after all reads loaded):</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1358,28 +1406,23 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    Start([For each read passing filters]):::start
-    Start --&gt; Hash["Hash QNAME → u64 key"]
-    Hash --&gt; Observe["Record allele + base quality into FragmentEvidence"]
-    Observe --&gt; Done[After all reads processed]
-    Done --&gt; ForEach[For each unique fragment]
-    ForEach --&gt; HasBoth{Both REF and ALT evidence?}
-    HasBoth --&gt;|No| Direct[Assign to whichever allele was seen]
+    ForEach(["For each unique fragment"]):::start --&gt; HasBoth{"Both REF and ALT evidence?"}
+    HasBoth --&gt;|No| Direct["Assign to whichever allele was seen"]
     HasBoth --&gt;|Yes| QualCheck{"Quality difference &gt; threshold?"}
-    QualCheck --&gt;|"REF qual &gt;&gt; ALT qual"| Ref([✅ Count as REF]):::ref
-    QualCheck --&gt;|"ALT qual &gt;&gt; REF qual"| Alt([🔴 Count as ALT]):::alt
-    QualCheck --&gt;|"Within threshold"| Discard([⚪ Discard — ambiguous]):::discard
+    QualCheck --&gt;|"REF qual &gt;&gt; ALT"| Ref(["✅ Count as REF"]):::ref
+    QualCheck --&gt;|"ALT qual &gt;&gt; REF"| Alt(["🔴 Count as ALT"]):::alt
+    QualCheck --&gt;|"Within threshold"| Discard(["⚪ Discard — ambiguous"]):::discard
     Direct --&gt; Count
     Ref --&gt; Count
     Alt --&gt; Count
-    Discard --&gt; DPF["Still counted in DPF"]:::info
-    Count[Update RDF / ADF / DPF + strand counts]
+    Discard --&gt; DPF["Counted in DPF only"]:::info
+    Count["Update RDF / ADF / DPF + strand counts"]
 
     classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef discard fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
-    classDef info fill:#3498db15,stroke:#3498db;
+    classDef info fill:#3498db25,stroke:#3498db;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -1458,7 +1501,28 @@ Use mouse to pan and zoom
 <p>Where <strong><abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr></strong> and <strong><abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr></strong> are the read-level alternate and reference counts. Fragment-level <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> can be similarly computed as <code>ADF / (RDF + ADF)</code>.</p>
 <hr>
 <h2 id="strand-bias-fishers-exact-test">Strand Bias (Fisher's Exact Test)<a class="headerlink" href="#strand-bias-fishers-exact-test" title="Permanent link">¶</a></h2>
-<p>Strand bias detects when an allele is disproportionately supported by reads on one strand — a common sequencing artifact.</p>
+<p>Strand bias is detected by building a <strong>2×2 contingency table</strong> from strand-specific counts and running Fisher's exact test:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">·</th>
+<th style="text-align: center;">Fwd strand</th>
+<th style="text-align: center;">Rev strand</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>REF</strong></td>
+<td style="text-align: center;"><code>RD_fwd</code> (a)</td>
+<td style="text-align: center;"><code>RD_rev</code> (b)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>ALT</strong></td>
+<td style="text-align: center;"><code>AD_fwd</code> (c)</td>
+<td style="text-align: center;"><code>AD_rev</code> (d)</td>
+</tr>
+</tbody>
+</table>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1480,22 +1544,14 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart LR
-    subgraph Table ["2×2 Contingency Table"]
-        direction TB
-        Header["| · | Fwd | Rev |"]
-        RefRow["| REF | a | b |"]
-        AltRow["| ALT | c | d |"]
-    end
+    Counts(["2×2 Strand Counts"]):::start --&gt; Fisher["Fisher's Exact Test"]
+    Fisher --&gt; PVal["SB_pval"]
+    Fisher --&gt; OR["SB_OR"]
+    PVal --&gt; Interp{"p &lt; 0.05?"}
+    Interp --&gt;|Yes| Bias(["⚠️ Possible Strand Bias"]):::warn
+    Interp --&gt;|No| NoBias(["✅ No Strand Bias"]):::pass
 
-    Table --&gt; Fisher([Fisher Exact Test]):::test
-    Fisher --&gt; Pval[SB_pval]
-    Fisher --&gt; OR[SB_OR]
-
-    Pval --&gt; Interpret{p &lt; 0.05?}
-    Interpret --&gt;|Yes| Bias{{⚠️ Possible Strand Bias}}:::warn
-    Interpret --&gt;|No| NoBias([✅ No Strand Bias]):::pass
-
-    classDef test fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef warn fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 </code></pre>
@@ -2104,7 +2160,7 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 04:03:49 UTC"><span class="timeago" datetime="2026-03-20T04:03:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 04:03:49 UTC">2026-03-20</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 04:39:34 UTC"><span class="timeago" datetime="2026-03-20T04:39:34+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 04:39:34 UTC">2026-03-20</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
