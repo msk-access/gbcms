@@ -46,8 +46,9 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 │    wfa_router.rs     — WFA2 fast-path alignment              │
 │    rna.rs            — RNA validation, splicing, editing      │
 │    mfsd.rs           — Mutant Fragment Size Distribution      │
-│    utils.rs          — ClassifyResult, haplotype helpers     │
 │    parquet_writer.rs — write_fsd_parquet() via ZSTD Parquet  │
+│    fragment.rs       — Re-export of shared::fragment         │
+│    utils.rs          — ClassifyResult, haplotype helpers     │
 │                                                             │
 │  shared/                                                      │
 │    fragment.rs       — FragmentEvidence, QNAME/UMI hashing   │
@@ -101,7 +102,8 @@ gbcms is a **Python/Rust hybrid** tool for counting alleles at variant positions
 | `rust/counting/rna.rs` | RNA validation, strandedness, splice junction tracking, editing |
 | `rust/counting/mfsd.rs` | Fragment size distribution analysis (KS test, LLR) |
 | `rust/counting/parquet_writer.rs` | write_fsd_parquet(), Arrow/ZSTD native Parquet |
-| `rust/shared/fragment.rs` | FragmentEvidence, quality-weighted consensus, QNAME/UMI hashing |
+| `rust/counting/fragment.rs` | Re-export shim for shared::fragment (backward compat) |
+| `rust/shared/fragment.rs` | FragmentEvidence, quality-weighted consensus, QNAME/UMI hashing (canonical) |
 | `rust/shared/stats.rs` | Fisher's exact test (strand bias) |
 | `rust/shared/bam_utils.rs` | median_qual, find_read_pos |
 | `rust/shared/filters.rs` | ReadFilter struct, FilterCounts (universal BAM flag checks) |

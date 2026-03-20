@@ -90,6 +90,7 @@ flowchart LR
         Count --> PH["pairhmm.rs"]
         Count --> WFA["wfa_router.rs"]
         Count --> RNA["rna.rs"]
+        Count --> Parquet["parquet_writer.rs"]
         Norm --> LA["left_align.rs"]
         Norm --> DC["decomp.rs"]
         Shared --> Frag["fragment.rs"]

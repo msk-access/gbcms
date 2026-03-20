@@ -179,7 +179,6 @@ src/gbcms/
 
 rust/src/
 ├── lib.rs                    # PyO3 module exports
-├── parquet_writer.rs         # write_fsd_parquet() — native Parquet via ZSTD (--mfsd-parquet)
 ├── counting/
 │   ├── mod.rs                # Submodule re-exports
 │   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
@@ -189,8 +188,9 @@ rust/src/
 │   ├── pangenome.rs          # Haplotype matrix construction
 │   ├── wfa_router.rs         # WFA2 fast-path alignment
 │   ├── rna.rs                # RNA validation, splicing, editing site lookup
-│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
 │   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
 │   └── utils.rs              # Helpers, reconstruction, soft-clip
 ├── normalize/
 │   ├── mod.rs                # Submodule re-exports
@@ -200,7 +200,13 @@ rust/src/
 │   ├── fasta.rs              # Reference sequence fetcher
 │   ├── repeat.rs             # Tandem repeat detection
 │   └── types.rs              # NormResult enum
-├── stats.rs                  # Fisher's exact test
+├── shared/
+│   ├── mod.rs                # Submodule re-exports
+│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+│   ├── stats.rs              # Fisher's exact test (strand bias)
+│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
+│   ├── baq.rs                # BAQ heuristic (Li 2011)
+│   └── bam_utils.rs          # median_qual, find_read_pos
 └── types.rs                  # Variant, BaseCounts, PyO3 bindings
 ```
 
