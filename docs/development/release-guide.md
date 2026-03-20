@@ -95,17 +95,16 @@ Add new section at top:
 ### 4. Run Pre-Release Checks
 
 ```bash
-# Lint
-make lint
+# Python linting + type checking
+ruff check src/ tests/
+black --check src/ tests/
+mypy src/
 
-# Format
-make format
+# Rust linting + unit tests
+cd rust && cargo clippy --all-targets -- -D warnings && cargo test && cd ..
 
-# Tests
-make test
-
-# Local build test
-make docker-build
+# Integration tests
+pytest -v
 ```
 
 ### 5. Commit and Push
@@ -196,11 +195,14 @@ Interactive helper for git-flow operations:
 
 | Target | Description |
 |:-------|:------------|
-| `make lint` | Run ruff and mypy |
-| `make format` | Run black and ruff --fix |
-| `make test` | Run pytest |
-| `make test-cov` | Run tests with coverage |
+| `make lint` | Run `ruff check` and `mypy` (Python only) |
+| `make format` | Run `black` and `ruff --fix` |
+| `make test` | Run `pytest` |
+| `make test-cov` | Run tests with coverage report |
 | `make docker-build` | Build Docker image locally |
+
+!!! note
+    `make lint` covers Python only. Always run `cargo clippy --all-targets -- -D warnings` separately to catch Rust linting errors before releasing.
 
 ---
 

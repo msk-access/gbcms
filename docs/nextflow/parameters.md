@@ -43,9 +43,9 @@ Complete reference for all pipeline parameters.
 | `--context_padding` | `5` | Minimum flanking bases for [Phase 3 alignment](../reference/allele-classification.md#phase-3-alignment-fallback) (auto-increased in repeats) |
 | `--adaptive_context` | `true` | Dynamically increase context padding in [tandem repeat regions](../reference/variant-normalization.md#adaptive-context-padding) |
 | `--filter_duplicates` | `true` | Filter duplicate reads |
-| `--filter_secondary` | `false` | Filter secondary alignments |
-| `--filter_supplementary` | `false` | Filter supplementary alignments |
-| `--filter_qc_failed` | `false` | Filter QC failed reads |
+| `--filter_secondary` | `true` | Filter secondary alignments |
+| `--filter_supplementary` | `true` | Filter supplementary alignments |
+| `--filter_qc_failed` | `true` | Filter QC failed reads |
 | `--filter_improper_pair` | `false` | Filter improperly paired reads |
 | `--filter_indel` | `false` | Filter reads with indels |
 | `--filter_by_sample` | `false` | Filter multi-sample MAF by `Tumor_Sample_Barcode` ([details](samplesheet.md#multi-sample-maf-filtering)) |
@@ -65,7 +65,7 @@ These parameters are only used when `--mode rna` is specified.
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--rna_editing_db` | `''` | Path to [REDIportal](http://srv00.recas.ba.infn.it/atlas/index.html) editing database file (e.g., `TABLE1_hg38_v3.txt`). Flags ALT sites that overlap known A→I RNA editing positions. |
-| `--enforce_strandedness` | `false` | Enforce dUTP strand-specific library prep for A→I editing detection. Skips ALT reads on the wrong strand for known editing sites. |
+| `--enforce_strandedness` | `true` | Enforce dUTP strand-specific library prep. Disable with `false` for unstranded RNA-seq libraries (`--no-strandedness` equivalent). |
 
 !!! tip "RNA mode defaults"
     RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
@@ -74,7 +74,7 @@ These parameters are only used when `--mode rna` is specified.
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
-| `--alignment_backend` | `hmm` | Phase 3 alignment backend: `hmm` (PairHMM, default) or `sw` (Smith-Waterman). See [CLI Reference](../cli/dna.md#alignment-backend). |
+| `--alignment_backend` | `pairhmm` | Phase 3 alignment backend: `pairhmm` (WFA2 + PairHMM, default) or `sw` (Smith-Waterman). See [CLI Reference](../cli/dna.md#alignment-backend). |
 | `--llr_threshold` | `2.3` | PairHMM log-likelihood ratio threshold for confident calls |
 | `--gap_open_prob` | `1e-4` | PairHMM gap-open probability for non-repeat regions |
 | `--gap_extend_prob` | `0.1` | PairHMM gap-extend probability for non-repeat regions |

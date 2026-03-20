@@ -130,23 +130,23 @@ docker run --rm \
 
 ## Troubleshooting
 
-### Module Not Found
-```bash
-pip uninstall gbcms && pip install gbcms
-```
+See the **[full Troubleshooting Guide](../resources/troubleshooting.md)** for detailed solutions.
 
-### BAM Index Missing
+Quick checks:
+
 ```bash
+# BAM index missing
 samtools index sample.bam
+
+# FASTA index missing
+samtools faidx reference.fa
+
+# Chromosome mismatch — compare names between FASTA, BAM, VCF/MAF
+grep "^>" reference.fa | head -5
+samtools view -H sample.bam | grep "^@SQ" | head -5
 ```
 
-### Docker Permission Denied
-```bash
-sudo usermod -aG docker $USER && newgrp docker
-```
-
-### glibc Version Error
-If you see `GLIBC_2.34 not found`, use the [Legacy Linux](#legacy-linux-rhel-8-hpc) instructions.
+For glibc errors, installation failures, or Docker permission issues, see [Troubleshooting → Installation Issues](../resources/troubleshooting.md#installation-issues).
 
 ---
 

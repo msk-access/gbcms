@@ -67,17 +67,15 @@ nextflow run nextflow/main.nf \
 
 ## Strict Filtering
 
-Enable all quality filters:
+Enable additional read filters beyond the defaults (duplicates, secondary, supplementary, and QC-failed are already on by default):
 
 ```bash
 nextflow run nextflow/main.nf \
     --input samplesheet.csv \
     --variants variants.vcf \
     --fasta reference.fa \
-    --filter_duplicates true \
-    --filter_secondary true \
-    --filter_supplementary true \
-    --filter_qc_failed true \
+    --filter_improper_pair true \
+    --filter_indel true \
     -profile docker
 ```
 

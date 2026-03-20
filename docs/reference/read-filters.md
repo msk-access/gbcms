@@ -66,9 +66,9 @@ flowchart TD
 | Filter | CLI Flag | Default | SAM Flag | Description |
 |:-------|:---------|:--------|:---------|:------------|
 | Duplicates | `--filter-duplicates` | **On** | `0x400` | PCR/optical duplicates |
-| Secondary | `--filter-secondary` | Off | `0x100` | Secondary alignments |
-| Supplementary | `--filter-supplementary` | Off | `0x800` | Chimeric/split alignments |
-| QC Failed | `--filter-qc-failed` | Off | `0x200` | Platform QC failures |
+| Secondary | `--filter-secondary` | **On** | `0x100` | Secondary alignments |
+| Supplementary | `--filter-supplementary` | **On** | `0x800` | Chimeric/split alignments |
+| QC Failed | `--filter-qc-failed` | **On** | `0x200` | Platform QC failures |
 | Improper Pair | `--filter-improper-pair` | Off | `0x2` (inverted) | Reads not properly paired |
 | Indel reads | `--filter-indel` | Off | CIGAR-based | Any Ins or Del in CIGAR |
 | MAPQ threshold | `--min-mapq` | **20** (DNA) / **1** (RNA) | — | Minimum mapping quality |
@@ -98,13 +98,14 @@ Beyond the read-level filters above, gbcms also applies **base-level quality thr
 ## Comparison with Original GBCMS
 
 !!! note "Filter Non-Primary"
-    The original GBCMS has a single `--filter_non_primary` flag. gbcms splits this into `--filter-secondary` and `--filter-supplementary` for finer control. Both default to **off**, matching the original behavior.
+    The original GBCMS has a single `--filter_non_primary` flag. gbcms splits this into `--filter-secondary` and `--filter-supplementary` for finer control. Both default to **on** in gbcms (stricter than the original behavior, which was off).
 
 | Feature | Original GBCMS | gbcms |
 |:--------|:---------------|:---------|
 | Base quality filtering | No threshold | Default `--min-baseq 20` |
 | Duplicate filtering | Optional | **On** by default |
-| Non-primary filter | Single flag | Split: secondary + supplementary |
+| Non-primary filter | Single flag (default off) | Split: secondary + supplementary (**both On**) |
+| QC-failed filter | Optional | **On** by default |
 | Indel read filter | Optional | Optional (off by default) |
 
 ---
