@@ -2434,20 +2434,22 @@ provides these dependencies.</p>
 </div>
 <hr>
 <h2 id="getting-started-installation-troubleshooting">Troubleshooting<a class="headerlink" href="#getting-started-installation-troubleshooting" title="Permanent link">¶</a></h2>
-<h3 id="getting-started-installation-module-not-found">Module Not Found<a class="headerlink" href="#getting-started-installation-module-not-found" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#getting-started-installation-__codelineno-9-1"></a>pip<span class="w"> </span>uninstall<span class="w"> </span>gbcms<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>gbcms
+<p>See the <strong><a href="#resources-troubleshooting">full Troubleshooting Guide</a></strong> for detailed solutions.</p>
+<p>Quick checks:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#getting-started-installation-__codelineno-9-1"></a><span class="c1"># BAM index missing</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#getting-started-installation-__codelineno-9-2"></a>samtools<span class="w"> </span>index<span class="w"> </span>sample.bam
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#getting-started-installation-__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#getting-started-installation-__codelineno-9-4"></a><span class="c1"># FASTA index missing</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#getting-started-installation-__codelineno-9-5"></a>samtools<span class="w"> </span>faidx<span class="w"> </span>reference.fa
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#getting-started-installation-__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#getting-started-installation-__codelineno-9-7"></a><span class="c1"># Chromosome mismatch — compare names between FASTA, BAM, VCF/MAF</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#getting-started-installation-__codelineno-9-8"></a>grep<span class="w"> </span><span class="s2">"^&gt;"</span><span class="w"> </span>reference.fa<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#getting-started-installation-__codelineno-9-9"></a>samtools<span class="w"> </span>view<span class="w"> </span>-H<span class="w"> </span>sample.bam<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"^@SQ"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
 </code></pre></div>
-<h3 id="getting-started-installation-bam-index-missing"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Index Missing<a class="headerlink" href="#getting-started-installation-bam-index-missing" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#getting-started-installation-__codelineno-10-1"></a>samtools<span class="w"> </span>index<span class="w"> </span>sample.bam
-</code></pre></div>
-<h3 id="getting-started-installation-docker-permission-denied">Docker Permission Denied<a class="headerlink" href="#getting-started-installation-docker-permission-denied" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#getting-started-installation-__codelineno-11-1"></a>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>docker<span class="w"> </span><span class="nv">$USER</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>newgrp<span class="w"> </span>docker
-</code></pre></div>
-<h3 id="getting-started-installation-glibc-version-error">glibc Version Error<a class="headerlink" href="#getting-started-installation-glibc-version-error" title="Permanent link">¶</a></h3>
-<p>If you see <code>GLIBC_2.34 not found</code>, use the <a href="#getting-started-installation-legacy-linux-rhel-8-hpc">Legacy Linux</a> instructions.</p>
+<p>For glibc errors, installation failures, or Docker permission issues, see <a href="#resources-troubleshooting-installation-issues">Troubleshooting → Installation Issues</a>.</p>
 <hr>
 <h2 id="getting-started-installation-upgrade">Upgrade<a class="headerlink" href="#getting-started-installation-upgrade" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#getting-started-installation-__codelineno-12-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>gbcms
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#getting-started-installation-__codelineno-10-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>gbcms
 </code></pre></div>
 <hr>
 <h2 id="getting-started-installation-next-steps">Next Steps<a class="headerlink" href="#getting-started-installation-next-steps" title="Permanent link">¶</a></h2>
@@ -4331,17 +4333,17 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><code>--filter_secondary</code></td>
-<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;"><code>true</code></td>
 <td style="text-align: left;">Filter secondary alignments</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--filter_supplementary</code></td>
-<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;"><code>true</code></td>
 <td style="text-align: left;">Filter supplementary alignments</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--filter_qc_failed</code></td>
-<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;"><code>true</code></td>
 <td style="text-align: left;">Filter QC failed reads</td>
 </tr>
 <tr>
@@ -4406,8 +4408,8 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><code>--enforce_strandedness</code></td>
-<td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Enforce <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strand-specific library prep for A→I editing detection. Skips ALT reads on the wrong strand for known editing sites.</td>
+<td style="text-align: left;"><code>true</code></td>
+<td style="text-align: left;">Enforce <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strand-specific library prep. Disable with <code>false</code> for unstranded RNA-seq libraries (<code>--no-strandedness</code> equivalent).</td>
 </tr>
 </tbody>
 </table>
@@ -4427,8 +4429,8 @@ Use mouse to pan and zoom
 <tbody>
 <tr>
 <td style="text-align: left;"><code>--alignment_backend</code></td>
-<td style="text-align: left;"><code>hmm</code></td>
-<td style="text-align: left;">Phase 3 alignment backend: <code>hmm</code> (<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, default) or <code>sw</code> (Smith-Waterman). See <a href="#cli-dna-alignment-backend"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a>.</td>
+<td style="text-align: left;"><code>pairhmm</code></td>
+<td style="text-align: left;">Phase 3 alignment backend: <code>pairhmm</code> (WFA2 + <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, default) or <code>sw</code> (Smith-Waterman). See <a href="#cli-dna-alignment-backend"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--llr_threshold</code></td>
@@ -4616,16 +4618,14 @@ Use mouse to pan and zoom
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#nextflow-examples-__codelineno-4-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
 <h2 id="nextflow-examples-strict-filtering">Strict Filtering<a class="headerlink" href="#nextflow-examples-strict-filtering" title="Permanent link">¶</a></h2>
-<p>Enable all quality filters:</p>
+<p>Enable additional read filters beyond the defaults (duplicates, secondary, supplementary, and QC-failed are already on by default):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#nextflow-examples-__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#nextflow-examples-__codelineno-5-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#nextflow-examples-__codelineno-5-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#nextflow-examples-__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#nextflow-examples-__codelineno-5-5"></a><span class="w">    </span>--filter_duplicates<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#nextflow-examples-__codelineno-5-6"></a><span class="w">    </span>--filter_secondary<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#nextflow-examples-__codelineno-5-7"></a><span class="w">    </span>--filter_supplementary<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#nextflow-examples-__codelineno-5-8"></a><span class="w">    </span>--filter_qc_failed<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#nextflow-examples-__codelineno-5-9"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#nextflow-examples-__codelineno-5-5"></a><span class="w">    </span>--filter_improper_pair<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#nextflow-examples-__codelineno-5-6"></a><span class="w">    </span>--filter_indel<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#nextflow-examples-__codelineno-5-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
 <h2 id="nextflow-examples-umi-aware-counting"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>-Aware Counting<a class="headerlink" href="#nextflow-examples-umi-aware-counting" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#nextflow-examples-__codelineno-6-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
@@ -5945,21 +5945,21 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;">Secondary</td>
 <td style="text-align: left;"><code>--filter-secondary</code></td>
-<td style="text-align: left;">Off</td>
+<td style="text-align: left;"><strong>On</strong></td>
 <td style="text-align: left;"><code>0x100</code></td>
 <td style="text-align: left;">Secondary alignments</td>
 </tr>
 <tr>
 <td style="text-align: left;">Supplementary</td>
 <td style="text-align: left;"><code>--filter-supplementary</code></td>
-<td style="text-align: left;">Off</td>
+<td style="text-align: left;"><strong>On</strong></td>
 <td style="text-align: left;"><code>0x800</code></td>
 <td style="text-align: left;">Chimeric/split alignments</td>
 </tr>
 <tr>
 <td style="text-align: left;">QC Failed</td>
 <td style="text-align: left;"><code>--filter-qc-failed</code></td>
-<td style="text-align: left;">Off</td>
+<td style="text-align: left;"><strong>On</strong></td>
 <td style="text-align: left;"><code>0x200</code></td>
 <td style="text-align: left;">Platform QC failures</td>
 </tr>
@@ -6028,7 +6028,7 @@ Use mouse to pan and zoom
 <h2 id="reference-read-filters-comparison-with-original-gbcms">Comparison with Original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr><a class="headerlink" href="#reference-read-filters-comparison-with-original-gbcms" title="Permanent link">¶</a></h2>
 <div class="admonition note">
 <p class="admonition-title">Filter Non-Primary</p>
-<p>The original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> has a single <code>--filter_non_primary</code> flag. gbcms splits this into <code>--filter-secondary</code> and <code>--filter-supplementary</code> for finer control. Both default to <strong>off</strong>, matching the original behavior.</p>
+<p>The original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> has a single <code>--filter_non_primary</code> flag. gbcms splits this into <code>--filter-secondary</code> and <code>--filter-supplementary</code> for finer control. Both default to <strong>on</strong> in gbcms (stricter than the original behavior, which was off).</p>
 </div>
 <table>
 <thead>
@@ -6051,8 +6051,13 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;">Non-primary filter</td>
-<td style="text-align: left;">Single flag</td>
-<td style="text-align: left;">Split: secondary + supplementary</td>
+<td style="text-align: left;">Single flag (default off)</td>
+<td style="text-align: left;">Split: secondary + supplementary (<strong>both On</strong>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">QC-failed filter</td>
+<td style="text-align: left;">Optional</td>
+<td style="text-align: left;"><strong>On</strong> by default</td>
 </tr>
 <tr>
 <td style="text-align: left;">Indel read filter</td>
@@ -9682,17 +9687,16 @@ Use mouse to pan and zoom
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#development-release-guide-__codelineno-3-10"></a><span class="k">-</span><span class="w"> </span>Changes description
 </code></pre></div>
 <h3 id="development-release-guide-4-run-pre-release-checks">4. Run Pre-Release Checks<a class="headerlink" href="#development-release-guide-4-run-pre-release-checks" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#development-release-guide-__codelineno-4-1"></a><span class="c1"># Lint</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#development-release-guide-__codelineno-4-2"></a>make<span class="w"> </span>lint
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#development-release-guide-__codelineno-4-3"></a>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#development-release-guide-__codelineno-4-4"></a><span class="c1"># Format</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#development-release-guide-__codelineno-4-5"></a>make<span class="w"> </span>format
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#development-release-guide-__codelineno-4-6"></a>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#development-release-guide-__codelineno-4-7"></a><span class="c1"># Tests</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#development-release-guide-__codelineno-4-8"></a>make<span class="w"> </span><span class="nb">test</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#development-release-guide-__codelineno-4-9"></a>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#development-release-guide-__codelineno-4-10"></a><span class="c1"># Local build test</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#development-release-guide-__codelineno-4-11"></a>make<span class="w"> </span>docker-build
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#development-release-guide-__codelineno-4-1"></a><span class="c1"># Python linting + type checking</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#development-release-guide-__codelineno-4-2"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#development-release-guide-__codelineno-4-3"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#development-release-guide-__codelineno-4-4"></a>mypy<span class="w"> </span>src/
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#development-release-guide-__codelineno-4-5"></a>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#development-release-guide-__codelineno-4-6"></a><span class="c1"># Rust linting + unit tests</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#development-release-guide-__codelineno-4-7"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#development-release-guide-__codelineno-4-8"></a>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#development-release-guide-__codelineno-4-9"></a><span class="c1"># Integration tests</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#development-release-guide-__codelineno-4-10"></a>pytest<span class="w"> </span>-v
 </code></pre></div>
 <h3 id="development-release-guide-5-commit-and-push">5. Commit and Push<a class="headerlink" href="#development-release-guide-5-commit-and-push" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#development-release-guide-__codelineno-5-1"></a>git<span class="w"> </span>add<span class="w"> </span>-A
@@ -9766,19 +9770,19 @@ Use mouse to pan and zoom
 <tbody>
 <tr>
 <td style="text-align: left;"><code>make lint</code></td>
-<td style="text-align: left;">Run ruff and mypy</td>
+<td style="text-align: left;">Run <code>ruff check</code> and <code>mypy</code> (Python only)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>make format</code></td>
-<td style="text-align: left;">Run black and ruff --fix</td>
+<td style="text-align: left;">Run <code>black</code> and <code>ruff --fix</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>make test</code></td>
-<td style="text-align: left;">Run pytest</td>
+<td style="text-align: left;">Run <code>pytest</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>make test-cov</code></td>
-<td style="text-align: left;">Run tests with coverage</td>
+<td style="text-align: left;">Run tests with coverage report</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>make docker-build</code></td>
@@ -9786,6 +9790,10 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code>make lint</code> covers Python only. Always run <code>cargo clippy --all-targets -- -D warnings</code> separately to catch Rust linting errors before releasing.</p>
+</div>
 <hr>
 <h2 id="development-release-guide-ci-workflows"><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Workflows<a class="headerlink" href="#development-release-guide-ci-workflows" title="Permanent link">¶</a></h2>
 <table>
