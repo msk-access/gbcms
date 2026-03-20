@@ -4942,18 +4942,18 @@ Use mouse to pan and zoom
 <a id="__codelineno-2-14" name="__codelineno-2-14" href="#reference-architecture-__codelineno-2-14"></a>
 <a id="__codelineno-2-15" name="__codelineno-2-15" href="#reference-architecture-__codelineno-2-15"></a>rust/src/
 <a id="__codelineno-2-16" name="__codelineno-2-16" href="#reference-architecture-__codelineno-2-16"></a>├── lib.rs                    # PyO3 module exports
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#reference-architecture-__codelineno-2-17"></a>├── parquet_writer.rs         # write_fsd_parquet() — native Parquet via ZSTD (--mfsd-parquet)
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#reference-architecture-__codelineno-2-18"></a>├── counting/
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#reference-architecture-__codelineno-2-19"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>│   ├── alignment.rs          # Smith-Waterman implementation
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   ├── pangenome.rs          # Haplotype matrix construction
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#reference-architecture-__codelineno-2-17"></a>├── counting/
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#reference-architecture-__codelineno-2-18"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#reference-architecture-__codelineno-2-19"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>│   ├── alignment.rs          # Smith-Waterman implementation
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>│   ├── pangenome.rs          # Haplotype matrix construction
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
 <a id="__codelineno-2-29" name="__codelineno-2-29" href="#reference-architecture-__codelineno-2-29"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
 <a id="__codelineno-2-30" name="__codelineno-2-30" href="#reference-architecture-__codelineno-2-30"></a>├── normalize/
 <a id="__codelineno-2-31" name="__codelineno-2-31" href="#reference-architecture-__codelineno-2-31"></a>│   ├── mod.rs                # Submodule re-exports
@@ -4963,8 +4963,14 @@ Use mouse to pan and zoom
 <a id="__codelineno-2-35" name="__codelineno-2-35" href="#reference-architecture-__codelineno-2-35"></a>│   ├── fasta.rs              # Reference sequence fetcher
 <a id="__codelineno-2-36" name="__codelineno-2-36" href="#reference-architecture-__codelineno-2-36"></a>│   ├── repeat.rs             # Tandem repeat detection
 <a id="__codelineno-2-37" name="__codelineno-2-37" href="#reference-architecture-__codelineno-2-37"></a>│   └── types.rs              # NormResult enum
-<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>├── stats.rs                  # Fisher's exact test
-<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>├── shared/
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#reference-architecture-__codelineno-2-40"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#reference-architecture-__codelineno-2-41"></a>│   ├── stats.rs              # Fisher's exact test (strand bias)
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#reference-architecture-__codelineno-2-42"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#reference-architecture-__codelineno-2-43"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#reference-architecture-__codelineno-2-44"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#reference-architecture-__codelineno-2-45"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
 </code></pre></div>
 <hr>
 <h2 id="reference-architecture-configuration">Configuration<a class="headerlink" href="#reference-architecture-configuration" title="Permanent link">¶</a></h2>
@@ -7836,7 +7842,7 @@ Use mouse to pan and zoom
 </div>
 <hr>
 <h2 id="reference-counting-metrics-complete-output-column-reference">Complete Output Column Reference<a class="headerlink" href="#reference-counting-metrics-complete-output-column-reference" title="Permanent link">¶</a></h2>
-<p>All fields in the <code>BaseCounts</code> struct returned by <code>count_bam_binned()</code>:</p>
+<p>All fields in the <code>BaseCounts</code> struct returned by <code>count_bam_binned()</code> — the binned counting entry point that groups variants into ~10kb genomic bins for a single <code>bam.fetch()</code> per bin before classifying reads. See <a href="#reference-architecture-genomic-binning">Architecture → Genomic Binning</a> for how bins are built.</p>
 <table>
 <thead>
 <tr>
@@ -8375,7 +8381,7 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
 <tr>
 <td style="text-align: left;">Parallelism</td>
 <td style="text-align: left;">OpenMP block-based</td>
-<td style="text-align: left;">Rayon per-variant</td>
+<td style="text-align: left;"><a href="#reference-architecture-genomic-binning">Rayon per-bin</a> — variants grouped into ~10kb windows, 1 <code>bam.fetch()</code> per bin</td>
 </tr>
 <tr>
 <td style="text-align: left;">RNA mode</td>
@@ -9098,14 +9104,20 @@ spanning a small repeat motif (e.g., dinucleotide repeat <code>ACAC</code>).</p>
     subgraph Rust["rust/src/"]
         Lib["lib.rs"] --&gt; Count["counting/"]
         Lib --&gt; Norm["normalize/"]
+        Lib --&gt; Shared["shared/"]
         Count --&gt; Eng["engine.rs"]
         Count --&gt; VC["variant_checks.rs"]
         Count --&gt; PH["pairhmm.rs"]
         Count --&gt; WFA["wfa_router.rs"]
         Count --&gt; RNA["rna.rs"]
-        Count --&gt; Frag["fragment.rs"]
+        Count --&gt; Parquet["parquet_writer.rs"]
         Norm --&gt; LA["left_align.rs"]
         Norm --&gt; DC["decomp.rs"]
+        Shared --&gt; Frag["fragment.rs"]
+        Shared --&gt; Stats["stats.rs"]
+        Shared --&gt; Filters["filters.rs"]
+        Shared --&gt; BAQ["baq.rs"]
+        Shared --&gt; BamU["bam_utils.rs"]
     end
 
     Pipeline --&gt; Rust
@@ -9115,16 +9127,24 @@ spanning a small repeat motif (e.g., dinucleotide repeat <code>ACAC</code>).</p>
 Use mouse to pan and zoom
 </div>
 </div>
+<div class="admonition tip">
+<p class="admonition-title">Performance: Genomic Binning</p>
+<p>The counting engine (<code>counting/engine.rs</code>) groups variants into <strong>~10kb genomic bins</strong> before <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> traversal. Each bin issues <strong>one</strong> <code>bam.fetch()</code> call instead of one per variant, reducing I/O dramatically for clustered inputs (e.g., a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with hundreds of variants on the same gene). See <a href="#reference-architecture-genomic-binning">Architecture → Genomic Binning</a>.</p>
+<p>To observe binning at runtime:
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#development-developer-guide-__codelineno-3-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>info<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"Built.*bins"</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#development-developer-guide-__codelineno-3-2"></a><span class="c1"># Example: "Built 42 genomic bins from 1247 variants (window=10000bp)"</span>
+</code></pre></div>
+</div>
 <hr>
 <h2 id="development-developer-guide-build-commands">Build Commands<a class="headerlink" href="#development-developer-guide-build-commands" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#development-developer-guide-__codelineno-3-1"></a><span class="c1"># Development (fast)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#development-developer-guide-__codelineno-3-2"></a>maturin<span class="w"> </span>develop
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#development-developer-guide-__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#development-developer-guide-__codelineno-3-4"></a><span class="c1"># Release (optimized)</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#development-developer-guide-__codelineno-3-5"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#development-developer-guide-__codelineno-3-6"></a>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#development-developer-guide-__codelineno-3-7"></a><span class="c1"># Build wheel</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#development-developer-guide-__codelineno-3-8"></a>maturin<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--out<span class="w"> </span>dist
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#development-developer-guide-__codelineno-4-1"></a><span class="c1"># Development (fast)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#development-developer-guide-__codelineno-4-2"></a>maturin<span class="w"> </span>develop
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#development-developer-guide-__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#development-developer-guide-__codelineno-4-4"></a><span class="c1"># Release (optimized)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#development-developer-guide-__codelineno-4-5"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#development-developer-guide-__codelineno-4-6"></a>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#development-developer-guide-__codelineno-4-7"></a><span class="c1"># Build wheel</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#development-developer-guide-__codelineno-4-8"></a>maturin<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--out<span class="w"> </span>dist
 </code></pre></div>
 <hr>
 <h2 id="development-developer-guide-regression-testing">Regression Testing<a class="headerlink" href="#development-developer-guide-regression-testing" title="Permanent link">¶</a></h2>
@@ -9132,31 +9152,31 @@ Use mouse to pan and zoom
 <p>The primary test suite covers <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> parsing, windowed indel detection,
 <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/insertion/deletion/complex variant classification, shifted indel handling,
 and <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> validation:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#development-developer-guide-__codelineno-4-1"></a>pytest<span class="w"> </span>-v<span class="w">                                    </span><span class="c1"># Full suite</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#development-developer-guide-__codelineno-4-2"></a>pytest<span class="w"> </span>tests/test_shifted_indels.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Windowed + shifted indel-specific</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#development-developer-guide-__codelineno-4-3"></a>pytest<span class="w"> </span>tests/test_variant_checks.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Core allele-classification</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#development-developer-guide-__codelineno-5-1"></a>pytest<span class="w"> </span>-v<span class="w">                                    </span><span class="c1"># Full suite</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#development-developer-guide-__codelineno-5-2"></a>pytest<span class="w"> </span>tests/test_shifted_indels.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Windowed + shifted indel-specific</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#development-developer-guide-__codelineno-5-3"></a>pytest<span class="w"> </span>tests/test_variant_checks.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Core allele-classification</span>
 </code></pre></div>
 <h3 id="development-developer-guide-rust-unit-tests-cargo-test">Rust Unit Tests (cargo test)<a class="headerlink" href="#development-developer-guide-rust-unit-tests-cargo-test" title="Permanent link">¶</a></h3>
 <p>Normalization engine tests — left-alignment, repeat detection, adaptive padding,
 homopolymer decomposition:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#development-developer-guide-__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#development-developer-guide-__codelineno-6-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
 </code></pre></div>
 <h3 id="development-developer-guide-bam-slice-regression-suite"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Slice Regression Suite<a class="headerlink" href="#development-developer-guide-bam-slice-regression-suite" title="Permanent link">¶</a></h3>
 <p>For changes to counting logic (<code>counting/engine.rs</code>, <code>counting/variant_checks.rs</code>),
 run against the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice test set (54 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slices × 2 MAFs — see <code>~/Downloads/bam_slice_v2_8_0/</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#development-developer-guide-__codelineno-6-1"></a><span class="c1"># Rebuild first</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#development-developer-guide-__codelineno-6-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--no-build-isolation
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#development-developer-guide-__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#development-developer-guide-__codelineno-6-4"></a><span class="c1"># Run on indels MAF</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#development-developer-guide-__codelineno-6-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#development-developer-guide-__codelineno-6-6"></a><span class="w">    </span>--variants<span class="w"> </span>filtered_indels_io.maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#development-developer-guide-__codelineno-6-7"></a><span class="w">    </span>--bam-list<span class="w"> </span>bam_list.txt<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#development-developer-guide-__codelineno-6-8"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#development-developer-guide-__codelineno-6-9"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#development-developer-guide-__codelineno-6-10"></a><span class="w">    </span>--output-dir<span class="w"> </span>/tmp/regression_out/
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#development-developer-guide-__codelineno-6-11"></a>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#development-developer-guide-__codelineno-6-12"></a><span class="c1"># Diff against baseline</span>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#development-developer-guide-__codelineno-6-13"></a>python<span class="w"> </span>scripts/concordance.py<span class="w"> </span>/tmp/regression_baseline/<span class="w"> </span>/tmp/regression_out/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#development-developer-guide-__codelineno-7-1"></a><span class="c1"># Rebuild first</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#development-developer-guide-__codelineno-7-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--no-build-isolation
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#development-developer-guide-__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#development-developer-guide-__codelineno-7-4"></a><span class="c1"># Run on indels MAF</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#development-developer-guide-__codelineno-7-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#development-developer-guide-__codelineno-7-6"></a><span class="w">    </span>--variants<span class="w"> </span>filtered_indels_io.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#development-developer-guide-__codelineno-7-7"></a><span class="w">    </span>--bam-list<span class="w"> </span>bam_list.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#development-developer-guide-__codelineno-7-8"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#development-developer-guide-__codelineno-7-9"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#development-developer-guide-__codelineno-7-10"></a><span class="w">    </span>--output-dir<span class="w"> </span>/tmp/regression_out/
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#development-developer-guide-__codelineno-7-11"></a>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#development-developer-guide-__codelineno-7-12"></a><span class="c1"># Diff against baseline</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#development-developer-guide-__codelineno-7-13"></a>python<span class="w"> </span>scripts/concordance.py<span class="w"> </span>/tmp/regression_baseline/<span class="w"> </span>/tmp/regression_out/
 </code></pre></div>
 <p>Key invariants to check:</p>
 <table>
@@ -9379,13 +9399,13 @@ Use mouse to pan and zoom
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> No silent failures: missing inputs must fail-fast or require explicit opt-out</li>
 </ul>
 <p>To run all Python checks in one pass:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#development-developer-guide-__codelineno-7-1"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#development-developer-guide-__codelineno-7-2"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#development-developer-guide-__codelineno-7-3"></a>mypy<span class="w"> </span>src/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#development-developer-guide-__codelineno-7-4"></a>pytest<span class="w"> </span>-v
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-developer-guide-__codelineno-8-1"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#development-developer-guide-__codelineno-8-2"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#development-developer-guide-__codelineno-8-3"></a>mypy<span class="w"> </span>src/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#development-developer-guide-__codelineno-8-4"></a>pytest<span class="w"> </span>-v
 </code></pre></div>
 <p>To run all Rust checks:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-developer-guide-__codelineno-8-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-developer-guide-__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
 </code></pre></div>
 <hr>
 <h2 id="development-developer-guide-environment-variables">Environment Variables<a class="headerlink" href="#development-developer-guide-environment-variables" title="Permanent link">¶</a></h2>
@@ -9410,7 +9430,7 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-developer-guide-__codelineno-9-1"></a><span class="nv">GBCMS_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span><span class="nv">RUST_LOG</span><span class="o">=</span>debug<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#development-developer-guide-__codelineno-10-1"></a><span class="nv">GBCMS_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span><span class="nv">RUST_LOG</span><span class="o">=</span>debug<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...
 </code></pre></div>
 <hr>
 <h2 id="development-developer-guide-generating-a-pdf">Generating a PDF<a class="headerlink" href="#development-developer-guide-generating-a-pdf" title="Permanent link">¶</a></h2>
@@ -9419,7 +9439,7 @@ Use mouse to pan and zoom
 <ol>
 <li>
 <p>Start the docs server:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#development-developer-guide-__codelineno-10-1"></a>mkdocs<span class="w"> </span>serve
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#development-developer-guide-__codelineno-11-1"></a>mkdocs<span class="w"> </span>serve
 </code></pre></div>
 </li>
 <li>
@@ -9427,12 +9447,12 @@ Use mouse to pan and zoom
 </li>
 <li>
 <p>Open the DevTools console (<code>F12</code> → Console tab) and paste:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#development-developer-guide-__codelineno-11-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#development-developer-guide-__codelineno-11-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#development-developer-guide-__codelineno-11-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#development-developer-guide-__codelineno-11-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#development-developer-guide-__codelineno-11-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#development-developer-guide-__codelineno-11-6"></a><span class="p">});</span>
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#development-developer-guide-__codelineno-12-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#development-developer-guide-__codelineno-12-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#development-developer-guide-__codelineno-12-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#development-developer-guide-__codelineno-12-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#development-developer-guide-__codelineno-12-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#development-developer-guide-__codelineno-12-6"></a><span class="p">});</span>
 </code></pre></div>
 </li>
 <li>
@@ -11086,6 +11106,22 @@ that lack the <code>ps</code> command needed for Nextflow resource tracking.</p>
 <a id="__codelineno-19-6" name="__codelineno-19-6" href="#resources-troubleshooting-__codelineno-19-6"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-19-7" name="__codelineno-19-7" href="#resources-troubleshooting-__codelineno-19-7"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"7579309"</span><span class="w"> </span>&gt;<span class="w"> </span>tp53_trace.log
 </code></pre></div>
+<h3 id="resources-troubleshooting-inspecting-genomic-bin-construction">Inspecting Genomic Bin Construction<a class="headerlink" href="#resources-troubleshooting-inspecting-genomic-bin-construction" title="Permanent link">¶</a></h3>
+<p>gbcms groups variants into <strong>~10kb genomic bins</strong> before <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> traversal to reduce <code>bam.fetch()</code> calls (see <a href="#reference-architecture-genomic-binning">Architecture → Genomic Binning</a>). Enable <code>RUST_LOG=info</code> to observe bin construction:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#resources-troubleshooting-__codelineno-20-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>info<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#resources-troubleshooting-__codelineno-20-2"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/out/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">"bin"</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#resources-troubleshooting-__codelineno-20-3"></a><span class="c1"># Example:</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#resources-troubleshooting-__codelineno-20-4"></a><span class="c1"># [INFO  gbcms] Built 42 genomic bins from 1247 variants (window=10000bp, max_per_bin=200)</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#resources-troubleshooting-__codelineno-20-5"></a><span class="c1"># [INFO  gbcms] Bin chr17:7571720-7579309 → 83 variants (1 fetch)</span>
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Expected bin counts</p>
+<ul>
+<li><strong>Targeted panels</strong> (MSK-ACCESS, IMPACT): many variants per gene → very few bins per chromosome — optimal I/O</li>
+<li><strong>Sparse WGS</strong> variants: ~1 variant per bin ≈ per-variant I/O (expected, not a bug)</li>
+<li>Unexpectedly many bins for a clustered <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>? Check for chromosome name mismatches (<code>chr1</code> vs <code>1</code>) — the binner treats different chromosome names as separate bins regardless of coordinate proximity.</li>
+</ul>
+</div>
 <hr>
 <h2 id="resources-troubleshooting-related">Related<a class="headerlink" href="#resources-troubleshooting-related" title="Permanent link">¶</a></h2>
 <ul>

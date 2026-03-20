@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -1074,14 +1074,20 @@
     subgraph Rust["rust/src/"]
         Lib["lib.rs"] --&gt; Count["counting/"]
         Lib --&gt; Norm["normalize/"]
+        Lib --&gt; Shared["shared/"]
         Count --&gt; Eng["engine.rs"]
         Count --&gt; VC["variant_checks.rs"]
         Count --&gt; PH["pairhmm.rs"]
         Count --&gt; WFA["wfa_router.rs"]
         Count --&gt; RNA["rna.rs"]
-        Count --&gt; Frag["fragment.rs"]
+        Count --&gt; Parquet["parquet_writer.rs"]
         Norm --&gt; LA["left_align.rs"]
         Norm --&gt; DC["decomp.rs"]
+        Shared --&gt; Frag["fragment.rs"]
+        Shared --&gt; Stats["stats.rs"]
+        Shared --&gt; Filters["filters.rs"]
+        Shared --&gt; BAQ["baq.rs"]
+        Shared --&gt; BamU["bam_utils.rs"]
     end
 
     Pipeline --&gt; Rust
@@ -1091,16 +1097,24 @@
 Use mouse to pan and zoom
 </div>
 </div>
+<div class="admonition tip">
+<p class="admonition-title">Performance: Genomic Binning</p>
+<p>The counting engine (<code>counting/engine.rs</code>) groups variants into <strong>~10kb genomic bins</strong> before <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> traversal. Each bin issues <strong>one</strong> <code>bam.fetch()</code> call instead of one per variant, reducing I/O dramatically for clustered inputs (e.g., a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with hundreds of variants on the same gene). See <a href="../../reference/architecture/#genomic-binning">Architecture → Genomic Binning</a>.</p>
+<p>To observe binning at runtime:
+</p><div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>info<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"Built.*bins"</span>
+<a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a><span class="c1"># Example: "Built 42 genomic bins from 1247 variants (window=10000bp)"</span>
+</code></pre></div>
+</div>
 <hr>
 <h2 id="build-commands">Build Commands<a class="headerlink" href="#build-commands" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a><span class="c1"># Development (fast)</span>
-<a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a>maturin<span class="w"> </span>develop
-<a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a>
-<a href="#__codelineno-3-4" id="__codelineno-3-4" name="__codelineno-3-4"></a><span class="c1"># Release (optimized)</span>
-<a href="#__codelineno-3-5" id="__codelineno-3-5" name="__codelineno-3-5"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
-<a href="#__codelineno-3-6" id="__codelineno-3-6" name="__codelineno-3-6"></a>
-<a href="#__codelineno-3-7" id="__codelineno-3-7" name="__codelineno-3-7"></a><span class="c1"># Build wheel</span>
-<a href="#__codelineno-3-8" id="__codelineno-3-8" name="__codelineno-3-8"></a>maturin<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--out<span class="w"> </span>dist
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a><span class="c1"># Development (fast)</span>
+<a href="#__codelineno-4-2" id="__codelineno-4-2" name="__codelineno-4-2"></a>maturin<span class="w"> </span>develop
+<a href="#__codelineno-4-3" id="__codelineno-4-3" name="__codelineno-4-3"></a>
+<a href="#__codelineno-4-4" id="__codelineno-4-4" name="__codelineno-4-4"></a><span class="c1"># Release (optimized)</span>
+<a href="#__codelineno-4-5" id="__codelineno-4-5" name="__codelineno-4-5"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
+<a href="#__codelineno-4-6" id="__codelineno-4-6" name="__codelineno-4-6"></a>
+<a href="#__codelineno-4-7" id="__codelineno-4-7" name="__codelineno-4-7"></a><span class="c1"># Build wheel</span>
+<a href="#__codelineno-4-8" id="__codelineno-4-8" name="__codelineno-4-8"></a>maturin<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--out<span class="w"> </span>dist
 </code></pre></div>
 <hr>
 <h2 id="regression-testing">Regression Testing<a class="headerlink" href="#regression-testing" title="Permanent link">¶</a></h2>
@@ -1108,31 +1122,31 @@ Use mouse to pan and zoom
 <p>The primary test suite covers <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> parsing, windowed indel detection,
 <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/insertion/deletion/complex variant classification, shifted indel handling,
 and <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> validation:</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>pytest<span class="w"> </span>-v<span class="w">                                    </span><span class="c1"># Full suite</span>
-<a href="#__codelineno-4-2" id="__codelineno-4-2" name="__codelineno-4-2"></a>pytest<span class="w"> </span>tests/test_shifted_indels.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Windowed + shifted indel-specific</span>
-<a href="#__codelineno-4-3" id="__codelineno-4-3" name="__codelineno-4-3"></a>pytest<span class="w"> </span>tests/test_variant_checks.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Core allele-classification</span>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-5-1" id="__codelineno-5-1" name="__codelineno-5-1"></a>pytest<span class="w"> </span>-v<span class="w">                                    </span><span class="c1"># Full suite</span>
+<a href="#__codelineno-5-2" id="__codelineno-5-2" name="__codelineno-5-2"></a>pytest<span class="w"> </span>tests/test_shifted_indels.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Windowed + shifted indel-specific</span>
+<a href="#__codelineno-5-3" id="__codelineno-5-3" name="__codelineno-5-3"></a>pytest<span class="w"> </span>tests/test_variant_checks.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Core allele-classification</span>
 </code></pre></div>
 <h3 id="rust-unit-tests-cargo-test">Rust Unit Tests (cargo test)<a class="headerlink" href="#rust-unit-tests-cargo-test" title="Permanent link">¶</a></h3>
 <p>Normalization engine tests — left-alignment, repeat detection, adaptive padding,
 homopolymer decomposition:</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-5-1" id="__codelineno-5-1" name="__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
 </code></pre></div>
 <h3 id="bam-slice-regression-suite"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Slice Regression Suite<a class="headerlink" href="#bam-slice-regression-suite" title="Permanent link">¶</a></h3>
 <p>For changes to counting logic (<code>counting/engine.rs</code>, <code>counting/variant_checks.rs</code>),
 run against the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice test set (54 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slices × 2 MAFs — see <code>~/Downloads/bam_slice_v2_8_0/</code>):</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a><span class="c1"># Rebuild first</span>
-<a href="#__codelineno-6-2" id="__codelineno-6-2" name="__codelineno-6-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--no-build-isolation
-<a href="#__codelineno-6-3" id="__codelineno-6-3" name="__codelineno-6-3"></a>
-<a href="#__codelineno-6-4" id="__codelineno-6-4" name="__codelineno-6-4"></a><span class="c1"># Run on indels MAF</span>
-<a href="#__codelineno-6-5" id="__codelineno-6-5" name="__codelineno-6-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-6" id="__codelineno-6-6" name="__codelineno-6-6"></a><span class="w">    </span>--variants<span class="w"> </span>filtered_indels_io.maf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-7" id="__codelineno-6-7" name="__codelineno-6-7"></a><span class="w">    </span>--bam-list<span class="w"> </span>bam_list.txt<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-8" id="__codelineno-6-8" name="__codelineno-6-8"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-9" id="__codelineno-6-9" name="__codelineno-6-9"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-10" id="__codelineno-6-10" name="__codelineno-6-10"></a><span class="w">    </span>--output-dir<span class="w"> </span>/tmp/regression_out/
-<a href="#__codelineno-6-11" id="__codelineno-6-11" name="__codelineno-6-11"></a>
-<a href="#__codelineno-6-12" id="__codelineno-6-12" name="__codelineno-6-12"></a><span class="c1"># Diff against baseline</span>
-<a href="#__codelineno-6-13" id="__codelineno-6-13" name="__codelineno-6-13"></a>python<span class="w"> </span>scripts/concordance.py<span class="w"> </span>/tmp/regression_baseline/<span class="w"> </span>/tmp/regression_out/
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-7-1" id="__codelineno-7-1" name="__codelineno-7-1"></a><span class="c1"># Rebuild first</span>
+<a href="#__codelineno-7-2" id="__codelineno-7-2" name="__codelineno-7-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--no-build-isolation
+<a href="#__codelineno-7-3" id="__codelineno-7-3" name="__codelineno-7-3"></a>
+<a href="#__codelineno-7-4" id="__codelineno-7-4" name="__codelineno-7-4"></a><span class="c1"># Run on indels MAF</span>
+<a href="#__codelineno-7-5" id="__codelineno-7-5" name="__codelineno-7-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-7-6" id="__codelineno-7-6" name="__codelineno-7-6"></a><span class="w">    </span>--variants<span class="w"> </span>filtered_indels_io.maf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-7-7" id="__codelineno-7-7" name="__codelineno-7-7"></a><span class="w">    </span>--bam-list<span class="w"> </span>bam_list.txt<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-7-8" id="__codelineno-7-8" name="__codelineno-7-8"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-7-9" id="__codelineno-7-9" name="__codelineno-7-9"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-7-10" id="__codelineno-7-10" name="__codelineno-7-10"></a><span class="w">    </span>--output-dir<span class="w"> </span>/tmp/regression_out/
+<a href="#__codelineno-7-11" id="__codelineno-7-11" name="__codelineno-7-11"></a>
+<a href="#__codelineno-7-12" id="__codelineno-7-12" name="__codelineno-7-12"></a><span class="c1"># Diff against baseline</span>
+<a href="#__codelineno-7-13" id="__codelineno-7-13" name="__codelineno-7-13"></a>python<span class="w"> </span>scripts/concordance.py<span class="w"> </span>/tmp/regression_baseline/<span class="w"> </span>/tmp/regression_out/
 </code></pre></div>
 <p>Key invariants to check:</p>
 <table>
@@ -1354,13 +1368,13 @@ Use mouse to pan and zoom
 <li class="task-list-item"><label class="task-list-control"><input disabled="" type="checkbox"><span class="task-list-indicator"></span></label> No silent failures: missing inputs must fail-fast or require explicit opt-out</li>
 </ul>
 <p>To run all Python checks in one pass:</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-7-1" id="__codelineno-7-1" name="__codelineno-7-1"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-7-2" id="__codelineno-7-2" name="__codelineno-7-2"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-7-3" id="__codelineno-7-3" name="__codelineno-7-3"></a>mypy<span class="w"> </span>src/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-7-4" id="__codelineno-7-4" name="__codelineno-7-4"></a>pytest<span class="w"> </span>-v
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-8-1" id="__codelineno-8-1" name="__codelineno-8-1"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-2" id="__codelineno-8-2" name="__codelineno-8-2"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-3" id="__codelineno-8-3" name="__codelineno-8-3"></a>mypy<span class="w"> </span>src/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-4" id="__codelineno-8-4" name="__codelineno-8-4"></a>pytest<span class="w"> </span>-v
 </code></pre></div>
 <p>To run all Rust checks:</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-8-1" id="__codelineno-8-1" name="__codelineno-8-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-9-1" id="__codelineno-9-1" name="__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
 </code></pre></div>
 <hr>
 <h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">¶</a></h2>
@@ -1385,7 +1399,7 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-9-1" id="__codelineno-9-1" name="__codelineno-9-1"></a><span class="nv">GBCMS_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span><span class="nv">RUST_LOG</span><span class="o">=</span>debug<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-10-1" id="__codelineno-10-1" name="__codelineno-10-1"></a><span class="nv">GBCMS_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span><span class="nv">RUST_LOG</span><span class="o">=</span>debug<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...
 </code></pre></div>
 <hr>
 <h2 id="generating-a-pdf">Generating a PDF<a class="headerlink" href="#generating-a-pdf" title="Permanent link">¶</a></h2>
@@ -1394,7 +1408,7 @@ Use mouse to pan and zoom
 <ol>
 <li>
 <p>Start the docs server:
-   </p><div class="highlight"><pre><span></span><code><a href="#__codelineno-10-1" id="__codelineno-10-1" name="__codelineno-10-1"></a>mkdocs<span class="w"> </span>serve
+   </p><div class="highlight"><pre><span></span><code><a href="#__codelineno-11-1" id="__codelineno-11-1" name="__codelineno-11-1"></a>mkdocs<span class="w"> </span>serve
 </code></pre></div>
 </li>
 <li>
@@ -1402,12 +1416,12 @@ Use mouse to pan and zoom
 </li>
 <li>
 <p>Open the DevTools console (<code>F12</code> → Console tab) and paste:
-   </p><div class="highlight"><pre><span></span><code><a href="#__codelineno-11-1" id="__codelineno-11-1" name="__codelineno-11-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
-<a href="#__codelineno-11-2" id="__codelineno-11-2" name="__codelineno-11-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
-<a href="#__codelineno-11-3" id="__codelineno-11-3" name="__codelineno-11-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
-<a href="#__codelineno-11-4" id="__codelineno-11-4" name="__codelineno-11-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<a href="#__codelineno-11-5" id="__codelineno-11-5" name="__codelineno-11-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
-<a href="#__codelineno-11-6" id="__codelineno-11-6" name="__codelineno-11-6"></a><span class="p">});</span>
+   </p><div class="highlight"><pre><span></span><code><a href="#__codelineno-12-1" id="__codelineno-12-1" name="__codelineno-12-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
+<a href="#__codelineno-12-2" id="__codelineno-12-2" name="__codelineno-12-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
+<a href="#__codelineno-12-3" id="__codelineno-12-3" name="__codelineno-12-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
+<a href="#__codelineno-12-4" id="__codelineno-12-4" name="__codelineno-12-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a href="#__codelineno-12-5" id="__codelineno-12-5" name="__codelineno-12-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
+<a href="#__codelineno-12-6" id="__codelineno-12-6" name="__codelineno-12-6"></a><span class="p">});</span>
 </code></pre></div>
 </li>
 <li>
@@ -1426,7 +1440,7 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 05:02:49 UTC"><span class="timeago" datetime="2026-03-20T05:02:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 05:02:49 UTC">2026-03-20</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 05:24:49 UTC"><span class="timeago" datetime="2026-03-20T05:24:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 05:24:49 UTC">2026-03-20</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
