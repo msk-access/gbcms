@@ -93,7 +93,7 @@ class MafWriter(OutputWriter):
                 Only applies to MAF→MAF; VCF→MAF always uses BAM name.
             show_normalization: If True, append norm_* columns showing
                 left-aligned coordinates in the output.
-            mfsd: If True, append 31 mFSD columns (KS test, LLR, mean sizes,
+            mfsd: If True, append 34 mFSD columns (KS test, LLR, mean sizes,
                 pairwise comparisons, derived metrics). Controlled by --mfsd flag.
             mode: Counting mode ('dna' or 'rna'). In RNA mode, 5 RNA-specific
                 columns are appended instead of mFSD columns.
@@ -525,7 +525,7 @@ class VcfWriter(OutputWriter):
         """
         headers = [
             "##fileformat=VCFv4.2",
-            "##source=gbcms_v2",
+            "##source=gbcms",
             '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
             '##INFO=<ID=VS,Number=1,Type=String,Description="Validation status from prepare_variants">',
             '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">',

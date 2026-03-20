@@ -322,9 +322,9 @@ RNA-seq reads exhibit orientation biases (dUTP strandedness), splice junctions (
 |:-------|:-----|:------------|
 | `rna_sense_depth` | u32 | Reads aligning to the gene **sense** strand |
 | `rna_antisense_depth` | u32 | Reads aligning to the gene **antisense** strand |
-| `rna_sense_strand_alt_count` | u32 | ALT-classified reads on the sense strand |
-| `rna_editing_site_overlap` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
-| `rna_splice_spanning_count` | u32 | ALT-classified reads containing splice junctions (CIGAR `N`) spanning the variant |
+| `rna_alt_sense_count` | u32 | ALT-classified reads on the sense strand |
+| `rna_editing_site` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
+| `rna_splice_spanning` | u32 | ALT-classified reads containing splice junctions (CIGAR `N`) spanning the variant |
 
 ### VCF Fields
 
@@ -333,13 +333,13 @@ RNA-seq reads exhibit orientation biases (dUTP strandedness), splice junctions (
 | `SEN` | INFO + FORMAT | Integer | Sense strand depth |
 | `ANT` | INFO + FORMAT | Integer | Antisense strand depth |
 | `ASEN` | INFO + FORMAT | Integer | ALT sense strand count |
-| `RED` | INFO | Integer | RNA editing site overlap (0 or 1) |
+| `RED` | INFO only | Flag | Variant overlaps a known A→I RNA editing site (A>G on + strand or T>C on − strand) |
 | `SPL` | INFO + FORMAT | Integer | Splice-spanning ALT read count |
 
 !!! tip "Using RNA Columns for Filtering"
     - **Strandedness ratio**: `rna_sense_depth / (rna_sense_depth + rna_antisense_depth)` — values near 0 or 1 indicate strong strand bias, consistent with dUTP libraries
-    - **Editing site flag**: Variants at known A→I sites (`rna_editing_site_overlap = true`) are likely RNA editing, not somatic mutations
-    - **Splice-spanning ALT**: `rna_splice_spanning_count > 0` indicates the variant is supported by reads crossing exon-exon boundaries
+    - **Editing site flag**: Variants at known A→I sites (`rna_editing_site = True`) are likely RNA editing, not somatic mutations
+    - **Splice-spanning ALT**: `rna_splice_spanning > 0` indicates the variant is supported by reads crossing exon-exon boundaries
 
 ---
 

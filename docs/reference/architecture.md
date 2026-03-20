@@ -177,7 +177,7 @@ flowchart TB
     Base --> AlignmentConfig[Alignment Backend]
     
     OutputConfig --> D1["output_dir, format, suffix, column_prefix, mfsd, mfsd_parquet"]
-    ReadFilters --> D2["exclude_secondary, exclude_duplicates"]
+    ReadFilters --> D2["secondary, duplicates, supplementary, qc_failed, improper_pair, indel"]
     QualityThresholds --> D3["min_mapq, min_baseq, fragment_qual_threshold"]
     AlignmentConfig --> D4["backend: pairhmm|sw, llr_threshold, gap_*_prob"]
 ```

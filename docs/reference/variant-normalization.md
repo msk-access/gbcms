@@ -120,7 +120,7 @@ After alignment, the **variant type is re-detected** based on the new allele len
 For indels and complex variants, a flanking reference sequence is fetched around the (possibly normalized) position. This context serves two purposes:
 
 1. **Windowed indel detection** — Safeguard 3 uses `ref_context` to verify that shifted indels delete/insert the expected reference bases
-2. **Phase 3 Smith-Waterman alignment** — the context is used to build REF and ALT haplotypes for dual-haplotype alignment
+2. **Phase 3 alignment** — the context is used to build REF and ALT haplotypes for dual-haplotype alignment (WFA triage → PairHMM). See [Phase 3: Alignment Fallback](allele-classification.md#phase-3-alignment-fallback).
 
 ### Adaptive Context Padding
 

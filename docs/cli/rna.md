@@ -217,9 +217,9 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     |:-------|:-----|:------------|
     | `rna_sense_depth` | u32 | Reads aligning to the gene **sense** strand |
     | `rna_antisense_depth` | u32 | Reads aligning to the gene **antisense** strand |
-    | `rna_sense_strand_alt_count` | u32 | ALT-classified reads on the sense strand |
-    | `rna_editing_site_overlap` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
-    | `rna_splice_spanning_count` | u32 | ALT-classified reads containing splice junctions (CIGAR `N` operations) spanning the variant |
+    | `rna_alt_sense_count` | u32 | ALT-classified reads on the sense strand |
+    | `rna_editing_site` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
+    | `rna_splice_spanning` | u32 | ALT-classified reads containing splice junctions (CIGAR `N` operations) spanning the variant |
 
     ### VCF INFO Fields (5 additional)
 
@@ -228,7 +228,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     | `SEN` | Integer | Sense strand depth |
     | `ANT` | Integer | Antisense strand depth |
     | `ASEN` | Integer | ALT sense strand count |
-    | `RED` | Integer | RNA editing site overlap (0 or 1) |
+    | `RED` | Flag | Known A→I RNA editing site overlap (flag; present if true) |
     | `SPL` | Integer | Splice-spanning ALT read count |
 
     ### VCF FORMAT Fields (4 additional)
@@ -241,6 +241,9 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     | `ANT` | Integer | Per-sample antisense depth |
     | `ASEN` | Integer | Per-sample ALT sense count |
     | `SPL` | Integer | Per-sample splice-spanning count |
+
+    !!! note "RED is INFO-only"
+        The `RED` editing-site flag appears only in the VCF INFO column (as a flag field), not in the per-sample FORMAT column.
 
 ---
 

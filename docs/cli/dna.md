@@ -198,7 +198,7 @@ The command produces a VCF or MAF file with:
 - **VAF** (variant allele frequency)
 - **Strand bias** (Fisher's exact test)
 - **Fragment counts** (deduplicated)
-- **Validation status** (`PASS`, `PASS_WARN_HOMOPOLYMER_DECOMP`, `REF_MISMATCH`, or `FETCH_FAILED`)
+- **Validation status** (`PASS`, `PASS_WARN_HOMOPOLYMER_DECOMP`, `PASS_WARN_REF_CORRECTED`, `REF_MISMATCH`, or `FETCH_FAILED`). See [Variant Normalization → REF Validation](../reference/variant-normalization.md#step-2-ref-validation).
 - **Normalization columns** (with `--show-normalization`): left-aligned position, REF, and ALT
 
 ## Related
