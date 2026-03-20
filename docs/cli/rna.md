@@ -175,23 +175,28 @@ flowchart TD
 
 ### Filter Defaults
 
-RNA mode uses **stricter filter defaults** than DNA mode to reduce noise from the higher error rates and alignment artifacts typical of RNA-seq:
+RNA mode uses the **same filter defaults** as DNA mode — duplicates, secondary, supplementary, and QC-failed reads are all filtered by default in both modes:
 
 | Filter | DNA Default | RNA Default |
 |:-------|:------------|:------------|
-| `--filter-secondary` | off | **on** |
-| `--filter-supplementary` | off | **on** |
-| `--filter-qc-failed` | off | **on** |
+| `--filter-secondary` | on | on (same) |
+| `--filter-supplementary` | on | on (same) |
+| `--filter-qc-failed` | on | on (same) |
 
 ---
 
 ## Alignment Backend
 
-RNA mode defaults to **PairHMM** with **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutter artifacts:
+RNA mode uses the same **two-stage Phase 3 pipeline** as DNA:
+
+1. **WFA fast-path** (`wfa2lib-rs`) — edit-distance triage; resolves ~70-80% of reads instantly.
+2. **Marginalized PairHMM** (escalated when WFA is ambiguous) — uses per-base quality probabilities for confident LLR scoring.
+
+RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutter artifacts:
 
 | Option | DNA Default | RNA Default | Rationale |
 |:-------|:------------|:------------|:----------|
-| `--alignment-backend` | `pairhmm` | `pairhmm` | Same |
+| `--alignment-backend` | `pairhmm` | `pairhmm` | Same (WFA + PairHMM) |
 | `--gap-open-prob` | `1e-4` | **`5e-3`** | RT introduces more gap artifacts than DNA polymerase |
 | `--gap-extend-prob` | `0.1` | **`0.25`** | RT stutter extends gaps more frequently |
 

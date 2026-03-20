@@ -42,6 +42,6 @@
 *[MNP]: Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions
 *[SNP]: Single Nucleotide Polymorphism - Single base substitution
 *[CIGAR]: Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string
-*[WFA]: Wavefront Alignment - Fast exact sequence alignment algorithm
+*[WFA]: Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation
 *[BWA]: Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)
 *[PyO3]: Python-Rust interop library for building native Python modules

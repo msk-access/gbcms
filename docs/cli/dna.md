@@ -106,19 +106,25 @@ Unique Molecular Identifier (UMI) support for molecule-level deduplication.
 
 ## Alignment Backend
 
-Phase 3 allele classification uses **PairHMM** by default, which integrates per-base quality probabilities into alignment scoring for more accurate classification in noisy regions. Smith-Waterman (SW) is available as a simpler alternative.
+Phase 3 (haplotype-based) classification uses a **two-stage pipeline**:
+
+1. **WFA fast-path** (Wavefront Alignment, `wfa2lib-rs`) — edit-distance triage against the pangenomic haplotype matrix. Resolves ~70-80% of reads instantly at O(s²) cost where *s* is the edit distance. If REF and ALT scores differ clearly, the read is classified immediately.
+
+2. **Marginalized PairHMM** (escalated only when WFA is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a log-likelihood ratio (LLR) confidence score. More sensitive in noisy, low-quality, or repeat-dense regions.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--alignment-backend` | `pairhmm` | Alignment backend for Phase 3: `pairhmm` (PairHMM, default) or `sw` (Smith-Waterman). Invalid values are rejected at parse time. |
-| `--llr-threshold` | `2.3` | PairHMM log-likelihood ratio threshold for confident calls (≈ ln(10)) |
+| `--alignment-backend` | `pairhmm` | Phase 3 backend: `pairhmm` (WFA + PairHMM, default) or `sw` (Smith-Waterman only, no WFA triage). Invalid values are rejected at parse time. |
+| `--llr-threshold` | `2.3` | PairHMM LLR threshold for confident calls (≈ ln(10)) |
 | `--gap-open-prob` | `1e-4` | PairHMM gap-open probability for non-repeat regions |
 | `--gap-extend-prob` | `0.1` | PairHMM gap-extend probability for non-repeat regions |
 | `--repeat-gap-open-prob` | `1e-2` | PairHMM gap-open probability for tandem repeat regions |
 | `--repeat-gap-extend-prob` | `0.5` | PairHMM gap-extend probability for tandem repeat regions |
 
-!!! tip "PairHMM vs Smith-Waterman"
-    PairHMM uses base quality probabilities directly in alignment scoring, producing log-likelihood ratio (LLR) confidence scores instead of edit-distance margins. This makes it more sensitive in low-quality or noisy regions. Use `--alignment-backend sw` if you need exact reproducibility with older gbcms versions (<3.0.0).
+!!! tip "pairhmm vs sw"
+    `pairhmm` (default) uses WFA edit-distance triage first, then escalates to PairHMM only for ambiguous reads. This is faster than running PairHMM on every read and more accurate in low-quality or repeat-dense regions.
+
+    `sw` runs Smith-Waterman on every Phase 3 read (no WFA pre-filter). Use only if you need exact reproducibility with versions <3.0.0.
 
 ## Examples
 
