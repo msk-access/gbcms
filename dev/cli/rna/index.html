@@ -1357,6 +1357,14 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
+<div class="admonition caution">
+<p class="admonition-title">Known Limitation: Variants at Exon-Intron Boundaries</p>
+<p>For variants positioned very close to a splice junction, the D6 consensus intron-snipping step (which removes introns from the <code>ref_context</code> before Phase 3 alignment) requires <strong>&gt;50% of local reads to carry a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> op</strong> at the same position. If the variant sits at a boundary where only ~40% of reads span the junction with an <code>N</code> op — e.g., because many soft-clipped reads end just before the junction — the intron is <strong>not snipped</strong>.</p>
+<p>In this case Phase 3 aligns the read against an unspliced (intron-containing) reference context. The alignment score is lower than it would be against the mature mRNA sequence, and the read may fall back to <code>neither</code> rather than being classified as REF or ALT. This affects <code>dp</code> (depth) but not correctness for reads that <em>do</em> span the junction cleanly.</p>
+<p><strong>Workaround:</strong> Use <code>--trace</code> logging and grep for <code>D6 splice</code> to confirm whether intron snipping fired for the variant of interest:
+</p><div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>rna<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"D6 splice\|&lt;chrom&gt;:&lt;pos&gt;"</span>
+</code></pre></div>
+</div>
 <hr>
 <h2 id="alignment-backend">Alignment Backend<a class="headerlink" href="#alignment-backend" title="Permanent link">¶</a></h2>
 <p>RNA mode uses the same <strong>two-stage Phase 3 pipeline</strong> as DNA:</p>
@@ -1398,6 +1406,12 @@ Use mouse to pan and zoom
 <div class="admonition info">
 <p class="admonition-title">Biological Context: <abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr> Stutter</p>
 <p>Reverse transcriptase (used in cDNA synthesis) has lower fidelity than DNA polymerases and frequently introduces insertions/deletions at homopolymer runs and microsatellite regions. The relaxed gap penalties prevent these artifacts from being classified as ALT-supporting reads.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Complex Indel Support in RNA Mode</p>
+<p>All complex indel classification improvements — Del+SNV routing (<code>GC→T</code> pattern), large deletion REF visibility, and left-alignment shifted deletion rescue — apply identically to RNA mode. The allele classification engine (<code>variant_checks.rs</code>) has no mode branches; RNA reads go through the same Phase 1/2/3 pipeline as DNA reads.</p>
+<p>See <a href="../../reference/complex-indels/">Complex Indels</a> for case studies and read-level examples.</p>
+<p><strong>Note on left-alignment shift (Fix 4):</strong> This fix was motivated by <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>'s indel left-alignment behaviour, where the variant anchor can sit several bases left of where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> op appears in reads. <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> does not left-align indels in the same way, so this scenario is less common in RNA BAMs — but it still applies when <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> places a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> slightly offset from the annotated position, or when the input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> was derived from a <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-aligned DNA call set being counted against an RNA <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>.</p>
 </div>
 <hr>
 <h2 id="rna-specific-output-columns">RNA-Specific Output Columns<a class="headerlink" href="#rna-specific-output-columns" title="Permanent link">¶</a></h2>
@@ -1521,48 +1535,48 @@ Use mouse to pan and zoom
 <div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><input id="__tabbed_1_3" name="__tabbed_1" type="radio"><input id="__tabbed_1_4" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">Basic RNA</label><label for="__tabbed_1_2">With Editing DB</label><label for="__tabbed_1_3">Unstranded Library</label><label for="__tabbed_1_4">With <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> Tags</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-2-3" id="__codelineno-2-3" name="__codelineno-2-3"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:star_aligned.bam<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a href="#__codelineno-2-4" id="__codelineno-2-4" name="__codelineno-2-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-2-5" id="__codelineno-2-5" name="__codelineno-2-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:star_aligned.bam<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a href="#__codelineno-3-4" id="__codelineno-3-4" name="__codelineno-3-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-3-5" id="__codelineno-3-5" name="__codelineno-3-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aligned BAMs should have the <code>NH</code> tag for multi-mapping rescue.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor_rna:aligned.bam<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-3-4" id="__codelineno-3-4" name="__codelineno-3-4"></a><span class="w">    </span>--fasta<span class="w"> </span>hg38.fa<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-3-5" id="__codelineno-3-5" name="__codelineno-3-5"></a><span class="w">    </span>--rna-editing-db<span class="w"> </span>TABLE1_hg38.txt.gz<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a href="#__codelineno-3-6" id="__codelineno-3-6" name="__codelineno-3-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-3-7" id="__codelineno-3-7" name="__codelineno-3-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-4-2" id="__codelineno-4-2" name="__codelineno-4-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-4-3" id="__codelineno-4-3" name="__codelineno-4-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor_rna:aligned.bam<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-4-4" id="__codelineno-4-4" name="__codelineno-4-4"></a><span class="w">    </span>--fasta<span class="w"> </span>hg38.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-4-5" id="__codelineno-4-5" name="__codelineno-4-5"></a><span class="w">    </span>--rna-editing-db<span class="w"> </span>TABLE1_hg38.txt.gz<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a href="#__codelineno-4-6" id="__codelineno-4-6" name="__codelineno-4-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-4-7" id="__codelineno-4-7" name="__codelineno-4-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li>REDIportal TABLE1 format. Download from <a href="http://srv00.recas.ba.infn.it/atlas/">REDIportal</a>.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-4-2" id="__codelineno-4-2" name="__codelineno-4-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-4-3" id="__codelineno-4-3" name="__codelineno-4-3"></a><span class="w">    </span>--bam<span class="w"> </span>unstranded:aligned.bam<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-4-4" id="__codelineno-4-4" name="__codelineno-4-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-4-5" id="__codelineno-4-5" name="__codelineno-4-5"></a><span class="w">    </span>--no-strandedness<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a href="#__codelineno-4-6" id="__codelineno-4-6" name="__codelineno-4-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-5-1" id="__codelineno-5-1" name="__codelineno-5-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-5-2" id="__codelineno-5-2" name="__codelineno-5-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-5-3" id="__codelineno-5-3" name="__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>unstranded:aligned.bam<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-5-4" id="__codelineno-5-4" name="__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-5-5" id="__codelineno-5-5" name="__codelineno-5-5"></a><span class="w">    </span>--no-strandedness<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a href="#__codelineno-5-6" id="__codelineno-5-6" name="__codelineno-5-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li>Disables <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strand filtering for unstranded RNA-seq protocols.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-5-1" id="__codelineno-5-1" name="__codelineno-5-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-5-2" id="__codelineno-5-2" name="__codelineno-5-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-5-3" id="__codelineno-5-3" name="__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:umi_tagged.bam<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-5-4" id="__codelineno-5-4" name="__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-5-5" id="__codelineno-5-5" name="__codelineno-5-5"></a><span class="w">    </span>--umi-tag<span class="w"> </span>RX<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-5-6" id="__codelineno-5-6" name="__codelineno-5-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-2" id="__codelineno-6-2" name="__codelineno-6-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-3" id="__codelineno-6-3" name="__codelineno-6-3"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:umi_tagged.bam<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-4" id="__codelineno-6-4" name="__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-5" id="__codelineno-6-5" name="__codelineno-6-5"></a><span class="w">    </span>--umi-tag<span class="w"> </span>RX<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-6" id="__codelineno-6-6" name="__codelineno-6-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 </div>
 </div>
@@ -1651,7 +1665,7 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 05:02:49 UTC"><span class="timeago" datetime="2026-03-20T05:02:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 05:02:49 UTC">2026-03-20</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 14:24:44 UTC"><span class="timeago" datetime="2026-03-20T14:24:44+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 14:24:44 UTC">2026-03-20</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
