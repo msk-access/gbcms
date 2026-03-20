@@ -39,22 +39,25 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Input
-        VCF[VCF/MAF]
-        BAM[BAM Files]
-        FASTA[Reference]
+        VCF["VCF/MAF"]
+        BAM["BAM Files"]
+        FASTA["Reference FASTA"]
     end
-    
+
     subgraph Process
-        Load[Load Variants]
-        Prepare["Prepare (validate + left-align + decomp detect)"]
-        Count[Count Reads]
+        Load["Load Variants"]
+        Prepare["Prepare\n(validate + left-align + decomp detect)"]
+        Count["Count Reads"]
     end
-    
-    subgraph Output
-        Result[VCF/MAF + Counts]
-        Parquet["<sample>.fsd.parquet (optional, --mfsd-parquet)"]
+
+    subgraph Output ["Required Output"]
+        Result["VCF/MAF + Counts"]
     end
-    
+
+    subgraph OptOut ["Optional Output (--mfsd-parquet)"]
+        Parquet["\u003csample\u003e.fsd.parquet"]
+    end
+
     VCF --> Load --> Prepare
     FASTA --> Prepare
     Prepare --> Count
@@ -213,6 +216,9 @@ sequenceDiagram
             loop For each read
                 Note over Rust: Apply filter cascade
                 Note over Rust: Dispatch to type checker
+                Note over Rust: Phase 1+2 haplotype reconstruction
+                Note over Rust: Phase 2.5 edit-distance fast-path
+                Note over Rust: Phase 3 WFA triage → PairHMM LLR
                 Note over Rust: Update read + fragment counts
             end
             Note over Rust: Compute Fisher strand bias

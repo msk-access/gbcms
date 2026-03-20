@@ -39,16 +39,19 @@ All these files must be updated with the new version (5 references total):
 ## Release Workflow
 
 ```mermaid
-flowchart LR
-    develop -->|1. Create release branch| release/X.Y.Z
-    release/X.Y.Z -->|2. Update versions| release/X.Y.Z
-    release/X.Y.Z -->|3. PR to main| main
-    main -->|4. Tag triggers CI| CI
-    CI --> PyPI
-    CI --> Docker/GHCR
-    CI --> gh-pages
-    main -->|5. Merge back| develop
+gitGraph LR:
+   commit id: "ongoing develop work"
+   branch release/X.Y.Z
+   commit id: "bump versions (5 files)"
+   commit id: "update CHANGELOG.md"
+   checkout main
+   merge release/X.Y.Z id: "PR merged" tag: "vX.Y.Z"
+   checkout develop
+   merge release/X.Y.Z id: "back-merge"
 ```
+
+!!! info "Tag triggers CI"
+    Pushing the tag `vX.Y.Z` automatically triggers the CI pipeline which publishes to **PyPI**, **Docker/GHCR**, and deploys **gh-pages** docs.
 
 ---
 
