@@ -14,15 +14,24 @@ After each read is [classified](allele-classification.md) as REF, ALT, or neithe
 
 ```mermaid
 flowchart LR
-    Class([🧬 Allele Classification]) --> ReadCount([📖 Read-Level Counts])
-    Class --> FragTrack([🔗 Fragment Tracking])
-    FragTrack --> Consensus([⚖️ Quality-Weighted Consensus])
-    Consensus --> FragCount([🧬 Fragment-Level Counts])
-    ReadCount --> SB([📊 Strand Bias])
-    FragCount --> FSB([📊 Fragment Strand Bias])
+    Class(["\ud83e\uddec Classification"]):::start
 
+    subgraph ReadLevel ["\ud83d\udcd6 Read-Level Path"]
+        direction LR
+        RL1["Read Counts\nDP / RD / AD"] --> SB["Strand Bias\n(Fisher's test)"]
+    end
+
+    subgraph FragLevel ["\ud83d\udd17 Fragment-Level Path"]
+        direction LR
+        FL1["Fragment Tracking\n(QNAME hash)"] --> FL2["Quality Consensus\n(R1 vs R2 resolve)"] --> FL3["Fragment Counts\nDPF / RDF / ADF"] --> FSB["Fragment Strand Bias\n(Fisher's test)"]
+    end
+
+    Class --> ReadLevel
+    Class --> FragLevel
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef metrics fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    class ReadCount,FragCount,SB,FSB metrics;
+    class SB,FSB metrics;
 ```
 
 ---
@@ -33,22 +42,23 @@ Each read passing filters is counted independently. No deduplication is applied 
 
 ```mermaid
 flowchart TD
-    Fetch(["📥 Fetch reads from<br/>±5bp window"]) --> Filters["🔍 Apply read filters<br/>(MAPQ, dup, etc.)"]
-    Filters --> Classify["🧬 Allele classification<br/>(check_snp / check_insertion / etc.)"]
-    Classify --> Anchor{"Read start ≤<br/>variant POS?"}
-    Anchor -->|"Yes"| DP["✅ Count in DP<br/>(REF, ALT, or neither)"]
-    Anchor -->|"No"| ClassCheck{"Classified as<br/>REF or ALT?"}
-    ClassCheck -->|"Yes (shifted indel)"| DP
-    ClassCheck -->|"No"| Skip(["⏭️ Skip — outside<br/>variant footprint"]):::skip
+    Fetch(["📥 Fetch reads ±5bp window"]) --> Classify["🧬 Allele classification"]
+    Classify --> Anchor{"Read start ≤ variant POS?"}
+    Anchor -->|"Yes — normal"| DP["✅ Count in DP"]
+    Anchor -->|"No"| ClassCheck{"Classified as REF or ALT?"}
+    ClassCheck -->|"Yes — shifted indel"| DPShifted["✅ Count in DP"]:::shifted
+    ClassCheck -->|"No"| Skip(["⏭️ Skip — outside footprint"]):::skip
     DP --> Allele{"Allele?"}
+    DPShifted --> Allele
     Allele -->|REF| RD["RD += 1"]:::ref
     Allele -->|ALT| AD["AD += 1"]:::alt
-    Allele -->|Neither| Neither["DP only<br/>(no RD/AD)"]:::neither
+    Allele -->|Neither| Neither["DP only (no RD/AD)"]:::neither
 
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
     classDef skip fill:#bdc3c7,color:#000,stroke:#95a5a6;
+    classDef shifted fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
 ```
 
 
@@ -75,30 +85,43 @@ Fragment counting collapses read pairs into a single observation per fragment. T
 
 Fragments are tracked using **QNAME hashing** — each read's QNAME is hashed to a `u64` key for memory-efficient lookup. The `FragmentEvidence` struct records the best base quality seen for REF and ALT across both reads in the pair.
 
+**Phase A — Fragment Tracking** (per-read pass):
+
+```mermaid
+flowchart LR
+    Read(["📖 Read passes filters"]):::start --> Hash["Hash QNAME → u64 key"]
+    Hash --> Seen{"Fragment seen before?"}
+    Seen -->|No| Create["Create FragmentEvidence\n{ref_qual=0, alt_qual=0}"]
+    Seen -->|Yes| Update["Update best quality score"]
+    Create --> Store["Store allele + base quality"]
+    Update --> Store
+    Store --> Next(["→ next read …"]):::next
+
+    classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+```
+
+**Phase B — Quality-Weighted Consensus** (after all reads loaded):
+
 ```mermaid
 flowchart TD
-    Start([For each read passing filters]):::start
-    Start --> Hash["Hash QNAME → u64 key"]
-    Hash --> Observe["Record allele + base quality into FragmentEvidence"]
-    Observe --> Done[After all reads processed]
-    Done --> ForEach[For each unique fragment]
-    ForEach --> HasBoth{Both REF and ALT evidence?}
-    HasBoth -->|No| Direct[Assign to whichever allele was seen]
+    ForEach(["For each unique fragment"]):::start --> HasBoth{"Both REF and ALT evidence?"}
+    HasBoth -->|No| Direct["Assign to whichever allele was seen"]
     HasBoth -->|Yes| QualCheck{"Quality difference > threshold?"}
-    QualCheck -->|"REF qual >> ALT qual"| Ref([✅ Count as REF]):::ref
-    QualCheck -->|"ALT qual >> REF qual"| Alt([🔴 Count as ALT]):::alt
-    QualCheck -->|"Within threshold"| Discard([⚪ Discard — ambiguous]):::discard
+    QualCheck -->|"REF qual >> ALT"| Ref(["✅ Count as REF"]):::ref
+    QualCheck -->|"ALT qual >> REF"| Alt(["🔴 Count as ALT"]):::alt
+    QualCheck -->|"Within threshold"| Discard(["⚪ Discard — ambiguous"]):::discard
     Direct --> Count
     Ref --> Count
     Alt --> Count
-    Discard --> DPF["Still counted in DPF"]:::info
-    Count[Update RDF / ADF / DPF + strand counts]
+    Discard --> DPF["Counted in DPF only"]:::info
+    Count["Update RDF / ADF / DPF + strand counts"]
 
     classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef discard fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
-    classDef info fill:#3498db15,stroke:#3498db;
+    classDef info fill:#3498db25,stroke:#3498db;
 ```
 
 ### Quality-Weighted Consensus
@@ -146,26 +169,23 @@ Where **AD** and **RD** are the read-level alternate and reference counts. Fragm
 
 ## Strand Bias (Fisher's Exact Test)
 
-Strand bias detects when an allele is disproportionately supported by reads on one strand — a common sequencing artifact.
+Strand bias is detected by building a **2×2 contingency table** from strand-specific counts and running Fisher's exact test:
+
+| · | Fwd strand | Rev strand |
+|:--|:----------:|:----------:|
+| **REF** | `RD_fwd` (a) | `RD_rev` (b) |
+| **ALT** | `AD_fwd` (c) | `AD_rev` (d) |
 
 ```mermaid
 flowchart LR
-    subgraph Table ["2×2 Contingency Table"]
-        direction TB
-        Header["| · | Fwd | Rev |"]
-        RefRow["| REF | a | b |"]
-        AltRow["| ALT | c | d |"]
-    end
+    Counts(["2×2 Strand Counts"]):::start --> Fisher["Fisher's Exact Test"]
+    Fisher --> PVal["SB_pval"]
+    Fisher --> OR["SB_OR"]
+    PVal --> Interp{"p < 0.05?"}
+    Interp -->|Yes| Bias(["⚠️ Possible Strand Bias"]):::warn
+    Interp -->|No| NoBias(["✅ No Strand Bias"]):::pass
 
-    Table --> Fisher([Fisher Exact Test]):::test
-    Fisher --> Pval[SB_pval]
-    Fisher --> OR[SB_OR]
-
-    Pval --> Interpret{p < 0.05?}
-    Interpret -->|Yes| Bias{{⚠️ Possible Strand Bias}}:::warn
-    Interpret -->|No| NoBias([✅ No Strand Bias]):::pass
-
-    classDef test fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef warn fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 ```

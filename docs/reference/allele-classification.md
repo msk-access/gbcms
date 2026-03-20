@@ -11,18 +11,20 @@ After passing [read filters](read-filters.md), each read is dispatched to a **ty
 
 ```mermaid
 flowchart LR
-    Fetch([📥 Fetch Reads]):::fetch --> Filter([🔍 Apply Filters]):::filter
-    Filter --> Dispatch{"ref_len × alt_len?"}
-    Dispatch -->|"1 × 1"| SNP[check_snp]
-    Dispatch -->|"N × N"| MNP[check_mnp]
-    Dispatch -->|"1 × N"| INS[check_insertion]
-    Dispatch -->|"N × 1\nalt[0] == ref[0]\n(pure DEL)"| DEL[check_deletion]
-    Dispatch -->|"N × 1\nalt[0] ≠ ref[0]\n(Del+SNV)"| CPX[check_complex]
-    Dispatch -->|"else"| CPX
+    Fetch(["📥 Fetch Reads"]):::fetch --> Filter(["🔍 Apply Filters"]):::filter
+    Filter --> Dispatch{{"Dispatch\nref_len × alt_len?"}}
+
+    Dispatch -->|"1 × 1"| SNP["check_snp"]
+    Dispatch -->|"N × N"| MNP["check_mnp"]
+    Dispatch -->|"1 × N"| INS["check_insertion"]
+    Dispatch -->|"N × 1, alt[0]==ref[0]"| DEL["check_deletion"]
+    Dispatch -->|"N × 1, alt[0]≠ref[0]\nor complex"| CPX["check_complex"]
+
     MNP -.->|"inconclusive"| CPX
     INS -.->|"Phase 3 fallback"| CPX
-    DEL -.->|"fallback (del_len ≥ 5,\nS3 mismatch → Phase 3)"| CPX
-    SNP --> Count([📊 Update Counts]):::count
+    DEL -.->|"del_len ≥ 5, S3 fail"| CPX
+
+    SNP --> Count(["📊 Update Counts"]):::count
     INS --> Count
     DEL --> Count
     MNP --> Count
@@ -116,46 +118,57 @@ Bases inserted after an **anchor** position. The anchor is the last reference ba
 
 The insertion check uses a **single CIGAR walk** with four detection strategies:
 
+#### Part A — CIGAR-Based Strict Detection
+
 ```mermaid
-flowchart TD
-    Start([🧬 Insertion Check]):::start --> Walk[Walk CIGAR left → right]
-    Walk --> Found{Match block contains anchor?}
-    Found -->|No| WindowCheck
-    Found -->|Yes| Backward{Anchor at start of block AND prev op is Ins?}
-    Backward -->|Yes| BWMatch{Length + seq match? quality-masked}
-    BWMatch -->|Yes| BWAlt([🔴 ALT - backward]):::alt
-    BWMatch -->|No| AtEnd
-    Backward -->|No| AtEnd{Anchor at end of block?}
-    AtEnd -->|No| RefCov[Mark ref coverage]
-    AtEnd -->|Yes| NextOp{Next op is Ins?}
-    NextOp -->|No| RefCov
-    NextOp -->|Yes| Strict{"Length + seq match? (quality-masked)"}
-    Strict -->|Yes| StrictAlt([🔴 ALT - strict]):::alt
-    Strict -->|No| RefCov
-    RefCov --> WindowCheck
-
-    WindowCheck{Ins within ±5bp window?}
-    WindowCheck -->|No| Continue[Continue CIGAR walk]
-    WindowCheck -->|Yes| S1{"S1: Seq matches? (quality-masked)"}
-    S1 -->|No| LenMatch{"Same length?"}
-    LenMatch -->|Yes| FlagP3["Flag for Phase 3"]:::fallback
-    LenMatch -->|No| Continue
-    S1 -->|Yes| S3{S3: Anchor base matches ref?}
-    S3 -->|No| Continue
-    S3 -->|Yes| S2[S2: Track closest match]
-    S2 --> Continue
-
-    Continue --> MoreOps{More CIGAR ops?}
-    MoreOps -->|Yes| Walk
-    MoreOps -->|No| Eval{Windowed candidate found?}
-    Eval -->|Yes| WinAlt([🔴 ALT - windowed]):::alt
-    Eval -->|No| P3Check{"Phase 3 flagged<br/>AND ref coverage?"}
-    P3Check -->|Yes| Complex([🔄 check_complex<br/>Phase 3 SW]):::fallback
-    P3Check -->|No| HasRef{Read covered anchor?}
-    HasRef -->|Yes| Ref([✅ REF]):::ref
-    HasRef -->|No| Neither([Neither]):::neither
+flowchart LR
+    Start(["\ud83e\uddec Insertion Check"]):::start --> Walk["Walk CIGAR \u2192 left to right"]
+    Walk --> MatchBlk{"Match block contains anchor?"}
+    MatchBlk -->|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk -->|Yes| Bwd{"Anchor at block start\nAND prev op = Ins?"}
+    Bwd -->|Yes| BwdMatch{"Length + seq match?\n(quality-masked)"}
+    BwdMatch -->|Yes| BWAlt(["\ud83d\udd34 ALT \u2014 backward"]):::alt
+    BwdMatch -->|No| Fwd
+    Bwd -->|No| Fwd{"Anchor at block end?"}
+    Fwd -->|No| RefCov["Mark ref coverage"]
+    Fwd -->|Yes| Next{"Next op = Ins?"}
+    Next -->|No| RefCov
+    Next -->|Yes| StrictMatch{"Length + seq match?\n(quality-masked)"}
+    StrictMatch -->|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
+    StrictMatch -->|No| RefCov
+    RefCov --> WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+```
+
+#### Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards
+
+```mermaid
+flowchart TD
+    WinIn(["\u2192 from CIGAR walk"]):::entry --> CheckWin{"Ins within \u00b15bp window?"}
+    CheckWin -->|No| Continue["Continue CIGAR walk"]
+    CheckWin -->|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
+    S1 -->|Yes| S3{"S3: Anchor base\nmatches ref?"}
+    S3 -->|No| Continue
+    S3 -->|Yes| S2["S2: Track closest match"]
+    S2 --> Continue
+    S1 -->|No| LenMatch{"Same length?"}
+    LenMatch -->|Yes| FlagP3["Flag has_nearby_length_match"]:::fallback
+    LenMatch -->|No| Continue
+    FlagP3 --> Continue
+    Continue --> MoreOps{"More CIGAR ops?"}
+    MoreOps -->|Yes| CheckWin
+    MoreOps -->|No| Eval{"Windowed candidate found?"}
+    Eval -->|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    Eval -->|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
+    P3Check -->|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    P3Check -->|No| HasRef{"Read covered anchor?"}
+    HasRef -->|Yes| Ref(["\u2705 REF"]):::ref
+    HasRef -->|No| Neither(["\u29ef Neither"]):::neither
+
+    classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
@@ -173,7 +186,7 @@ Three layers of validation prevent false-positive windowed matches:
 | **S3** | Reference base at shifted anchor matches original anchor base | Ensures the shifted position is biologically equivalent |
 
 !!! note "Phase 3 Haplotype Fallback (has_nearby_length_match)"
-    When the windowed scan finds an insertion that matches in **length** but not **sequence** (e.g., aligner represents the biological event with shifted bases in a repeat), the engine flags `has_nearby_length_match` and falls back to `check_complex` for **Smith-Waterman arbitration**. This ensures ambiguous cases are resolved by haplotype comparison rather than strict sequence matching.
+    When the windowed scan finds an insertion that matches in **length** but not **sequence** (e.g., aligner represents the biological event with shifted bases in a repeat), the engine flags `has_nearby_length_match` and falls back to `check_complex` for **Phase 3 WFA+PairHMM arbitration**. This ensures ambiguous cases are resolved by haplotype comparison rather than strict sequence matching.
 
 ### Visual Example
 
@@ -238,51 +251,72 @@ Same single-walk strategy as insertion, with four additional features:
 
 4. **Haplotype fallback** — When no CIGAR match is found and the read doesn't cover the anchor, falls back to `check_complex` for haplotype-based comparison.
 
+#### Part A \u2014 CIGAR-Based Strict + Reciprocal-Overlap Detection
+
+```mermaid
+flowchart LR
+    Start(["\ud83e\uddec Deletion Check"]):::start --> Walk["Walk CIGAR \u2192 left to right"]
+    Walk --> MatchBlk{"Match block contains anchor?"}
+    MatchBlk -->|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk -->|Yes| AtEnd{"Anchor at block end?"}
+    AtEnd -->|No| RefCov["Mark ref coverage"]
+    AtEnd -->|Yes| NextDel{"Next op = Del?"}
+    NextDel -->|No| RefCov
+    NextDel -->|Yes| LenMatch{"Length matches exactly?"}
+    LenMatch -->|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
+    LenMatch -->|No| Recip{"\u226550bp AND\noverlap \u226550%?"}
+    Recip -->|Yes| TolAlt(["\ud83d\udd34 ALT \u2014 tolerant SV"]):::alt
+    Recip -->|No| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    RefCov --> WinCheck
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+```
+
+#### Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards
+
 ```mermaid
 flowchart TD
-    Start([🧬 Deletion Check]):::start --> Walk[Walk CIGAR left → right]
-    Walk --> Found{Match block contains anchor?}
-    Found -->|No| WindowCheck
-    Found -->|Yes| AtEnd{Anchor at end of block?}
-    AtEnd -->|No| RefCov[Mark ref coverage]
-    AtEnd -->|Yes| NextOp{Next op is Del?}
-    NextOp -->|No| RefCov
-    NextOp -->|Yes| LenCheck{Length matches?}
-    LenCheck -->|Yes| StrictAlt([🔴 ALT - strict]):::alt
-    LenCheck -->|No| RecipCheck{"≥50bp AND overlap ≥50%?"}
-    RecipCheck -->|Yes| TolAlt([🔴 ALT - tolerant]):::alt
-    RecipCheck -->|No| Fallback1([🔄 check_complex]):::fallback
-    RefCov --> WindowCheck
-
-    WindowCheck{Del within ±5bp window?}
-    WindowCheck -->|No| Continue[Continue walk]
-    WindowCheck -->|Yes| S1{S1: Length check}
-    S1 -->|Match| S3{"S3: Ref bases match?"}
-    S1 -->|"≥50bp + overlap ≥50%"| S2Track[S2: Track closest]
-    S1 -->|No match| Continue
-    S3 -->|Yes| S2[S2: Track closest]
-    S3 -->|"No AND del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
-    S3 -->|"No AND del_len < 5"| Continue
+    WinIn(["\u2192 from CIGAR walk"]):::entry --> CheckWin{"Del within \u00b15bp window?"}
+    CheckWin -->|No| Continue["Continue walk"]
+    CheckWin -->|Yes| S1{"S1: Length check"}
+    S1 -->|"Exact match"| S3{"S3: Ref bases match?"}
+    S1 -->|"\u226550bp + overlap \u226550%"| S2Track["S2: Track closest (SV)"]  
+    S1 -->|"No match"| Continue
+    S3 -->|Yes| S2["S2: Track closest"]
+    S3 -->|"No, del_len \u2265 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 -->|"No, del_len < 5"| Continue
     S2Track --> Continue
     S2 --> Continue
     FlagP3 --> Continue
+    Continue --> MoreOps{"More ops?"}
+    MoreOps -->|Yes| CheckWin
+    MoreOps -->|No| Eval(["\u2192 Evaluation"]):::next
 
-    Continue --> MoreOps{More ops?}
-    MoreOps -->|Yes| Walk
-    MoreOps -->|No| Eval{Windowed match?}
-    Eval -->|Yes| WinAlt([🔴 ALT]):::alt
-    Eval -->|No| P3DelCheck{"has_nearby_length_match<br/>AND ref coverage?"}
-    P3DelCheck -->|Yes| Complex2([🔄 check_complex<br/>Phase 3 SW]):::fallback
-    P3DelCheck -->|No| Interior{"Interior read?<br/>(≥50bp del, read starts inside span)"}
-    Interior -->|Yes| IntRef([✅ REF - interior]):::ref
-    Interior -->|No| HasRef{Anchor covered?}
-    HasRef -->|Yes| Ref([✅ REF]):::ref
-    HasRef -->|No| Fallback2([🔄 check_complex]):::fallback
+    classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+```
 
-    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+#### Part C \u2014 Evaluation + Interior REF Guard
+
+```mermaid
+flowchart TD
+    EvalIn(["\u2192 from windowed scan"]):::entry --> Win{"Windowed match found?"}
+    Win -->|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    Win -->|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
+    P3Check -->|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    P3Check -->|No| Interior{"Interior read?\n(\u226750bp del, read starts inside span)"}
+    Interior -->|Yes| IntRef(["\u2705 REF \u2014 interior guard"]):::ref
+    Interior -->|No| HasRef{"Anchor covered?"}
+    HasRef -->|Yes| Ref(["\u2705 REF"]):::ref
+    HasRef -->|No| CPX
+
+    classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
-    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
 
@@ -349,29 +383,28 @@ Multiple adjacent bases substituted simultaneously.
 
 ```mermaid
 flowchart TD
-    Start([🧬 MNP Check]):::start --> Find[Find read position of first base]
-    Find --> Found{Position found?}
-    Found -->|No| Structural1([🔄 Structural → check_complex]):::fallback
-    Found -->|Yes| Cover{Read covers entire MNP region?}
-    Cover -->|No| Structural2([🔄 Structural → check_complex]):::fallback
-    Cover -->|Yes| Contig{No indels within MNP block?}
+    Start(["🧬 MNP Check"]):::start --> Find["Find read position of first base"]
+    Find --> Found{"Position found?"}
+    Found -->|No| CPX
+    Found -->|Yes| Cover{"Read covers entire MNP region?"}
+    Cover -->|No| CPX
+    Cover -->|Yes| Contig{"No indels within MNP block?"}
+    Contig -->|"Indel found"| CPX
+    Contig -->|"Contiguous"| MinBQ{"min(BQ across block)\n≥ threshold?"}
+    MinBQ -->|No| CPX
+    MinBQ -->|Yes| Compare["Compare all bases to REF and ALT"]
+    Compare --> Final{"All bases match?"}
+    Final -->|"All match ALT"| Alt(["🔴 ALT"]):::alt
+    Final -->|"All match REF"| Ref(["✅ REF"]):::ref
+    Final -->|"Mixed / Neither"| Neither(["⬜ ThirdAllele — skip read"]):::neither
 
-    Contig -->|Indel found| Structural3([🔄 Structural → check_complex]):::fallback
-    Contig -->|Contiguous| MinBQ{"min(BQ across block) ≥ threshold?"}
-
-    MinBQ -->|No| LowQ(["🔄 LowQuality → check_complex"]):::fallback
-    MinBQ -->|Yes| Compare[Compare all bases to REF and ALT]
-
-    Compare --> Final{All bases match?}
-    Final -->|All match ALT| Alt([🔴 ALT]):::alt
-    Final -->|All match REF| Ref([✅ REF]):::ref
-    Final -->|Mixed / Neither| Third([⬜ ThirdAllele — skip read]):::neither
+    CPX(["🔄 check_complex\n(Phase 3 fallback)"]):::fallback
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
-    classDef fallback fill:#f39c12,color:#fff,stroke:#e67e22,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
 
 !!! info "Min-BQ-Across-Block Strategy"
@@ -411,118 +444,148 @@ Variants where REF and ALT differ in both sequence **and** length. Also used for
 
     See [Case 2 in the Complex Indels guide](complex-indels.md#case-2-nf2-large-deletion-ref-reads-invisible) for the full worked example.
 
-### Three-Phase Algorithm
+#### Phase Overview
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Phase1 : read enters check_complex
+
+    Phase1 : Phase 1\nHaplotype Reconstruction\n─ CIGAR walk → read_seq
+    Phase2 : Phase 2\nMasked Comparison\n─ quality-masked haplotype match
+    Phase25 : Phase 2.5\nEdit Distance\n─ Levenshtein fast-path
+    Phase3 : Phase 3\nWFA → PairHMM\n─ dual-haplotype alignment
+
+    Phase1 --> Phase2 : always
+    Phase2 --> REF : exact REF match
+    Phase2 --> ALT : exact ALT match
+    Phase2 --> Phase25 : ambiguous / no match
+    Phase25 --> REF : edit dist REF wins (>1 margin)
+    Phase25 --> ALT : edit dist ALT wins (>1 margin)
+    Phase25 --> Phase3 : tied or large-del skip
+    Phase3 --> REF : confident REF call
+    Phase3 --> ALT : confident ALT call
+    Phase3 --> Neither : below threshold
+
+    REF : ✅ REF
+    ALT : 🔴 ALT
+    Neither : ⚪ Neither
+```
+
+#### Phase 1 + 2 Detail
 
 ```mermaid
 flowchart TD
-    Start([🧬 Complex Check]):::start
-    Start --> Phase1
+    Start(["🧬 Complex Check"]):::start --> Walk["Walk CIGAR → rebuild read_seq"]
 
-    subgraph Phase1 [Phase 1: Haplotype Reconstruction]
-        direction TB
-        Walk[Walk CIGAR to reconstruct<br/>read sequence for variant region]
-        Walk --> Ops{CIGAR op type?}
-        Ops -->|M/=/X| Match[Append overlapping bases + quals]
-        Ops -->|I| Ins[Append inserted bases + quals]
-        Ops -->|D/N| Del[Advance ref_pos only]
-        Ops -->|S| SC{Overlaps variant?}
-        SC -->|Yes| SCAdd[Append soft-clipped bases]
-        SC -->|No| SCSkip[Skip]
-    end
+    Walk --> Ops{"CIGAR op type?"}
+    Ops -->|"M / = / X"| Match["Append overlapping bases + quals"]
+    Ops -->|"I"| InsOp["Append inserted bases + quals"]
+    Ops -->|"D / N"| Del["Advance ref_pos only"]
+    Ops -->|"S (soft-clip)"| SC{"Overlaps variant?"}
+    SC -->|Yes| SCAdd["Append soft-clipped bases"]
+    SC -->|No| SCSkip["Skip"]
+    Match --> LoopBack( )
+    InsOp --> LoopBack
+    Del --> LoopBack
+    SCAdd --> LoopBack
+    SCSkip --> LoopBack
+    LoopBack --> |"more ops?"| Ops
+    LoopBack --> |"done"| Guards
 
-    Phase1 --> LargeGuard{"ref_len > 50 AND<br/>recon < 10% of ref?"}
-    LargeGuard -->|Yes| SkipP2[Skip Phase 2<br/>unreliable]:::neither
+    Guards["Post-reconstruction guards"]
+    Guards --> LargeGuard{"ref_len > 50 AND<br/>recon < 10% of ref?"}
+    LargeGuard -->|Yes| P25(["→ Phase 2.5"]):::next
     LargeGuard -->|No| LenRatio{"ref_len > 2 × alt_len?"}
-    LenRatio -->|Yes| SkipP2B[Skip Phase 2 Case B<br/>+ Phase 2.5]:::neither
-    LenRatio -->|No| Phase2
+    LenRatio -->|Yes| P3Direct(["→ Phase 3 directly"]):::next
+    LenRatio -->|No| LenCheck{"Recon length matches?"}
 
-    subgraph Phase2 ["Phase 2: Masked Comparison"]
-        direction TB
-        LenCheck{Recon length matches?}
-        LenCheck -->|"ALT and REF"| CaseA["Case A: Dual compare<br/>+ ambiguity detection"]
-        LenCheck -->|"ALT only"| CaseB["Case B: ALT-only compare"]
-        LenCheck -->|"REF only"| CaseC["Case C: REF-only compare"]
-        LenCheck -->|Neither| NoMatch[No match]
-    end
+    LenCheck -->|"ALT and REF"| CaseA["Case A: Dual compare<br/>+ ambiguity detection"]
+    LenCheck -->|"ALT only"| CaseB["Case B: ALT-only compare"]
+    LenCheck -->|"REF only"| CaseC["Case C: REF-only compare"]
+    LenCheck -->|"Neither"| P25
 
     CaseA --> Ambig{"Reliable bases<br/>match BOTH?"}
-    Ambig -->|Yes| Neither1([Neither - ambiguous]):::neither
-    Ambig -->|No| Matches
-
-    Matches{Which allele matches?}
-    Matches -->|ALT| Alt1([🔴 ALT]):::alt
-    Matches -->|REF| Ref1([✅ REF]):::ref
-    Matches -->|Neither| NoMatch
+    Ambig -->|Yes| Neither1(["⚪ Neither — ambiguous"]):::neither
+    Ambig -->|No| Matches{"Which allele?"}
+    Matches -->|ALT| Alt1(["🔴 ALT"]):::alt
+    Matches -->|REF| Ref1(["✅ REF"]):::ref
+    Matches -->|Neither| P25
 
     CaseB --> AltMatch{"0 mismatches on<br/>reliable bases?"}
-    AltMatch -->|Yes| Alt2([🔴 ALT]):::alt
-    AltMatch -->|No| NoMatch
+    AltMatch -->|Yes| Alt2(["🔴 ALT"]):::alt
+    AltMatch -->|No| P25
 
     CaseC --> RefMatch{"0 mismatches on<br/>reliable bases?"}
-    RefMatch -->|Yes| Ref2([✅ REF]):::ref
-    RefMatch -->|No| NoMatch
-
-    SkipP2 --> Phase25
-    SkipP2B --> Phase3
-    NoMatch --> Phase25
-
-    subgraph Phase25 ["Phase 2.5: Edit Distance"]
-        direction TB
-        ReconLen{"recon_len ≥ 2?"}
-        ReconLen -->|No| SkipED[Skip to Phase 3]
-        ReconLen -->|Yes| RatioGuard{"ref_len > 2 × alt_len?"}
-        RatioGuard -->|Yes| SkipED
-        RatioGuard -->|No| EditDist["Compute Levenshtein distance<br/>to REF and ALT alleles"]
-        EditDist --> EDMargin{">1 edit margin?"}
-        EDMargin -->|"ALT closer"| Alt25([🔴 ALT]):::alt
-        EDMargin -->|"REF closer"| Ref25([✅ REF]):::ref
-        EDMargin -->|"Ambiguous"| SkipED
-    end
-
-    SkipED --> Phase3
-
-    subgraph Phase3 ["Phase 3: Alignment Fallback"]
-        direction TB
-        IsMNP{"Is cleanly MNP?<br/>(ref == alt > 1)"}
-
-        IsMNP -->|Yes| Extract[Extract raw read window]
-        IsMNP -->|No| Extract
-        Extract --> Backend{"--alignment-backend?"}
-        Backend -->|"pairhmm (default)"| WFA["WFA edit-distance triage<br/>vs pangenomic haplotype matrix"]
-        WFA --> WFAClear{"Clear winner?"}
-        WFAClear -->|"Yes (~70-80%)"| WFAResult["Classified instantly"]
-        WFAClear -->|"Ambiguous"| HMM["Marginalized PairHMM LLR<br/>vs REF and ALT haplotypes"]
-        HMM --> LLR{"LLR > threshold?"}
-        LLR -->|"Confident"| ConfResult2
-        LLR -->|"Below threshold"| Neither4([Neither]):::neither
-        WFAResult -->|ALT| Alt3w([🔴 ALT]):::alt
-        WFAResult -->|REF| Ref3w([✅ REF]):::ref
-
-        Backend -->|"sw"| SW["Semiglobal SW alignment<br/>vs REF and ALT haplotypes"]
-        SW --> Margin{"Score difference ≥ 2?"}
-        Margin -->|"Confident call"| ConfCheck
-        Margin -->|"Within margin"| Neither3([Neither]):::neither
-
-        ConfCheck{"Dual trigger?<br/>(borderline OR poor)"}
-        ConfCheck -->|"No"| ConfResult
-        ConfCheck -->|"Yes"| LocalSW["Local SW alignment<br/>(soft-clips bad flanks)"]
-        LocalSW --> LocalMargin{"Score difference ≥ 2?"}
-        LocalMargin -->|ALT wins| Alt3b([🔴 ALT]):::alt
-        LocalMargin -->|REF wins| Ref3b([✅ REF]):::ref
-        LocalMargin -->|"Ambiguous Tie"| Tie2([Neither]):::neither
-
-        ConfResult -->|ALT| Alt3([🔴 ALT]):::alt
-        ConfResult -->|REF| Ref3([✅ REF]):::ref
-        ConfResult2 -->|ALT| Alt3c([🔴 ALT]):::alt
-        ConfResult2 -->|REF| Ref3c([✅ REF]):::ref
-        Margin -->|"Ambiguous Tie"| Tie1([Neither]):::neither
-    end
+    RefMatch -->|Yes| Ref2(["✅ REF"]):::ref
+    RefMatch -->|No| P25
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
 ```
+
+#### Phase 2.5 Detail — Edit Distance Fast-Path
+
+```mermaid
+flowchart TD
+    P25in(["→ from Phase 2"]):::entry
+    P25in --> ReconLen{"recon_len ≥ 2?"}
+    ReconLen -->|No| P3(["→ Phase 3"]):::next
+    ReconLen -->|Yes| RatioGuard{"ref_len > 2 × alt_len?"}
+    RatioGuard -->|Yes| P3
+    RatioGuard -->|No| EditDist["Compute Levenshtein distance<br/>to REF and ALT alleles"]
+    EditDist --> EDMargin{"> 1 edit margin?"}
+    EDMargin -->|"ALT closer"| Alt25(["🔴 ALT"]):::alt
+    EDMargin -->|"REF closer"| Ref25(["✅ REF"]):::ref
+    EDMargin -->|"Tied"| P3
+
+    classDef entry fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+```
+
+#### Phase 3 Detail — WFA → PairHMM (see [Alignment Fallback](#phase-3-alignment-fallback))
+
+```mermaid
+flowchart LR
+    P3in(["→ from Phase 2.5"]):::entry --> Extract["Extract raw read window"]
+    Extract --> Backend{"--alignment-backend?"}
+
+    Backend -->|"pairhmm (default)"| WFA["WFA edit-distance triage<br/>vs pangenomic haplotypes"]
+    WFA --> WFAClear{"Clear winner?"}
+    WFAClear -->|"Yes (~70-80%)"| WFADone{"Which allele?"}
+    WFADone -->|ALT| AltW(["🔴 ALT"]):::alt
+    WFADone -->|REF| RefW(["✅ REF"]):::ref
+    WFAClear -->|"Ambiguous"| HMM["Marginalized PairHMM LLR"]
+    HMM --> LLR{"LLR > threshold?"}
+    LLR -->|Confident| HMMDone{"Which allele?"}
+    LLR -->|"Below threshold"| N4(["⚪ Neither"]):::neither
+    HMMDone -->|ALT| AltH(["🔴 ALT"]):::alt
+    HMMDone -->|REF| RefH(["✅ REF"]):::ref
+
+    Backend -->|"sw"| SW["Semiglobal SW alignment<br/>vs REF + ALT haplotypes"]
+    SW --> Margin{"Score diff ≥ 2?"}
+    Margin -->|"Confident"| ConfCheck{"Dual-trigger?<br/>(borderline / poor)"}
+    Margin -->|"Tied"| N3(["⚪ Neither"]):::neither
+    ConfCheck -->|No| SWDone{"Which allele?"}
+    ConfCheck -->|Yes| LocalSW["Local SW alignment<br/>(soft-clips bad flanks)"]
+    LocalSW --> LocalDone{"Score diff ≥ 2?"}
+    LocalDone -->|ALT| AltL(["🔴 ALT"]):::alt
+    LocalDone -->|REF| RefL(["✅ REF"]):::ref
+    LocalDone -->|"Tied"| N2(["⚪ Neither"]):::neither
+    SWDone -->|ALT| AltS(["🔴 ALT"]):::alt
+    SWDone -->|REF| RefS(["✅ REF"]):::ref
+
+    classDef entry fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+```
+
 
 ### Phase 1: Haplotype Reconstruction
 

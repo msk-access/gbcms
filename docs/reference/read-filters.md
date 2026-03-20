@@ -13,50 +13,46 @@ Which reads are excluded before allele classification — the filter cascade, CL
 Every read from the BAM passes through a **filter cascade** before being checked for allele support. Reads failing any enabled filter are discarded. The order matches the Rust engine implementation.
 
 ```mermaid
-flowchart TD
-    Start([📖 Read from BAM]):::process
+flowchart LR
+    Start(["📖 BAM Read"]):::start
 
-    subgraph Filters [Quality & Alignment Filters]
-        direction TB
-        F1{Duplicate?}:::decision
-        F2{Secondary?}:::decision
-        F3{Supplementary?}:::decision
-        F4{QC Failed?}:::decision
-        F5{Improper pair?}:::decision
-        F6{Contains indel?}:::decision
-        F7{MAPQ ≥ threshold?}:::decision
+    subgraph Auto ["🟢 Auto-On (default enabled)"]
+        direction LR
+        F1{"① Duplicate?\n0x400"}:::on
+        F2{"② Secondary?\n0x100"}:::on
+        F3{"③ Supplementary?\n0x800"}:::on
+        F4{"④ QC Failed?\n0x200"}:::on
+        F5{"⑤ MAPQ < threshold\n(20 DNA / 1 RNA)"}:::on
+        F1 -->|No| F2
+        F2 -->|No| F3
+        F3 -->|No| F4
+        F4 -->|No| F5
     end
 
-    Drop{{❌ Discard Read}}:::discard
-    Pass([✅ Pass to Allele Checker]):::success
+    subgraph Opt ["⚙️ Optional (off by default)"]
+        direction LR
+        O1{"⑥ Improper pair?\n--filter-improper-pair"}:::off
+        O2{"⑦ Contains indel?\n--filter-indel"}:::off
+        O1 -->|No| O2
+    end
 
     Start --> F1
+    F5 -->|Pass| O1
+    O2 -->|Pass| Done(["✅ Allele Classifier"]):::pass
 
-    F1 -- "Yes" --> Drop
-    F1 -- "No" --> F2
+    F1 -->|Yes| Drop(["❌ Discard"]):::drop
+    F2 -->|Yes| Drop
+    F3 -->|Yes| Drop
+    F4 -->|Yes| Drop
+    F5 -->|Below threshold| Drop
+    O1 -->|"Yes (if enabled)"| Drop
+    O2 -->|"Yes (if enabled)"| Drop
 
-    F2 -- "Yes" --> Drop
-    F2 -- "No" --> F3
-
-    F3 -- "Yes" --> Drop
-    F3 -- "No" --> F4
-
-    F4 -- "Yes" --> Drop
-    F4 -- "No" --> F5
-
-    F5 -- "Yes" --> Drop
-    F5 -- "No" --> F6
-
-    F6 -- "Yes" --> Drop
-    F6 -- "No" --> F7
-
-    F7 -- "Below threshold" --> Drop
-    F7 -- "Pass" --> Pass
-
-    classDef process fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
-    classDef decision fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
-    classDef discard fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
-    classDef success fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef on fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef off fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 ```
 
 ---
