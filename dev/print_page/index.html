@@ -2254,13 +2254,13 @@ Use mouse to pan and zoom
 <p>If your <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> lacks an index: <code>samtools faidx reference.fa</code></p>
 </div>
 <hr>
-<h2 id="getting-started-next-steps">Next Steps<a class="headerlink" href="#getting-started-next-steps" title="Permanent link">¶</a></h2>
-<ol>
-<li><strong><a href="#getting-started-installation">Installation</a></strong> — Install via PyPI, Docker, or from source</li>
-<li><strong><a href="#getting-started-quickstart">Quick Start</a></strong> — Run your first counting job (DNA and RNA examples)</li>
-<li><strong><a href="#cli-dna"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></strong> — Full option reference for <code>gbcms dna</code></li>
-<li><strong><a href="#nextflow">Nextflow Pipeline</a></strong> — For processing many samples in parallel on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr></li>
-</ol>
+<h2 id="getting-started-related">Related<a class="headerlink" href="#getting-started-related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="#getting-started-installation">Installation</a> — Install via PyPI, Docker, or from source</li>
+<li><a href="#getting-started-quickstart">Quick Start</a> — Run your first counting job (DNA and RNA examples)</li>
+<li><a href="#cli-dna"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference — DNA</a> — Full option reference for <code>gbcms dna</code></li>
+<li><a href="#nextflow">Nextflow Pipeline</a> — For processing many samples in parallel on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr></li>
+</ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
 <p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="getting-started-installation" heading-number="2.2"><html><head>
@@ -2422,10 +2422,13 @@ provides these dependencies.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#getting-started-installation-__codelineno-10-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>gbcms
 </code></pre></div>
 <hr>
-<h2 id="getting-started-installation-next-steps">Next Steps<a class="headerlink" href="#getting-started-installation-next-steps" title="Permanent link">¶</a></h2>
+<h2 id="getting-started-installation-related">Related<a class="headerlink" href="#getting-started-installation-related" title="Permanent link">¶</a></h2>
 <ul>
-<li><strong><a href="#getting-started-quickstart"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Quick Start</a></strong> — Command examples</li>
-<li><strong><a href="#nextflow">Nextflow Guide</a></strong> — <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> pipeline</li>
+<li><a href="#getting-started-quickstart">Quick Start</a> — Common usage patterns with DNA and RNA examples</li>
+<li><a href="#cli-dna"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference — DNA</a> — Full option reference for <code>gbcms dna</code></li>
+<li><a href="#cli-rna"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference — RNA</a> — Full option reference for <code>gbcms rna</code></li>
+<li><a href="#nextflow">Nextflow Pipeline</a> — Running many samples in parallel on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr></li>
+<li><a href="#resources-troubleshooting">Troubleshooting</a> — Installation issues and common errors</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -2435,11 +2438,12 @@ provides these dependencies.</p>
             remove_material_navigation();remove_mkdocs_theme_navigation();
         })
         </script>
-        </head><body><div><h1 id="rna-seq">Quick Start<a class="headerlink" href="#getting-started-quickstart-rna-seq" title="Permanent link">¶</a></h1>
+        </head><body><div><h1 id="quick-start">Quick Start<a class="headerlink" href="#getting-started-quickstart-quick-start" title="Permanent link">¶</a></h1>
 <p>Get up and running in minutes. All examples below assume gbcms is <a href="#getting-started-installation">installed</a>.</p>
-<blockquote>
-<p><strong>Many samples on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>?</strong> Use <a href="#nextflow">Nextflow</a> instead.</p>
-</blockquote>
+<div class="admonition tip">
+<p class="admonition-title">Many samples on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>?</p>
+<p>Use the <a href="#nextflow">Nextflow pipeline</a> instead of the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> for parallel processing on a cluster.</p>
+</div>
 <hr>
 <h2 id="getting-started-quickstart-basic-usage">Basic Usage<a class="headerlink" href="#getting-started-quickstart-basic-usage" title="Permanent link">¶</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="" id="getting-started-quickstart-__tabbed_1_1" name="getting-started-quickstart-__tabbed_1" type="radio"><input id="getting-started-quickstart-__tabbed_1_2" name="getting-started-quickstart-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="getting-started-quickstart-__tabbed_1_1">DNA / <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></label><label for="getting-started-quickstart-__tabbed_1_2">RNA-seq</label></div>
@@ -2679,13 +2683,13 @@ provides these dependencies.</p>
 <p>📖 Full option reference: <a href="#cli-dna">DNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr></a> · <a href="#cli-rna">RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr></a></p>
 </blockquote>
 <hr>
-<h2 id="getting-started-quickstart-next-steps">Next Steps<a class="headerlink" href="#getting-started-quickstart-next-steps" title="Permanent link">¶</a></h2>
+<h2 id="getting-started-quickstart-related">Related<a class="headerlink" href="#getting-started-quickstart-related" title="Permanent link">¶</a></h2>
 <ul>
-<li><strong><a href="#cli-dna">DNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></strong> — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>, alignment backend options</li>
-<li><strong><a href="#cli-rna">RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></strong> — Strandedness, editing DB, splice junction options  </li>
-<li><strong><a href="#nextflow">Nextflow Pipeline</a></strong> — Process many samples in parallel on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr></li>
-<li><strong><a href="#reference-allele-classification">How It Works</a></strong> — Allele classification algorithms</li>
-<li><strong><a href="#resources-troubleshooting">Troubleshooting</a></strong> — Common issues and solutions</li>
+<li><a href="#cli-dna">DNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a> — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>, alignment backend options</li>
+<li><a href="#cli-rna">RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a> — Strandedness, editing DB, splice junction options</li>
+<li><a href="#nextflow">Nextflow Pipeline</a> — Process many samples in parallel on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr></li>
+<li><a href="#reference-allele-classification">Allele Classification</a> — How the counting engine works</li>
+<li><a href="#resources-troubleshooting">Troubleshooting</a> — Common issues and solutions</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -9477,6 +9481,14 @@ Use mouse to pan and zoom
 <p class="admonition-title">Automated PDF</p>
 <p>For a headless/automated version, see <code>~/Downloads/gbcms-pdf-generator/</code> (local archive, not in repo) — generates <code>site/documentation.pdf</code> via <code>node generate_pdf.mjs</code>.</p>
 </div>
+<hr>
+<h2 id="development-developer-guide-related">Related<a class="headerlink" href="#development-developer-guide-related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="#development-testing-guide">Testing Guide</a> — Running tests and adding new test cases</li>
+<li><a href="#development-release-guide">Release Guide</a> — Release process and versioning</li>
+<li><a href="#development-contributing">Contributing</a> — Contribution workflow and code standards</li>
+<li><a href="#reference-architecture">Architecture</a> — System design and module structure</li>
+</ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
 <p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="development-testing-guide" heading-number="6.2"><html><head>
@@ -9876,6 +9888,14 @@ Use mouse to pan and zoom
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-testing-guide-__codelineno-9-1"></a>pytest<span class="w"> </span>--cov<span class="o">=</span>gbcms<span class="w"> </span>--cov-report<span class="o">=</span>html
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#development-testing-guide-__codelineno-9-2"></a>open<span class="w"> </span>htmlcov/index.html
 </code></pre></div>
+<hr>
+<h2 id="development-testing-guide-related">Related<a class="headerlink" href="#development-testing-guide-related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="#development-developer-guide">Developer Guide</a> — Setup, build commands, and project layout</li>
+<li><a href="#development-contributing">Contributing</a> — Code standards and pull request process</li>
+<li><a href="#reference-architecture">Architecture</a> — Module structure and data flow</li>
+<li><a href="#reference-allele-classification">Allele Classification</a> — Engine logic being tested</li>
+</ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
 <p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="development-release-guide" heading-number="6.3"><html><head>
@@ -10171,6 +10191,14 @@ Use mouse to pan and zoom
 <ul>
 <li>Verify <code>mkdocs-mermaid2-plugin</code> is installed in workflow</li>
 <li>Check snippet paths are correct (relative to root)</li>
+</ul>
+<hr>
+<h2 id="development-release-guide-related">Related<a class="headerlink" href="#development-release-guide-related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="#development-developer-guide">Developer Guide</a> — Setup, build commands, and project layout</li>
+<li><a href="#development-contributing">Contributing</a> — Contribution workflow and code standards</li>
+<li><a href="#development-testing-guide">Testing Guide</a> — Running and writing tests before a release</li>
+<li><a href="#development-changelog">Changelog</a> — Version history</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
