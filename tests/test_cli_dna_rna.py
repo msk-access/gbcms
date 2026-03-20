@@ -12,6 +12,7 @@ parsing help text, because Typer/Rich truncates the rendered options list
 in CI environments (no real TTY), hiding options in the middle.
 """
 
+import click
 from typer.main import get_command
 from typer.testing import CliRunner
 
@@ -19,13 +20,17 @@ from gbcms.cli import app
 
 runner = CliRunner()
 
-# Resolve Typer app → Click Group once for param introspection
-_click_app = get_command(app)
+# Resolve Typer app → Click Group once for param introspection.
+# Cast to click.Group so mypy knows .commands is available —
+# get_command() returns BaseCommand which doesn't declare .commands,
+# but Typer always maps a multi-command app to a Group at runtime.
+_click_app: click.Group = get_command(app)  # type: ignore[assignment]
 
 
 def _get_param_names(command_name: str) -> set[str]:
     """Return the set of CLI parameter names for a subcommand."""
-    return {p.name for p in _click_app.commands[command_name].params}
+    # p.name is str | None per Click stubs; filter None (unnamed params don't occur in practice)
+    return {p.name for p in _click_app.commands[command_name].params if p.name is not None}
 
 
 # ── Command Existence ─────────────────────────────────────────────────────
