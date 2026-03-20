@@ -19,32 +19,32 @@ exactly what you get.
 
 ```mermaid
 flowchart TD
-    Input([\"📄 Input variants\"]):::start
+    Input(["Input variants"]):::start
 
-    Input --> InputType{\"Input type?\"}
-    InputType -->|VCF / VCF.GZ| VCFIn[\"VCF-origin\\n(no metadata)\"]:::vcf
-    InputType -->|MAF| MAFIn[\"MAF-origin\\n(full row metadata)\"]:::maf
+    Input --> InputType{"Input type?"}
+    InputType -->|"VCF / VCF.GZ"| VCFIn["VCF-origin<br/>no metadata"]:::vcf
+    InputType -->|MAF| MAFIn["MAF-origin<br/>full row metadata"]:::maf
 
-    FmtChoice{\"--format?\"}
+    FmtChoice{"--format?"}
     VCFIn --> FmtChoice
     MAFIn --> FmtChoice
 
-    FmtChoice -->|vcf| VCFWriter[\"VcfWriter\"]:::writer
-    FmtChoice -->|maf| MAFWriter[\"MafWriter\"]:::writer
+    FmtChoice -->|vcf| VCFWriter["VcfWriter"]:::writer
+    FmtChoice -->|maf| MAFWriter["MafWriter"]:::writer
 
-    VCFWriter --> ModeVCF{\"Mode?\"}
-    ModeVCF -->|dna| DNAVCF[\"VCF: standard INFO + FORMAT\"]:::dna
-    ModeVCF -->|rna| RNAVCF[\"VCF: + SEN ANT ASEN RED SPL\"]:::rna
+    VCFWriter --> ModeVCF{"Mode?"}
+    ModeVCF -->|dna| DNAVCF["VCF: standard INFO + FORMAT"]:::dna
+    ModeVCF -->|rna| RNAVCF["VCF: + SEN ANT ASEN RED SPL"]:::rna
 
-    MAFWriter --> ModeMAF{\"Mode?\"}
-    ModeMAF -->|dna| DNAMAFPath{\"Input?\"}
-    ModeMAF -->|rna| RNAMAFPath{\"Input?\"}
+    MAFWriter --> ModeMAF{"Mode?"}
+    ModeMAF -->|dna| DNAMAFPath{"Input?"}
+    ModeMAF -->|rna| RNAMAFPath{"Input?"}
 
-    DNAMAFPath -->|VCF-origin| DNAVMAF[\"GDC MAF columns + gbcms counts\"]:::dna
-    DNAMAFPath -->|MAF-origin| DNAMMAF[\"All original columns + gbcms counts\"]:::dna
+    DNAMAFPath -->|"VCF-origin"| DNAVMAF["GDC MAF columns + gbcms counts"]:::dna
+    DNAMAFPath -->|"MAF-origin"| DNAMMAF["All original columns + gbcms counts"]:::dna
 
-    RNAMAFPath -->|VCF-origin| RNAVMAF[\"GDC MAF columns + gbcms counts\\n+ 5 rna_* columns\"]:::rna
-    RNAMAFPath -->|MAF-origin| RNAMMAF[\"All original columns + gbcms counts\\n+ 5 rna_* columns\"]:::rna
+    RNAMAFPath -->|"VCF-origin"| RNAVMAF["GDC MAF columns + gbcms counts<br/>+ 5 rna_* columns"]:::rna
+    RNAMAFPath -->|"MAF-origin"| RNAMMAF["All original columns + gbcms counts<br/>+ 5 rna_* columns"]:::rna
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px
     classDef vcf fill:#2471a3,color:#fff,stroke:#1a5276,stroke-width:2px

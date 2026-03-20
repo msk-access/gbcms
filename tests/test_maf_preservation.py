@@ -264,8 +264,12 @@ def test_vcf_to_maf_always_uses_sample_name(tmp_path):
 
     # VCF-origin variant: metadata is empty (no MAF row dict)
     vcf_variant = Variant(
-        chrom="chr1", pos=99, ref="C", alt="G",
-        variant_type=VariantType.SNP, original_id="rs42",
+        chrom="chr1",
+        pos=99,
+        ref="C",
+        alt="G",
+        variant_type=VariantType.SNP,
+        original_id="rs42",
     )
     assert not vcf_variant.metadata, "VCF-origin variant must have no metadata"
 
