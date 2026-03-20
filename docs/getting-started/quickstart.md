@@ -108,7 +108,7 @@ Get up and running in minutes. All examples below assume gbcms is [installed](in
 === "RNA-seq"
 
     ```bash
-    # RNA defaults: secondary + supplementary + qc-failed already filtered
+    # Both DNA and RNA filter secondary, supplementary, and QC-failed by default
     gbcms rna \
         --variants variants.vcf \
         --bam rna:aligned.bam \

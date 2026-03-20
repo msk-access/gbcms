@@ -135,7 +135,7 @@ flowchart TD
 
 ## Quality Thresholds
 
-RNA mode uses different defaults to accommodate RNA-seq aligner behavior:
+RNA mode uses **different MAPQ default** to accommodate STAR aligner behavior:
 
 | Option | DNA Default | RNA Default | Rationale |
 |:-------|:------------|:------------|:----------|
@@ -300,9 +300,9 @@ RNA mode defaults to **PairHMM** with **relaxed gap penalties** to tolerate reve
 | **MAPQ default** | 20 | 1 (with NH rescue) |
 | **Gap-open probability** | 1e-4 | 5e-3 (RT tolerance) |
 | **Gap-extend probability** | 0.1 | 0.25 (RT tolerance) |
-| **Secondary filter** | off | **on** |
-| **Supplementary filter** | off | **on** |
-| **QC-failed filter** | off | **on** |
+| **Secondary filter** | on | on (same) |
+| **Supplementary filter** | on | on (same) |
+| **QC-failed filter** | on | on (same) |
 | **Strandedness filter** | N/A | enabled (dUTP) |
 | **RNA editing flagging** | N/A | optional (`--rna-editing-db`) |
 | **Output columns** | Standard (DP, RD, AD, etc.) | Standard **+ 5 RNA columns** |

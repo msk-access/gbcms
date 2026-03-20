@@ -63,9 +63,9 @@ short-fragment enrichment associated with tumor-derived cfDNA
 | `--min-mapq` | `20` | Minimum MAPQ |
 | `--min-baseq` | `20` | Minimum BASEQ |
 | `--filter-duplicates` | `true` | Filter duplicate reads |
-| `--filter-secondary` | `false` | Filter secondary alignments |
-| `--filter-supplementary` | `false` | Filter supplementary alignments |
-| `--filter-qc-failed` | `false` | Filter QC failed reads |
+| `--filter-secondary` | `true` | Filter secondary alignments |
+| `--filter-supplementary` | `true` | Filter supplementary alignments |
+| `--filter-qc-failed` | `true` | Filter QC failed reads |
 | `--filter-improper-pair` | `false` | Filter improperly paired reads |
 | `--filter-indel` | `false` | Filter reads with indels |
 | `--fragment-qual-threshold` | `10` | Quality difference threshold for fragment consensus (see [Fragment Counting](../reference/counting-metrics.md#fragment-counting)) |
