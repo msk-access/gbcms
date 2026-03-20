@@ -3049,7 +3049,15 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 </tbody>
 </table>
 <h2 id="cli-dna-alignment-backend">Alignment Backend<a class="headerlink" href="#cli-dna-alignment-backend" title="Permanent link">¶</a></h2>
-<p>Phase 3 allele classification uses <strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> by default, which integrates per-base quality probabilities into alignment scoring for more accurate classification in noisy regions. Smith-Waterman (<abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>) is available as a simpler alternative.</p>
+<p>Phase 3 (haplotype-based) classification uses a <strong>two-stage pipeline</strong>:</p>
+<ol>
+<li>
+<p><strong><abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> fast-path</strong> (Wavefront Alignment, <code>wfa2lib-rs</code>) — edit-distance triage against the pangenomic haplotype matrix. Resolves ~70-80% of reads instantly at O(s²) cost where <em>s</em> is the edit distance. If REF and ALT scores differ clearly, the read is classified immediately.</p>
+</li>
+<li>
+<p><strong>Marginalized <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> (escalated only when <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a log-likelihood ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) confidence score. More sensitive in noisy, low-quality, or repeat-dense regions.</p>
+</li>
+</ol>
 <table>
 <thead>
 <tr>
@@ -3062,12 +3070,12 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 <tr>
 <td style="text-align: left;"><code>--alignment-backend</code></td>
 <td style="text-align: left;"><code>pairhmm</code></td>
-<td style="text-align: left;">Alignment backend for Phase 3: <code>pairhmm</code> (<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, default) or <code>sw</code> (Smith-Waterman). Invalid values are rejected at parse time.</td>
+<td style="text-align: left;">Phase 3 backend: <code>pairhmm</code> (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> + <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, default) or <code>sw</code> (Smith-Waterman only, no <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> triage). Invalid values are rejected at parse time.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--llr-threshold</code></td>
 <td style="text-align: left;"><code>2.3</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> log-likelihood ratio threshold for confident calls (≈ ln(10))</td>
+<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold for confident calls (≈ ln(10))</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gap-open-prob</code></td>
@@ -3092,8 +3100,9 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 </tbody>
 </table>
 <div class="admonition tip">
-<p class="admonition-title"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> vs Smith-Waterman</p>
-<p><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> uses base quality probabilities directly in alignment scoring, producing log-likelihood ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) confidence scores instead of edit-distance margins. This makes it more sensitive in low-quality or noisy regions. Use <code>--alignment-backend sw</code> if you need exact reproducibility with older gbcms versions (&lt;3.0.0).</p>
+<p class="admonition-title">pairhmm vs sw</p>
+<p><code>pairhmm</code> (default) uses <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> edit-distance triage first, then escalates to <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> only for ambiguous reads. This is faster than running <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> on every read and more accurate in low-quality or repeat-dense regions.</p>
+<p><code>sw</code> runs Smith-Waterman on every Phase 3 read (no <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> pre-filter). Use only if you need exact reproducibility with versions &lt;3.0.0.</p>
 </div>
 <h2 id="cli-dna-examples">Examples<a class="headerlink" href="#cli-dna-examples" title="Permanent link">¶</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:5"><input checked="" id="cli-dna-__tabbed_1_1" name="cli-dna-__tabbed_1" type="radio"><input id="cli-dna-__tabbed_1_2" name="cli-dna-__tabbed_1" type="radio"><input id="cli-dna-__tabbed_1_3" name="cli-dna-__tabbed_1" type="radio"><input id="cli-dna-__tabbed_1_4" name="cli-dna-__tabbed_1" type="radio"><input id="cli-dna-__tabbed_1_5" name="cli-dna-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="cli-dna-__tabbed_1_1">Single <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></label><label for="cli-dna-__tabbed_1_2">Multiple BAMs</label><label for="cli-dna-__tabbed_1_3">With Filtering</label><label for="cli-dna-__tabbed_1_4">With Normalization</label><label for="cli-dna-__tabbed_1_5">With <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> Tags</label></div>
@@ -3517,7 +3526,7 @@ Use mouse to pan and zoom
 </ul>
 </div>
 <h3 id="cli-rna-filter-defaults">Filter Defaults<a class="headerlink" href="#cli-rna-filter-defaults" title="Permanent link">¶</a></h3>
-<p>RNA mode uses <strong>stricter filter defaults</strong> than DNA mode to reduce noise from the higher error rates and alignment artifacts typical of RNA-seq:</p>
+<p>RNA mode uses the <strong>same filter defaults</strong> as DNA mode — duplicates, secondary, supplementary, and QC-failed reads are all filtered by default in both modes:</p>
 <table>
 <thead>
 <tr>
@@ -3529,24 +3538,29 @@ Use mouse to pan and zoom
 <tbody>
 <tr>
 <td style="text-align: left;"><code>--filter-secondary</code></td>
-<td style="text-align: left;">off</td>
-<td style="text-align: left;"><strong>on</strong></td>
+<td style="text-align: left;">on</td>
+<td style="text-align: left;">on (same)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--filter-supplementary</code></td>
-<td style="text-align: left;">off</td>
-<td style="text-align: left;"><strong>on</strong></td>
+<td style="text-align: left;">on</td>
+<td style="text-align: left;">on (same)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--filter-qc-failed</code></td>
-<td style="text-align: left;">off</td>
-<td style="text-align: left;"><strong>on</strong></td>
+<td style="text-align: left;">on</td>
+<td style="text-align: left;">on (same)</td>
 </tr>
 </tbody>
 </table>
 <hr>
 <h2 id="cli-rna-alignment-backend">Alignment Backend<a class="headerlink" href="#cli-rna-alignment-backend" title="Permanent link">¶</a></h2>
-<p>RNA mode defaults to <strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> with <strong>relaxed gap penalties</strong> to tolerate reverse transcriptase (<abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr>) stutter artifacts:</p>
+<p>RNA mode uses the same <strong>two-stage Phase 3 pipeline</strong> as DNA:</p>
+<ol>
+<li><strong><abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> fast-path</strong> (<code>wfa2lib-rs</code>) — edit-distance triage; resolves ~70-80% of reads instantly.</li>
+<li><strong>Marginalized <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> (escalated when <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> is ambiguous) — uses per-base quality probabilities for confident <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> scoring.</li>
+</ol>
+<p>RNA uses <strong>relaxed gap penalties</strong> to tolerate reverse transcriptase (<abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr>) stutter artifacts:</p>
 <table>
 <thead>
 <tr>
@@ -3561,7 +3575,7 @@ Use mouse to pan and zoom
 <td style="text-align: left;"><code>--alignment-backend</code></td>
 <td style="text-align: left;"><code>pairhmm</code></td>
 <td style="text-align: left;"><code>pairhmm</code></td>
-<td style="text-align: left;">Same</td>
+<td style="text-align: left;">Same (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> + <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gap-open-prob</code></td>

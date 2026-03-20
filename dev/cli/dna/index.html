@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -2077,7 +2077,15 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 </tbody>
 </table>
 <h2 id="alignment-backend">Alignment Backend<a class="headerlink" href="#alignment-backend" title="Permanent link">¶</a></h2>
-<p>Phase 3 allele classification uses <strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> by default, which integrates per-base quality probabilities into alignment scoring for more accurate classification in noisy regions. Smith-Waterman (<abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>) is available as a simpler alternative.</p>
+<p>Phase 3 (haplotype-based) classification uses a <strong>two-stage pipeline</strong>:</p>
+<ol>
+<li>
+<p><strong><abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> fast-path</strong> (Wavefront Alignment, <code>wfa2lib-rs</code>) — edit-distance triage against the pangenomic haplotype matrix. Resolves ~70-80% of reads instantly at O(s²) cost where <em>s</em> is the edit distance. If REF and ALT scores differ clearly, the read is classified immediately.</p>
+</li>
+<li>
+<p><strong>Marginalized <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> (escalated only when <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a log-likelihood ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) confidence score. More sensitive in noisy, low-quality, or repeat-dense regions.</p>
+</li>
+</ol>
 <table>
 <thead>
 <tr>
@@ -2090,12 +2098,12 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 <tr>
 <td style="text-align: left;"><code>--alignment-backend</code></td>
 <td style="text-align: left;"><code>pairhmm</code></td>
-<td style="text-align: left;">Alignment backend for Phase 3: <code>pairhmm</code> (<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, default) or <code>sw</code> (Smith-Waterman). Invalid values are rejected at parse time.</td>
+<td style="text-align: left;">Phase 3 backend: <code>pairhmm</code> (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> + <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>, default) or <code>sw</code> (Smith-Waterman only, no <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> triage). Invalid values are rejected at parse time.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--llr-threshold</code></td>
 <td style="text-align: left;"><code>2.3</code></td>
-<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> log-likelihood ratio threshold for confident calls (≈ ln(10))</td>
+<td style="text-align: left;"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold for confident calls (≈ ln(10))</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gap-open-prob</code></td>
@@ -2120,8 +2128,9 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
 </tbody>
 </table>
 <div class="admonition tip">
-<p class="admonition-title"><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> vs Smith-Waterman</p>
-<p><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> uses base quality probabilities directly in alignment scoring, producing log-likelihood ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) confidence scores instead of edit-distance margins. This makes it more sensitive in low-quality or noisy regions. Use <code>--alignment-backend sw</code> if you need exact reproducibility with older gbcms versions (&lt;3.0.0).</p>
+<p class="admonition-title">pairhmm vs sw</p>
+<p><code>pairhmm</code> (default) uses <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> edit-distance triage first, then escalates to <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> only for ambiguous reads. This is faster than running <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> on every read and more accurate in low-quality or repeat-dense regions.</p>
+<p><code>sw</code> runs Smith-Waterman on every Phase 3 read (no <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> pre-filter). Use only if you need exact reproducibility with versions &lt;3.0.0.</p>
 </div>
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">¶</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:5"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><input id="__tabbed_1_3" name="__tabbed_1" type="radio"><input id="__tabbed_1_4" name="__tabbed_1" type="radio"><input id="__tabbed_1_5" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">Single <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></label><label for="__tabbed_1_2">Multiple BAMs</label><label for="__tabbed_1_3">With Filtering</label><label for="__tabbed_1_4">With Normalization</label><label for="__tabbed_1_5">With <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> Tags</label></div>
@@ -2228,7 +2237,7 @@ This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragm
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 03:45:48 UTC"><span class="timeago" datetime="2026-03-20T03:45:48+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 03:45:48 UTC">2026-03-20</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 03:53:13 UTC"><span class="timeago" datetime="2026-03-20T03:53:13+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 03:53:13 UTC">2026-03-20</span>
   </span>
 
     
