@@ -234,3 +234,95 @@ def test_dna_pipeline_maf_lacks_rna_columns(tmp_path, snp_variant):
         assert col not in fieldnames, (
             f"DNA MAF must NOT contain RNA column '{col}'. Found: {fieldnames}"
         )
+
+
+# ── VCF FORMAT field tests ────────────────────────────────────────────────────
+# The FORMAT column string changes between DNA and RNA modes (output.py L668-676).
+# These tests were added during a validation pass that found FORMAT was tested
+# indirectly (via INFO) but never asserted directly at the pipeline level.
+
+
+def test_rna_pipeline_vcf_format_field_includes_rna_tags(rna_pipeline, snp_variant, tmp_path):
+    """VCF FORMAT column in RNA mode must include SEN:ANT:ASEN:SPL tags.
+
+    Expected FORMAT string: GT:DP:RD:AD:RDF:ADF:VAF:FAF:SEN:ANT:ASEN:SPL
+    If VcfWriter's mode= test branch is ever broken, the RNA FORMAT tags
+    will be missing and the sample data will be truncated.
+    """
+    out_dir = tmp_path / "vcf_fmt_rna"
+    out_dir.mkdir()
+    rna_pipeline.config.output.directory = out_dir
+    rna_pipeline.config.output.format = OutputFormat.VCF
+
+    counts = _make_rna_counts()
+    rna_pipeline._write_output("rna_sample", [snp_variant], [counts], prepared=None)
+
+    out_vcf = out_dir / "rna_sample.vcf"
+    data_lines = [l for l in out_vcf.read_text().splitlines() if not l.startswith("#")]
+    assert data_lines, "No data rows written"
+
+    cols = data_lines[0].split("\t")
+    format_str = cols[8]   # FORMAT column (0-based index 8)
+    sample_col = cols[9]   # sample column
+
+    # Full FORMAT string for RNA mode
+    expected_format = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:SEN:ANT:ASEN:SPL"
+    assert format_str == expected_format, (
+        f"RNA VCF FORMAT must be '{expected_format}', got: '{format_str}'"
+    )
+
+    # Sample column must have 12 colon-separated values (one per FORMAT tag)
+    sample_values = sample_col.split(":")
+    fmt_tags = format_str.split(":")
+    assert len(sample_values) == len(fmt_tags), (
+        f"Sample column has {len(sample_values)} values but FORMAT has {len(fmt_tags)} tags.\n"
+        f"FORMAT: {format_str}\nSample: {sample_col}"
+    )
+
+    # RNA values should be in the tail (SEN, ANT, ASEN, SPL — last 4)
+    assert sample_values[-4] == "18", f"SEN should be 18, got {sample_values[-4]!r}"
+    assert sample_values[-3] == "5",  f"ANT should be 5, got {sample_values[-3]!r}"
+    assert sample_values[-2] == "9",  f"ASEN should be 9, got {sample_values[-2]!r}"
+    assert sample_values[-1] == "3",  f"SPL should be 3, got {sample_values[-1]!r}"
+
+
+def test_dna_pipeline_vcf_format_field_lacks_rna_tags(tmp_path, snp_variant):
+    """VCF FORMAT column in DNA mode must NOT include SEN/ANT/ASEN/SPL tags.
+
+    Expected FORMAT string: GT:DP:RD:AD:RDF:ADF:VAF:FAF
+    """
+    from gbcms.models.core import GbcmsDnaConfig
+
+    dummy_vcf = tmp_path / "dummy.vcf"
+    dummy_vcf.write_text("#CHROM\tPOS\n")
+    dummy_bam = tmp_path / "sample.bam"
+    dummy_bam.touch()
+    dummy_fasta = tmp_path / "ref.fa"
+    dummy_fasta.touch()
+    (tmp_path / "ref.fa.fai").touch()
+
+    out_dir = tmp_path / "vcf_fmt_dna"
+    out_dir.mkdir()
+
+    dna_config = GbcmsDnaConfig(
+        variant_file=dummy_vcf,
+        bam_files={"dna_sample": dummy_bam},
+        reference_fasta=dummy_fasta,
+        output=OutputConfig(directory=out_dir, format=OutputFormat.VCF),
+    )
+    pipeline = Pipeline(dna_config)
+    pipeline._write_output("dna_sample", [snp_variant], [_zero_counts()], prepared=None)
+
+    out_vcf = out_dir / "dna_sample.vcf"
+    data_lines = [l for l in out_vcf.read_text().splitlines() if not l.startswith("#")]
+    assert data_lines, "No data rows written"
+
+    format_str = data_lines[0].split("\t")[8]
+    expected_format = "GT:DP:RD:AD:RDF:ADF:VAF:FAF"
+    assert format_str == expected_format, (
+        f"DNA VCF FORMAT must be '{expected_format}', got: '{format_str}'"
+    )
+    for rna_tag in ("SEN", "ANT", "ASEN", "SPL"):
+        assert rna_tag not in format_str.split(":"), (
+            f"RNA tag '{rna_tag}' must not appear in DNA VCF FORMAT: {format_str}"
+        )
