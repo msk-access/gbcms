@@ -82,15 +82,6 @@ When a variant receives `PASS_WARN_REF_CORRECTED`, the MAF's REF allele is **rep
 
 For indels and complex variants, gbcms applies **bcftools-style left-alignment** to ensure consistent positioning in repetitive regions.
 
-```mermaid
-flowchart TD
-    Input["Indel: chr1:105 ACG→A<br/>(in a CGCG repeat)"]
-    Fetch["Fetch ±100bp flanking sequence"]
-    Align["Shift left through repeat"]
-    Result["chr1:101 ACG→A<br/>(leftmost position)"]
-
-    Input --> Fetch --> Align --> Result
-```
 
 | Parameter | Value | Description |
 |:----------|:------|:------------|
@@ -184,16 +175,23 @@ Some variant callers merge nearby events (e.g., a 1bp deletion + SNV in a homopo
 All four conditions must be met:
 
 ```mermaid
-flowchart TD
-    C1{"REF is homopolymer?<br/>(all same base, ≥3bp)"} -- Yes --> C2{"Net deletion?<br/>(ref_len > alt_len)"}
-    C2 -- Yes --> C3{"ALT last base ==<br/>next ref base after REF span?"}
-    C3 -- Yes --> C4{"ALT last base ≠<br/>homopolymer base?"}
-    C4 -- Yes --> Detected([🔍 Decomposition detected]):::detect
+flowchart LR
+    C1{"C1: REF is homopolymer?\n(all same base, \u22653bp)"}
+    C2{"C2: Net deletion?\n(ref_len > alt_len)"}
+    C3{"C3: ALT last base ==\nnext ref base after span?"}
+    C4{"C4: ALT last base \u2260\nhomopolymer base?"}
+    Detected(["\ud83d\udd0d Decomposition detected"]):::detect
+    Skip(["\u23ed\ufe0f Skip \u2014 not a decomposition"]):::skip
 
-    C1 -- No --> Skip([Skip]):::skip
-    C2 -- No --> Skip
-    C3 -- No --> Skip
-    C4 -- No --> Skip
+    C1 -->|Yes| C2
+    C2 -->|Yes| C3
+    C3 -->|Yes| C4
+    C4 -->|Yes| Detected
+
+    C1 -->|No| Skip
+    C2 -->|No| Skip
+    C3 -->|No| Skip
+    C4 -->|No| Skip
 
     classDef detect fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
     classDef skip fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
@@ -217,18 +215,22 @@ The corrected variant is stored in `PreparedVariant.decomposed_variant`. During 
 
 ```mermaid
 flowchart TD
-    CountOrig["count_bam(original: CCCCCC→T)"]
-    CountDecomp["count_bam(corrected: CCCCCC→CCCCT)"]
-    Compare{"corrected AD > original AD?"}
-    UseDecomp["Return corrected counts"]
-    UseOrig["Return original counts"]
-    FlagWarn["validation_status =<br/>PASS_WARN_HOMOPOLYMER_DECOMP"]
-    FlagPass["validation_status = PASS"]
+    Input(["\u26a1 Decomposition detected"]):::warn
+    Input -->|"in parallel"| CountOrig
+    Input -->|"in parallel"| CountDecomp
+
+    CountOrig["count_bam(original: CCCCCC\u2192T)"]
+    CountDecomp["count_bam(corrected: CCCCCC\u2192CCCCT)"]
 
     CountOrig --> Compare
     CountDecomp --> Compare
-    Compare -- "Yes" --> UseDecomp --> FlagWarn
-    Compare -- "No" --> UseOrig --> FlagPass
+    Compare{"corrected AD > original AD?"}
+
+    Compare -->|"Yes"| UseDecomp["Return corrected counts"] --> FlagWarn["validation_status =\nPASS_WARN_HOMOPOLYMER_DECOMP"]:::warn
+    Compare -->|"No"| UseOrig["Return original counts"] --> FlagPass["validation_status = PASS"]:::pass
+
+    classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 ```
 
 !!! info "Self-Validating"

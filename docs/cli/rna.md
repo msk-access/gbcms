@@ -6,15 +6,6 @@ RNA mode extends the core DNA counting engine with filters and metrics specific 
 
 ## When to Use
 
-```mermaid
-flowchart TD
-    Start{What sequencing data?}
-    Start -->|"DNA / cfDNA / WGS / WES"| DNA([Use gbcms dna]):::dna
-    Start -->|"RNA-seq / STAR-aligned"| RNA([Use gbcms rna]):::rna
-
-    classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef rna fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-```
 
 | Scenario | Command |
 |:---------|:--------|
@@ -102,14 +93,14 @@ These options are **only available** on `gbcms rna`, not on `gbcms dna`.
 
 ```mermaid
 flowchart TD
-    Read([📖 RNA Read]) --> HasGS{gene_strand\nannotated?}
-    HasGS -->|No| Pass([✅ Pass — no filter]):::pass
-    HasGS -->|Yes| Check{Read orientation\nvs gene strand?}
-    Check -->|Consistent| Sense([✅ Sense — count]):::pass
-    Check -->|Inconsistent| Anti([📊 Antisense — count\nseparately]):::anti
+    Read(["\ud83d\udcd6 RNA Read"]) --> HasGS{"gene_strand annotated?"}
+    HasGS -->|No| Pass(["\u2705 Pass \u2014 no filter"]):::pass
+    HasGS -->|Yes| Check{"Read orientation\nvs gene strand?"}
+    Check -->|"Consistent"| Sense(["\u2705 Sense \u2014 counted in DP/AD/RD"]):::pass
+    Check -->|"Inconsistent"| Anti(["\ud83d\udcca Antisense \u2014 counted in rna_antisense_depth"]):::anti
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef anti fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef anti fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
 ```
 
 ### RNA Editing Database
