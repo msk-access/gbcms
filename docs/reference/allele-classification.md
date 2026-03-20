@@ -122,19 +122,19 @@ The insertion check uses a **single CIGAR walk** with four detection strategies:
 
 ```mermaid
 flowchart LR
-    Start(["\ud83e\uddec Insertion Check"]):::start --> Walk["Walk CIGAR \u2192 left to right"]
+    Start(["🧬 Insertion Check"]):::start --> Walk["Walk CIGAR → left to right"]
     Walk --> MatchBlk{"Match block contains anchor?"}
-    MatchBlk -->|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk -->|No| WinCheck(["→ Windowed Scan"]):::next
     MatchBlk -->|Yes| Bwd{"Anchor at block start\nAND prev op = Ins?"}
     Bwd -->|Yes| BwdMatch{"Length + seq match?\n(quality-masked)"}
-    BwdMatch -->|Yes| BWAlt(["\ud83d\udd34 ALT \u2014 backward"]):::alt
+    BwdMatch -->|Yes| BWAlt(["🔴 ALT — backward"]):::alt
     BwdMatch -->|No| Fwd
     Bwd -->|No| Fwd{"Anchor at block end?"}
     Fwd -->|No| RefCov["Mark ref coverage"]
     Fwd -->|Yes| Next{"Next op = Ins?"}
     Next -->|No| RefCov
     Next -->|Yes| StrictMatch{"Length + seq match?\n(quality-masked)"}
-    StrictMatch -->|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
+    StrictMatch -->|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
     StrictMatch -->|No| RefCov
     RefCov --> WinCheck
 
@@ -143,11 +143,11 @@ flowchart LR
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 ```
 
-#### Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards
+#### Part B — Windowed Scan + S1/S2/S3 Safeguards
 
 ```mermaid
 flowchart TD
-    WinIn(["\u2192 from CIGAR walk"]):::entry --> CheckWin{"Ins within \u00b15bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Ins within ±5bp window?"}
     CheckWin -->|No| Continue["Continue CIGAR walk"]
     CheckWin -->|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
     S1 -->|Yes| S3{"S3: Anchor base\nmatches ref?"}
@@ -161,12 +161,12 @@ flowchart TD
     Continue --> MoreOps{"More CIGAR ops?"}
     MoreOps -->|Yes| CheckWin
     MoreOps -->|No| Eval{"Windowed candidate found?"}
-    Eval -->|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    Eval -->|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Eval -->|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check -->|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    P3Check -->|Yes| CPX(["🔄 check_complex"]):::fallback
     P3Check -->|No| HasRef{"Read covered anchor?"}
-    HasRef -->|Yes| Ref(["\u2705 REF"]):::ref
-    HasRef -->|No| Neither(["\u29ef Neither"]):::neither
+    HasRef -->|Yes| Ref(["✅ REF"]):::ref
+    HasRef -->|No| Neither(["⧯ Neither"]):::neither
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -251,22 +251,22 @@ Same single-walk strategy as insertion, with four additional features:
 
 4. **Haplotype fallback** — When no CIGAR match is found and the read doesn't cover the anchor, falls back to `check_complex` for haplotype-based comparison.
 
-#### Part A \u2014 CIGAR-Based Strict + Reciprocal-Overlap Detection
+#### Part A — CIGAR-Based Strict + Reciprocal-Overlap Detection
 
 ```mermaid
 flowchart LR
-    Start(["\ud83e\uddec Deletion Check"]):::start --> Walk["Walk CIGAR \u2192 left to right"]
+    Start(["🧬 Deletion Check"]):::start --> Walk["Walk CIGAR → left to right"]
     Walk --> MatchBlk{"Match block contains anchor?"}
-    MatchBlk -->|No| WinCheck(["\u2192 Windowed Scan"]):::next
+    MatchBlk -->|No| WinCheck(["→ Windowed Scan"]):::next
     MatchBlk -->|Yes| AtEnd{"Anchor at block end?"}
     AtEnd -->|No| RefCov["Mark ref coverage"]
     AtEnd -->|Yes| NextDel{"Next op = Del?"}
     NextDel -->|No| RefCov
     NextDel -->|Yes| LenMatch{"Length matches exactly?"}
-    LenMatch -->|Yes| StrictAlt(["\ud83d\udd34 ALT \u2014 strict"]):::alt
-    LenMatch -->|No| Recip{"\u226550bp AND\noverlap \u226550%?"}
-    Recip -->|Yes| TolAlt(["\ud83d\udd34 ALT \u2014 tolerant SV"]):::alt
-    Recip -->|No| CPX(["\ud83d\udd04 check_complex"]):::fallback
+    LenMatch -->|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
+    LenMatch -->|No| Recip{"≥50bp AND\noverlap ≥50%?"}
+    Recip -->|Yes| TolAlt(["🔴 ALT — tolerant SV"]):::alt
+    Recip -->|No| CPX(["🔄 check_complex"]):::fallback
     RefCov --> WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
@@ -275,43 +275,43 @@ flowchart LR
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
 
-#### Part B \u2014 Windowed Scan + S1/S2/S3 Safeguards
+#### Part B — Windowed Scan + S1/S2/S3 Safeguards
 
 ```mermaid
 flowchart TD
-    WinIn(["\u2192 from CIGAR walk"]):::entry --> CheckWin{"Del within \u00b15bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Del within ±5bp window?"}
     CheckWin -->|No| Continue["Continue walk"]
     CheckWin -->|Yes| S1{"S1: Length check"}
     S1 -->|"Exact match"| S3{"S3: Ref bases match?"}
-    S1 -->|"\u226550bp + overlap \u226550%"| S2Track["S2: Track closest (SV)"]  
+    S1 -->|"≥50bp + overlap ≥50%"| S2Track["S2: Track closest (SV)"]  
     S1 -->|"No match"| Continue
     S3 -->|Yes| S2["S2: Track closest"]
-    S3 -->|"No, del_len \u2265 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 -->|"No, del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
     S3 -->|"No, del_len < 5"| Continue
     S2Track --> Continue
     S2 --> Continue
     FlagP3 --> Continue
     Continue --> MoreOps{"More ops?"}
     MoreOps -->|Yes| CheckWin
-    MoreOps -->|No| Eval(["\u2192 Evaluation"]):::next
+    MoreOps -->|No| Eval(["→ Evaluation"]):::next
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
 
-#### Part C \u2014 Evaluation + Interior REF Guard
+#### Part C — Evaluation + Interior REF Guard
 
 ```mermaid
 flowchart TD
-    EvalIn(["\u2192 from windowed scan"]):::entry --> Win{"Windowed match found?"}
-    Win -->|Yes| WinAlt(["\ud83d\udd34 ALT \u2014 windowed"]):::alt
+    EvalIn(["→ from windowed scan"]):::entry --> Win{"Windowed match found?"}
+    Win -->|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Win -->|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check -->|Yes| CPX(["\ud83d\udd04 check_complex"]):::fallback
-    P3Check -->|No| Interior{"Interior read?\n(\u226750bp del, read starts inside span)"}
-    Interior -->|Yes| IntRef(["\u2705 REF \u2014 interior guard"]):::ref
+    P3Check -->|Yes| CPX(["🔄 check_complex"]):::fallback
+    P3Check -->|No| Interior{"Interior read?\n(≧50bp del, read starts inside span)"}
+    Interior -->|Yes| IntRef(["✅ REF — interior guard"]):::ref
     Interior -->|No| HasRef{"Anchor covered?"}
-    HasRef -->|Yes| Ref(["\u2705 REF"]):::ref
+    HasRef -->|Yes| Ref(["✅ REF"]):::ref
     HasRef -->|No| CPX
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;

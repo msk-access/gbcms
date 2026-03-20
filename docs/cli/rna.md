@@ -93,11 +93,11 @@ These options are **only available** on `gbcms rna`, not on `gbcms dna`.
 
 ```mermaid
 flowchart TD
-    Read(["\ud83d\udcd6 RNA Read"]) --> HasGS{"gene_strand annotated?"}
-    HasGS -->|No| Pass(["\u2705 Pass \u2014 no filter"]):::pass
+    Read(["📖 RNA Read"]) --> HasGS{"gene_strand annotated?"}
+    HasGS -->|No| Pass(["✅ Pass — no filter"]):::pass
     HasGS -->|Yes| Check{"Read orientation\nvs gene strand?"}
-    Check -->|"Consistent"| Sense(["\u2705 Sense \u2014 counted in DP/AD/RD"]):::pass
-    Check -->|"Inconsistent"| Anti(["\ud83d\udcca Antisense \u2014 counted in rna_antisense_depth"]):::anti
+    Check -->|"Consistent"| Sense(["✅ Sense — counted in DP/AD/RD"]):::pass
+    Check -->|"Inconsistent"| Anti(["📊 Antisense — counted in rna_antisense_depth"]):::anti
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef anti fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;

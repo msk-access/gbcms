@@ -55,7 +55,7 @@ flowchart LR
     end
 
     subgraph OptOut ["Optional Output (--mfsd-parquet)"]
-        Parquet["\u003csample\u003e.fsd.parquet"]
+        Parquet["<sample>.fsd.parquet"]
     end
 
     VCF --> Load --> Prepare

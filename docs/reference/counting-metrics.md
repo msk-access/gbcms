@@ -14,14 +14,14 @@ After each read is [classified](allele-classification.md) as REF, ALT, or neithe
 
 ```mermaid
 flowchart LR
-    Class(["\ud83e\uddec Classification"]):::start
+    Class(["🧬 Classification"]):::start
 
-    subgraph ReadLevel ["\ud83d\udcd6 Read-Level Path"]
+    subgraph ReadLevel ["📖 Read-Level Path"]
         direction LR
         RL1["Read Counts\nDP / RD / AD"] --> SB["Strand Bias\n(Fisher's test)"]
     end
 
-    subgraph FragLevel ["\ud83d\udd17 Fragment-Level Path"]
+    subgraph FragLevel ["🔗 Fragment-Level Path"]
         direction LR
         FL1["Fragment Tracking\n(QNAME hash)"] --> FL2["Quality Consensus\n(R1 vs R2 resolve)"] --> FL3["Fragment Counts\nDPF / RDF / ADF"] --> FSB["Fragment Strand Bias\n(Fisher's test)"]
     end

@@ -176,12 +176,12 @@ All four conditions must be met:
 
 ```mermaid
 flowchart LR
-    C1{"C1: REF is homopolymer?\n(all same base, \u22653bp)"}
+    C1{"C1: REF is homopolymer?\n(all same base, ≥3bp)"}
     C2{"C2: Net deletion?\n(ref_len > alt_len)"}
     C3{"C3: ALT last base ==\nnext ref base after span?"}
-    C4{"C4: ALT last base \u2260\nhomopolymer base?"}
-    Detected(["\ud83d\udd0d Decomposition detected"]):::detect
-    Skip(["\u23ed\ufe0f Skip \u2014 not a decomposition"]):::skip
+    C4{"C4: ALT last base ≠\nhomopolymer base?"}
+    Detected(["🔍 Decomposition detected"]):::detect
+    Skip(["⏭️ Skip — not a decomposition"]):::skip
 
     C1 -->|Yes| C2
     C2 -->|Yes| C3
@@ -215,12 +215,12 @@ The corrected variant is stored in `PreparedVariant.decomposed_variant`. During 
 
 ```mermaid
 flowchart TD
-    Input(["\u26a1 Decomposition detected"]):::warn
+    Input(["⚡ Decomposition detected"]):::warn
     Input -->|"in parallel"| CountOrig
     Input -->|"in parallel"| CountDecomp
 
-    CountOrig["count_bam(original: CCCCCC\u2192T)"]
-    CountDecomp["count_bam(corrected: CCCCCC\u2192CCCCT)"]
+    CountOrig["count_bam(original: CCCCCC→T)"]
+    CountDecomp["count_bam(corrected: CCCCCC→CCCCT)"]
 
     CountOrig --> Compare
     CountDecomp --> Compare
