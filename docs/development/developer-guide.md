@@ -75,19 +75,25 @@ Guide for contributing to gbcms.
 ```mermaid
 flowchart LR
     subgraph Python["src/gbcms/"]
-        CLI[cli.py] --> Pipeline[pipeline.py]
-        CLI --> Normalize[normalize.py]
-        Pipeline --> IO[io/]
-        Pipeline --> Models[models/]
+        CLI["cli.py"] --> Pipeline["pipeline.py"]
+        CLI --> Normalize["normalize.py"]
+        Pipeline --> IO["io/"]
+        Pipeline --> Models["models/"]
     end
-    
+
     subgraph Rust["rust/src/"]
-        Lib[lib.rs] --> Shared["shared/"]
-        Lib --> Count["counting/"]
+        Lib["lib.rs"] --> Count["counting/"]
         Lib --> Norm["normalize/"]
-        Count --> Shared
+        Count --> Eng["engine.rs"]
+        Count --> VC["variant_checks.rs"]
+        Count --> PH["pairhmm.rs"]
+        Count --> WFA["wfa_router.rs"]
+        Count --> RNA["rna.rs"]
+        Count --> Frag["fragment.rs"]
+        Norm --> LA["left_align.rs"]
+        Norm --> DC["decomp.rs"]
     end
-    
+
     Pipeline --> Rust
     Normalize --> Rust
 ```
@@ -225,6 +231,13 @@ gitGraph
     merge release/X.Y.Z tag: "X.Y.Z"
     checkout develop
     merge release/X.Y.Z
+    checkout main
+    branch hotfix/urgent-fix
+    commit id: "critical fix"
+    checkout main
+    merge hotfix/urgent-fix tag: "X.Y.Z+1"
+    checkout develop
+    merge hotfix/urgent-fix
 ```
 
 | Branch | Purpose |

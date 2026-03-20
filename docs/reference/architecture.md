@@ -68,16 +68,60 @@ flowchart LR
 
 ---
 
+## Genomic Binning
+
+To minimise BAM I/O, the Rust engine groups co-located variants into **genomic bins** before counting. A single `bam.fetch()` is issued per bin, and reads fetched for that region are classified against **all variants in the bin** in one pass. For clustered inputs (e.g. a MAF with hundreds of variants on the same gene) this reduces BAM seeks from O(N) per-variant to O(B) per-bin — typically 5-20× fewer I/O operations.
+
+This design mirrors the original C++ GBCMS `--max_block_size` / `--max_block_dist` architecture, re-implemented as a pure Rust streaming algorithm.
+
+```mermaid
+flowchart LR
+    Variants(["📋 Variants (any order)"]):::start --> Sort["Sort indices\nby chrom + pos"]
+    Sort --> NewBin["Open new bin\nat variant pos"]
+    NewBin --> Extend{"Next variant\nwithin window\n& same chrom?"}
+    Extend -->|"Yes"| MaxCheck{"≥ 200 variants\nin bin?"}
+    MaxCheck -->|"No — extend"| GrowBin["Add variant\nextend bin_end"]
+    GrowBin --> Extend
+    MaxCheck -->|"Yes — split"| NewBin
+    Extend -->|"No / new chrom"| Pad["Pad bin:\nmax(repeat_span+2, 5)bp"]
+    Pad --> Fetch["bam.fetch(bin_start, bin_end)\n— 1 I/O per bin ⚡"]:::io
+    Fetch --> Classify["Classify each read\nagainst all variants in bin\n(Rayon parallel across bins)"]:::parallel
+    Classify --> Out(["📊 BaseCounts per variant"]):::pass
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef io fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef parallel fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+```
+
+### Binning Parameters
+
+| Parameter | Value | Notes |
+|:----------|:------|:-------|
+| `BIN_WINDOW` | **10,000 bp** | Maximum span of a single bin. Variants beyond this distance start a new bin. |
+| `BIN_MAX_VARIANTS` | **200** | Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop. |
+| Bin padding | `max(repeat_span + 2, 5)` bp | Ensures reads overlapping bin edges are captured. Uses each variant's detected tandem-repeat span. |
+| Parallelism | Rayon `par_iter()` over bins | Each thread owns its own `BamReader` handle; no locking required across bins. |
+| Output order | Preserved | Variants are sorted by index internally; results are written back in original input order. |
+
+!!! tip "Performance Implication"
+    For a MAF with 500 variants on *TP53* (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual `bam.fetch()` calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.
+
+!!! info "Not a CLI flag"
+    `BIN_WINDOW` and `BIN_MAX_VARIANTS` are internal performance constants — they do not affect output values. Parity testing (`D1` regression suite) validates that binned and per-variant paths produce identical `BaseCounts`.
+
+---
+
 ## Coordinate System
 
 All coordinates normalized to **0-based, half-open** internally:
 
 ```mermaid
 flowchart LR
-    VCF["VCF (1-based)"] -->|"-1"| Internal["Internal (0-based)"]
+    VCF["VCF (1-based)"] -->|"-1 (e.g. VCF:100 → internal:99)"| Internal["Internal (0-based)"]
     MAF["MAF (1-based)"] -->|"-1"| Internal
-    Internal -->|"to Rust"| Rust["gbcms._rs"]
-    Rust -->|"+1"| Output["Output (1-based)"]
+    Internal -->|"→ Rust engine"| Rust["gbcms._rs"]
+    Rust -->|"+1 (e.g. internal:99 → output:100)"| Output["Output (1-based)"]
 ```
 
 | Format | System | Example |
@@ -168,21 +212,24 @@ All settings via mode-specific Pydantic models:
 
 ```mermaid
 flowchart TB
-    Base[GbcmsBaseConfig] --> DnaConfig[GbcmsDnaConfig]
-    Base --> RnaConfig[GbcmsRnaConfig]
-    DnaConfig --> DnaDefaults["mode=dna, MAPQ=20"]
-    RnaConfig --> RnaDefaults["mode=rna, MAPQ=1, pairhmm relaxed"]
-    RnaConfig --> RnaSpecific["enforce_strandedness, rna_editing_db"]
-    
-    Base --> OutputConfig[Output Settings]
-    Base --> ReadFilters[Read Filters]
-    Base --> QualityThresholds[Quality Thresholds]
-    Base --> AlignmentConfig[Alignment Backend]
-    
-    OutputConfig --> D1["output_dir, format, suffix, column_prefix, mfsd, mfsd_parquet"]
-    ReadFilters --> D2["secondary, duplicates, supplementary, qc_failed, improper_pair, indel"]
-    QualityThresholds --> D3["min_mapq, min_baseq, fragment_qual_threshold"]
-    AlignmentConfig --> D4["backend: pairhmm|sw, llr_threshold, gap_*_prob"]
+    Base["GbcmsBaseConfig"]:::base --> DnaConfig["GbcmsDnaConfig"]
+    Base --> RnaConfig["GbcmsRnaConfig"]
+
+    DnaConfig --> DnaD["mode=dna\nMAPQ=20"]
+    RnaConfig --> RnaD["mode=rna, MAPQ=1\npairhmm relaxed RT gaps"]
+    RnaConfig --> RnaX["enforce_strandedness\nrna_editing_db"]
+
+    Base --> Filters["ReadFilters"]
+    Base --> Quality["QualityThresholds"]
+    Base --> Output2["OutputConfig"]
+    Base --> Align["AlignmentConfig"]
+
+    Filters --> FD["secondary · duplicates\nsupplementary · qc_failed\nimproper_pair · indel"]
+    Quality --> QD["min_mapq · min_baseq\nfragment_qual_threshold"]
+    Output2 --> OD["output_dir · format · suffix\ncolumn_prefix · mfsd · mfsd_parquet"]
+    Align --> AD["backend: pairhmm|sw\nllr_threshold · gap_*_prob"]
+
+    classDef base fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
 ```
 
 See [models/core.py](file:///src/gbcms/models/core.py) for definitions.

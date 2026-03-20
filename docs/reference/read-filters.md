@@ -139,11 +139,12 @@ STAR assigns MAPQ=255 to uniquely mapped reads and MAPQ=0–3 to multi-mappers. 
 
 ```mermaid
 flowchart TD
-    Read([📖 RNA Read]) --> MAPQ{MAPQ ≥ min_mapq?}
-    MAPQ -->|Yes| Pass([✅ Pass]):::pass
-    MAPQ -->|No| NH{NH:i:1 tag?}
-    NH -->|Yes| Rescue([✅ Rescued]):::rescue
-    NH -->|No| Drop([❌ Discard]):::drop
+    Read(["📖 RNA Read"])
+    Read -->|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
+    MAPQ -->|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
+    MAPQ -->|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
+    NH -->|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
+    NH -->|"No — NH>1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef rescue fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;

@@ -4,12 +4,16 @@ gbcms supports two sequencing contexts. Pick the one that matches your data — 
 
 ```mermaid
 flowchart TD
-    Start{What sequencing data?}
-    Start -->|"DNA / cfDNA / WGS / WES / Panel"| DNA([gbcms dna]):::dna
-    Start -->|"RNA-seq (STAR-aligned)"| RNA([gbcms rna]):::rna
+    Start(["What sequencing data?"]):::start
 
+    Start -->|"cfDNA · IMPACT · WGS\nWES · Panel"| DNA(["gbcms dna"]):::dna
+    Start -->|"STAR-aligned RNA-seq\ndUTP stranded"| RNA(["gbcms rna"]):::rna
+    Start -->|"Unstranded RNA-seq\n(random orientation)"| RNAL(["gbcms rna\n--no-strandedness"]):::rnal
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef rna fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef rnal fill:#2471a3,color:#fff,stroke:#1a5276,stroke-width:2px;
 ```
 
 === "gbcms dna — DNA / cfDNA"

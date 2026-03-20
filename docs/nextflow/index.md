@@ -16,8 +16,8 @@ The Nextflow workflow provides:
 
 ```mermaid
 flowchart TD
-    CSV([📄 samplesheet.csv]):::input --> Parse[Parse Samplesheet]
-    MAF([📄 variants.maf]):::input --> FilterCheck{filter_by_sample<br/>AND .maf input?}
+    CSV(["📄 samplesheet.csv"]):::input --> Parse[Parse Samplesheet]
+    MAF(["📄 variants.maf"]):::input --> FilterCheck{"filter_by_sample<br/>AND .maf input?"}
     Parse --> FilterCheck
 
     FilterCheck -->|Yes| FilterMAF["FILTER_MAF<br/>(per-sample MAF extraction)"]
@@ -25,7 +25,7 @@ flowchart TD
 
     FilterMAF --> HasData{Variants found?}
     HasData -->|Yes| Ready2[Join filtered MAF with BAM]
-    HasData -->|No| Skip([⚪ Skip sample]):::skip
+    HasData -->|No| Skip(["⚪ Skip sample"]):::skip
     FilterMAF --> Summary["PIPELINE_SUMMARY<br/>(aggregate filter stats)"]
 
     Ready --> ModeCheck{mode?}
@@ -34,9 +34,9 @@ flowchart TD
     ModeCheck -->|dna| DNA["GBCMS_DNA<br/>(cfDNA/somatic counting)"]:::dna
     ModeCheck -->|rna| RNA["GBCMS_RNA<br/>(RNA-seq counting)"]:::rna
 
-    DNA --> Output([📊 VCF/MAF output]):::output
-    RNA --> Output
-    Summary --> SummaryOut([📋 pipeline_summary.tsv]):::output
+    DNA --> DNAOut(["📊 DNA VCF/MAF"]):::output
+    RNA --> RNAOut(["📊 RNA VCF/MAF"]):::output
+    Summary --> SummaryOut(["📋 pipeline_summary.tsv"]):::output
 
     classDef input fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;

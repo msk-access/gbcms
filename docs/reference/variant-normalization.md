@@ -14,14 +14,18 @@ Before counting any reads, every variant passes through the **preparation pipeli
 
 ```mermaid
 flowchart LR
-    Input([📄 Input Variant]) --> S1[MAF Anchor Resolution]
-    S1 --> S2[REF Validation]
-    S2 --> S3[Left-Alignment]
-    S3 --> S4[ref_context Fetch]
-    S4 --> S5[Homopolymer Detection]
-    S5 --> Output([✅ PreparedVariant])
+    Input(["📄 Input Variant"]):::start --> S1["Step 1: MAF Anchor"]
+    S1 --> S2["Step 2: REF Validation"]
+    S2 -->|"REF_MISMATCH"| Fail(["❌ Rejected"]):::fail
+    S2 -->|"PASS*"| S3["Step 3: Left-Alignment"]
+    S3 --> S4["Step 4: ref_context Fetch"]
+    S4 --> S5["Step 5: Homopolymer Detection"]
+    S5 --> Output(["✅ PreparedVariant"]):::pass
 
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef step fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef fail fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     class S1,S2,S3,S4,S5 step;
 ```
 
@@ -53,15 +57,15 @@ The REF allele is compared against the reference genome at the stated position. 
 ```mermaid
 flowchart TD
     Fetch["Fetch ref bases at pos"] --> Exact{"Exact match?"}
-    Exact -- "Yes" --> Pass([✅ PASS]):::pass
-    Exact -- "No" --> Sim["Compute similarity\n(matching bases / max length)"]
+    Exact -->|"Yes"| Pass(["✅ PASS"]):::pass
+    Exact -->|"No"| Sim["Compute similarity\n(matching bases / max length)"]
     Sim --> Thresh{"≥ 90%?"}
-    Thresh -- "Yes" --> Corrected(["⚠️ PASS_WARN_REF_CORRECTED\n(use FASTA REF)"]):::warn
-    Thresh -- "No" --> Fail([❌ REF_MISMATCH]):::fail
+    Thresh -->|"Yes"| Corrected(["⚠️ PASS_WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
+    Thresh -->|"No"| Fail(["❌ REF_MISMATCH\n→ excluded from counting"]):::fail
 
-    classDef pass fill:#27ae60,color:#fff;
-    classDef warn fill:#f39c12,color:#fff;
-    classDef fail fill:#e74c3c,color:#fff;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef fail fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 ```
 
 When a variant receives `PASS_WARN_REF_CORRECTED`, the MAF's REF allele is **replaced with the FASTA sequence** for all downstream steps (left-alignment, haplotype construction). The original MAF REF is preserved in `original_ref` for auditing.
@@ -124,9 +128,9 @@ The engine now performs a **Multi-Anchor Footprint Sweep**. It scans across the 
 
 ```mermaid
 flowchart LR
-    Scan["Scan Footprint\n(pos to pos+ref_len)"] --> Detect{"Repeat\nfound?"}
-    Detect -- "Yes (span=S)" --> Formula["padding = max(default, S/2 + 3)\ncapped at 50bp"]
-    Detect -- "No" --> Default["padding = default (5bp)"]
+    SweepFootprint["Sweep variant footprint\n(pos → pos + ref_len)"] --> RepFound{"Tandem repeat\nfound?"}
+    RepFound -->|"Yes (span = S)"| Formula["padding = max(5, S/2 + 3)\ncapped at 50bp"]
+    RepFound -->|"No"| Default["padding = 5bp (default)"]
     Formula --> Fetch["Fetch ref_context"]
     Default --> Fetch
 ```

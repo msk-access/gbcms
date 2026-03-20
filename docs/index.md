@@ -11,18 +11,16 @@
 GBCMS extracts **allele counts** and **variant metrics** at specified positions in BAM files:
 
 ```mermaid
-flowchart LR
-    subgraph Input
-        VCF[VCF/MAF]
-        BAM[BAM Files]
-    end
-    
-    subgraph Output
-        Counts[Allele Counts]
-        Metrics[VAF, Strand Bias]
-    end
-    
-    VCF --> Engine[gbcms]
+block-beta
+    columns 3
+    VCF["📄 VCF/MAF\nVariant positions"]:1
+    Engine["⚡ gbcms\nPython + Rust"]:1
+    Counts["📊 Allele Counts\nDP · RD · AD · VAF"]:1
+    BAM["🗂️ BAM Files\n(1 to N samples)"]:1
+    space:1
+    Metrics["🧬 Fragment Counts\nStrand bias · mFSD"]:1
+
+    VCF --> Engine
     BAM --> Engine
     Engine --> Counts
     Engine --> Metrics
@@ -70,17 +68,28 @@ gbcms rna --variants variants.vcf --bam rna:aligned.bam --fasta ref.fa --output-
 
 ```mermaid
 flowchart TD
-    Start[How many samples?] --> Few{1-10 samples}
-    Start --> Many{10+ samples}
-    
-    Few --> CLI([Use CLI]):::cli
-    Many --> HPC{HPC cluster?}
-    
-    HPC --> |Yes| Nextflow([Use Nextflow]):::nf
-    HPC --> |No| CLI
-    
-    classDef cli fill:#4caf50,color:white,stroke:#388e3c,stroke-width:2px;
-    classDef nf fill:#2196f3,color:white,stroke:#1565c0,stroke-width:2px;
+    Start(["What data?"]):::start
+    Start -->|"DNA / cfDNA\nWGS / WES / Panel"| DNA(["gbcms dna"]):::dna
+    Start -->|"RNA-seq\n(STAR-aligned, dUTP)"| RNA(["gbcms rna"]):::rna
+
+    DNA --> NsamD{"Many samples?
+≥10 BAMs"}
+    RNA --> NsamR{"Many samples?
+≥10 BAMs"}
+
+    NsamD -->|"No"| CLI(["🖥️ CLI"]):::cli
+    NsamD -->|"Yes"| HPC{"HPC / SLURM?"}
+    NsamR -->|"No"| CLI
+    NsamR -->|"Yes"| HPC
+
+    HPC -->|"Yes"| NF(["🔷 Nextflow"]):::nf
+    HPC -->|"No"| CLI
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef rna fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef cli fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
+    classDef nf fill:#2c3e50,color:#fff,stroke:#1a2530,stroke-width:2px;
 ```
 
 | Workflow | Best For | Guide |
@@ -94,26 +103,7 @@ flowchart TD
 
 Python/Rust hybrid for maximum performance:
 
-```mermaid
-flowchart TB
-    subgraph Python [🐍 Python]
-        CLI[CLI] --> Pipeline[Orchestration]
-        Pipeline --> IO[VCF/MAF I/O]
-    end
-    
-    subgraph Rust [🦀 Rust]
-        Counter[BAM Counting]
-        Stats[Fisher Test]
-    end
-    
-    Pipeline --> Counter
-    Counter --> Stats
-    
-    classDef pythonStyle fill:#3776ab,color:#fff,stroke:#2c5f8a,stroke-width:2px;
-    classDef rustStyle fill:#dea584,color:#000,stroke:#c48a6a,stroke-width:2px;
-    class Python pythonStyle;
-    class Rust rustStyle;
-```
+See **[Architecture Reference →](reference/architecture.md)** for full diagrams covering system layers, data flow, genomic binning, coordinate system, config hierarchy, and end-to-end sequence.
 
 **→ [Technical Details](reference/architecture.md)** | **→ [How It Works](reference/allele-classification.md)**
 

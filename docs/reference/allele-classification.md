@@ -61,17 +61,19 @@ A single base substitution — the simplest and most common variant type.
 
 ```mermaid
 flowchart TD
-    Start([🧬 SNP Check]):::start --> Walk[Walk CIGAR to variant pos]
-    Walk --> Found{Position found?}
-    Found -->|No| Neither1([Neither]):::neither
-    Found -->|Yes| BQ{Base quality ≥ min_baseq?}
-    BQ -->|No| Neither2([Neither]):::neither
-    BQ -->|Yes| Compare[Compare base to REF and ALT]
-    Compare --> IsRef{base == REF?}
-    IsRef -->|Yes| Ref([✅ REF]):::ref
-    IsRef -->|No| IsAlt{base == ALT?}
-    IsAlt -->|Yes| Alt([🔴 ALT]):::alt
-    IsAlt -->|No| Neither3([Neither]):::neither
+    Start(["🧬 SNP Check"]):::start --> Walk["Walk CIGAR to variant pos"]
+    Walk --> CigarOp{"CIGAR op at pos\nis M or X?"}
+    CigarOp -->|"No (I/D/N/S)"| Neither0(["Neither — no consumable base"]):::neither
+    CigarOp -->|"Yes"| Found{"Position found?"}
+    Found -->|No| Neither1(["Neither"]):::neither
+    Found -->|Yes| BQ{"Base quality ≥ min_baseq?"}
+    BQ -->|No| Neither2(["Neither"]):::neither
+    BQ -->|Yes| Compare["Compare base to REF and ALT"]
+    Compare --> IsRef{"base == REF?"}
+    IsRef -->|Yes| Ref(["✅ REF"]):::ref
+    IsRef -->|No| IsAlt{"base == ALT?"}
+    IsAlt -->|Yes| Alt(["🔴 ALT"]):::alt
+    IsAlt -->|No| Neither3(["Neither"]):::neither
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;

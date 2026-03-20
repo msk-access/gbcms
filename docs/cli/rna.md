@@ -24,23 +24,26 @@ gbcms rna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
 
 ```mermaid
 flowchart LR
-    subgraph Input
-        BAM[BAM Files]
-        VCF[VCF/MAF]
-        FASTA[Reference]
-        DB["REDIportal DB\n(optional)"]
+    subgraph Inputs ["Inputs"]
+        direction TB
+        BAM["BAM Files"]
+        VCF["VCF/MAF"]
+        FASTA["Reference"]
+        DB["REDIportal DB"]:::optional
     end
 
-    subgraph Filters [RNA-Specific Filters]
-        NH["NH:i:1 MAPQ\nRescue"]
-        Strand["Strandedness\nFilter"]
+    subgraph Filters ["RNA Filters"]
+        direction TB
+        NH["NH:i:1 MAPQ Rescue"]:::filter
+        Strand["Strandedness Filter"]:::filter
     end
 
-    subgraph Counting [Allele Classification]
-        Classify["Phase 1–3\nClassification"]
-        Sense["Sense/Antisense\nTracking"]
-        Splice["Splice Junction\nDetection"]
-        Edit["RNA Editing\nFlagging"]
+    subgraph Counting ["Allele Classification"]
+        direction TB
+        Classify["Phase 1-3 Classification"]
+        Sense["Sense/Antisense Tracking"]
+        Splice["Splice Junction Detection"]
+        Edit["RNA Editing Flagging"]
     end
 
     BAM --> NH --> Strand --> Classify
@@ -48,16 +51,16 @@ flowchart LR
     FASTA --> Classify
     Classify --> Sense
     Classify --> Splice
-    DB -.-> Edit
     Classify --> Edit
-    Sense --> Output([RNA VCF/MAF])
-    Splice --> Output
-    Edit --> Output
+    DB -.->|"optional"| Edit
+    Sense --> Out(["RNA VCF/MAF"]):::pass
+    Splice --> Out
+    Edit --> Out
 
     classDef filter fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
-    classDef count fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef optional fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:1px,stroke-dasharray:4;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     class NH,Strand filter;
-    class Classify,Sense,Splice,Edit count;
 ```
 
 ---
@@ -146,11 +149,12 @@ STAR assigns MAPQ=0 to reads that map to multiple loci. However, reads with `NH:
 
 ```mermaid
 flowchart TD
-    Read([📖 RNA Read]) --> MAPQ{MAPQ ≥ min_mapq?}
-    MAPQ -->|Yes| Pass([✅ Pass]):::pass
-    MAPQ -->|No| NH{NH:i:1 tag?}
-    NH -->|Yes| Rescue([✅ Rescued — unique alignment]):::rescue
-    NH -->|No| Drop([❌ Discard — multi-mapper]):::drop
+    Read(["📖 RNA Read"])
+    Read -->|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
+    MAPQ -->|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
+    MAPQ -->|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
+    NH -->|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
+    NH -->|"No — NH>1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef rescue fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
