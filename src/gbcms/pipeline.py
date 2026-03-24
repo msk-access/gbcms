@@ -219,9 +219,16 @@ class Pipeline:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
 
         # Log normalization changes
-        norm_count = sum(1 for p in prepared if p.was_normalized)
-        if norm_count > 0:
-            logger.info("Normalized %d variants (left-aligned)", norm_count)
+        n_anchor = sum(1 for p in prepared if p.was_anchor_resolved)
+        n_left = sum(1 for p in prepared if p.was_left_aligned)
+        n_total = sum(1 for p in prepared if p.was_normalized)
+        if n_total > 0:
+            logger.info(
+                "Normalized %d variants (%d anchor-resolved, %d left-aligned)",
+                n_total,
+                n_anchor,
+                n_left,
+            )
 
         if not rs_variants:
             logger.error("No valid variants remaining after preparation. Exiting.")

@@ -104,7 +104,10 @@ class PreparedVariant:
     original_ref: str
     original_alt: str
     validation_status: str
-    was_normalized: bool
+    was_anchor_resolved: bool
+    was_left_aligned: bool
+    @property
+    def was_normalized(self) -> bool: ...
     decomposed_variant: Variant | None
     multi_allelic_group: int | None
 

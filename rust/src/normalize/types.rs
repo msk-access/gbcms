@@ -20,9 +20,14 @@ pub struct PreparedVariant {
     #[pyo3(get, set)]
     pub validation_status: String,
 
-    /// True if left-alignment changed the variant's coordinates.
+    /// True if MAF anchor resolution (Step 1) changed pos/ref/alt.
+    /// Only set for MAF input with dash alleles or different-length non-dash indels.
     #[pyo3(get)]
-    pub was_normalized: bool,
+    pub was_anchor_resolved: bool,
+
+    /// True if left-alignment (Step 3) shifted the variant's coordinates.
+    #[pyo3(get)]
+    pub was_left_aligned: bool,
 
     /// Original 0-based position before any transformation.
     #[pyo3(get)]
@@ -49,4 +54,16 @@ pub struct PreparedVariant {
     /// overlapping genomic footprints (same chrom, overlapping REF spans).
     #[pyo3(get)]
     pub multi_allelic_group: Option<u32>,
+}
+
+#[pymethods]
+impl PreparedVariant {
+    /// Combined normalization flag: True if any transformation changed pos/ref/alt.
+    ///
+    /// Backward-compatible replacement for the old `was_normalized` field.
+    /// Returns `was_anchor_resolved || was_left_aligned`.
+    #[getter]
+    pub fn was_normalized(&self) -> bool {
+        self.was_anchor_resolved || self.was_left_aligned
+    }
 }

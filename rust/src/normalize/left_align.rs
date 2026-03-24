@@ -82,6 +82,11 @@ pub fn left_align_variant(
         cur_pos += 1;
     }
 
-    let was_modified = cur_pos != original_pos || r != original_ref || a != original_alt;
+    // Case-insensitive comparison: the trim phases use eq_ignore_ascii_case,
+    // so the modified check must also be case-insensitive to avoid false positives
+    // when FASTA has soft-masked (lowercase) bases near the variant.
+    let was_modified = cur_pos != original_pos
+        || !r.eq_ignore_ascii_case(&original_ref)
+        || !a.eq_ignore_ascii_case(&original_alt);
     (cur_pos, r, a, was_modified)
 }
