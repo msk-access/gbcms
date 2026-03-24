@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1] - 2026-03-24
+
+### 🔧 Fixed
+
+- **`was_normalized` flag accuracy**: Split into granular `was_anchor_resolved`
+  and `was_left_aligned` flags with backward-compatible `was_normalized` getter.
+  Fixes 1150 false negatives (anchor resolution not tracked) and 58 false
+  positives (unnecessary anchor+trim round-trip for non-dash complex variants).
+  No impact on BAM counting — display/logging only.
+- **Left-alignment false positives**: Fixed case-sensitive `modified` check in
+  `left_align_variant` to use `eq_ignore_ascii_case`, preventing soft-masked
+  FASTA bases from triggering spurious normalization flags.
+- **Non-dash anchor resolution**: Narrowed MAF anchor resolution guard to
+  dash-allele-only variants. Non-dash complex/deletion MAF variants
+  (e.g., `GG>A`) no longer enter the unnecessary anchor+trim cycle.
+
+### 🔄 Changed
+
+- Normalization logging now shows granular breakdown:
+  `"X normalized (Y anchor-resolved, Z left-aligned)"` in both Rust engine
+  and Python pipeline/normalize logs.
+- `gbcms normalize` TSV output now includes `was_anchor_resolved` and
+  `was_left_aligned` columns before the existing `was_normalized` column.
+- CLI and reference docs updated with new column descriptions.
+
 ## [4.0.0] - 2026-03-20
 
 ### ⚠️ Breaking Changes
