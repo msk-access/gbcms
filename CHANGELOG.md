@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Non-dash anchor resolution**: Narrowed MAF anchor resolution guard to
   dash-allele-only variants. Non-dash complex/deletion MAF variants
   (e.g., `GG>A`) no longer enter the unnecessary anchor+trim cycle.
+- **PairHMM pangenome panic**: Fixed unsigned integer underflow
+  (`range end index 18446744073709551615`) in pangenomic haplotype
+  construction caused by left-to-right delta-adjusted coordinate math.
+  Rewrote `build_haplotype_matrix` with right-to-left variant application
+  algorithm that eliminates coordinate drift by construction, plus
+  power-set sibling combinatorics for true multi-haplotype evaluation.
+  Only affects `--alignment-backend hmm`.
 
 ### 🔄 Changed
 
