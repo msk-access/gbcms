@@ -110,13 +110,17 @@ pub fn prepare_variants(
 
             // Log summary
             let valid = r.iter().filter(|p| p.validation_status == "PASS").count();
-            let normalized = r.iter().filter(|p| p.was_normalized).count();
+            let n_anchor = r.iter().filter(|p| p.was_anchor_resolved).count();
+            let n_left = r.iter().filter(|p| p.was_left_aligned).count();
+            let n_total = r.iter().filter(|p| p.was_normalized()).count();
             let multi_allelic = r.iter().filter(|p| p.multi_allelic_group.is_some()).count();
             info!(
-                "prepare_variants complete: {}/{} valid, {} normalized, {} multi-allelic",
+                "prepare_variants complete: {}/{} valid, {} normalized ({} anchor-resolved, {} left-aligned), {} multi-allelic",
                 valid,
                 r.len(),
-                normalized,
+                n_total,
+                n_anchor,
+                n_left,
                 multi_allelic,
             );
             Ok(r)
@@ -231,11 +235,11 @@ fn prepare_single_variant(
     let original_ref = variant.ref_allele.clone();
     let original_alt = variant.alt_allele.clone();
 
-    // Step 1: MAF anchor resolution (if needed)
+    // Step 1: MAF anchor resolution (only for dash-allele variants)
+    // Non-dash MAF variants with different-length alleles (e.g., GG>A) already have
+    // complete alleles and don't need an anchor base prepended.
     let (mut pos, mut ref_al, mut alt_al, mut vtype) = if is_maf
-        && (variant.ref_allele == "-"
-            || variant.alt_allele == "-"
-            || variant.ref_allele.len() != variant.alt_allele.len())
+        && (variant.ref_allele == "-" || variant.alt_allele == "-")
     {
         // MAF indel/complex: resolve anchor base
         // variant.pos is 0-based (from maf_to_internal), start_pos is 1-based
@@ -260,7 +264,8 @@ fn prepare_single_variant(
                 return Ok(PreparedVariant {
                     variant: variant.clone(),
                     validation_status: "FETCH_FAILED".to_string(),
-                    was_normalized: false,
+                    was_anchor_resolved: false,
+                    was_left_aligned: false,
                     original_pos,
                     original_ref,
                     original_alt,
@@ -278,6 +283,12 @@ fn prepare_single_variant(
             variant.variant_type.clone(),
         )
     };
+
+    // Track whether MAF anchor resolution changed pos/ref/alt (Step 1).
+    // For VCF input or MAF SNPs, this is always false.
+    let was_anchor_resolved = pos != original_pos
+        || ref_al != original_ref
+        || alt_al != original_alt;
 
     // Step 2: REF validation (with tolerance for partial mismatches)
     let (status, corrected_ref) = validate_ref(reader, &variant.chrom, pos, &ref_al);
@@ -310,7 +321,8 @@ fn prepare_single_variant(
                 gene_strand: None,
             },
             validation_status: status,
-            was_normalized: false,
+            was_anchor_resolved,
+            was_left_aligned: false,
             original_pos,
             original_ref,
             original_alt,
@@ -320,7 +332,7 @@ fn prepare_single_variant(
     }
 
     // Step 3: Left-alignment (only for indels/complex)
-    let mut was_normalized = false;
+    let mut was_left_aligned = false;
     let is_indel = ref_al.len() != alt_al.len()
         || (ref_al.len() > 1 && alt_al.len() > 1);
 
@@ -366,7 +378,7 @@ fn prepare_single_variant(
                         .unwrap_or_else(|_| ref_al.clone());
                     alt_al = String::from_utf8(new_alt)
                         .unwrap_or_else(|_| alt_al.clone());
-                    was_normalized = true;
+                    was_left_aligned = true;
 
                     // Re-determine variant type after normalization
                     vtype = if ref_al.len() == 1 && alt_al.len() == 1 {
@@ -507,7 +519,8 @@ fn prepare_single_variant(
             gene_strand: None,
         },
         validation_status: "PASS".to_string(),
-        was_normalized,
+        was_anchor_resolved,
+        was_left_aligned,
         original_pos,
         original_ref,
         original_alt,

@@ -102,7 +102,7 @@ After alignment, the **variant type is re-detected** based on the new allele len
 | Otherwise | COMPLEX |
 
 !!! tip "Debugging Normalization"
-    Use `gbcms normalize` to see exactly how each variant was transformed. The output TSV shows original and normalized coordinates side by side, plus whether the variant was modified (`was_normalized=true`).
+    Use `gbcms normalize` to see exactly how each variant was transformed. The output TSV shows original and normalized coordinates side by side, plus granular flags: `was_anchor_resolved` (MAF dash-allele conversion), `was_left_aligned` (left-shifting), and `was_normalized` (either one).
 
 ---
 

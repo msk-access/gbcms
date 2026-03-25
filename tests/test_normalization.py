@@ -61,6 +61,8 @@ class TestNormalization(unittest.TestCase):
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(pv.validation_status, "PASS")
+        self.assertFalse(pv.was_anchor_resolved)
+        self.assertFalse(pv.was_left_aligned)
         self.assertFalse(pv.was_normalized)
         self.assertEqual(pv.variant.ref_allele, "A")
         self.assertEqual(pv.variant.alt_allele, "T")
@@ -83,6 +85,10 @@ class TestNormalization(unittest.TestCase):
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(pv.validation_status, "PASS")
+        # MAF anchor resolution should be detected
+        self.assertTrue(pv.was_anchor_resolved)
+        self.assertFalse(pv.was_left_aligned)
+        self.assertTrue(pv.was_normalized)
         # After anchor resolution, ref should have anchor base
         self.assertNotEqual(pv.variant.ref_allele, "-")
         self.assertEqual(len(pv.variant.ref_allele), 1)  # Just the anchor
@@ -98,8 +104,11 @@ class TestNormalization(unittest.TestCase):
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(pv.validation_status, "PASS")
-        # The deletion should be left-aligned from pos 103 to pos 99
+        # Left-alignment should be detected (VCF input, no anchor step)
+        self.assertFalse(pv.was_anchor_resolved)
+        self.assertTrue(pv.was_left_aligned)
         self.assertTrue(pv.was_normalized)
+        # The deletion should be left-aligned from pos 103 to pos 99
         self.assertEqual(pv.variant.pos, 99)
         self.assertEqual(pv.variant.ref_allele, "GA")
         self.assertEqual(pv.variant.alt_allele, "G")
@@ -175,6 +184,8 @@ class TestNormalization(unittest.TestCase):
             self.assertIn("original_pos", header)
             self.assertIn("norm_pos", header)
             self.assertIn("validation_status", header)
+            self.assertIn("was_anchor_resolved", header)
+            self.assertIn("was_left_aligned", header)
             self.assertIn("was_normalized", header)
 
     # -- MafWriter show_normalization tests --
@@ -298,6 +309,30 @@ class TestNormalization(unittest.TestCase):
         header = rows[0].keys()
         self.assertNotIn("norm_Start_Position", header)
         self.assertNotIn("norm_End_Position", header)
+
+    def test_maf_deletion_in_repeat_both_flags(self):
+        """MAF deletion (alt='-') in a homopolymer should set BOTH flags.
+
+        Step 1 (anchor resolution): converts dash-allele to VCF-style → was_anchor_resolved=True
+        Step 3 (left-alignment): shifts deletion to start of A-run → was_left_aligned=True
+        """
+        # Reference layout: ...G[AAAAAA]C... at pos 99-106
+        # MAF: pos=103 (0-based), ref='A', alt='-' → deletion inside A-run
+        # Step 1: anchor at pos=102, ref=AA, alt=A → was_anchor_resolved=True
+        # Step 3: left-align AA→A in A-run → shifts to pos=99 → was_left_aligned=True
+        variants = [gbcms_rs.Variant("chr1", 103, "A", "-", "DELETION")]
+        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, True, 1, False)
+        self.assertEqual(len(prepared), 1)
+        pv = prepared[0]
+        self.assertTrue(
+            pv.validation_status.startswith("PASS"),
+            f"Expected PASS status, got {pv.validation_status}",
+        )
+        self.assertTrue(pv.was_anchor_resolved, "Expected anchor resolution for dash-allele")
+        self.assertTrue(pv.was_left_aligned, "Expected left-alignment in homopolymer")
+        self.assertTrue(pv.was_normalized, "Expected combined normalized flag")
+        # Should have shifted left from original position
+        self.assertLess(pv.variant.pos, 103, "Expected leftward shift")
 
 
 if __name__ == "__main__":
