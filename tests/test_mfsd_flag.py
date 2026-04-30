@@ -83,6 +83,12 @@ class _MockCounts:
         self.mfsd_delta_nonref_n = _nan
         self.mfsd_ks_nonref_n = _nan
         self.mfsd_pval_nonref_n = _nan
+        # Sub-nucleosomal / mono-nucleosomal fractions
+        self.mfsd_sub_nuc_ref_frac = 0.15
+        self.mfsd_sub_nuc_alt_frac = 0.25
+        self.mfsd_sub_nuc_enrichment = 1.67
+        self.mfsd_mono_nuc_ref_frac = 0.60
+        self.mfsd_mono_nuc_alt_frac = 0.45
 
 
 class _MockVariant:
@@ -116,7 +122,7 @@ def test_maf_writer_no_mfsd_columns_by_default(tmp_path: Path):
 
 
 def test_maf_writer_mfsd_columns_when_enabled(tmp_path: Path):
-    """With mfsd=True, exactly 34 mFSD columns should appear in the MAF header.
+    """With mfsd=True, exactly 40 mFSD columns should appear in the MAF header.
 
     Breakdown:
     - 4 raw counts (ref/alt/nonref/n)
@@ -125,14 +131,16 @@ def test_maf_writer_mfsd_columns_when_enabled(tmp_path: Path):
     - 18 pairwise KS (6 pairs x 3: delta, D-stat, p-value)
     - 6 derived metrics (error_rate, n_rate, size_ratio, quality_score,
       alt_confidence, ks_valid)
-    Total = 34
+    - 5 nucleosomal fractions (sub_nuc_ref/alt/enrichment, mono_nuc_ref/alt)
+    - 1 CH gene flag (ch_flag)
+    Total = 40
     """
     writer = MafWriter(tmp_path / "out.maf", mfsd=True)
     cols = writer._gbcms_column_names()
     mfsd_cols = [c for c in cols if c.startswith("mfsd_")]
     assert (
-        len(mfsd_cols) == 34
-    ), f"Expected 34 mFSD columns with mfsd=True, got {len(mfsd_cols)}: {mfsd_cols}"
+        len(mfsd_cols) == 40
+    ), f"Expected 40 mFSD columns with mfsd=True, got {len(mfsd_cols)}: {mfsd_cols}"
     writer.close()
 
 

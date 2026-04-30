@@ -84,6 +84,12 @@ class BaseCounts:
     mfsd_delta_nonref_n: float
     mfsd_ks_nonref_n: float
     mfsd_pval_nonref_n: float
+    # Sub-nucleosomal / mono-nucleosomal fractions
+    mfsd_sub_nuc_ref_frac: float
+    mfsd_sub_nuc_alt_frac: float
+    mfsd_sub_nuc_enrichment: float
+    mfsd_mono_nuc_ref_frac: float
+    mfsd_mono_nuc_alt_frac: float
     # Universal additions (both modes)
     mq0_count: int
     alt_dist_end_median: float

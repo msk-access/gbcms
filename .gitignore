@@ -57,10 +57,13 @@ test_data/
 *.fa.fai
 *.vcf
 *.maf
+*.parquet
+*.mfsd_report.html
 output/
 results/
 test_output*/
 *.txt
+scripts/*_test/
 
 # Exception: Allow test data files
 !tests/testdata/*.bam
@@ -69,6 +72,7 @@ test_output*/
 !tests/testdata/*.fa.fai
 !tests/testdata/*.vcf
 !tests/testdata/*.maf
+!tests/testdata/*.parquet
 
 # Logs
 *.log

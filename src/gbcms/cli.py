@@ -153,6 +153,30 @@ def dna(
             "mFSD visualizations. Requires --mfsd."
         ),
     ),
+    mfsd_report: bool = typer.Option(
+        False,
+        "--mfsd-report",
+        help=(
+            "Generate an interactive HTML report with per-variant fragment "
+            "size distributions and CH-vs-ctDNA fragment origin signals. "
+            "Implies --mfsd and --mfsd-parquet. Output: "
+            "<sample>.mfsd_report.html alongside the main output."
+        ),
+    ),
+    mfsd_report_min_alt: int = typer.Option(
+        3,
+        "--mfsd-report-min-alt",
+        help="Minimum ALT fragment count for a variant to appear in the mFSD report.",
+    ),
+    mfsd_report_max_variants: int = typer.Option(
+        20,
+        "--mfsd-report-max-variants",
+        help=(
+            "Maximum number of variants to include in the mFSD report. "
+            "Variants are ranked by ALT fragment count (descending). "
+            "Use -1 for no limit."
+        ),
+    ),
     # BAQ (both modes)
     apply_baq: bool = typer.Option(
         False,
@@ -303,6 +327,16 @@ def dna(
             variant_file.suffix,
         )
 
+    # --mfsd-report implies --mfsd and --mfsd-parquet (user convenience; no need
+    # to specify all three flags). Log the auto-enable so it's not a surprise.
+    if mfsd_report:
+        if not mfsd:
+            mfsd = True
+            logger.info("--mfsd-report implies --mfsd; auto-enabled.")
+        if not mfsd_parquet:
+            mfsd_parquet = True
+            logger.info("--mfsd-report implies --mfsd-parquet; auto-enabled.")
+
     # Validate --mfsd-parquet requires --mfsd (CLI-level check matches model-level validator).
     if mfsd_parquet and not mfsd:
         logger.error(
@@ -350,6 +384,9 @@ def dna(
             preserve_barcode=preserve_barcode,
             mfsd=mfsd,
             mfsd_parquet=mfsd_parquet,
+            mfsd_report=mfsd_report,
+            mfsd_report_min_alt=mfsd_report_min_alt,
+            mfsd_report_max_variants=mfsd_report_max_variants,
         )
 
         quality_config = QualityThresholds(
@@ -695,6 +732,9 @@ def run(
     preserve_barcode: bool = typer.Option(False, "--preserve-barcode"),
     mfsd: bool = typer.Option(False, "--mfsd"),
     mfsd_parquet: bool = typer.Option(False, "--mfsd-parquet"),
+    mfsd_report: bool = typer.Option(False, "--mfsd-report"),
+    mfsd_report_min_alt: int = typer.Option(3, "--mfsd-report-min-alt"),
+    mfsd_report_max_variants: int = typer.Option(20, "--mfsd-report-max-variants"),
     apply_baq: bool = typer.Option(False, "--apply-baq/--no-baq"),
     umi_tag: str | None = typer.Option(None, "--umi-tag"),
     min_mapq: int = typer.Option(20, "--min-mapq"),
@@ -738,6 +778,9 @@ def run(
         preserve_barcode=preserve_barcode,
         mfsd=mfsd,
         mfsd_parquet=mfsd_parquet,
+        mfsd_report=mfsd_report,
+        mfsd_report_min_alt=mfsd_report_min_alt,
+        mfsd_report_max_variants=mfsd_report_max_variants,
         apply_baq=apply_baq,
         umi_tag=umi_tag,
         min_mapq=min_mapq,

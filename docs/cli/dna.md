@@ -46,15 +46,19 @@ short-fragment enrichment associated with tumor-derived cfDNA
 |:-------|:--------|:------------|
 | `--mfsd` | `false` | Enable mFSD analysis. Adds 34 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, derived metrics) to MAF output and 7 `MFSD_*` INFO fields to VCF. |
 | `--mfsd-parquet` | `false` | Write a companion `<sample>.fsd.parquet` with per-variant raw fragment size arrays (`ref_sizes`, `alt_sizes`). Enables downstream visualizations. **Requires `--mfsd`**. |
+| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and Fragment Origin Signal classification. **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). See [mFSD Report](../reference/mfsd-report.md). |
+| `--mfsd-report-min-alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
+| `--mfsd-report-max-variants` | `20` | Maximum variants in the HTML report (selected by highest ALT count). Use `-1` for no limit. |
 
 !!! tip
-    To generate both summary statistics and raw Parquet data in one run:
+    To generate summary statistics, raw Parquet data, and an interactive HTML report:
     ```bash
-    gbcms dna --mfsd --mfsd-parquet --format maf \
+    gbcms dna --mfsd-report --format maf \
         --variants variants.maf --bam tumor:tumor.bam --fasta hg19.fa -o ./results
     ```
-    This produces `<sample>.maf` (with 34 mFSD columns) and `<sample>.fsd.parquet`
-    (raw fragment sizes for visualization).
+    This produces `<sample>.maf` (with 34 mFSD columns), `<sample>.fsd.parquet`
+    (raw fragment sizes), and `<sample>.mfsd_report.html` (interactive visualization).
+    Using `--mfsd-report` auto-enables `--mfsd` and `--mfsd-parquet`.
 
 ## Filtering Options
 

@@ -98,6 +98,7 @@ nav:
     - Read Filters: reference/read-filters.md
     - Allele Classification: reference/allele-classification.md
     - Counting & Metrics: reference/counting-metrics.md
+    - mFSD Report: reference/mfsd-report.md
     - Complex Indels: reference/complex-indels.md
     - Glossary: reference/glossary.md
   

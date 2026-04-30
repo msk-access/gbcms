@@ -11,9 +11,10 @@ process GBCMS_DNA {
     tuple path(fasta), path(fai)
 
     output:
-    tuple val(meta), path("*.{vcf,maf}"),  emit: counts
-    tuple val(meta), path("*.fsd.parquet"), emit: fsd_parquet, optional: true
-    path "versions.yml"                   , emit: versions
+    tuple val(meta), path("*.{vcf,maf}"),          emit: counts
+    tuple val(meta), path("*.fsd.parquet"),         emit: fsd_parquet,  optional: true
+    tuple val(meta), path("*.mfsd_report.html"),    emit: mfsd_report,  optional: true
+    path "versions.yml"                           , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -64,6 +65,9 @@ process GBCMS_DNA {
     def mfsd_arg         = params.mfsd         ? "--mfsd"          : ""
     def mfsd_parquet_arg = params.mfsd_parquet ? "--mfsd-parquet"  : ""
 
+    // mFSD interactive HTML report
+    def mfsd_report_arg  = params.mfsd_report  ? "--mfsd-report --mfsd-report-min-alt ${params.mfsd_report_min_alt} --mfsd-report-max-variants ${params.mfsd_report_max_variants}" : ""
+
     """
     gbcms dna \\
         --variants ${variants} \\
@@ -88,6 +92,7 @@ process GBCMS_DNA {
         ${baq_arg} \\
         ${mfsd_arg} \\
         ${mfsd_parquet_arg} \\
+        ${mfsd_report_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml
