@@ -179,3 +179,44 @@ class TestErrorHandling:
                 maf_path=tmp_path / "nonexistent.maf",
                 output_path=tmp_path / "out.html",
             )
+
+
+class TestTooltips:
+    """Verify hover-over tooltip explanations on metrics and badges."""
+
+    def test_stat_labels_have_tooltips(self, multi_report: Path) -> None:
+        """Every stat label in variant cards should have a title tooltip."""
+        html = multi_report.read_text()
+        # Each stat label should have the has-tooltip class and a title attribute
+        for label in ["REF n", "ALT n", "REF mean", "ALT mean", "KS p", "LLR"]:
+            assert (
+                'class="stat-label has-tooltip" title="' in html
+            ), f"Stat label '{label}' is missing tooltip"
+
+    def test_signal_badges_have_tooltips(self, multi_report: Path) -> None:
+        """Fragment Origin Signal badges should have explanatory tooltips."""
+        html = multi_report.read_text()
+        assert 'class="badge has-tooltip"' in html
+
+    def test_summary_cards_have_tooltips(self, multi_report: Path) -> None:
+        """Summary dashboard cards should have tooltips."""
+        html = multi_report.read_text()
+        assert 'class="summary-card has-tooltip"' in html
+
+    def test_hero_badges_have_tooltips(self, multi_report: Path) -> None:
+        """Hero metric badges should have tooltips."""
+        html = multi_report.read_text()
+        assert 'class="metric-badge has-tooltip"' in html
+
+    def test_tooltip_css_rendered(self, multi_report: Path) -> None:
+        """CSS tooltip styles should be present in the report."""
+        html = multi_report.read_text()
+        assert ".has-tooltip" in html
+        assert "cursor: help" in html
+        assert "content: attr(title)" in html
+
+    def test_tooltips_hidden_in_print(self, multi_report: Path) -> None:
+        """Tooltips should be hidden in print media."""
+        html = multi_report.read_text()
+        assert "@media print" in html
+        assert ".has-tooltip::after" in html

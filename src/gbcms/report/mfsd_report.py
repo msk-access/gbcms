@@ -17,6 +17,72 @@ from gbcms.io.output import CH_GENES
 
 logger = logging.getLogger(__name__)
 
+# ── Tooltip definitions (single source of truth for hover-over explanations) ──
+# Keys are the short labels displayed in the UI; values are the explanatory text
+# shown on hover. These are rendered as HTML title attributes and via CSS tooltips.
+TOOLTIPS: dict[str, str] = {
+    # Per-variant stats row
+    "REF n": (
+        "Number of fragments classified as supporting the reference allele "
+        "with valid insert size (50–1000 bp)."
+    ),
+    "ALT n": (
+        "Number of fragments classified as supporting the alternate allele "
+        "with valid insert size (50–1000 bp)."
+    ),
+    "REF mean": "Mean fragment size (bp) across all REF-supporting fragments.",
+    "ALT mean": "Mean fragment size (bp) across all ALT-supporting fragments.",
+    "Δ(ALT−REF)": (
+        "Difference in mean fragment size: ALT mean minus REF mean. "
+        "Negative values indicate ALT fragments are shorter on average, "
+        "consistent with ctDNA-derived fragments."
+    ),
+    "KS p": (
+        "Kolmogorov-Smirnov test p-value comparing the ALT vs REF fragment "
+        "size distributions. Values <0.05 indicate statistically significant "
+        "differences between the two distributions."
+    ),
+    "LLR": (
+        "Log-likelihood ratio from PairHMM alignment. Positive values indicate "
+        "confident ALT-supporting fragment evidence. Higher = stronger signal."
+    ),
+    "Sub-nuc enrich.": (
+        "Sub-nucleosomal enrichment: ratio of ALT fragments <150 bp to REF "
+        "fragments <150 bp. Values >1.0 indicate ALT fragments are enriched "
+        "for short, sub-nucleosomal sizes — a hallmark of ctDNA."
+    ),
+    # Fragment Origin Signal classifications
+    "TUMOR-LIKE": (
+        "Sub-nucleosomal enrichment >1.3, KS p<0.05, and gene is NOT in the "
+        "CH gene set. Suggests tumor-derived cfDNA origin."
+    ),
+    "CH-LIKE": (
+        "Known CH gene, sub-nucleosomal enrichment <1.2, and KS p>0.05. "
+        "ALT fragment sizes mirror REF, consistent with clonal hematopoiesis."
+    ),
+    "AMBIGUOUS": (
+        "Mixed signals — does not clearly meet TUMOR-LIKE or CH-LIKE criteria. "
+        "May require additional clinical context or paired WBC sequencing."
+    ),
+    "INSUFFICIENT": (
+        "ALT fragment count is below the minimum threshold. Not enough data "
+        "for reliable fragment size distribution comparison."
+    ),
+    # Summary dashboard
+    "Tumor-like": "Count of variants classified as TUMOR-LIKE (ctDNA-derived signal).",
+    "CH-like": "Count of variants classified as CH-LIKE (clonal hematopoiesis signal).",
+    "Ambiguous": "Count of variants with mixed or unclear fragment origin signals.",
+    "Insufficient": "Count of variants with too few ALT fragments for classification.",
+    # Other UI elements
+    "CH Gene": (
+        "This gene is in the Clonal Hematopoiesis (CH) driver gene set "
+        "(20 genes). CH variants typically show REF-like fragment size "
+        "distributions, unlike tumor-derived cfDNA."
+    ),
+    "variants": "Total variants included in this report after filtering.",
+    "min ALT": "Minimum ALT fragment count required for a variant to be included.",
+}
+
 
 # ── Fragment Origin Signal Classification ────────────────────────────────────
 def _classify_origin(
@@ -283,7 +349,7 @@ def _fmt_pval(v: float) -> str:
 
 
 def _signal_badge(signal: str) -> str:
-    """HTML badge for fragment origin signal."""
+    """HTML badge for fragment origin signal with hover tooltip."""
     colors = {
         "TUMOR-LIKE": ("#e74c3c", "#fff"),
         "CH-LIKE": ("#3498db", "#fff"),
@@ -291,7 +357,8 @@ def _signal_badge(signal: str) -> str:
         "INSUFFICIENT": ("#95a5a6", "#fff"),
     }
     bg, fg = colors.get(signal, ("#95a5a6", "#fff"))
-    return f'<span class="badge" style="background:{bg};color:{fg}">{signal}</span>'
+    tip = TOOLTIPS.get(signal, "")
+    return f'<span class="badge has-tooltip" style="background:{bg};color:{fg}" title="{tip}">{signal}</span>'
 
 
 def _build_variant_nav_html(n_variants: int) -> str:
@@ -334,7 +401,12 @@ def _build_html(variants: list[dict], sample_name: str, parquet_name: str, min_a
         label = f"{v['hugo']} " if v["hugo"] else ""
         label += f"{v['chrom']}:{v['pos']} {v['ref']}>{v['alt']}"
 
-        ch_tag = ' <span class="ch-tag">CH Gene</span>' if v["is_ch_gene"] else ""
+        ch_tip = TOOLTIPS["CH Gene"]
+        ch_tag = (
+            f' <span class="ch-tag has-tooltip" title="{ch_tip}">CH Gene</span>'
+            if v["is_ch_gene"]
+            else ""
+        )
 
         # Include data attributes for navigator dropdown labeling
         nav_label = f"{label} [{v['signal']}]"
@@ -345,14 +417,14 @@ def _build_html(variants: list[dict], sample_name: str, parquet_name: str, min_a
         <div>{_signal_badge(v['signal'])}</div>
       </div>
       <div class="stats-row">
-        <div class="stat"><span class="stat-label">REF n</span><span class="stat-value">{v['ref_count']}</span></div>
-        <div class="stat"><span class="stat-label">ALT n</span><span class="stat-value">{v['alt_count']}</span></div>
-        <div class="stat"><span class="stat-label">REF mean</span><span class="stat-value">{_fmt_val(v['ref_mean'], 1)} bp</span></div>
-        <div class="stat"><span class="stat-label">ALT mean</span><span class="stat-value">{_fmt_val(v['alt_mean'], 1)} bp</span></div>
-        <div class="stat"><span class="stat-label">Δ(ALT−REF)</span><span class="stat-value">{_fmt_val(v['delta'], 1)} bp</span></div>
-        <div class="stat"><span class="stat-label">KS p</span><span class="stat-value">{_fmt_pval(v['ks_pval'])}</span></div>
-        <div class="stat"><span class="stat-label">LLR</span><span class="stat-value">{_fmt_val(v['alt_llr'])}</span></div>
-        <div class="stat"><span class="stat-label">Sub-nuc enrich.</span><span class="stat-value">{_fmt_val(v['sub_nuc_enrichment'])}</span></div>
+        <div class="stat"><span class="stat-label has-tooltip" title="{TOOLTIPS['REF n']}">REF n</span><span class="stat-value">{v['ref_count']}</span></div>
+        <div class="stat"><span class="stat-label has-tooltip" title="{TOOLTIPS['ALT n']}">ALT n</span><span class="stat-value">{v['alt_count']}</span></div>
+        <div class="stat"><span class="stat-label has-tooltip" title="{TOOLTIPS['REF mean']}">REF mean</span><span class="stat-value">{_fmt_val(v['ref_mean'], 1)} bp</span></div>
+        <div class="stat"><span class="stat-label has-tooltip" title="{TOOLTIPS['ALT mean']}">ALT mean</span><span class="stat-value">{_fmt_val(v['alt_mean'], 1)} bp</span></div>
+        <div class="stat"><span class="stat-label has-tooltip" title="{TOOLTIPS['Δ(ALT−REF)']}">Δ(ALT−REF)</span><span class="stat-value">{_fmt_val(v['delta'], 1)} bp</span></div>
+        <div class="stat"><span class="stat-label has-tooltip" title="{TOOLTIPS['KS p']}">KS p</span><span class="stat-value">{_fmt_pval(v['ks_pval'])}</span></div>
+        <div class="stat"><span class="stat-label has-tooltip" title="{TOOLTIPS['LLR']}">LLR</span><span class="stat-value">{_fmt_val(v['alt_llr'])}</span></div>
+        <div class="stat"><span class="stat-label has-tooltip" title="{TOOLTIPS['Sub-nuc enrich.']}">Sub-nuc enrich.</span><span class="stat-value">{_fmt_val(v['sub_nuc_enrichment'])}</span></div>
       </div>
       <div class="plot-container" id="{div_id}"></div>
       <div class="interpretation">
@@ -489,6 +561,37 @@ body {{ font-family: 'Inter', sans-serif; background: var(--bg-page); color: var
 .stat {{ display: flex; flex-direction: column; min-width: 90px; }}
 .stat-label {{ font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }}
 .stat-value {{ font-size: 0.95rem; font-weight: 500; font-family: 'JetBrains Mono', monospace; }}
+/* ── Tooltips ─────────────────────────────────────────────────────────────── */
+.has-tooltip {{
+  cursor: help;
+  border-bottom: 1px dotted var(--text-secondary);
+  position: relative;
+}}
+.has-tooltip:hover::after {{
+  content: attr(title);
+  position: absolute; bottom: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%);
+  background: #1a1d27; color: #e8eaed; border: 1px solid #3d4250;
+  padding: 8px 12px; border-radius: 6px; font-size: 0.78rem;
+  line-height: 1.4; white-space: normal; width: max-content; max-width: 300px;
+  z-index: 200; pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  font-family: 'Inter', sans-serif; text-transform: none; letter-spacing: normal;
+}}
+[data-theme="light"] .has-tooltip:hover::after {{
+  background: #fff; color: #1a1d27; border-color: #dadce0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}}
+/* Hide native tooltip when CSS tooltip is active */
+.has-tooltip:hover {{ position: relative; }}
+.has-tooltip[title]:hover::before {{
+  content: ''; position: absolute; bottom: calc(100% + 2px); left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: #1a1d27;
+  z-index: 201;
+}}
+[data-theme="light"] .has-tooltip[title]:hover::before {{ border-top-color: #fff; }}
+@media print {{ .has-tooltip::after, .has-tooltip::before {{ display: none !important; }} }}
 .plot-container {{ width: 100%; height: 340px; margin-bottom: 12px; }}
 .interpretation {{
   font-size: 0.85rem; color: var(--text-secondary); padding: 10px 14px;
@@ -577,12 +680,12 @@ body {{ font-family: 'Inter', sans-serif; background: var(--bg-page); color: var
   <h1>mFSD Per-Variant Report</h1>
   <div class="subtitle">{sample_name or parquet_name} — Fragment Size Distribution Analysis</div>
   <div class="badges">
-    <span class="metric-badge"><strong>{len(variants)}</strong> variants</span>
-    <span class="metric-badge"><strong>{n_tumor}</strong> tumor-like</span>
-    <span class="metric-badge"><strong>{n_ch}</strong> CH-like</span>
-    <span class="metric-badge"><strong>{n_ambig}</strong> ambiguous</span>
-    <span class="metric-badge"><strong>{n_insuff}</strong> insufficient</span>
-    <span class="metric-badge">min ALT ≥ <strong>{min_alt}</strong></span>
+    <span class="metric-badge has-tooltip" title="{TOOLTIPS['variants']}"><strong>{len(variants)}</strong> variants</span>
+    <span class="metric-badge has-tooltip" title="{TOOLTIPS['TUMOR-LIKE']}"><strong>{n_tumor}</strong> tumor-like</span>
+    <span class="metric-badge has-tooltip" title="{TOOLTIPS['CH-LIKE']}"><strong>{n_ch}</strong> CH-like</span>
+    <span class="metric-badge has-tooltip" title="{TOOLTIPS['AMBIGUOUS']}"><strong>{n_ambig}</strong> ambiguous</span>
+    <span class="metric-badge has-tooltip" title="{TOOLTIPS['INSUFFICIENT']}"><strong>{n_insuff}</strong> insufficient</span>
+    <span class="metric-badge has-tooltip" title="{TOOLTIPS['min ALT']}">min ALT ≥ <strong>{min_alt}</strong></span>
   </div>
 </div>
 
@@ -594,10 +697,10 @@ body {{ font-family: 'Inter', sans-serif; background: var(--bg-page); color: var
 <div class="container">
 
   <div class="summary-grid">
-    <div class="summary-card"><div class="big" style="color:#e74c3c">{n_tumor}</div><div class="label">Tumor-like</div></div>
-    <div class="summary-card"><div class="big" style="color:#3498db">{n_ch}</div><div class="label">CH-like</div></div>
-    <div class="summary-card"><div class="big" style="color:#f39c12">{n_ambig}</div><div class="label">Ambiguous</div></div>
-    <div class="summary-card"><div class="big" style="color:#95a5a6">{n_insuff}</div><div class="label">Insufficient</div></div>
+    <div class="summary-card has-tooltip" title="{TOOLTIPS['Tumor-like']}"><div class="big" style="color:#e74c3c">{n_tumor}</div><div class="label">Tumor-like</div></div>
+    <div class="summary-card has-tooltip" title="{TOOLTIPS['CH-like']}"><div class="big" style="color:#3498db">{n_ch}</div><div class="label">CH-like</div></div>
+    <div class="summary-card has-tooltip" title="{TOOLTIPS['Ambiguous']}"><div class="big" style="color:#f39c12">{n_ambig}</div><div class="label">Ambiguous</div></div>
+    <div class="summary-card has-tooltip" title="{TOOLTIPS['Insufficient']}"><div class="big" style="color:#95a5a6">{n_insuff}</div><div class="label">Insufficient</div></div>
   </div>
 
   <div class="caveat">
