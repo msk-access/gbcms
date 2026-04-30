@@ -82,7 +82,7 @@ jobs:
           uv pip install --system dist/*.whl
           
           # Install dev dependencies  
-          uv pip install --system pytest pytest-cov pytest-mock
+          uv pip install --system pytest pytest-cov pytest-mock pyarrow
           gbcms --help
 
       - name: Run tests with coverage
