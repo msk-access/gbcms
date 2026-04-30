@@ -243,6 +243,30 @@ class OutputConfig(BaseModel):
             "Requires mfsd=True."
         ),
     )
+    mfsd_report: bool = Field(
+        default=False,
+        description=(
+            "Generate an interactive HTML report with per-variant fragment size "
+            "distributions. Implies mfsd=True and mfsd_parquet=True. Output: "
+            "<sample>.mfsd_report.html alongside the main output."
+        ),
+    )
+    mfsd_report_min_alt: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Minimum ALT fragment count for a variant to appear in the mFSD report. "
+            "Variants with fewer ALT fragments are excluded from the report."
+        ),
+    )
+    mfsd_report_max_variants: int = Field(
+        default=20,
+        description=(
+            "Maximum number of variants to include in the mFSD report. "
+            "Variants are ranked by ALT fragment count (descending). "
+            "Use -1 for no limit."
+        ),
+    )
 
     @field_validator("directory")
     @classmethod
@@ -253,12 +277,17 @@ class OutputConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_mfsd_parquet(self) -> "OutputConfig":
-        """Enforce that mfsd_parquet requires mfsd to be enabled.
+    def validate_mfsd_dependencies(self) -> "OutputConfig":
+        """Enforce mFSD dependency chain: mfsd_report → mfsd_parquet → mfsd.
 
         This is validated at model construction so both CLI and programmatic
         callers get the same fail-fast behaviour.
         """
+        if self.mfsd_report and not self.mfsd_parquet:
+            raise ValueError(
+                "mfsd_report=True requires mfsd_parquet=True. "
+                "Enable mFSD Parquet export before requesting report generation."
+            )
         if self.mfsd_parquet and not self.mfsd:
             raise ValueError(
                 "mfsd_parquet=True requires mfsd=True. "

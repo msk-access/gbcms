@@ -17,6 +17,35 @@ __all__ = ["OutputWriter", "MafWriter", "VcfWriter"]
 
 logger = logging.getLogger(__name__)
 
+# ── Clonal Hematopoiesis (CH) gene set ──────────────────────────────────────
+# Well-established CH driver genes. Variants in these genes flagged as
+# "CH-associated" in mFSD output for CH-vs-ctDNA fragment size interpretation.
+# Source: Steensma et al. (2015), Jaiswal et al. (2014), Bolton et al. (2020).
+CH_GENES: frozenset[str] = frozenset(
+    {
+        "DNMT3A",
+        "TET2",
+        "ASXL1",
+        "PPM1D",
+        "TP53",
+        "JAK2",
+        "SF3B1",
+        "SRSF2",
+        "U2AF1",
+        "CBL",
+        "ATM",
+        "BCOR",
+        "EZH2",
+        "IDH1",
+        "IDH2",
+        "GNAS",
+        "GNB1",
+        "BCORL1",
+        "SETD2",
+        "STAG2",
+    }
+)
+
 
 def _fmt(v: float) -> str:
     """Format a float for MAF output. NaN → 'NA' (standard missing value for tabular formats)."""
@@ -155,7 +184,7 @@ class MafWriter(OutputWriter):
             f"{p}alt_count_fragment_reverse",
         ]
         if self.mfsd:
-            # ── mFSD: Mutant Fragment Size Distribution (31 columns) ──────────
+            # ── mFSD: Mutant Fragment Size Distribution (40 columns) ──────────
             # Only appended when --mfsd is set. Without the flag these columns
             # are completely absent from output (not NA-filled or zero-filled).
             cols += [
@@ -198,6 +227,15 @@ class MafWriter(OutputWriter):
                 "mfsd_quality_score",
                 "mfsd_alt_confidence",
                 "mfsd_ks_valid",
+                # Sub-nucleosomal / mono-nucleosomal fractions
+                # for CH-vs-ctDNA differentiation (computed in Rust)
+                "mfsd_sub_nuc_ref_frac",
+                "mfsd_sub_nuc_alt_frac",
+                "mfsd_sub_nuc_enrichment",
+                "mfsd_mono_nuc_ref_frac",
+                "mfsd_mono_nuc_alt_frac",
+                # CH gene flag (computed in Python from Hugo_Symbol)
+                "mfsd_ch_flag",
             ]
         if self.show_normalization:
             cols.extend(self._norm_column_names())
@@ -259,7 +297,11 @@ class MafWriter(OutputWriter):
             len(self.fieldnames),
         )
 
-    def _populate_gbcms_counts(self, counts: Any) -> dict[str, str]:
+    def _populate_gbcms_counts(
+        self,
+        counts: Any,
+        hugo_symbol: str = "",
+    ) -> dict[str, str]:
         """
         Build the gbcms count columns dictionary with the configured prefix.
 
@@ -269,6 +311,7 @@ class MafWriter(OutputWriter):
 
         Args:
             counts: BaseCounts object from the Rust engine.
+            hugo_symbol: Gene symbol for CH gene flagging (from MAF Hugo_Symbol column).
 
         Returns:
             Dictionary mapping prefixed column names to string values.
@@ -398,6 +441,14 @@ class MafWriter(OutputWriter):
                     "mfsd_quality_score": _fmt(mfsd_quality_score),
                     "mfsd_alt_confidence": mfsd_alt_confidence,
                     "mfsd_ks_valid": str(mfsd_ks_valid),
+                    # Sub-nucleosomal / mono-nucleosomal fractions (from Rust)
+                    "mfsd_sub_nuc_ref_frac": _fmt(counts.mfsd_sub_nuc_ref_frac),
+                    "mfsd_sub_nuc_alt_frac": _fmt(counts.mfsd_sub_nuc_alt_frac),
+                    "mfsd_sub_nuc_enrichment": _fmt(counts.mfsd_sub_nuc_enrichment),
+                    "mfsd_mono_nuc_ref_frac": _fmt(counts.mfsd_mono_nuc_ref_frac),
+                    "mfsd_mono_nuc_alt_frac": _fmt(counts.mfsd_mono_nuc_alt_frac),
+                    # CH gene flag (Python-side; True if Hugo_Symbol in CH_GENES)
+                    "mfsd_ch_flag": str(hugo_symbol.upper() in CH_GENES if hugo_symbol else False),
                 }
             )
 
@@ -472,7 +523,9 @@ class MafWriter(OutputWriter):
 
         # Append gbcms count columns (both paths, never overwrites originals)
         row["validation_status"] = validation_status
-        row.update(self._populate_gbcms_counts(counts))
+        # Extract Hugo_Symbol from MAF metadata for CH gene flagging (empty for VCF input)
+        hugo = variant.metadata.get("Hugo_Symbol", "") if variant.metadata else ""
+        row.update(self._populate_gbcms_counts(counts, hugo_symbol=hugo))
 
         # Normalization columns (only when --show-normalization is enabled)
         if self.show_normalization and norm_variant:

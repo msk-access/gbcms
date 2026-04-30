@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - Unreleased
+
+### ✨ Added
+
+- **Physical fragment sizing**: Rust-native fragment size calculation using
+  aligned read positions instead of TLEN, improving accuracy for supplementary
+  alignments and soft-clipped reads.
+- **`--mfsd-report` flag**: Generates an interactive HTML report with per-variant
+  fragment size distribution analysis, dual-axis histograms, and Fragment Origin
+  Signal classification (TUMOR-LIKE / CH-LIKE / AMBIGUOUS / INSUFFICIENT).
+  Implies `--mfsd` and `--mfsd-parquet`.
+- **Variant navigator**: STRiDE-inspired sticky navigation bar for multi-variant
+  mFSD reports — dropdown selector, prev/next buttons, Focus/Show All toggle,
+  keyboard shortcuts (←/→). Automatically hidden for single-variant reports.
+- **`--mfsd-report-min-alt`**: Minimum ALT fragment count to include a variant
+  in the report (default: 3).
+- **`--mfsd-report-max-variants`**: Maximum variants per report (default: 20).
+- **Theme toggle**: Light/dark mode switching in HTML reports.
+- **Print compliance**: Reports render audit-ready when printed (navigator hidden,
+  all variants at full opacity, branded footer included).
+
+### 🔧 Fixed
+
+- **Dual-axis gridline artifact**: Fixed Plotly `yaxis2` overlay creating a
+  duplicate x-axis line in mFSD histograms by standardizing `mirror: false`,
+  `rangemode: 'tozero'`, and `showline` controls.
+
+### 📚 Documentation
+
+- **[NEW]** `docs/reference/mfsd-report.md` — mFSD interactive report reference
+  covering Fragment Origin Signal classification, interactive features, output
+  columns, and print compliance.
+- **Updated** `docs/cli/dna.md` — added `--mfsd-report`, `--mfsd-report-min-alt`,
+  `--mfsd-report-max-variants` to CLI reference.
+- **Updated** `docs/nextflow/parameters.md` — added Nextflow params for mFSD report.
+- **Updated** `nextflow/nextflow.config` — added `mfsd_report`, `mfsd_report_min_alt`,
+  `mfsd_report_max_variants` pipeline parameters.
+- **Updated** `nextflow/modules/local/gbcms/dna/main.nf` — wired `--mfsd-report` flags
+  through the DNA module with HTML report output channel (`emit: mfsd_report`).
+
+### 🧪 Tests
+
+- **[NEW]** `tests/test_mfsd_report.py` — 13 unit tests covering report creation,
+  navigator presence/absence, Plotly integration, theme toggle, branding, summary
+  cards, min_alt/max_variants filtering, and error handling. Uses synthetic test
+  fixtures with no patient identifiers.
+- `mfsd_report.py` coverage: 0% → 91%.
+
+### 🧹 Chores
+
+- Deleted ad-hoc analysis scripts from `scripts/` (compare_tlen_vs_physical,
+  concordance, plot_fsd_distributions, plot_fsd_histogram).
+- Deleted `scripts/*_test/` directories containing test artifacts.
+- Added `.gitignore` patterns for `*.parquet`, `*.mfsd_report.html`, and
+  `scripts/*_test/` directories.
+- Ruff B904 fix: `raise ... from None` in `mfsd_report.py`.
+- Ruff UP015 fix: removed unnecessary `"r"` mode argument from `open()`.
+
 ## [4.0.1] - 2026-03-24
 
 ### 🔧 Fixed

@@ -568,6 +568,26 @@ class Pipeline:
                 fsd_path,
                 len(variants),
             )
+
+            # Generate mFSD HTML report when --mfsd-report is enabled.
+            # Runs after parquet write since it reads the parquet file.
+            if self.config.output.mfsd_report:
+                try:
+                    from .report import generate_mfsd_report
+
+                    report_path = output_path.with_suffix("").with_suffix(".mfsd_report.html")
+                    generate_mfsd_report(
+                        parquet_path=fsd_path,
+                        maf_path=output_path,
+                        output_path=report_path,
+                        min_alt=self.config.output.mfsd_report_min_alt,
+                        max_variants=self.config.output.mfsd_report_max_variants,
+                        sample_name=sample_name,
+                    )
+                except Exception:
+                    logger.exception(
+                        "mFSD report generation failed (non-fatal); " "main output is unaffected."
+                    )
         elif self.config.output.mfsd:
             logger.debug(
                 "mFSD analysis enabled but --mfsd-parquet not set; "

@@ -1054,11 +1054,13 @@ fn count_variant_from_cache(
 
         let evidence = fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
 
-        // mFSD: capture tlen (signed; observe() stores absolute value) and N-base flag.
-        // TLEN=0 means unmapped mate or unpaired read — skipped inside observe().
+        // mFSD: compute physical fragment size from CIGAR, correcting TLEN for indels.
+        // Formula: physical = |TLEN| - D + I (validated on real MSK-ACCESS BAMs).
+        // observe() stores min(R1, R2) to handle cases where only one read
+        // spans the indel (defensive for WGS/WES; no-op for cfDNA overlap).
         // is_n_base: a fragment is in the N class when the base at the variant
         // position was 'N' — proxied by base_qual==0 with no REF or ALT call.
-        let tlen = record.insert_size() as i32;
+        let tlen = mfsd::calc_physical_insert_size(record);
         let is_n_base = base_qual == 0 && !is_ref && !is_alt;
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base);
 
@@ -1249,11 +1251,25 @@ fn count_variant_from_cache(
     (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
     (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
 
+    // ── mFSD: Sub-nucleosomal / mono-nucleosomal fractions ──────────────────
+    // Computed before ref_sizes/alt_sizes are consumed by into_iter().
+    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator.
+    // Mono-nucleosomal (150–200bp): dominant cfDNA peak.
+    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
+        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
+    } else {
+        f64::NAN
+    };
+    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
+    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
+
     counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
     counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
 
     debug!(
-        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2}",
+        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         counts.mfsd_ref_count, counts.mfsd_alt_count,
         counts.mfsd_nonref_count, counts.mfsd_n_count,
@@ -1499,11 +1515,12 @@ fn count_single_variant(
 
         let evidence = fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
 
-        // mFSD: capture tlen (signed; observe() stores absolute value) and N-base flag.
-        // TLEN=0 means unmapped mate or unpaired read — skipped inside observe().
+        // mFSD: compute physical fragment size from CIGAR, correcting TLEN for indels.
+        // Formula: physical = |TLEN| - D + I (validated on real MSK-ACCESS BAMs).
+        // observe() stores min(R1, R2) for defensive correctness.
         // is_n_base: a fragment is in the N class when the base at the variant
         // position was 'N' — proxied by base_qual==0 with no REF or ALT call.
-        let tlen = record.insert_size() as i32;
+        let tlen = mfsd::calc_physical_insert_size(&record);
         let is_n_base = base_qual == 0 && !is_ref && !is_alt;
 
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base);
@@ -1716,12 +1733,26 @@ fn count_single_variant(
     (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
     (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
 
+    // ── mFSD: Sub-nucleosomal / mono-nucleosomal fractions ──────────────────
+    // Computed before ref_sizes/alt_sizes are consumed by into_iter().
+    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator.
+    // Mono-nucleosomal (150–200bp): dominant cfDNA peak.
+    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
+        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
+    } else {
+        f64::NAN
+    };
+    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
+    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
+
     // Store raw size arrays for --mfsd-parquet export
     counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
     counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
 
     debug!(
-        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2}",
+        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         counts.mfsd_ref_count, counts.mfsd_alt_count,
         counts.mfsd_nonref_count, counts.mfsd_n_count,
