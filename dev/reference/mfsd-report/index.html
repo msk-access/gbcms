@@ -3,12 +3,12 @@
 <meta content="width=device-width,initial-scale=1" name="viewport">
 <meta content="High-performance variant counting from BAM files" name="description">
 <meta content="MSK-ACCESS" name="author">
-<link href="https://msk-access.github.io/gbcms/dev/reference/read-filters/" rel="canonical">
-<link href="../variant-normalization/" rel="prev">
-<link href="../allele-classification/" rel="next">
+<link href="https://msk-access.github.io/gbcms/dev/reference/mfsd-report/" rel="canonical">
+<link href="../counting-metrics/" rel="prev">
+<link href="../complex-indels/" rel="next">
 <link href="../../assets/images/favicon.png" rel="icon">
 <meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator">
-<title>Read Filters - gbcms</title>
+<title>mFSD Report - gbcms</title>
 <link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet">
 <link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
@@ -37,7 +37,7 @@
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
 <label class="md-overlay" for="__drawer"></label>
 <div data-md-component="skip">
-<a class="md-skip" href="#read-filters">
+<a class="md-skip" href="#mfsd-report">
           Skip to content
         </a>
 </div>
@@ -63,7 +63,7 @@
 <div class="md-header__topic" data-md-component="header-topic">
 <span class="md-ellipsis">
             
-              Read Filters
+              mFSD Report
             
           </span>
 </div>
@@ -416,20 +416,8 @@
   </span>
 </a>
 </li>
-<li class="md-nav__item md-nav__item--active">
-<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox">
-<label class="md-nav__link md-nav__link--active" for="__toc">
-<span class="md-ellipsis">
-    
-  
-    Read Filters
-  
-
-    
-  </span>
-<span class="md-nav__icon md-icon"></span>
-</label>
-<a class="md-nav__link md-nav__link--active" href="./">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../read-filters/">
 <span class="md-ellipsis">
     
   
@@ -439,108 +427,6 @@
     
   </span>
 </a>
-<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
-<label class="md-nav__title" for="__toc">
-<span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#filter-cascade">
-<span class="md-ellipsis">
-      
-        Filter Cascade
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#filter-options">
-<span class="md-ellipsis">
-      
-        Filter Options
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#quality-thresholds">
-<span class="md-ellipsis">
-      
-        Quality Thresholds
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#comparison-with-original-gbcms">
-<span class="md-ellipsis">
-      
-        Comparison with Original GBCMS
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#fetch-window">
-<span class="md-ellipsis">
-      
-        Fetch Window
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#rna-specific-filters">
-<span class="md-ellipsis">
-      
-        RNA-Specific Filters
-      
-    </span>
-</a>
-<nav aria-label="RNA-Specific Filters" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#nhi1-mapq-rescue">
-<span class="md-ellipsis">
-      
-        NH:i:1 MAPQ Rescue
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#strandedness-filter">
-<span class="md-ellipsis">
-      
-        Strandedness Filter
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#baq-quality-downgrade">
-<span class="md-ellipsis">
-      
-        BAQ Quality Downgrade
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#related">
-<span class="md-ellipsis">
-      
-        Related
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="../allele-classification/">
@@ -566,8 +452,20 @@
   </span>
 </a>
 </li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="../mfsd-report/">
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox">
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    mFSD Report
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
 <span class="md-ellipsis">
     
   
@@ -577,6 +475,183 @@
     
   </span>
 </a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#overview">
+<span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#cli-options">
+<span class="md-ellipsis">
+      
+        CLI Options
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#report-sections">
+<span class="md-ellipsis">
+      
+        Report Sections
+      
+    </span>
+</a>
+<nav aria-label="Report Sections" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#1-header-sample-info">
+<span class="md-ellipsis">
+      
+        1. Header &amp; Sample Info
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#2-summary-dashboard">
+<span class="md-ellipsis">
+      
+        2. Summary Dashboard
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#3-caveat-banner">
+<span class="md-ellipsis">
+      
+        3. Caveat Banner
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#4-per-variant-analysis-cards">
+<span class="md-ellipsis">
+      
+        4. Per-Variant Analysis Cards
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fragment-origin-signal-classification">
+<span class="md-ellipsis">
+      
+        Fragment Origin Signal Classification
+      
+    </span>
+</a>
+<nav aria-label="Fragment Origin Signal Classification" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sub-nucleosomal-enrichment">
+<span class="md-ellipsis">
+      
+        Sub-nucleosomal Enrichment
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#interactive-features">
+<span class="md-ellipsis">
+      
+        Interactive Features
+      
+    </span>
+</a>
+<nav aria-label="Interactive Features" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#variant-navigator">
+<span class="md-ellipsis">
+      
+        Variant Navigator
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#theme-toggle">
+<span class="md-ellipsis">
+      
+        Theme Toggle
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#interactive-charts">
+<span class="md-ellipsis">
+      
+        Interactive Charts
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#print-pdf-export">
+<span class="md-ellipsis">
+      
+        Print &amp; PDF Export
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mfsd-output-columns">
+<span class="md-ellipsis">
+      
+        mFSD Output Columns
+      
+    </span>
+</a>
+<nav aria-label="mFSD Output Columns" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#additional-columns-physical-sizing">
+<span class="md-ellipsis">
+      
+        Additional Columns (Physical Sizing)
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#related">
+<span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="../complex-indels/">
@@ -756,74 +831,65 @@
     </label>
 <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#filter-cascade">
+<a class="md-nav__link" href="#overview">
 <span class="md-ellipsis">
       
-        Filter Cascade
+        Overview
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#filter-options">
+<a class="md-nav__link" href="#cli-options">
 <span class="md-ellipsis">
       
-        Filter Options
+        CLI Options
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#quality-thresholds">
+<a class="md-nav__link" href="#report-sections">
 <span class="md-ellipsis">
       
-        Quality Thresholds
+        Report Sections
       
     </span>
 </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#comparison-with-original-gbcms">
-<span class="md-ellipsis">
-      
-        Comparison with Original GBCMS
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#fetch-window">
-<span class="md-ellipsis">
-      
-        Fetch Window
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#rna-specific-filters">
-<span class="md-ellipsis">
-      
-        RNA-Specific Filters
-      
-    </span>
-</a>
-<nav aria-label="RNA-Specific Filters" class="md-nav">
+<nav aria-label="Report Sections" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#nhi1-mapq-rescue">
+<a class="md-nav__link" href="#1-header-sample-info">
 <span class="md-ellipsis">
       
-        NH:i:1 MAPQ Rescue
+        1. Header &amp; Sample Info
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#strandedness-filter">
+<a class="md-nav__link" href="#2-summary-dashboard">
 <span class="md-ellipsis">
       
-        Strandedness Filter
+        2. Summary Dashboard
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#3-caveat-banner">
+<span class="md-ellipsis">
+      
+        3. Caveat Banner
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#4-per-variant-analysis-cards">
+<span class="md-ellipsis">
+      
+        4. Per-Variant Analysis Cards
       
     </span>
 </a>
@@ -832,13 +898,97 @@
 </nav>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#baq-quality-downgrade">
+<a class="md-nav__link" href="#fragment-origin-signal-classification">
 <span class="md-ellipsis">
       
-        BAQ Quality Downgrade
+        Fragment Origin Signal Classification
       
     </span>
 </a>
+<nav aria-label="Fragment Origin Signal Classification" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sub-nucleosomal-enrichment">
+<span class="md-ellipsis">
+      
+        Sub-nucleosomal Enrichment
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#interactive-features">
+<span class="md-ellipsis">
+      
+        Interactive Features
+      
+    </span>
+</a>
+<nav aria-label="Interactive Features" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#variant-navigator">
+<span class="md-ellipsis">
+      
+        Variant Navigator
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#theme-toggle">
+<span class="md-ellipsis">
+      
+        Theme Toggle
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#interactive-charts">
+<span class="md-ellipsis">
+      
+        Interactive Charts
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#print-pdf-export">
+<span class="md-ellipsis">
+      
+        Print &amp; PDF Export
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mfsd-output-columns">
+<span class="md-ellipsis">
+      
+        mFSD Output Columns
+      
+    </span>
+</a>
+<nav aria-label="mFSD Output Columns" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#additional-columns-physical-sizing">
+<span class="md-ellipsis">
+      
+        Additional Columns (Physical Sizing)
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#related">
@@ -874,248 +1024,98 @@
 </ol>
 </nav>
 <article class="md-content__inner md-typeset">
-<div><h1 id="read-filters">Read Filters<a class="headerlink" href="#read-filters" title="Permanent link">¶</a></h1>
-<p>Which reads are excluded before allele classification — the filter cascade, <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flags, and defaults.</p>
-<div class="admonition info">
-<p class="admonition-title">Visual Overview</p>
-<p></p><figure markdown="span">
-<a class="glightbox" data-desc-position="bottom" data-height="auto" data-type="image" data-width="auto" href="../../assets/posters/read_filter_4.0.0.jpg"><img alt="Read filter and counting metrics poster" loading="lazy" src="../../assets/posters/read_filter_4.0.0.jpg" width="100%"></a>
-<figcaption>The read-filter cascade and counting metrics — click to enlarge</figcaption>
-</figure><p></p>
-</div>
-<h2 id="filter-cascade">Filter Cascade<a class="headerlink" href="#filter-cascade" title="Permanent link">¶</a></h2>
-<p>Every read from the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> passes through a <strong>filter cascade</strong> before being checked for allele support. Reads failing any enabled filter are discarded. The order matches the Rust engine implementation.</p>
-<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
-<nav class="panzoom-nav">
-<button class="panzoom-info panzoom-button">
-<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
-</svg>
-</button><button class="panzoom-reset panzoom-button">
-<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
-</svg>
-</button><button class="panzoom-max panzoom-button">
-<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
-</svg>
-</button><button class="panzoom-min panzoom-button panzoom-hidden">
-<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
-<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
-</svg>
-</button>
-</nav>
-<pre class="mermaid"><code>flowchart LR
-    Start(["📖 BAM Read"]):::start
-
-    subgraph Auto ["🟢 Auto-On (default enabled)"]
-        direction LR
-        F1{"① Duplicate?\n0x400"}:::on
-        F2{"② Secondary?\n0x100"}:::on
-        F3{"③ Supplementary?\n0x800"}:::on
-        F4{"④ QC Failed?\n0x200"}:::on
-        F5{"⑤ MAPQ &lt; threshold\n(20 DNA / 1 RNA)"}:::on
-        F1 --&gt;|No| F2
-        F2 --&gt;|No| F3
-        F3 --&gt;|No| F4
-        F4 --&gt;|No| F5
-    end
-
-    subgraph Opt ["⚙️ Optional (off by default)"]
-        direction LR
-        O1{"⑥ Improper pair?\n--filter-improper-pair"}:::off
-        O2{"⑦ Contains indel?\n--filter-indel"}:::off
-        O1 --&gt;|No| O2
-    end
-
-    Start --&gt; F1
-    F5 --&gt;|Pass| O1
-    O2 --&gt;|Pass| Done(["✅ Allele Classifier"]):::pass
-
-    F1 --&gt;|Yes| Drop(["❌ Discard"]):::drop
-    F2 --&gt;|Yes| Drop
-    F3 --&gt;|Yes| Drop
-    F4 --&gt;|Yes| Drop
-    F5 --&gt;|Below threshold| Drop
-    O1 --&gt;|"Yes (if enabled)"| Drop
-    O2 --&gt;|"Yes (if enabled)"| Drop
-
-    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
-    classDef on fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef off fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
-    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
-</code></pre>
-<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
-Use mouse to pan and zoom
-</div>
+<div><h1 id="mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report<a class="headerlink" href="#mfsd-report" title="Permanent link">¶</a></h1>
+<p>Interactive HTML report for per-variant Mutant Fragment Size Distribution analysis.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">¶</a></h2>
+<p>The <code>--mfsd-report</code> flag generates a self-contained HTML file alongside standard <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output. The report provides an interactive visual diagnostic for evaluating fragment size distributions at each variant position, helping distinguish <strong>tumor-derived <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></strong> from <strong>clonal hematopoiesis (CH)</strong> artifacts.</p>
+<div class="admonition tip">
+<p class="admonition-title">Quick Start</p>
+<p></p><div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--mfsd<span class="w"> </span>--mfsd-parquet<span class="w"> </span>--mfsd-report<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a><span class="w">  </span>-v<span class="w"> </span>variants.maf<span class="w"> </span>-b<span class="w"> </span>sample.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>output/
+</code></pre></div>
+This produces three outputs: a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 34 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns, a <code>.fsd.parquet</code> with raw fragment arrays, and a <code>.mfsd_report.html</code> for interactive visualization.
 </div>
 <hr>
-<h2 id="filter-options">Filter Options<a class="headerlink" href="#filter-options" title="Permanent link">¶</a></h2>
+<h2 id="cli-options"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Options<a class="headerlink" href="#cli-options" title="Permanent link">¶</a></h2>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Filter</th>
-<th style="text-align: left;"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Flag</th>
-<th style="text-align: left;">Default</th>
-<th style="text-align: left;">SAM Flag</th>
-<th style="text-align: left;">Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: left;">Duplicates</td>
-<td style="text-align: left;"><code>--filter-duplicates</code></td>
-<td style="text-align: left;"><strong>On</strong></td>
-<td style="text-align: left;"><code>0x400</code></td>
-<td style="text-align: left;">PCR/optical duplicates</td>
-</tr>
-<tr>
-<td style="text-align: left;">Secondary</td>
-<td style="text-align: left;"><code>--filter-secondary</code></td>
-<td style="text-align: left;"><strong>On</strong></td>
-<td style="text-align: left;"><code>0x100</code></td>
-<td style="text-align: left;">Secondary alignments</td>
-</tr>
-<tr>
-<td style="text-align: left;">Supplementary</td>
-<td style="text-align: left;"><code>--filter-supplementary</code></td>
-<td style="text-align: left;"><strong>On</strong></td>
-<td style="text-align: left;"><code>0x800</code></td>
-<td style="text-align: left;">Chimeric/split alignments</td>
-</tr>
-<tr>
-<td style="text-align: left;">QC Failed</td>
-<td style="text-align: left;"><code>--filter-qc-failed</code></td>
-<td style="text-align: left;"><strong>On</strong></td>
-<td style="text-align: left;"><code>0x200</code></td>
-<td style="text-align: left;">Platform QC failures</td>
-</tr>
-<tr>
-<td style="text-align: left;">Improper Pair</td>
-<td style="text-align: left;"><code>--filter-improper-pair</code></td>
-<td style="text-align: left;">Off</td>
-<td style="text-align: left;"><code>0x2</code> (inverted)</td>
-<td style="text-align: left;">Reads not properly paired</td>
-</tr>
-<tr>
-<td style="text-align: left;">Indel reads</td>
-<td style="text-align: left;"><code>--filter-indel</code></td>
-<td style="text-align: left;">Off</td>
-<td style="text-align: left;"><abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-based</td>
-<td style="text-align: left;">Any Ins or Del in <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr></td>
-</tr>
-<tr>
-<td style="text-align: left;"><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> threshold</td>
-<td style="text-align: left;"><code>--min-mapq</code></td>
-<td style="text-align: left;"><strong>20</strong> (DNA) / <strong>1</strong> (RNA)</td>
-<td style="text-align: left;">—</td>
-<td style="text-align: left;">Minimum mapping quality</td>
-</tr>
-</tbody>
-</table>
-<hr>
-<h2 id="quality-thresholds">Quality Thresholds<a class="headerlink" href="#quality-thresholds" title="Permanent link">¶</a></h2>
-<p>Beyond the read-level filters above, gbcms also applies <strong>base-level quality thresholds</strong> during allele classification:</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: left;">Parameter</th>
-<th style="text-align: left;"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Flag</th>
+<th style="text-align: left;">Flag</th>
 <th style="text-align: left;">Default</th>
 <th style="text-align: left;">Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">Min base quality</td>
-<td style="text-align: left;"><code>--min-baseq</code></td>
-<td style="text-align: left;"><strong>20</strong></td>
-<td style="text-align: left;">Bases below this are masked or rejected</td>
+<td style="text-align: left;"><code>--mfsd-report</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Generate an interactive HTML report. Implies <code>--mfsd</code> and <code>--mfsd-parquet</code> (both are auto-enabled).</td>
 </tr>
 <tr>
-<td style="text-align: left;">Fragment consensus threshold</td>
-<td style="text-align: left;"><code>--fragment-qual-threshold</code></td>
-<td style="text-align: left;"><strong>10</strong></td>
-<td style="text-align: left;">Quality margin for R1/R2 conflict resolution</td>
+<td style="text-align: left;"><code>--mfsd-report-min-alt</code></td>
+<td style="text-align: left;"><code>3</code></td>
+<td style="text-align: left;">Minimum ALT fragment count to include a variant in the report. Variants below this threshold are excluded.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--mfsd-report-max-variants</code></td>
+<td style="text-align: left;"><code>20</code></td>
+<td style="text-align: left;">Maximum number of variants to include. Variants are selected by highest ALT count. Use <code>-1</code> for no limit.</td>
 </tr>
 </tbody>
 </table>
 <div class="admonition info">
-<p class="admonition-title">How Base Quality Is Used</p>
-<p>The effect of <code>--min-baseq</code> varies by variant type:</p>
+<p class="admonition-title">Auto-Enabled Dependencies</p>
+<p>Using <code>--mfsd-report</code> automatically enables <code>--mfsd</code> and <code>--mfsd-parquet</code> if they are not already set. There is no need to specify all three flags explicitly.</p>
+</div>
+<hr>
+<h2 id="report-sections">Report Sections<a class="headerlink" href="#report-sections" title="Permanent link">¶</a></h2>
+<h3 id="1-header-sample-info">1. Header &amp; Sample Info<a class="headerlink" href="#1-header-sample-info" title="Permanent link">¶</a></h3>
+<p>The report title displays the sample name (from <code>--bam sample_id:path</code> or derived from the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> filename). A theme toggle (☀/🌙) switches between light and dark modes.</p>
+<h3 id="2-summary-dashboard">2. Summary Dashboard<a class="headerlink" href="#2-summary-dashboard" title="Permanent link">¶</a></h3>
+<p>Four metric cards provide an at-a-glance overview of fragment origin signal classification:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Card</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>TUMOR-LIKE</strong></td>
+<td style="text-align: left;">Variants with strong evidence of tumor-derived short fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>CH-LIKE</strong></td>
+<td style="text-align: left;">Variants consistent with clonal hematopoiesis (no short-fragment enrichment)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>AMBIGUOUS</strong></td>
+<td style="text-align: left;">Variants with inconclusive fragment size profiles</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>INSUFFICIENT</strong></td>
+<td style="text-align: left;">Variants with too few ALT fragments for reliable classification</td>
+</tr>
+</tbody>
+</table>
+<h3 id="3-caveat-banner">3. Caveat Banner<a class="headerlink" href="#3-caveat-banner" title="Permanent link">¶</a></h3>
+<p>A clinical disclaimer noting that fragment origin signal is an experimental diagnostic tool and should not be used as the sole basis for clinical decisions.</p>
+<h3 id="4-per-variant-analysis-cards">4. Per-Variant Analysis Cards<a class="headerlink" href="#4-per-variant-analysis-cards" title="Permanent link">¶</a></h3>
+<p>Each qualifying variant gets a dedicated card containing:</p>
 <ul>
-<li><strong><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr></strong>: Read is rejected if the base at the variant position has quality &lt; threshold</li>
-<li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr></strong>: Read is rejected if <strong>any</strong> base in the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> region has quality &lt; threshold</li>
-<li><strong>Insertion/Deletion (windowed scan)</strong>: Inserted/deleted bases below threshold are <strong>masked</strong> (treated as wildcards) rather than rejecting the entire read</li>
-<li><strong>Complex (Phase 2)</strong>: Low-quality bases are masked — they cannot vote for either allele</li>
-<li><strong>Complex (Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>)</strong>: Low-quality bases are replaced with <code>N</code>, which scores 0 against any base</li>
+<li><strong>Variant identity</strong>: Gene symbol, genomic coordinates, allele change</li>
+<li><strong>Fragment Origin Signal</strong>: Classification badge (TUMOR-LIKE / CH-LIKE / AMBIGUOUS / INSUFFICIENT) with confidence explanation</li>
+<li><strong>Key statistics table</strong>: Subnucleosomal enrichment, KS p-value, mean fragment sizes (REF vs ALT), delta, log-likelihood ratio</li>
+<li><strong>Dual-axis histogram</strong>: Interactive Plotly chart showing:<ul>
+<li><strong>Bar chart</strong> (left y-axis): Fragment count per size bin (REF in blue, ALT in red)</li>
+<li><strong>KDE curve</strong> (right y-axis): Smoothed density estimate overlaid for both alleles</li>
 </ul>
-</div>
+</li>
+</ul>
 <hr>
-<h2 id="comparison-with-original-gbcms">Comparison with Original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr><a class="headerlink" href="#comparison-with-original-gbcms" title="Permanent link">¶</a></h2>
-<div class="admonition note">
-<p class="admonition-title">Filter Non-Primary</p>
-<p>The original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> has a single <code>--filter_non_primary</code> flag. gbcms splits this into <code>--filter-secondary</code> and <code>--filter-supplementary</code> for finer control. Both default to <strong>on</strong> in gbcms (stricter than the original behavior, which was off).</p>
-</div>
-<table>
-<thead>
-<tr>
-<th style="text-align: left;">Feature</th>
-<th style="text-align: left;">Original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr></th>
-<th style="text-align: left;">gbcms</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: left;">Base quality filtering</td>
-<td style="text-align: left;">No threshold</td>
-<td style="text-align: left;">Default <code>--min-baseq 20</code></td>
-</tr>
-<tr>
-<td style="text-align: left;">Duplicate filtering</td>
-<td style="text-align: left;">Optional</td>
-<td style="text-align: left;"><strong>On</strong> by default</td>
-</tr>
-<tr>
-<td style="text-align: left;">Non-primary filter</td>
-<td style="text-align: left;">Single flag (default off)</td>
-<td style="text-align: left;">Split: secondary + supplementary (<strong>both On</strong>)</td>
-</tr>
-<tr>
-<td style="text-align: left;">QC-failed filter</td>
-<td style="text-align: left;">Optional</td>
-<td style="text-align: left;"><strong>On</strong> by default</td>
-</tr>
-<tr>
-<td style="text-align: left;">Indel read filter</td>
-<td style="text-align: left;">Optional</td>
-<td style="text-align: left;">Optional (off by default)</td>
-</tr>
-</tbody>
-</table>
-<hr>
-<h2 id="fetch-window">Fetch Window<a class="headerlink" href="#fetch-window" title="Permanent link">¶</a></h2>
-<p>gbcms fetches reads from a <strong>dynamic window</strong> around each variant position — not just at the exact position. The window defaults to ±5bp but <strong>scales with the variant's repeat span</strong> to capture indels that aligners shift beyond 5bp in long homopolymers and microsatellite regions. The formula is <code>max(5, repeat_span + 2)</code>.</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>Variant: chr1:100 A→ATG (insertion, repeat_span=0)
-<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>BAM fetch window: [95, 106)    ← ±5bp (default)
-<a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a>
-<a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a>Variant: chr1:200 A→AT (insertion in 15bp poly-A, repeat_span=15)
-<a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>BAM fetch window: [183, 206)   ← ±17bp (repeat_span + 2)
-</code></pre></div>
-<div class="admonition important">
-<p class="admonition-title">Anchor Overlap Gate</p>
-<p>Although reads are fetched from the wider window, <strong>only reads that overlap the variant's anchor position</strong> (or are classified as REF/ALT via shifted indel matching) contribute to the <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> count. This prevents <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> inflation from reads that were brought in by the window padding but don't actually cover the variant.</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>Read A: [90─────100]        → overlaps anchor at 100 → counted in DP ✅
-<a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>Read B: [92──97]            → doesn't overlap 100, not classified → skipped ❌
-<a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>Read C: [95──99] + shifted  → doesn't overlap 100, but windowed scan found ALT → counted ✅
-</code></pre></div>
-</div>
-<hr>
-<h2 id="rna-specific-filters">RNA-Specific Filters<a class="headerlink" href="#rna-specific-filters" title="Permanent link">¶</a></h2>
-<p>RNA mode (<code>gbcms rna</code>) extends the standard filter cascade with two additional checks.</p>
-<h3 id="nhi1-mapq-rescue"><abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> Rescue<a class="headerlink" href="#nhi1-mapq-rescue" title="Permanent link">¶</a></h3>
-<p><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> assigns <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=255 to uniquely mapped reads and <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=0–3 to multi-mappers. When <code>--min-mapq 1</code> (RNA default), reads that fail the <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> threshold are checked for the <code>NH:i:1</code> tag (Number of Hits = 1). If present, the read is uniquely aligned and rescued.</p>
+<h2 id="fragment-origin-signal-classification">Fragment Origin Signal Classification<a class="headerlink" href="#fragment-origin-signal-classification" title="Permanent link">¶</a></h2>
+<p>The report classifies each variant into one of four categories based on subnucleosomal enrichment and the KS test:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1137,92 +1137,168 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    Read(["📖 RNA Read"])
-    Read --&gt;|"read.mapq"| MAPQ{"MAPQ ≥ min_mapq?\n(default: 1)"}
-    MAPQ --&gt;|"Yes — MAPQ=255\nunique alignment"| Pass(["✅ Pass"]):::pass
-    MAPQ --&gt;|"No — MAPQ=0\n(check NH tag)"| NH{"NH:i:1?"}
-    NH --&gt;|"Yes — novel junction\nunique but low MAPQ"| Rescue(["✅ Rescued"]):::rescue
-    NH --&gt;|"No — NH&gt;1\nmulti-mapper"| Drop(["❌ Discard"]):::drop
+    Start(["Variant"]) --&gt; AltCheck{"ALT count ≥ min_alt?"}
+    AltCheck --&gt;|"No"| Insufficient(["INSUFFICIENT"]):::grey
+    AltCheck --&gt;|"Yes"| EnrichCheck{"Sub-nucleosomal<br>enrichment &gt; 1.0?"}
+    EnrichCheck --&gt;|"Yes"| KSCheck{"KS p-value &lt; 0.05?"}
+    EnrichCheck --&gt;|"No"| CH(["CH-LIKE"]):::amber
+    KSCheck --&gt;|"Yes"| Tumor(["TUMOR-LIKE"]):::green
+    KSCheck --&gt;|"No"| Ambiguous(["AMBIGUOUS"]):::blue
 
-    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef rescue fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
-    classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef green fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef amber fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
+    classDef blue fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef grey fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
 </div>
-<div class="admonition info">
-<p class="admonition-title">Biological Context</p>
-<p>Novel splice junctions often receive low <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> because <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> hasn't observed the junction in its first-pass database. The <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 rescue ensures these uniquely mapped reads contribute to allele counts rather than being silently discarded.</p>
-</div>
-<h3 id="strandedness-filter">Strandedness Filter<a class="headerlink" href="#strandedness-filter" title="Permanent link">¶</a></h3>
-<p>For <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense reads are <strong>counted</strong> (they contribute to <code>rna_sense_depth</code> and <code>rna_antisense_depth</code> respectively), but only sense-strand reads contribute to the primary <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>/<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> counts when <code>--enforce-strandedness</code> is enabled.</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Read Orientation</th>
-<th style="text-align: left;">Gene Strand</th>
-<th style="text-align: left;">Classification</th>
+<th style="text-align: left;">Signal</th>
+<th style="text-align: left;">Enrichment</th>
+<th style="text-align: left;">KS p-value</th>
+<th style="text-align: left;">Interpretation</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">Forward (R1)</td>
-<td style="text-align: left;">+</td>
-<td style="text-align: left;">Sense</td>
+<td style="text-align: left;"><strong>TUMOR-LIKE</strong></td>
+<td style="text-align: left;">&gt; 1.0</td>
+<td style="text-align: left;">&lt; 0.05</td>
+<td style="text-align: left;">ALT fragments are significantly shorter than REF → consistent with tumor <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr></td>
 </tr>
 <tr>
-<td style="text-align: left;">Reverse (R1)</td>
-<td style="text-align: left;">+</td>
-<td style="text-align: left;">Antisense</td>
+<td style="text-align: left;"><strong>CH-LIKE</strong></td>
+<td style="text-align: left;">≤ 1.0</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">No short-fragment enrichment → consistent with clonal hematopoiesis</td>
 </tr>
 <tr>
-<td style="text-align: left;">Forward (R1)</td>
-<td style="text-align: left;">−</td>
-<td style="text-align: left;">Antisense</td>
+<td style="text-align: left;"><strong>AMBIGUOUS</strong></td>
+<td style="text-align: left;">&gt; 1.0</td>
+<td style="text-align: left;">≥ 0.05</td>
+<td style="text-align: left;">Enrichment present but not statistically significant</td>
 </tr>
 <tr>
-<td style="text-align: left;">Reverse (R1)</td>
-<td style="text-align: left;">−</td>
-<td style="text-align: left;">Sense</td>
+<td style="text-align: left;"><strong>INSUFFICIENT</strong></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Too few ALT fragments for reliable analysis</td>
 </tr>
 </tbody>
 </table>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>Disable strandedness filtering with <code>--no-strandedness</code> for unstranded RNA-seq libraries.</p>
-</div>
+<h3 id="sub-nucleosomal-enrichment">Sub-nucleosomal Enrichment<a class="headerlink" href="#sub-nucleosomal-enrichment" title="Permanent link">¶</a></h3>
+<p>Defined as:</p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>enrichment = fraction_subnucleosomal_ALT / fraction_subnucleosomal_REF
+</code></pre></div>
+<p>Where subnucleosomal fragments are those with insert size &lt; 150 bp (below the ~167 bp nucleosome-protected length). Tumor-derived <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> tends to be shorter due to increased nuclease accessibility at mutation sites.</p>
 <hr>
-<h2 id="baq-quality-downgrade"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels">BAQ</abbr> Quality Downgrade<a class="headerlink" href="#baq-quality-downgrade" title="Permanent link">¶</a></h2>
-<p>When <code>--apply-baq</code> is enabled, base qualities near indels are heuristically downgraded to prevent inflated quality scores from causing false-positive allele classifications.</p>
+<h2 id="interactive-features">Interactive Features<a class="headerlink" href="#interactive-features" title="Permanent link">¶</a></h2>
+<h3 id="variant-navigator">Variant Navigator<a class="headerlink" href="#variant-navigator" title="Permanent link">¶</a></h3>
+<p>For reports with <strong>≥ 2 variants</strong>, a sticky navigation bar appears below the header:</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Option</th>
-<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Control</th>
+<th style="text-align: left;">Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Dropdown</strong></td>
+<td style="text-align: left;">Jump to any variant by gene symbol and signal classification</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>← Prev / Next →</strong></td>
+<td style="text-align: left;">Cycle through variants sequentially (wraps around)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Counter</strong></td>
+<td style="text-align: left;">Shows current position ("2 of 8")</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Focus / Show All</strong></td>
+<td style="text-align: left;">Toggle between viewing all cards or focusing on one at a time</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Keyboard</strong></td>
+<td style="text-align: left;"><code>←</code> and <code>→</code> arrow keys for navigation</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Single-Variant Reports</p>
+<p>The navigator is automatically hidden when only one variant qualifies for the report.</p>
+</div>
+<h3 id="theme-toggle">Theme Toggle<a class="headerlink" href="#theme-toggle" title="Permanent link">¶</a></h3>
+<p>Click the ☀/🌙 button in the toolbar to switch between <strong>dark mode</strong> (default) and <strong>light mode</strong>. The preference is not persisted across page loads.</p>
+<h3 id="interactive-charts">Interactive Charts<a class="headerlink" href="#interactive-charts" title="Permanent link">¶</a></h3>
+<p>Each Plotly chart supports:</p>
+<ul>
+<li><strong>Hover</strong>: View exact count/density values at each fragment size</li>
+<li><strong>Zoom</strong>: Click and drag to zoom into a region</li>
+<li><strong>Pan</strong>: Hold shift and drag to pan</li>
+<li><strong>Reset</strong>: Double-click to reset the view</li>
+<li><strong>Download</strong>: Use the Plotly toolbar to save as PNG</li>
+</ul>
+<hr>
+<h2 id="print-pdf-export">Print &amp; PDF Export<a class="headerlink" href="#print-pdf-export" title="Permanent link">¶</a></h2>
+<p>The report is designed for <strong>audit-compliant printing</strong>:</p>
+<ul>
+<li>All interactive controls (navigator, theme toggle, buttons) are hidden via <code>@media print</code> CSS</li>
+<li>All variant cards are shown at full opacity (Focus mode dimming is removed)</li>
+<li>Charts are rendered at full width</li>
+<li>The branded footer is included</li>
+</ul>
+<p>To export: use your browser's <strong>Print → Save as PDF</strong> function.</p>
+<hr>
+<h2 id="mfsd-output-columns"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Output Columns<a class="headerlink" href="#mfsd-output-columns" title="Permanent link">¶</a></h2>
+<p>For the complete reference of all 34 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns and 7 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields added by <code>--mfsd</code>, see <a href="../counting-metrics/#mfsd">Counting &amp; Metrics → <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a>.</p>
+<h3 id="additional-columns-physical-sizing">Additional Columns (Physical Sizing)<a class="headerlink" href="#additional-columns-physical-sizing" title="Permanent link">¶</a></h3>
+<p>These columns are added by the physical sizing engine (new in v4.1):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
 <th style="text-align: left;">Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>--apply-baq/--no-baq</code></td>
-<td style="text-align: left;">off</td>
-<td style="text-align: left;">Enable heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels">BAQ</abbr> quality downgrade</td>
+<td style="text-align: left;"><code>mfsd_sub_nuc_ref_frac</code></td>
+<td style="text-align: left;">Fraction of REF fragments that are sub-nucleosomal (&lt; 150 bp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_sub_nuc_alt_frac</code></td>
+<td style="text-align: left;">Fraction of ALT fragments that are sub-nucleosomal</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_sub_nuc_enrichment</code></td>
+<td style="text-align: left;">Ratio of ALT to REF sub-nucleosomal fractions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_mono_nuc_ref_frac</code></td>
+<td style="text-align: left;">Fraction of REF fragments in the mono-nucleosomal range (150–250 bp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_mono_nuc_alt_frac</code></td>
+<td style="text-align: left;">Fraction of ALT fragments in the mono-nucleosomal range</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ch_flag</code></td>
+<td style="text-align: left;">Boolean flag indicating CH-like fragment size profile</td>
 </tr>
 </tbody>
 </table>
-<div class="admonition info">
-<p class="admonition-title">When to Enable <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels">BAQ</abbr></p>
-<p>Most modern pipelines (<abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>, fgbio consensus) already recalibrate base qualities. Enable <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels">BAQ</abbr> only for legacy BAMs lacking quality recalibration, where bases adjacent to indels may retain inflated quality scores from the original base caller.</p>
-</div>
 <hr>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">¶</a></h2>
 <ul>
-<li><a href="../allele-classification/">Allele Classification</a> — How reads passing filters are classified</li>
-<li><a href="../counting-metrics/">Counting &amp; Metrics</a> — Read-level and fragment-level counts</li>
-<li><a href="../../cli/dna/">DNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a> — DNA parameter options</li>
-<li><a href="../../cli/rna/">RNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a> — RNA-specific parameter options</li>
+<li><a href="../counting-metrics/#mfsd">Counting &amp; Metrics → <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a> — Complete column schema</li>
+<li><a href="../output-formats/">Output Formats</a> — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output structure</li>
+<li><a href="../../cli/dna/">DNA Command</a> — <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag reference</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -1232,13 +1308,13 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 17:40:03 UTC"><span class="timeago" datetime="2026-03-20T17:40:03+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 17:40:03 UTC">2026-03-20</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="April 30, 2026 02:40:04 UTC"><span class="timeago" datetime="2026-04-30T02:40:04+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="April 30, 2026 02:40:04 UTC">2026-04-30</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="February 18, 2026 21:59:37 UTC"><span class="timeago" datetime="2026-02-18T21:59:37+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="February 18, 2026 21:59:37 UTC">2026-02-18</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="April 30, 2026 02:40:04 UTC"><span class="timeago" datetime="2026-04-30T02:40:04+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="April 30, 2026 02:40:04 UTC">2026-04-30</span>
 </span>
 </aside>
 </article>
