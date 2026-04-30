@@ -120,6 +120,7 @@ disable_error_code = ["call-arg"]
 [[tool.mypy.overrides]]
 module = [
     "pysam.*",
+    "pyarrow.*",
     "gbcms._rs",
     "helpers",
 ]
