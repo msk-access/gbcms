@@ -251,11 +251,16 @@ pub fn check_snp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
     ClassifyResult::new(is_ref, is_alt, base_qual, ClassifyPhase::Structural)
 }
 
-/// Classify a read for an MNP variant using min-BQ-across-block strategy.
+/// Classify a read for an MNP variant using selective quality gating.
 ///
-/// Uses the minimum base quality across the entire MNP block as the
-/// quality gate (matching C++ GBCMS `baseCountDNP` behavior), rather
-/// than per-base hard rejection which caused catastrophic ALT loss.
+/// Quality is gated only at **discriminating positions** (where REF ≠ ALT).
+/// Uninformative positions (where REF == ALT) don't affect allele
+/// classification and should not cause valid reads to be dropped.
+///
+/// This is an improvement over C++ GBCMS `baseCountDNP`, which gates on
+/// min(BQ) across ALL positions. For GC-rich regions (e.g., TERT promoter)
+/// or long ONPs with few discriminating positions, the old strategy dropped
+/// reads due to low quality at positions that don't matter for classification.
 ///
 /// The contiguity check is performed FIRST (fail-fast for structural
 /// issues) before quality and sequence comparison.
@@ -284,21 +289,38 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
         return MnpResult::Structural; // Indel within MNP block
     }
 
-    // ── Step 4: Min-BQ-across-block quality gate (C++ strategy) ──
+    // ── Step 4: Selective quality gate at discriminating positions ──
+    // Only require min_baseq at positions where REF ≠ ALT.
+    // Uninformative positions (REF == ALT) don't affect classification.
     // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
-    let mut min_qual = u8::MAX;
+    let ref_bytes = variant.ref_allele.as_bytes();
+    let alt_bytes = variant.alt_allele.as_bytes();
+
+    let mut min_discriminating_qual = u8::MAX;
+    let mut n_discriminating: usize = 0;
     for i in 0..len {
-        min_qual = min_qual.min(quals[start_read_pos + i]);
+        if ref_bytes[i].to_ascii_uppercase() != alt_bytes[i].to_ascii_uppercase() {
+            let q = quals[start_read_pos + i];
+            min_discriminating_qual = min_discriminating_qual.min(q);
+            n_discriminating += 1;
+        }
     }
-    if min_qual < min_baseq {
+    // Safety: an MNP with zero discriminating positions is degenerate
+    // (REF == ALT). Treat as ThirdAllele to surface the issue.
+    if n_discriminating == 0 {
+        warn!(
+            "MNP with zero discriminating positions: {}>{} at {}:{}",
+            variant.ref_allele, variant.alt_allele, variant.chrom, variant.pos + 1
+        );
+        return MnpResult::ThirdAllele;
+    }
+    if min_discriminating_qual < min_baseq {
         return MnpResult::LowQuality;
     }
 
     // ── Step 5: Direct string comparison (all bases passed quality) ──
     let seq = record.seq();
     let seq_bytes = seq.as_bytes();
-    let ref_bytes = variant.ref_allele.as_bytes();
-    let alt_bytes = variant.alt_allele.as_bytes();
 
     let mut matches_ref = true;
     let mut matches_alt = true;
@@ -322,6 +344,23 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
     } else if matches_alt {
         MnpResult::Alt(median_qual(&mnp_quals, min_baseq))
     } else {
+        // Diagnostic: log per-position breakdown for ThirdAllele to help
+        // detect misannotated compound SNPs (Step 5 of plan).
+        if log::log_enabled!(log::Level::Trace) {
+            let mut pos_info = Vec::with_capacity(n_discriminating);
+            for i in 0..len {
+                if ref_bytes[i].to_ascii_uppercase() != alt_bytes[i].to_ascii_uppercase() {
+                    let base = seq_bytes[start_read_pos + i].to_ascii_uppercase();
+                    let alt_base = alt_bytes[i].to_ascii_uppercase();
+                    let label = if base == alt_base { "ALT" } else { "other" };
+                    pos_info.push(format!("pos{}:{}={}", i, base as char, label));
+                }
+            }
+            trace!(
+                "MNP ThirdAllele {}>{}: {}",
+                variant.ref_allele, variant.alt_allele, pos_info.join(", ")
+            );
+        }
         MnpResult::ThirdAllele
     }
 }

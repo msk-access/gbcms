@@ -218,6 +218,38 @@ class Pipeline:
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
 
+        # Log variant type breakdown for transparency
+        # MNPs (same-length multi-base substitutions) are classified as
+        # COMPLEX by kernel.py but dispatched to check_mnp by the Rust
+        # counting engine based on ref_len == alt_len.
+        type_counts: dict[str, int] = {}
+        mnp_count = 0
+        for p in prepared:
+            v = p.variant
+            ref_len = len(v.ref_allele)
+            alt_len = len(v.alt_allele)
+            if ref_len == 1 and alt_len == 1:
+                vtype = "SNP"
+            elif ref_len == alt_len and ref_len > 1:
+                subtypes = {2: "DNP", 3: "TNP"}
+                vtype = subtypes.get(ref_len, f"ONP({ref_len}bp)")
+                mnp_count += 1
+            elif ref_len > alt_len:
+                vtype = "DEL"
+            elif alt_len > ref_len:
+                vtype = "INS"
+            else:
+                vtype = "COMPLEX"
+            type_counts[vtype] = type_counts.get(vtype, 0) + 1
+        type_str = ", ".join(f"{k}={v}" for k, v in sorted(type_counts.items()))
+        logger.info("Variant types: %s", type_str)
+        if mnp_count > 0:
+            logger.info(
+                "MNP counting: %d MNPs use selective discriminating-position "
+                "quality gate (atomic block matching, no check_complex fallback)",
+                mnp_count,
+            )
+
         # Log normalization changes
         n_anchor = sum(1 for p in prepared if p.was_anchor_resolved)
         n_left = sum(1 for p in prepared if p.was_left_aligned)
@@ -236,6 +268,7 @@ class Pipeline:
 
         self._stats["total_variants"] = len(variants)
         self._stats["valid_variants"] = len(valid_indices)
+        self._stats["mnp_variants"] = mnp_count
 
         # 3. Process Each Sample
         self.config.output.directory.mkdir(parents=True, exist_ok=True)

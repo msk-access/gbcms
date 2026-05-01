@@ -331,10 +331,16 @@ fn prepare_single_variant(
         });
     }
 
-    // Step 3: Left-alignment (only for indels/complex)
+    // Step 3: Left-alignment (only for true indels/complex, NOT MNPs)
+    // MNPs (same-length multi-base substitutions: DNP, TNP, ONP) are typed
+    // as COMPLEX by kernel.py, but they are pure substitutions that cannot
+    // be left-aligned and don't need ref_context for alignment.
+    // C++ GBCMS (baseCountDNP) has no normalization at all.
     let mut was_left_aligned = false;
-    let is_indel = ref_al.len() != alt_al.len()
-        || (ref_al.len() > 1 && alt_al.len() > 1);
+    let is_mnp = ref_al.len() == alt_al.len() && ref_al.len() > 1;
+    let is_indel = !is_mnp
+        && (ref_al.len() != alt_al.len()
+            || (ref_al.len() > 1 && alt_al.len() > 1));
 
     if is_indel {
         let mut norm_window: i64 = 100; // bcftools default
@@ -416,7 +422,9 @@ fn prepare_single_variant(
 
     // Step 4: Fetch ref_context at (possibly normalized) position
     //         With adaptive_context, padding is increased in repeat regions.
-    let (ref_context, ref_context_start) = if is_indel || vtype == "COMPLEX" {
+    //         MNPs are excluded: they are pure substitutions that don't need
+    //         ref_context for SW/HMM indel realignment.
+    let (ref_context, ref_context_start) = if is_indel || (vtype == "COMPLEX" && !is_mnp) {
         let effective_padding = if adaptive_context {
             compute_adaptive_padding(
                 reader,

@@ -1816,16 +1816,22 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // SNP: single base substitution — no Phase 3 needed
         check_snp(record, variant, quals, min_baseq)
     } else if ref_len == alt_len {
-        // MNP: min-BQ-across-block strategy with selective Phase 3 fallback.
+        // MNP: selective discriminating-position quality gate with no Phase 3 fallback.
         match check_mnp(record, variant, quals, min_baseq) {
             MnpResult::Ref(q) => ClassifyResult::is_ref(q, ClassifyPhase::MaskedCompare),
             MnpResult::Alt(q) => ClassifyResult::is_alt(q, ClassifyPhase::MaskedCompare),
             MnpResult::LowQuality => {
-                // Min-BQ-across-block rejected the MNP — fall through to
-                // check_complex where Phase 2 quality-masked comparison
-                // can classify using only the reliable (high-quality) bases.
-                trace!("MNP low-quality block, falling back to check_complex for masked comparison");
-                check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+                // After selective quality gating, LowQuality means the
+                // discriminating bases themselves are below min_baseq.
+                // Do NOT route to check_complex: PairHMM/SW is designed for
+                // indel realignment, not MNP classification, and is biased
+                // toward REF for multi-base substitutions.
+                // C++ GBCMS (baseCountDNP) has no fallback — reads are simply
+                // not counted. Match that behavior.
+                // Fragment impact: observe(false, false) → DPF++ but not
+                // RDF/ADF. If mate read provides evidence, mate's call wins.
+                trace!("MNP LowQuality: discriminating bases below min_baseq, discarding");
+                ClassifyResult::neither(ClassifyPhase::MaskedCompare)
             }
             MnpResult::ThirdAllele => ClassifyResult::neither(ClassifyPhase::MaskedCompare),
             MnpResult::Structural => {
