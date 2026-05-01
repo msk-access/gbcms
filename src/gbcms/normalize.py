@@ -120,13 +120,22 @@ def normalize_variants(
     n_anchor = sum(1 for p in prepared if p.was_anchor_resolved)
     n_left = sum(1 for p in prepared if p.was_left_aligned)
     n_norm = sum(1 for p in prepared if p.was_normalized)
+    # Count MNPs: same-length multi-base substitutions that bypass
+    # indel normalization (left-alignment + ref_context fetch).
+    n_mnp = sum(
+        1
+        for p in prepared
+        if len(p.variant.ref_allele) == len(p.variant.alt_allele) and len(p.variant.ref_allele) > 1
+    )
     logger.info(
         "Normalization complete: %d variants, %d PASS, "
-        "%d normalized (%d anchor-resolved, %d left-aligned) → %s",
+        "%d normalized (%d anchor-resolved, %d left-aligned), "
+        "%d MNPs (normalization bypassed) → %s",
         len(prepared),
         n_pass,
         n_norm,
         n_anchor,
         n_left,
+        n_mnp,
         output,
     )

@@ -114,14 +114,22 @@ pub fn prepare_variants(
             let n_left = r.iter().filter(|p| p.was_left_aligned).count();
             let n_total = r.iter().filter(|p| p.was_normalized()).count();
             let multi_allelic = r.iter().filter(|p| p.multi_allelic_group.is_some()).count();
+            // Count MNPs: same-length multi-base substitutions excluded from
+            // indel normalization (left-alignment + ref_context fetch).
+            let n_mnp = r.iter().filter(|p| {
+                let ref_len = p.variant.ref_allele.len();
+                let alt_len = p.variant.alt_allele.len();
+                ref_len == alt_len && ref_len > 1
+            }).count();
             info!(
-                "prepare_variants complete: {}/{} valid, {} normalized ({} anchor-resolved, {} left-aligned), {} multi-allelic",
+                "prepare_variants complete: {}/{} valid, {} normalized ({} anchor-resolved, {} left-aligned), {} multi-allelic, {} MNPs (normalization bypassed)",
                 valid,
                 r.len(),
                 n_total,
                 n_anchor,
                 n_left,
                 multi_allelic,
+                n_mnp,
             );
             Ok(r)
         }
