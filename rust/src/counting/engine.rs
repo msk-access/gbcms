@@ -2143,6 +2143,70 @@ mod tests {
         }
     }
 
+    // ── Selective discriminating-position quality gate regression tests ──
+
+    #[test]
+    fn test_mnp_low_qual_non_discriminating_passes() {
+        // TERT-like ONP: GAGGG→AAGGA (5bp, positions 0 and 4 discriminating).
+        // Positions 1-3 are non-discriminating (REF==ALT: A=A, G=G, G=G).
+        // Read carries AAGGA (ALT). Low quality at non-discriminating pos 2.
+        // Old behavior: min(BQ) across ALL = 5 < 20 → LowQuality (WRONG).
+        // New behavior: min(BQ) across discriminating (pos 0, 4) = 32 ≥ 20 → ALT (CORRECT).
+        let seq = b"CCAAGGACC";
+        let qual = &[30, 30, 35, 38, 5, 36, 32, 30, 30]; // pos 4 (offset +2): Q=5 (non-discriminating)
+        let cigar = CigarString(vec![Cigar::Match(9)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GAGGG", "AAGGA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        match result {
+            MnpResult::Alt(q) => assert!(q >= 20,
+                "Should classify as ALT when non-discriminating bases are low quality, got q={}", q),
+            other => panic!(
+                "Expected Alt for TERT ONP with low-qual non-discriminating pos, got {:?}",
+                format_mnp_result(&other)),
+        }
+    }
+
+    #[test]
+    fn test_mnp_low_qual_discriminating_fails() {
+        // All-discriminating DNP: GG→AA (both positions differ).
+        // Read carries AA (ALT) but pos 0 has Q=8 < 20.
+        // Both positions are discriminating → min(discriminating BQ) = 8 < 20 → LowQuality.
+        let seq = b"CCAAGCC";
+        let qual = &[30, 30, 8, 38, 30, 30, 30]; // pos 2 (discriminating): Q=8
+        let cigar = CigarString(vec![Cigar::Match(7)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GG", "AA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        assert!(
+            matches!(result, MnpResult::LowQuality),
+            "Expected LowQuality when discriminating base is below threshold"
+        );
+    }
+
+    #[test]
+    fn test_mnp_third_allele_partial_alt_match() {
+        // TERT-like ONP: GAGGG→AAGGA. Read carries AAGGG (only pos 0 mutated).
+        // This is the typical misannotated compound SNP pattern.
+        // All discriminating positions (0 and 4) have high quality.
+        let seq = b"CCAAGGGTTT";
+        let qual = &[30, 30, 35, 38, 32, 36, 34, 30, 30, 30];
+        let cigar = CigarString(vec![Cigar::Match(10)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GAGGG", "AAGGA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        assert!(
+            matches!(result, MnpResult::ThirdAllele),
+            "Expected ThirdAllele for partial ALT match (only pos 0 mutated)"
+        );
+    }
+
 
     // ── SW vs PairHMM concordance tests ──
     //
