@@ -122,7 +122,7 @@ class MafReader(VariantReader):
                         alt=alt,
                     ).model_copy(update={"metadata": row})
 
-                except (KeyError, ValueError, ValidationError) as exc:
+                except (KeyError, ValueError, TypeError, ValidationError) as exc:
                     skipped += 1
                     if skipped <= 5:
                         logger.warning(
