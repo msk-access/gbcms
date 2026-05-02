@@ -2,16 +2,14 @@
 """
 Compare py-gbcms output against DMP ground truth (C++ GBCMS counts).
 
-Reads:
-  - py-gbcms output MAF files (one per sample)
-  - DMP ground truth from data_mutations_extended.txt (pre-filtered)
-
-Produces a concordance report grouped by variant type.
+Each output MAF contains ALL input variants genotyped against ONE BAM.
+We use --bam-map to select only results from the correct BAM per sample.
 
 Usage:
     python compare_results.py \
         --gbcms-dir /path/to/gbcms_output \
         --truth /path/to/sample_mutations.tsv \
+        --bam-map /path/to/cluster_bam_list.tsv \
         --output /path/to/concordance_report.tsv
 """
 
@@ -37,10 +35,44 @@ def safe_float(v):
         return 0.0
 
 
-def load_gbcms_outputs(gbcms_dir: Path) -> dict:
-    """Load all gbcms output MAFs from the output dir, indexed by (sample, chrom, start, ref, alt)."""
+def load_bam_map(bam_map_path: Path) -> dict[str, str]:
+    """Load sample -> BAM stem mapping.
+
+    Returns dict mapping sample ID to the BAM filename stem
+    (e.g., 'P-0042513-T01-IM6' -> 'WI498341-T').
+    """
+    mapping = {}
+    with open(bam_map_path) as f:
+        for line in f:
+            parts = line.strip().split("\t")
+            if len(parts) >= 2:
+                sample = parts[0]
+                bam_path = parts[1]
+                # Extract stem: /data1/.../WI498341-T.bam -> WI498341-T
+                stem = Path(bam_path).stem
+                mapping[sample] = stem
+    return mapping
+
+
+def load_gbcms_outputs(gbcms_dir: Path, sample_to_bam_stem: dict[str, str]) -> dict:
+    """Load gbcms output MAFs, only reading each sample's results from its own BAM.
+
+    Returns dict indexed by (sample, chrom, start, ref, alt).
+    """
+    # Invert: bam_stem -> set of samples that belong to it
+    stem_to_samples: dict[str, set[str]] = {}
+    for sample, stem in sample_to_bam_stem.items():
+        stem_to_samples.setdefault(stem, set()).add(sample)
+
     results = {}
-    for maf_file in gbcms_dir.glob("*.maf"):
+    loaded_files = 0
+    for maf_file in sorted(gbcms_dir.glob("*.maf")):
+        file_stem = maf_file.stem  # e.g., "WI498341-T"
+        valid_samples = stem_to_samples.get(file_stem, set())
+        if not valid_samples:
+            continue  # No samples map to this BAM
+
+        loaded_files += 1
         with open(maf_file) as f:
             # Skip comment lines
             while True:
@@ -52,12 +84,16 @@ def load_gbcms_outputs(gbcms_dir: Path) -> dict:
             reader = csv.DictReader(f, delimiter="\t")
             for row in reader:
                 sample = row.get("Tumor_Sample_Barcode", "")
+                if sample not in valid_samples:
+                    continue  # Skip variants from other samples
                 chrom = row.get("Chromosome", "")
                 start = row.get("Start_Position", "")
                 ref = row.get("Reference_Allele", "")
                 alt = row.get("Tumor_Seq_Allele2", "")
                 key = (sample, chrom, start, ref, alt)
                 results[key] = row
+
+    print(f"  Loaded {loaded_files} MAF files, {len(results)} sample-matched records")
     return results
 
 
@@ -65,17 +101,24 @@ def main():
     parser = argparse.ArgumentParser(description="Compare py-gbcms vs DMP ground truth")
     parser.add_argument("--gbcms-dir", required=True, help="Directory with py-gbcms output MAFs")
     parser.add_argument("--truth", required=True, help="DMP ground truth TSV (sample_mutations.tsv)")
+    parser.add_argument("--bam-map", required=True,
+                        help="Sample-to-BAM mapping TSV (cluster_bam_list.tsv)")
     parser.add_argument("--output", required=True, help="Output concordance TSV")
     args = parser.parse_args()
 
     gbcms_dir = Path(args.gbcms_dir)
     truth_path = Path(args.truth)
+    bam_map_path = Path(args.bam_map)
     output_path = Path(args.output)
 
-    # Load gbcms outputs
+    # Load BAM mapping
+    print(f"Loading BAM map from {bam_map_path}...")
+    sample_to_bam = load_bam_map(bam_map_path)
+    print(f"  {len(sample_to_bam)} sample -> BAM mappings")
+
+    # Load gbcms outputs (only correct BAM per sample)
     print(f"Loading py-gbcms outputs from {gbcms_dir}...")
-    gbcms = load_gbcms_outputs(gbcms_dir)
-    print(f"  Loaded {len(gbcms)} variant-sample records")
+    gbcms = load_gbcms_outputs(gbcms_dir, sample_to_bam)
 
     # Load DMP truth
     print(f"Loading DMP ground truth from {truth_path}...")
