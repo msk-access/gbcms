@@ -68,7 +68,9 @@ flowchart TD
     Found -->|No| Neither1(["Neither"]):::neither
     Found -->|Yes| BQ{"Base quality ≥ min_baseq?"}
     BQ -->|No| Neither2(["Neither"]):::neither
-    BQ -->|Yes| Compare["Compare base to REF and ALT"]
+    BQ -->|Yes| NCheck{"Base is N?"}
+    NCheck -->|Yes| NeitherN(["Neither (has_n_base=true)\n→ n_count++"]):::nbase
+    NCheck -->|No| Compare["Compare base to REF and ALT"]
     Compare --> IsRef{"base == REF?"}
     IsRef -->|Yes| Ref(["✅ REF"]):::ref
     IsRef -->|No| IsAlt{"base == ALT?"}
@@ -79,7 +81,11 @@ flowchart TD
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef nbase fill:#e67e22,color:#fff,stroke:#d35400,stroke-width:2px;
 ```
+
+!!! info "N-Base Guard (Defense-in-Depth)"
+    N bases (e.g., from duplex collapsing via fgbio) are explicitly checked **after** the BQ gate and treated as uninformative — they are classified as neither REF nor ALT and signal `has_n_base=true`, causing the engine to increment `n_count` (NAD in VCF). This is defense-in-depth: fgbio assigns BQ ≈ 2 to duplex-masked positions (caught by the BQ gate), but raw BAMs may have arbitrary BQ for N bases.
 
 ### Visual Example
 
@@ -379,9 +385,11 @@ Multiple adjacent bases substituted simultaneously.
 |:---------|:------|
 | Detection | `len(REF) == len(ALT) && len(REF) > 1` |
 | Position | 0-based index of the first substituted base |
-| Quality check | **Minimum** base quality across the MNP block must meet `--min-baseq` |
+| Quality check | **Per-position masked evaluation** at discriminating positions only (where REF ≠ ALT). N bases and low-BQ bases are masked independently. |
 
 ### Algorithm
+
+The MNP checker uses **masked per-position evaluation** — each discriminating position is independently assessed, and only unmasked positions vote for the final classification.
 
 ```mermaid
 flowchart TD
@@ -392,13 +400,31 @@ flowchart TD
     Cover -->|No| CPX
     Cover -->|Yes| Contig{"No indels within MNP block?"}
     Contig -->|"Indel found"| CPX
-    Contig -->|"Contiguous"| MinBQ{"min(BQ across block)\n≥ threshold?"}
-    MinBQ -->|No| CPX
-    MinBQ -->|Yes| Compare["Compare all bases to REF and ALT"]
-    Compare --> Final{"All bases match?"}
-    Final -->|"All match ALT"| Alt(["🔴 ALT"]):::alt
-    Final -->|"All match REF"| Ref(["✅ REF"]):::ref
-    Final -->|"Mixed / Neither"| Neither(["⬜ ThirdAllele — skip read"]):::neither
+    Contig -->|"Contiguous"| PerPos["Per-position masked evaluation"]
+
+    PerPos --> Loop{"For each discriminating pos\n(where REF ≠ ALT)"}
+    Loop --> Mask{"BQ < min_baseq\nOR base is N?"}
+    Mask -->|Yes| Masked["Position masked\n(cannot vote)"]
+    Mask -->|No| Vote{"Unmasked: compare\nbase to REF/ALT"}
+    Vote --> AltVote["ALT vote"]
+    Vote --> RefVote["REF vote"]
+    Vote --> OtherVote["Other vote"]
+
+    Masked --> NextPos( )
+    AltVote --> NextPos
+    RefVote --> NextPos
+    OtherVote --> NextPos
+    NextPos --> MorePos{"More positions?"}
+    MorePos -->|Yes| Loop
+    MorePos -->|No| Classify
+
+    Classify{"All unmasked = 0?"}
+    Classify -->|Yes| LowQ(["⬜ LowQuality\n→ check_complex"]):::fallback
+    Classify -->|No| AllAlt{"All unmasked\nmatch ALT?"}
+    AllAlt -->|Yes| Alt(["🔴 ALT"]):::alt
+    AllAlt -->|No| AllRef{"All unmasked\nmatch REF?"}
+    AllRef -->|Yes| Ref(["✅ REF"]):::ref
+    AllRef -->|No| Third(["⬜ ThirdAllele\n(partial_alt tracked)"]):::neither
 
     CPX(["🔄 check_complex\n(Phase 3 fallback)"]):::fallback
 
@@ -409,8 +435,36 @@ flowchart TD
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
 
-!!! info "Min-BQ-Across-Block Strategy"
-    MNP quality is assessed using the **minimum** base quality across the entire MNP block, matching C++ GBCMS `baseCountDNP` behavior. If `min(BQ) < threshold`, the read is skipped entirely — it contributes to neither REF, ALT, nor DP. This replaces the previous per-base rejection which routed low-quality reads to Phase 3 Smith-Waterman, where MNP haplotypes (differing at only 2-3 of ~20 positions) generated ties ~95% of the time, causing catastrophic ALT loss.
+!!! info "Masked Per-Position Strategy"
+    Each **discriminating position** (where REF[i] ≠ ALT[i]) is independently evaluated:
+
+    1. **Mask check**: If `BQ < --min-baseq` OR base is N → position is masked (cannot vote)
+    2. **Vote**: Unmasked positions vote REF, ALT, or other based on the actual base
+    3. **Classify**: Based on unmasked vote totals
+
+    This is an improvement over C++ GBCMS `baseCountDNP`, which gates on `min(BQ)` across **all** positions. For GC-rich regions (e.g., TERT promoter) or long ONPs with few discriminating positions, the old strategy dropped reads due to low quality at positions that don't matter for classification.
+
+    **Non-discriminating positions** (where REF[i] == ALT[i]) are completely ignored — they carry no information for allele classification.
+
+!!! warning "N-Base Handling at Discriminating Positions"
+    N bases at discriminating positions are masked regardless of their reported base quality (defense-in-depth). An N base matching ALT is **not** counted as ALT evidence — it is uninformative. If **any** discriminating position has an N base, `has_n_base=true` is set on the classification result, causing the engine to increment `n_count` (NAD in VCF) for duplex masking QC.
+
+### Classification Outcomes
+
+| Condition | Result | partial_alt | has_n_base |
+|:----------|:-------|:------------|:-----------|
+| All unmasked match ALT | **ALT** | 0 | true if any N at discrim. pos |
+| All unmasked match REF | **REF** | 0 | true if any N at discrim. pos |
+| Mixed unmasked (some ALT, some REF/other) | **ThirdAllele** → check_complex | `positions_matching_alt` | true if any N at discrim. pos |
+| All discriminating positions masked | **LowQuality** → check_complex | `positions_matching_alt` | true if any N at discrim. pos |
+| Read doesn't cover / has indel in block | **Structural** → check_complex | 0 | false |
+
+!!! note "Partial ALT Tracking"
+    When a read has mixed unmasked votes (some match ALT, some match REF or other), the count of ALT-matching unmasked positions is recorded as `positions_matching_alt`. This feeds into the engine's `partial_alt` counter (PAD in VCF), enabling diagnostic analysis of reads with partial evidence of the mutation.
+
+### Contiguity Check
+
+The contiguity check is performed **first** (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last MNP base — if the distance doesn't equal `len - 1`, an indel exists within the block and the read is routed to `check_complex` for haplotype-based resolution.
 
 !!! warning "Phase 3 Fallback Conditions"
     `check_complex` is invoked for both **structural** issues and **quality** issues:
@@ -418,13 +472,9 @@ flowchart TD
     - Read position not found in CIGAR walk
     - Read doesn't cover the entire MNP region
     - Indel detected within the MNP block (contiguity check)
-    - **Low quality**: `min(BQ across block) < threshold` — Phase 2 masked comparison can still classify using only reliable bases
+    - **All discriminating positions masked** — Phase 2/3 haplotype-based classification may still resolve the read
 
-    The first three indicate a complex variant misannotated as an MNP; the last leverages quality-masking to rescue low-quality reads that strict MNP matching would discard.
-
-### Contiguity Check
-
-The contiguity check is performed **first** (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last MNP base — if the distance doesn't equal `len - 1`, an indel exists within the block and the read is routed to `check_complex` for haplotype-based resolution.
+    The first three indicate a complex variant misannotated as an MNP; the last leverages haplotype reconstruction to rescue reads that per-position evaluation cannot classify.
 
 
 ---
@@ -603,7 +653,10 @@ Walks the CIGAR to rebuild what the read shows for the genomic region `[pos, pos
 
 ### Phase 2: Masked Comparison
 
-Instead of exact matching, bases with quality below `--min-baseq` are **masked out** — they cannot vote for either allele. Three cases based on reconstructed sequence length:
+Instead of exact matching, bases with quality below `--min-baseq` **or N bases** are **masked out** — they cannot vote for either allele. Three cases based on reconstructed sequence length:
+
+!!! info "N-Base Detection in Reconstructed Haplotype"
+    During Phase 1 reconstruction, if any base in the reconstructed sequence at a discriminating position is N, it is masked alongside low-BQ bases. If **any** N base is detected in the variant region, `has_n_base=true` is set, causing the engine to increment `n_count` (NAD in VCF). N bases are treated identically to BQ=0 in the masked comparison — they cannot contribute evidence for either allele.
 
 | Case | Condition | Behavior |
 |:-----|:----------|:---------|

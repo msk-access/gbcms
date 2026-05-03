@@ -78,42 +78,40 @@ class TestCaseA_MaskedComparison:
     def test_rescue_low_qual_mismatch(self, tmp_path):
         """REF=AT, ALT=CG. Read='CA' where 'A' is Q5 (index 5).
 
-        Both positions are discriminating (A≠C, T≠G). The low-quality base
-        at position 1 (T→G) IS a discriminating position, so the selective
-        quality gate correctly rejects this read → LowQuality → neither.
+        Both positions are discriminating (A≠C, T≠G). With masked per-position
+        evaluation, position 1 (Q=5 < 20) is masked. Position 0 (C, Q=30 ≥ 20)
+        is unmasked and matches ALT (C=C).
 
-        Before the MNP fix (feature/fix-mnp-counting), this would have
-        fallen through to check_complex Phase 2 masked comparison, which
-        would rescue it as ALT. That fallback is removed because PairHMM/SW
-        is biased toward REF for multi-base substitutions, and C++ GBCMS
-        has no fallback either.
+        OLD behavior (aggregate min-BQ): min(30,5) = 5 < 20 → LowQuality → neither.
+        NEW behavior (masked per-position): 1 reliable base matches ALT → ALT.
+        This is the intended improvement — reads with one unreliable position
+        are recovered based on the remaining reliable evidence.
         """
         quals = [30, 30, 30, 30, 30, 5, 30, 30, 30, 30]
-        #                           ^C  ^A(Q5) — discriminating position!
+        #                           ^C  ^A(Q5) — masked, cannot vote
         reads = [_make_read("r1", "AAAACAAAAA", 96, ((0, 10),), quals=quals)]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, EQUAL_LEN_VARIANT)
-        # After MNP fix: LowQuality at discriminating pos → neither (no rescue)
-        assert counts.ad == 0, f"Expected ad=0 (LowQuality, no rescue), got {counts.ad}"
+        # After masked per-position eval: reliable C matches ALT → ad=1 (recovered)
+        assert counts.ad == 1, f"Expected ad=1 (recovered by masked eval), got {counts.ad}"
         assert counts.rd == 0
 
     def test_ambiguous_low_qual_tail(self, tmp_path):
         """REF=AT, ALT=CG. Read='AT' where 'T' is Q5.
 
-        Both positions are discriminating (A≠C, T≠G). The low-quality base
-        at position 1 (T→G) IS a discriminating position, so the selective
-        quality gate correctly rejects this read → LowQuality → neither.
+        Both positions are discriminating (A≠C, T≠G). With masked per-position
+        evaluation, position 1 (T, Q=5 < 20) is masked. Position 0 (A, Q=30)
+        is unmasked: A matches REF (A=A), not ALT (A≠C).
 
-        Before the MNP fix, this fell through to check_complex Phase 2
-        masked comparison where the reliable 'A' matched REF → rd=1.
-        Now correctly discarded.
+        OLD behavior (aggregate min-BQ): min(30,5) = 5 < 20 → LowQuality → neither.
+        NEW behavior (masked per-position): 1 reliable base matches REF → REF.
         """
         quals = [30, 30, 30, 30, 30, 5, 30, 30, 30, 30]
         reads = [_make_read("r1", "AAAAATAAAA", 96, ((0, 10),), quals=quals)]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, EQUAL_LEN_VARIANT)
-        # After MNP fix: LowQuality at discriminating pos → neither
-        assert counts.rd == 0, f"Expected rd=0 (LowQuality, no rescue), got {counts.rd}"
+        # After masked per-position eval: reliable A matches REF → rd=1 (recovered)
+        assert counts.rd == 1, f"Expected rd=1 (recovered by masked eval), got {counts.rd}"
         assert counts.ad == 0
 
     def test_true_ambiguity_both_masked(self, tmp_path):

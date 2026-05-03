@@ -96,6 +96,13 @@ class BaseCounts:
     ref_dist_end_median: float
     singleton_alt_count: int
     duplex_alt_count: int
+    # Decomposed ALT counting (diagnostic, all variant types)
+    # Invariant: any_alt = ad + partial_alt
+    any_alt: int
+    partial_alt: int
+    # N-base diagnostic: reads with N at ≥1 discriminating position (NAD in VCF).
+    # Tracks duplex masking burden for QC. Follows bam-readcount N:count model.
+    n_count: int
     # RNA-specific (zeroed in DNA mode)
     sense_depth: int
     antisense_depth: int

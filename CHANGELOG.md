@@ -63,6 +63,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ruff B904 fix: `raise ... from None` in `mfsd_report.py`.
 - Ruff UP015 fix: removed unnecessary `"r"` mode argument from `open()`.
 
+### 🧬 N-Base Diagnostic Integration (Phases 0–3)
+
+#### ✨ Added
+
+- **Diagnostic output columns**: `any_alt`, `partial_alt`, `n_count` appended to
+  all MAF output (24 gbcms DNA columns total, up from 21).
+- **VCF diagnostic tags**: `AAD` (Any ALT Depth), `PAD` (Partial ALT Depth),
+  `NAD` (N-base Depth) emitted in both INFO and FORMAT sections.
+- **N-base defense-in-depth**: Explicit N-base guards in `check_snp`, `check_mnp`,
+  and `check_complex` — N bases are classified as uninformative regardless of
+  reported base quality, preventing silent evidence inflation from duplex-masked
+  positions (fgbio) or sequencer failure.
+- **Structural invariants**: `any_alt = AD + partial_alt`, `any_alt >= AD`,
+  `DP >= RD + AD + partial_alt + n_count` enforced and documented.
+- **`trace!`-level diagnostics**: N-base detection, n_count accumulation, and
+  partial_alt counting logged at trace level for production debugging.
+- **ALT-contains-N rejection**: Variants where the ALT allele contains N are
+  rejected with `FAIL_ALT_CONTAINS_N` validation status and `warn!`-level log.
+
+#### 🔄 Changed
+
+- **MNP quality strategy**: Replaced all-or-nothing `min(BQ across block)` gate
+  with **masked per-position evaluation** — each discriminating position (REF ≠ ALT)
+  is independently assessed; low-BQ and N bases are masked but unmasked positions
+  still vote. This recovers reads in GC-rich regions (e.g., TERT promoter) where
+  a single low-quality position previously dropped the entire read.
+- **MNP ThirdAllele handling**: Mixed-vote reads now track `positions_matching_alt`
+  for diagnostic partial_alt counting instead of being silently discarded.
+
+#### 🧪 Tests
+
+- **[NEW]** `tests/test_mnp_concordance.py` — 6 tests for MNP concordance with
+  C++ gbcms on production duplex BAMs.
+- **[NEW]** `tests/test_phase2_output.py` — 5 tests for diagnostic column presence,
+  invariant validation, and N-count sanity on fixture data.
+- **26+ Rust unit tests** for N-base masking, MNP per-position evaluation, partial
+  match tracking, invariant enforcement, and edge cases (all-N reads, mixed BQ/N).
+- Updated `tests/test_column_count_delta_is_three` to assert 24 gbcms DNA columns.
+
+#### 📚 Documentation
+
+- **Updated** `docs/reference/counting-metrics.md` — diagnostic columns, invariant
+  tables, VCF tag definitions, N-base handling section.
+- **Updated** `docs/reference/output-formats.md` — AAD/PAD/NAD in VCF header,
+  INFO/FORMAT tables, annotated example; any_alt/partial_alt/n_count in MAF table.
+- **Updated** `docs/reference/allele-classification.md` — SNP flowchart with N guard,
+  MNP section rewritten for masked per-position algorithm, Complex N-base note.
+- **Updated** `docs/reference/architecture.md` — structural invariants and diagnostic
+  output fields in Formulas section.
+- **Updated** `docs/development/developer-guide.md` — regression invariant checklist.
+- **Updated** `docs/development/testing-guide.md` — Phase 2 test suite, silent
+  failures matrix, invariant table, updated test counts.
+
 ## [4.0.1] - 2026-03-24
 
 ### 🔧 Fixed

@@ -339,6 +339,38 @@ fn prepare_single_variant(
         });
     }
 
+    // Step 2b: ALT allele N-base validation
+    // ALT alleles containing N (ambiguous/placeholder bases from incomplete
+    // genotyping) cannot be meaningfully counted — no real read base matches N.
+    // Reject explicitly rather than silently producing zero counts.
+    if alt_al.as_bytes().iter().any(|&b| b == b'N' || b == b'n') {
+        warn!(
+            "ALT allele contains N (ambiguous): {}:{} {}>{} — rejecting",
+            variant.chrom, pos + 1, ref_al, alt_al
+        );
+        return Ok(PreparedVariant {
+            variant: Variant {
+                chrom: variant.chrom.clone(),
+                pos,
+                ref_allele: ref_al,
+                alt_allele: alt_al,
+                variant_type: vtype,
+                ref_context: None,
+                ref_context_start: 0,
+                repeat_span: 0,
+                gene_strand: None,
+            },
+            validation_status: "FAIL_ALT_CONTAINS_N".to_string(),
+            was_anchor_resolved,
+            was_left_aligned: false,
+            original_pos,
+            original_ref,
+            original_alt,
+            decomposed_variant: None,
+            multi_allelic_group: None,
+        });
+    }
+
     // Step 3: Left-alignment (only for true indels/complex, NOT MNPs)
     // MNPs (same-length multi-base substitutions: DNP, TNP, ONP) are typed
     // as COMPLEX by kernel.py, but they are pure substitutions that cannot

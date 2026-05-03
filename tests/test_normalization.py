@@ -215,6 +215,11 @@ class TestNormalization(unittest.TestCase):
             sb_or=0.0,
             fsb_pval=1.0,
             fsb_or=0.0,
+            # Decomposed ALT counting
+            any_alt=0,
+            partial_alt=0,
+            # N-base diagnostic
+            n_count=0,
             # mFSD fields (zero counts, NaN float stats)
             mfsd_ref_count=0,
             mfsd_alt_count=0,
@@ -333,6 +338,40 @@ class TestNormalization(unittest.TestCase):
         self.assertTrue(pv.was_normalized, "Expected combined normalized flag")
         # Should have shifted left from original position
         self.assertLess(pv.variant.pos, 103, "Expected leftward shift")
+
+
+    def test_n_in_alt_allele_rejected(self):
+        """ALT allele containing N should be rejected with FAIL_ALT_CONTAINS_N.
+
+        N in ALT indicates ambiguous/placeholder genotyping — no real read
+        base can match it. The normalize engine should explicitly reject
+        these rather than silently producing zero counts.
+        """
+        variants = [gbcms_rs.Variant("chr1", 0, "A", "N", "SNP")]
+        prepared = gbcms_rs.prepare_variants(
+            variants, str(self.fasta_path), 5, False, 1, False
+        )
+        self.assertEqual(len(prepared), 1)
+        pv = prepared[0]
+        self.assertEqual(
+            pv.validation_status,
+            "FAIL_ALT_CONTAINS_N",
+            f"Expected FAIL_ALT_CONTAINS_N, got {pv.validation_status}",
+        )
+
+    def test_n_in_alt_allele_mnp_rejected(self):
+        """MNP with N in ALT should also be rejected (e.g., AN > TN)."""
+        variants = [gbcms_rs.Variant("chr1", 0, "AT", "TN", "DNP")]
+        prepared = gbcms_rs.prepare_variants(
+            variants, str(self.fasta_path), 5, False, 1, False
+        )
+        self.assertEqual(len(prepared), 1)
+        pv = prepared[0]
+        self.assertEqual(
+            pv.validation_status,
+            "FAIL_ALT_CONTAINS_N",
+            f"Expected FAIL_ALT_CONTAINS_N for MNP with N in ALT, got {pv.validation_status}",
+        )
 
 
 if __name__ == "__main__":

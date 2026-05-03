@@ -182,6 +182,12 @@ class MafWriter(OutputWriter):
             f"{p}ref_count_fragment_reverse",
             f"{p}alt_count_fragment_forward",
             f"{p}alt_count_fragment_reverse",
+            # Decomposed ALT counting (diagnostic, always present)
+            # any_alt = ad + partial_alt (see types.rs invariant)
+            f"{p}any_alt",
+            f"{p}partial_alt",
+            # N-base diagnostic: reads with N at discriminating position (duplex masking QC)
+            f"{p}n_count",
         ]
         if self.mfsd:
             # ── mFSD: Mutant Fragment Size Distribution (40 columns) ──────────
@@ -350,6 +356,11 @@ class MafWriter(OutputWriter):
             f"{p}ref_count_fragment_reverse": str(counts.rdf_rev),
             f"{p}alt_count_fragment_forward": str(counts.adf_fwd),
             f"{p}alt_count_fragment_reverse": str(counts.adf_rev),
+            # Decomposed ALT counting
+            f"{p}any_alt": str(counts.any_alt),
+            f"{p}partial_alt": str(counts.partial_alt),
+            # N-base diagnostic
+            f"{p}n_count": str(counts.n_count),
         }
 
         # ── RNA-specific count columns ─────────────────────────────────────────
@@ -585,6 +596,9 @@ class VcfWriter(OutputWriter):
             '##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">',
             '##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">',
             '##INFO=<ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio">',
+            '##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at >=1 discriminating position (any_alt = ad + partial_alt)">',
+            '##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions">',
+            '##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)">',
         ]
         if self.mfsd:
             # mFSD INFO fields (7 primary diagnostics). VCF key = MAF column name uppercased.
@@ -629,6 +643,9 @@ class VcfWriter(OutputWriter):
                 '##FORMAT=<ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)">',
                 '##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)">',
                 '##FORMAT=<ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)">',
+                '##FORMAT=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (reads with any ALT evidence)">',
+                '##FORMAT=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth (partial ALT only)">',
+                '##FORMAT=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth (reads with N at discriminating position)">',
             ]
         )
         if self.mode == "rna":
@@ -666,6 +683,9 @@ class VcfWriter(OutputWriter):
             f"SB_OR={counts.sb_or:.4f}",
             f"FSB_PVAL={counts.fsb_pval:.4e}",
             f"FSB_OR={counts.fsb_or:.4f}",
+            f"AAD={counts.any_alt}",
+            f"PAD={counts.partial_alt}",
+            f"NAD={counts.n_count}",
         ]
         if self.mfsd:
             # mFSD primary diagnostic INFO fields (7 values).
@@ -718,15 +738,16 @@ class VcfWriter(OutputWriter):
         faf = counts.adf / total_frags if total_frags > 0 else 0.0
 
         if self.mode == "rna":
-            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:SEN:ANT:ASEN:SPL"
+            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL"
             sample_data = (
                 f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}"
+                f":{counts.any_alt}:{counts.partial_alt}:{counts.n_count}"
                 f":{counts.sense_depth}:{counts.antisense_depth}"
                 f":{counts.sense_strand_alt_count}:{counts.splice_spanning_count}"
             )
         else:
-            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF"
-            sample_data = f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}"
+            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD"
+            sample_data = f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}:{counts.any_alt}:{counts.partial_alt}:{counts.n_count}"
 
         row = [
             variant.chrom,

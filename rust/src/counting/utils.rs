@@ -35,37 +35,69 @@ pub enum ClassifyPhase {
 ///
 /// Replaces the raw `(bool, bool, u8)` tuple to carry phase provenance,
 /// enabling per-variant phase usage statistics.
+///
+/// `partial_match_count` tracks the number of discriminating positions where
+/// the read matches ALT, even when the read doesn't fully match (ThirdAllele
+/// or LowQuality). Used for `any_alt`/`partial_alt` diagnostic counting.
+/// For SNPs and indels, this is always 0 (partial matching is MNP/complex-specific).
+///
+/// `has_n_base` signals that the read carried an N base at ≥1 discriminating
+/// position. Used by the engine to accumulate `n_count` for duplex masking
+/// QC (follows bam-readcount's explicit N separation model).
 #[derive(Debug, Clone, Copy)]
 pub struct ClassifyResult {
     pub is_ref: bool,
     pub is_alt: bool,
     pub qual: u8,
     pub phase: ClassifyPhase,
+    /// Number of discriminating positions matching ALT (0 for full REF/ALT matches).
+    /// Non-zero when a read partially matches ALT but isn't a full match (MNP/complex).
+    pub partial_match_count: u8,
+    /// Whether this read had an N base at ≥1 discriminating position.
+    /// Used by engine to accumulate BaseCounts::n_count for duplex masking QC.
+    pub has_n_base: bool,
 }
 
 impl ClassifyResult {
-    /// Create a new ClassifyResult.
+    /// Create a new ClassifyResult with no partial match evidence.
     #[inline]
     pub fn new(is_ref: bool, is_alt: bool, qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref, is_alt, qual, phase }
+        Self { is_ref, is_alt, qual, phase, partial_match_count: 0, has_n_base: false }
     }
 
     /// Neither REF nor ALT — read didn't classify (e.g., no coverage, low quality).
     #[inline]
     pub fn neither(phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: false }
+    }
+
+    /// Neither REF nor ALT, and the read carried an N base at the variant position.
+    /// Used by check_snp when the base is N — separates N-masked reads from true
+    /// third-allele or low-BQ reads for diagnostic counting (BaseCounts::n_count).
+    #[inline]
+    pub fn neither_n(phase: ClassifyPhase) -> Self {
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: true }
+    }
+
+    /// Neither REF nor ALT, but with partial ALT evidence at some positions.
+    /// Used by MNP ThirdAllele/LowQuality paths and check_complex partial paths
+    /// to report partial matches for `any_alt`/`partial_alt` diagnostic counting.
+    /// `has_n`: true if the read had N at ≥1 discriminating position.
+    #[inline]
+    pub fn neither_with_partial(phase: ClassifyPhase, partial_count: u8, has_n: bool) -> Self {
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: partial_count, has_n_base: has_n }
     }
 
     /// Shorthand for REF classification.
     #[inline]
     pub fn is_ref(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: true, is_alt: false, qual, phase }
+        Self { is_ref: true, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false }
     }
 
     /// Shorthand for ALT classification.
     #[inline]
     pub fn is_alt(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: true, qual, phase }
+        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false }
     }
 
 }
@@ -115,8 +147,9 @@ pub fn build_haplotypes(variant: &Variant) -> Option<(Vec<u8>, Vec<u8>)> {
 
 /// Masked comparison against two alleles simultaneously.
 ///
-/// Masks out bases with quality below `min_baseq` and counts mismatches against
-/// both `allele_a` and `allele_b` on the remaining reliable bases only.
+/// Masks out bases with quality below `min_baseq` OR N bases (uninformative),
+/// then counts mismatches against both `allele_a` and `allele_b` on the
+/// remaining reliable bases only.
 ///
 /// Returns `(mismatches_a, mismatches_b, reliable_count)`.
 pub fn masked_dual_compare(
@@ -131,8 +164,9 @@ pub fn masked_dual_compare(
     let mut reliable = 0;
 
     for (i, &base) in recon.iter().enumerate() {
-        if quals[i] < min_baseq {
-            continue; // mask out low-quality base entirely
+        // Mask: low quality OR N base (uninformative, e.g. duplex masking)
+        if quals[i] < min_baseq || base == b'N' || base == b'n' {
+            continue;
         }
         reliable += 1;
         let b = base.to_ascii_uppercase();
@@ -149,8 +183,8 @@ pub fn masked_dual_compare(
 
 /// Masked comparison against a single allele.
 ///
-/// Masks out bases below `min_baseq` and counts mismatches on reliable bases.
-/// Any mismatch on a reliable base means no match.
+/// Masks out bases below `min_baseq` OR N bases (uninformative), then counts
+/// mismatches on reliable bases. Any mismatch on a reliable base means no match.
 ///
 /// Returns `(mismatches, reliable_count)`.
 pub fn masked_single_compare(
@@ -163,7 +197,8 @@ pub fn masked_single_compare(
     let mut reliable = 0;
 
     for (i, &base) in recon.iter().enumerate() {
-        if quals[i] < min_baseq {
+        // Mask: low quality OR N base (uninformative, e.g. duplex masking)
+        if quals[i] < min_baseq || base == b'N' || base == b'n' {
             continue;
         }
         reliable += 1;

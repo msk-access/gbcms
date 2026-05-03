@@ -120,6 +120,11 @@ def _zero_counts():
         ref_dist_end_median=_nan,
         singleton_alt_count=0,
         duplex_alt_count=0,
+        # Decomposed ALT counting (invariant: any_alt = ad + partial_alt)
+        any_alt=0,
+        partial_alt=0,
+        # N-base diagnostic (duplex masking QC)
+        n_count=0,
         # RNA-specific (zeroed in DNA mode)
         sense_depth=0,
         antisense_depth=0,

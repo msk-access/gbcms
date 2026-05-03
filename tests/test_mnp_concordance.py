@@ -11,12 +11,10 @@ These tests use synthetic BAM data with controlled base qualities to
 exercise the specific edge cases identified in the TERT/BRCA2 analysis.
 """
 
-import pysam
 import pytest
 from helpers import build_bam, count_both, make_read
 
 from gbcms import _rs as gbcms_rs
-
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -133,14 +131,19 @@ class TestONPSelectiveQualityGate:
     """Tests for the selective discriminating-position quality gate."""
 
     def test_onp_alt_count_with_selective_gate(self, mnp_bam):
-        """ALT count should include reads with low-qual non-discriminating bases."""
+        """ALT count should include reads with low-qual non-discriminating bases
+        AND reads with one low-qual discriminating position (recovered by
+        masked per-position evaluation).
+        """
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
         counts = count_both(mnp_bam, [variant])[0]
 
-        # Expected ALT: 3 (rev) + 2 (fwd, low-qual non-disc) = 5
-        # The low-qual-disc read is discarded (neither).
+        # Expected ALT: 3 (rev) + 2 (fwd, low-qual non-disc) + 1 (fwd, low-qual disc, recovered) = 6
+        # OLD: The low-qual-disc read was discarded (aggregate min-BQ gate).
+        # NEW: Masked per-position eval recovers it — pos 4 (G→A, Q=34) is unmasked
+        #      and matches ALT, so the read is classified as ALT.
         # The third-allele read is neither.
-        assert counts.ad == 5, f"Expected ad=5, got {counts.ad}"
+        assert counts.ad == 6, f"Expected ad=6, got {counts.ad}"
         assert counts.rd == 5, f"Expected rd=5, got {counts.rd}"
 
     def test_onp_dp_includes_discarded(self, mnp_bam):
@@ -158,8 +161,8 @@ class TestONPSelectiveQualityGate:
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
         counts = count_both(mnp_bam, [variant])[0]
 
-        # ALT: 3 rev + 2 fwd = 5 total
-        assert counts.ad_fwd == 2, f"Expected ad_fwd=2, got {counts.ad_fwd}"
+        # ALT: 3 rev + 3 fwd (2 low-qual-nondisc + 1 low-qual-disc recovered) = 6 total
+        assert counts.ad_fwd == 3, f"Expected ad_fwd=3, got {counts.ad_fwd}"
         assert counts.ad_rev == 3, f"Expected ad_rev=3, got {counts.ad_rev}"
         # REF: 5 fwd + 0 rev = 5
         assert counts.rd_fwd == 5, f"Expected rd_fwd=5, got {counts.rd_fwd}"

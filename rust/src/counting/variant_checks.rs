@@ -7,6 +7,18 @@
 //! - `check_deletion` — deletion with windowed CIGAR scan
 //! - `check_complex` — complex variant (indel + substitution) with
 //!   phased Masked Comparison → Levenshtein → SW alignment pipeline
+//!
+//! ## N-base handling
+//!
+//! All checkers detect N bases (from duplex masking or sequencer failure)
+//! and signal `has_n_base=true` via `ClassifyResult`:
+//! - **SNP**: N base → `ClassifyResult::neither_n()` (uninformative)
+//! - **MNP**: N at discriminating position → masked (doesn't vote), but
+//!   `had_n_base` flag propagated through `MnpResult`
+//! - **Complex**: N in reconstructed haplotype → detected via scan,
+//!   propagated through all 10 return paths
+//!
+//! The engine uses `has_n_base` to increment `n_count` for duplex masking QC.
 
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
@@ -192,19 +204,23 @@ fn phase3_classify<F: Fn(u8, u8) -> i32>(
 /// quality failures, third alleles, and structural issues into a single
 /// `(false, false, 0)` that always fell to Phase 3 SW (causing ~99%
 /// MNP ALT loss via ties in haplotype-similar SW alignments).
+#[derive(Debug)]
 pub enum MnpResult {
-    /// All bases match REF, with median quality across the block.
-    Ref(u8),
-    /// All bases match ALT, with median quality across the block.
-    Alt(u8),
-    /// min(BQ) across the MNP block < threshold — skip read entirely.
-    /// Matches C++ GBCMS behavior. Phase 3 fallback NOT appropriate:
-    /// SW would count the read toward DP while C++ wouldn't.
-    LowQuality,
-    /// All bases pass quality, but the read sequence matches neither
-    /// REF nor ALT. Phase 3 fallback NOT appropriate: if bases clearly
+    /// All unmasked bases match REF. (quality, had_n_at_any_position)
+    Ref(u8, bool),
+    /// All unmasked bases match ALT. (quality, had_n_at_any_position)
+    Alt(u8, bool),
+    /// All discriminating positions masked (BQ < threshold or N).
+    /// Carries (positions_matching_alt, had_n_at_any_position).
+    /// Used for `partial_alt` counting when positions_matching_alt > 0.
+    /// Matches C++ GBCMS behavior: read not counted for AD.
+    /// Phase 3 fallback NOT appropriate: SW would count toward DP while C++ wouldn't.
+    LowQuality(u8, bool),
+    /// Unmasked bases match neither REF nor ALT (mixed or third-allele).
+    /// Carries (positions_matching_alt, had_n_at_any_position).
+    /// Phase 3 fallback NOT appropriate: if bases clearly
     /// don't match either allele, SW will likely generate a tie.
-    ThirdAllele,
+    ThirdAllele(u8, bool),
     /// Structural issue prevents string comparison:
     ///   - Read doesn't cover the entire MNP region
     ///   - Position not found in CIGAR walk
@@ -212,12 +228,20 @@ pub enum MnpResult {
     ///
     /// Phase 3 fallback IS appropriate: the read may carry the variant
     /// through a complex alignment (e.g., complex variant annotated as MNP).
+    /// No had_n field: structural issues route to check_complex which
+    /// independently detects N in the reconstructed haplotype and propagates
+    /// has_n_base through its own Phase 2 return paths.
     Structural,
 }
 
 
 /// Returns `ClassifyResult` for SNP variants. Always Phase 0 (Structural).
+///
 /// Quality is the base quality at the variant position.
+/// N bases are treated as uninformative (neither REF nor ALT), matching GATK's
+/// approach: the base quality gate (BQ < `min_baseq`) catches most N bases from
+/// duplex collapsing (fgbio assigns BQ ≈ 2 to masked positions), but this
+/// explicit guard handles raw BAMs where N may have arbitrary BQ.
 pub fn check_snp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8) -> ClassifyResult {
     let read_pos = match find_read_pos(record, variant.pos) {
         Some(p) => p,
@@ -229,19 +253,19 @@ pub fn check_snp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
         return ClassifyResult::neither(ClassifyPhase::Structural);
     }
 
-    let base = record.seq()[read_pos] as char;
-    let ref_char = variant
-        .ref_allele
-        .chars()
-        .next()
-        .unwrap()
-        .to_ascii_uppercase();
-    let alt_char = variant
-        .alt_allele
-        .chars()
-        .next()
-        .unwrap()
-        .to_ascii_uppercase();
+    let base = record.seq()[read_pos];
+
+    // N base = uninformative (duplex masking, sequencer failure).
+    // Treat as masked regardless of BQ — do not count as REF, ALT, or third allele.
+    // Defense-in-depth: fgbio assigns BQ ≈ 2 to N bases, but raw BAMs may not.
+    // Use neither_n() to signal has_n_base=true → engine increments n_count.
+    if base == b'N' || base == b'n' {
+        trace!("SNP N guard: base={} at read_pos={}, returning neither_n", base as char, read_pos);
+        return ClassifyResult::neither_n(ClassifyPhase::Structural);
+    }
+
+    let ref_char = variant.ref_allele.as_bytes()[0].to_ascii_uppercase();
+    let alt_char = variant.alt_allele.as_bytes()[0].to_ascii_uppercase();
     let base_upper = base.to_ascii_uppercase();
 
     let is_ref = base_upper == ref_char;
@@ -289,22 +313,76 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
         return MnpResult::Structural; // Indel within MNP block
     }
 
-    // ── Step 4: Selective quality gate at discriminating positions ──
-    // Only require min_baseq at positions where REF ≠ ALT.
-    // Uninformative positions (REF == ALT) don't affect classification.
-    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
+    // ── Step 4+5: Masked per-position evaluation ──
+    // Each discriminating position (REF ≠ ALT) is independently evaluated:
+    //   - Masked: BQ < min_baseq OR N base → cannot vote (uninformative)
+    //   - Unmasked: votes REF if matches REF, ALT if matches ALT, other if neither
+    //
+    // This replaces the old aggregate min-BQ gate that dropped the entire read
+    // when ANY discriminating position had low quality. The masked approach
+    // recovers reads where only some positions are low-quality (e.g., duplex N
+    // at one MNP position), matching the GATK approach.
+    //
+    // N bases at discriminating positions are treated as BQ=0 regardless of
+    // their reported quality (defense-in-depth for raw BAMs; duplex BAMs
+    // already assign BQ ≈ 2 to N bases via fgbio).
     let ref_bytes = variant.ref_allele.as_bytes();
     let alt_bytes = variant.alt_allele.as_bytes();
+    let seq = record.seq();
+    let seq_bytes = seq.as_bytes();
 
-    let mut min_discriminating_qual = u8::MAX;
     let mut n_discriminating: usize = 0;
+    let mut n_masked: usize = 0;
+    let mut n_unmasked_match_alt: usize = 0;
+    let mut n_unmasked_match_ref: usize = 0;
+    let mut n_unmasked_match_neither: usize = 0;
+    // Total UNMASKED discriminating positions matching ALT, for partial counting.
+    // N bases and low-BQ positions are excluded — only high-confidence evidence counts.
+    let mut positions_matching_alt: usize = 0;
+    // Track whether ANY discriminating position had an N base (for n_count).
+    let mut had_n_base = false;
+    let mut mnp_quals: Vec<u8> = Vec::with_capacity(len);
+
     for i in 0..len {
-        if ref_bytes[i].to_ascii_uppercase() != alt_bytes[i].to_ascii_uppercase() {
-            let q = quals[start_read_pos + i];
-            min_discriminating_qual = min_discriminating_qual.min(q);
-            n_discriminating += 1;
+        let pos = start_read_pos + i;
+        mnp_quals.push(quals[pos]);
+        let base = seq_bytes[pos];
+        let base_upper = base.to_ascii_uppercase();
+        let ref_upper = ref_bytes[i].to_ascii_uppercase();
+        let alt_upper = alt_bytes[i].to_ascii_uppercase();
+
+        // Skip non-discriminating positions (REF == ALT)
+        if ref_upper == alt_upper {
+            continue;
+        }
+        n_discriminating += 1;
+
+        // Mask condition: BQ too low OR base is N (uninformative)
+        // N bases do NOT contribute to positions_matching_alt — they are
+        // uninformative and should not inflate partial counting.
+        let is_n = base == b'N' || base == b'n';
+        if quals[pos] < min_baseq || is_n {
+            n_masked += 1;
+            if is_n {
+                had_n_base = true;
+                trace!("MNP position {} masked: N base (BQ={})", i, quals[pos]);
+            }
+            continue; // Cannot vote
+        }
+
+        // Unmasked position: votes based on allele match
+        if base_upper == alt_upper {
+            n_unmasked_match_alt += 1;
+            // Track unmasked positions matching ALT for partial counting.
+            // Only unmasked positions count — N bases are excluded.
+            positions_matching_alt += 1;
+        } else if base_upper == ref_upper {
+            n_unmasked_match_ref += 1;
+        } else {
+            n_unmasked_match_neither += 1;
         }
     }
+
     // Safety: an MNP with zero discriminating positions is degenerate
     // (REF == ALT). Treat as ThirdAllele to surface the issue.
     if n_discriminating == 0 {
@@ -312,56 +390,63 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
             "MNP with zero discriminating positions: {}>{} at {}:{}",
             variant.ref_allele, variant.alt_allele, variant.chrom, variant.pos + 1
         );
-        return MnpResult::ThirdAllele;
-    }
-    if min_discriminating_qual < min_baseq {
-        return MnpResult::LowQuality;
+        return MnpResult::ThirdAllele(0, false);
     }
 
-    // ── Step 5: Direct string comparison (all bases passed quality) ──
-    let seq = record.seq();
-    let seq_bytes = seq.as_bytes();
+    let n_unmasked = n_discriminating - n_masked;
 
-    let mut matches_ref = true;
-    let mut matches_alt = true;
-    let mut mnp_quals: Vec<u8> = Vec::with_capacity(len);
-
-    for i in 0..len {
-        let pos = start_read_pos + i;
-        mnp_quals.push(quals[pos]);
-
-        let base = seq_bytes[pos].to_ascii_uppercase();
-        if base != ref_bytes[i].to_ascii_uppercase() {
-            matches_ref = false;
-        }
-        if base != alt_bytes[i].to_ascii_uppercase() {
-            matches_alt = false;
-        }
+    // All discriminating positions masked → LowQuality (contributes to DP only).
+    // No unmasked positions can vote, so we can't classify this read.
+    if n_unmasked == 0 {
+        trace!(
+            "MNP all {} discriminating positions masked ({} N, {} low-BQ)",
+            n_discriminating, n_masked, n_discriminating
+        );
+        return MnpResult::LowQuality(positions_matching_alt as u8, had_n_base);
     }
 
-    if matches_ref {
-        MnpResult::Ref(median_qual(&mnp_quals, min_baseq))
-    } else if matches_alt {
-        MnpResult::Alt(median_qual(&mnp_quals, min_baseq))
+    // Classification based on unmasked votes:
+    let med_qual = median_qual(&mnp_quals, min_baseq);
+
+    if n_unmasked_match_ref == n_unmasked && n_unmasked_match_alt == 0 {
+        // All unmasked discriminating positions match REF
+        MnpResult::Ref(med_qual, had_n_base)
+    } else if n_unmasked_match_alt == n_unmasked && n_unmasked_match_ref == 0 {
+        // All unmasked discriminating positions match ALT
+        MnpResult::Alt(med_qual, had_n_base)
     } else {
-        // Diagnostic: log per-position breakdown for ThirdAllele to help
-        // detect misannotated compound SNPs (Step 5 of plan).
+        // Mixed or neither — log per-position breakdown for diagnostics
         if log::log_enabled!(log::Level::Trace) {
             let mut pos_info = Vec::with_capacity(n_discriminating);
             for i in 0..len {
-                if ref_bytes[i].to_ascii_uppercase() != alt_bytes[i].to_ascii_uppercase() {
-                    let base = seq_bytes[start_read_pos + i].to_ascii_uppercase();
-                    let alt_base = alt_bytes[i].to_ascii_uppercase();
-                    let label = if base == alt_base { "ALT" } else { "other" };
-                    pos_info.push(format!("pos{}:{}={}", i, base as char, label));
-                }
+                let ref_upper = ref_bytes[i].to_ascii_uppercase();
+                let alt_upper = alt_bytes[i].to_ascii_uppercase();
+                if ref_upper == alt_upper { continue; }
+
+                let pos = start_read_pos + i;
+                let base = seq_bytes[pos];
+                let base_upper = base.to_ascii_uppercase();
+                let is_masked = quals[pos] < min_baseq || base == b'N' || base == b'n';
+
+                let label = if is_masked {
+                    "MASKED"
+                } else if base_upper == alt_upper {
+                    "ALT"
+                } else if base_upper == ref_upper {
+                    "REF"
+                } else {
+                    "other"
+                };
+                pos_info.push(format!("pos{}:{}={}", i, base_upper as char, label));
             }
             trace!(
-                "MNP ThirdAllele {}>{}: {}",
-                variant.ref_allele, variant.alt_allele, pos_info.join(", ")
+                "MNP ThirdAllele {}>{}: {} (unmasked: {} ref, {} alt, {} other; {} masked)",
+                variant.ref_allele, variant.alt_allele, pos_info.join(", "),
+                n_unmasked_match_ref, n_unmasked_match_alt,
+                n_unmasked_match_neither, n_masked
             );
         }
-        MnpResult::ThirdAllele
+        MnpResult::ThirdAllele(positions_matching_alt as u8, had_n_base)
     }
 }
 
@@ -546,6 +631,19 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     // This is the quality we return for whichever allele matches.
     let med_haplotype_qual = median_qual(&quals_per_base, min_baseq);
 
+    // N-base detection: scan the reconstructed haplotype for N bases.
+    // N bases in the reconstructed sequence are masked by masked_dual_compare /
+    // masked_single_compare (they don't affect classification), but we need to
+    // propagate has_n_base=true so the engine can increment n_count for
+    // duplex masking QC. Matches the MNP/SNP N-tracking pattern.
+    let had_n = reconstructed_seq.iter().any(|&b| b == b'N' || b == b'n');
+    if had_n {
+        trace!(
+            "check_complex: N base detected in reconstructed haplotype ({} bases)",
+            reconstructed_seq.len()
+        );
+    }
+
     // --- Phase 2: Quality-Aware Masked Comparison ---
     // Mask out low-quality bases. Only reliable bases (qual >= min_baseq) vote.
     let alt_bytes = variant.alt_allele.as_bytes();
@@ -611,27 +709,48 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
 
         // Step 1: No reliable data → discard (MUST come first)
         if reliable_count == 0 {
-            trace!("No reliable bases — discarding");
-            return ClassifyResult::neither(ClassifyPhase::MaskedCompare);
+            trace!("No reliable bases — discarding (had_n={})", had_n);
+            let mut r = ClassifyResult::neither(ClassifyPhase::MaskedCompare);
+            r.has_n_base = had_n;
+            return r;
         }
 
         // Step 2: Ambiguity — reliable bases match both alleles → discard
         if mismatches_alt == 0 && mismatches_ref == 0 {
-            trace!("Ambiguous: reliable bases match both REF and ALT — discarding");
-            return ClassifyResult::neither(ClassifyPhase::MaskedCompare);
+            trace!("Ambiguous: reliable bases match both REF and ALT — discarding (had_n={})", had_n);
+            let mut r = ClassifyResult::neither(ClassifyPhase::MaskedCompare);
+            r.has_n_base = had_n;
+            return r;
         }
 
         // Step 3: Unambiguous match
         if mismatches_alt == 0 {
-            trace!("Matches ALT on {} reliable bases, med_qual={}", reliable_count, med_haplotype_qual);
-            return ClassifyResult::is_alt(med_haplotype_qual, ClassifyPhase::MaskedCompare);
+            trace!("Matches ALT on {} reliable bases, med_qual={}, had_n={}", reliable_count, med_haplotype_qual, had_n);
+            let mut r = ClassifyResult::is_alt(med_haplotype_qual, ClassifyPhase::MaskedCompare);
+            r.has_n_base = had_n;
+            return r;
         }
         if mismatches_ref == 0 {
-            trace!("Matches REF on {} reliable bases, med_qual={}", reliable_count, med_haplotype_qual);
-            return ClassifyResult::is_ref(med_haplotype_qual, ClassifyPhase::MaskedCompare);
+            trace!("Matches REF on {} reliable bases, med_qual={}, had_n={}", reliable_count, med_haplotype_qual, had_n);
+            let mut r = ClassifyResult::is_ref(med_haplotype_qual, ClassifyPhase::MaskedCompare);
+            r.has_n_base = had_n;
+            return r;
         }
 
-        // Step 4: Neither matches on reliable bases
+        // Step 4: Neither matches cleanly on reliable bases.
+        // Report partial ALT evidence if some reliable bases matched ALT.
+        let partial_alt_bases = reliable_count.saturating_sub(mismatches_alt);
+        if partial_alt_bases > 0 {
+            trace!(
+                "Case A: {} of {} reliable bases match ALT (partial evidence)",
+                partial_alt_bases, reliable_count
+            );
+            return ClassifyResult::neither_with_partial(
+                ClassifyPhase::MaskedCompare,
+                partial_alt_bases as u8,
+                had_n,
+            );
+        }
         trace!("No match: mm_alt={} mm_ref={}", mismatches_alt, mismatches_ref);
     } else if matches_alt_len {
         // Case B: Only ALT length matches (e.g., DelIns) — no ambiguity possible
@@ -644,8 +763,25 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         );
 
         if reliable_count > 0 && mismatches == 0 {
-            trace!("Matches ALT on {} reliable bases, med_qual={}", reliable_count, med_haplotype_qual);
-            return ClassifyResult::is_alt(med_haplotype_qual, ClassifyPhase::MaskedCompare);
+            trace!("Matches ALT on {} reliable bases, med_qual={}, had_n={}", reliable_count, med_haplotype_qual, had_n);
+            let mut r = ClassifyResult::is_alt(med_haplotype_qual, ClassifyPhase::MaskedCompare);
+            r.has_n_base = had_n;
+            return r;
+        }
+        // Case B fall-through: partial ALT evidence if some bases matched
+        if reliable_count > 0 && mismatches > 0 {
+            let partial_alt_bases = reliable_count.saturating_sub(mismatches);
+            if partial_alt_bases > 0 {
+                trace!(
+                    "Case B: {} of {} reliable bases match ALT (partial evidence)",
+                    partial_alt_bases, reliable_count
+                );
+                return ClassifyResult::neither_with_partial(
+                    ClassifyPhase::MaskedCompare,
+                    partial_alt_bases as u8,
+                    had_n,
+                );
+            }
         }
     } else if matches_ref_len {
         // Case C: Only REF length matches — no ambiguity possible
@@ -658,8 +794,10 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         );
 
         if reliable_count > 0 && mismatches == 0 {
-            trace!("Matches REF on {} reliable bases, med_qual={}", reliable_count, med_haplotype_qual);
-            return ClassifyResult::is_ref(med_haplotype_qual, ClassifyPhase::MaskedCompare);
+            trace!("Matches REF on {} reliable bases, med_qual={}, had_n={}", reliable_count, med_haplotype_qual, had_n);
+            let mut r = ClassifyResult::is_ref(med_haplotype_qual, ClassifyPhase::MaskedCompare);
+            r.has_n_base = had_n;
+            return r;
         }
     } else {
         trace!(
@@ -692,11 +830,15 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                 d_ref, d_alt, recon_len
             );
             if d_alt + 1 < d_ref {
-                trace!("Phase 2.5 → ALT (edit distance margin)");
-                return ClassifyResult::is_alt(med_haplotype_qual, ClassifyPhase::Levenshtein);
+                trace!("Phase 2.5 → ALT (edit distance margin, had_n={})", had_n);
+                let mut r = ClassifyResult::is_alt(med_haplotype_qual, ClassifyPhase::Levenshtein);
+                r.has_n_base = had_n;
+                return r;
             } else if d_ref + 1 < d_alt {
-                trace!("Phase 2.5 → REF (edit distance margin)");
-                return ClassifyResult::is_ref(med_haplotype_qual, ClassifyPhase::Levenshtein);
+                trace!("Phase 2.5 → REF (edit distance margin, had_n={})", had_n);
+                let mut r = ClassifyResult::is_ref(med_haplotype_qual, ClassifyPhase::Levenshtein);
+                r.has_n_base = had_n;
+                return r;
             }
             // else: ambiguous, fall through to Phase 3
         }
