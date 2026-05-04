@@ -1,9 +1,15 @@
 //! Heuristic Base Alignment Quality (BAQ) adjustment (Li 2011).
 //!
-//! Downgrades base qualities near CIGAR indels to reduce false positive
-//! variant calls caused by alignment artifacts. Walks the CIGAR string
-//! and subtracts `BAQ_PENALTY` from base qualities within `BAQ_RADIUS`
-//! bp of any Ins/Del operation.
+//! Downgrades base qualities near CIGAR indels and splice junctions to
+//! reduce false positive variant calls caused by alignment artifacts.
+//! Walks the CIGAR string and subtracts `BAQ_PENALTY` from base
+//! qualities within `BAQ_RADIUS` bp of any Ins/Del/RefSkip operation.
+//!
+//! For RNA-seq data, the RefSkip (CIGAR N) penalty serves a similar
+//! purpose to GATK SplitNCigarReads' overhang hard-clipping: bases
+//! near exon-intron boundaries that may be misaligned are penalized
+//! rather than physically removed. This is especially valuable when
+//! upstream pipelines do not run SplitNCigarReads or BQSR.
 //!
 //! Used by:
 //! - `counting/engine.rs` — Phase 0 quality adjustment before classification
@@ -12,36 +18,61 @@
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 
-/// Number of base-pairs on either side of an indel to penalize.
+/// Number of base-pairs on either side of an indel or splice junction to penalize.
 const BAQ_RADIUS: usize = 5;
-/// Quality penalty subtracted from BQ near indels (clamped to 0).
+/// Quality penalty subtracted from BQ near indels/splice junctions (clamped to 0).
 const BAQ_PENALTY: u8 = 20;
 
 /// Apply heuristic BAQ quality downgrade to a read's base qualities.
 ///
-/// Walks the CIGAR string, finds Ins/Del operations, and subtracts
+/// Walks the CIGAR string, finds Ins/Del/RefSkip operations, and subtracts
 /// `BAQ_PENALTY` (20) from base qualities within `BAQ_RADIUS` (5bp) of
-/// the indel boundary on the read. Qualities are clamped to 0 (never negative).
+/// the boundary on the read. Qualities are clamped to 0 (never negative).
 ///
-/// Returns `None` if the read has no indels (caller should use original quals).
+/// Returns `None` if the read has no indels or splice junctions (caller
+/// should use original quals).
 /// Returns `Some(adjusted_quals)` with the modified quality vector otherwise.
 ///
-/// This function is intentionally allocation-free for reads without indels
-/// (the common case), only allocating the Vec when adjustment is needed.
+/// This function is intentionally allocation-free for reads without
+/// indels/splice junctions (the common case), only allocating the Vec
+/// when adjustment is needed.
 pub fn apply_heuristic_baq(record: &Record) -> Option<Vec<u8>> {
     let cigar = record.cigar();
 
-    // Quick scan: does this read have any indels?
-    let has_indel = cigar.iter().any(|op| matches!(op, Cigar::Ins(_) | Cigar::Del(_)));
-    if !has_indel {
+    // Quick scan: does this read have any indels or splice junctions?
+    // RefSkip (CIGAR N) represents splice junctions in RNA-seq alignments.
+    // Bases near splice boundaries are susceptible to the same alignment
+    // artifacts as bases near indels and benefit from the same BQ penalty.
+    let needs_adjustment = cigar
+        .iter()
+        .any(|op| matches!(op, Cigar::Ins(_) | Cigar::Del(_) | Cigar::RefSkip(_)));
+    if !needs_adjustment {
         return None;
+    }
+
+    // Trace-level logging for per-read BAQ diagnostics (--trace flag).
+    if log::log_enabled!(log::Level::Trace) {
+        let n_refskip = cigar
+            .iter()
+            .filter(|op| matches!(op, Cigar::RefSkip(_)))
+            .count();
+        let n_indel = cigar
+            .iter()
+            .filter(|op| matches!(op, Cigar::Ins(_) | Cigar::Del(_)))
+            .count();
+        log::trace!(
+            "BAQ: adjusting read {} ({} indels, {} splice junctions)",
+            std::str::from_utf8(record.qname()).unwrap_or("?"),
+            n_indel,
+            n_refskip,
+        );
     }
 
     let quals = record.qual().to_vec();
     let mut adjusted = quals;
     let read_len = adjusted.len();
 
-    // Walk CIGAR to find read-coordinate positions of indel boundaries.
+    // Walk CIGAR to find read-coordinate positions of indel/splice boundaries.
     // `read_pos` tracks the current position on the read (query) sequence.
     let mut read_pos: usize = 0;
     for op in cigar.iter() {
@@ -64,16 +95,18 @@ pub fn apply_heuristic_baq(record: &Record) -> Option<Vec<u8>> {
                 read_pos = ins_end;
             }
             Cigar::Del(_) | Cigar::RefSkip(_) => {
-                // Deletion/skip: penalize BAQ_RADIUS bases on either side
-                // of the deletion boundary on the read.
-                // Deletion consumes reference but not query — read_pos stays.
+                // Deletion or splice junction: penalize BAQ_RADIUS bases
+                // on either side of the boundary on the read.
+                // For RefSkip (RNA splice junctions), this serves as a
+                // lightweight alternative to GATK SplitNCigarReads'
+                // overhang hard-clipping.
+                // Del/RefSkip consume reference but not query — read_pos stays.
                 let pen_start = read_pos.saturating_sub(BAQ_RADIUS);
                 let pen_end = (read_pos + BAQ_RADIUS).min(read_len);
 
                 for q in adjusted[pen_start..pen_end].iter_mut() {
                     *q = q.saturating_sub(BAQ_PENALTY);
                 }
-                // Del/RefSkip don't advance read_pos (no query consumption)
             }
             Cigar::SoftClip(len) => {
                 read_pos += *len as usize;
