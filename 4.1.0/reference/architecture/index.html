@@ -1,0 +1,1617 @@
+<!DOCTYPE html><html class="no-js" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width,initial-scale=1" name="viewport">
+<meta content="High-performance variant counting from BAM files" name="description">
+<meta content="MSK-ACCESS" name="author">
+<link href="https://msk-access.github.io/gbcms/4.1.0/reference/architecture/" rel="canonical">
+<link href="../../nextflow/examples/" rel="prev">
+<link href="../input-formats/" rel="next">
+<link href="../../assets/images/favicon.png" rel="icon">
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator">
+<title>Architecture - gbcms</title>
+<link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet">
+<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet">
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../../css/print-site.css" rel="stylesheet">
+<link href="../../css/print-site-material.css" rel="stylesheet">
+<link href="../../css/timeago.css" rel="stylesheet">
+<link href="../../stylesheets/extra.css" rel="stylesheet">
+<link href="../../assets/stylesheets/panzoom.css" rel="stylesheet">
+<script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+<link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style><meta name="panzoom-theme" content="material">
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#architecture">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="gbcms" class="md-header__button md-logo" data-md-component="logo" href="../.." title="gbcms">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            gbcms
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="custom" data-md-color-media="(prefers-color-scheme: light)" data-md-color-primary="custom" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio">
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="custom" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-primary="custom" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio">
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text">
+<label class="md-search__icon md-icon" for="__search">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+<div class="md-search__suggest" data-md-component="search-suggest"></div>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/msk-access/gbcms" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="gbcms" class="md-nav__button md-logo" data-md-component="logo" href="../.." title="gbcms">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    gbcms
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/msk-access/gbcms" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_2" type="checkbox">
+<div class="md-nav__link md-nav__container">
+<a class="md-nav__link" href="../../getting-started/">
+<span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+</a>
+<label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+<span class="md-nav__icon md-icon"></span>
+</label>
+</div>
+<nav aria-expanded="false" aria-labelledby="__nav_2_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_2">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/installation/">
+<span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/quickstart/">
+<span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_3" type="checkbox">
+<div class="md-nav__link md-nav__container">
+<a class="md-nav__link" href="../../cli/">
+<span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+</a>
+<label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+<span class="md-nav__icon md-icon"></span>
+</label>
+</div>
+<nav aria-expanded="false" aria-labelledby="__nav_3_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/dna/">
+<span class="md-ellipsis">
+    
+  
+    DNA Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/rna/">
+<span class="md-ellipsis">
+    
+  
+    RNA Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/normalize/">
+<span class="md-ellipsis">
+    
+  
+    Normalize Command
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_4" type="checkbox">
+<div class="md-nav__link md-nav__container">
+<a class="md-nav__link" href="../../nextflow/">
+<span class="md-ellipsis">
+    
+  
+    Nextflow Pipeline
+  
+
+    
+  </span>
+</a>
+<label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+<span class="md-nav__icon md-icon"></span>
+</label>
+</div>
+<nav aria-expanded="false" aria-labelledby="__nav_4_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Nextflow Pipeline
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../nextflow/samplesheet/">
+<span class="md-ellipsis">
+    
+  
+    Samplesheet
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../nextflow/parameters/">
+<span class="md-ellipsis">
+    
+  
+    Parameters
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../nextflow/examples/">
+<span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_5" type="checkbox">
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    How It Works
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="true" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    How It Works
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox">
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#system-overview">
+<span class="md-ellipsis">
+      
+        System Overview
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#data-flow">
+<span class="md-ellipsis">
+      
+        Data Flow
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#genomic-binning">
+<span class="md-ellipsis">
+      
+        Genomic Binning
+      
+    </span>
+</a>
+<nav aria-label="Genomic Binning" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#binning-parameters">
+<span class="md-ellipsis">
+      
+        Binning Parameters
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#coordinate-system">
+<span class="md-ellipsis">
+      
+        Coordinate System
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#formulas">
+<span class="md-ellipsis">
+      
+        Formulas
+      
+    </span>
+</a>
+<nav aria-label="Formulas" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#variant-allele-frequency-vaf">
+<span class="md-ellipsis">
+      
+        Variant Allele Frequency (VAF)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#strand-bias-fishers-exact-test">
+<span class="md-ellipsis">
+      
+        Strand Bias (Fisher's Exact Test)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#structural-invariants">
+<span class="md-ellipsis">
+      
+        Structural Invariants
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#diagnostic-output-fields">
+<span class="md-ellipsis">
+      
+        Diagnostic Output Fields
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#module-structure">
+<span class="md-ellipsis">
+      
+        Module Structure
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#configuration">
+<span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#full-pipeline-end-to-end-example">
+<span class="md-ellipsis">
+      
+        Full Pipeline: End-to-End Example
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#comparison-with-original-gbcms">
+<span class="md-ellipsis">
+      
+        Comparison with Original GBCMS
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#related">
+<span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../input-formats/">
+<span class="md-ellipsis">
+    
+  
+    Input Formats
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../output-formats/">
+<span class="md-ellipsis">
+    
+  
+    Output Formats
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../variant-normalization/">
+<span class="md-ellipsis">
+    
+  
+    Variant Normalization
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../read-filters/">
+<span class="md-ellipsis">
+    
+  
+    Read Filters
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../rna-splice-handling/">
+<span class="md-ellipsis">
+    
+  
+    RNA Splice Handling
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../allele-classification/">
+<span class="md-ellipsis">
+    
+  
+    Allele Classification
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../counting-metrics/">
+<span class="md-ellipsis">
+    
+  
+    Counting &amp; Metrics
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../mfsd-report/">
+<span class="md-ellipsis">
+    
+  
+    mFSD Report
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../complex-indels/">
+<span class="md-ellipsis">
+    
+  
+    Complex Indels
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../glossary/">
+<span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_6" type="checkbox">
+<label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_6_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_6">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/developer-guide/">
+<span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/testing-guide/">
+<span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/release-guide/">
+<span class="md-ellipsis">
+    
+  
+    Release Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/changelog/">
+<span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/contributing/">
+<span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_7" type="checkbox">
+<label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Resources
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_7_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_7">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Resources
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../resources/troubleshooting/">
+<span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../resources/citation/">
+<span class="md-ellipsis">
+    
+  
+    Citation
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#system-overview">
+<span class="md-ellipsis">
+      
+        System Overview
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#data-flow">
+<span class="md-ellipsis">
+      
+        Data Flow
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#genomic-binning">
+<span class="md-ellipsis">
+      
+        Genomic Binning
+      
+    </span>
+</a>
+<nav aria-label="Genomic Binning" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#binning-parameters">
+<span class="md-ellipsis">
+      
+        Binning Parameters
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#coordinate-system">
+<span class="md-ellipsis">
+      
+        Coordinate System
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#formulas">
+<span class="md-ellipsis">
+      
+        Formulas
+      
+    </span>
+</a>
+<nav aria-label="Formulas" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#variant-allele-frequency-vaf">
+<span class="md-ellipsis">
+      
+        Variant Allele Frequency (VAF)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#strand-bias-fishers-exact-test">
+<span class="md-ellipsis">
+      
+        Strand Bias (Fisher's Exact Test)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#structural-invariants">
+<span class="md-ellipsis">
+      
+        Structural Invariants
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#diagnostic-output-fields">
+<span class="md-ellipsis">
+      
+        Diagnostic Output Fields
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#module-structure">
+<span class="md-ellipsis">
+      
+        Module Structure
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#configuration">
+<span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#full-pipeline-end-to-end-example">
+<span class="md-ellipsis">
+      
+        Full Pipeline: End-to-End Example
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#comparison-with-original-gbcms">
+<span class="md-ellipsis">
+      
+        Comparison with Original GBCMS
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#related">
+<span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<nav aria-label="Navigation" class="md-path">
+<ol class="md-path__list">
+<li class="md-path__item">
+<a class="md-path__link" href="../..">
+<span class="md-ellipsis">
+    Home
+  </span>
+</a>
+</li>
+<li class="md-path__item">
+<a class="md-path__link" href="./">
+<span class="md-ellipsis">
+    How It Works
+  </span>
+</a>
+</li>
+</ol>
+</nav>
+<article class="md-content__inner md-typeset">
+<div><h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">¶</a></h1>
+<p>gbcms uses a hybrid Python/Rust architecture for maximum performance.</p>
+<h2 id="system-overview">System Overview<a class="headerlink" href="#system-overview" title="Permanent link">¶</a></h2>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TB
+    subgraph Python [🐍 Python Layer]
+        CLI[CLI - cli.py] --&gt;|dna / rna| Pipeline[Orchestration - pipeline.py]
+        Pipeline --&gt; Reader[Input Adapters]
+        Pipeline --&gt; Writer[Output Writers]
+    end
+
+    subgraph Rust [🦀 Rust Layer]
+        Counter[count_bam_binned - counting/engine.rs] --&gt; CIGAR[CIGAR Parser]
+        Counter --&gt; RNA[RNA Filters - rna.rs]
+        Counter --&gt; Pangenome[Haplotype Matrix - pangenome.rs]
+        Counter --&gt; WFA[WFA Fast Path - wfa_router.rs]
+        Counter --&gt; PairHMM[PairHMM Backend - pairhmm.rs]
+        Counter --&gt; Stats[Strand Bias - stats.rs]
+        ParquetWriter[write_fsd_parquet - parquet_writer.rs]
+    end
+
+    Pipeline --&gt;|PyO3| Counter
+    Counter --&gt;|BaseCounts| Pipeline
+    Pipeline --&gt;|mfsd-parquet| ParquetWriter
+
+    classDef pythonStyle fill:#3776ab,color:#fff,stroke:#2c5f8a,stroke-width:2px;
+    classDef rustStyle fill:#dea584,color:#000,stroke:#c48a6a,stroke-width:2px;
+    class Python pythonStyle;
+    class Rust rustStyle;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<hr>
+<h2 id="data-flow">Data Flow<a class="headerlink" href="#data-flow" title="Permanent link">¶</a></h2>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    subgraph Input
+        VCF["VCF/MAF"]
+        BAM["BAM Files"]
+        FASTA["Reference FASTA"]
+    end
+
+    subgraph Process
+        Load["Load Variants"]
+        Prepare["Prepare\n(validate + left-align + decomp detect)"]
+        Count["Count Reads"]
+    end
+
+    subgraph Output ["Required Output"]
+        Result["VCF/MAF + Counts"]
+    end
+
+    subgraph OptOut ["Optional Output (--mfsd-parquet)"]
+        Parquet["<sample>.fsd.parquet"]
+    end
+
+    VCF --&gt; Load --&gt; Prepare
+    FASTA --&gt; Prepare
+    Prepare --&gt; Count
+    BAM --&gt; Count
+    Count --&gt; Result
+    Count -.-&gt;|"--mfsd-parquet"| Parquet
+</sample></code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<hr>
+<h2 id="genomic-binning">Genomic Binning<a class="headerlink" href="#genomic-binning" title="Permanent link">¶</a></h2>
+<p>To minimise <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> I/O, the Rust engine groups co-located variants into <strong>genomic bins</strong> before counting. A single <code>bam.fetch()</code> is issued per bin, and reads fetched for that region are classified against <strong>all variants in the bin</strong> in one pass. For clustered inputs (e.g. a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with hundreds of variants on the same gene) this reduces <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> seeks from O(N) per-variant to O(B) per-bin — typically 5-20× fewer I/O operations.</p>
+<p>This design mirrors the original C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>--max_block_size</code> / <code>--max_block_dist</code> architecture, re-implemented as a pure Rust streaming algorithm.</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    Variants(["📋 Variants (any order)"]):::start --&gt; Sort["Sort indices\nby chrom + pos"]
+    Sort --&gt; NewBin["Open new bin\nat variant pos"]
+    NewBin --&gt; Extend{"Next variant\nwithin window\n&amp; same chrom?"}
+    Extend --&gt;|"Yes"| MaxCheck{"≥ 200 variants\nin bin?"}
+    MaxCheck --&gt;|"No — extend"| GrowBin["Add variant\nextend bin_end"]
+    GrowBin --&gt; Extend
+    MaxCheck --&gt;|"Yes — split"| NewBin
+    Extend --&gt;|"No / new chrom"| Pad["Pad bin:\nmax(repeat_span+2, 5)bp"]
+    Pad --&gt; Fetch["bam.fetch(bin_start, bin_end)\n— 1 I/O per bin ⚡"]:::io
+    Fetch --&gt; Classify["Classify each read\nagainst all variants in bin\n(Rayon parallel across bins)"]:::parallel
+    Classify --&gt; Out(["📊 BaseCounts per variant"]):::pass
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef io fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef parallel fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h3 id="binning-parameters">Binning Parameters<a class="headerlink" href="#binning-parameters" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Value</th>
+<th style="text-align: left;">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>BIN_WINDOW</code></td>
+<td style="text-align: left;"><strong>10,000 bp</strong></td>
+<td style="text-align: left;">Maximum span of a single bin. Variants beyond this distance start a new bin.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>BIN_MAX_VARIANTS</code></td>
+<td style="text-align: left;"><strong>200</strong></td>
+<td style="text-align: left;">Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Bin padding</td>
+<td style="text-align: left;"><code>max(repeat_span + 2, 5)</code> bp</td>
+<td style="text-align: left;">Ensures reads overlapping bin edges are captured. Uses each variant's detected tandem-repeat span.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Parallelism</td>
+<td style="text-align: left;">Rayon <code>par_iter()</code> over bins</td>
+<td style="text-align: left;">Each thread owns its own <code>BamReader</code> handle; no locking required across bins.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Output order</td>
+<td style="text-align: left;">Preserved</td>
+<td style="text-align: left;">Variants are sorted by index internally; results are written back in original input order.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Performance Implication</p>
+<p>For a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 500 variants on <em>TP53</em> (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual <code>bam.fetch()</code> calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Not a <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</p>
+<p><code>BIN_WINDOW</code> and <code>BIN_MAX_VARIANTS</code> are internal performance constants — they do not affect output values. Parity testing (<code>D1</code> regression suite) validates that binned and per-variant paths produce identical <code>BaseCounts</code>.</p>
+</div>
+<hr>
+<h2 id="coordinate-system">Coordinate System<a class="headerlink" href="#coordinate-system" title="Permanent link">¶</a></h2>
+<p>All coordinates normalized to <strong>0-based, half-open</strong> internally:</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    VCF["VCF (1-based)"] --&gt;|"-1 (e.g. VCF:100 → internal:99)"| Internal["Internal (0-based)"]
+    MAF["MAF (1-based)"] --&gt;|"-1"| Internal
+    Internal --&gt;|"→ Rust engine"| Rust["gbcms._rs"]
+    Rust --&gt;|"+1 (e.g. internal:99 → output:100)"| Output["Output (1-based)"]
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Format</th>
+<th style="text-align: left;">System</th>
+<th style="text-align: left;">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input</td>
+<td style="text-align: left;">1-based</td>
+<td style="text-align: left;">chr1:100</td>
+</tr>
+<tr>
+<td style="text-align: left;">Internal</td>
+<td style="text-align: left;">0-based</td>
+<td style="text-align: left;">chr1:99</td>
+</tr>
+<tr>
+<td style="text-align: left;">Output</td>
+<td style="text-align: left;">1-based</td>
+<td style="text-align: left;">chr1:100</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="formulas">Formulas<a class="headerlink" href="#formulas" title="Permanent link">¶</a></h2>
+<h3 id="variant-allele-frequency-vaf">Variant Allele Frequency (<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>)<a class="headerlink" href="#variant-allele-frequency-vaf" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>VAF = AD / (RD + AD)
+</code></pre></div>
+<p>Where:
+- <strong><abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr></strong> = Alternate allele read count
+- <strong><abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr></strong> = Reference allele read count</p>
+<h3 id="strand-bias-fishers-exact-test">Strand Bias (Fisher's Exact Test)<a class="headerlink" href="#strand-bias-fishers-exact-test" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>         |  Forward  Reverse  |
+<a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>    -----+--------------------+
+<a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>    Ref  |    a        b      |
+<a href="#__codelineno-1-4" id="__codelineno-1-4" name="__codelineno-1-4"></a>    Alt  |    c        d      |
+<a href="#__codelineno-1-5" id="__codelineno-1-5" name="__codelineno-1-5"></a>    -----+--------------------+
+<a href="#__codelineno-1-6" id="__codelineno-1-6" name="__codelineno-1-6"></a>
+<a href="#__codelineno-1-7" id="__codelineno-1-7" name="__codelineno-1-7"></a>    p-value = Fisher's exact test on 2×2 contingency table
+</code></pre></div>
+<p>Low p-value (&lt; 0.05) indicates potential strand bias artifact.</p>
+<h3 id="structural-invariants">Structural Invariants<a class="headerlink" href="#structural-invariants" title="Permanent link">¶</a></h3>
+<p>The Rust counting engine (<code>BaseCounts</code>) maintains these invariants at all times:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Invariant</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">ALT decomposition</td>
+<td style="text-align: left;"><code>any_alt = AD + partial_alt</code></td>
+<td style="text-align: left;">any_alt decomposes into full ALT matches and partial-only matches</td>
+</tr>
+<tr>
+<td style="text-align: left;">ALT monotonicity</td>
+<td style="text-align: left;"><code>any_alt &gt;= AD</code></td>
+<td style="text-align: left;">Reads with any ALT evidence ≥ reads with full ALT match</td>
+</tr>
+<tr>
+<td style="text-align: left;">Depth decomposition</td>
+<td style="text-align: left;"><code>DP &gt;= RD + AD + partial_alt + n_count</code></td>
+<td style="text-align: left;"><abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> includes all read categories; gap = reads classified as neither</td>
+</tr>
+</tbody>
+</table>
+<h3 id="diagnostic-output-fields">Diagnostic Output Fields<a class="headerlink" href="#diagnostic-output-fields" title="Permanent link">¶</a></h3>
+<p>Three diagnostic fields are always present in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (FORMAT tags) and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> Tag</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>any_alt</code></td>
+<td style="text-align: left;"><code>AAD</code></td>
+<td style="text-align: left;">Reads with ALT evidence at ≥1 discriminating position</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>partial_alt</code></td>
+<td style="text-align: left;"><code>PAD</code></td>
+<td style="text-align: left;">Reads matching ALT at some but not all positions (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex only; always 0 for <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/indel)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>n_count</code></td>
+<td style="text-align: left;"><code>NAD</code></td>
+<td style="text-align: left;">Reads with N base at ≥1 discriminating position (duplex masking QC)</td>
+</tr>
+</tbody>
+</table>
+<p>N bases are <strong>strictly uninformative</strong> — they increment <code>n_count</code> for QC monitoring but are excluded from <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, any_alt, and partial_alt. See <a href="../counting-metrics/">Counting Metrics</a> for full details.</p>
+<hr>
+<h2 id="module-structure">Module Structure<a class="headerlink" href="#module-structure" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a>src/gbcms/
+<a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>├── cli.py           # Typer CLI (dna, rna, normalize, run commands)
+<a href="#__codelineno-2-3" id="__codelineno-2-3" name="__codelineno-2-3"></a>├── pipeline.py      # Orchestration (~450 LOC)
+<a href="#__codelineno-2-4" id="__codelineno-2-4" name="__codelineno-2-4"></a>├── normalize.py     # Standalone normalization workflow
+<a href="#__codelineno-2-5" id="__codelineno-2-5" name="__codelineno-2-5"></a>├── core/
+<a href="#__codelineno-2-6" id="__codelineno-2-6" name="__codelineno-2-6"></a>│   └── kernel.py    # Coordinate normalization
+<a href="#__codelineno-2-7" id="__codelineno-2-7" name="__codelineno-2-7"></a>├── io/
+<a href="#__codelineno-2-8" id="__codelineno-2-8" name="__codelineno-2-8"></a>│   ├── input.py     # VcfReader, MafReader
+<a href="#__codelineno-2-9" id="__codelineno-2-9" name="__codelineno-2-9"></a>│   └── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
+<a href="#__codelineno-2-10" id="__codelineno-2-10" name="__codelineno-2-10"></a>├── models/
+<a href="#__codelineno-2-11" id="__codelineno-2-11" name="__codelineno-2-11"></a>│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, AlignmentConfig)
+<a href="#__codelineno-2-12" id="__codelineno-2-12" name="__codelineno-2-12"></a>└── utils/
+<a href="#__codelineno-2-13" id="__codelineno-2-13" name="__codelineno-2-13"></a>    └── logging.py   # Structured logging
+<a href="#__codelineno-2-14" id="__codelineno-2-14" name="__codelineno-2-14"></a>
+<a href="#__codelineno-2-15" id="__codelineno-2-15" name="__codelineno-2-15"></a>rust/src/
+<a href="#__codelineno-2-16" id="__codelineno-2-16" name="__codelineno-2-16"></a>├── lib.rs                    # PyO3 module exports
+<a href="#__codelineno-2-17" id="__codelineno-2-17" name="__codelineno-2-17"></a>├── counting/
+<a href="#__codelineno-2-18" id="__codelineno-2-18" name="__codelineno-2-18"></a>│   ├── mod.rs                # Submodule re-exports
+<a href="#__codelineno-2-19" id="__codelineno-2-19" name="__codelineno-2-19"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+<a href="#__codelineno-2-20" id="__codelineno-2-20" name="__codelineno-2-20"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
+<a href="#__codelineno-2-21" id="__codelineno-2-21" name="__codelineno-2-21"></a>│   ├── alignment.rs          # Smith-Waterman implementation
+<a href="#__codelineno-2-22" id="__codelineno-2-22" name="__codelineno-2-22"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+<a href="#__codelineno-2-23" id="__codelineno-2-23" name="__codelineno-2-23"></a>│   ├── pangenome.rs          # Haplotype matrix construction
+<a href="#__codelineno-2-24" id="__codelineno-2-24" name="__codelineno-2-24"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
+<a href="#__codelineno-2-25" id="__codelineno-2-25" name="__codelineno-2-25"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+<a href="#__codelineno-2-26" id="__codelineno-2-26" name="__codelineno-2-26"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
+<a href="#__codelineno-2-27" id="__codelineno-2-27" name="__codelineno-2-27"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+<a href="#__codelineno-2-28" id="__codelineno-2-28" name="__codelineno-2-28"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
+<a href="#__codelineno-2-29" id="__codelineno-2-29" name="__codelineno-2-29"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
+<a href="#__codelineno-2-30" id="__codelineno-2-30" name="__codelineno-2-30"></a>├── normalize/
+<a href="#__codelineno-2-31" id="__codelineno-2-31" name="__codelineno-2-31"></a>│   ├── mod.rs                # Submodule re-exports
+<a href="#__codelineno-2-32" id="__codelineno-2-32" name="__codelineno-2-32"></a>│   ├── engine.rs             # Normalization pipeline
+<a href="#__codelineno-2-33" id="__codelineno-2-33" name="__codelineno-2-33"></a>│   ├── left_align.rs         # bcftools-style left-alignment
+<a href="#__codelineno-2-34" id="__codelineno-2-34" name="__codelineno-2-34"></a>│   ├── decomp.rs             # Homopolymer decomposition
+<a href="#__codelineno-2-35" id="__codelineno-2-35" name="__codelineno-2-35"></a>│   ├── fasta.rs              # Reference sequence fetcher
+<a href="#__codelineno-2-36" id="__codelineno-2-36" name="__codelineno-2-36"></a>│   ├── repeat.rs             # Tandem repeat detection
+<a href="#__codelineno-2-37" id="__codelineno-2-37" name="__codelineno-2-37"></a>│   └── types.rs              # NormResult enum
+<a href="#__codelineno-2-38" id="__codelineno-2-38" name="__codelineno-2-38"></a>├── shared/
+<a href="#__codelineno-2-39" id="__codelineno-2-39" name="__codelineno-2-39"></a>│   ├── mod.rs                # Submodule re-exports
+<a href="#__codelineno-2-40" id="__codelineno-2-40" name="__codelineno-2-40"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+<a href="#__codelineno-2-41" id="__codelineno-2-41" name="__codelineno-2-41"></a>│   ├── stats.rs              # Fisher's exact test (strand bias)
+<a href="#__codelineno-2-42" id="__codelineno-2-42" name="__codelineno-2-42"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
+<a href="#__codelineno-2-43" id="__codelineno-2-43" name="__codelineno-2-43"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
+<a href="#__codelineno-2-44" id="__codelineno-2-44" name="__codelineno-2-44"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
+<a href="#__codelineno-2-45" id="__codelineno-2-45" name="__codelineno-2-45"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
+</code></pre></div>
+<hr>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">¶</a></h2>
+<p>All settings via mode-specific Pydantic models:</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TB
+    Base["GbcmsBaseConfig"]:::base --&gt; DnaConfig["GbcmsDnaConfig"]
+    Base --&gt; RnaConfig["GbcmsRnaConfig"]
+
+    DnaConfig --&gt; DnaD["mode=dna\nMAPQ=20"]
+    RnaConfig --&gt; RnaD["mode=rna, MAPQ=1\npairhmm relaxed RT gaps"]
+    RnaConfig --&gt; RnaX["enforce_strandedness\nrna_editing_db"]
+
+    Base --&gt; Filters["ReadFilters"]
+    Base --&gt; Quality["QualityThresholds"]
+    Base --&gt; Output2["OutputConfig"]
+    Base --&gt; Align["AlignmentConfig"]
+
+    Filters --&gt; FD["secondary · duplicates\nsupplementary · qc_failed\nimproper_pair · indel"]
+    Quality --&gt; QD["min_mapq · min_baseq\nfragment_qual_threshold"]
+    Output2 --&gt; OD["output_dir · format · suffix\ncolumn_prefix · mfsd · mfsd_parquet"]
+    Align --&gt; AD["backend: pairhmm|sw\nllr_threshold · gap_*_prob"]
+
+    classDef base fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<p>See <a href="file:///src/gbcms/models/core.py">models/core.py</a> for definitions.</p>
+<hr>
+<h2 id="full-pipeline-end-to-end-example">Full Pipeline: End-to-End Example<a class="headerlink" href="#full-pipeline-end-to-end-example" title="Permanent link">¶</a></h2>
+<p>Here's how a single variant is processed through the complete pipeline:</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>sequenceDiagram
+    participant CLI as CLI (Python)
+    participant Pipeline as Pipeline
+    participant Reader as VCF/MAF Reader
+    participant Kernel as Coordinate Kernel
+    participant Rust as Rust Engine
+    participant BAM as BAM File
+
+    CLI-&gt;&gt;Pipeline: run(config)
+    Pipeline-&gt;&gt;Reader: load variants
+    Reader-&gt;&gt;Kernel: normalize coordinates
+    Kernel--&gt;&gt;Reader: 0-based Variant objects
+    Reader--&gt;&gt;Pipeline: List[Variant]
+
+    loop For each BAM sample
+        Pipeline-&gt;&gt;Rust: count_bam_binned(bam, variants, config)
+        loop For each genomic bin (parallel via Rayon)
+            Rust-&gt;&gt;BAM: fetch(chrom, pos−5, pos+ref_len+5)
+            BAM--&gt;&gt;Rust: Iterator of reads
+            loop For each read
+                Note over Rust: Apply filter cascade
+                Note over Rust: Dispatch to type checker
+                Note over Rust: Phase 1+2 haplotype reconstruction
+                Note over Rust: Phase 2.5 edit-distance fast-path
+                Note over Rust: Phase 3 WFA triage → PairHMM LLR
+                Note over Rust: Update read + fragment counts
+            end
+            Note over Rust: Compute Fisher strand bias
+        end
+        Rust--&gt;&gt;Pipeline: Vec[BaseCounts]
+    end
+
+    Pipeline-&gt;&gt;Pipeline: Write output (VCF/MAF)
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<hr>
+<h2 id="comparison-with-original-gbcms">Comparison with Original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr><a class="headerlink" href="#comparison-with-original-gbcms" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Feature</th>
+<th style="text-align: left;">Original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr></th>
+<th style="text-align: left;">gbcms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Counting algorithm</td>
+<td style="text-align: left;">Region-based chunking, position matching</td>
+<td style="text-align: left;">Per-variant <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> traversal</td>
+</tr>
+<tr>
+<td style="text-align: left;">Indel detection</td>
+<td style="text-align: left;">Exact position match only</td>
+<td style="text-align: left;"><strong>Windowed scan</strong> (±5bp) with 3-layer safeguards: sequence identity, closest match, reference context validation</td>
+</tr>
+<tr>
+<td style="text-align: left;">Complex variants</td>
+<td style="text-align: left;">Optional via <code>--generic_counting</code></td>
+<td style="text-align: left;">Always uses haplotype reconstruction</td>
+</tr>
+<tr>
+<td style="text-align: left;">Complex quality handling</td>
+<td style="text-align: left;">Exact match only (no quality awareness)</td>
+<td style="text-align: left;"><strong>Masked comparison</strong> — bases below <code>--min-baseq</code> are masked out, ambiguity detection prevents false positives</td>
+</tr>
+<tr>
+<td style="text-align: left;">Base quality filtering</td>
+<td style="text-align: left;">No base quality threshold</td>
+<td style="text-align: left;">Default <code>--min-baseq 20</code> (Phred Q20)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> handling</td>
+<td style="text-align: left;">Not explicit</td>
+<td style="text-align: left;">Dedicated <code>check_mnp</code> with contiguity check</td>
+</tr>
+<tr>
+<td style="text-align: left;">Fragment counting</td>
+<td style="text-align: left;">Optional (<code>--fragment_count</code>), majority-rule</td>
+<td style="text-align: left;">Always computed, quality-weighted consensus with discard</td>
+</tr>
+<tr>
+<td style="text-align: left;">Positive strand counts</td>
+<td style="text-align: left;">Optional (<code>--positive_count</code>)</td>
+<td style="text-align: left;">Always computed</td>
+</tr>
+<tr>
+<td style="text-align: left;">Strand bias</td>
+<td style="text-align: left;">Not computed</td>
+<td style="text-align: left;">Fisher's exact test (read + fragment level)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Fractional depth</td>
+<td style="text-align: left;"><code>--fragment_fractional_weight</code></td>
+<td style="text-align: left;">Not implemented</td>
+</tr>
+<tr>
+<td style="text-align: left;">Parallelism</td>
+<td style="text-align: left;">OpenMP block-based</td>
+<td style="text-align: left;">Rayon per-variant</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="../allele-classification/">Allele Classification</a> — How each variant type is counted</li>
+<li><a href="../rna-splice-handling/">RNA Splice-Junction Handling</a> — How gbcms handles splice-boundary artifacts vs GATK SplitNCigarReads</li>
+<li><a href="../variant-normalization/">Variant Normalization</a> — How variants are prepared before counting</li>
+<li><a href="../input-formats/">Input Formats</a> — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> specifications</li>
+<li><a href="../glossary/">Glossary</a> — Term definitions</li>
+</ul>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div>
+<aside class="md-source-file">
+<span class="md-source-file__fact">
+<span class="md-icon" title="Last update">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 4, 2026 17:17:14 UTC"><span class="timeago" datetime="2026-05-04T17:17:14+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 4, 2026 17:17:14 UTC">2026-05-04</span>
+</span>
+<span class="md-source-file__fact">
+<span class="md-icon" title="Created">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="February 6, 2026 16:48:48 UTC"><span class="timeago" datetime="2026-02-06T16:48:48+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="February 6, 2026 16:48:48 UTC">2026-02-06</span>
+</span>
+</aside>
+</article>
+</div>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+<div class="md-copyright__highlight">
+      Developed by <a href="https://github.com/rhshah">Ronak H Shah</a> @ 
+<a href="https://www.mskcc.org">MSKCC</a> | 
+Built with <a href="https://antigravity.google/">Antigravity</a> | 
+<a href="https://github.com/msk-access/gbcms/blob/main/LICENSE">AGPL-3.0</a>
+</div>
+</div>
+<div class="md-social">
+<a class="md-social__link" href="https://github.com/msk-access/gbcms" rel="noopener" target="_blank" title="github.com">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+<script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script src="../../js/print-site.js"></script>
+<script src="../../js/timeago.min.js"></script>
+<script src="../../js/timeago_mkdocs_material.js"></script>
+<script src="../../javascripts/mathjax.js"></script>
+<script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script src="../../assets/javascripts/panzoom.min.js"></script>
+<script src="../../assets/javascripts/zoompan.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@11.4.0/dist/mermaid.esm.min.mjs";
+window.mermaidConfig = {default: {
+    startOnLoad: false
+}};</script>
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
