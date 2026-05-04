@@ -20,7 +20,7 @@
 *[CLI]: Command Line Interface - Terminal-based program interface
 *[CI]: Continuous Integration - Automated build and test system
 *[CD]: Continuous Deployment - Automated release system
-*[BAQ]: Base Alignment Quality - Heuristic quality downgrade near indels
+*[BAQ]: Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions
 *[UMI]: Unique Molecular Identifier - Molecular barcode for deduplication
 *[PairHMM]: Pair Hidden Markov Model - Probabilistic alignment using base quality scores
 *[SW]: Smith-Waterman - Edit-distance based local sequence alignment algorithm

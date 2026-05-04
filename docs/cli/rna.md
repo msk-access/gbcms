@@ -70,6 +70,9 @@ flowchart LR
 !!! info "Shared Arguments"
     RNA mode shares all [required arguments](dna.md#required-arguments), [output options](dna.md#output-options), [filtering options](dna.md#filtering-options), [BAQ options](dna.md#baq-options), [UMI options](dna.md#umi-options), and [debugging options](dna.md#debugging-options) with DNA mode. See the [`gbcms dna` reference](dna.md) for full descriptions.
 
+!!! tip "BAQ is On by Default in RNA Mode"
+    Unlike DNA mode, `--apply-baq` defaults to **on** for RNA. BAQ penalizes bases within 5 bp of both indels and splice junctions (CIGAR `N`), serving as a lightweight alternative to GATK SplitNCigarReads. Disable with `--no-baq` if your upstream workflow already runs SplitNCigarReads or BQSR. See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
+
 | Option | Description |
 |:-------|:------------|
 | `--variants`, `-v` | VCF or MAF file |
@@ -323,6 +326,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 | **Secondary filter** | on | on (same) |
 | **Supplementary filter** | on | on (same) |
 | **QC-failed filter** | on | on (same) |
+| **BAQ default** | off | **on** (no upstream BQSR; splice penalty) |
 | **Strandedness filter** | N/A | enabled (dUTP) |
 | **RNA editing flagging** | N/A | optional (`--rna-editing-db`) |
 | **Output columns** | Standard (DP, RD, AD, etc.) | Standard **+ 5 RNA columns** |
