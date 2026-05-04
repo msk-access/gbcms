@@ -1,9 +1,9 @@
 """
-Tests for gbcms CLI commands (dna, rna, run).
+Tests for gbcms CLI commands (dna, rna, normalize).
 
 Verifies that:
 - dna and rna commands exist and show help
-- run command is deprecated but still functional
+- run command was removed in v4.1.0 (deprecated in v4.0.0)
 - RNA-specific options are not accepted by dna command
 - CLI correctly routes to the right Pipeline mode
 
@@ -55,10 +55,11 @@ def test_rna_command_help():
     assert "enforce_strandedness" in rna_params
 
 
-def test_run_command_exists():
-    """'gbcms run --help' still exits 0 (deprecated but not removed)."""
-    result = runner.invoke(app, ["run", "--help"])
-    assert result.exit_code == 0, f"Exit code {result.exit_code}: {result.output}"
+def test_run_command_removed():
+    """'gbcms run' was removed in v4.1.0 (deprecated since v4.0.0)."""
+    assert (
+        "run" not in _click_app.commands
+    ), "'gbcms run' should have been removed in v4.1.0 — found it still registered"
 
 
 # ── Option Isolation ──────────────────────────────────────────────────────

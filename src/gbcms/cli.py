@@ -31,7 +31,7 @@ from .models.core import (
 from .pipeline import Pipeline
 from .utils import setup_logging
 
-__all__ = ["app", "dna", "rna", "run", "normalize"]
+__all__ = ["app", "dna", "rna", "normalize"]
 
 logger = logging.getLogger(__name__)
 
@@ -711,102 +711,6 @@ def rna(
     except Exception as e:
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
-
-
-@app.command(deprecated=True, hidden=True)
-def run(
-    # Same signature as dna() — delegates fully.
-    variant_file: Path = typer.Option(
-        ..., "--variants", "-v", help="Path to VCF or MAF file containing variants"
-    ),
-    bam_files: list[Path] | None = typer.Option(None, "--bam", "-b", help="Path to BAM file(s)."),
-    bam_list: Path | None = typer.Option(
-        None, "--bam-list", "-L", help="File containing list of BAM paths"
-    ),
-    reference: Path = typer.Option(..., "--fasta", "-f", help="Path to reference FASTA file"),
-    output_dir: Path = typer.Option(
-        ..., "--output-dir", "-o", help="Directory to write output files"
-    ),
-    output_format: OutputFormat = typer.Option(OutputFormat.VCF, "--format"),
-    output_suffix: str = typer.Option("", "--suffix", "-S"),
-    column_prefix: str = typer.Option("", "--column-prefix"),
-    preserve_barcode: bool = typer.Option(False, "--preserve-barcode"),
-    mfsd: bool = typer.Option(False, "--mfsd"),
-    mfsd_parquet: bool = typer.Option(False, "--mfsd-parquet"),
-    mfsd_report: bool = typer.Option(False, "--mfsd-report"),
-    mfsd_report_min_alt: int = typer.Option(3, "--mfsd-report-min-alt"),
-    mfsd_report_max_variants: int = typer.Option(20, "--mfsd-report-max-variants"),
-    apply_baq: bool = typer.Option(False, "--apply-baq/--no-baq"),
-    umi_tag: str | None = typer.Option(None, "--umi-tag"),
-    min_mapq: int = typer.Option(20, "--min-mapq"),
-    min_baseq: int = typer.Option(20, "--min-baseq"),
-    fragment_qual_threshold: int = typer.Option(10, "--fragment-qual-threshold"),
-    context_padding: int = typer.Option(5, "--context-padding", min=1, max=50),
-    adaptive_context: bool = typer.Option(True, "--adaptive-context/--no-adaptive-context"),
-    filter_duplicates: bool = typer.Option(True),
-    filter_secondary: bool = typer.Option(True),
-    filter_supplementary: bool = typer.Option(True),
-    filter_qc_failed: bool = typer.Option(True),
-    filter_improper_pair: bool = typer.Option(False),
-    filter_indel: bool = typer.Option(False),
-    show_normalization: bool = typer.Option(False, "--show-normalization"),
-    threads: int = typer.Option(1, "--threads", "-t"),
-    verbose: bool = typer.Option(False, "--verbose", "-V"),
-    trace: bool = typer.Option(False, "--trace", "-T"),
-    lenient_bam: bool = typer.Option(False, "--lenient-bam"),
-    alignment_backend: AlignmentBackend = typer.Option(
-        AlignmentBackend.PAIRHMM, "--alignment-backend"
-    ),
-    hmm_llr_threshold: float = typer.Option(2.3, "--llr-threshold"),
-    hmm_gap_open: float = typer.Option(1e-4, "--gap-open-prob"),
-    hmm_gap_extend: float = typer.Option(0.1, "--gap-extend-prob"),
-    hmm_gap_open_repeat: float = typer.Option(1e-2, "--repeat-gap-open-prob"),
-    hmm_gap_extend_repeat: float = typer.Option(0.5, "--repeat-gap-extend-prob"),
-):
-    """
-    [DEPRECATED] Use 'gbcms dna' instead. This alias will be removed in v4.1.
-    """
-    logger.warning("'gbcms run' is deprecated. Use 'gbcms dna' instead.")
-    dna(
-        variant_file=variant_file,
-        bam_files=bam_files,
-        bam_list=bam_list,
-        reference=reference,
-        output_dir=output_dir,
-        output_format=output_format,
-        output_suffix=output_suffix,
-        column_prefix=column_prefix,
-        preserve_barcode=preserve_barcode,
-        mfsd=mfsd,
-        mfsd_parquet=mfsd_parquet,
-        mfsd_report=mfsd_report,
-        mfsd_report_min_alt=mfsd_report_min_alt,
-        mfsd_report_max_variants=mfsd_report_max_variants,
-        apply_baq=apply_baq,
-        umi_tag=umi_tag,
-        min_mapq=min_mapq,
-        min_baseq=min_baseq,
-        fragment_qual_threshold=fragment_qual_threshold,
-        context_padding=context_padding,
-        adaptive_context=adaptive_context,
-        filter_duplicates=filter_duplicates,
-        filter_secondary=filter_secondary,
-        filter_supplementary=filter_supplementary,
-        filter_qc_failed=filter_qc_failed,
-        filter_improper_pair=filter_improper_pair,
-        filter_indel=filter_indel,
-        show_normalization=show_normalization,
-        threads=threads,
-        verbose=verbose,
-        trace=trace,
-        lenient_bam=lenient_bam,
-        alignment_backend=alignment_backend,
-        hmm_llr_threshold=hmm_llr_threshold,
-        hmm_gap_open=hmm_gap_open,
-        hmm_gap_extend=hmm_gap_extend,
-        hmm_gap_open_repeat=hmm_gap_open_repeat,
-        hmm_gap_extend_repeat=hmm_gap_extend_repeat,
-    )
 
 
 @app.command()

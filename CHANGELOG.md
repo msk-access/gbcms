@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.1.0] - Unreleased
+## [4.1.0] - 2026-05-04
+
+### ⚠️ Breaking Changes
+
+- **`gbcms run` command removed**: The deprecated `gbcms run` alias (introduced
+  in v4.0.0 as a transitional shim) has been removed. Use `gbcms dna` instead —
+  all arguments are identical.
+- **Nextflow config defaults aligned with CLI**: `filter_secondary`,
+  `filter_supplementary`, `filter_qc_failed` changed from `false` to `true`;
+  `enforce_strandedness` changed from `false` to `true`;
+  `alignment_backend` changed from `'hmm'` to `'pairhmm'`. Pipelines relying
+  on the old Nextflow defaults may see behavior changes.
 
 ### ✨ Added
 
@@ -25,21 +36,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Theme toggle**: Light/dark mode switching in HTML reports.
 - **Print compliance**: Reports render audit-ready when printed (navigator hidden,
   all variants at full opacity, branded footer included).
-
+- **RNA BAQ default**: `--apply-baq` now defaults to `True` for `gbcms rna`.
+  RNA pipelines typically lack upstream BQSR, so BAQ penalizes bases near
+  splice junctions and indels to reduce false-positive variant calls.
+- **BAQ trace logging**: Per-read BAQ adjustments logged at `trace` level,
+  showing indel and splice junction counts per read.
+- **Nextflow `cache = 'lenient'`**: Ensures `-resume` works correctly on
+  GPFS/Spectrum Scale filesystems where inode metadata changes during file
+  pool migration.
+- **Nextflow `manifest` block**: Pipeline metadata (name, version, author,
+  homepage) for Nextflow Tower and nf-core registry compatibility.
+- **Nextflow SLURM job naming**: `clusterOptions` adds descriptive job names
+  (`nf-GBCMS_DNA_sampleid`) for `squeue` readability.
+- **Nextflow `executor.queueSize`**: Caps concurrent SLURM submissions at 100.
+- **nf-core institutional configs**: Auto-loads site-specific profiles (iris,
+  jax, sanger, etc.) via `nf-core/configs`.
+- **Extended trace fields**: IO diagnostics (`rchar`, `wchar`, `syscr`, `syscw`,
+  `read_bytes`, `write_bytes`) added to execution trace.
 ### 🔧 Fixed
 
 - **Dual-axis gridline artifact**: Fixed Plotly `yaxis2` overlay creating a
   duplicate x-axis line in mFSD histograms by standardizing `mirror: false`,
   `rangemode: 'tozero'`, and `showline` controls.
+- **BAQ RefSkip early-exit bug**: `apply_heuristic_baq()` silently skipped
+  reads containing only splice junctions (CIGAR `N`) but no indels. The
+  early-exit gate now includes `Cigar::RefSkip`, ensuring splice-spanning
+  reads receive the BAQ quality penalty.
+- **Nextflow config defaults**: Aligned `nextflow.config` with CLI defaults —
+  `filter_secondary`, `filter_supplementary`, `filter_qc_failed` corrected
+  to `true`; `enforce_strandedness` corrected to `true`; `alignment_backend`
+  corrected to `pairhmm`.
+- **Nextflow RNA BAQ wiring**: Added `--no-baq` / `--apply-baq` argument
+  to RNA module (`rna/main.nf`), which was previously missing entirely.
+- **Nextflow RNA strandedness**: Fixed `strandedness_arg` logic — now passes
+  `--no-strandedness` only when disabled (was incorrectly passing
+  `--enforce-strandedness` as an additive flag).
 
 ### 📚 Documentation
 
 - **[NEW]** `docs/reference/mfsd-report.md` — mFSD interactive report reference
   covering Fragment Origin Signal classification, interactive features, output
   columns, and print compliance.
+- **[NEW]** `docs/reference/rna-splice-handling.md` — RNA splice-junction handling
+  guide with dual-mechanism comparison (consensus intron snipping vs BAQ), GATK
+  SplitNCigarReads comparison, defense-in-depth analysis (5 layers), and visual
+  splice bleed examples.
+- **Updated** BAQ documentation across 7 files: `read-filters.md`, `cli/dna.md`,
+  `cli/rna.md`, `glossary.md`, `abbreviations.md`, `nextflow/parameters.md`,
+  `architecture.md` — all now include BAQ_RADIUS/BAQ_PENALTY constants,
+  mode-specific defaults, and guidance on when to enable BAQ for DNA.
+- **Updated** `mkdocs.yml` — added "RNA Splice Handling" to navigation.
 - **Updated** `docs/cli/dna.md` — added `--mfsd-report`, `--mfsd-report-min-alt`,
   `--mfsd-report-max-variants` to CLI reference.
-- **Updated** `docs/nextflow/parameters.md` — added Nextflow params for mFSD report.
+- **Updated** `docs/nextflow/parameters.md` — added Nextflow params for mFSD report;
+  BAQ default now shows mode-specific values.
+- **Updated** `docs/development/release-guide.md` — version locations table corrected
+  from 5 to 7 references (reflecting v4.0.0 Nextflow module split).
 - **Updated** `nextflow/nextflow.config` — added `mfsd_report`, `mfsd_report_min_alt`,
   `mfsd_report_max_variants` pipeline parameters.
 - **Updated** `nextflow/modules/local/gbcms/dna/main.nf` — wired `--mfsd-report` flags
@@ -52,6 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cards, min_alt/max_variants filtering, and error handling. Uses synthetic test
   fixtures with no patient identifiers.
 - `mfsd_report.py` coverage: 0% → 91%.
+- **[NEW]** `tests/test_config_isolation.py` — BAQ default assertions for RNA
+  (`apply_baq=True`) and DNA (`apply_baq=False`) modes.
 
 ### 🧹 Chores
 

@@ -81,7 +81,7 @@ def _make_test_files(tmp_path):
 def _base_args(vcf, bam, fasta, output_dir):
     """Build base CLI args for the 'run' command."""
     return [
-        "run",
+        "dna",
         "-v",
         str(vcf),
         "-b",

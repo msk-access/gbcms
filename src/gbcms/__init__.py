@@ -8,7 +8,7 @@ Example usage:
     $ gbcms dna -v variants.vcf -b sample.bam -f reference.fa -o output/
 """
 
-__version__ = "4.0.1"
+__version__ = "4.1.0"
 
 from .models.core import (
     GbcmsBaseConfig,

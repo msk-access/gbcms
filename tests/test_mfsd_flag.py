@@ -230,7 +230,7 @@ def test_cli_mfsd_parquet_without_mfsd_exits_1(tmp_path: Path):
     result = runner.invoke(
         app,
         [
-            "run",
+            "dna",
             "--bam",
             str(bam),
             "--variants",

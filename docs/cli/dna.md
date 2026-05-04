@@ -2,8 +2,8 @@
 
 Count alleles at variant positions across one or more DNA/cfDNA BAM files.
 
-!!! warning "Migrating from `gbcms run`"
-    `gbcms run` is deprecated and hidden. Replace with `gbcms dna` — all arguments are identical. `gbcms run` will be removed in v4.1.0.
+!!! info "Migrated from `gbcms run`"
+    The deprecated `gbcms run` command was removed in v4.1.0. Use `gbcms dna` instead — all arguments are identical.
 
 ## Synopsis
 

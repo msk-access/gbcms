@@ -14,7 +14,7 @@ Before starting a release, ensure:
 
 ## Version Locations
 
-All these files must be updated with the new version (7 references total):
+All these files must be updated with the new version (8 references total):
 
 | File | Line | Format |
 |:-----|:-----|:-------|
@@ -25,6 +25,7 @@ All these files must be updated with the new version (7 references total):
 | `nextflow/modules/local/gbcms/rna/main.nf` | 7 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
 | `nextflow/modules/local/gbcms/normalize/main.nf` | 18 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
 | `nextflow/main.nf` | 53 | `gbcms vX.Y.Z — Nextflow Pipeline` |
+| `nextflow/nextflow.config` | manifest | `version = 'X.Y.Z'` |
 | `CHANGELOG.md` | Top section | `## [X.Y.Z] - YYYY-MM-DD` (new entry) |
 
 !!! tip "Doc versions are now templated"
