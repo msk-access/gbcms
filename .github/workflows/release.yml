@@ -26,7 +26,7 @@ jobs:
           command: build
           # Don't pass --manifest-path here; it's in pyproject.toml [tool.maturin]
           # Passing it on CLI causes maturin to use Cargo package name instead of pyproject.toml name
-          args: --release --out dist
+          args: --release --out dist -i python3.11
           # manylinux_2_34 uses AlmaLinux 9 with OpenSSL 3.0+ (compatible with curl-sys 0.4.85+)
           # RHEL 8 users should install from source in a conda env or use Docker
           manylinux: manylinux_2_34
