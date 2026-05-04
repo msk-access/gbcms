@@ -59,7 +59,7 @@ Complete reference for all pipeline parameters.
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--umi_tag` | `''` | UMI BAM tag for deduplication (e.g., `XM`, `RX`). When set, reads sharing the same UMI are grouped as a single observation. |
-| `--apply_baq` | `false` | Apply Base Alignment Quality recalibration (DNA mode only). Reduces false positives near indels. |
+| `--apply_baq` | `false` (DNA) / `true` (RNA) | Apply Base Alignment Quality downgrade. Reduces false positives near indels and splice junctions (CIGAR `N`). See [BAQ Options](../cli/dna.md#baq-options). |
 
 ## RNA-Specific Options
 

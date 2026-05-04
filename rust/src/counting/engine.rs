@@ -993,8 +993,9 @@ fn count_variant_from_cache(
         }
 
         // ── HEURISTIC BAQ: resolve adjusted qualities for classification.
-        // When BAQ is enabled, indel-adjacent bases are downgraded.
-        // When off (default), raw record.qual() is used as-is.
+        // When BAQ is enabled, bases near indels and splice junctions
+        // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
+        // on for RNA (no upstream BQ recalibration).
         let baq_adjusted = if apply_baq {
             apply_heuristic_baq(record)
         } else {
@@ -1476,12 +1477,14 @@ fn count_single_variant(
         }
 
         // ── HEURISTIC BAQ: When enabled, downgrade base qualities near
-        // alignment indels before allele classification. This affects which
-        // bases pass the min_baseq gate in check_snp/check_mnp and the
-        // quality used for fragment consensus tiebreaking.
+        // alignment indels and splice junctions before allele classification.
+        // This affects which bases pass the min_baseq gate in
+        // check_snp/check_mnp and the quality used for fragment consensus
+        // tiebreaking.
         //
-        // BAQ is applied lazily: apply_heuristic_baq() returns None for reads
-        // without indels (zero allocation for >80% of reads).
+        // BAQ is applied lazily: apply_heuristic_baq() returns None for
+        // reads without indels or splice junctions (zero allocation for
+        // the common case).
         let baq_adjusted = if apply_baq {
             apply_heuristic_baq(&record)
         } else {

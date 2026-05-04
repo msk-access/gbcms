@@ -96,6 +96,7 @@ nav:
     - Output Formats: reference/output-formats.md
     - Variant Normalization: reference/variant-normalization.md
     - Read Filters: reference/read-filters.md
+    - RNA Splice Handling: reference/rna-splice-handling.md
     - Allele Classification: reference/allele-classification.md
     - Counting & Metrics: reference/counting-metrics.md
     - mFSD Report: reference/mfsd-report.md

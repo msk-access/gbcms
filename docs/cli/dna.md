@@ -76,14 +76,27 @@ short-fragment enrichment associated with tumor-derived cfDNA
 
 ## BAQ Options
 
-Base Alignment Quality (BAQ) heuristically downgrades base qualities near indels to prevent systematic errors from realignment artifacts.
+Base Alignment Quality (BAQ) heuristically downgrades base qualities near indels and splice junctions to prevent systematic errors from realignment artifacts.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--apply-baq/--no-baq` | `off` | Enable BAQ quality downgrade near indels |
+| `--apply-baq/--no-baq` | `off` | Enable BAQ quality downgrade near indels and splice junctions |
 
-!!! info "When to Enable BAQ"
-    Most modern pipelines (BQSR, fgbio consensus) already recalibrate base qualities. Enable BAQ only for legacy BAMs lacking quality recalibration, where bases near indels may have inflated quality scores that lead to false-positive allele calls.
+**Internal constants** (not configurable — derived from Li 2011):
+
+| Constant | Value | Description |
+|:---------|:------|:------------|
+| `BAQ_RADIUS` | 5 bp | Bases within 5 bp of an indel/splice boundary are penalized |
+| `BAQ_PENALTY` | 20 | Subtracted from BQ (clamped to 0) |
+
+!!! info "When to Enable BAQ for DNA"
+    Enable `--apply-baq` when your upstream pipeline does **not** include BQSR, fgbio consensus, or any other base quality recalibration. In these "raw BQ" pipelines, bases near indels may retain inflated sequencer-assigned quality scores. BAQ compensates by penalizing BQ within 5 bp of indel boundaries.
+
+!!! warning "Do Not Enable for Pre-Calibrated BAMs"
+    If your DNA pipeline includes BQSR or consensus calling (e.g., fgbio, Marianas), leave BAQ off (the default). Applying BAQ on already-recalibrated BAMs may over-penalize, causing undercounting of legitimate variant evidence.
+
+!!! tip "RNA Mode Default"
+    In `gbcms rna`, BAQ is **on by default** because RNA pipelines typically lack BQSR. BAQ also penalizes bases near splice junctions (CIGAR `N`). See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
 
 ## UMI Options
 

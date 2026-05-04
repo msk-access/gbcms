@@ -327,6 +327,7 @@ sequenceDiagram
 ## Related
 
 - [Allele Classification](allele-classification.md) — How each variant type is counted
+- [RNA Splice-Junction Handling](rna-splice-handling.md) — How gbcms handles splice-boundary artifacts vs GATK SplitNCigarReads
 - [Variant Normalization](variant-normalization.md) — How variants are prepared before counting
 - [Input Formats](input-formats.md) — VCF and MAF specifications
 - [Glossary](glossary.md) — Term definitions

@@ -81,7 +81,7 @@ Technical terms used throughout the documentation.
 
 | Term | Definition |
 |:-----|:-----------|
-| **BAQ** | Base Alignment Quality — heuristic quality downgrade near indels to prevent false calls |
+| **BAQ** | Base Alignment Quality — heuristic quality downgrade (−20 BQ within 5 bp) near indels and splice junctions. Off by default for DNA (upstream BQSR), on by default for RNA (no upstream BQ calibration). See [Read Filters: BAQ](read-filters.md#baq-quality-downgrade). |
 | **UMI** | Unique Molecular Identifier — barcode for molecule-level deduplication |
 | **Genomic binning** | Variant grouping by chromosome for cache-efficient counting (`count_bam_binned`) |
 | **Parity test** | Test verifying `count_bam` and `count_bam_binned` produce identical results |
