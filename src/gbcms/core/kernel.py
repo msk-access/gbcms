@@ -113,6 +113,11 @@ class CoordinateKernel:
             internal_pos = start_pos - 1
 
         else:
+            # MNPs (same-length multi-base substitutions: DNP, TNP, ONP) and
+            # true DelIns variants (e.g., EPHA7: GC→T) are both classified as
+            # COMPLEX here. The Rust counting engine dispatches by allele
+            # length (ref_len == alt_len → check_mnp), not by this type label.
+            # See commit 5f2d4f6 for the original COMPLEX introduction.
             vtype = VariantType.COMPLEX
             internal_pos = start_pos - 1
 

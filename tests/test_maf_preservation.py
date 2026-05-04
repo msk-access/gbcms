@@ -36,6 +36,10 @@ class MockCounts:
         self.sb_or = 1.0
         self.fsb_pval = 1.0
         self.fsb_or = 1.0
+        # Decomposed ALT counting
+        self.any_alt = 20  # same as ad for SNP (no partial)
+        self.partial_alt = 0
+        self.n_count = 0
 
         # mFSD fields (default to zero counts, NaN stats)
         _nan = float("nan")

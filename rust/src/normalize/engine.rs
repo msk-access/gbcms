@@ -114,14 +114,22 @@ pub fn prepare_variants(
             let n_left = r.iter().filter(|p| p.was_left_aligned).count();
             let n_total = r.iter().filter(|p| p.was_normalized()).count();
             let multi_allelic = r.iter().filter(|p| p.multi_allelic_group.is_some()).count();
+            // Count MNPs: same-length multi-base substitutions excluded from
+            // indel normalization (left-alignment + ref_context fetch).
+            let n_mnp = r.iter().filter(|p| {
+                let ref_len = p.variant.ref_allele.len();
+                let alt_len = p.variant.alt_allele.len();
+                ref_len == alt_len && ref_len > 1
+            }).count();
             info!(
-                "prepare_variants complete: {}/{} valid, {} normalized ({} anchor-resolved, {} left-aligned), {} multi-allelic",
+                "prepare_variants complete: {}/{} valid, {} normalized ({} anchor-resolved, {} left-aligned), {} multi-allelic, {} MNPs (normalization bypassed)",
                 valid,
                 r.len(),
                 n_total,
                 n_anchor,
                 n_left,
                 multi_allelic,
+                n_mnp,
             );
             Ok(r)
         }
@@ -331,10 +339,48 @@ fn prepare_single_variant(
         });
     }
 
-    // Step 3: Left-alignment (only for indels/complex)
+    // Step 2b: ALT allele N-base validation
+    // ALT alleles containing N (ambiguous/placeholder bases from incomplete
+    // genotyping) cannot be meaningfully counted — no real read base matches N.
+    // Reject explicitly rather than silently producing zero counts.
+    if alt_al.as_bytes().iter().any(|&b| b == b'N' || b == b'n') {
+        warn!(
+            "ALT allele contains N (ambiguous): {}:{} {}>{} — rejecting",
+            variant.chrom, pos + 1, ref_al, alt_al
+        );
+        return Ok(PreparedVariant {
+            variant: Variant {
+                chrom: variant.chrom.clone(),
+                pos,
+                ref_allele: ref_al,
+                alt_allele: alt_al,
+                variant_type: vtype,
+                ref_context: None,
+                ref_context_start: 0,
+                repeat_span: 0,
+                gene_strand: None,
+            },
+            validation_status: "FAIL_ALT_CONTAINS_N".to_string(),
+            was_anchor_resolved,
+            was_left_aligned: false,
+            original_pos,
+            original_ref,
+            original_alt,
+            decomposed_variant: None,
+            multi_allelic_group: None,
+        });
+    }
+
+    // Step 3: Left-alignment (only for true indels/complex, NOT MNPs)
+    // MNPs (same-length multi-base substitutions: DNP, TNP, ONP) are typed
+    // as COMPLEX by kernel.py, but they are pure substitutions that cannot
+    // be left-aligned and don't need ref_context for alignment.
+    // C++ GBCMS (baseCountDNP) has no normalization at all.
     let mut was_left_aligned = false;
-    let is_indel = ref_al.len() != alt_al.len()
-        || (ref_al.len() > 1 && alt_al.len() > 1);
+    let is_mnp = ref_al.len() == alt_al.len() && ref_al.len() > 1;
+    let is_indel = !is_mnp
+        && (ref_al.len() != alt_al.len()
+            || (ref_al.len() > 1 && alt_al.len() > 1));
 
     if is_indel {
         let mut norm_window: i64 = 100; // bcftools default
@@ -416,7 +462,9 @@ fn prepare_single_variant(
 
     // Step 4: Fetch ref_context at (possibly normalized) position
     //         With adaptive_context, padding is increased in repeat regions.
-    let (ref_context, ref_context_start) = if is_indel || vtype == "COMPLEX" {
+    //         MNPs are excluded: they are pure substitutions that don't need
+    //         ref_context for SW/HMM indel realignment.
+    let (ref_context, ref_context_start) = if is_indel || (vtype == "COMPLEX" && !is_mnp) {
         let effective_padding = if adaptive_context {
             compute_adaptive_padding(
                 reader,

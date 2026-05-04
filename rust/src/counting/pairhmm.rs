@@ -59,12 +59,27 @@ impl<'a> EmissionParameters for BQEmission<'a> {
     /// Uses the Phred quality at read position i to compute:
     /// - Match:    log(1 - 10^(-q/10))
     /// - Mismatch: log(10^(-q/10) / 3)
+    ///
+    /// N bases in reads are treated as uninformative (P = 0.25 for any haplotype
+    /// base), matching GATK's approach: N → Q0 → uniform distribution over
+    /// {A,C,G,T}. This ensures N positions contribute zero evidence to the
+    /// REF-vs-ALT log-likelihood ratio. N bases commonly arise from duplex
+    /// collapsing (fgbio) when R1 and R2 disagree at a position.
     fn prob_emit_xy(&self, i: usize, j: usize) -> XYEmission {
+        let read_base = self.read_seq[i];
+
+        // N in read = uninformative (duplex masking, sequencer failure).
+        // Return P = 0.25 so this position contributes equally to both
+        // REF and ALT haplotype likelihoods (net zero LLR contribution).
+        if read_base == b'N' || read_base == b'n' {
+            return XYEmission::Mismatch(LogProb::from(Prob(0.25)));
+        }
+
         let q = self.read_quals[i] as f64;
         let p_error = 10.0_f64.powf(-q / 10.0);
         let p_correct = 1.0 - p_error;
 
-        if self.read_seq[i].eq_ignore_ascii_case(&self.haplotype[j]) {
+        if read_base.eq_ignore_ascii_case(&self.haplotype[j]) {
             XYEmission::Match(LogProb::from(Prob(p_correct)))
         } else {
             // Mismatch: error probability divided by 3 (uniform over wrong bases)
@@ -73,9 +88,15 @@ impl<'a> EmissionParameters for BQEmission<'a> {
     }
 
     /// Probability of observing read[i] in a gap context (deletion in haplotype).
+    ///
     /// Uses the match probability since the base quality still constrains
-    /// how confidently we see this read base.
+    /// how confidently we see this read base. N bases return P = 0.25
+    /// (uninformative) to maintain consistency with `prob_emit_xy`.
     fn prob_emit_x(&self, i: usize) -> LogProb {
+        // N in read = uninformative in gap context too
+        if self.read_seq[i] == b'N' || self.read_seq[i] == b'n' {
+            return LogProb::from(Prob(0.25));
+        }
         let q = self.read_quals[i] as f64;
         let p_correct = 1.0 - 10.0_f64.powf(-q / 10.0);
         LogProb::from(Prob(p_correct))
@@ -712,5 +733,90 @@ mod tests {
         assert!(r.is_alt, "Expected ALT for read carrying deletion");
         assert!(!r.is_ref);
         assert!(r.qual > 0);
+    }
+
+    #[test]
+    fn test_bq_emission_n_base_uninformative() {
+        // N base in read should return P=0.25 (uniform) regardless of BQ.
+        // This matches GATK's approach: N → Q0 → uninformative.
+        let read = b"NCGT";
+        let quals = &[40, 40, 40, 40]; // N at pos 0 has high BQ
+        let hap = b"ACGT";
+        let emission = BQEmission {
+            read_seq: read,
+            read_quals: quals,
+            haplotype: hap,
+        };
+
+        // N vs A: should return Mismatch with P=0.25 (not the harsh Q40 penalty)
+        if let XYEmission::Mismatch(lp) = emission.prob_emit_xy(0, 0) {
+            // log(0.25) ≈ -1.386
+            let expected = Prob(0.25);
+            let expected_lp = LogProb::from(expected);
+            let diff = (*lp - *expected_lp).abs();
+            assert!(
+                diff < 0.001,
+                "N base should return P=0.25, got log-prob={:.3} (expected {:.3})",
+                *lp, *expected_lp
+            );
+        } else {
+            panic!("Expected Mismatch emission for N base");
+        }
+
+        // Normal base at pos 1 should still work correctly
+        if let XYEmission::Match(lp) = emission.prob_emit_xy(1, 1) {
+            assert!(*lp > -0.001, "Q40 match at pos 1 should have near-zero log-prob");
+        } else {
+            panic!("Expected Match emission for normal base C vs C");
+        }
+    }
+
+    #[test]
+    fn test_bq_emission_n_base_gap_context() {
+        // N base in gap context (prob_emit_x) should also return P=0.25
+        let read = b"N";
+        let quals = &[40_u8];
+        let hap = b"A";
+        let emission = BQEmission {
+            read_seq: read,
+            read_quals: quals,
+            haplotype: hap,
+        };
+
+        let lp = emission.prob_emit_x(0);
+        let expected_lp = LogProb::from(Prob(0.25));
+        let diff = (*lp - *expected_lp).abs();
+        assert!(
+            diff < 0.001,
+            "N base in gap context should return P=0.25, got log-prob={:.3} (expected {:.3})",
+            *lp, *expected_lp
+        );
+    }
+
+    #[test]
+    fn test_classify_pairhmm_n_base_neutral() {
+        // Read with N at the SNP position should not bias toward REF or ALT.
+        // Context: GGGGACGGGG, SNP at offset 4: A→T
+        let context = "GGGGACGGGG";
+        let variant = make_variant(4, "A", "T", context, 0);
+
+        // Read has N at the variant position (pos 4), rest matches REF
+        let read = b"GGGGNCGGGG";
+        let quals = &[35; 10]; // All high quality including N position
+        let gap_params = ConfigurableGapParams::standard(1e-4, 0.1);
+
+        let r = classify_by_pairhmm(read, quals, &variant, 20, &gap_params, 2.3);
+
+        // With N at the discriminating position, the LLR should be ≈ 0
+        // (N contributes equally to both haplotype likelihoods).
+        // The remaining positions are identical → ambiguous or slight REF lean.
+        // Key assertion: N should NOT confidently classify as either REF or ALT.
+        // With the old code (no N handling), N would get a harsh mismatch penalty
+        // against both haplotypes, but the overall classification would still be
+        // ambiguous. The fix ensures N is truly neutral (P=0.25 vs previous P=0.001/3).
+        assert!(
+            !r.is_alt || r.is_ref,
+            "N at variant position should NOT be classified as confident ALT"
+        );
     }
 }

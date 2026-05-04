@@ -277,6 +277,38 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub duplex_alt_count: u32,
 
+    // ── Decomposed ALT counting (diagnostic, all variant types) ──────────
+    // Enables DMP-compatible "any evidence of ALT" counting alongside the
+    // strict block-match AD. Invariant: any_alt = ad + partial_alt.
+    //
+    // For SNPs/indels: any_alt == ad, partial_alt == 0 (no partial concept).
+    // For MNPs: any_alt >= ad when reads match ALT at some but not all
+    //           discriminating positions.
+    // For complex: any_alt >= ad from masked comparison partial matches.
+
+    /// Reads with ANY evidence of ALT at ≥1 discriminating position.
+    /// Relaxed counting: includes both full ALT matches (ad) and partial
+    /// matches where some positions match ALT. DMP-compatible metric.
+    #[pyo3(get)]
+    pub any_alt: u32,
+
+    /// Reads with PARTIAL ALT match only (some but not all discriminating
+    /// positions match ALT). any_alt = ad + partial_alt.
+    #[pyo3(get)]
+    pub partial_alt: u32,
+
+    /// Reads with N base at ≥1 discriminating position (NAD in VCF).
+    /// N bases arise from duplex collapsing (fgbio masks disagreeing bases)
+    /// or sequencer failure. These reads are uninformative (neither REF nor
+    /// ALT) but tracking them separately from true third-allele reads enables
+    /// downstream QC: n_count/DP ratio flags duplex masking hotspots.
+    /// Follows bam-readcount's explicit N:count separation model.
+    ///
+    /// Depth decomposition: DP = RD + AD + partial_alt + n_count + other
+    /// where "other" = third-allele + low-BQ reads (implicit).
+    #[pyo3(get)]
+    pub n_count: u32,
+
     // ── RNA-specific (zeroed in DNA mode via Default) ─────────────────────
     /// Total reads on the transcript sense strand (SEN in VCF).
     #[pyo3(get)]

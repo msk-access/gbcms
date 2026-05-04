@@ -54,6 +54,10 @@ class _MockCounts:
         self.fsb_pval = 0.5
         self.fsb_or = 1.0
         self.used_decomposed = False
+        # Decomposed ALT counting
+        self.any_alt = 5  # same as ad for SNP (no partial)
+        self.partial_alt = 0
+        self.n_count = 0
         # mFSD fields (always present on BaseCounts even without --mfsd)
         self.mfsd_ref_count = 10
         self.mfsd_alt_count = 3
