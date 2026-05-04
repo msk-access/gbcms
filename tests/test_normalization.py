@@ -339,7 +339,6 @@ class TestNormalization(unittest.TestCase):
         # Should have shifted left from original position
         self.assertLess(pv.variant.pos, 103, "Expected leftward shift")
 
-
     def test_n_in_alt_allele_rejected(self):
         """ALT allele containing N should be rejected with FAIL_ALT_CONTAINS_N.
 
@@ -348,9 +347,7 @@ class TestNormalization(unittest.TestCase):
         these rather than silently producing zero counts.
         """
         variants = [gbcms_rs.Variant("chr1", 0, "A", "N", "SNP")]
-        prepared = gbcms_rs.prepare_variants(
-            variants, str(self.fasta_path), 5, False, 1, False
-        )
+        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(
@@ -362,9 +359,7 @@ class TestNormalization(unittest.TestCase):
     def test_n_in_alt_allele_mnp_rejected(self):
         """MNP with N in ALT should also be rejected (e.g., AN > TN)."""
         variants = [gbcms_rs.Variant("chr1", 0, "AT", "TN", "DNP")]
-        prepared = gbcms_rs.prepare_variants(
-            variants, str(self.fasta_path), 5, False, 1, False
-        )
+        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(

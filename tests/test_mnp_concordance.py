@@ -117,9 +117,7 @@ def dnp_bam(tmp_path):
 
     # 4 reverse ALT
     for i in range(4):
-        reads.append(
-            make_read(f"alt_rev_{i}", "AAAAAATT", start=97, cigar=((0, 8),), flag=16)
-        )
+        reads.append(make_read(f"alt_rev_{i}", "AAAAAATT", start=97, cigar=((0, 8),), flag=16))
 
     return build_bam(tmp_path, reads, "dnp_test.bam")
 
@@ -152,9 +150,9 @@ class TestONPSelectiveQualityGate:
         counts = count_both(mnp_bam, [variant])[0]
 
         # Total reads: 5 REF + 3 ALT + 2 ALT(low-q-nondisc) + 1 neither(low-q-disc) + 1 third = 12
-        assert counts.dp >= counts.rd + counts.ad, (
-            f"DP invariant failed: dp={counts.dp} < rd+ad={counts.rd + counts.ad}"
-        )
+        assert (
+            counts.dp >= counts.rd + counts.ad
+        ), f"DP invariant failed: dp={counts.dp} < rd+ad={counts.rd + counts.ad}"
 
     def test_onp_strand_counts(self, mnp_bam):
         """Strand-specific counts should be correct."""
@@ -193,25 +191,25 @@ class TestFragmentInvariants:
         """Fragment REF count must not exceed read REF count."""
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
         counts = count_both(mnp_bam, [variant])[0]
-        assert counts.rdf <= counts.rd, (
-            f"Fragment invariant violated: rdf={counts.rdf} > rd={counts.rd}"
-        )
+        assert (
+            counts.rdf <= counts.rd
+        ), f"Fragment invariant violated: rdf={counts.rdf} > rd={counts.rd}"
 
     def test_fragment_alt_lte_read_alt(self, mnp_bam):
         """Fragment ALT count must not exceed read ALT count."""
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
         counts = count_both(mnp_bam, [variant])[0]
-        assert counts.adf <= counts.ad, (
-            f"Fragment invariant violated: adf={counts.adf} > ad={counts.ad}"
-        )
+        assert (
+            counts.adf <= counts.ad
+        ), f"Fragment invariant violated: adf={counts.adf} > ad={counts.ad}"
 
     def test_fragment_sum_lte_dpf(self, mnp_bam):
         """RDF + ADF must not exceed DPF."""
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
         counts = count_both(mnp_bam, [variant])[0]
-        assert counts.rdf + counts.adf <= counts.dpf, (
-            f"Fragment invariant violated: rdf+adf={counts.rdf + counts.adf} > dpf={counts.dpf}"
-        )
+        assert (
+            counts.rdf + counts.adf <= counts.dpf
+        ), f"Fragment invariant violated: rdf+adf={counts.rdf + counts.adf} > dpf={counts.dpf}"
 
     def test_fragment_invariants_dnp(self, dnp_bam):
         """Fragment invariants hold for all-discriminating DNP."""

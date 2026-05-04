@@ -17,15 +17,15 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-# Production MAF files (e.g. data_mutations_extended.txt) can contain fields
-# exceeding Python's default 128 KB CSV field limit (long COMMENTS columns).
-csv.field_size_limit(sys.maxsize)
-
 import pysam
 from pydantic import ValidationError
 
 from ..core.kernel import CoordinateKernel
 from ..models.core import Variant
+
+# Production MAF files (e.g. data_mutations_extended.txt) can contain fields
+# exceeding Python's default 128 KB CSV field limit (long COMMENTS columns).
+csv.field_size_limit(sys.maxsize)
 
 logger = logging.getLogger(__name__)
 

@@ -27,48 +27,89 @@ _nan = float("nan")
 
 
 def _mock_counts(
-    *, ad: int = 5, any_alt: int = 7, partial_alt: int = 2, n_count: int = 1,
+    *,
+    ad: int = 5,
+    any_alt: int = 7,
+    partial_alt: int = 2,
+    n_count: int = 1,
 ):
     """Minimal mock BaseCounts with decomposed ALT counting fields.
 
     Default: ad=5, any_alt=7, partial_alt=2, n_count=1 → invariant holds (7=5+2).
     """
     return types.SimpleNamespace(
-        dp=100, rd=95, ad=ad,
-        dp_fwd=50, dp_rev=50,
-        rd_fwd=48, rd_rev=47,
-        ad_fwd=2, ad_rev=3,
-        dpf=80, rdf=76, adf=4,
-        rdf_fwd=38, rdf_rev=38,
-        adf_fwd=2, adf_rev=2,
-        sb_pval=0.5, sb_or=1.0,
-        fsb_pval=0.5, fsb_or=1.0,
+        dp=100,
+        rd=95,
+        ad=ad,
+        dp_fwd=50,
+        dp_rev=50,
+        rd_fwd=48,
+        rd_rev=47,
+        ad_fwd=2,
+        ad_rev=3,
+        dpf=80,
+        rdf=76,
+        adf=4,
+        rdf_fwd=38,
+        rdf_rev=38,
+        adf_fwd=2,
+        adf_rev=2,
+        sb_pval=0.5,
+        sb_or=1.0,
+        fsb_pval=0.5,
+        fsb_or=1.0,
         # Phase 2 fields
         any_alt=any_alt,
         partial_alt=partial_alt,
         # Phase 2b: N-base diagnostic
         n_count=n_count,
         # mFSD (all NaN/zero — not under test)
-        mfsd_ref_count=0, mfsd_alt_count=0, mfsd_nonref_count=0, mfsd_n_count=0,
-        mfsd_ref_mean=_nan, mfsd_alt_mean=_nan, mfsd_nonref_mean=_nan, mfsd_n_mean=_nan,
-        mfsd_alt_llr=_nan, mfsd_ref_llr=_nan,
-        mfsd_delta_alt_ref=_nan, mfsd_ks_alt_ref=_nan, mfsd_pval_alt_ref=_nan,
-        mfsd_delta_alt_nonref=_nan, mfsd_ks_alt_nonref=_nan, mfsd_pval_alt_nonref=_nan,
-        mfsd_delta_ref_nonref=_nan, mfsd_ks_ref_nonref=_nan, mfsd_pval_ref_nonref=_nan,
-        mfsd_delta_alt_n=_nan, mfsd_ks_alt_n=_nan, mfsd_pval_alt_n=_nan,
-        mfsd_delta_ref_n=_nan, mfsd_ks_ref_n=_nan, mfsd_pval_ref_n=_nan,
-        mfsd_delta_nonref_n=_nan, mfsd_ks_nonref_n=_nan, mfsd_pval_nonref_n=_nan,
+        mfsd_ref_count=0,
+        mfsd_alt_count=0,
+        mfsd_nonref_count=0,
+        mfsd_n_count=0,
+        mfsd_ref_mean=_nan,
+        mfsd_alt_mean=_nan,
+        mfsd_nonref_mean=_nan,
+        mfsd_n_mean=_nan,
+        mfsd_alt_llr=_nan,
+        mfsd_ref_llr=_nan,
+        mfsd_delta_alt_ref=_nan,
+        mfsd_ks_alt_ref=_nan,
+        mfsd_pval_alt_ref=_nan,
+        mfsd_delta_alt_nonref=_nan,
+        mfsd_ks_alt_nonref=_nan,
+        mfsd_pval_alt_nonref=_nan,
+        mfsd_delta_ref_nonref=_nan,
+        mfsd_ks_ref_nonref=_nan,
+        mfsd_pval_ref_nonref=_nan,
+        mfsd_delta_alt_n=_nan,
+        mfsd_ks_alt_n=_nan,
+        mfsd_pval_alt_n=_nan,
+        mfsd_delta_ref_n=_nan,
+        mfsd_ks_ref_n=_nan,
+        mfsd_pval_ref_n=_nan,
+        mfsd_delta_nonref_n=_nan,
+        mfsd_ks_nonref_n=_nan,
+        mfsd_pval_nonref_n=_nan,
         # RNA fields (zeroed)
-        sense_depth=0, antisense_depth=0, sense_strand_alt_count=0,
-        rna_editing_site_overlap=False, splice_spanning_count=0,
+        sense_depth=0,
+        antisense_depth=0,
+        sense_strand_alt_count=0,
+        rna_editing_site_overlap=False,
+        splice_spanning_count=0,
     )
 
 
 @pytest.fixture
 def mock_variant():
     return Variant(
-        chrom="chr1", pos=100, ref="A", alt="T",
-        variant_type=VariantType.SNP, original_id="rs42",
+        chrom="chr1",
+        pos=100,
+        ref="A",
+        alt="T",
+        variant_type=VariantType.SNP,
+        original_id="rs42",
     )
 
 
@@ -245,8 +286,7 @@ def test_column_count_delta_is_three():
     # Phase 0/1 baseline was 21 (validation_status + 4 core + 4 frag + 4 bias + 8 strand)
     # Phase 2+2b adds 3 (any_alt + partial_alt + n_count) = 24
     assert len(cols) == 24, (
-        f"Expected 24 gbcms MAF columns (21 baseline + 3 diagnostic), "
-        f"got {len(cols)}: {cols}"
+        f"Expected 24 gbcms MAF columns (21 baseline + 3 diagnostic), " f"got {len(cols)}: {cols}"
     )
 
 
