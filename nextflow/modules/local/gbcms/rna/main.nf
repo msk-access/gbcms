@@ -60,7 +60,11 @@ process GBCMS_RNA {
     def editing_db_arg = params.rna_editing_db ? "--rna-editing-db ${params.rna_editing_db}" : ""
 
     // RNA-specific: dUTP strandedness enforcement
-    def strandedness_arg = params.enforce_strandedness ? "--enforce-strandedness" : ""
+    // CLI default for RNA is --enforce-strandedness (true), so pass --no-strandedness only if disabled
+    def strandedness_arg = params.enforce_strandedness ? "" : "--no-strandedness"
+
+    // BAQ: CLI default for RNA is --apply-baq (on). Pass --no-baq only if user explicitly disables.
+    def baq_arg = params.apply_baq == false ? "--no-baq" : ""
 
     """
     gbcms rna \\
@@ -83,6 +87,7 @@ process GBCMS_RNA {
         --context-padding ${params.context_padding} \\
         ${filters} \\
         ${umi_arg} \\
+        ${baq_arg} \\
         ${editing_db_arg} \\
         ${strandedness_arg} \\
         ${args}

@@ -14,15 +14,18 @@ Before starting a release, ensure:
 
 ## Version Locations
 
-All these files must be updated with the new version (5 references total):
+All these files must be updated with the new version (7 references total):
 
-| File | Lines | Count | Format |
-|:-----|:------|:-----:|:-------|
-| `pyproject.toml` | 3 | 1 | `version = "X.Y.Z"` |
-| `src/gbcms/__init__.py` | 11 | 1 | `__version__ = "X.Y.Z"` |
-| `rust/Cargo.toml` | 3 | 1 | `version = "X.Y.Z"` |
-| `nextflow/modules/local/gbcms/run/main.nf` | 7 | 1 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
-| `CHANGELOG.md` | Top section | — | `## [X.Y.Z] - YYYY-MM-DD` (new entry) |
+| File | Line | Format |
+|:-----|:-----|:-------|
+| `pyproject.toml` | 3 | `version = "X.Y.Z"` |
+| `src/gbcms/__init__.py` | 11 | `__version__ = "X.Y.Z"` |
+| `rust/Cargo.toml` | 3 | `version = "X.Y.Z"` |
+| `nextflow/modules/local/gbcms/dna/main.nf` | 7 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
+| `nextflow/modules/local/gbcms/rna/main.nf` | 7 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
+| `nextflow/modules/local/gbcms/normalize/main.nf` | 18 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
+| `nextflow/main.nf` | 53 | `gbcms vX.Y.Z — Nextflow Pipeline` |
+| `CHANGELOG.md` | Top section | `## [X.Y.Z] - YYYY-MM-DD` (new entry) |
 
 !!! tip "Doc versions are now templated"
     Installation, quickstart, troubleshooting, and developer-guide docs use generic `X.Y.Z` notation. **No doc version bumps needed during release.**
@@ -75,7 +78,7 @@ Update all version locations listed above. Use this command to verify:
 ```bash
 # Check current versions
 grep -E "^version|^__version__" pyproject.toml src/gbcms/__init__.py rust/Cargo.toml
-grep "container" nextflow/modules/local/gbcms/run/main.nf
+grep "container\|gbcms v" nextflow/modules/local/gbcms/*/main.nf nextflow/main.nf
 ```
 
 ### 3. Update CHANGELOG.md

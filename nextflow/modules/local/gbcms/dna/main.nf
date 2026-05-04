@@ -58,7 +58,7 @@ process GBCMS_DNA {
     // UMI tag (e.g., 'XM', 'RX')
     def umi_arg = params.umi_tag ? "--umi-tag ${params.umi_tag}" : ""
 
-    // BAQ (Base Alignment Quality) recalibration
+    // BAQ: CLI default for DNA is --no-baq (off). Pass --apply-baq only if user explicitly enables.
     def baq_arg = params.apply_baq ? "--apply-baq" : ""
 
     // mFSD analysis (off by default — must opt in)
