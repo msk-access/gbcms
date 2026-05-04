@@ -652,15 +652,24 @@
     </label>
 <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#410-unreleased">
+<a class="md-nav__link" href="#410-2026-05-04">
 <span class="md-ellipsis">
       
-        [4.1.0] - Unreleased
+        [4.1.0] - 2026-05-04
       
     </span>
 </a>
-<nav aria-label="[4.1.0] - Unreleased" class="md-nav">
+<nav aria-label="[4.1.0] - 2026-05-04" class="md-nav">
 <ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#breaking-changes">
+<span class="md-ellipsis">
+      
+        ⚠️ Breaking Changes
+      
+    </span>
+</a>
+</li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#added">
 <span class="md-ellipsis">
@@ -800,7 +809,7 @@
 <nav aria-label="[4.0.0] - 2026-03-20" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#breaking-changes">
+<a class="md-nav__link" href="#breaking-changes_1">
 <span class="md-ellipsis">
       
         ⚠️ Breaking Changes
@@ -876,7 +885,7 @@
 <nav aria-label="[3.0.0] - 2026-03-05" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#breaking-changes_1">
+<a class="md-nav__link" href="#breaking-changes_2">
 <span class="md-ellipsis">
       
         ⚠️ Breaking Changes
@@ -1579,7 +1588,7 @@
 </nav>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#breaking-changes_2">
+<a class="md-nav__link" href="#breaking-changes_3">
 <span class="md-ellipsis">
       
         ⚠️ Breaking Changes
@@ -1628,7 +1637,18 @@
 <p>All notable changes to this project will be documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="410-unreleased">[4.1.0] - Unreleased<a class="headerlink" href="#410-unreleased" title="Permanent link">¶</a></h2>
+<h2 id="410-2026-05-04">[4.1.0] - 2026-05-04<a class="headerlink" href="#410-2026-05-04" title="Permanent link">¶</a></h2>
+<h3 id="breaking-changes">⚠️ Breaking Changes<a class="headerlink" href="#breaking-changes" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>gbcms run</code> command removed</strong>: The deprecated <code>gbcms run</code> alias (introduced
+  in v4.0.0 as a transitional shim) has been removed. Use <code>gbcms dna</code> instead —
+  all arguments are identical.</li>
+<li><strong>Nextflow config defaults aligned with <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr></strong>: <code>filter_secondary</code>,
+  <code>filter_supplementary</code>, <code>filter_qc_failed</code> changed from <code>false</code> to <code>true</code>;
+  <code>enforce_strandedness</code> changed from <code>false</code> to <code>true</code>;
+  <code>alignment_backend</code> changed from <code>'hmm'</code> to <code>'pairhmm'</code>. Pipelines relying
+  on the old Nextflow defaults may see behavior changes.</li>
+</ul>
 <h3 id="added">✨ Added<a class="headerlink" href="#added" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Physical fragment sizing</strong>: Rust-native fragment size calculation using
@@ -1647,21 +1667,63 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Theme toggle</strong>: Light/dark mode switching in HTML reports.</li>
 <li><strong>Print compliance</strong>: Reports render audit-ready when printed (navigator hidden,
   all variants at full opacity, branded footer included).</li>
+<li><strong>RNA <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> default</strong>: <code>--apply-baq</code> now defaults to <code>True</code> for <code>gbcms rna</code>.
+  RNA pipelines typically lack upstream <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>, so <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> penalizes bases near
+  splice junctions and indels to reduce false-positive variant calls.</li>
+<li><strong><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> trace logging</strong>: Per-read <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> adjustments logged at <code>trace</code> level,
+  showing indel and splice junction counts per read.</li>
+<li><strong>Nextflow <code>cache = 'lenient'</code></strong>: Ensures <code>-resume</code> works correctly on
+  GPFS/Spectrum Scale filesystems where inode metadata changes during file
+  pool migration.</li>
+<li><strong>Nextflow <code>manifest</code> block</strong>: Pipeline metadata (name, version, author,
+  homepage) for Nextflow Tower and nf-core registry compatibility.</li>
+<li><strong>Nextflow SLURM job naming</strong>: <code>clusterOptions</code> adds descriptive job names
+  (<code>nf-GBCMS_DNA_sampleid</code>) for <code>squeue</code> readability.</li>
+<li><strong>Nextflow <code>executor.queueSize</code></strong>: Caps concurrent SLURM submissions at 100.</li>
+<li><strong>nf-core institutional configs</strong>: Auto-loads site-specific profiles (iris,
+  jax, sanger, etc.) via <code>nf-core/configs</code>.</li>
+<li><strong>Extended trace fields</strong>: IO diagnostics (<code>rchar</code>, <code>wchar</code>, <code>syscr</code>, <code>syscw</code>,
+  <code>read_bytes</code>, <code>write_bytes</code>) added to execution trace.</li>
 </ul>
 <h3 id="fixed">🔧 Fixed<a class="headerlink" href="#fixed" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dual-axis gridline artifact</strong>: Fixed Plotly <code>yaxis2</code> overlay creating a
   duplicate x-axis line in <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> histograms by standardizing <code>mirror: false</code>,
   <code>rangemode: 'tozero'</code>, and <code>showline</code> controls.</li>
+<li><strong><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> RefSkip early-exit bug</strong>: <code>apply_heuristic_baq()</code> silently skipped
+  reads containing only splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>) but no indels. The
+  early-exit gate now includes <code>Cigar::RefSkip</code>, ensuring splice-spanning
+  reads receive the <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> quality penalty.</li>
+<li><strong>Nextflow config defaults</strong>: Aligned <code>nextflow.config</code> with <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> defaults —
+  <code>filter_secondary</code>, <code>filter_supplementary</code>, <code>filter_qc_failed</code> corrected
+  to <code>true</code>; <code>enforce_strandedness</code> corrected to <code>true</code>; <code>alignment_backend</code>
+  corrected to <code>pairhmm</code>.</li>
+<li><strong>Nextflow RNA <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> wiring</strong>: Added <code>--no-baq</code> / <code>--apply-baq</code> argument
+  to RNA module (<code>rna/main.nf</code>), which was previously missing entirely.</li>
+<li><strong>Nextflow RNA strandedness</strong>: Fixed <code>strandedness_arg</code> logic — now passes
+  <code>--no-strandedness</code> only when disabled (was incorrectly passing
+  <code>--enforce-strandedness</code> as an additive flag).</li>
 </ul>
 <h3 id="documentation">📚 Documentation<a class="headerlink" href="#documentation" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/reference/mfsd-report.md</code> — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> interactive report reference
   covering Fragment Origin Signal classification, interactive features, output
   columns, and print compliance.</li>
+<li><strong>[NEW]</strong> <code>docs/reference/rna-splice-handling.md</code> — RNA splice-junction handling
+  guide with dual-mechanism comparison (consensus intron snipping vs <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>), GATK
+  SplitNCigarReads comparison, defense-in-depth analysis (5 layers), and visual
+  splice bleed examples.</li>
+<li><strong>Updated</strong> <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> documentation across 7 files: <code>read-filters.md</code>, <code>cli/dna.md</code>,
+  <code>cli/rna.md</code>, <code>glossary.md</code>, <code>abbreviations.md</code>, <code>nextflow/parameters.md</code>,
+  <code>architecture.md</code> — all now include BAQ_RADIUS/BAQ_PENALTY constants,
+  mode-specific defaults, and guidance on when to enable <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> for DNA.</li>
+<li><strong>Updated</strong> <code>mkdocs.yml</code> — added "RNA Splice Handling" to navigation.</li>
 <li><strong>Updated</strong> <code>docs/cli/dna.md</code> — added <code>--mfsd-report</code>, <code>--mfsd-report-min-alt</code>,
   <code>--mfsd-report-max-variants</code> to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> reference.</li>
-<li><strong>Updated</strong> <code>docs/nextflow/parameters.md</code> — added Nextflow params for <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report.</li>
+<li><strong>Updated</strong> <code>docs/nextflow/parameters.md</code> — added Nextflow params for <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report;
+  <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> default now shows mode-specific values.</li>
+<li><strong>Updated</strong> <code>docs/development/release-guide.md</code> — version locations table corrected
+  from 5 to 7 references (reflecting v4.0.0 Nextflow module split).</li>
 <li><strong>Updated</strong> <code>nextflow/nextflow.config</code> — added <code>mfsd_report</code>, <code>mfsd_report_min_alt</code>,
   <code>mfsd_report_max_variants</code> pipeline parameters.</li>
 <li><strong>Updated</strong> <code>nextflow/modules/local/gbcms/dna/main.nf</code> — wired <code>--mfsd-report</code> flags
@@ -1674,6 +1736,8 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   cards, min_alt/max_variants filtering, and error handling. Uses synthetic test
   fixtures with no patient identifiers.</li>
 <li><code>mfsd_report.py</code> coverage: 0% → 91%.</li>
+<li><strong>[NEW]</strong> <code>tests/test_config_isolation.py</code> — <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> default assertions for RNA
+  (<code>apply_baq=True</code>) and DNA (<code>apply_baq=False</code>) modes.</li>
 </ul>
 <h3 id="chores">🧹 Chores<a class="headerlink" href="#chores" title="Permanent link">¶</a></h3>
 <ul>
@@ -1769,7 +1833,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and reference docs updated with new column descriptions.</li>
 </ul>
 <h2 id="400-2026-03-20">[4.0.0] - 2026-03-20<a class="headerlink" href="#400-2026-03-20" title="Permanent link">¶</a></h2>
-<h3 id="breaking-changes">⚠️ Breaking Changes<a class="headerlink" href="#breaking-changes" title="Permanent link">¶</a></h3>
+<h3 id="breaking-changes_1">⚠️ Breaking Changes<a class="headerlink" href="#breaking-changes_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow module split</strong>: Single <code>run/main.nf</code> replaced by three dedicated
   modules — <code>dna/main.nf</code>, <code>rna/main.nf</code>, <code>normalize/main.nf</code>. Consumer
@@ -1862,7 +1926,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>All test <code>MockCounts</code> helpers updated with RNA fields</li>
 </ul>
 <h2 id="300-2026-03-05">[3.0.0] - 2026-03-05<a class="headerlink" href="#300-2026-03-05" title="Permanent link">¶</a></h2>
-<h3 id="breaking-changes_1">⚠️ Breaking Changes<a class="headerlink" href="#breaking-changes_1" title="Permanent link">¶</a></h3>
+<h3 id="breaking-changes_2">⚠️ Breaking Changes<a class="headerlink" href="#breaking-changes_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Package renamed</strong>: <code>py-gbcms</code> → <code>gbcms</code>. Update your dependencies:
   <div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>pip<span class="w"> </span>uninstall<span class="w"> </span>py-gbcms
@@ -2270,7 +2334,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Filter validation for all read flag combinations</li>
 <li>Integration tests with real-world data</li>
 </ul>
-<h3 id="breaking-changes_2">⚠️ Breaking Changes<a class="headerlink" href="#breaking-changes_2" title="Permanent link">¶</a></h3>
+<h3 id="breaking-changes_3">⚠️ Breaking Changes<a class="headerlink" href="#breaking-changes_3" title="Permanent link">¶</a></h3>
 <p>Version 2.0.0 is <strong>not backward compatible</strong> with 1.x. Key breaking changes:</p>
 <ol>
 <li><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> syntax</strong>: Use <code>gbcms run</code> instead of <code>python -m gbcms.cli</code></li>
