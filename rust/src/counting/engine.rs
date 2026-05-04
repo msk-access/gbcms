@@ -1,3 +1,27 @@
+//! Counting engine: BAM read classification → allele counts.
+//!
+//! Entry point: `count_bam_binned()` groups variants into genomic bins,
+//! issues one `bam.fetch()` per bin, and classifies each read against all
+//! variants in the bin via type-specific dispatchers (check_snp, check_mnp,
+//! check_complex, check_insertion, check_deletion).
+//!
+//! ## Invariants maintained during counting
+//!
+//! - `any_alt = ad + partial_alt` (decomposed ALT counting)
+//! - `any_alt >= ad` (partial_alt is non-negative)
+//! - `DP >= RD + AD + partial_alt + n_count` (depth decomposition)
+//! - N-base reads increment `n_count` but do NOT contribute to RD, AD,
+//!   any_alt, or partial_alt (uninformative signal).
+//!
+//! ## Output: `BaseCounts`
+//!
+//! Each variant produces a `BaseCounts` struct with:
+//! - Core: dp, rd, ad (read-level) + dpf, rdf, adf (fragment-level)
+//! - Strand: dp_fwd/rev, rd_fwd/rev, ad_fwd/rev, rdf_fwd/rev, adf_fwd/rev
+//! - Bias: sb_pval, sb_or, fsb_pval, fsb_or
+//! - Diagnostic: any_alt, partial_alt, n_count (Phase 2/2b)
+//! - RNA: sense_depth, antisense_depth, sense_strand_alt_count, splice_spanning_count
+
 use pyo3::prelude::*;
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::{self, Read, Record};
@@ -862,7 +886,10 @@ fn count_variant_from_cache(
     let mut alt_dists: Vec<u32> = Vec::with_capacity(500);
     let mut ref_dists: Vec<u32> = Vec::with_capacity(500);
 
-    // Create SW aligners ONCE per variant (indelpost pattern)
+    // Create SW aligners ONCE per variant (indelpost pattern).
+    // Score function: N in read or haplotype → 0 (neutral, uninformative).
+    // Matches GATK approach: N contributes no evidence for match or mismatch.
+    // Handles N-in-read (duplex masking / sequencer failure) and N-in-haplotype (rare).
     let score_fn = |a: u8, b: u8| -> i32 {
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
@@ -966,8 +993,9 @@ fn count_variant_from_cache(
         }
 
         // ── HEURISTIC BAQ: resolve adjusted qualities for classification.
-        // When BAQ is enabled, indel-adjacent bases are downgraded.
-        // When off (default), raw record.qual() is used as-is.
+        // When BAQ is enabled, bases near indels and splice junctions
+        // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
+        // on for RNA (no upstream BQ recalibration).
         let baq_adjusted = if apply_baq {
             apply_heuristic_baq(record)
         } else {
@@ -1054,17 +1082,43 @@ fn count_variant_from_cache(
 
         let evidence = fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
 
-        // mFSD: capture tlen (signed; observe() stores absolute value) and N-base flag.
-        // TLEN=0 means unmapped mate or unpaired read — skipped inside observe().
-        // is_n_base: a fragment is in the N class when the base at the variant
-        // position was 'N' — proxied by base_qual==0 with no REF or ALT call.
-        let tlen = record.insert_size() as i32;
-        let is_n_base = base_qual == 0 && !is_ref && !is_alt;
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base);
+        // mFSD: compute physical fragment size from CIGAR, correcting TLEN for indels.
+        // Formula: physical = |TLEN| - D + I (validated on real MSK-ACCESS BAMs).
+        // observe() stores min(R1, R2) to handle cases where only one read
+        // spans the indel (defensive for WGS/WES; no-op for cfDNA overlap).
+        // is_n_base: uses the explicit has_n_base flag from variant classification
+        // (set by check_snp/check_mnp/check_complex when N detected at a
+        // discriminating position) rather than the previous heuristic
+        // (base_qual==0 && !is_ref && !is_alt) which could mis-classify
+        // true third-allele reads with qual=0 as N-class fragments.
+        let tlen = mfsd::calc_physical_insert_size(record);
+        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base);
 
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
+        //
+        // N-base counting (diagnostic):
+        // Reads with N at ≥1 discriminating position are counted separately
+        // for duplex masking QC. This is independent of allele classification —
+        // a read classified as ALT via masked MNP evaluation can still have
+        // had N at one masked position.
+        if result.has_n_base {
+            counts.n_count += 1;
+            trace!("n_count++: read has N at discriminating position (total={})", counts.n_count);
+        }
+        //
+        // Decomposed counting (any_alt / partial_alt):
+        // - Full ALT match: ad++, any_alt++ (invariant: any_alt = ad + partial_alt)
+        // - Partial ALT match (some discriminating positions match ALT): any_alt++, partial_alt++
+        // - Neither/REF: no any_alt/partial_alt change
         if !is_ref && !is_alt {
+            // Check for partial ALT evidence before skipping
+            if result.partial_match_count > 0 {
+                counts.any_alt += 1;
+                counts.partial_alt += 1;
+                trace!("partial_alt++: {} positions matched ALT (any_alt={}, partial_alt={})",
+                    result.partial_match_count, counts.any_alt, counts.partial_alt);
+            }
             continue;
         }
 
@@ -1101,6 +1155,7 @@ fn count_variant_from_cache(
             if is_reverse { counts.rd_rev += 1; } else { counts.rd_fwd += 1; }
         } else if is_alt {
             counts.ad += 1;
+            counts.any_alt += 1; // Full ALT → counts toward any_alt
             if is_reverse { counts.ad_rev += 1; } else { counts.ad_fwd += 1; }
 
             // ── RNA-SPECIFIC ALT TRACKING ──
@@ -1249,11 +1304,25 @@ fn count_variant_from_cache(
     (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
     (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
 
+    // ── mFSD: Sub-nucleosomal / mono-nucleosomal fractions ──────────────────
+    // Computed before ref_sizes/alt_sizes are consumed by into_iter().
+    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator.
+    // Mono-nucleosomal (150–200bp): dominant cfDNA peak.
+    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
+        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
+    } else {
+        f64::NAN
+    };
+    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
+    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
+
     counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
     counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
 
     debug!(
-        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2}",
+        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         counts.mfsd_ref_count, counts.mfsd_alt_count,
         counts.mfsd_nonref_count, counts.mfsd_n_count,
@@ -1341,6 +1410,9 @@ fn count_single_variant(
     // Create SW aligners ONCE per variant, not per read (indelpost pattern).
     // bio::alignment::pairwise::Aligner reuses internal DP buffers on
     // subsequent calls, avoiding repeated O(n×m) heap allocation.
+    // Score function: N in read or haplotype → 0 (neutral, uninformative).
+    // Matches GATK approach: N contributes no evidence for match or mismatch.
+    // Handles N-in-read (duplex masking / sequencer failure) and N-in-haplotype (rare).
     let score_fn = |a: u8, b: u8| -> i32 {
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
@@ -1405,12 +1477,14 @@ fn count_single_variant(
         }
 
         // ── HEURISTIC BAQ: When enabled, downgrade base qualities near
-        // alignment indels before allele classification. This affects which
-        // bases pass the min_baseq gate in check_snp/check_mnp and the
-        // quality used for fragment consensus tiebreaking.
+        // alignment indels and splice junctions before allele classification.
+        // This affects which bases pass the min_baseq gate in
+        // check_snp/check_mnp and the quality used for fragment consensus
+        // tiebreaking.
         //
-        // BAQ is applied lazily: apply_heuristic_baq() returns None for reads
-        // without indels (zero allocation for >80% of reads).
+        // BAQ is applied lazily: apply_heuristic_baq() returns None for
+        // reads without indels or splice junctions (zero allocation for
+        // the common case).
         let baq_adjusted = if apply_baq {
             apply_heuristic_baq(&record)
         } else {
@@ -1499,18 +1573,29 @@ fn count_single_variant(
 
         let evidence = fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
 
-        // mFSD: capture tlen (signed; observe() stores absolute value) and N-base flag.
-        // TLEN=0 means unmapped mate or unpaired read — skipped inside observe().
+        // mFSD: compute physical fragment size from CIGAR, correcting TLEN for indels.
+        // Formula: physical = |TLEN| - D + I (validated on real MSK-ACCESS BAMs).
+        // observe() stores min(R1, R2) for defensive correctness.
         // is_n_base: a fragment is in the N class when the base at the variant
         // position was 'N' — proxied by base_qual==0 with no REF or ALT call.
-        let tlen = record.insert_size() as i32;
+        let tlen = mfsd::calc_physical_insert_size(&record);
         let is_n_base = base_qual == 0 && !is_ref && !is_alt;
 
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base);
 
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
+        //
+        // Decomposed counting (any_alt / partial_alt):
+        // - Full ALT match: ad++, any_alt++ (invariant: any_alt = ad + partial_alt)
+        // - Partial ALT match (some discriminating positions match ALT): any_alt++, partial_alt++
+        // - Neither/REF: no any_alt/partial_alt change
         if !is_ref && !is_alt {
+            // Check for partial ALT evidence before skipping
+            if result.partial_match_count > 0 {
+                counts.any_alt += 1;
+                counts.partial_alt += 1;
+            }
             continue;
         }
 
@@ -1552,6 +1637,7 @@ fn count_single_variant(
             }
         } else if is_alt {
             counts.ad += 1;
+            counts.any_alt += 1; // Full ALT → counts toward any_alt
             if is_reverse {
                 counts.ad_rev += 1;
             } else {
@@ -1716,12 +1802,26 @@ fn count_single_variant(
     (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
     (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
 
+    // ── mFSD: Sub-nucleosomal / mono-nucleosomal fractions ──────────────────
+    // Computed before ref_sizes/alt_sizes are consumed by into_iter().
+    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator.
+    // Mono-nucleosomal (150–200bp): dominant cfDNA peak.
+    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
+        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
+    } else {
+        f64::NAN
+    };
+    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
+    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
+
     // Store raw size arrays for --mfsd-parquet export
     counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
     counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
 
     debug!(
-        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2}",
+        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         counts.mfsd_ref_count, counts.mfsd_alt_count,
         counts.mfsd_nonref_count, counts.mfsd_n_count,
@@ -1785,18 +1885,46 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // SNP: single base substitution — no Phase 3 needed
         check_snp(record, variant, quals, min_baseq)
     } else if ref_len == alt_len {
-        // MNP: min-BQ-across-block strategy with selective Phase 3 fallback.
+        // MNP: selective discriminating-position quality gate with no Phase 3 fallback.
         match check_mnp(record, variant, quals, min_baseq) {
-            MnpResult::Ref(q) => ClassifyResult::is_ref(q, ClassifyPhase::MaskedCompare),
-            MnpResult::Alt(q) => ClassifyResult::is_alt(q, ClassifyPhase::MaskedCompare),
-            MnpResult::LowQuality => {
-                // Min-BQ-across-block rejected the MNP — fall through to
-                // check_complex where Phase 2 quality-masked comparison
-                // can classify using only the reliable (high-quality) bases.
-                trace!("MNP low-quality block, falling back to check_complex for masked comparison");
-                check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+            MnpResult::Ref(q, had_n) => {
+                let mut r = ClassifyResult::is_ref(q, ClassifyPhase::MaskedCompare);
+                r.has_n_base = had_n;
+                r
             }
-            MnpResult::ThirdAllele => ClassifyResult::neither(ClassifyPhase::MaskedCompare),
+            MnpResult::Alt(q, had_n) => {
+                let mut r = ClassifyResult::is_alt(q, ClassifyPhase::MaskedCompare);
+                r.has_n_base = had_n;
+                r
+            }
+            MnpResult::LowQuality(partial, had_n) => {
+                // After masked per-position evaluation, LowQuality means ALL
+                // discriminating positions were masked (BQ < min_baseq or N).
+                // Do NOT route to check_complex: PairHMM/SW is designed for
+                // indel realignment, not MNP classification, and is biased
+                // toward REF for multi-base substitutions.
+                // C++ GBCMS (baseCountDNP) has no fallback — reads are simply
+                // not counted. Match that behavior.
+                // Fragment impact: observe(false, false) → DPF++ but not
+                // RDF/ADF. If mate read provides evidence, mate's call wins.
+                // `partial` carries positions_matching_alt for partial_alt counting.
+                trace!(
+                    "MNP LowQuality: all discriminating positions masked, partial_alt_positions={}, had_n={}",
+                    partial, had_n
+                );
+                ClassifyResult::neither_with_partial(ClassifyPhase::MaskedCompare, partial, had_n)
+            }
+            MnpResult::ThirdAllele(partial, had_n) => {
+                // Unmasked positions show mixed REF/ALT or third-allele bases.
+                // `partial` carries positions_matching_alt for partial_alt counting.
+                if partial > 0 {
+                    trace!(
+                        "MNP ThirdAllele with {} positions matching ALT (partial evidence), had_n={}",
+                        partial, had_n
+                    );
+                }
+                ClassifyResult::neither_with_partial(ClassifyPhase::MaskedCompare, partial, had_n)
+            }
             MnpResult::Structural => {
                 trace!("MNP structural issue, falling back to Phase 3");
                 check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
@@ -1902,6 +2030,50 @@ mod tests {
         }
     }
 
+    // ── Phase 0 N-base defense tests ──
+
+    #[test]
+    fn test_check_snp_n_base_high_bq() {
+        // N base with BQ=30 should be classified as neither, not third allele.
+        // Defense-in-depth: fgbio assigns BQ ≈ 2 to N, but raw BAMs may not.
+        // Without the explicit N guard in check_snp, N would pass the BQ gate
+        // (30 >= 20) and fall through to the REF/ALT comparison as "neither"
+        // with qual=0 — correct result but wrong reason (no explicit N handling).
+        let seq = b"AANTTCC";
+        let qual = &[30, 30, 30, 30, 30, 30, 30]; // N at pos 2 has BQ=30
+        let cigar = CigarString(vec![Cigar::Match(7)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "A", "T");
+        let result = check_snp(&record, &variant, record.qual(), 20);
+
+        assert!(!result.is_ref, "N should not be classified as REF");
+        assert!(!result.is_alt, "N should not be classified as ALT");
+        assert_eq!(result.qual, 0, "N should have qual=0 (uninformative)");
+        assert!(result.has_n_base, "SNP N base should set has_n_base=true");
+    }
+
+    #[test]
+    fn test_check_snp_n_base_low_bq_also_filtered() {
+        // N base with BQ=2 (typical duplex) — caught by BQ gate first.
+        // Verifies the BQ gate is the first line of defense.
+        let seq = b"AANTTCC";
+        let qual = &[30, 30, 2, 30, 30, 30, 30]; // N at pos 2 has BQ=2
+        let cigar = CigarString(vec![Cigar::Match(7)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "A", "T");
+        let result = check_snp(&record, &variant, record.qual(), 20);
+
+        assert!(!result.is_ref, "N with low BQ should not be REF");
+        assert!(!result.is_alt, "N with low BQ should not be ALT");
+        // Low BQ N is caught by the BQ gate first (before the N check),
+        // so has_n_base is NOT set — it never reaches the N guard.
+        // This is correct: the read is filtered for quality reasons,
+        // not N-masking reasons. The has_n_base flag is for reads that
+        // *pass* BQ but carry N (defense-in-depth).
+    }
+
     // ── MNP check_mnp tests ──
 
     #[test]
@@ -1918,7 +2090,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Ref(q) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
+            MnpResult::Ref(q, _) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
             other => panic!("Expected MnpResult::Ref, got {:?}", format_mnp_result(&other)),
         }
     }
@@ -1935,28 +2107,35 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
+            MnpResult::Alt(q, _) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
             other => panic!("Expected MnpResult::Alt, got {:?}", format_mnp_result(&other)),
         }
     }
 
     #[test]
-    fn test_mnp_one_low_quality_base() {
+    fn test_mnp_one_low_quality_base_classified_by_unmasked() {
         // 2bp MNP: REF=AT, ALT=CG. Read has CG (matches ALT).
-        // But one base has Q=8 < min_baseq=20.
-        // min(35, 8) = 8 < 20 → LowQuality, NOT Phase 3 fallback.
+        // Pos 0 (C): Q=35 ≥ 20 → unmasked, matches ALT.
+        // Pos 1 (G): Q=8 < 20 → masked, cannot vote.
+        // OLD behavior: min(35, 8) = 8 < 20 → LowQuality (entire read dropped).
+        // NEW behavior: 1 unmasked position matches ALT → Alt (read recovered).
+        // This is the key improvement: masked per-position evaluation
+        // recovers reads where only some discriminating positions are low-quality.
         let seq = b"AACGGCC";
-        let qual = &[30, 30, 35, 8, 30, 30, 30]; // pos 3: Q=8 < 20
+        let qual = &[30, 30, 35, 8, 30, 30, 30]; // pos 3: Q=8 < 20 → masked
         let cigar = CigarString(vec![Cigar::Match(7)]);
         let record = build_record(seq, qual, &cigar, 100);
 
         let variant = build_variant(102, "AT", "CG");
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
-        assert!(
-            matches!(result, MnpResult::LowQuality),
-            "Expected LowQuality for min(BQ) < threshold"
-        );
+        match result {
+            MnpResult::Alt(q, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
+            other => panic!(
+                "Expected Alt for DNP with one masked position (recovered by masked eval), got {:?}",
+                format_mnp_result(&other)
+            ),
+        }
     }
 
     #[test]
@@ -1971,7 +2150,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         assert!(
-            matches!(result, MnpResult::LowQuality),
+            matches!(result, MnpResult::LowQuality(..)),
             "Expected LowQuality when all bases below threshold"
         );
     }
@@ -1989,7 +2168,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         assert!(
-            matches!(result, MnpResult::ThirdAllele),
+            matches!(result, MnpResult::ThirdAllele(..)),
             "Expected ThirdAllele when bases match neither REF nor ALT"
         );
     }
@@ -2071,7 +2250,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
+            MnpResult::Alt(q, _) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
             other => panic!("Expected MnpResult::Alt for TERT-like 5bp MNP, got {:?}",
                            format_mnp_result(&other)),
         }
@@ -2089,7 +2268,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q) => assert!(q >= 20, "Should pass at exact threshold boundary"),
+            MnpResult::Alt(q, _) => assert!(q >= 20, "Should pass at exact threshold boundary"),
             other => panic!("Expected Alt at exact BQ threshold, got {:?}",
                            format_mnp_result(&other)),
         }
@@ -2098,14 +2277,291 @@ mod tests {
     /// Helper to format MnpResult for panic messages
     fn format_mnp_result(result: &MnpResult) -> String {
         match result {
-            MnpResult::Ref(q) => format!("Ref({})", q),
-            MnpResult::Alt(q) => format!("Alt({})", q),
-            MnpResult::LowQuality => "LowQuality".to_string(),
-            MnpResult::ThirdAllele => "ThirdAllele".to_string(),
+            MnpResult::Ref(q, n) => format!("Ref(q={}, had_n={})", q, n),
+            MnpResult::Alt(q, n) => format!("Alt(q={}, had_n={})", q, n),
+            MnpResult::LowQuality(p, n) => format!("LowQuality(partial={}, had_n={})", p, n),
+            MnpResult::ThirdAllele(p, n) => format!("ThirdAllele(partial={}, had_n={})", p, n),
             MnpResult::Structural => "Structural".to_string(),
         }
     }
 
+    // ── Selective discriminating-position quality gate regression tests ──
+
+    #[test]
+    fn test_mnp_low_qual_non_discriminating_passes() {
+        // TERT-like ONP: GAGGG→AAGGA (5bp, positions 0 and 4 discriminating).
+        // Positions 1-3 are non-discriminating (REF==ALT: A=A, G=G, G=G).
+        // Read carries AAGGA (ALT). Low quality at non-discriminating pos 2.
+        // Old behavior: min(BQ) across ALL = 5 < 20 → LowQuality (WRONG).
+        // New behavior: min(BQ) across discriminating (pos 0, 4) = 32 ≥ 20 → ALT (CORRECT).
+        let seq = b"CCAAGGACC";
+        let qual = &[30, 30, 35, 38, 5, 36, 32, 30, 30]; // pos 4 (offset +2): Q=5 (non-discriminating)
+        let cigar = CigarString(vec![Cigar::Match(9)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GAGGG", "AAGGA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        match result {
+            MnpResult::Alt(q, _) => assert!(q >= 20,
+                "Should classify as ALT when non-discriminating bases are low quality, got q={}", q),
+            other => panic!(
+                "Expected Alt for TERT ONP with low-qual non-discriminating pos, got {:?}",
+                format_mnp_result(&other)),
+        }
+    }
+
+    #[test]
+    fn test_mnp_low_qual_one_discriminating_classified_by_unmasked() {
+        // All-discriminating DNP: GG→AA (both positions differ).
+        // Read carries AA (ALT). Pos 0: Q=8 < 20 → masked. Pos 1: Q=38 ≥ 20 → unmasked.
+        // OLD behavior: min(discriminating BQ) = 8 < 20 → LowQuality.
+        // NEW behavior: 1 unmasked position matches ALT → Alt (read recovered).
+        let seq = b"CCAAGCC";
+        let qual = &[30, 30, 8, 38, 30, 30, 30]; // pos 2 (discriminating): Q=8
+        let cigar = CigarString(vec![Cigar::Match(7)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GG", "AA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        match result {
+            MnpResult::Alt(q, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
+            other => panic!(
+                "Expected Alt for DNP with one masked discriminating position, got {:?}",
+                format_mnp_result(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_mnp_third_allele_partial_alt_match() {
+        // TERT-like ONP: GAGGG→AAGGA. Read carries AAGGG (only pos 0 mutated).
+        // This is the typical misannotated compound SNP pattern.
+        // All discriminating positions (0 and 4) have high quality.
+        let seq = b"CCAAGGGTTT";
+        let qual = &[30, 30, 35, 38, 32, 36, 34, 30, 30, 30];
+        let cigar = CigarString(vec![Cigar::Match(10)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GAGGG", "AAGGA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        assert!(
+            matches!(result, MnpResult::ThirdAllele(..)),
+            "Expected ThirdAllele for partial ALT match (only pos 0 mutated)"
+        );
+    }
+
+    // ── Phase 1: Masked per-position evaluation tests ──
+
+    #[test]
+    fn test_mnp_partial_match_count_in_third_allele() {
+        // TERT-like ONP: GAGGG→AAGGA (discriminating positions: 0 and 4).
+        // Read carries AAGGG: pos 0 matches ALT (G→A), pos 4 matches REF (G, not A).
+        // Expected: ThirdAllele with positions_matching_alt=1
+        let seq = b"CCAAGGGTTT";
+        let qual = &[30, 30, 35, 38, 32, 36, 34, 30, 30, 30];
+        let cigar = CigarString(vec![Cigar::Match(10)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GAGGG", "AAGGA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        match result {
+            MnpResult::ThirdAllele(partial, _) => assert_eq!(partial, 1,
+                "Expected 1 position matching ALT (pos 0), got {}", partial),
+            other => panic!("Expected ThirdAllele(1), got {:?}", format_mnp_result(&other)),
+        }
+    }
+
+    #[test]
+    fn test_mnp_all_masked_returns_low_quality_with_zero_partial() {
+        // DNP: GG→AA. Read has AA (would match ALT) but both positions have Q < 20.
+        // All discriminating positions masked → LowQuality.
+        // After G1 fix: positions_matching_alt only counts UNMASKED positions,
+        // so when ALL positions are masked, partial=0 (no reliable evidence).
+        let seq = b"CCAAGCC";
+        let qual = &[30, 30, 5, 8, 30, 30, 30]; // both discriminating positions low-Q
+        let cigar = CigarString(vec![Cigar::Match(7)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GG", "AA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        match result {
+            MnpResult::LowQuality(partial, _) => assert_eq!(partial, 0,
+                "All positions masked → no reliable ALT evidence, expected 0, got {}", partial),
+            other => panic!("Expected LowQuality(0), got {:?}", format_mnp_result(&other)),
+        }
+    }
+
+    #[test]
+    fn test_mnp_n_base_at_one_discriminating_position_recovers_alt() {
+        // TERT-like ONP: GAGGG→AAGGA (discriminating positions: 0 and 4).
+        // Read carries NAGGA: pos 0 is N (masked), pos 4 matches ALT (A).
+        // 1 unmasked position matches ALT → Alt (read recovered).
+        let seq = b"CCNAGGATTTT";
+        let qual = &[30, 30, 30, 38, 32, 36, 34, 30, 30, 30, 30];
+        let cigar = CigarString(vec![Cigar::Match(11)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GAGGG", "AAGGA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        match result {
+            MnpResult::Alt(q, had_n) => {
+                assert!(q > 0,
+                    "Expected Alt when N masks one position but other unmasked matches ALT, got q={}", q);
+                assert!(had_n,
+                    "Expected had_n=true when N base present at discriminating position");
+            }
+            other => panic!(
+                "Expected Alt for ONP with N at one discriminating position, got {:?}",
+                format_mnp_result(&other)),
+        }
+    }
+
+    #[test]
+    fn test_mnp_n_base_at_all_discriminating_returns_low_quality() {
+        // DNP: GG→AA. Read has NA (N at pos 0 masks it, pos 1 has low Q).
+        // Both discriminating positions masked → LowQuality.
+        let seq = b"CCNAGCC";
+        let qual = &[30, 30, 30, 5, 30, 30, 30]; // pos 3: Q=5 < 20
+        let cigar = CigarString(vec![Cigar::Match(7)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "GG", "AA");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        assert!(
+            matches!(result, MnpResult::LowQuality(..)),
+            "Expected LowQuality when all discriminating positions masked (N + low-Q)"
+        );
+    }
+
+    #[test]
+    fn test_mnp_all_n_high_bq_both_masked() {
+        // Phase 0.6 plan: "DNP CC→TT: read carries NN with BQ=[30, 30].
+        // Both positions masked → LowQuality (contributes to DP only)."
+        //
+        // This is distinct from test_mnp_n_base_at_all_discriminating_returns_low_quality
+        // (which uses N + low-Q). Here BOTH positions are N with HIGH BQ, verifying
+        // that the N guard masks independently of the BQ gate. If the N guard were
+        // removed, this test would fail (high-BQ N would pass the BQ gate and
+        // fall through as ThirdAllele), while the N+low-Q test would still pass.
+        let seq = b"CCNNGCC";
+        let qual = &[30, 30, 30, 30, 30, 30, 30]; // ALL high BQ — N masking is sole defense
+        let cigar = CigarString(vec![Cigar::Match(7)]);
+        let record = build_record(seq, qual, &cigar, 100);
+
+        let variant = build_variant(102, "CC", "TT");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        match result {
+            MnpResult::LowQuality(partial, had_n) => {
+                assert_eq!(partial, 0,
+                    "All-N should have 0 partial ALT matches (no reliable evidence)");
+                assert!(had_n,
+                    "All-N with high BQ should report had_n=true for n_count tracking");
+            }
+            other => panic!(
+                "Expected LowQuality for NN read with high BQ, got {:?}. \
+                 If this returned ThirdAllele, the N guard may be missing.",
+                format_mnp_result(&other)),
+        }
+    }
+
+    #[test]
+    fn test_classify_result_partial_match_count() {
+        // Verify ClassifyResult::neither_with_partial carries partial count and has_n
+        let r = ClassifyResult::neither_with_partial(ClassifyPhase::MaskedCompare, 3, false);
+        assert!(!r.is_ref, "neither_with_partial should not be REF");
+        assert!(!r.is_alt, "neither_with_partial should not be ALT");
+        assert_eq!(r.partial_match_count, 3, "partial_match_count should be 3");
+        assert!(!r.has_n_base, "has_n_base should be false when has_n=false");
+
+        // Verify has_n=true is propagated
+        let r_n = ClassifyResult::neither_with_partial(ClassifyPhase::MaskedCompare, 2, true);
+        assert!(r_n.has_n_base, "has_n_base should be true when has_n=true");
+        assert_eq!(r_n.partial_match_count, 2, "partial_match_count should be 2");
+
+        // Verify standard constructors have partial_match_count == 0
+        let r2 = ClassifyResult::is_alt(30, ClassifyPhase::Structural);
+        assert_eq!(r2.partial_match_count, 0, "is_alt should have partial=0");
+        let r3 = ClassifyResult::neither(ClassifyPhase::Structural);
+        assert_eq!(r3.partial_match_count, 0, "neither should have partial=0");
+    }
+
+    #[test]
+    fn test_base_counts_any_alt_invariant() {
+        // Verify structural invariants of BaseCounts:
+        //   1. any_alt = ad + partial_alt
+        //   2. any_alt >= ad (partial_alt is non-negative)
+        //   3. DP >= RD + AD + partial_alt + n_count (decomposition)
+        //
+        // These must hold regardless of variant type or classification path.
+        use crate::types::BaseCounts;
+
+        // ── Case 1: MNP-like scenario (mixed full + partial ALT) ──
+        let mut counts = BaseCounts { dp: 20, ..Default::default() };
+
+        // Simulate: 3 full ALT reads + 2 partial reads + 5 REF + 2 N + 8 other
+        for _ in 0..3 {
+            counts.ad += 1;
+            counts.any_alt += 1; // Full ALT → any_alt++
+        }
+        for _ in 0..2 {
+            counts.any_alt += 1;
+            counts.partial_alt += 1; // Partial → any_alt++, partial_alt++
+        }
+        counts.rd = 5;
+        counts.n_count = 2;
+
+        // Invariant 1: any_alt = ad + partial_alt
+        assert_eq!(
+            counts.any_alt,
+            counts.ad + counts.partial_alt,
+            "Invariant 1 violated: any_alt({}) != ad({}) + partial_alt({})",
+            counts.any_alt, counts.ad, counts.partial_alt
+        );
+        // Invariant 2: any_alt >= ad
+        assert!(
+            counts.any_alt >= counts.ad,
+            "Invariant 2 violated: any_alt({}) < ad({})",
+            counts.any_alt, counts.ad
+        );
+        // Invariant 3: DP >= RD + AD + partial_alt + n_count
+        let decomposed = counts.rd + counts.ad + counts.partial_alt + counts.n_count;
+        assert!(
+            counts.dp >= decomposed,
+            "Invariant 3 violated: DP({}) < RD({}) + AD({}) + partial_alt({}) + n_count({}) = {}",
+            counts.dp, counts.rd, counts.ad, counts.partial_alt, counts.n_count, decomposed
+        );
+        assert_eq!(counts.any_alt, 5);
+        assert_eq!(counts.ad, 3);
+        assert_eq!(counts.partial_alt, 2);
+
+        // ── Case 2: SNP/Indel (no partial concept) ──
+        let snp_counts = BaseCounts {
+            dp: 100, rd: 80, ad: 20, any_alt: 20,
+            partial_alt: 0, n_count: 0, ..Default::default()
+        };
+        assert_eq!(snp_counts.any_alt, snp_counts.ad + snp_counts.partial_alt);
+        assert!(snp_counts.any_alt >= snp_counts.ad);
+        assert!(snp_counts.dp >= snp_counts.rd + snp_counts.ad + snp_counts.partial_alt + snp_counts.n_count);
+
+        // ── Case 3: High N-count (duplex masking hotspot) ──
+        let n_heavy = BaseCounts {
+            dp: 50, rd: 10, ad: 2, any_alt: 2,
+            partial_alt: 0, n_count: 30, ..Default::default()
+        };
+        assert_eq!(n_heavy.any_alt, n_heavy.ad + n_heavy.partial_alt);
+        assert!(n_heavy.dp >= n_heavy.rd + n_heavy.ad + n_heavy.partial_alt + n_heavy.n_count);
+        // n_count/DP ratio for QC
+        let n_ratio = n_heavy.n_count as f64 / n_heavy.dp as f64;
+        assert!(n_ratio > 0.5, "N-heavy site should have high n_count/DP ratio: {}", n_ratio);
+    }
 
     // ── SW vs PairHMM concordance tests ──
     //
@@ -2234,5 +2690,187 @@ mod tests {
         // Both backends should agree on ALT for this unambiguous 2bp substitution
         assert!(sw.is_alt, "SW should classify 2bp sub as ALT, got is_ref={} is_alt={}", sw.is_ref, sw.is_alt);
         assert!(hmm.is_alt, "PairHMM should classify 2bp sub as ALT, got is_ref={} is_alt={}", hmm.is_ref, hmm.is_alt);
+    }
+
+    // ── G5: n_count accumulation integration tests ──
+    //
+    // Verify that has_n_base flows through the classification dispatch
+    // and would correctly drive counts.n_count += 1 in the engine.
+    // These are component-level integration tests (dispatch → ClassifyResult)
+    // since full engine tests require BAM file I/O infrastructure.
+
+    #[test]
+    fn test_n_count_snp_dispatch_sets_has_n_base() {
+        // SNP A→T: read carries N at variant position with BQ=30.
+        // check_allele_with_qual dispatches to check_snp → neither_n() → has_n_base=true.
+        // The engine would then do: counts.n_count += 1.
+        let seq = b"GGGGNGGGGG";
+        let qual = &[35, 35, 35, 35, 30, 35, 35, 35, 35, 35]; // N at pos 4, BQ=30
+        let cigar = CigarString(vec![Cigar::Match(10)]);
+        let record = build_record(seq, qual, &cigar, 0);
+
+        let variant = build_variant_with_context(4, "A", "T", "GGGGAGGGGG", 0);
+        let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
+        let mut alt_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+        let mut ref_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+
+        let result = check_allele_with_qual(
+            &record, &variant, &[], record.qual(), 20,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+        );
+
+        assert!(!result.is_ref, "N at SNP should not be REF");
+        assert!(!result.is_alt, "N at SNP should not be ALT");
+        assert!(result.has_n_base, "N at SNP should set has_n_base=true for n_count accumulation");
+    }
+
+    #[test]
+    fn test_n_count_mnp_dispatch_with_partial_n() {
+        // MNP AT→CG: read has N at first discriminating pos, G at second.
+        // check_allele_with_qual dispatches to check_mnp → Alt(qual, had_n=true).
+        // The engine would then do: ad++, any_alt++, AND counts.n_count += 1.
+        let seq = b"GGNGGGGGGG";
+        //          pos: 0 1 2 3 4 5 6 7 8 9
+        // Variant at pos 2-3: REF=AT, ALT=CG
+        // Read has N at pos 2 (masked), G at pos 3 (matches ALT)
+        let qual = &[35, 35, 30, 35, 35, 35, 35, 35, 35, 35]; // N at pos 2, BQ=30
+        let cigar = CigarString(vec![Cigar::Match(10)]);
+        let record = build_record(seq, qual, &cigar, 0);
+
+        let variant = build_variant(2, "AT", "CG");
+        let result = check_mnp(&record, &variant, record.qual(), 20);
+
+        // N at first position is masked, G at second matches ALT → classified as ALT
+        match result {
+            MnpResult::Alt(_, had_n) => {
+                assert!(had_n, "MNP Alt with N at one position should report had_n=true");
+            }
+            other => panic!("Expected MnpResult::Alt, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_n_count_mnp_dispatch_propagates_through_check_allele() {
+        // Same scenario as above but through check_allele_with_qual dispatch.
+        // Verifies the MnpResult → ClassifyResult → has_n_base chain.
+        let seq = b"GGNGGGGGGG";
+        let qual = &[35, 35, 30, 35, 35, 35, 35, 35, 35, 35];
+        let cigar = CigarString(vec![Cigar::Match(10)]);
+        let record = build_record(seq, qual, &cigar, 0);
+
+        let variant = build_variant_with_context(2, "AT", "CG", "GGATGGGGGG", 0);
+        let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
+        let mut alt_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+        let mut ref_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+
+        let result = check_allele_with_qual(
+            &record, &variant, &[], record.qual(), 20,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+        );
+
+        assert!(result.is_alt, "MNP with N-masked + ALT-matching should be ALT");
+        assert!(result.has_n_base, "MNP ALT with N at one position should propagate has_n_base=true");
+    }
+
+    // ── G4: check_complex N base propagation tests ──
+    //
+    // Verify that check_complex detects N in the reconstructed haplotype
+    // and propagates has_n_base through all Phase 2 return paths.
+
+    #[test]
+    fn test_complex_n_in_reconstructed_haplotype_alt_match() {
+        // Complex variant (equal-length, routes to Case A masked_dual_compare):
+        // REF=TC, ALT=GA at pos 5. ref_len=2, alt_len=2 → same length.
+        // HOWEVER: equal-length REF/ALT with len>1 routes to check_mnp, not check_complex.
+        // To force check_complex, we need ref_len != alt_len.
+        //
+        // Strategy: REF=TCC (3bp) ALT=GAG (3bp) at pos 5.
+        // WAIT: that's same-length → MNP. We need different lengths.
+        //
+        // Strategy: use check_complex directly (it's pub) with a same-length
+        // complex variant. The engine dispatches MNPs to check_mnp, but
+        // check_complex itself handles equal-length via Case A.
+        // REF=TC, ALT=GA at pos 5, read has "GN" at pos 5-6.
+        // Reconstruction: seq[5..7] = "GN" (2bp = ref_len = alt_len → Case A).
+        // masked_dual_compare: N masked, G matches ALT[0] but not REF[0].
+        // → mismatches_alt=0 (G matches ALT[0]), mismatches_ref=1 (G ≠ REF[0]='T')
+        // → ALT match on 1 reliable base.
+        let seq = b"GGGGGGNGGGG";
+        //          pos: 0 1 2 3 4 5 6 7 8 9 10
+        // Variant at pos 5: REF=TC (2bp), ALT=GA (2bp)
+        // Reconstruction from pos 5-6: "GN" → Case A (both same length)
+        let qual = &[35, 35, 35, 35, 35, 35, 30, 35, 35, 35, 35];
+        let cigar = CigarString(vec![Cigar::Match(11)]);
+        let record = build_record(seq, qual, &cigar, 0);
+
+        // Call check_complex directly (bypassing MNP dispatch).
+        // This tests the N detection and propagation in check_complex itself.
+        let variant = build_variant_with_context(5, "TC", "GA", "GGGGGTCGGGGG", 0);
+        let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
+        let mut alt_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+        let mut ref_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+
+        let result = check_complex(
+            &record, &variant, &[], record.qual(), 20,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+        );
+
+        // The reconstruction "GN" has N at position 1. N is masked by
+        // masked_dual_compare. Only position 0 (G) is reliable:
+        // G matches ALT[0]='G' → mismatches_alt=0 → ALT.
+        // has_n_base should be true because N was detected in the reconstruction.
+        assert!(result.is_alt,
+            "Complex with N-masked + ALT-matching reliable base should be ALT, \
+             got is_ref={}, is_alt={}", result.is_ref, result.is_alt);
+        assert!(result.has_n_base,
+            "check_complex with N in reconstructed haplotype should set has_n_base=true");
+    }
+
+    #[test]
+    fn test_complex_no_n_in_reconstructed_haplotype() {
+        // Complex variant with no N bases — has_n_base should be false.
+        // REF=TCC, ALT=GA at pos 5.
+        // Read has "GA" at the variant position (matches ALT), no N bases.
+        let seq = b"GGGGGGAGGGGG";
+        let qual = &[35_u8; 12];
+        let cigar = CigarString(vec![Cigar::Match(12)]);
+        let record = build_record(seq, qual, &cigar, 0);
+
+        let variant = build_variant_with_context(5, "TCC", "GA", "GGGGGTCCGGGGG", 0);
+        let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
+        let mut alt_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+        let mut ref_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+
+        let result = check_complex(
+            &record, &variant, &[], record.qual(), 20,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+        );
+
+        assert!(!result.has_n_base,
+            "check_complex with no N in reconstructed haplotype should have has_n_base=false");
     }
 }

@@ -17,10 +17,15 @@
 //!
 //! ## Usage
 //! ```ignore
+//! let physical = mfsd::calc_physical_insert_size(&record);
 //! let (ks_d, ks_p) = mfsd::ks_test(&alt_sizes, &ref_sizes);
 //! let llr = mfsd::calc_llr(&alt_sizes);
 //! let mean = mfsd::calc_mean(&alt_sizes);
 //! ```
+
+use log::trace;
+use rust_htslib::bam::record::Cigar;
+use rust_htslib::bam::Record;
 
 /// Minimum number of fragments required in each class for the KS test.
 /// Below this threshold, `ks_test` returns `(f64::NAN, 1.0)` to signal
@@ -81,6 +86,23 @@ pub fn calc_mean(v: &[f64]) -> f64 {
     v.iter().sum::<f64>() / v.len() as f64
 }
 
+/// Fraction of fragment sizes falling within `[lo, hi)`.
+///
+/// Returns `NaN` for an empty slice. Used for sub-nucleosomal (<150bp)
+/// and mono-nucleosomal (150–200bp) fraction computation.
+///
+/// # Arguments
+/// * `v`  – Slice of fragment sizes in base pairs.
+/// * `lo` – Inclusive lower bound (bp).
+/// * `hi` – Exclusive upper bound (bp). Use `f64::INFINITY` for open-ended.
+pub fn calc_fraction_in_range(v: &[f64], lo: f64, hi: f64) -> f64 {
+    if v.is_empty() {
+        return f64::NAN;
+    }
+    let count = v.iter().filter(|&&x| x >= lo && x < hi).count();
+    count as f64 / v.len() as f64
+}
+
 /// Gaussian probability density function (unnormalised for LLR use).
 ///
 /// # Arguments
@@ -129,6 +151,69 @@ pub fn calc_llr_with_params(lengths: &[f64], params: &LlrModelParams) -> f64 {
         };
         ratio.ln()
     }).sum()
+}
+
+// ── Physical Fragment Sizing ─────────────────────────────────────────────────
+
+/// Compute the physical fragment insert size from CIGAR, correcting TLEN for indels.
+///
+/// BAM TLEN measures the reference span between the outermost aligned bases of a
+/// read pair. For fragments carrying indels, TLEN ≠ physical fragment length:
+/// - A deletion makes TLEN *longer* than the physical DNA fragment
+/// - An insertion makes TLEN *shorter* than the physical DNA fragment
+///
+/// **Formula:** `physical_size = |TLEN| - sum(D_ops) + sum(I_ops)`
+///
+/// Validated on 6 real MSK-ACCESS duplex BAMs (EGFR 15bp del, MET 35bp del,
+/// ERBB2 12bp ins, KIT 6bp ins, KRAS G12D SNP, TP53 DNP). All corrections
+/// match expected indel sizes exactly; REF fragments and SNPs are unaffected.
+///
+/// For MSK-ACCESS cfDNA (~167bp fragments, ~150bp reads), R1 and R2 overlap
+/// by ~133bp, so both reads carry the same indel CIGAR. The caller (`observe()`)
+/// stores `min(R1, R2)` as a defensive measure for non-cfDNA contexts where
+/// only one read may span the indel.
+///
+/// # Arguments
+/// * `record` – BAM record (must have valid CIGAR and TLEN)
+///
+/// # Returns
+/// Physical insert size in bp (always ≥ 0). Returns `0` if TLEN is 0 (unpaired).
+pub fn calc_physical_insert_size(record: &Record) -> i32 {
+    let raw_tlen = record.insert_size();
+    if raw_tlen == 0 {
+        return 0; // Unpaired/unmapped mate — no correction possible
+    }
+
+    let abs_tlen = raw_tlen.unsigned_abs() as i32;
+    let mut del_bp: i32 = 0;
+    let mut ins_bp: i32 = 0;
+
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Del(n) => del_bp += *n as i32,
+            Cigar::Ins(n) => ins_bp += *n as i32,
+            _ => {}
+        }
+    }
+
+    let physical = abs_tlen - del_bp + ins_bp;
+
+    // Guard: pathological CIGAR where correction overshoots (should never happen
+    // with well-formed BAMs, but avoid returning nonsensical negative sizes)
+    if physical <= 0 {
+        trace!(
+            "calc_physical_insert_size: pathological correction — TLEN={} D={} I={} → {} (clamped to |TLEN|)",
+            raw_tlen, del_bp, ins_bp, physical
+        );
+        return abs_tlen; // Fall back to raw |TLEN| rather than a nonsensical value
+    }
+
+    trace!(
+        "calc_physical_insert_size: TLEN={} D={} I={} → physical={}",
+        raw_tlen, del_bp, ins_bp, physical
+    );
+
+    physical
 }
 
 // ── Two-Sample Kolmogorov-Smirnov Test ───────────────────────────────────────
@@ -281,5 +366,111 @@ mod tests {
         let (d, p) = ks_test(&a, &b);
         assert!((d - 1.0).abs() < 1e-10, "D should be ~1.0 for non-overlapping distributions, got {d}");
         assert!(p < 0.05, "p should be < 0.05 for well-separated distributions, got {p}");
+    }
+
+    // ─── calc_physical_insert_size ────────────────────────────────────────────
+
+    use rust_htslib::bam::record::CigarString;
+
+    /// Helper: build a minimal BAM record with given CIGAR and TLEN.
+    fn mock_record(cigar: &CigarString, tlen: i64) -> Record {
+        // Compute query-consuming length from CIGAR (M, I, S, X, = consume query)
+        let seq_len: u32 = cigar.0.iter().map(|op| match op {
+            Cigar::Match(n) | Cigar::Ins(n) | Cigar::SoftClip(n)
+            | Cigar::Equal(n) | Cigar::Diff(n) => *n,
+            _ => 0,
+        }).sum();
+
+        let seq: Vec<u8> = vec![b'A'; seq_len as usize];
+        let qual: Vec<u8> = vec![255u8; seq_len as usize];
+
+        let mut rec = Record::new();
+        rec.set(b"r1", Some(cigar), &seq, &qual);
+        rec.set_insert_size(tlen);
+        rec
+    }
+
+    #[test]
+    fn test_physical_size_zero_tlen() {
+        let cigar = CigarString(vec![Cigar::Match(150)]);
+        let rec = mock_record(&cigar, 0);
+        assert_eq!(calc_physical_insert_size(&rec), 0, "TLEN=0 should return 0");
+    }
+
+    #[test]
+    fn test_physical_size_no_indels() {
+        // 150M, TLEN=167 → physical = 167 (no correction)
+        let cigar = CigarString(vec![Cigar::Match(150)]);
+        let rec = mock_record(&cigar, 167);
+        assert_eq!(calc_physical_insert_size(&rec), 167);
+    }
+
+    #[test]
+    fn test_physical_size_negative_tlen_no_indels() {
+        // 150M, TLEN=-167 → physical = 167 (abs value)
+        let cigar = CigarString(vec![Cigar::Match(150)]);
+        let rec = mock_record(&cigar, -167);
+        assert_eq!(calc_physical_insert_size(&rec), 167);
+    }
+
+    #[test]
+    fn test_physical_size_with_deletion() {
+        // 89M15D1M, TLEN=182 → physical = 182 - 15 = 167
+        let cigar = CigarString(vec![Cigar::Match(89), Cigar::Del(15), Cigar::Match(1)]);
+        let rec = mock_record(&cigar, 182);
+        assert_eq!(calc_physical_insert_size(&rec), 167,
+            "15bp deletion should subtract 15 from TLEN");
+    }
+
+    #[test]
+    fn test_physical_size_with_large_deletion() {
+        // 80M35D11M, TLEN=340 → physical = 340 - 35 = 305
+        let cigar = CigarString(vec![Cigar::Match(80), Cigar::Del(35), Cigar::Match(11)]);
+        let rec = mock_record(&cigar, 340);
+        assert_eq!(calc_physical_insert_size(&rec), 305,
+            "35bp deletion should subtract 35 from TLEN");
+    }
+
+    #[test]
+    fn test_physical_size_with_insertion() {
+        // 62M12I17M, TLEN=140 → physical = 140 + 12 = 152
+        let cigar = CigarString(vec![Cigar::Match(62), Cigar::Ins(12), Cigar::Match(17)]);
+        let rec = mock_record(&cigar, 140);
+        assert_eq!(calc_physical_insert_size(&rec), 152,
+            "12bp insertion should add 12 to TLEN");
+    }
+
+    #[test]
+    fn test_physical_size_with_small_insertion() {
+        // 83M6I2M, TLEN=119 → physical = 119 + 6 = 125
+        let cigar = CigarString(vec![Cigar::Match(83), Cigar::Ins(6), Cigar::Match(2)]);
+        let rec = mock_record(&cigar, 119);
+        assert_eq!(calc_physical_insert_size(&rec), 125,
+            "6bp insertion should add 6 to TLEN");
+    }
+
+    #[test]
+    fn test_physical_size_combined_del_and_ins() {
+        // 50M10D20M5I10M, TLEN=200 → physical = 200 - 10 + 5 = 195
+        let cigar = CigarString(vec![
+            Cigar::Match(50), Cigar::Del(10), Cigar::Match(20),
+            Cigar::Ins(5), Cigar::Match(10),
+        ]);
+        let rec = mock_record(&cigar, 200);
+        assert_eq!(calc_physical_insert_size(&rec), 195,
+            "Combined D=10 I=5: 200 - 10 + 5 = 195");
+    }
+
+    #[test]
+    fn test_physical_size_softclips_ignored() {
+        // 5S85M15D1M5S, TLEN=182 → physical = 182 - 15 = 167
+        // Soft-clips should NOT be included in the correction
+        let cigar = CigarString(vec![
+            Cigar::SoftClip(5), Cigar::Match(85), Cigar::Del(15),
+            Cigar::Match(1), Cigar::SoftClip(5),
+        ]);
+        let rec = mock_record(&cigar, 182);
+        assert_eq!(calc_physical_insert_size(&rec), 167,
+            "Soft-clips should be ignored in physical sizing");
     }
 }

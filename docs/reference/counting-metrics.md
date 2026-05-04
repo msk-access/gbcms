@@ -223,6 +223,39 @@ All fields in the `BaseCounts` struct returned by `count_bam_binned()` — the b
 | `fsb_pval` | f64 | Fragment-level strand bias p-value |
 | `fsb_or` | f64 | Fragment-level strand bias odds ratio |
 | `used_decomposed` | bool | True if corrected homopolymer allele was used |
+| `any_alt` | u32 | Reads with **any** ALT evidence at ≥1 discriminating position (DMP-compatible) |
+| `partial_alt` | u32 | Reads with **partial** ALT match only (some but not all positions match ALT) |
+| `n_count` | u32 | Reads with N base at ≥1 discriminating position (duplex masking diagnostic) |
+
+### Diagnostic Column Invariants
+
+The diagnostic columns maintain strict structural invariants:
+
+| Invariant | Formula | Rationale |
+|:----------|:--------|:----------|
+| Decomposed ALT | `any_alt = ad + partial_alt` | Separates full from partial ALT evidence |
+| ALT bound | `any_alt >= ad` | `partial_alt` is non-negative |
+| Depth decomposition | `DP >= RD + AD + partial_alt + n_count` | Remaining reads are third-allele or low-BQ |
+
+### VCF INFO/FORMAT Tags
+
+| Tag | Scope | Type | Description |
+|:----|:------|:-----|:------------|
+| `AAD` | INFO + FORMAT | Integer | Any ALT depth (`any_alt`) |
+| `PAD` | INFO + FORMAT | Integer | Partial ALT depth (`partial_alt`) |
+| `NAD` | INFO + FORMAT | Integer | N-base depth (`n_count`) |
+
+### N-Base Handling
+
+N bases arise from:
+
+- **Duplex masking** (fgbio): disagreeing R1/R2 bases → masked to N (BQ ≈ 2)
+- **Sequencer failure**: uncalled bases
+
+N bases are **strictly uninformative** — they do NOT contribute to RD, AD, any_alt, or partial_alt. They are tracked separately via `n_count` to enable:
+
+- **QC**: `n_count / DP` ratio flags duplex masking hotspots
+- **mFSD**: N-classified fragments form a separate size class for distribution analysis
 
 ---
 

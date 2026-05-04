@@ -5,6 +5,171 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2026-05-04
+
+### ⚠️ Breaking Changes
+
+- **`gbcms run` command removed**: The deprecated `gbcms run` alias (introduced
+  in v4.0.0 as a transitional shim) has been removed. Use `gbcms dna` instead —
+  all arguments are identical.
+- **Nextflow config defaults aligned with CLI**: `filter_secondary`,
+  `filter_supplementary`, `filter_qc_failed` changed from `false` to `true`;
+  `enforce_strandedness` changed from `false` to `true`;
+  `alignment_backend` changed from `'hmm'` to `'pairhmm'`. Pipelines relying
+  on the old Nextflow defaults may see behavior changes.
+
+### ✨ Added
+
+- **Physical fragment sizing**: Rust-native fragment size calculation using
+  aligned read positions instead of TLEN, improving accuracy for supplementary
+  alignments and soft-clipped reads.
+- **`--mfsd-report` flag**: Generates an interactive HTML report with per-variant
+  fragment size distribution analysis, dual-axis histograms, and Fragment Origin
+  Signal classification (TUMOR-LIKE / CH-LIKE / AMBIGUOUS / INSUFFICIENT).
+  Implies `--mfsd` and `--mfsd-parquet`.
+- **Variant navigator**: STRiDE-inspired sticky navigation bar for multi-variant
+  mFSD reports — dropdown selector, prev/next buttons, Focus/Show All toggle,
+  keyboard shortcuts (←/→). Automatically hidden for single-variant reports.
+- **`--mfsd-report-min-alt`**: Minimum ALT fragment count to include a variant
+  in the report (default: 3).
+- **`--mfsd-report-max-variants`**: Maximum variants per report (default: 20).
+- **Theme toggle**: Light/dark mode switching in HTML reports.
+- **Print compliance**: Reports render audit-ready when printed (navigator hidden,
+  all variants at full opacity, branded footer included).
+- **RNA BAQ default**: `--apply-baq` now defaults to `True` for `gbcms rna`.
+  RNA pipelines typically lack upstream BQSR, so BAQ penalizes bases near
+  splice junctions and indels to reduce false-positive variant calls.
+- **BAQ trace logging**: Per-read BAQ adjustments logged at `trace` level,
+  showing indel and splice junction counts per read.
+- **Nextflow `cache = 'lenient'`**: Ensures `-resume` works correctly on
+  GPFS/Spectrum Scale filesystems where inode metadata changes during file
+  pool migration.
+- **Nextflow `manifest` block**: Pipeline metadata (name, version, author,
+  homepage) for Nextflow Tower and nf-core registry compatibility.
+- **Nextflow SLURM job naming**: `clusterOptions` adds descriptive job names
+  (`nf-GBCMS_DNA_sampleid`) for `squeue` readability.
+- **Nextflow `executor.queueSize`**: Caps concurrent SLURM submissions at 100.
+- **nf-core institutional configs**: Auto-loads site-specific profiles (iris,
+  jax, sanger, etc.) via `nf-core/configs`.
+- **Extended trace fields**: IO diagnostics (`rchar`, `wchar`, `syscr`, `syscw`,
+  `read_bytes`, `write_bytes`) added to execution trace.
+### 🔧 Fixed
+
+- **Dual-axis gridline artifact**: Fixed Plotly `yaxis2` overlay creating a
+  duplicate x-axis line in mFSD histograms by standardizing `mirror: false`,
+  `rangemode: 'tozero'`, and `showline` controls.
+- **BAQ RefSkip early-exit bug**: `apply_heuristic_baq()` silently skipped
+  reads containing only splice junctions (CIGAR `N`) but no indels. The
+  early-exit gate now includes `Cigar::RefSkip`, ensuring splice-spanning
+  reads receive the BAQ quality penalty.
+- **Nextflow config defaults**: Aligned `nextflow.config` with CLI defaults —
+  `filter_secondary`, `filter_supplementary`, `filter_qc_failed` corrected
+  to `true`; `enforce_strandedness` corrected to `true`; `alignment_backend`
+  corrected to `pairhmm`.
+- **Nextflow RNA BAQ wiring**: Added `--no-baq` / `--apply-baq` argument
+  to RNA module (`rna/main.nf`), which was previously missing entirely.
+- **Nextflow RNA strandedness**: Fixed `strandedness_arg` logic — now passes
+  `--no-strandedness` only when disabled (was incorrectly passing
+  `--enforce-strandedness` as an additive flag).
+
+### 📚 Documentation
+
+- **[NEW]** `docs/reference/mfsd-report.md` — mFSD interactive report reference
+  covering Fragment Origin Signal classification, interactive features, output
+  columns, and print compliance.
+- **[NEW]** `docs/reference/rna-splice-handling.md` — RNA splice-junction handling
+  guide with dual-mechanism comparison (consensus intron snipping vs BAQ), GATK
+  SplitNCigarReads comparison, defense-in-depth analysis (5 layers), and visual
+  splice bleed examples.
+- **Updated** BAQ documentation across 7 files: `read-filters.md`, `cli/dna.md`,
+  `cli/rna.md`, `glossary.md`, `abbreviations.md`, `nextflow/parameters.md`,
+  `architecture.md` — all now include BAQ_RADIUS/BAQ_PENALTY constants,
+  mode-specific defaults, and guidance on when to enable BAQ for DNA.
+- **Updated** `mkdocs.yml` — added "RNA Splice Handling" to navigation.
+- **Updated** `docs/cli/dna.md` — added `--mfsd-report`, `--mfsd-report-min-alt`,
+  `--mfsd-report-max-variants` to CLI reference.
+- **Updated** `docs/nextflow/parameters.md` — added Nextflow params for mFSD report;
+  BAQ default now shows mode-specific values.
+- **Updated** `docs/development/release-guide.md` — version locations table corrected
+  from 5 to 7 references (reflecting v4.0.0 Nextflow module split).
+- **Updated** `nextflow/nextflow.config` — added `mfsd_report`, `mfsd_report_min_alt`,
+  `mfsd_report_max_variants` pipeline parameters.
+- **Updated** `nextflow/modules/local/gbcms/dna/main.nf` — wired `--mfsd-report` flags
+  through the DNA module with HTML report output channel (`emit: mfsd_report`).
+
+### 🧪 Tests
+
+- **[NEW]** `tests/test_mfsd_report.py` — 13 unit tests covering report creation,
+  navigator presence/absence, Plotly integration, theme toggle, branding, summary
+  cards, min_alt/max_variants filtering, and error handling. Uses synthetic test
+  fixtures with no patient identifiers.
+- `mfsd_report.py` coverage: 0% → 91%.
+- **[NEW]** `tests/test_config_isolation.py` — BAQ default assertions for RNA
+  (`apply_baq=True`) and DNA (`apply_baq=False`) modes.
+
+### 🧹 Chores
+
+- Deleted ad-hoc analysis scripts from `scripts/` (compare_tlen_vs_physical,
+  concordance, plot_fsd_distributions, plot_fsd_histogram).
+- Deleted `scripts/*_test/` directories containing test artifacts.
+- Added `.gitignore` patterns for `*.parquet`, `*.mfsd_report.html`, and
+  `scripts/*_test/` directories.
+- Ruff B904 fix: `raise ... from None` in `mfsd_report.py`.
+- Ruff UP015 fix: removed unnecessary `"r"` mode argument from `open()`.
+
+### 🧬 N-Base Diagnostic Integration (Phases 0–3)
+
+#### ✨ Added
+
+- **Diagnostic output columns**: `any_alt`, `partial_alt`, `n_count` appended to
+  all MAF output (24 gbcms DNA columns total, up from 21).
+- **VCF diagnostic tags**: `AAD` (Any ALT Depth), `PAD` (Partial ALT Depth),
+  `NAD` (N-base Depth) emitted in both INFO and FORMAT sections.
+- **N-base defense-in-depth**: Explicit N-base guards in `check_snp`, `check_mnp`,
+  and `check_complex` — N bases are classified as uninformative regardless of
+  reported base quality, preventing silent evidence inflation from duplex-masked
+  positions (fgbio) or sequencer failure.
+- **Structural invariants**: `any_alt = AD + partial_alt`, `any_alt >= AD`,
+  `DP >= RD + AD + partial_alt + n_count` enforced and documented.
+- **`trace!`-level diagnostics**: N-base detection, n_count accumulation, and
+  partial_alt counting logged at trace level for production debugging.
+- **ALT-contains-N rejection**: Variants where the ALT allele contains N are
+  rejected with `FAIL_ALT_CONTAINS_N` validation status and `warn!`-level log.
+
+#### 🔄 Changed
+
+- **MNP quality strategy**: Replaced all-or-nothing `min(BQ across block)` gate
+  with **masked per-position evaluation** — each discriminating position (REF ≠ ALT)
+  is independently assessed; low-BQ and N bases are masked but unmasked positions
+  still vote. This recovers reads in GC-rich regions (e.g., TERT promoter) where
+  a single low-quality position previously dropped the entire read.
+- **MNP ThirdAllele handling**: Mixed-vote reads now track `positions_matching_alt`
+  for diagnostic partial_alt counting instead of being silently discarded.
+
+#### 🧪 Tests
+
+- **[NEW]** `tests/test_mnp_concordance.py` — 6 tests for MNP concordance with
+  C++ gbcms on production duplex BAMs.
+- **[NEW]** `tests/test_phase2_output.py` — 5 tests for diagnostic column presence,
+  invariant validation, and N-count sanity on fixture data.
+- **26+ Rust unit tests** for N-base masking, MNP per-position evaluation, partial
+  match tracking, invariant enforcement, and edge cases (all-N reads, mixed BQ/N).
+- Updated `tests/test_column_count_delta_is_three` to assert 24 gbcms DNA columns.
+
+#### 📚 Documentation
+
+- **Updated** `docs/reference/counting-metrics.md` — diagnostic columns, invariant
+  tables, VCF tag definitions, N-base handling section.
+- **Updated** `docs/reference/output-formats.md` — AAD/PAD/NAD in VCF header,
+  INFO/FORMAT tables, annotated example; any_alt/partial_alt/n_count in MAF table.
+- **Updated** `docs/reference/allele-classification.md` — SNP flowchart with N guard,
+  MNP section rewritten for masked per-position algorithm, Complex N-base note.
+- **Updated** `docs/reference/architecture.md` — structural invariants and diagnostic
+  output fields in Formulas section.
+- **Updated** `docs/development/developer-guide.md` — regression invariant checklist.
+- **Updated** `docs/development/testing-guide.md` — Phase 2 test suite, silent
+  failures matrix, invariant table, updated test counts.
+
 ## [4.0.1] - 2026-03-24
 
 ### 🔧 Fixed

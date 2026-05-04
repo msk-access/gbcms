@@ -2,8 +2,8 @@
 
 Count alleles at variant positions across one or more DNA/cfDNA BAM files.
 
-!!! warning "Migrating from `gbcms run`"
-    `gbcms run` is deprecated and hidden. Replace with `gbcms dna` — all arguments are identical. `gbcms run` will be removed in v4.1.0.
+!!! info "Migrated from `gbcms run`"
+    The deprecated `gbcms run` command was removed in v4.1.0. Use `gbcms dna` instead — all arguments are identical.
 
 ## Synopsis
 
@@ -46,15 +46,19 @@ short-fragment enrichment associated with tumor-derived cfDNA
 |:-------|:--------|:------------|
 | `--mfsd` | `false` | Enable mFSD analysis. Adds 34 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, derived metrics) to MAF output and 7 `MFSD_*` INFO fields to VCF. |
 | `--mfsd-parquet` | `false` | Write a companion `<sample>.fsd.parquet` with per-variant raw fragment size arrays (`ref_sizes`, `alt_sizes`). Enables downstream visualizations. **Requires `--mfsd`**. |
+| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and Fragment Origin Signal classification. **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). See [mFSD Report](../reference/mfsd-report.md). |
+| `--mfsd-report-min-alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
+| `--mfsd-report-max-variants` | `20` | Maximum variants in the HTML report (selected by highest ALT count). Use `-1` for no limit. |
 
 !!! tip
-    To generate both summary statistics and raw Parquet data in one run:
+    To generate summary statistics, raw Parquet data, and an interactive HTML report:
     ```bash
-    gbcms dna --mfsd --mfsd-parquet --format maf \
+    gbcms dna --mfsd-report --format maf \
         --variants variants.maf --bam tumor:tumor.bam --fasta hg19.fa -o ./results
     ```
-    This produces `<sample>.maf` (with 34 mFSD columns) and `<sample>.fsd.parquet`
-    (raw fragment sizes for visualization).
+    This produces `<sample>.maf` (with 34 mFSD columns), `<sample>.fsd.parquet`
+    (raw fragment sizes), and `<sample>.mfsd_report.html` (interactive visualization).
+    Using `--mfsd-report` auto-enables `--mfsd` and `--mfsd-parquet`.
 
 ## Filtering Options
 
@@ -72,14 +76,27 @@ short-fragment enrichment associated with tumor-derived cfDNA
 
 ## BAQ Options
 
-Base Alignment Quality (BAQ) heuristically downgrades base qualities near indels to prevent systematic errors from realignment artifacts.
+Base Alignment Quality (BAQ) heuristically downgrades base qualities near indels and splice junctions to prevent systematic errors from realignment artifacts.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--apply-baq/--no-baq` | `off` | Enable BAQ quality downgrade near indels |
+| `--apply-baq/--no-baq` | `off` | Enable BAQ quality downgrade near indels and splice junctions |
 
-!!! info "When to Enable BAQ"
-    Most modern pipelines (BQSR, fgbio consensus) already recalibrate base qualities. Enable BAQ only for legacy BAMs lacking quality recalibration, where bases near indels may have inflated quality scores that lead to false-positive allele calls.
+**Internal constants** (not configurable — derived from Li 2011):
+
+| Constant | Value | Description |
+|:---------|:------|:------------|
+| `BAQ_RADIUS` | 5 bp | Bases within 5 bp of an indel/splice boundary are penalized |
+| `BAQ_PENALTY` | 20 | Subtracted from BQ (clamped to 0) |
+
+!!! info "When to Enable BAQ for DNA"
+    Enable `--apply-baq` when your upstream pipeline does **not** include BQSR, fgbio consensus, or any other base quality recalibration. In these "raw BQ" pipelines, bases near indels may retain inflated sequencer-assigned quality scores. BAQ compensates by penalizing BQ within 5 bp of indel boundaries.
+
+!!! warning "Do Not Enable for Pre-Calibrated BAMs"
+    If your DNA pipeline includes BQSR or consensus calling (e.g., fgbio, Marianas), leave BAQ off (the default). Applying BAQ on already-recalibrated BAMs may over-penalize, causing undercounting of legitimate variant evidence.
+
+!!! tip "RNA Mode Default"
+    In `gbcms rna`, BAQ is **on by default** because RNA pipelines typically lack BQSR. BAQ also penalizes bases near splice junctions (CIGAR `N`). See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
 
 ## UMI Options
 

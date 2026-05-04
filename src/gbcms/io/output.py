@@ -17,6 +17,35 @@ __all__ = ["OutputWriter", "MafWriter", "VcfWriter"]
 
 logger = logging.getLogger(__name__)
 
+# ── Clonal Hematopoiesis (CH) gene set ──────────────────────────────────────
+# Well-established CH driver genes. Variants in these genes flagged as
+# "CH-associated" in mFSD output for CH-vs-ctDNA fragment size interpretation.
+# Source: Steensma et al. (2015), Jaiswal et al. (2014), Bolton et al. (2020).
+CH_GENES: frozenset[str] = frozenset(
+    {
+        "DNMT3A",
+        "TET2",
+        "ASXL1",
+        "PPM1D",
+        "TP53",
+        "JAK2",
+        "SF3B1",
+        "SRSF2",
+        "U2AF1",
+        "CBL",
+        "ATM",
+        "BCOR",
+        "EZH2",
+        "IDH1",
+        "IDH2",
+        "GNAS",
+        "GNB1",
+        "BCORL1",
+        "SETD2",
+        "STAG2",
+    }
+)
+
 
 def _fmt(v: float) -> str:
     """Format a float for MAF output. NaN → 'NA' (standard missing value for tabular formats)."""
@@ -153,9 +182,15 @@ class MafWriter(OutputWriter):
             f"{p}ref_count_fragment_reverse",
             f"{p}alt_count_fragment_forward",
             f"{p}alt_count_fragment_reverse",
+            # Decomposed ALT counting (diagnostic, always present)
+            # any_alt = ad + partial_alt (see types.rs invariant)
+            f"{p}any_alt",
+            f"{p}partial_alt",
+            # N-base diagnostic: reads with N at discriminating position (duplex masking QC)
+            f"{p}n_count",
         ]
         if self.mfsd:
-            # ── mFSD: Mutant Fragment Size Distribution (31 columns) ──────────
+            # ── mFSD: Mutant Fragment Size Distribution (40 columns) ──────────
             # Only appended when --mfsd is set. Without the flag these columns
             # are completely absent from output (not NA-filled or zero-filled).
             cols += [
@@ -198,6 +233,15 @@ class MafWriter(OutputWriter):
                 "mfsd_quality_score",
                 "mfsd_alt_confidence",
                 "mfsd_ks_valid",
+                # Sub-nucleosomal / mono-nucleosomal fractions
+                # for CH-vs-ctDNA differentiation (computed in Rust)
+                "mfsd_sub_nuc_ref_frac",
+                "mfsd_sub_nuc_alt_frac",
+                "mfsd_sub_nuc_enrichment",
+                "mfsd_mono_nuc_ref_frac",
+                "mfsd_mono_nuc_alt_frac",
+                # CH gene flag (computed in Python from Hugo_Symbol)
+                "mfsd_ch_flag",
             ]
         if self.show_normalization:
             cols.extend(self._norm_column_names())
@@ -259,7 +303,11 @@ class MafWriter(OutputWriter):
             len(self.fieldnames),
         )
 
-    def _populate_gbcms_counts(self, counts: Any) -> dict[str, str]:
+    def _populate_gbcms_counts(
+        self,
+        counts: Any,
+        hugo_symbol: str = "",
+    ) -> dict[str, str]:
         """
         Build the gbcms count columns dictionary with the configured prefix.
 
@@ -269,6 +317,7 @@ class MafWriter(OutputWriter):
 
         Args:
             counts: BaseCounts object from the Rust engine.
+            hugo_symbol: Gene symbol for CH gene flagging (from MAF Hugo_Symbol column).
 
         Returns:
             Dictionary mapping prefixed column names to string values.
@@ -307,6 +356,11 @@ class MafWriter(OutputWriter):
             f"{p}ref_count_fragment_reverse": str(counts.rdf_rev),
             f"{p}alt_count_fragment_forward": str(counts.adf_fwd),
             f"{p}alt_count_fragment_reverse": str(counts.adf_rev),
+            # Decomposed ALT counting
+            f"{p}any_alt": str(counts.any_alt),
+            f"{p}partial_alt": str(counts.partial_alt),
+            # N-base diagnostic
+            f"{p}n_count": str(counts.n_count),
         }
 
         # ── RNA-specific count columns ─────────────────────────────────────────
@@ -398,6 +452,14 @@ class MafWriter(OutputWriter):
                     "mfsd_quality_score": _fmt(mfsd_quality_score),
                     "mfsd_alt_confidence": mfsd_alt_confidence,
                     "mfsd_ks_valid": str(mfsd_ks_valid),
+                    # Sub-nucleosomal / mono-nucleosomal fractions (from Rust)
+                    "mfsd_sub_nuc_ref_frac": _fmt(counts.mfsd_sub_nuc_ref_frac),
+                    "mfsd_sub_nuc_alt_frac": _fmt(counts.mfsd_sub_nuc_alt_frac),
+                    "mfsd_sub_nuc_enrichment": _fmt(counts.mfsd_sub_nuc_enrichment),
+                    "mfsd_mono_nuc_ref_frac": _fmt(counts.mfsd_mono_nuc_ref_frac),
+                    "mfsd_mono_nuc_alt_frac": _fmt(counts.mfsd_mono_nuc_alt_frac),
+                    # CH gene flag (Python-side; True if Hugo_Symbol in CH_GENES)
+                    "mfsd_ch_flag": str(hugo_symbol.upper() in CH_GENES if hugo_symbol else False),
                 }
             )
 
@@ -472,7 +534,9 @@ class MafWriter(OutputWriter):
 
         # Append gbcms count columns (both paths, never overwrites originals)
         row["validation_status"] = validation_status
-        row.update(self._populate_gbcms_counts(counts))
+        # Extract Hugo_Symbol from MAF metadata for CH gene flagging (empty for VCF input)
+        hugo = variant.metadata.get("Hugo_Symbol", "") if variant.metadata else ""
+        row.update(self._populate_gbcms_counts(counts, hugo_symbol=hugo))
 
         # Normalization columns (only when --show-normalization is enabled)
         if self.show_normalization and norm_variant:
@@ -532,6 +596,9 @@ class VcfWriter(OutputWriter):
             '##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">',
             '##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">',
             '##INFO=<ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio">',
+            '##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at >=1 discriminating position (any_alt = ad + partial_alt)">',
+            '##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions">',
+            '##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)">',
         ]
         if self.mfsd:
             # mFSD INFO fields (7 primary diagnostics). VCF key = MAF column name uppercased.
@@ -576,6 +643,9 @@ class VcfWriter(OutputWriter):
                 '##FORMAT=<ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)">',
                 '##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)">',
                 '##FORMAT=<ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)">',
+                '##FORMAT=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (reads with any ALT evidence)">',
+                '##FORMAT=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth (partial ALT only)">',
+                '##FORMAT=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth (reads with N at discriminating position)">',
             ]
         )
         if self.mode == "rna":
@@ -613,6 +683,9 @@ class VcfWriter(OutputWriter):
             f"SB_OR={counts.sb_or:.4f}",
             f"FSB_PVAL={counts.fsb_pval:.4e}",
             f"FSB_OR={counts.fsb_or:.4f}",
+            f"AAD={counts.any_alt}",
+            f"PAD={counts.partial_alt}",
+            f"NAD={counts.n_count}",
         ]
         if self.mfsd:
             # mFSD primary diagnostic INFO fields (7 values).
@@ -665,15 +738,16 @@ class VcfWriter(OutputWriter):
         faf = counts.adf / total_frags if total_frags > 0 else 0.0
 
         if self.mode == "rna":
-            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:SEN:ANT:ASEN:SPL"
+            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL"
             sample_data = (
                 f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}"
+                f":{counts.any_alt}:{counts.partial_alt}:{counts.n_count}"
                 f":{counts.sense_depth}:{counts.antisense_depth}"
                 f":{counts.sense_strand_alt_count}:{counts.splice_spanning_count}"
             )
         else:
-            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF"
-            sample_data = f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}"
+            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD"
+            sample_data = f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}:{counts.any_alt}:{counts.partial_alt}:{counts.n_count}"
 
         row = [
             variant.chrom,

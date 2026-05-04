@@ -172,14 +172,42 @@ For dUTP-stranded RNA-seq libraries, reads are classified by their orientation r
 
 ## BAQ Quality Downgrade
 
-When `--apply-baq` is enabled, base qualities near indels are heuristically downgraded to prevent inflated quality scores from causing false-positive allele classifications.
+When `--apply-baq` is enabled, base qualities near CIGAR indels and splice junctions (CIGAR `N`/RefSkip) are heuristically downgraded to prevent inflated quality scores from causing false-positive allele classifications.
 
-| Option | Default | Description |
-|:-------|:--------|:------------|
-| `--apply-baq/--no-baq` | off | Enable heuristic BAQ quality downgrade |
+### Parameters (Internal Constants)
 
-!!! info "When to Enable BAQ"
-    Most modern pipelines (BQSR, fgbio consensus) already recalibrate base qualities. Enable BAQ only for legacy BAMs lacking quality recalibration, where bases adjacent to indels may retain inflated quality scores from the original base caller.
+These are not configurable via CLI — they are fixed values derived from Li (2011):
+
+| Constant | Value | Description |
+|:---------|:------|:------------|
+| `BAQ_RADIUS` | 5 bp | Bases within 5 bp of an indel or splice junction boundary are penalized |
+| `BAQ_PENALTY` | 20 | Subtracted from BQ (clamped to 0, never negative) |
+
+The effective aggressiveness of BAQ is controlled by `--min-baseq` (default 20): a base with BQ 30 near a splice junction becomes BQ 10 after BAQ, which is below the default `--min-baseq` threshold and is therefore excluded from allele evidence.
+
+### Mode Defaults
+
+| Mode | Default | CLI Override | Rationale |
+|:-----|:--------|:-------------|:----------|
+| `gbcms dna` | **off** | `--apply-baq` to enable | DNA BAMs typically go through BQSR or consensus calling, which already recalibrates BQ. Enabling BAQ on top may double-penalize. |
+| `gbcms rna` | **on** | `--no-baq` to disable | RNA BAMs typically do not go through BQSR or consensus calling. BAQ penalizes bases near splice junctions, mimicking GATK SplitNCigarReads' overhang clipping. |
+
+### When to Enable BAQ for DNA
+
+Enable `--apply-baq` on `gbcms dna` when the upstream pipeline does **not** include:
+
+- **GATK BQSR** (Base Quality Score Recalibration)
+- **Consensus-based deduplication** (fgbio, Marianas, Gencore)
+- **Any other base quality recalibration step**
+
+In these "raw BQ" scenarios, bases near indels may retain inflated sequencer-assigned quality scores that lead to false-positive allele calls. BAQ applies a -20 penalty within 5 bp of indel boundaries to compensate.
+
+!!! warning "Do Not Enable for Pre-Calibrated BAMs"
+    If your DNA pipeline includes BQSR or consensus calling, leave BAQ off (the default). Applying BAQ on already-recalibrated BAMs may over-penalize, causing undercounting of legitimate variant evidence.
+
+### RNA: Splice Junction Penalty
+
+In RNA mode, BAQ additionally penalizes bases near CIGAR `N` (RefSkip) operations — splice junctions. This is a lightweight alternative to running GATK SplitNCigarReads upstream. See [RNA Splice-Junction Handling](rna-splice-handling.md) for details.
 
 ---
 

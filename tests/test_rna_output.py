@@ -138,6 +138,11 @@ def _make_rna_counts() -> types.SimpleNamespace:
         sb_or=1.5,
         fsb_pval=0.1,
         fsb_or=1.2,
+        # Decomposed ALT counting
+        any_alt=5,  # same as ad for SNP (no partial)
+        partial_alt=0,
+        # N-base diagnostic
+        n_count=0,
         # mFSD (all NaN/zero — not tested here)
         mfsd_ref_count=0,
         mfsd_alt_count=0,

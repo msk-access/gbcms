@@ -38,6 +38,7 @@ pytest tests/test_accuracy.py -v
 | Config Isolation | `test_config_isolation.py` | DNA vs RNA mode, defaults, field validation |
 | RNA Output | `test_rna_output.py` | MAF/VCF RNA column presence/absence |
 | BAQ | `test_baq.py` | BAQ quality downgrade feature |
+| Phase 2 Output | `test_phase2_output.py` | Diagnostic columns (any_alt, partial_alt, n_count) MAF/VCF |
 
 ### Rust-Level Tests
 
@@ -49,7 +50,7 @@ cd rust && cargo test
 cargo test test_window_expansion_long_homopolymer
 ```
 
-Rust tests live inside `#[cfg(test)]` modules in `normalize.rs` (20 tests) and cover:
+Rust tests live inside `#[cfg(test)]` modules and cover:
 
 | Area | Tests | Purpose |
 |:-----|:------|:--------|
@@ -57,6 +58,9 @@ Rust tests live inside `#[cfg(test)]` modules in `normalize.rs` (20 tests) and c
 | Repeat detection | 3 | `find_tandem_repeat()` edge cases |
 | Adaptive padding | 3 | Context padding from repeat spans |
 | Window expansion | 1 | Gap 1B: >100bp repeat normalization |
+| MNP classification | 17 | Masked quality, partial counting, N-base handling |
+| N-base coverage | 8 | SNP/MNP/PairHMM N guards, n_count propagation |
+| Invariants | 1 | `any_alt = ad + partial_alt`, depth decomposition |
 
 ---
 
@@ -82,6 +86,7 @@ tests/
 ├── test_multi_allelic.py        # Gap 1A: Sibling ALT exclusion
 ├── test_normalization.py        # Left-alignment, REF validation, window expansion
 ├── test_pipeline_v2.py          # End-to-end pipeline
+├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
 ├── test_rna_output.py           # RNA MAF/VCF column presence/absence
 ├── test_shifted_indels.py       # Windowed indel detection (±5bp)
 └── test_strand_counts.py        # Strand-specific counts
@@ -154,6 +159,23 @@ All counting tests should verify:
 | `dpf >= rdf + adf` | DPF includes discarded ambiguous fragments |
 | `rd == rd_fwd + rd_rev` | Strand consistency |
 | `ad == ad_fwd + ad_rev` | Strand consistency |
+| `any_alt = ad + partial_alt` | Phase 2 decomposition invariant |
+| `any_alt >= ad` | Partial count is non-negative |
+| `dp >= rd + ad + partial_alt + n_count` | Depth decomposition with N-base diagnostic |
+
+### No Silent Failures Matrix
+
+Every N/masked/partial path must produce a deterministic, traceable outcome:
+
+| Scenario | Classification | n_count | partial_alt | Log Level |
+|:---------|:---------------|:--------|:------------|:----------|
+| SNP with N base | `neither_n` (uninformative) | +1 | — | `trace` |
+| MNP with N at 1 position | ALT/REF via unmasked | +1 | depends on match | `trace` |
+| MNP with N at ALL positions | `LowQuality` (DP only) | +1 | 0 | `trace` |
+| MNP with N + low-BQ | `LowQuality` (DP only) | +1 | 0 | `trace` |
+| Complex with N in haplotype | via masked compare | +1 | depends on match | `trace` |
+| ALT = "N" in input VCF/MAF | `FAIL_ALT_CONTAINS_N` | — | — | `warn` (validation) |
+| ThirdAllele with partial match | neither + partial | — | +1 | `trace` |
 
 ---
 
@@ -225,7 +247,7 @@ samtools mpileup -r 1:11168293-11168293 -q 20 -f ref.fa sample.bam | \
 | io/output.py | 90% | 84% |
 | models/core.py | 90% | 96% |
 
-**Current totals**: 155 tests, 66% overall coverage.
+**Current totals**: 207 Python + 119 Rust tests.
 
 Run coverage report:
 

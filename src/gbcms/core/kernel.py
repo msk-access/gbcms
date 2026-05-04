@@ -10,6 +10,11 @@ Ensures consistent representation of variants:
 - SNPs: 0-based index of the base.
 - Insertions: 0-based index of the ANCHOR base (preceding the insertion).
 - Deletions: 0-based index of the ANCHOR base (preceding the deletion).
+
+Note: This module is pure Python and performs coordinate transformations
+only. Allele counting is dispatched via :mod:`gbcms.pipeline` →
+``gbcms_rs.count_bam_*`` (Rust FFI). The GIL is released before rayon
+parallel iteration in the Rust layer (see ``py.allow_threads``).
 """
 
 from gbcms.models.core import Variant, VariantType
@@ -113,6 +118,11 @@ class CoordinateKernel:
             internal_pos = start_pos - 1
 
         else:
+            # MNPs (same-length multi-base substitutions: DNP, TNP, ONP) and
+            # true DelIns variants (e.g., EPHA7: GC→T) are both classified as
+            # COMPLEX here. The Rust counting engine dispatches by allele
+            # length (ref_len == alt_len → check_mnp), not by this type label.
+            # See commit 5f2d4f6 for the original COMPLEX introduction.
             vtype = VariantType.COMPLEX
             internal_pos = start_pos - 1
 

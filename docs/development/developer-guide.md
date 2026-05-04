@@ -181,6 +181,9 @@ Key invariants to check:
 | `ref_count + alt_count ≤ total_count` | Must hold for every row (INVARIANT) |
 | Δalt for own-sample covered variants | 0 vs sign-out `t_alt` (except known MAF annotation issues) |
 | Non-own-sample ref_count changes | ≤1 count (non-determinism from parallel windowed scan) |
+| `any_alt = ad + partial_alt` | Must hold for every row (Phase 2 decomposition invariant) |
+| `any_alt >= ad` | Must hold for every row |
+| `n_count / DP ratio` | Should be low (<5%) for clean sites; high ratios flag duplex masking hotspots |
 
 ### Variant-Type-Specific Investigation
 

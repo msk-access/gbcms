@@ -158,6 +158,28 @@ Where:
 
 Low p-value (< 0.05) indicates potential strand bias artifact.
 
+### Structural Invariants
+
+The Rust counting engine (`BaseCounts`) maintains these invariants at all times:
+
+| Invariant | Formula | Purpose |
+|:----------|:--------|:--------|
+| ALT decomposition | `any_alt = AD + partial_alt` | any_alt decomposes into full ALT matches and partial-only matches |
+| ALT monotonicity | `any_alt >= AD` | Reads with any ALT evidence ≥ reads with full ALT match |
+| Depth decomposition | `DP >= RD + AD + partial_alt + n_count` | DP includes all read categories; gap = reads classified as neither |
+
+### Diagnostic Output Fields
+
+Three diagnostic fields are always present in VCF (FORMAT tags) and MAF output:
+
+| Field | VCF Tag | Description |
+|:------|:--------|:------------|
+| `any_alt` | `AAD` | Reads with ALT evidence at ≥1 discriminating position |
+| `partial_alt` | `PAD` | Reads matching ALT at some but not all positions (MNP/Complex only; always 0 for SNP/indel) |
+| `n_count` | `NAD` | Reads with N base at ≥1 discriminating position (duplex masking QC) |
+
+N bases are **strictly uninformative** — they increment `n_count` for QC monitoring but are excluded from RD, AD, any_alt, and partial_alt. See [Counting Metrics](counting-metrics.md) for full details.
+
 ---
 
 ## Module Structure
@@ -305,6 +327,7 @@ sequenceDiagram
 ## Related
 
 - [Allele Classification](allele-classification.md) — How each variant type is counted
+- [RNA Splice-Junction Handling](rna-splice-handling.md) — How gbcms handles splice-boundary artifacts vs GATK SplitNCigarReads
 - [Variant Normalization](variant-normalization.md) — How variants are prepared before counting
 - [Input Formats](input-formats.md) — VCF and MAF specifications
 - [Glossary](glossary.md) — Term definitions

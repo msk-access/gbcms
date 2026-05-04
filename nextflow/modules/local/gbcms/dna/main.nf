@@ -4,16 +4,17 @@ process GBCMS_DNA {
 
     publishDir "${params.outdir}/gbcms", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:4.0.1"
+    container "ghcr.io/msk-access/gbcms:4.1.0"
 
     input:
     tuple val(meta), path(bam), path(bai), path(variants)
     tuple path(fasta), path(fai)
 
     output:
-    tuple val(meta), path("*.{vcf,maf}"),  emit: counts
-    tuple val(meta), path("*.fsd.parquet"), emit: fsd_parquet, optional: true
-    path "versions.yml"                   , emit: versions
+    tuple val(meta), path("*.{vcf,maf}"),          emit: counts
+    tuple val(meta), path("*.fsd.parquet"),         emit: fsd_parquet,  optional: true
+    tuple val(meta), path("*.mfsd_report.html"),    emit: mfsd_report,  optional: true
+    path "versions.yml"                           , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -57,12 +58,15 @@ process GBCMS_DNA {
     // UMI tag (e.g., 'XM', 'RX')
     def umi_arg = params.umi_tag ? "--umi-tag ${params.umi_tag}" : ""
 
-    // BAQ (Base Alignment Quality) recalibration
+    // BAQ: CLI default for DNA is --no-baq (off). Pass --apply-baq only if user explicitly enables.
     def baq_arg = params.apply_baq ? "--apply-baq" : ""
 
     // mFSD analysis (off by default — must opt in)
     def mfsd_arg         = params.mfsd         ? "--mfsd"          : ""
     def mfsd_parquet_arg = params.mfsd_parquet ? "--mfsd-parquet"  : ""
+
+    // mFSD interactive HTML report
+    def mfsd_report_arg  = params.mfsd_report  ? "--mfsd-report --mfsd-report-min-alt ${params.mfsd_report_min_alt} --mfsd-report-max-variants ${params.mfsd_report_max_variants}" : ""
 
     """
     gbcms dna \\
@@ -88,6 +92,7 @@ process GBCMS_DNA {
         ${baq_arg} \\
         ${mfsd_arg} \\
         ${mfsd_parquet_arg} \\
+        ${mfsd_report_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml

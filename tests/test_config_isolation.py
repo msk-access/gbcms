@@ -111,6 +111,16 @@ def test_shared_fields_exist():
         assert field in GbcmsRnaConfig.model_fields, f"RNA config missing '{field}'"
 
 
+def test_rna_default_baq():
+    """RNA mode defaults to apply_baq=True (no upstream BQSR/consensus)."""
+    assert GbcmsRnaConfig.model_fields["apply_baq"].default is True
+
+
+def test_dna_default_baq():
+    """DNA mode defaults to apply_baq=False (upstream BQSR/consensus)."""
+    assert GbcmsDnaConfig.model_fields["apply_baq"].default is False
+
+
 # ── Validation ───────────────────────────────────────────────────────────
 
 

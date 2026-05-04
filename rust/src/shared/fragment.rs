@@ -40,9 +40,12 @@ pub struct FragmentEvidence {
     read2_orientation: Option<bool>,
 
     // ── mFSD Fragment Size Distribution fields ────────────────────────────
-    /// Absolute insert size (|TLEN|) in base pairs, from the first non-zero TLEN
-    /// seen across reads of this fragment. TLEN=0 (unpaired/unmapped mate) is
-    /// ignored. Only sizes in the cfDNA range (50–1000 bp) are later aggregated.
+    /// Physical fragment insert size (CIGAR-corrected) in base pairs.
+    /// Updated via min() across both reads of the pair to keep the most
+    /// corrected value (critical for deletions where only one read may span
+    /// the indel in non-cfDNA contexts). TLEN=0 (unpaired/unmapped mate)
+    /// is ignored. Only sizes in the cfDNA range (50–1000 bp) are later
+    /// aggregated into mFSD class vectors.
     pub insert_size: Option<i32>,
     /// True if the base at the variant position was 'N' (ambiguous) on any read.
     /// Sticky: once set, never cleared. Used to split "neither-REF-nor-ALT"
@@ -72,8 +75,9 @@ impl FragmentEvidence {
     /// This couples the strand direction to the winning evidence, not just R1.
     ///
     /// ## mFSD tracking
-    /// - `tlen`: signed TLEN from the BAM record. Absolute value stored once
-    ///   (first non-zero value wins). TLEN=0 (unpaired/unmapped mate) is skipped.
+    /// - `tlen`: CIGAR-corrected physical insert size (`|TLEN| - D + I`).
+    ///   Updated via `min()` across both reads to keep the most corrected value.
+    ///   TLEN=0 (unpaired/unmapped mate) is skipped.
     /// - `is_n_base`: set `true` when the base at the variant position is 'N'.
     ///   Sticky across reads of the pair — once set, not cleared.
     #[allow(clippy::too_many_arguments)] // 5 existing + tlen + is_n_base: unavoidable
@@ -102,9 +106,18 @@ impl FragmentEvidence {
             self.read2_orientation = Some(is_forward);
         }
 
-        // mFSD: capture insert size once (first non-zero value from either read)
-        if self.insert_size.is_none() && tlen != 0 {
-            self.insert_size = Some(tlen.abs());
+        // mFSD: capture physical insert size — keep the MOST corrected value
+        // across both reads. For deletions, the read carrying the D op gives a
+        // smaller (more accurate) value; min() picks it. For insertions and
+        // SNPs, both reads agree, so min() is a no-op.
+        if tlen != 0 {
+            let abs_physical = tlen.abs();
+            match self.insert_size {
+                None => self.insert_size = Some(abs_physical),
+                Some(existing) => {
+                    self.insert_size = Some(existing.min(abs_physical));
+                }
+            }
         }
         // mFSD: sticky N flag — once a read sees 'N' at this position, it stays
         if is_n_base {

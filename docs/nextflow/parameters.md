@@ -32,6 +32,9 @@ Complete reference for all pipeline parameters.
 |:----------|:--------|:------------|
 | `--mfsd` | `false` | Enable mFSD analysis — adds 34 mFSD columns to MAF and 7 `MFSD_*` INFO fields to VCF. See [mFSD metrics](../reference/counting-metrics.md#mfsd). |
 | `--mfsd_parquet` | `false` | Write a companion `<sample>.fsd.parquet` with raw per-variant fragment size arrays. Requires `--mfsd`. |
+| `--mfsd_report` | `false` | Generate an interactive HTML report with per-variant fragment size distributions. Implies `--mfsd` and `--mfsd_parquet`. See [mFSD Report](../reference/mfsd-report.md). |
+| `--mfsd_report_min_alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
+| `--mfsd_report_max_variants` | `20` | Maximum variants in the HTML report. Use `-1` for no limit. |
 
 ## Quality & Filtering Options
 
@@ -56,7 +59,7 @@ Complete reference for all pipeline parameters.
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--umi_tag` | `''` | UMI BAM tag for deduplication (e.g., `XM`, `RX`). When set, reads sharing the same UMI are grouped as a single observation. |
-| `--apply_baq` | `false` | Apply Base Alignment Quality recalibration (DNA mode only). Reduces false positives near indels. |
+| `--apply_baq` | `false` (DNA) / `true` (RNA) | Apply Base Alignment Quality downgrade. Reduces false positives near indels and splice junctions (CIGAR `N`). See [BAQ Options](../cli/dna.md#baq-options). |
 
 ## RNA-Specific Options
 

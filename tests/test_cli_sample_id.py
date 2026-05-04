@@ -52,7 +52,7 @@ def _make_files(tmp_path):
 def _base_run_args(vcf, bam, fasta, output_dir, extra=None):
     """Build the minimal valid 'run' args, with optional extras appended."""
     args = [
-        "run",
+        "dna",
         "-v",
         str(vcf),
         "-b",
@@ -81,7 +81,7 @@ def test_cli_parsing_mocked(mock_pipeline_cls, tmp_path):
     result = runner.invoke(
         app,
         [
-            "run",
+            "dna",
             "-v",
             str(vcf),
             "-b",
@@ -119,7 +119,7 @@ def test_cli_bam_list_parsing(mock_pipeline_cls, tmp_path):
     result = runner.invoke(
         app,
         [
-            "run",
+            "dna",
             "-v",
             str(vcf),
             "-L",
@@ -151,7 +151,7 @@ def test_no_bam_args_exits_nonzero(tmp_path):
     result = runner.invoke(
         app,
         [
-            "run",
+            "dna",
             "-v",
             str(vcf),
             "-f",
@@ -179,7 +179,7 @@ def test_bam_list_file_not_found(tmp_path):
     result = runner.invoke(
         app,
         [
-            "run",
+            "dna",
             "-v",
             str(vcf),
             "-L",
@@ -203,7 +203,7 @@ def test_bam_list_file_not_found_ignores_lenient(tmp_path):
     result = runner.invoke(
         app,
         [
-            "run",
+            "dna",
             "-v",
             str(vcf),
             "-L",
@@ -233,7 +233,7 @@ def test_missing_bam_fails_fast(tmp_path):
     result = runner.invoke(
         app,
         [
-            "run",
+            "dna",
             "-v",
             str(vcf),
             "-b",
@@ -259,7 +259,7 @@ def test_lenient_bam_skips_missing(mock_pipeline_cls, tmp_path):
     result = runner.invoke(
         app,
         [
-            "run",
+            "dna",
             "-v",
             str(vcf),
             "-b",
@@ -554,7 +554,7 @@ def test_unsupported_variant_extension_rejected(tmp_path):
         result = runner.invoke(
             app,
             [
-                "run",
+                "dna",
                 "-v",
                 str(bad_file),
                 "-b",
@@ -669,7 +669,7 @@ def test_bam_list_missing_entry_reported_as_error(tmp_path):
         result = runner.invoke(
             app,
             [
-                "run",
+                "dna",
                 "-v",
                 str(vcf),
                 "-L",
@@ -753,7 +753,7 @@ def test_normalize_rejects_unsupported_extension(mock_normalize, tmp_path):
 
 
 @patch("gbcms.cli.Pipeline")
-def test_vcf_bgz_accepted_by_run(mock_pipeline_cls, tmp_path):
+def test_vcf_bgz_accepted_by_dna(mock_pipeline_cls, tmp_path):
     """.vcf.bgz is accepted as a valid variant file extension by 'gbcms dna'."""
     bgz = tmp_path / "variants.vcf.bgz"
     bgz.touch()
@@ -768,7 +768,7 @@ def test_vcf_bgz_accepted_by_run(mock_pipeline_cls, tmp_path):
     result = runner.invoke(
         app,
         [
-            "run",
+            "dna",
             "-v",
             str(bgz),
             "-b",

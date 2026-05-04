@@ -120,6 +120,11 @@ def _zero_counts():
         ref_dist_end_median=_nan,
         singleton_alt_count=0,
         duplex_alt_count=0,
+        # Decomposed ALT counting (invariant: any_alt = ad + partial_alt)
+        any_alt=0,
+        partial_alt=0,
+        # N-base diagnostic (duplex masking QC)
+        n_count=0,
         # RNA-specific (zeroed in DNA mode)
         sense_depth=0,
         antisense_depth=0,
@@ -218,6 +223,38 @@ class Pipeline:
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
 
+        # Log variant type breakdown for transparency
+        # MNPs (same-length multi-base substitutions) are classified as
+        # COMPLEX by kernel.py but dispatched to check_mnp by the Rust
+        # counting engine based on ref_len == alt_len.
+        type_counts: dict[str, int] = {}
+        mnp_count = 0
+        for p in prepared:
+            v = p.variant
+            ref_len = len(v.ref_allele)
+            alt_len = len(v.alt_allele)
+            if ref_len == 1 and alt_len == 1:
+                vtype = "SNP"
+            elif ref_len == alt_len and ref_len > 1:
+                subtypes = {2: "DNP", 3: "TNP"}
+                vtype = subtypes.get(ref_len, f"ONP({ref_len}bp)")
+                mnp_count += 1
+            elif ref_len > alt_len:
+                vtype = "DEL"
+            elif alt_len > ref_len:
+                vtype = "INS"
+            else:
+                vtype = "COMPLEX"
+            type_counts[vtype] = type_counts.get(vtype, 0) + 1
+        type_str = ", ".join(f"{k}={v}" for k, v in sorted(type_counts.items()))
+        logger.info("Variant types: %s", type_str)
+        if mnp_count > 0:
+            logger.info(
+                "MNP counting: %d MNPs use selective discriminating-position "
+                "quality gate (atomic block matching, no check_complex fallback)",
+                mnp_count,
+            )
+
         # Log normalization changes
         n_anchor = sum(1 for p in prepared if p.was_anchor_resolved)
         n_left = sum(1 for p in prepared if p.was_left_aligned)
@@ -236,6 +273,7 @@ class Pipeline:
 
         self._stats["total_variants"] = len(variants)
         self._stats["valid_variants"] = len(valid_indices)
+        self._stats["mnp_variants"] = mnp_count
 
         # 3. Process Each Sample
         self.config.output.directory.mkdir(parents=True, exist_ok=True)
@@ -568,6 +606,26 @@ class Pipeline:
                 fsd_path,
                 len(variants),
             )
+
+            # Generate mFSD HTML report when --mfsd-report is enabled.
+            # Runs after parquet write since it reads the parquet file.
+            if self.config.output.mfsd_report:
+                try:
+                    from .report import generate_mfsd_report
+
+                    report_path = output_path.with_suffix("").with_suffix(".mfsd_report.html")
+                    generate_mfsd_report(
+                        parquet_path=fsd_path,
+                        maf_path=output_path,
+                        output_path=report_path,
+                        min_alt=self.config.output.mfsd_report_min_alt,
+                        max_variants=self.config.output.mfsd_report_max_variants,
+                        sample_name=sample_name,
+                    )
+                except Exception:
+                    logger.exception(
+                        "mFSD report generation failed (non-fatal); " "main output is unaffected."
+                    )
         elif self.config.output.mfsd:
             logger.debug(
                 "mFSD analysis enabled but --mfsd-parquet not set; "

@@ -243,6 +243,30 @@ class OutputConfig(BaseModel):
             "Requires mfsd=True."
         ),
     )
+    mfsd_report: bool = Field(
+        default=False,
+        description=(
+            "Generate an interactive HTML report with per-variant fragment size "
+            "distributions. Implies mfsd=True and mfsd_parquet=True. Output: "
+            "<sample>.mfsd_report.html alongside the main output."
+        ),
+    )
+    mfsd_report_min_alt: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Minimum ALT fragment count for a variant to appear in the mFSD report. "
+            "Variants with fewer ALT fragments are excluded from the report."
+        ),
+    )
+    mfsd_report_max_variants: int = Field(
+        default=20,
+        description=(
+            "Maximum number of variants to include in the mFSD report. "
+            "Variants are ranked by ALT fragment count (descending). "
+            "Use -1 for no limit."
+        ),
+    )
 
     @field_validator("directory")
     @classmethod
@@ -253,12 +277,17 @@ class OutputConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_mfsd_parquet(self) -> "OutputConfig":
-        """Enforce that mfsd_parquet requires mfsd to be enabled.
+    def validate_mfsd_dependencies(self) -> "OutputConfig":
+        """Enforce mFSD dependency chain: mfsd_report → mfsd_parquet → mfsd.
 
         This is validated at model construction so both CLI and programmatic
         callers get the same fail-fast behaviour.
         """
+        if self.mfsd_report and not self.mfsd_parquet:
+            raise ValueError(
+                "mfsd_report=True requires mfsd_parquet=True. "
+                "Enable mFSD Parquet export before requesting report generation."
+            )
         if self.mfsd_parquet and not self.mfsd:
             raise ValueError(
                 "mfsd_parquet=True requires mfsd=True. "
@@ -288,16 +317,18 @@ class GbcmsBaseConfig(BaseModel):
     filters: ReadFilters = Field(default_factory=ReadFilters)
     quality: QualityThresholds = Field(default_factory=QualityThresholds)
 
-    # BAQ quality downgrade (both modes, off by default — BQSR/fgbio consensus
-    # already recalibrates base qualities; applying BAQ on top double-penalizes)
+    # BAQ quality downgrade (both modes, off by default in base/DNA —
+    # upstream BQSR/consensus already recalibrates base qualities;
+    # applying BAQ on top may double-penalize. RNA overrides to True.)
     apply_baq: bool = Field(
         default=False,
         description=(
-            "Apply heuristic BAQ (Base Alignment Quality) downgrade near indels. "
-            "Subtracts 20 from base qualities within 5bp of alignment indels to "
+            "Apply heuristic BAQ (Base Alignment Quality) downgrade near "
+            "indels and splice junctions. Subtracts 20 from base qualities "
+            "within 5bp of alignment indels or CIGAR N (splice junctions) to "
             "reduce false positive variant calls from alignment artifacts. "
-            "Off by default because MSK-ACCESS/IMPACT BAMs go through BQSR or "
-            "fgbio consensus which already recalibrates base qualities."
+            "Off by default for DNA (upstream BQSR/consensus already "
+            "recalibrates). Overridden to True for RNA mode."
         ),
     )
 
@@ -363,9 +394,27 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
     - Gap penalties relaxed for RT stutter tolerance
     - Strandedness filtering enabled by default
     - RNA editing database support
+    - BAQ enabled by default (RNA BAMs typically lack BQSR; the
+      splice-proximity penalty reduces false positives at exon
+      boundaries — see docs/reference/rna-splice-handling.md)
     """
 
     mode: str = "rna"
+
+    # RNA BAMs typically do not go through GATK BQSR or consensus
+    # calling (e.g., fgbio), so raw sequencer BQ values are preserved.
+    # Enabling BAQ applies a -20 BQ penalty within 5bp of indels AND
+    # splice junctions (CIGAR N/RefSkip), mimicking the effect of GATK
+    # SplitNCigarReads' overhang clipping without modifying the BAM.
+    apply_baq: bool = Field(
+        default=True,
+        description=(
+            "Apply heuristic BAQ quality downgrade near indels and splice "
+            "junctions. On by default for RNA because upstream pipelines "
+            "typically do not run BQSR or consensus calling. "
+            "Disable with --no-baq if BAMs have already been quality-adjusted."
+        ),
+    )
 
     # RNA-specific quality overrides
     quality: QualityThresholds = Field(

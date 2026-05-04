@@ -13,6 +13,7 @@ Note:
 
 import csv
 import logging
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -21,6 +22,10 @@ from pydantic import ValidationError
 
 from ..core.kernel import CoordinateKernel
 from ..models.core import Variant
+
+# Production MAF files (e.g. data_mutations_extended.txt) can contain fields
+# exceeding Python's default 128 KB CSV field limit (long COMMENTS columns).
+csv.field_size_limit(sys.maxsize)
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +122,7 @@ class MafReader(VariantReader):
                         alt=alt,
                     ).model_copy(update={"metadata": row})
 
-                except (KeyError, ValueError, ValidationError) as exc:
+                except (KeyError, ValueError, TypeError, ValidationError) as exc:
                     skipped += 1
                     if skipped <= 5:
                         logger.warning(
