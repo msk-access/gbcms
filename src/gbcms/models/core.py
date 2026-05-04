@@ -317,16 +317,18 @@ class GbcmsBaseConfig(BaseModel):
     filters: ReadFilters = Field(default_factory=ReadFilters)
     quality: QualityThresholds = Field(default_factory=QualityThresholds)
 
-    # BAQ quality downgrade (both modes, off by default — BQSR/fgbio consensus
-    # already recalibrates base qualities; applying BAQ on top double-penalizes)
+    # BAQ quality downgrade (both modes, off by default in base/DNA —
+    # upstream BQSR/consensus already recalibrates base qualities;
+    # applying BAQ on top may double-penalize. RNA overrides to True.)
     apply_baq: bool = Field(
         default=False,
         description=(
-            "Apply heuristic BAQ (Base Alignment Quality) downgrade near indels. "
-            "Subtracts 20 from base qualities within 5bp of alignment indels to "
+            "Apply heuristic BAQ (Base Alignment Quality) downgrade near "
+            "indels and splice junctions. Subtracts 20 from base qualities "
+            "within 5bp of alignment indels or CIGAR N (splice junctions) to "
             "reduce false positive variant calls from alignment artifacts. "
-            "Off by default because MSK-ACCESS/IMPACT BAMs go through BQSR or "
-            "fgbio consensus which already recalibrates base qualities."
+            "Off by default for DNA (upstream BQSR/consensus already "
+            "recalibrates). Overridden to True for RNA mode."
         ),
     )
 
@@ -392,9 +394,27 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
     - Gap penalties relaxed for RT stutter tolerance
     - Strandedness filtering enabled by default
     - RNA editing database support
+    - BAQ enabled by default (RNA BAMs typically lack BQSR; the
+      splice-proximity penalty reduces false positives at exon
+      boundaries — see docs/reference/rna-splice-handling.md)
     """
 
     mode: str = "rna"
+
+    # RNA BAMs typically do not go through GATK BQSR or consensus
+    # calling (e.g., fgbio), so raw sequencer BQ values are preserved.
+    # Enabling BAQ applies a -20 BQ penalty within 5bp of indels AND
+    # splice junctions (CIGAR N/RefSkip), mimicking the effect of GATK
+    # SplitNCigarReads' overhang clipping without modifying the BAM.
+    apply_baq: bool = Field(
+        default=True,
+        description=(
+            "Apply heuristic BAQ quality downgrade near indels and splice "
+            "junctions. On by default for RNA because upstream pipelines "
+            "typically do not run BQSR or consensus calling. "
+            "Disable with --no-baq if BAMs have already been quality-adjusted."
+        ),
+    )
 
     # RNA-specific quality overrides
     quality: QualityThresholds = Field(

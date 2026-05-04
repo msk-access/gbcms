@@ -10,6 +10,11 @@ Ensures consistent representation of variants:
 - SNPs: 0-based index of the base.
 - Insertions: 0-based index of the ANCHOR base (preceding the insertion).
 - Deletions: 0-based index of the ANCHOR base (preceding the deletion).
+
+Note: This module is pure Python and performs coordinate transformations
+only. Allele counting is dispatched via :mod:`gbcms.pipeline` →
+``gbcms_rs.count_bam_*`` (Rust FFI). The GIL is released before rayon
+parallel iteration in the Rust layer (see ``py.allow_threads``).
 """
 
 from gbcms.models.core import Variant, VariantType

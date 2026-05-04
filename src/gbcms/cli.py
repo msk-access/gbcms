@@ -472,12 +472,13 @@ def rna(
         "--preserve-barcode",
         help="Preserve original Tumor_Sample_Barcode from input MAF.",
     ),
-    # BAQ (shared)
+    # BAQ (on by default for RNA — upstream pipelines typically lack BQSR)
     apply_baq: bool = typer.Option(
-        False,
+        True,
         "--apply-baq/--no-baq",
-        help="Apply heuristic BAQ quality downgrade near indels. Off by default "
-        "(BQSR/fgbio consensus already recalibrates).",
+        help="Apply heuristic BAQ quality downgrade near indels and splice "
+        "junctions. On by default for RNA (upstream pipelines typically "
+        "lack BQSR). Disable with --no-baq if BAMs are pre-calibrated.",
     ),
     # UMI (shared)
     umi_tag: str | None = typer.Option(
