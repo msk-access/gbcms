@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -632,6 +632,18 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/rna-splice-handling/">
+<span class="md-ellipsis">
+    
+  
+    RNA Splice Handling
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="../../reference/allele-classification/">
 <span class="md-ellipsis">
     
@@ -1153,7 +1165,11 @@ Use mouse to pan and zoom
 <h2 id="required-arguments">Required Arguments<a class="headerlink" href="#required-arguments" title="Permanent link">¶</a></h2>
 <div class="admonition info">
 <p class="admonition-title">Shared Arguments</p>
-<p>RNA mode shares all <a href="../dna/#required-arguments">required arguments</a>, <a href="../dna/#output-options">output options</a>, <a href="../dna/#filtering-options">filtering options</a>, <a href="../dna/#baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels">BAQ</abbr> options</a>, <a href="../dna/#umi-options"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> options</a>, and <a href="../dna/#debugging-options">debugging options</a> with DNA mode. See the <a href="../dna/"><code>gbcms dna</code> reference</a> for full descriptions.</p>
+<p>RNA mode shares all <a href="../dna/#required-arguments">required arguments</a>, <a href="../dna/#output-options">output options</a>, <a href="../dna/#filtering-options">filtering options</a>, <a href="../dna/#baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> options</a>, <a href="../dna/#umi-options"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> options</a>, and <a href="../dna/#debugging-options">debugging options</a> with DNA mode. See the <a href="../dna/"><code>gbcms dna</code> reference</a> for full descriptions.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is On by Default in RNA Mode</p>
+<p>Unlike DNA mode, <code>--apply-baq</code> defaults to <strong>on</strong> for RNA. <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> penalizes bases within 5 bp of both indels and splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>), serving as a lightweight alternative to GATK SplitNCigarReads. Disable with <code>--no-baq</code> if your upstream workflow already runs SplitNCigarReads or <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>. See <a href="../../reference/rna-splice-handling/">RNA Splice-Junction Handling</a>.</p>
 </div>
 <table>
 <thead>
@@ -1647,6 +1663,11 @@ Use mouse to pan and zoom
 <td style="text-align: left;">on (same)</td>
 </tr>
 <tr>
+<td style="text-align: left;"><strong><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> default</strong></td>
+<td style="text-align: left;">off</td>
+<td style="text-align: left;"><strong>on</strong> (no upstream <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>; splice penalty)</td>
+</tr>
+<tr>
 <td style="text-align: left;"><strong>Strandedness filter</strong></td>
 <td style="text-align: left;">N/A</td>
 <td style="text-align: left;">enabled (<abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>)</td>
@@ -1690,7 +1711,7 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 16:14:55 UTC"><span class="timeago" datetime="2026-03-20T16:14:55+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 16:14:55 UTC">2026-03-20</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 4, 2026 17:17:14 UTC"><span class="timeago" datetime="2026-05-04T17:17:14+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 4, 2026 17:17:14 UTC">2026-05-04</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
