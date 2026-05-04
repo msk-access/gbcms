@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -575,6 +575,37 @@
       
     </span>
 </a>
+<nav aria-label="Complete Output Column Reference" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#diagnostic-column-invariants">
+<span class="md-ellipsis">
+      
+        Diagnostic Column Invariants
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#vcf-infoformat-tags">
+<span class="md-ellipsis">
+      
+        VCF INFO/FORMAT Tags
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#n-base-handling">
+<span class="md-ellipsis">
+      
+        N-Base Handling
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#mfsd">
@@ -1039,6 +1070,37 @@
       
     </span>
 </a>
+<nav aria-label="Complete Output Column Reference" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#diagnostic-column-invariants">
+<span class="md-ellipsis">
+      
+        Diagnostic Column Invariants
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#vcf-infoformat-tags">
+<span class="md-ellipsis">
+      
+        VCF INFO/FORMAT Tags
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#n-base-handling">
+<span class="md-ellipsis">
+      
+        N-Base Handling
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#mfsd">
@@ -1698,8 +1760,93 @@ Use mouse to pan and zoom
 <td style="text-align: left;">bool</td>
 <td style="text-align: left;">True if corrected homopolymer allele was used</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>any_alt</code></td>
+<td style="text-align: left;">u32</td>
+<td style="text-align: left;">Reads with <strong>any</strong> ALT evidence at ≥1 discriminating position (DMP-compatible)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>partial_alt</code></td>
+<td style="text-align: left;">u32</td>
+<td style="text-align: left;">Reads with <strong>partial</strong> ALT match only (some but not all positions match ALT)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>n_count</code></td>
+<td style="text-align: left;">u32</td>
+<td style="text-align: left;">Reads with N base at ≥1 discriminating position (duplex masking diagnostic)</td>
+</tr>
 </tbody>
 </table>
+<h3 id="diagnostic-column-invariants">Diagnostic Column Invariants<a class="headerlink" href="#diagnostic-column-invariants" title="Permanent link">¶</a></h3>
+<p>The diagnostic columns maintain strict structural invariants:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Invariant</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Decomposed ALT</td>
+<td style="text-align: left;"><code>any_alt = ad + partial_alt</code></td>
+<td style="text-align: left;">Separates full from partial ALT evidence</td>
+</tr>
+<tr>
+<td style="text-align: left;">ALT bound</td>
+<td style="text-align: left;"><code>any_alt &gt;= ad</code></td>
+<td style="text-align: left;"><code>partial_alt</code> is non-negative</td>
+</tr>
+<tr>
+<td style="text-align: left;">Depth decomposition</td>
+<td style="text-align: left;"><code>DP &gt;= RD + AD + partial_alt + n_count</code></td>
+<td style="text-align: left;">Remaining reads are third-allele or low-BQ</td>
+</tr>
+</tbody>
+</table>
+<h3 id="vcf-infoformat-tags"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO/FORMAT Tags<a class="headerlink" href="#vcf-infoformat-tags" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tag</th>
+<th style="text-align: left;">Scope</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>AAD</code></td>
+<td style="text-align: left;">INFO + FORMAT</td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Any ALT depth (<code>any_alt</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PAD</code></td>
+<td style="text-align: left;">INFO + FORMAT</td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Partial ALT depth (<code>partial_alt</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NAD</code></td>
+<td style="text-align: left;">INFO + FORMAT</td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">N-base depth (<code>n_count</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="n-base-handling">N-Base Handling<a class="headerlink" href="#n-base-handling" title="Permanent link">¶</a></h3>
+<p>N bases arise from:</p>
+<ul>
+<li><strong>Duplex masking</strong> (fgbio): disagreeing R1/R2 bases → masked to N (BQ ≈ 2)</li>
+<li><strong>Sequencer failure</strong>: uncalled bases</li>
+</ul>
+<p>N bases are <strong>strictly uninformative</strong> — they do NOT contribute to <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, any_alt, or partial_alt. They are tracked separately via <code>n_count</code> to enable:</p>
+<ul>
+<li><strong>QC</strong>: <code>n_count / DP</code> ratio flags duplex masking hotspots</li>
+<li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></strong>: N-classified fragments form a separate size class for distribution analysis</li>
+</ul>
 <hr>
 <h2 id="mfsd"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> — Mutant Fragment Size Distribution<a class="headerlink" href="#mfsd" title="Permanent link">¶</a></h2>
 <p><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> compares insert-size distributions for <strong>REF-classified</strong> vs <strong>ALT-classified</strong> fragments at each variant position. Short-fragment enrichment in the ALT class indicates tumor-derived <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>.</p>
@@ -2178,7 +2325,7 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 17:41:21 UTC"><span class="timeago" datetime="2026-03-20T17:41:21+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 17:41:21 UTC">2026-03-20</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 4, 2026 15:49:45 UTC"><span class="timeago" datetime="2026-05-04T15:49:45+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 4, 2026 15:49:45 UTC">2026-05-04</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

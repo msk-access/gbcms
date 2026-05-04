@@ -5057,6 +5057,63 @@ Use mouse to pan and zoom
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-architecture-__codelineno-1-7"></a>    p-value = Fisher's exact test on 2×2 contingency table
 </code></pre></div>
 <p>Low p-value (&lt; 0.05) indicates potential strand bias artifact.</p>
+<h3 id="reference-architecture-structural-invariants">Structural Invariants<a class="headerlink" href="#reference-architecture-structural-invariants" title="Permanent link">¶</a></h3>
+<p>The Rust counting engine (<code>BaseCounts</code>) maintains these invariants at all times:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Invariant</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">ALT decomposition</td>
+<td style="text-align: left;"><code>any_alt = AD + partial_alt</code></td>
+<td style="text-align: left;">any_alt decomposes into full ALT matches and partial-only matches</td>
+</tr>
+<tr>
+<td style="text-align: left;">ALT monotonicity</td>
+<td style="text-align: left;"><code>any_alt &gt;= AD</code></td>
+<td style="text-align: left;">Reads with any ALT evidence ≥ reads with full ALT match</td>
+</tr>
+<tr>
+<td style="text-align: left;">Depth decomposition</td>
+<td style="text-align: left;"><code>DP &gt;= RD + AD + partial_alt + n_count</code></td>
+<td style="text-align: left;"><abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> includes all read categories; gap = reads classified as neither</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reference-architecture-diagnostic-output-fields">Diagnostic Output Fields<a class="headerlink" href="#reference-architecture-diagnostic-output-fields" title="Permanent link">¶</a></h3>
+<p>Three diagnostic fields are always present in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (FORMAT tags) and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> Tag</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>any_alt</code></td>
+<td style="text-align: left;"><code>AAD</code></td>
+<td style="text-align: left;">Reads with ALT evidence at ≥1 discriminating position</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>partial_alt</code></td>
+<td style="text-align: left;"><code>PAD</code></td>
+<td style="text-align: left;">Reads matching ALT at some but not all positions (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex only; always 0 for <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/indel)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>n_count</code></td>
+<td style="text-align: left;"><code>NAD</code></td>
+<td style="text-align: left;">Reads with N base at ≥1 discriminating position (duplex masking QC)</td>
+</tr>
+</tbody>
+</table>
+<p>N bases are <strong>strictly uninformative</strong> — they increment <code>n_count</code> for QC monitoring but are excluded from <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, any_alt, and partial_alt. See <a href="#reference-counting-metrics">Counting Metrics</a> for full details.</p>
 <hr>
 <h2 id="reference-architecture-module-structure">Module Structure<a class="headerlink" href="#reference-architecture-module-structure" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#reference-architecture-__codelineno-2-1"></a>src/gbcms/
@@ -5583,15 +5640,21 @@ written once. RNA-specific meta-lines are only included when running
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#reference-output-formats-__codelineno-0-6"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#reference-output-formats-__codelineno-0-7"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#reference-output-formats-__codelineno-0-8"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##FORMAT=&lt;ID=AD,Number=2,Type=Integer,Description="Allelic depths for the ref and alt alleles (fwd,rev)"&gt;
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##FORMAT=&lt;ID=DP,Number=2,Type=Integer,Description="Approximate read depth (ref_total,alt_total)"&gt;
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##FORMAT=&lt;ID=RD,Number=2,Type=Integer,Description="Reference read depth (fwd,rev)"&gt;
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##FORMAT=&lt;ID=RDF,Number=2,Type=Integer,Description="Ref Fragment Count (fwd,rev)"&gt;
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##FORMAT=&lt;ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)"&gt;
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)"&gt;
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)"&gt;
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at &gt;=1 discriminating position (any_alt = ad + partial_alt)"&gt;
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions"&gt;
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)"&gt;
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##FORMAT=&lt;ID=AD,Number=2,Type=Integer,Description="Allelic depths for the ref and alt alleles (fwd,rev)"&gt;
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##FORMAT=&lt;ID=DP,Number=2,Type=Integer,Description="Approximate read depth (ref_total,alt_total)"&gt;
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##FORMAT=&lt;ID=RD,Number=2,Type=Integer,Description="Reference read depth (fwd,rev)"&gt;
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##FORMAT=&lt;ID=RDF,Number=2,Type=Integer,Description="Ref Fragment Count (fwd,rev)"&gt;
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##FORMAT=&lt;ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)"&gt;
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)"&gt;
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)"&gt;
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (reads with any ALT evidence)"&gt;
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth (partial ALT only)"&gt;
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (reads with N at discriminating position)"&gt;
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 </div>
 <div class="tabbed-block">
@@ -5696,7 +5759,7 @@ written once. RNA-specific meta-lines are only included when running
 <tr>
 <td style="text-align: left;"><code>VS</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Validation status (<code>PASS</code>, <code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS_WARN_REF_CORRECTED</code>, <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>)</td>
+<td style="text-align: left;">Validation status (<code>PASS</code>, <code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS_WARN_REF_CORRECTED</code>, <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>FAIL_ALT_CONTAINS_N</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>SB_PVAL</code></td>
@@ -5717,6 +5780,21 @@ written once. RNA-specific meta-lines are only included when running
 <td style="text-align: left;"><code>FSB_OR</code></td>
 <td style="text-align: left;">Float</td>
 <td style="text-align: left;">Fragment-level strand bias odds ratio</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>AAD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: <code>AAD = AD + PAD</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PAD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex only; always 0 for <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/indel)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NAD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric)</td>
 </tr>
 </tbody>
 </table>
@@ -5842,7 +5920,7 @@ written once. RNA-specific meta-lines are only included when running
 <div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="" id="reference-output-formats-__tabbed_3_1" name="reference-output-formats-__tabbed_3" type="radio"><input id="reference-output-formats-__tabbed_3_2" name="reference-output-formats-__tabbed_3" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_3_1">DNA mode</label><label for="reference-output-formats-__tabbed_3_2">RNA mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<p><code>FORMAT</code> column: <code>GT:DP:RD:AD:RDF:ADF:VAF:FAF</code></p>
+<p><code>FORMAT</code> column: <code>GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD</code></p>
 <table>
 <thead>
 <tr>
@@ -5892,12 +5970,27 @@ written once. RNA-specific meta-lines are only included when running
 <td style="text-align: left;">float</td>
 <td style="text-align: left;">Variant allele fraction at fragment level</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>AAD</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">Any ALT Depth (reads with any ALT evidence)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PAD</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">Partial ALT Depth (partial ALT match only)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NAD</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">N-base Depth (reads with N at discriminating position)</td>
+</tr>
 </tbody>
 </table>
 </div>
 <div class="tabbed-block">
-<p><code>FORMAT</code> column: <code>GT:DP:RD:AD:RDF:ADF:VAF:FAF:SEN:ANT:ASEN:SPL</code></p>
-<p>All DNA fields above, plus:</p>
+<p><code>FORMAT</code> column: <code>GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL</code></p>
+<p>All DNA fields above (including <code>AAD</code>, <code>PAD</code>, <code>NAD</code>), plus:</p>
 <table>
 <thead>
 <tr>
@@ -5935,10 +6028,10 @@ written once. RNA-specific meta-lines are only included when running
 <hr>
 <h3 id="reference-output-formats-annotated-example">Annotated Example<a class="headerlink" href="#reference-output-formats-annotated-example" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#reference-output-formats-__codelineno-2-1"></a>#CHROM  POS     ID      REF  ALT  QUAL  FILTER  INFO                                              FORMAT           sample1
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#reference-output-formats-__codelineno-2-2"></a>chr7    55174772  rs121913527  T    A    .     .     DP=312;VS=PASS;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000  GT:DP:RD:AD:RDF:ADF:VAF:FAF  0/1:290,22:145,145:10,12:72,73:5,6:0.0705:0.0735 # (1)!
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#reference-output-formats-__codelineno-2-2"></a>chr7    55174772  rs121913527  T    A    .     .     DP=312;VS=PASS;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000;AAD=22;PAD=0;NAD=3  GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD  0/1:290,22:145,145:10,12:72,73:5,6:0.0705:0.0735:22:0:3 # (1)!
 </code></pre></div>
 <ol>
-<li><code>DP=312</code> total reads; <code>VS=PASS</code> REF validated; <code>SB_PVAL=0.24</code> no significant strand bias. FORMAT <code>DP=290,22</code> → 290 REF + 22 ALT reads. <code>VAF=0.0705</code> (read level), <code>FAF=0.0735</code> (fragment level).</li>
+<li><code>DP=312</code> total reads; <code>VS=PASS</code> REF validated; <code>SB_PVAL=0.24</code> no significant strand bias; <code>AAD=22</code> reads with any ALT evidence; <code>PAD=0</code> no partial matches (<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> — always 0); <code>NAD=3</code> reads with N at variant position (duplex masking). FORMAT <code>DP=290,22</code> → 290 REF + 22 ALT reads. <code>VAF=0.0705</code> (read level), <code>FAF=0.0735</code> (fragment level).</li>
 </ol>
 <hr>
 <h2 id="reference-output-formats-maf-output-format-maf"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output (<code>--format maf</code>)<a class="headerlink" href="#reference-output-formats-maf-output-format-maf" title="Permanent link">¶</a></h2>
@@ -6089,7 +6182,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>validation_status</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">REF validation result (<code>PASS</code>, <code>REF_MISMATCH</code>, etc.)</td>
+<td style="text-align: left;">REF validation result (<code>PASS</code>, <code>REF_MISMATCH</code>, <code>FAIL_ALT_CONTAINS_N</code>, etc.)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ref_count</code></td>
@@ -6190,6 +6283,21 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <td style="text-align: left;"><code>alt_count_fragment_reverse</code></td>
 <td style="text-align: left;">Integer</td>
 <td style="text-align: left;">ALT fragments on reverse strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>any_alt</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: <code>any_alt = alt_count + partial_alt</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>partial_alt</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex only; always 0 for <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/indel)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>n_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric)</td>
 </tr>
 </tbody>
 </table>
@@ -7590,7 +7698,9 @@ Use mouse to pan and zoom
     Found --&gt;|No| Neither1(["Neither"]):::neither
     Found --&gt;|Yes| BQ{"Base quality ≥ min_baseq?"}
     BQ --&gt;|No| Neither2(["Neither"]):::neither
-    BQ --&gt;|Yes| Compare["Compare base to REF and ALT"]
+    BQ --&gt;|Yes| NCheck{"Base is N?"}
+    NCheck --&gt;|Yes| NeitherN(["Neither (has_n_base=true)\n→ n_count++"]):::nbase
+    NCheck --&gt;|No| Compare["Compare base to REF and ALT"]
     Compare --&gt; IsRef{"base == REF?"}
     IsRef --&gt;|Yes| Ref(["✅ REF"]):::ref
     IsRef --&gt;|No| IsAlt{"base == ALT?"}
@@ -7601,10 +7711,15 @@ Use mouse to pan and zoom
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef nbase fill:#e67e22,color:#fff,stroke:#d35400,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
+</div>
+<div class="admonition info">
+<p class="admonition-title">N-Base Guard (Defense-in-Depth)</p>
+<p>N bases (e.g., from duplex collapsing via fgbio) are explicitly checked <strong>after</strong> the BQ gate and treated as uninformative — they are classified as neither REF nor ALT and signal <code>has_n_base=true</code>, causing the engine to increment <code>n_count</code> (NAD in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>). This is defense-in-depth: fgbio assigns BQ ≈ 2 to duplex-masked positions (caught by the BQ gate), but raw BAMs may have arbitrary BQ for N bases.</p>
 </div>
 <h3 id="reference-allele-classification-visual-example">Visual Example<a class="headerlink" href="#reference-allele-classification-visual-example" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-allele-classification-__codelineno-0-1"></a>Variant: chr1:100 C→T (SNP)
@@ -8084,11 +8199,12 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;">Quality check</td>
-<td style="text-align: left;"><strong>Minimum</strong> base quality across the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> block must meet <code>--min-baseq</code></td>
+<td style="text-align: left;"><strong>Per-position masked evaluation</strong> at discriminating positions only (where REF ≠ ALT). N bases and low-BQ bases are masked independently.</td>
 </tr>
 </tbody>
 </table>
 <h3 id="reference-allele-classification-algorithm_3">Algorithm<a class="headerlink" href="#reference-allele-classification-algorithm_3" title="Permanent link">¶</a></h3>
+<p>The <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> checker uses <strong>masked per-position evaluation</strong> — each discriminating position is independently assessed, and only unmasked positions vote for the final classification.</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -8118,13 +8234,31 @@ Use mouse to pan and zoom
     Cover --&gt;|No| CPX
     Cover --&gt;|Yes| Contig{"No indels within MNP block?"}
     Contig --&gt;|"Indel found"| CPX
-    Contig --&gt;|"Contiguous"| MinBQ{"min(BQ across block)\n≥ threshold?"}
-    MinBQ --&gt;|No| CPX
-    MinBQ --&gt;|Yes| Compare["Compare all bases to REF and ALT"]
-    Compare --&gt; Final{"All bases match?"}
-    Final --&gt;|"All match ALT"| Alt(["🔴 ALT"]):::alt
-    Final --&gt;|"All match REF"| Ref(["✅ REF"]):::ref
-    Final --&gt;|"Mixed / Neither"| Neither(["⬜ ThirdAllele — skip read"]):::neither
+    Contig --&gt;|"Contiguous"| PerPos["Per-position masked evaluation"]
+
+    PerPos --&gt; Loop{"For each discriminating pos\n(where REF ≠ ALT)"}
+    Loop --&gt; Mask{"BQ &lt; min_baseq\nOR base is N?"}
+    Mask --&gt;|Yes| Masked["Position masked\n(cannot vote)"]
+    Mask --&gt;|No| Vote{"Unmasked: compare\nbase to REF/ALT"}
+    Vote --&gt; AltVote["ALT vote"]
+    Vote --&gt; RefVote["REF vote"]
+    Vote --&gt; OtherVote["Other vote"]
+
+    Masked --&gt; NextPos( )
+    AltVote --&gt; NextPos
+    RefVote --&gt; NextPos
+    OtherVote --&gt; NextPos
+    NextPos --&gt; MorePos{"More positions?"}
+    MorePos --&gt;|Yes| Loop
+    MorePos --&gt;|No| Classify
+
+    Classify{"All unmasked = 0?"}
+    Classify --&gt;|Yes| LowQ(["⬜ LowQuality\n→ check_complex"]):::fallback
+    Classify --&gt;|No| AllAlt{"All unmasked\nmatch ALT?"}
+    AllAlt --&gt;|Yes| Alt(["🔴 ALT"]):::alt
+    AllAlt --&gt;|No| AllRef{"All unmasked\nmatch REF?"}
+    AllRef --&gt;|Yes| Ref(["✅ REF"]):::ref
+    AllRef --&gt;|No| Third(["⬜ ThirdAllele\n(partial_alt tracked)"]):::neither
 
     CPX(["🔄 check_complex\n(Phase 3 fallback)"]):::fallback
 
@@ -8139,9 +8273,69 @@ Use mouse to pan and zoom
 </div>
 </div>
 <div class="admonition info">
-<p class="admonition-title">Min-BQ-Across-Block Strategy</p>
-<p><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality is assessed using the <strong>minimum</strong> base quality across the entire <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code> behavior. If <code>min(BQ) &lt; threshold</code>, the read is skipped entirely — it contributes to neither REF, ALT, nor <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>. This replaces the previous per-base rejection which routed low-quality reads to Phase 3 Smith-Waterman, where <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> haplotypes (differing at only 2-3 of ~20 positions) generated ties ~95% of the time, causing catastrophic ALT loss.</p>
+<p class="admonition-title">Masked Per-Position Strategy</p>
+<p>Each <strong>discriminating position</strong> (where REF[i] ≠ ALT[i]) is independently evaluated:</p>
+<ol>
+<li><strong>Mask check</strong>: If <code>BQ &lt; --min-baseq</code> OR base is N → position is masked (cannot vote)</li>
+<li><strong>Vote</strong>: Unmasked positions vote REF, ALT, or other based on the actual base</li>
+<li><strong>Classify</strong>: Based on unmasked vote totals</li>
+</ol>
+<p>This is an improvement over C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>, which gates on <code>min(BQ)</code> across <strong>all</strong> positions. For GC-rich regions (e.g., TERT promoter) or long ONPs with few discriminating positions, the old strategy dropped reads due to low quality at positions that don't matter for classification.</p>
+<p><strong>Non-discriminating positions</strong> (where REF[i] == ALT[i]) are completely ignored — they carry no information for allele classification.</p>
 </div>
+<div class="admonition warning">
+<p class="admonition-title">N-Base Handling at Discriminating Positions</p>
+<p>N bases at discriminating positions are masked regardless of their reported base quality (defense-in-depth). An N base matching ALT is <strong>not</strong> counted as ALT evidence — it is uninformative. If <strong>any</strong> discriminating position has an N base, <code>has_n_base=true</code> is set on the classification result, causing the engine to increment <code>n_count</code> (NAD in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>) for duplex masking QC.</p>
+</div>
+<h3 id="reference-allele-classification-classification-outcomes">Classification Outcomes<a class="headerlink" href="#reference-allele-classification-classification-outcomes" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Condition</th>
+<th style="text-align: left;">Result</th>
+<th style="text-align: left;">partial_alt</th>
+<th style="text-align: left;">has_n_base</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">All unmasked match ALT</td>
+<td style="text-align: left;"><strong>ALT</strong></td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">true if any N at discrim. pos</td>
+</tr>
+<tr>
+<td style="text-align: left;">All unmasked match REF</td>
+<td style="text-align: left;"><strong>REF</strong></td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">true if any N at discrim. pos</td>
+</tr>
+<tr>
+<td style="text-align: left;">Mixed unmasked (some ALT, some REF/other)</td>
+<td style="text-align: left;"><strong>ThirdAllele</strong> → check_complex</td>
+<td style="text-align: left;"><code>positions_matching_alt</code></td>
+<td style="text-align: left;">true if any N at discrim. pos</td>
+</tr>
+<tr>
+<td style="text-align: left;">All discriminating positions masked</td>
+<td style="text-align: left;"><strong>LowQuality</strong> → check_complex</td>
+<td style="text-align: left;"><code>positions_matching_alt</code></td>
+<td style="text-align: left;">true if any N at discrim. pos</td>
+</tr>
+<tr>
+<td style="text-align: left;">Read doesn't cover / has indel in block</td>
+<td style="text-align: left;"><strong>Structural</strong> → check_complex</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">false</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Partial ALT Tracking</p>
+<p>When a read has mixed unmasked votes (some match ALT, some match REF or other), the count of ALT-matching unmasked positions is recorded as <code>positions_matching_alt</code>. This feeds into the engine's <code>partial_alt</code> counter (PAD in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>), enabling diagnostic analysis of reads with partial evidence of the mutation.</p>
+</div>
+<h3 id="reference-allele-classification-contiguity-check">Contiguity Check<a class="headerlink" href="#reference-allele-classification-contiguity-check" title="Permanent link">¶</a></h3>
+<p>The contiguity check is performed <strong>first</strong> (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> base — if the distance doesn't equal <code>len - 1</code>, an indel exists within the block and the read is routed to <code>check_complex</code> for haplotype-based resolution.</p>
 <div class="admonition warning">
 <p class="admonition-title">Phase 3 Fallback Conditions</p>
 <p><code>check_complex</code> is invoked for both <strong>structural</strong> issues and <strong>quality</strong> issues:</p>
@@ -8149,12 +8343,10 @@ Use mouse to pan and zoom
 <li>Read position not found in <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk</li>
 <li>Read doesn't cover the entire <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> region</li>
 <li>Indel detected within the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> block (contiguity check)</li>
-<li><strong>Low quality</strong>: <code>min(BQ across block) &lt; threshold</code> — Phase 2 masked comparison can still classify using only reliable bases</li>
+<li><strong>All discriminating positions masked</strong> — Phase 2/3 haplotype-based classification may still resolve the read</li>
 </ul>
-<p>The first three indicate a complex variant misannotated as an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>; the last leverages quality-masking to rescue low-quality reads that strict <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> matching would discard.</p>
+<p>The first three indicate a complex variant misannotated as an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>; the last leverages haplotype reconstruction to rescue reads that per-position evaluation cannot classify.</p>
 </div>
-<h3 id="reference-allele-classification-contiguity-check">Contiguity Check<a class="headerlink" href="#reference-allele-classification-contiguity-check" title="Permanent link">¶</a></h3>
-<p>The contiguity check is performed <strong>first</strong> (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> base — if the distance doesn't equal <code>len - 1</code>, an indel exists within the block and the read is routed to <code>check_complex</code> for haplotype-based resolution.</p>
 <hr>
 <h2 id="reference-allele-classification-complex-indel-substitution">Complex (Indel + Substitution)<a class="headerlink" href="#reference-allele-classification-complex-indel-substitution" title="Permanent link">¶</a></h2>
 <p>Variants where REF and ALT differ in both sequence <strong>and</strong> length. Also used for <strong>complex Del+SNV</strong> variants dispatched from the <code>N×1</code> path when the anchor base substitutes. Uses a sophisticated <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
@@ -8455,7 +8647,11 @@ Use mouse to pan and zoom
 </tbody>
 </table>
 <h3 id="reference-allele-classification-phase-2-masked-comparison">Phase 2: Masked Comparison<a class="headerlink" href="#reference-allele-classification-phase-2-masked-comparison" title="Permanent link">¶</a></h3>
-<p>Instead of exact matching, bases with quality below <code>--min-baseq</code> are <strong>masked out</strong> — they cannot vote for either allele. Three cases based on reconstructed sequence length:</p>
+<p>Instead of exact matching, bases with quality below <code>--min-baseq</code> <strong>or N bases</strong> are <strong>masked out</strong> — they cannot vote for either allele. Three cases based on reconstructed sequence length:</p>
+<div class="admonition info">
+<p class="admonition-title">N-Base Detection in Reconstructed Haplotype</p>
+<p>During Phase 1 reconstruction, if any base in the reconstructed sequence at a discriminating position is N, it is masked alongside low-BQ bases. If <strong>any</strong> N base is detected in the variant region, <code>has_n_base=true</code> is set, causing the engine to increment <code>n_count</code> (NAD in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>). N bases are treated identically to BQ=0 in the masked comparison — they cannot contribute evidence for either allele.</p>
+</div>
 <table>
 <thead>
 <tr>
@@ -9156,8 +9352,93 @@ Use mouse to pan and zoom
 <td style="text-align: left;">bool</td>
 <td style="text-align: left;">True if corrected homopolymer allele was used</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>any_alt</code></td>
+<td style="text-align: left;">u32</td>
+<td style="text-align: left;">Reads with <strong>any</strong> ALT evidence at ≥1 discriminating position (DMP-compatible)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>partial_alt</code></td>
+<td style="text-align: left;">u32</td>
+<td style="text-align: left;">Reads with <strong>partial</strong> ALT match only (some but not all positions match ALT)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>n_count</code></td>
+<td style="text-align: left;">u32</td>
+<td style="text-align: left;">Reads with N base at ≥1 discriminating position (duplex masking diagnostic)</td>
+</tr>
 </tbody>
 </table>
+<h3 id="reference-counting-metrics-diagnostic-column-invariants">Diagnostic Column Invariants<a class="headerlink" href="#reference-counting-metrics-diagnostic-column-invariants" title="Permanent link">¶</a></h3>
+<p>The diagnostic columns maintain strict structural invariants:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Invariant</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Decomposed ALT</td>
+<td style="text-align: left;"><code>any_alt = ad + partial_alt</code></td>
+<td style="text-align: left;">Separates full from partial ALT evidence</td>
+</tr>
+<tr>
+<td style="text-align: left;">ALT bound</td>
+<td style="text-align: left;"><code>any_alt &gt;= ad</code></td>
+<td style="text-align: left;"><code>partial_alt</code> is non-negative</td>
+</tr>
+<tr>
+<td style="text-align: left;">Depth decomposition</td>
+<td style="text-align: left;"><code>DP &gt;= RD + AD + partial_alt + n_count</code></td>
+<td style="text-align: left;">Remaining reads are third-allele or low-BQ</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reference-counting-metrics-vcf-infoformat-tags"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO/FORMAT Tags<a class="headerlink" href="#reference-counting-metrics-vcf-infoformat-tags" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tag</th>
+<th style="text-align: left;">Scope</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>AAD</code></td>
+<td style="text-align: left;">INFO + FORMAT</td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Any ALT depth (<code>any_alt</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PAD</code></td>
+<td style="text-align: left;">INFO + FORMAT</td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Partial ALT depth (<code>partial_alt</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NAD</code></td>
+<td style="text-align: left;">INFO + FORMAT</td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">N-base depth (<code>n_count</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reference-counting-metrics-n-base-handling">N-Base Handling<a class="headerlink" href="#reference-counting-metrics-n-base-handling" title="Permanent link">¶</a></h3>
+<p>N bases arise from:</p>
+<ul>
+<li><strong>Duplex masking</strong> (fgbio): disagreeing R1/R2 bases → masked to N (BQ ≈ 2)</li>
+<li><strong>Sequencer failure</strong>: uncalled bases</li>
+</ul>
+<p>N bases are <strong>strictly uninformative</strong> — they do NOT contribute to <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, any_alt, or partial_alt. They are tracked separately via <code>n_count</code> to enable:</p>
+<ul>
+<li><strong>QC</strong>: <code>n_count / DP</code> ratio flags duplex masking hotspots</li>
+<li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></strong>: N-classified fragments form a separate size class for distribution analysis</li>
+</ul>
 <hr>
 <h2 id="reference-counting-metrics-mfsd"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> — Mutant Fragment Size Distribution<a class="headerlink" href="#reference-counting-metrics-mfsd" title="Permanent link">¶</a></h2>
 <p><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> compares insert-size distributions for <strong>REF-classified</strong> vs <strong>ALT-classified</strong> fragments at each variant position. Short-fragment enrichment in the ALT class indicates tumor-derived <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>.</p>
@@ -10709,6 +10990,18 @@ run against the <abbr title="Binary Alignment Map - Compressed sequence alignmen
 <td style="text-align: left;">Non-own-sample ref_count changes</td>
 <td style="text-align: left;">≤1 count (non-determinism from parallel windowed scan)</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>any_alt = ad + partial_alt</code></td>
+<td style="text-align: left;">Must hold for every row (Phase 2 decomposition invariant)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>any_alt &gt;= ad</code></td>
+<td style="text-align: left;">Must hold for every row</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>n_count / DP ratio</code></td>
+<td style="text-align: left;">Should be low (&lt;5%) for clean sites; high ratios flag duplex masking hotspots</td>
+</tr>
 </tbody>
 </table>
 <h3 id="development-developer-guide-variant-type-specific-investigation">Variant-Type-Specific Investigation<a class="headerlink" href="#development-developer-guide-variant-type-specific-investigation" title="Permanent link">¶</a></h3>
@@ -11097,6 +11390,11 @@ Use mouse to pan and zoom
 <td style="text-align: left;"><code>test_baq.py</code></td>
 <td style="text-align: left;"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels">BAQ</abbr> quality downgrade feature</td>
 </tr>
+<tr>
+<td style="text-align: left;">Phase 2 Output</td>
+<td style="text-align: left;"><code>test_phase2_output.py</code></td>
+<td style="text-align: left;">Diagnostic columns (any_alt, partial_alt, n_count) <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr></td>
+</tr>
 </tbody>
 </table>
 <h3 id="development-testing-guide-rust-level-tests">Rust-Level Tests<a class="headerlink" href="#development-testing-guide-rust-level-tests" title="Permanent link">¶</a></h3>
@@ -11106,7 +11404,7 @@ Use mouse to pan and zoom
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#development-testing-guide-__codelineno-1-4"></a><span class="c1"># Run a specific Rust test</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#development-testing-guide-__codelineno-1-5"></a>cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span>test_window_expansion_long_homopolymer
 </code></pre></div>
-<p>Rust tests live inside <code>#[cfg(test)]</code> modules in <code>normalize.rs</code> (20 tests) and cover:</p>
+<p>Rust tests live inside <code>#[cfg(test)]</code> modules and cover:</p>
 <table>
 <thead>
 <tr>
@@ -11136,6 +11434,21 @@ Use mouse to pan and zoom
 <td style="text-align: left;">1</td>
 <td style="text-align: left;">Gap 1B: &gt;100bp repeat normalization</td>
 </tr>
+<tr>
+<td style="text-align: left;"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> classification</td>
+<td style="text-align: left;">17</td>
+<td style="text-align: left;">Masked quality, partial counting, N-base handling</td>
+</tr>
+<tr>
+<td style="text-align: left;">N-base coverage</td>
+<td style="text-align: left;">8</td>
+<td style="text-align: left;"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> N guards, n_count propagation</td>
+</tr>
+<tr>
+<td style="text-align: left;">Invariants</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;"><code>any_alt = ad + partial_alt</code>, depth decomposition</td>
+</tr>
 </tbody>
 </table>
 <hr>
@@ -11159,9 +11472,10 @@ Use mouse to pan and zoom
 <a id="__codelineno-2-17" name="__codelineno-2-17" href="#development-testing-guide-__codelineno-2-17"></a>├── test_multi_allelic.py        # Gap 1A: Sibling ALT exclusion
 <a id="__codelineno-2-18" name="__codelineno-2-18" href="#development-testing-guide-__codelineno-2-18"></a>├── test_normalization.py        # Left-alignment, REF validation, window expansion
 <a id="__codelineno-2-19" name="__codelineno-2-19" href="#development-testing-guide-__codelineno-2-19"></a>├── test_pipeline_v2.py          # End-to-end pipeline
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#development-testing-guide-__codelineno-2-20"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#development-testing-guide-__codelineno-2-21"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#development-testing-guide-__codelineno-2-22"></a>└── test_strand_counts.py        # Strand-specific counts
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#development-testing-guide-__codelineno-2-20"></a>├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#development-testing-guide-__codelineno-2-21"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#development-testing-guide-__codelineno-2-22"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#development-testing-guide-__codelineno-2-23"></a>└── test_strand_counts.py        # Strand-specific counts
 </code></pre></div>
 <hr>
 <h2 id="development-testing-guide-writing-tests">Writing Tests<a class="headerlink" href="#development-testing-guide-writing-tests" title="Permanent link">¶</a></h2>
@@ -11234,6 +11548,82 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;"><code>ad == ad_fwd + ad_rev</code></td>
 <td style="text-align: left;">Strand consistency</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>any_alt = ad + partial_alt</code></td>
+<td style="text-align: left;">Phase 2 decomposition invariant</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>any_alt &gt;= ad</code></td>
+<td style="text-align: left;">Partial count is non-negative</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dp &gt;= rd + ad + partial_alt + n_count</code></td>
+<td style="text-align: left;">Depth decomposition with N-base diagnostic</td>
+</tr>
+</tbody>
+</table>
+<h3 id="development-testing-guide-no-silent-failures-matrix">No Silent Failures Matrix<a class="headerlink" href="#development-testing-guide-no-silent-failures-matrix" title="Permanent link">¶</a></h3>
+<p>Every N/masked/partial path must produce a deterministic, traceable outcome:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Scenario</th>
+<th style="text-align: left;">Classification</th>
+<th style="text-align: left;">n_count</th>
+<th style="text-align: left;">partial_alt</th>
+<th style="text-align: left;">Log Level</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> with N base</td>
+<td style="text-align: left;"><code>neither_n</code> (uninformative)</td>
+<td style="text-align: left;">+1</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;"><code>trace</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> with N at 1 position</td>
+<td style="text-align: left;">ALT/REF via unmasked</td>
+<td style="text-align: left;">+1</td>
+<td style="text-align: left;">depends on match</td>
+<td style="text-align: left;"><code>trace</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> with N at ALL positions</td>
+<td style="text-align: left;"><code>LowQuality</code> (<abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> only)</td>
+<td style="text-align: left;">+1</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;"><code>trace</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> with N + low-BQ</td>
+<td style="text-align: left;"><code>LowQuality</code> (<abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> only)</td>
+<td style="text-align: left;">+1</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;"><code>trace</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Complex with N in haplotype</td>
+<td style="text-align: left;">via masked compare</td>
+<td style="text-align: left;">+1</td>
+<td style="text-align: left;">depends on match</td>
+<td style="text-align: left;"><code>trace</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">ALT = "N" in input <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></td>
+<td style="text-align: left;"><code>FAIL_ALT_CONTAINS_N</code></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;"><code>warn</code> (validation)</td>
+</tr>
+<tr>
+<td style="text-align: left;">ThirdAllele with partial match</td>
+<td style="text-align: left;">neither + partial</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">+1</td>
+<td style="text-align: left;"><code>trace</code></td>
 </tr>
 </tbody>
 </table>
@@ -11375,7 +11765,7 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
-<p><strong>Current totals</strong>: 155 tests, 66% overall coverage.</p>
+<p><strong>Current totals</strong>: 207 Python + 119 Rust tests.</p>
 <p>Run coverage report:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-testing-guide-__codelineno-9-1"></a>pytest<span class="w"> </span>--cov<span class="o">=</span>gbcms<span class="w"> </span>--cov-report<span class="o">=</span>html
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#development-testing-guide-__codelineno-9-2"></a>open<span class="w"> </span>htmlcov/index.html
@@ -11767,6 +12157,58 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Ruff B904 fix: <code>raise ... from None</code> in <code>mfsd_report.py</code>.</li>
 <li>Ruff UP015 fix: removed unnecessary <code>"r"</code> mode argument from <code>open()</code>.</li>
 </ul>
+<h3 id="development-changelog-n-base-diagnostic-integration-phases-03">🧬 N-Base Diagnostic Integration (Phases 0–3)<a class="headerlink" href="#development-changelog-n-base-diagnostic-integration-phases-03" title="Permanent link">¶</a></h3>
+<h4 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h4>
+<ul>
+<li><strong>Diagnostic output columns</strong>: <code>any_alt</code>, <code>partial_alt</code>, <code>n_count</code> appended to
+  all <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (24 gbcms DNA columns total, up from 21).</li>
+<li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> diagnostic tags</strong>: <code>AAD</code> (Any ALT Depth), <code>PAD</code> (Partial ALT Depth),
+  <code>NAD</code> (N-base Depth) emitted in both INFO and FORMAT sections.</li>
+<li><strong>N-base defense-in-depth</strong>: Explicit N-base guards in <code>check_snp</code>, <code>check_mnp</code>,
+  and <code>check_complex</code> — N bases are classified as uninformative regardless of
+  reported base quality, preventing silent evidence inflation from duplex-masked
+  positions (fgbio) or sequencer failure.</li>
+<li><strong>Structural invariants</strong>: <code>any_alt = AD + partial_alt</code>, <code>any_alt &gt;= AD</code>,
+  <code>DP &gt;= RD + AD + partial_alt + n_count</code> enforced and documented.</li>
+<li><strong><code>trace!</code>-level diagnostics</strong>: N-base detection, n_count accumulation, and
+  partial_alt counting logged at trace level for production debugging.</li>
+<li><strong>ALT-contains-N rejection</strong>: Variants where the ALT allele contains N are
+  rejected with <code>FAIL_ALT_CONTAINS_N</code> validation status and <code>warn!</code>-level log.</li>
+</ul>
+<h4 id="development-changelog-changed">🔄 Changed<a class="headerlink" href="#development-changelog-changed" title="Permanent link">¶</a></h4>
+<ul>
+<li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality strategy</strong>: Replaced all-or-nothing <code>min(BQ across block)</code> gate
+  with <strong>masked per-position evaluation</strong> — each discriminating position (REF ≠ ALT)
+  is independently assessed; low-BQ and N bases are masked but unmasked positions
+  still vote. This recovers reads in GC-rich regions (e.g., TERT promoter) where
+  a single low-quality position previously dropped the entire read.</li>
+<li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> ThirdAllele handling</strong>: Mixed-vote reads now track <code>positions_matching_alt</code>
+  for diagnostic partial_alt counting instead of being silently discarded.</li>
+</ul>
+<h4 id="development-changelog-tests_1">🧪 Tests<a class="headerlink" href="#development-changelog-tests_1" title="Permanent link">¶</a></h4>
+<ul>
+<li><strong>[NEW]</strong> <code>tests/test_mnp_concordance.py</code> — 6 tests for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> concordance with
+  C++ gbcms on production duplex BAMs.</li>
+<li><strong>[NEW]</strong> <code>tests/test_phase2_output.py</code> — 5 tests for diagnostic column presence,
+  invariant validation, and N-count sanity on fixture data.</li>
+<li><strong>26+ Rust unit tests</strong> for N-base masking, <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> per-position evaluation, partial
+  match tracking, invariant enforcement, and edge cases (all-N reads, mixed BQ/N).</li>
+<li>Updated <code>tests/test_column_count_delta_is_three</code> to assert 24 gbcms DNA columns.</li>
+</ul>
+<h4 id="development-changelog-documentation_1">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_1" title="Permanent link">¶</a></h4>
+<ul>
+<li><strong>Updated</strong> <code>docs/reference/counting-metrics.md</code> — diagnostic columns, invariant
+  tables, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> tag definitions, N-base handling section.</li>
+<li><strong>Updated</strong> <code>docs/reference/output-formats.md</code> — AAD/PAD/NAD in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> header,
+  INFO/FORMAT tables, annotated example; any_alt/partial_alt/n_count in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> table.</li>
+<li><strong>Updated</strong> <code>docs/reference/allele-classification.md</code> — <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> flowchart with N guard,
+  <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> section rewritten for masked per-position algorithm, Complex N-base note.</li>
+<li><strong>Updated</strong> <code>docs/reference/architecture.md</code> — structural invariants and diagnostic
+  output fields in Formulas section.</li>
+<li><strong>Updated</strong> <code>docs/development/developer-guide.md</code> — regression invariant checklist.</li>
+<li><strong>Updated</strong> <code>docs/development/testing-guide.md</code> — Phase 2 test suite, silent
+  failures matrix, invariant table, updated test counts.</li>
+</ul>
 <h2 id="development-changelog-401-2026-03-24">[4.0.1] - 2026-03-24<a class="headerlink" href="#development-changelog-401-2026-03-24" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-fixed_1">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_1" title="Permanent link">¶</a></h3>
 <ul>
@@ -11789,7 +12231,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   power-set sibling combinatorics for true multi-haplotype evaluation.
   Only affects <code>--alignment-backend hmm</code>.</li>
 </ul>
-<h3 id="development-changelog-changed">🔄 Changed<a class="headerlink" href="#development-changelog-changed" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_1">🔄 Changed<a class="headerlink" href="#development-changelog-changed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li>Normalization logging now shows granular breakdown:
   <code>"X normalized (Y anchor-resolved, Z left-aligned)"</code> in both Rust engine
@@ -11809,7 +12251,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   logic, and statistics extracted from <code>counting/</code> into <code>shared/</code>. Any Rust
   consumer crate linking against gbcms internals must update import paths.</li>
 </ul>
-<h3 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 3 <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> unification</strong> (<code>feat: unify check_complex Phase 3</code>):
   Complex indel classification now routes through a unified pangenomic pipeline
@@ -11854,7 +12296,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>parquet_writer.rs</code> relocated</strong>: Moved from <code>counting/</code> into <code>shared/</code> during
   module extraction.</li>
 </ul>
-<h3 id="development-changelog-documentation_1">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_2">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_2" title="Permanent link">¶</a></h3>
 <p>Major documentation overhaul — 28+ files updated:
 - Complete MkDocs plugin utilization pass (tabbed, details, admonitions,
   mermaid, code annotations, glightbox) across all reference pages
@@ -11880,7 +12322,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>test_cli_dna_rna.py</code>: mypy <code>attr-defined</code> fixed by annotating <code>_click_app</code>
   as <code>click.Group</code>; <code>Set[str | None]</code> → <code>Set[str]</code> via <code>if p.name is not None</code></li>
 </ul>
-<h3 id="development-changelog-tests_1">🧪 Tests<a class="headerlink" href="#development-changelog-tests_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_2">🧪 Tests<a class="headerlink" href="#development-changelog-tests_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>tests/test_pipeline_rna.py</code> (NEW): 7 pipeline-level integration tests for
   RNA mode output — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO headers, INFO values, FORMAT field, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column
@@ -11901,7 +12343,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   A final <code>py-gbcms==3.0.0</code> deprecation stub on PyPI re-exports <code>gbcms</code> and
   issues a <code>DeprecationWarning</code> for smooth migration.</li>
 </ul>
-<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> native integration</strong>: <code>--mfsd</code> and <code>--mfsd-parquet</code> flags output a
   Parquet file with 31 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns + 7 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields via the Rust native
@@ -11918,7 +12360,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Resolved <code>mypy</code> <code>AlignedSegment.cigar</code> attribute errors in test suite.</li>
 <li>Lint and stale-comment cleanup post Phase 6 audit.</li>
 </ul>
-<h3 id="development-changelog-documentation_2">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_3">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_3" title="Permanent link">¶</a></h3>
 <ul>
 <li>Full documentation sync with codebase after Phase 6 (<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>) merge.</li>
 <li>PDF generation guide added to developer documentation.</li>
@@ -11929,7 +12371,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Added <code>mkdocs-print-site-plugin</code> to <abbr title="Continuous Integration - Automated build and test system">CI</abbr> docs install step and <code>pyproject.toml</code>.</li>
 </ul>
 <h2 id="development-changelog-280-2026-02-23">[2.8.0] - 2026-02-23<a class="headerlink" href="#development-changelog-280-2026-02-23" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> alignment backend</strong>: Alternative Phase 3 alignment via <code>--alignment-backend hmm</code> with probabilistic scoring using base quality probabilities. Configurable <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold (default 2.3 ≈ ln(10)) and gap probabilities for repeat/non-repeat regions. 6 new <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options. Exposed as first-class Nextflow params in <code>nextflow.config</code></li>
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> min-BQ-across-block quality strategy</strong>: <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality now assessed using min(BQ) across the entire block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>. Low-quality <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads now fall through to <code>check_complex</code> for masked comparison instead of being silently skipped</li>
@@ -11949,7 +12391,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Rust module structure</strong>: Split <code>counting.rs</code> (1904 LOC) and <code>normalize.rs</code> (1221 LOC) into idiomatic module directories: <code>counting/</code> (7 modules) and <code>normalize/</code> (7 modules)</li>
 <li><strong>AlignmentBackend threading</strong>: <code>AlignmentBackend</code> enum threaded through all Phase 3 call sites</li>
 </ul>
-<h3 id="development-changelog-documentation_3">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_4">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Comprehensive audit</strong>: 28 fixes across 23 files — all GitBook URLs → MkDocs, version templating (X.Y.Z), undocumented <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options, 5 mermaid diagrams updated for post-2.7.0 logic, architecture module tree refreshed, <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> documented end-to-end</li>
 <li>Deleted stale <code>nextflow/CHANGES.md</code></li>
@@ -11961,7 +12403,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Update test expectations for new behavior</li>
 <li><abbr title="Continuous Integration - Automated build and test system">CI</abbr>: skip test workflow for docs-only changes</li>
 </ul>
-<h3 id="development-changelog-tests_2">🧪 Tests<a class="headerlink" href="#development-changelog-tests_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_3">🧪 Tests<a class="headerlink" href="#development-changelog-tests_3" title="Permanent link">¶</a></h3>
 <ul>
 <li>8 Python alignment backend integration tests</li>
 <li>5 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>-vs-<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> concordance tests</li>
@@ -11969,7 +12411,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Multi-allelic isolation, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/neither, fragment consensus, normalization tests</li>
 </ul>
 <h2 id="development-changelog-270-2026-02-19">[2.7.0] - 2026-02-19<a class="headerlink" href="#development-changelog-270-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
@@ -11996,11 +12438,11 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
-<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Tolerant REF validation</strong>: Variants with ≥90% REF match against the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> are now counted (status <code>PASS_WARN_REF_CORRECTED</code>) instead of being silently rejected. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF is used for haplotype construction. Variants with &lt;90% match are still rejected as <code>REF_MISMATCH</code></li>
 </ul>
-<h3 id="development-changelog-documentation_4">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_5">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Visual posters</strong>: Added overview, normalization, and read-filter/counting-metrics posters (JPG) to reference documentation pages with lightbox support</li>
 <li><strong>Embedded PDFs</strong>: Added inline PDF viewer for allele classification guide and detailed overview presentation via <code>mkdocs-pdf</code> plugin</li>
@@ -12011,7 +12453,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>deploy-docs.yml</code></strong>: Added <code>mkdocs-pdf</code> to docs <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pip install dependencies</li>
 </ul>
 <h2 id="development-changelog-260-2026-02-18">[2.6.0] - 2026-02-18<a class="headerlink" href="#development-changelog-260-2026-02-18" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Adaptive context padding</strong>: Dynamically increases <code>ref_context</code> flanking in tandem repeat regions (homopolymer through hexanucleotide). Formula: <code>max(default, repeat_span/2 + 3)</code>, capped at 50bp. Enabled by default (<code>--adaptive-context/--no-adaptive-context</code>)</li>
 <li><strong><code>gbcms normalize</code> command</strong>: Standalone variant normalization (left-align + REF validate) without counting, outputs <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> with original and normalized coordinates</li>
@@ -12027,7 +12469,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style conversion</strong>: Corrected complex variant handling in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→internal coordinate conversion</li>
 <li><strong>Lint</strong>: Fixed ruff I001/E402/B905 and black formatting in <code>pipeline.py</code></li>
 </ul>
-<h3 id="development-changelog-changed_1">🔄 Changed<a class="headerlink" href="#development-changelog-changed_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_2">🔄 Changed<a class="headerlink" href="#development-changelog-changed_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dead code removed</strong>: <code>GenomicInterval</code> class, <code>Variant.interval</code> property, <code>fragment_counting</code> config field</li>
 <li><strong><code>fetch_single_base()</code> refactored</strong>: Delegates to <code>fetch_region()</code>, removing 33 lines of duplicated chr-prefix retry logic</li>
@@ -12035,7 +12477,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow pipeline diagram</strong> added to docs index</li>
 </ul>
 <h2 id="development-changelog-250-2026-02-12">[2.5.0] - 2026-02-12<a class="headerlink" href="#development-changelog-250-2026-02-12" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--preserve-barcode</code> flag</strong>: Keeps original <code>Tumor_Sample_Barcode</code> from input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> instead of overriding with <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> sample name (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows)</li>
 <li><strong><code>--column-prefix</code> parameter</strong>: Controls prefix for gbcms count columns in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (default: none; use <code>--column-prefix t_</code> for legacy compatibility) ⚠️</li>
@@ -12053,7 +12495,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>splitCsv</code> quote handling</strong>: Added <code>quote:'"'</code> parameter for correct RFC 4180 parsing of comma-separated TSB values within quoted CSV fields</li>
 <li><strong>mypy <code>no-redef</code> error</strong>: Removed redundant type annotation in <code>output.py</code> else branch</li>
 </ul>
-<h3 id="development-changelog-changed_2">🔄 Changed<a class="headerlink" href="#development-changelog-changed_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_3">🔄 Changed<a class="headerlink" href="#development-changelog-changed_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output column prefix default</strong>: Changed from <code>t_</code> to empty string (no prefix). Use <code>--column-prefix t_</code> for legacy <code>t_ref_count</code> / <code>t_alt_count</code> style columns ⚠️</li>
 <li><strong><code>MafWriter</code> refactored</strong>: <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> path preserves all original columns verbatim; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> path builds row from GDC fieldnames with <code>CoordinateKernel</code> coordinate conversion</li>
@@ -12062,7 +12504,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow config</strong>: Added <code>column_prefix</code>, <code>preserve_barcode</code>, <code>filter_by_sample</code> parameters</li>
 </ul>
 <h2 id="development-changelog-240-2026-02-10">[2.4.0] - 2026-02-10<a class="headerlink" href="#development-changelog-240-2026-02-10" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment Consensus Engine</strong>: <code>FragmentEvidence</code> struct with u64 QNAME hashing and quality-weighted R1/R2 consensus; ambiguous fragments are discarded (not assigned to REF)</li>
 <li><strong><code>--fragment-qual-threshold</code></strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> option (default 10) controlling consensus quality difference for fragment conflict resolution</li>
@@ -12072,7 +12514,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Normalization Docs</strong>: Added indel normalization and coordinate handling to <code>docs/reference/input-formats.md</code></li>
 <li><strong>47 Tests</strong>: Up from 16 — added <code>test_shifted_indels.py</code> (15), <code>test_fuzzy_complex.py</code> (14), <code>test_fragment_consensus.py</code> (4)</li>
 </ul>
-<h3 id="development-changelog-changed_3">🔄 Changed<a class="headerlink" href="#development-changelog-changed_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_4">🔄 Changed<a class="headerlink" href="#development-changelog-changed_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--min-baseq</code> default</strong>: <code>0</code> → <code>20</code> (Phred Q20) — activates quality masking by default for improved accuracy on low-coverage samples ⚠️</li>
 <li><strong><code>--version</code> flag</strong>: Added to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>gbcms --version</code>)</li>
@@ -12086,7 +12528,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Type stubs</strong>: <code>_rs.pyi</code> and <code>gbcms_rs.pyi</code> synced with Rust bindings (added <code>ref_context</code>, <code>ref_context_start</code>, <code>fragment_qual_threshold</code>)</li>
 <li><strong>Linting</strong>: All files pass black, ruff, and mypy</li>
 </ul>
-<h3 id="development-changelog-documentation_5">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_6">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_6" title="Permanent link">¶</a></h3>
 <ul>
 <li>Architecture comparison table updated with windowed indels and masked comparison</li>
 <li>Nextflow config and docs updated with new <code>min_baseq</code> default</li>
@@ -12096,14 +12538,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>.antigravity</code> project files updated with current Rust LOC (~1270) and test counts (47)</li>
 </ul>
 <h2 id="development-changelog-230-2026-02-06">[2.3.0] - 2026-02-06<a class="headerlink" href="#development-changelog-230-2026-02-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow <abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> Auto-Discovery</strong>: Checks <code>.bam.bai</code> and <code>.bai</code> extensions automatically</li>
 <li><strong>Documentation Modernization</strong>: Hierarchical navigation, glightbox, panzoom, abbreviations</li>
 <li><strong>Performance Benchmarks</strong>: <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> duplex sample metrics in documentation</li>
 <li><strong>RHEL 8 Installation Guide</strong>: Conda-based source installation for legacy Linux</li>
 </ul>
-<h3 id="development-changelog-changed_4">🔄 Changed<a class="headerlink" href="#development-changelog-changed_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_5">🔄 Changed<a class="headerlink" href="#development-changelog-changed_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dockerfile</strong>: Added <code>procps</code>, <code>bash</code>, OCI labels, <code>maturin[patchelf]</code>, selective COPY</li>
 <li><strong>Nextflow Config</strong>: <code>--platform linux/amd64</code>, shell config, local profile, observability (trace/report/timeline/dag)</li>
@@ -12118,21 +12560,21 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Build</strong>: Resolved <code>curl-sys</code> OpenSSL version conflict by switching to manylinux_2_34</li>
 </ul>
 <h2 id="development-changelog-220-2026-02-04">[2.2.0] - 2026-02-04<a class="headerlink" href="#development-changelog-220-2026-02-04" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Multi-platform Wheel Publishing</strong>: Maturin-based <abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds for Linux (x86_64, aarch64), macOS (Intel, Apple Silicon), and Windows</li>
 <li><strong>Structured Logging</strong>: New <code>utils/logging.py</code> module with Rich console output, timing utilities, and log file support</li>
 <li><strong>Mermaid Diagrams</strong>: Architecture documentation with interactive flowcharts</li>
 <li><strong>Release Guide</strong>: Comprehensive <code>docs/RELEASE.md</code> with git-flow workflow</li>
 </ul>
-<h3 id="development-changelog-changed_5">🔄 Changed<a class="headerlink" href="#development-changelog-changed_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_6">🔄 Changed<a class="headerlink" href="#development-changelog-changed_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Folder Restructure</strong>: Moved Rust code to <code>rust/</code> (bundled as <code>gbcms._rs</code>)</li>
 <li><strong>Config Hierarchy</strong>: Nested Pydantic models (<code>ReadFilters</code>, <code>QualityThresholds</code>, <code>OutputConfig</code>) for better organization</li>
 <li><strong>Code Quality</strong>: Added <code>__all__</code> exports, docstrings, and type hints across all modules</li>
 <li><strong>StrEnum</strong>: Modern enum pattern with Python 3.10 backport</li>
 </ul>
-<h3 id="development-changelog-documentation_6">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_7">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_7" title="Permanent link">¶</a></h3>
 <ul>
 <li>New <code>docs/ARCHITECTURE.md</code> with system diagrams</li>
 <li>New <code>docs/DEVELOPMENT.md</code> (developer guide)</li>
@@ -12157,7 +12599,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Documentation</strong>: Added Changelog to documentation navigation</li>
 </ul>
 <h2 id="development-changelog-210-2025-11-25">[2.1.0] - 2025-11-25<a class="headerlink" href="#development-changelog-210-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-nextflow-workflow">Nextflow Workflow<a class="headerlink" href="#development-changelog-nextflow-workflow" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Production-ready Nextflow workflow</strong> for processing multiple samples in parallel</li>
@@ -12169,7 +12611,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Resource management</strong> with automatic retry and scaling</li>
 <li><strong>Comprehensive documentation</strong> in <code>docs/NEXTFLOW.md</code> and <code>nextflow/README.md</code></li>
 </ul>
-<h4 id="development-changelog-documentation_7">Documentation<a class="headerlink" href="#development-changelog-documentation_7" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-documentation_8">Documentation<a class="headerlink" href="#development-changelog-documentation_8" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Usage pattern comparison</strong> guide (<code>docs/WORKFLOWS.md</code>) for choosing between <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and Nextflow</li>
 <li><strong>MkDocs integration</strong> for beautiful GitHub Pages documentation</li>
@@ -12179,13 +12621,13 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Reorganized documentation structure</strong> with clear <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> vs Nextflow separation</li>
 <li><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Quick Start guide</strong> (<code>docs/quick-start.md</code>)</li>
 </ul>
-<h3 id="development-changelog-changed_6">🔧 Changed<a class="headerlink" href="#development-changelog-changed_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_7">🔧 Changed<a class="headerlink" href="#development-changelog-changed_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Documentation workflow</strong>: docs now live on <code>main</code> branch with automated deployment</li>
 <li><strong>GitBook integration</strong>: configured to read from <code>main</code> branch</li>
 <li><strong>Nextflow module</strong>: improved parameter passing with meta.suffix support</li>
 </ul>
-<h3 id="development-changelog-documentation_8">📝 Documentation<a class="headerlink" href="#development-changelog-documentation_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_9">📝 Documentation<a class="headerlink" href="#development-changelog-documentation_9" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete Nextflow workflow guide with SLURM examples</li>
 <li>Per-sample suffix usage examples</li>
@@ -12196,7 +12638,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="development-changelog-200-2025-11-21">[2.0.0] - 2025-11-21<a class="headerlink" href="#development-changelog-200-2025-11-21" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-major-rewrite">🚀 Major Rewrite<a class="headerlink" href="#development-changelog-major-rewrite" title="Permanent link">¶</a></h3>
 <p>Version 2.0.0 represents a complete rewrite of py-gbcms with a focus on performance, correctness, and modern architecture.</p>
-<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-core-features">Core Features<a class="headerlink" href="#development-changelog-core-features" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Rust-based Counting Engine</strong>: Hybrid Python/Rust architecture for 20x+ performance improvement</li>
@@ -12238,7 +12680,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Comprehensive Tests</strong>: Extended test suite with accuracy and filter validation</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr>/<abbr title="Continuous Deployment - Automated release system">CD</abbr></strong>: GitHub Actions workflows for testing, linting, and releases</li>
 </ul>
-<h3 id="development-changelog-changed_7">🔄 Changed<a class="headerlink" href="#development-changelog-changed_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_8">🔄 Changed<a class="headerlink" href="#development-changelog-changed_8" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-architecture">Architecture<a class="headerlink" href="#development-changelog-architecture" title="Permanent link">¶</a></h4>
 <ul>
 <li>Migrated from pure Python to hybrid Python/Rust architecture</li>
@@ -12277,7 +12719,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Reference validation against <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> for all variant types</li>
 <li>Thread-safe <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> access with per-thread readers</li>
 </ul>
-<h3 id="development-changelog-documentation_9">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_10">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_10" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete rewrite of all documentation</li>
 <li>New guides: <code>INSTALLATION.md</code>, <code>CLI_FEATURES.md</code>, <code>INPUT_OUTPUT.md</code></li>
