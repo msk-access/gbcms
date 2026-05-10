@@ -92,7 +92,7 @@ pub(crate) fn validate_ref(
                 // Compute similarity: count matching bases (case-insensitive)
                 let max_len = ref_seq.len().max(ref_allele.len());
                 if max_len == 0 {
-                    return ("REF_MISMATCH".to_string(), None);
+                    return ("FAIL_REF_MISMATCH".to_string(), None);
                 }
                 let matches = ref_seq
                     .iter()
@@ -112,13 +112,13 @@ pub(crate) fn validate_ref(
                         max_len,
                         similarity * 100.0,
                     );
-                    ("PASS_WARN_REF_CORRECTED".to_string(), Some(fasta_ref))
+                    ("PASS;WARN_REF_CORRECTED".to_string(), Some(fasta_ref))
                 } else {
-                    ("REF_MISMATCH".to_string(), None)
+                    ("FAIL_REF_MISMATCH".to_string(), None)
                 }
             }
         }
-        Err(_) => ("FETCH_FAILED".to_string(), None),
+        Err(_) => ("FAIL_FETCH_FAILED".to_string(), None),
     }
 }
 

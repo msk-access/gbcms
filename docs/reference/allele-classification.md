@@ -748,7 +748,7 @@ When multiple variants have overlapping REF spans at the same locus, reads carry
 
 ### Phase 1: Annotation
 
-During normalization, `assign_multi_allelic_groups()` identifies overlapping variants using a **sweep-line algorithm** over sorted `(chrom, pos)` coordinates. Variants whose REF spans intersect receive a shared `multi_allelic_group` ID, and their `validation_status` is appended with `_MULTI_ALLELIC` (e.g., `PASS_MULTI_ALLELIC`).
+During normalization, `assign_multi_allelic_groups()` identifies overlapping variants using a **sweep-line algorithm** over sorted `(chrom, pos)` coordinates. Variants whose REF spans intersect receive a shared `multi_allelic_group` ID, and their `gbcms_status` is appended with `;MULTI_ALLELIC` (e.g., `PASS;MULTI_ALLELIC`).
 
 ### Phase 2: Sibling ALT Exclusion
 
