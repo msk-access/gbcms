@@ -523,6 +523,55 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#mnp-rescue-pass-rescue-mnp-v430">
+<span class="md-ellipsis">
+      
+        MNP Rescue Pass (--rescue-mnp, v4.3.0)
+      
+    </span>
+</a>
+<nav aria-label="MNP Rescue Pass (--rescue-mnp, v4.3.0)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-python-not-rust">
+<span class="md-ellipsis">
+      
+        Why Python, Not Rust?
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rescue-candidate-criteria">
+<span class="md-ellipsis">
+      
+        Rescue Candidate Criteria
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rescue-strategy-decomposed-snp-counting">
+<span class="md-ellipsis">
+      
+        Rescue Strategy: Decomposed SNP Counting
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#invariant-impact">
+<span class="md-ellipsis">
+      
+        Invariant Impact
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#comparison-with-original-gbcms">
 <span class="md-ellipsis">
       
@@ -942,6 +991,55 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#mnp-rescue-pass-rescue-mnp-v430">
+<span class="md-ellipsis">
+      
+        MNP Rescue Pass (--rescue-mnp, v4.3.0)
+      
+    </span>
+</a>
+<nav aria-label="MNP Rescue Pass (--rescue-mnp, v4.3.0)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-python-not-rust">
+<span class="md-ellipsis">
+      
+        Why Python, Not Rust?
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rescue-candidate-criteria">
+<span class="md-ellipsis">
+      
+        Rescue Candidate Criteria
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rescue-strategy-decomposed-snp-counting">
+<span class="md-ellipsis">
+      
+        Rescue Strategy: Decomposed SNP Counting
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#invariant-impact">
+<span class="md-ellipsis">
+      
+        Invariant Impact
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#comparison-with-original-gbcms">
 <span class="md-ellipsis">
       
@@ -1070,6 +1168,8 @@ Use mouse to pan and zoom
         Load["Load Variants"]
         Prepare["Prepare\n(validate + left-align + decomp detect)"]
         Count["Count Reads"]
+        Diag["Diagnostics\n(gbcms_diagnostic flags)"]
+        Rescue["Rescue\n(--rescue-mnp)"]:::optional
     end
 
     subgraph Output ["Required Output"]
@@ -1084,8 +1184,13 @@ Use mouse to pan and zoom
     FASTA --&gt; Prepare
     Prepare --&gt; Count
     BAM --&gt; Count
-    Count --&gt; Result
+    Count --&gt; Diag
+    Diag -.-&gt;|"--rescue-mnp"| Rescue
+    Diag --&gt; Result
+    Rescue --&gt; Result
     Count -.-&gt;|"--mfsd-parquet"| Parquet
+
+    classDef optional fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 </sample></code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -1306,7 +1411,7 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;"><code>partial_alt</code></td>
 <td style="text-align: left;"><code>PAD</code></td>
-<td style="text-align: left;">Reads matching ALT at some but not all positions (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex only; always 0 for <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/indel)</td>
+<td style="text-align: left;">Reads matching ALT at some but not all positions — now populated for all variant types including INDELs (via structural evidence propagation)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>n_count</code></td>
@@ -1465,6 +1570,13 @@ Use mouse to pan and zoom
             Note over Rust: Compute Fisher strand bias
         end
         Rust--&gt;&gt;Pipeline: Vec[BaseCounts]
+        Pipeline-&gt;&gt;Pipeline: _compute_diagnostics()
+        opt --rescue-mnp enabled
+            Pipeline-&gt;&gt;Pipeline: _rescue_mnp_pass() — identify candidates
+            Pipeline-&gt;&gt;Rust: count_bam_binned(synthetic SNPs)
+            Rust--&gt;&gt;Pipeline: Vec[BaseCounts] for SNPs
+            Pipeline-&gt;&gt;Pipeline: Update ad, populate gbcms_rescue
+        end
     end
 
     Pipeline-&gt;&gt;Pipeline: Write output (VCF/MAF)
@@ -1473,6 +1585,202 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
+<hr>
+<h2 id="mnp-rescue-pass-rescue-mnp-v430"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Pass (<code>--rescue-mnp</code>, v4.3.0)<a class="headerlink" href="#mnp-rescue-pass-rescue-mnp-v430" title="Permanent link">¶</a></h2>
+<p>The rescue pass recovers <code>alt_count</code> for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> variants where <code>ad == 0</code> by decomposing
+the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> into individual <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> positions and re-counting each one independently.</p>
+<h3 id="why-python-not-rust">Why Python, Not Rust?<a class="headerlink" href="#why-python-not-rust" title="Permanent link">¶</a></h3>
+<p>The original design spec proposed implementing rescue in Rust. The final implementation
+uses <strong>Python orchestration calling the existing Rust counting engine</strong>. This was a
+deliberate architectural decision:</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    subgraph Python ["🐍 Python — Orchestration"]
+        Filter["Filter candidates\n(PASS + ad==0 + MNP_SPARSE_DISC)"]
+        Build["Build synthetic SNPs\nfrom disc positions"]
+        Map["Map counts back\npick best rescue"]
+        Audit["Populate gbcms_rescue\naudit trail"]
+    end
+
+    subgraph Rust ["🦀 Rust — Counting"]
+        Prepare["prepare_variants()\nREF validation"]
+        Count["count_bam_binned()\nBAM I/O + read classification"]
+    end
+
+    Filter --&gt; Build --&gt; Prepare
+    Prepare --&gt; Count
+    Count --&gt; Map --&gt; Audit
+
+    classDef pythonStyle fill:#3776ab,color:#fff,stroke:#2c5f8a,stroke-width:2px;
+    classDef rustStyle fill:#dea584,color:#000,stroke:#c48a6a,stroke-width:2px;
+    class Python pythonStyle;
+    class Rust rustStyle;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Concern</th>
+<th style="text-align: left;">If implemented in Rust</th>
+<th style="text-align: left;">Actual (Python + Rust)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> I/O</strong></td>
+<td style="text-align: left;">Rust (fast)</td>
+<td style="text-align: left;"><strong>Rust</strong> via <code>count_bam_binned()</code> — same speed</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Read classification</strong></td>
+<td style="text-align: left;">Rust (fast)</td>
+<td style="text-align: left;"><strong>Rust</strong> — unchanged</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Candidate filtering</strong></td>
+<td style="text-align: left;">Would duplicate Python diagnostic logic</td>
+<td style="text-align: left;"><strong>Python</strong> — direct access to <code>gbcms_diagnostic</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Synthetic variant creation</strong></td>
+<td style="text-align: left;">New Rust API surface needed</td>
+<td style="text-align: left;"><strong>Python</strong> — uses existing <code>rs.Variant()</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Config access</strong></td>
+<td style="text-align: left;">Entire config struct across FFI boundary</td>
+<td style="text-align: left;"><strong>Python</strong> — <code>self.config.*</code> already available</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Audit trail formatting</strong></td>
+<td style="text-align: left;">Awkward string manipulation in Rust</td>
+<td style="text-align: left;"><strong>Python</strong> — natural</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Unit testing</strong></td>
+<td style="text-align: left;">Hard to mock <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> interactions</td>
+<td style="text-align: left;"><strong>Python</strong> — <code>SimpleNamespace</code> mocks</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Performance impact</strong></td>
+<td style="text-align: left;">Negligible improvement</td>
+<td style="text-align: left;"><strong>&lt; 1 second</strong> added to 30–120s pipeline</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">Key Insight</p>
+<p>The rescue engine is an <strong>orchestration layer</strong>, not a counting engine. The expensive
+work (<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> I/O, read classification, allele counting) is still 100% Rust. Python
+decides <em>what</em> to re-count and <em>what to do</em> with the results — typically 5–50
+synthetic SNPs per sample, handled in a single batched <code>count_bam_binned()</code> call.</p>
+</div>
+<h3 id="rescue-candidate-criteria">Rescue Candidate Criteria<a class="headerlink" href="#rescue-candidate-criteria" title="Permanent link">¶</a></h3>
+<p>A variant qualifies for rescue when <strong>all four</strong> conditions are met:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">Condition</th>
+<th style="text-align: left;">Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;"><code>gbcms_status</code> starts with <code>PASS</code></td>
+<td style="text-align: left;">FAIL variants have unreliable coordinates</td>
+</tr>
+<tr>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;"><code>ad == 0</code></td>
+<td style="text-align: left;">Variants with confirmed ALT reads don't need rescue</td>
+</tr>
+<tr>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;"><code>MNP_SPARSE_DISC</code> in <code>gbcms_diagnostic</code></td>
+<td style="text-align: left;">Only sparse MNPs are susceptible to phantom-position dropout</td>
+</tr>
+<tr>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;"><code>ref_len == alt_len &gt; 1</code> (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>)</td>
+<td style="text-align: left;">SNPs and INDELs are never <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue candidates</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rescue-strategy-decomposed-snp-counting">Rescue Strategy: Decomposed <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> Counting<a class="headerlink" href="#rescue-strategy-decomposed-snp-counting" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>MNP:  GAGGG → AAGGA  (5bp, positions 0-4)
+<a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a>Disc: pos 0 (G→A) ✓, pos 4 (G→A) ✓  → 2/5 discriminating
+<a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a>
+<a href="#__codelineno-3-4" id="__codelineno-3-4" name="__codelineno-3-4"></a>Decompose into:
+<a href="#__codelineno-3-5" id="__codelineno-3-5" name="__codelineno-3-5"></a>  SNP₁: G→A at chr5:1295250  → count_bam_binned() → ad=108
+<a href="#__codelineno-3-6" id="__codelineno-3-6" name="__codelineno-3-6"></a>  SNP₂: G→A at chr5:1295254  → count_bam_binned() → ad=0
+<a href="#__codelineno-3-7" id="__codelineno-3-7" name="__codelineno-3-7"></a>
+<a href="#__codelineno-3-8" id="__codelineno-3-8" name="__codelineno-3-8"></a>Best rescue: ad=108 (from SNP₁)
+<a href="#__codelineno-3-9" id="__codelineno-3-9" name="__codelineno-3-9"></a>Audit: method=decomposed;original_alt=0;positions=chr5:1295251(G&gt;A):108,chr5:1295255(G&gt;A):0
+</code></pre></div>
+<h3 id="invariant-impact">Invariant Impact<a class="headerlink" href="#invariant-impact" title="Permanent link">¶</a></h3>
+<p>After rescue, <strong>Invariant 1</strong> (<code>any_alt = ad + partial_alt</code>) intentionally breaks:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Before Rescue</th>
+<th style="text-align: left;">After Rescue</th>
+<th style="text-align: left;">Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ad</code> (alt_count)</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;"><strong>108</strong> (updated)</td>
+<td style="text-align: left;">Rescue engine</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>partial_alt</code></td>
+<td style="text-align: left;">108</td>
+<td style="text-align: left;">108 (unchanged)</td>
+<td style="text-align: left;">Original <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> check — forensic evidence</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>any_alt</code></td>
+<td style="text-align: left;">108</td>
+<td style="text-align: left;">108 (unchanged)</td>
+<td style="text-align: left;">Original <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> check — forensic evidence</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_rescue</code></td>
+<td style="text-align: left;"><em>(empty)</em></td>
+<td style="text-align: left;"><code>method=decomposed;original_alt=0;...</code></td>
+<td style="text-align: left;">Rescue audit trail</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>gbcms_rescue</code> audit trail preserves the <code>original_alt=0</code> value and documents
+the rescue provenance, enabling downstream users to reconcile the invariant breakage.</p>
 <hr>
 <h2 id="comparison-with-original-gbcms">Comparison with Original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr><a class="headerlink" href="#comparison-with-original-gbcms" title="Permanent link">¶</a></h2>
 <table>
@@ -1558,7 +1866,7 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 4, 2026 17:17:14 UTC"><span class="timeago" datetime="2026-05-04T17:17:14+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 4, 2026 17:17:14 UTC">2026-05-04</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 10, 2026 21:03:11 UTC"><span class="timeago" datetime="2026-05-10T21:03:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 10, 2026 21:03:11 UTC">2026-05-10</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

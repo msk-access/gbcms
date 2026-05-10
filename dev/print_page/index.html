@@ -4086,8 +4086,8 @@ left-alignment — but <strong>without</strong> performing any <abbr title="Bina
 <td style="text-align: left;"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>, INSERTION, DELETION, or COMPLEX</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>validation_status</code></td>
-<td style="text-align: left;"><code>PASS</code>, <code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>REF_MISMATCH</code>, or <code>FETCH_FAILED</code></td>
+<td style="text-align: left;"><code>gbcms_status</code></td>
+<td style="text-align: left;"><code>PASS</code>, <code>PASS;WARN_HOMOPOLYMER_DECOMP</code>, <code>REF_MISMATCH</code>, or <code>FETCH_FAILED</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>was_anchor_resolved</code></td>
@@ -4946,6 +4946,8 @@ Use mouse to pan and zoom
         Load["Load Variants"]
         Prepare["Prepare\n(validate + left-align + decomp detect)"]
         Count["Count Reads"]
+        Diag["Diagnostics\n(gbcms_diagnostic flags)"]
+        Rescue["Rescue\n(--rescue-mnp)"]:::optional
     end
 
     subgraph Output ["Required Output"]
@@ -4960,8 +4962,13 @@ Use mouse to pan and zoom
     FASTA --&gt; Prepare
     Prepare --&gt; Count
     BAM --&gt; Count
-    Count --&gt; Result
+    Count --&gt; Diag
+    Diag -.-&gt;|"--rescue-mnp"| Rescue
+    Diag --&gt; Result
+    Rescue --&gt; Result
     Count -.-&gt;|"--mfsd-parquet"| Parquet
+
+    classDef optional fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 </sample></code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -5184,7 +5191,7 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;"><code>partial_alt</code></td>
 <td style="text-align: left;"><code>PAD</code></td>
-<td style="text-align: left;">Reads matching ALT at some but not all positions (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex only; always 0 for <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/indel)</td>
+<td style="text-align: left;">Reads matching ALT at some but not all positions — now populated for all variant types including INDELs (via structural evidence propagation)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>n_count</code></td>
@@ -5345,6 +5352,13 @@ Use mouse to pan and zoom
             Note over Rust: Compute Fisher strand bias
         end
         Rust--&gt;&gt;Pipeline: Vec[BaseCounts]
+        Pipeline-&gt;&gt;Pipeline: _compute_diagnostics()
+        opt --rescue-mnp enabled
+            Pipeline-&gt;&gt;Pipeline: _rescue_mnp_pass() — identify candidates
+            Pipeline-&gt;&gt;Rust: count_bam_binned(synthetic SNPs)
+            Rust--&gt;&gt;Pipeline: Vec[BaseCounts] for SNPs
+            Pipeline-&gt;&gt;Pipeline: Update ad, populate gbcms_rescue
+        end
     end
 
     Pipeline-&gt;&gt;Pipeline: Write output (VCF/MAF)
@@ -5353,6 +5367,203 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
+<hr>
+<h2 id="reference-architecture-mnp-rescue-pass-rescue-mnp-v430"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Pass (<code>--rescue-mnp</code>, v4.3.0)<a class="headerlink" href="#reference-architecture-mnp-rescue-pass-rescue-mnp-v430" title="Permanent link">¶</a></h2>
+<p>The rescue pass recovers <code>alt_count</code> for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> variants where <code>ad == 0</code> by decomposing
+the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> into individual <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> positions and re-counting each one independently.</p>
+<h3 id="reference-architecture-why-python-not-rust">Why Python, Not Rust?<a class="headerlink" href="#reference-architecture-why-python-not-rust" title="Permanent link">¶</a></h3>
+<p>The original design spec proposed implementing rescue in Rust. The final implementation
+uses <strong>Python orchestration calling the existing Rust counting engine</strong>. This was a
+deliberate architectural decision:</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+    
+    <nav class="panzoom-nav">
+    <button class="panzoom-info panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+    </svg>
+</button><button class="panzoom-reset panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+    </svg>
+</button><button class="panzoom-max panzoom-button">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+    </svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+    <svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+    </svg>
+</button>
+    </nav>
+    <pre class="mermaid"><code>flowchart LR
+    subgraph Python ["🐍 Python — Orchestration"]
+        Filter["Filter candidates\n(PASS + ad==0 + MNP_SPARSE_DISC)"]
+        Build["Build synthetic SNPs\nfrom disc positions"]
+        Map["Map counts back\npick best rescue"]
+        Audit["Populate gbcms_rescue\naudit trail"]
+    end
+
+    subgraph Rust ["🦀 Rust — Counting"]
+        Prepare["prepare_variants()\nREF validation"]
+        Count["count_bam_binned()\nBAM I/O + read classification"]
+    end
+
+    Filter --&gt; Build --&gt; Prepare
+    Prepare --&gt; Count
+    Count --&gt; Map --&gt; Audit
+
+    classDef pythonStyle fill:#3776ab,color:#fff,stroke:#2c5f8a,stroke-width:2px;
+    classDef rustStyle fill:#dea584,color:#000,stroke:#c48a6a,stroke-width:2px;
+    class Python pythonStyle;
+    class Rust rustStyle;
+</code></pre> 
+    <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Concern</th>
+<th style="text-align: left;">If implemented in Rust</th>
+<th style="text-align: left;">Actual (Python + Rust)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> I/O</strong></td>
+<td style="text-align: left;">Rust (fast)</td>
+<td style="text-align: left;"><strong>Rust</strong> via <code>count_bam_binned()</code> — same speed</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Read classification</strong></td>
+<td style="text-align: left;">Rust (fast)</td>
+<td style="text-align: left;"><strong>Rust</strong> — unchanged</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Candidate filtering</strong></td>
+<td style="text-align: left;">Would duplicate Python diagnostic logic</td>
+<td style="text-align: left;"><strong>Python</strong> — direct access to <code>gbcms_diagnostic</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Synthetic variant creation</strong></td>
+<td style="text-align: left;">New Rust API surface needed</td>
+<td style="text-align: left;"><strong>Python</strong> — uses existing <code>rs.Variant()</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Config access</strong></td>
+<td style="text-align: left;">Entire config struct across FFI boundary</td>
+<td style="text-align: left;"><strong>Python</strong> — <code>self.config.*</code> already available</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Audit trail formatting</strong></td>
+<td style="text-align: left;">Awkward string manipulation in Rust</td>
+<td style="text-align: left;"><strong>Python</strong> — natural</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Unit testing</strong></td>
+<td style="text-align: left;">Hard to mock <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> interactions</td>
+<td style="text-align: left;"><strong>Python</strong> — <code>SimpleNamespace</code> mocks</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Performance impact</strong></td>
+<td style="text-align: left;">Negligible improvement</td>
+<td style="text-align: left;"><strong>&lt; 1 second</strong> added to 30–120s pipeline</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">Key Insight</p>
+<p>The rescue engine is an <strong>orchestration layer</strong>, not a counting engine. The expensive
+work (<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> I/O, read classification, allele counting) is still 100% Rust. Python
+decides <em>what</em> to re-count and <em>what to do</em> with the results — typically 5–50
+synthetic SNPs per sample, handled in a single batched <code>count_bam_binned()</code> call.</p>
+</div>
+<h3 id="reference-architecture-rescue-candidate-criteria">Rescue Candidate Criteria<a class="headerlink" href="#reference-architecture-rescue-candidate-criteria" title="Permanent link">¶</a></h3>
+<p>A variant qualifies for rescue when <strong>all four</strong> conditions are met:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">Condition</th>
+<th style="text-align: left;">Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;"><code>gbcms_status</code> starts with <code>PASS</code></td>
+<td style="text-align: left;">FAIL variants have unreliable coordinates</td>
+</tr>
+<tr>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;"><code>ad == 0</code></td>
+<td style="text-align: left;">Variants with confirmed ALT reads don't need rescue</td>
+</tr>
+<tr>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;"><code>MNP_SPARSE_DISC</code> in <code>gbcms_diagnostic</code></td>
+<td style="text-align: left;">Only sparse MNPs are susceptible to phantom-position dropout</td>
+</tr>
+<tr>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;"><code>ref_len == alt_len &gt; 1</code> (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>)</td>
+<td style="text-align: left;">SNPs and INDELs are never <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue candidates</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reference-architecture-rescue-strategy-decomposed-snp-counting">Rescue Strategy: Decomposed <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> Counting<a class="headerlink" href="#reference-architecture-rescue-strategy-decomposed-snp-counting" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-architecture-__codelineno-3-1"></a>MNP:  GAGGG → AAGGA  (5bp, positions 0-4)
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-architecture-__codelineno-3-2"></a>Disc: pos 0 (G→A) ✓, pos 4 (G→A) ✓  → 2/5 discriminating
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#reference-architecture-__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#reference-architecture-__codelineno-3-4"></a>Decompose into:
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#reference-architecture-__codelineno-3-5"></a>  SNP₁: G→A at chr5:1295250  → count_bam_binned() → ad=108
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#reference-architecture-__codelineno-3-6"></a>  SNP₂: G→A at chr5:1295254  → count_bam_binned() → ad=0
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#reference-architecture-__codelineno-3-7"></a>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#reference-architecture-__codelineno-3-8"></a>Best rescue: ad=108 (from SNP₁)
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#reference-architecture-__codelineno-3-9"></a>Audit: method=decomposed;original_alt=0;positions=chr5:1295251(G&gt;A):108,chr5:1295255(G&gt;A):0
+</code></pre></div>
+<h3 id="reference-architecture-invariant-impact">Invariant Impact<a class="headerlink" href="#reference-architecture-invariant-impact" title="Permanent link">¶</a></h3>
+<p>After rescue, <strong>Invariant 1</strong> (<code>any_alt = ad + partial_alt</code>) intentionally breaks:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Before Rescue</th>
+<th style="text-align: left;">After Rescue</th>
+<th style="text-align: left;">Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ad</code> (alt_count)</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;"><strong>108</strong> (updated)</td>
+<td style="text-align: left;">Rescue engine</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>partial_alt</code></td>
+<td style="text-align: left;">108</td>
+<td style="text-align: left;">108 (unchanged)</td>
+<td style="text-align: left;">Original <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> check — forensic evidence</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>any_alt</code></td>
+<td style="text-align: left;">108</td>
+<td style="text-align: left;">108 (unchanged)</td>
+<td style="text-align: left;">Original <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> check — forensic evidence</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_rescue</code></td>
+<td style="text-align: left;"><em>(empty)</em></td>
+<td style="text-align: left;"><code>method=decomposed;original_alt=0;...</code></td>
+<td style="text-align: left;">Rescue audit trail</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>gbcms_rescue</code> audit trail preserves the <code>original_alt=0</code> value and documents
+the rescue provenance, enabling downstream users to reconcile the invariant breakage.</p>
 <hr>
 <h2 id="reference-architecture-comparison-with-original-gbcms">Comparison with Original <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr><a class="headerlink" href="#reference-architecture-comparison-with-original-gbcms" title="Permanent link">¶</a></h2>
 <table>
@@ -5716,55 +5927,59 @@ written once. RNA-specific meta-lines are only included when running
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-output-formats-__codelineno-0-1"></a>##fileformat=VCFv4.2
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-output-formats-__codelineno-0-2"></a>##source=gbcms
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#reference-output-formats-__codelineno-0-3"></a>##INFO=&lt;ID=DP,Number=1,Type=Integer,Description="Total Depth"&gt;
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#reference-output-formats-__codelineno-0-4"></a>##INFO=&lt;ID=VS,Number=1,Type=String,Description="Validation status from prepare_variants"&gt;
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#reference-output-formats-__codelineno-0-5"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#reference-output-formats-__codelineno-0-6"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#reference-output-formats-__codelineno-0-7"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#reference-output-formats-__codelineno-0-8"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at &gt;=1 discriminating position (any_alt = ad + partial_alt)"&gt;
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions"&gt;
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)"&gt;
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##FORMAT=&lt;ID=AD,Number=2,Type=Integer,Description="Allelic depths for the ref and alt alleles (fwd,rev)"&gt;
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##FORMAT=&lt;ID=DP,Number=2,Type=Integer,Description="Approximate read depth (ref_total,alt_total)"&gt;
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##FORMAT=&lt;ID=RD,Number=2,Type=Integer,Description="Reference read depth (fwd,rev)"&gt;
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##FORMAT=&lt;ID=RDF,Number=2,Type=Integer,Description="Ref Fragment Count (fwd,rev)"&gt;
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##FORMAT=&lt;ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)"&gt;
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)"&gt;
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)"&gt;
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (reads with any ALT evidence)"&gt;
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth (partial ALT only)"&gt;
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (reads with N at discriminating position)"&gt;
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#reference-output-formats-__codelineno-0-4"></a>##INFO=&lt;ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status"&gt;
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#reference-output-formats-__codelineno-0-5"></a>##INFO=&lt;ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags"&gt;
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#reference-output-formats-__codelineno-0-6"></a>##INFO=&lt;ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail"&gt;
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#reference-output-formats-__codelineno-0-7"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#reference-output-formats-__codelineno-0-8"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at &gt;=1 discriminating position (any_alt = ad + partial_alt)"&gt;
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions"&gt;
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)"&gt;
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##FORMAT=&lt;ID=AD,Number=2,Type=Integer,Description="Allelic depths for the ref and alt alleles (fwd,rev)"&gt;
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##FORMAT=&lt;ID=DP,Number=2,Type=Integer,Description="Approximate read depth (ref_total,alt_total)"&gt;
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##FORMAT=&lt;ID=RD,Number=2,Type=Integer,Description="Reference read depth (fwd,rev)"&gt;
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##FORMAT=&lt;ID=RDF,Number=2,Type=Integer,Description="Ref Fragment Count (fwd,rev)"&gt;
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##FORMAT=&lt;ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)"&gt;
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)"&gt;
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)"&gt;
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (reads with any ALT evidence)"&gt;
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth (partial ALT only)"&gt;
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-output-formats-__codelineno-0-24"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (reads with N at discriminating position)"&gt;
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-output-formats-__codelineno-0-25"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 </div>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-output-formats-__codelineno-1-1"></a>##fileformat=VCFv4.2
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#reference-output-formats-__codelineno-1-2"></a>##source=gbcms
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#reference-output-formats-__codelineno-1-3"></a>##INFO=&lt;ID=DP,...&gt;
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-output-formats-__codelineno-1-4"></a>##INFO=&lt;ID=VS,...&gt;
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-output-formats-__codelineno-1-5"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#reference-output-formats-__codelineno-1-6"></a>##INFO=&lt;ID=SB_OR,...&gt;
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-output-formats-__codelineno-1-7"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#reference-output-formats-__codelineno-1-8"></a>##INFO=&lt;ID=FSB_OR,...&gt;
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#reference-output-formats-__codelineno-1-9"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#reference-output-formats-__codelineno-1-10"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand"&gt;
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#reference-output-formats-__codelineno-1-11"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#reference-output-formats-__codelineno-1-12"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#reference-output-formats-__codelineno-1-13"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#reference-output-formats-__codelineno-1-14"></a>##FORMAT=&lt;ID=GT,...&gt;
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#reference-output-formats-__codelineno-1-15"></a>##FORMAT=&lt;ID=AD,...&gt;
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#reference-output-formats-__codelineno-1-16"></a>##FORMAT=&lt;ID=DP,...&gt;
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#reference-output-formats-__codelineno-1-17"></a>##FORMAT=&lt;ID=RD,...&gt;
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#reference-output-formats-__codelineno-1-18"></a>##FORMAT=&lt;ID=RDF,...&gt;
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##FORMAT=&lt;ID=ADF,...&gt;
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#reference-output-formats-__codelineno-1-20"></a>##FORMAT=&lt;ID=VAF,...&gt;
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#reference-output-formats-__codelineno-1-21"></a>##FORMAT=&lt;ID=FAF,...&gt;
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#reference-output-formats-__codelineno-1-22"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#reference-output-formats-__codelineno-1-23"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth"&gt;
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#reference-output-formats-__codelineno-1-24"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#reference-output-formats-__codelineno-1-25"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#reference-output-formats-__codelineno-1-26"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-output-formats-__codelineno-1-4"></a>##INFO=&lt;ID=GS,...&gt;
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-output-formats-__codelineno-1-5"></a>##INFO=&lt;ID=GD,...&gt;
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#reference-output-formats-__codelineno-1-6"></a>##INFO=&lt;ID=GR,...&gt;
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-output-formats-__codelineno-1-7"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#reference-output-formats-__codelineno-1-8"></a>##INFO=&lt;ID=SB_OR,...&gt;
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#reference-output-formats-__codelineno-1-9"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#reference-output-formats-__codelineno-1-10"></a>##INFO=&lt;ID=FSB_OR,...&gt;
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#reference-output-formats-__codelineno-1-11"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#reference-output-formats-__codelineno-1-12"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand"&gt;
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#reference-output-formats-__codelineno-1-13"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#reference-output-formats-__codelineno-1-14"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#reference-output-formats-__codelineno-1-15"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#reference-output-formats-__codelineno-1-16"></a>##FORMAT=&lt;ID=GT,...&gt;
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#reference-output-formats-__codelineno-1-17"></a>##FORMAT=&lt;ID=AD,...&gt;
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#reference-output-formats-__codelineno-1-18"></a>##FORMAT=&lt;ID=DP,...&gt;
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##FORMAT=&lt;ID=RD,...&gt;
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#reference-output-formats-__codelineno-1-20"></a>##FORMAT=&lt;ID=RDF,...&gt;
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#reference-output-formats-__codelineno-1-21"></a>##FORMAT=&lt;ID=ADF,...&gt;
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#reference-output-formats-__codelineno-1-22"></a>##FORMAT=&lt;ID=VAF,...&gt;
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#reference-output-formats-__codelineno-1-23"></a>##FORMAT=&lt;ID=FAF,...&gt;
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#reference-output-formats-__codelineno-1-24"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#reference-output-formats-__codelineno-1-25"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth"&gt;
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#reference-output-formats-__codelineno-1-26"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#reference-output-formats-__codelineno-1-27"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#reference-output-formats-__codelineno-1-28"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 </div>
 </div>
@@ -5838,9 +6053,19 @@ written once. RNA-specific meta-lines are only included when running
 <td style="text-align: left;">Total read depth at position</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>VS</code></td>
+<td style="text-align: left;"><code>GS</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Validation status (<code>PASS</code>, <code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS_WARN_REF_CORRECTED</code>, <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>FAIL_ALT_CONTAINS_N</code>)</td>
+<td style="text-align: left;">gbcms normalization/counting status. Pipe-separated multi-value in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (e.g., <code>PASS\|WARN_REF_CORRECTED</code>). Semicolons in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GD</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Post-counting diagnostic flags. Pipe-separated in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (e.g., <code>ZERO_ALT\|PARTIAL_DOMINANT</code>). Semicolons in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>. <code>.</code> if none.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GR</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Rescue audit trail. Pipe-separated key=value pairs. <code>.</code> if no rescue attempted.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>SB_PVAL</code></td>
@@ -5870,7 +6095,7 @@ written once. RNA-specific meta-lines are only included when running
 <tr>
 <td style="text-align: left;"><code>PAD</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex only; always 0 for <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/indel)</td>
+<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions — now populated for all variant types including INDELs (via structural evidence propagation)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>NAD</code></td>
@@ -6109,10 +6334,10 @@ written once. RNA-specific meta-lines are only included when running
 <hr>
 <h3 id="reference-output-formats-annotated-example">Annotated Example<a class="headerlink" href="#reference-output-formats-annotated-example" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#reference-output-formats-__codelineno-2-1"></a>#CHROM  POS     ID      REF  ALT  QUAL  FILTER  INFO                                              FORMAT           sample1
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#reference-output-formats-__codelineno-2-2"></a>chr7    55174772  rs121913527  T    A    .     .     DP=312;VS=PASS;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000;AAD=22;PAD=0;NAD=3  GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD  0/1:290,22:145,145:10,12:72,73:5,6:0.0705:0.0735:22:0:3 # (1)!
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#reference-output-formats-__codelineno-2-2"></a>chr7    55174772  rs121913527  T    A    .     .     DP=312;GS=PASS;GD=.;GR=.;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000;AAD=22;PAD=0;NAD=3  GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD  0/1:290,22:145,145:10,12:72,73:5,6:0.0705:0.0735:22:0:3 # (1)!
 </code></pre></div>
 <ol>
-<li><code>DP=312</code> total reads; <code>VS=PASS</code> REF validated; <code>SB_PVAL=0.24</code> no significant strand bias; <code>AAD=22</code> reads with any ALT evidence; <code>PAD=0</code> no partial matches (<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> — always 0); <code>NAD=3</code> reads with N at variant position (duplex masking). FORMAT <code>DP=290,22</code> → 290 REF + 22 ALT reads. <code>VAF=0.0705</code> (read level), <code>FAF=0.0735</code> (fragment level).</li>
+<li><code>DP=312</code> total reads; <code>GS=PASS</code> normalization status; <code>GD=.</code> no diagnostic flags; <code>GR=.</code> no rescue; <code>SB_PVAL=0.24</code> no significant strand bias; <code>AAD=22</code> reads with any ALT evidence; <code>PAD=0</code> no partial matches (<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> — always 0); <code>NAD=3</code> reads with N at variant position (duplex masking). FORMAT <code>DP=290,22</code> → 290 REF + 22 ALT reads. <code>VAF=0.0705</code> (read level), <code>FAF=0.0735</code> (fragment level).</li>
 </ol>
 <hr>
 <h2 id="reference-output-formats-maf-output-format-maf"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output (<code>--format maf</code>)<a class="headerlink" href="#reference-output-formats-maf-output-format-maf" title="Permanent link">¶</a></h2>
@@ -6261,9 +6486,19 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>validation_status</code></td>
+<td style="text-align: left;"><code>gbcms_status</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">REF validation result (<code>PASS</code>, <code>REF_MISMATCH</code>, <code>FAIL_ALT_CONTAINS_N</code>, etc.)</td>
+<td style="text-align: left;">Normalization/counting status. Semicolon-separated multi-value. First token is always <code>PASS</code> or <code>FAIL_*</code>. Examples: <code>PASS</code>, <code>PASS;WARN_REF_CORRECTED</code>, <code>FAIL_REF_MISMATCH</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_diagnostic</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Examples: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT;MNP_SPARSE_DISC(2/5)</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_rescue</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;"><strong>Conditional</strong> — only present when <code>--rescue-mnp</code> is enabled. Structured audit trail for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> decomposition rescue. Format: <code>method=decomposed;original_alt=0;positions=chr:pos(R&gt;A):count,...</code>. Empty when no rescue was attempted. Failed rescues include <code>outcome=no_signal</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ref_count</code></td>
@@ -6373,7 +6608,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>partial_alt</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions (<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex only; always 0 for <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/indel)</td>
+<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Now populated for all variant types including INDELs (via structural evidence propagation).</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>n_count</code></td>
@@ -6384,7 +6619,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 </table>
 </div>
 <div class="tabbed-block">
-<p>All count columns above (except <code>validation_status</code> and strand bias) are
+<p>All count columns above (except <code>gbcms_status</code>, <code>gbcms_diagnostic</code>, <code>gbcms_rescue</code>, and strand bias) are
 prefixed with <code>t_</code>:</p>
 <table>
 <thead>
@@ -6430,7 +6665,7 @@ prefixed with <code>t_</code>:</p>
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p><code>validation_status</code> and the four <code>strand_bias_*</code> columns are <strong>never
+<p><code>gbcms_status</code>, <code>gbcms_diagnostic</code>, <code>gbcms_rescue</code>, and the four <code>strand_bias_*</code> columns are <strong>never
 prefixed</strong> — they are always unique even when count columns share a prefix.</p>
 </div>
 </div>
@@ -6869,7 +7104,7 @@ Use mouse to pan and zoom
 </div>
 <div class="admonition warning">
 <p class="admonition-title">FETCH_FAILED</p>
-<p>If the anchor base cannot be fetched (e.g., chromosome not in <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), the variant's <code>validation_status</code> is set to <code>FETCH_FAILED</code> and it is excluded from counting.</p>
+<p>If the anchor base cannot be fetched (e.g., chromosome not in <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), the variant's <code>gbcms_status</code> is set to <code>FETCH_FAILED</code> and it is excluded from counting.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-step-2-ref-validation">Step 2: REF Validation<a class="headerlink" href="#reference-variant-normalization-step-2-ref-validation" title="Permanent link">¶</a></h2>
@@ -6900,7 +7135,7 @@ Use mouse to pan and zoom
     Exact --&gt;|"Yes"| Pass(["✅ PASS"]):::pass
     Exact --&gt;|"No"| Sim["Compute similarity\n(matching bases / max length)"]
     Sim --&gt; Thresh{"≥ 90%?"}
-    Thresh --&gt;|"Yes"| Corrected(["⚠️ PASS_WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
+    Thresh --&gt;|"Yes"| Corrected(["⚠️ PASS;WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
     Thresh --&gt;|"No"| Fail(["❌ REF_MISMATCH\n→ excluded from counting"]):::fail
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -6911,10 +7146,10 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
-<p>When a variant receives <code>PASS_WARN_REF_CORRECTED</code>, the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s REF allele is <strong>replaced with the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> sequence</strong> for all downstream steps (left-alignment, haplotype construction). The original <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF is preserved in <code>original_ref</code> for auditing.</p>
+<p>When a variant receives <code>PASS;WARN_REF_CORRECTED</code>, the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s REF allele is <strong>replaced with the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> sequence</strong> for all downstream steps (left-alignment, haplotype construction). The original <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF is preserved in <code>original_ref</code> for auditing.</p>
 <div class="admonition example">
 <p class="admonition-title">Real-World Example: EGFR Exon 19 Deletion</p>
-<p>A 27bp complex EGFR deletion had 26/27 bases matching the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (96%), with only the last base differing due to a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact. Without tolerance, this variant was silently rejected with zero counts. With tolerant validation, it receives <code>PASS_WARN_REF_CORRECTED</code> and produces valid counts.</p>
+<p>A 27bp complex EGFR deletion had 26/27 bases matching the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (96%), with only the last base differing due to a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact. Without tolerance, this variant was silently rejected with zero counts. With tolerant validation, it receives <code>PASS;WARN_REF_CORRECTED</code> and produces valid counts.</p>
 </div>
 <div class="admonition important">
 <p class="admonition-title">Common Causes of REF_MISMATCH</p>
@@ -7207,8 +7442,8 @@ Use mouse to pan and zoom
     CountDecomp --&gt; Compare
     Compare{"corrected AD &gt; original AD?"}
 
-    Compare --&gt;|"Yes"| UseDecomp["Return corrected counts"] --&gt; FlagWarn["validation_status =\nPASS_WARN_HOMOPOLYMER_DECOMP"]:::warn
-    Compare --&gt;|"No"| UseOrig["Return original counts"] --&gt; FlagPass["validation_status = PASS"]:::pass
+    Compare --&gt;|"Yes"| UseDecomp["Return corrected counts"] --&gt; FlagWarn["gbcms_status =\nPASS;WARN_HOMOPOLYMER_DECOMP"]:::warn
+    Compare --&gt;|"No"| UseOrig["Return original counts"] --&gt; FlagPass["gbcms_status = PASS"]:::pass
 
     classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -7225,11 +7460,11 @@ Use mouse to pan and zoom
 <p class="admonition-title">Real-World: SOX2</p>
 <p><strong>SOX2</strong> at chr17:181430901: <code>CCCCCC→T</code> (6bp→1bp, net −5bp).
 Original count: <strong>alt=3</strong>. Corrected <code>CCCCCC→CCCCT</code> count: <strong>alt=79</strong>.
-Corrected wins → <code>validation_status = PASS_WARN_HOMOPOLYMER_DECOMP</code>.</p>
+Corrected wins → <code>gbcms_status = PASS;WARN_HOMOPOLYMER_DECOMP</code>.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-validation-status-reference">Validation Status Reference<a class="headerlink" href="#reference-variant-normalization-validation-status-reference" title="Permanent link">¶</a></h2>
-<p>Every <code>PreparedVariant</code> carries a <code>validation_status</code> string:</p>
+<p>Every <code>PreparedVariant</code> carries a <code>gbcms_status</code> string:</p>
 <table>
 <thead>
 <tr>
@@ -7245,17 +7480,17 @@ Corrected wins → <code>validation_status = PASS_WARN_HOMOPOLYMER_DECOMP</code>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>PASS_WARN_REF_CORRECTED</code></td>
+<td style="text-align: left;"><code>PASS;WARN_REF_CORRECTED</code></td>
 <td style="text-align: left;">REF ≥90% match; corrected to <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF</td>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>PASS_WARN_HOMOPOLYMER_DECOMP</code></td>
+<td style="text-align: left;"><code>PASS;WARN_HOMOPOLYMER_DECOMP</code></td>
 <td style="text-align: left;">Passed, but corrected allele was used (see above)</td>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>PASS_MULTI_ALLELIC</code></td>
+<td style="text-align: left;"><code>PASS;MULTI_ALLELIC</code></td>
 <td style="text-align: left;">Passed, variant overlaps another variant at the same locus (sibling ALT exclusion active)</td>
 <td style="text-align: center;">✅</td>
 </tr>
@@ -7273,7 +7508,7 @@ Corrected wins → <code>validation_status = PASS_WARN_HOMOPOLYMER_DECOMP</code>
 </table>
 <div class="admonition note">
 <p class="admonition-title">Filtering Behavior</p>
-<p>The pipeline filters on <code>validation_status.startswith("PASS")</code>, so all <code>PASS</code> and <code>PASS_WARN_*</code> variants proceed to counting. <code>REF_MISMATCH</code> and <code>FETCH_FAILED</code> variants are logged as rejected.</p>
+<p>The pipeline filters on <code>gbcms_status.startswith("PASS")</code>, so all <code>PASS</code> and <code>PASS_WARN_*</code> variants proceed to counting. <code>REF_MISMATCH</code> and <code>FETCH_FAILED</code> variants are logged as rejected.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-limitations">Limitations<a class="headerlink" href="#reference-variant-normalization-limitations" title="Permanent link">¶</a></h2>
@@ -9148,7 +9383,7 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <h2 id="reference-allele-classification-multi-allelic-behavior">Multi-Allelic Behavior<a class="headerlink" href="#reference-allele-classification-multi-allelic-behavior" title="Permanent link">¶</a></h2>
 <p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
 <h3 id="reference-allele-classification-phase-1-annotation">Phase 1: Annotation<a class="headerlink" href="#reference-allele-classification-phase-1-annotation" title="Permanent link">¶</a></h3>
-<p>During normalization, <code>assign_multi_allelic_groups()</code> identifies overlapping variants using a <strong>sweep-line algorithm</strong> over sorted <code>(chrom, pos)</code> coordinates. Variants whose REF spans intersect receive a shared <code>multi_allelic_group</code> ID, and their <code>validation_status</code> is appended with <code>_MULTI_ALLELIC</code> (e.g., <code>PASS_MULTI_ALLELIC</code>).</p>
+<p>During normalization, <code>assign_multi_allelic_groups()</code> identifies overlapping variants using a <strong>sweep-line algorithm</strong> over sorted <code>(chrom, pos)</code> coordinates. Variants whose REF spans intersect receive a shared <code>multi_allelic_group</code> ID, and their <code>gbcms_status</code> is appended with <code>;MULTI_ALLELIC</code> (e.g., <code>PASS;MULTI_ALLELIC</code>).</p>
 <h3 id="reference-allele-classification-phase-2-sibling-alt-exclusion">Phase 2: Sibling ALT Exclusion<a class="headerlink" href="#reference-allele-classification-phase-2-sibling-alt-exclusion" title="Permanent link">¶</a></h3>
 <p>During counting, reads classified as <strong>REF</strong> for a variant are additionally checked against all <strong>sibling variants</strong> in the same group. For each sibling, the full <code>check_allele_with_qual()</code> pipeline (including <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> reconstruction and <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment) determines if the read actually carries the sibling's ALT allele. If so, the read is <strong>excluded from REF</strong> for the current variant.</p>
 <div class="admonition important">
@@ -11015,15 +11250,15 @@ spanning a small repeat motif (e.g., dinucleotide repeat <code>ACAC</code>).</p>
 <td style="text-align: left;">Variant validated against reference, ready for counting</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>PASS_WARN_REF_CORRECTED</strong></td>
+<td style="text-align: left;"><strong>PASS;WARN_REF_CORRECTED</strong></td>
 <td style="text-align: left;">REF allele ≥90% match; corrected to <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>PASS_WARN_HOMOPOLYMER_DECOMP</strong></td>
+<td style="text-align: left;"><strong>PASS;WARN_HOMOPOLYMER_DECOMP</strong></td>
 <td style="text-align: left;">Variant spans a homopolymer; dual-counted with corrected allele (corrected won)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>PASS_MULTI_ALLELIC</strong></td>
+<td style="text-align: left;"><strong>PASS;MULTI_ALLELIC</strong></td>
 <td style="text-align: left;">Variant overlaps another variant at the same locus; sibling ALT exclusion active</td>
 </tr>
 <tr>
@@ -11341,8 +11576,66 @@ run against the <abbr title="Binary Alignment Map - Compressed sequence alignmen
 <td style="text-align: left;"><code>n_count / DP ratio</code></td>
 <td style="text-align: left;">Should be low (&lt;5%) for clean sites; high ratios flag duplex masking hotspots</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_status</code> starts with <code>PASS</code> or <code>FAIL_</code></td>
+<td style="text-align: left;">First token is always the verdict; no empty values</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_diagnostic</code> empty for FAIL variants</td>
+<td style="text-align: left;">Diagnostics only computed for PASS variants</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_diagnostic</code> semicolon-separated</td>
+<td style="text-align: left;">Flags use <code>;</code> delimiter (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) or <code>\|</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_rescue</code> conditional column</td>
+<td style="text-align: left;">Only present when <code>--rescue-mnp</code> is enabled (v4.3.0)</td>
+</tr>
 </tbody>
 </table>
+<h3 id="development-developer-guide-mnp-rescue-pass-rescue-mnp"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Pass (<code>--rescue-mnp</code>)<a class="headerlink" href="#development-developer-guide-mnp-rescue-pass-rescue-mnp" title="Permanent link">¶</a></h3>
+<div class="admonition warning">
+<p class="admonition-title">Rescue Invariant Exception</p>
+<p>When <code>--rescue-mnp</code> is used, <strong>Invariant 1</strong> (<code>any_alt = ad + partial_alt</code>) intentionally breaks
+for rescued variants. The <code>ad</code> is updated with the best decomposed <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> count, while <code>any_alt</code>
+and <code>partial_alt</code> retain original <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>-level values as forensic evidence. The <code>gbcms_rescue</code>
+audit trail documents the rescue provenance.</p>
+</div>
+<p><strong>Architecture</strong>: The rescue engine is implemented in <strong>Python</strong> (<code>pipeline.py::_rescue_mnp_pass()</code>)
+calling the existing <strong>Rust</strong> counting engine (<code>count_bam_binned()</code>). This was a deliberate choice:</p>
+<ul>
+<li>The rescue pass is an <strong>orchestration layer</strong> — it decides <em>what</em> to re-count, not <em>how</em></li>
+<li>The expensive work (<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> I/O, read classification) stays in Rust</li>
+<li>Python has direct access to <code>gbcms_diagnostic</code> flags (set by <code>_compute_diagnostics()</code>)</li>
+<li>Candidate filtering uses Python string matching on diagnostic strings</li>
+<li>The typical rescue workload is 5–50 synthetic SNPs per sample (&lt; 1s overhead)</li>
+</ul>
+<p>See <a href="#reference-architecture-mnp-rescue-pass-rescue-mnp-v430">Architecture → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Pass</a>
+for the full design rationale and data flow diagram.</p>
+<p><strong>Pipeline integration point</strong> — rescue runs <strong>after</strong> diagnostics, <strong>before</strong> output:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-developer-guide-__codelineno-8-1"></a>count_bam_binned() → _merge_counts() → _compute_diagnostics() → _rescue_mnp_pass() → _write_output()
+</code></pre></div>
+<p><strong>Debugging rescue</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-developer-guide-__codelineno-9-1"></a><span class="c1"># Enable rescue with debug logging to see per-variant decisions</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#development-developer-guide-__codelineno-9-2"></a><span class="nv">GBCMS_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--rescue-mnp<span class="w"> </span>--variants<span class="w"> </span>input.maf<span class="w"> </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--format<span class="w"> </span>maf<span class="w"> </span>--output-dir<span class="w"> </span>out/
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#development-developer-guide-__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#development-developer-guide-__codelineno-9-4"></a><span class="c1"># Look for rescue log lines:</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#development-developer-guide-__codelineno-9-5"></a><span class="c1"># INFO  — "MNP rescue: 3 candidate(s) for SAMPLE"</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#development-developer-guide-__codelineno-9-6"></a><span class="c1"># DEBUG — "MNP rescue: chr5:1295251 GAGGG&gt;AAGGA → rescued alt=108 via decomposed SNPs"</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#development-developer-guide-__codelineno-9-7"></a><span class="c1"># INFO  — "MNP rescue: 2/3 rescued, 1 failed (0.342s) for SAMPLE"</span>
+</code></pre></div>
+<p><strong>Extending rescue</strong>: If adding a new rescue strategy (e.g. coordinate shift for the BRCA2 case):</p>
+<ol>
+<li>Add the strategy as a new code path in <code>_rescue_mnp_pass()</code></li>
+<li>Use a different <code>method=</code> value in the audit trail (e.g. <code>method=coordinate_shift</code>)</li>
+<li>The <code>outcome=no_signal</code> sentinel is reserved for failed decomposed rescue</li>
+<li>Always log at DEBUG per-variant and INFO summary</li>
+<li>Add tests to <code>test_rescue_mnp.py</code> covering the new strategy's candidate criteria</li>
+</ol>
+<p><strong>Test fixtures</strong>: Any manually instantiated <code>MafWriter</code>/<code>VcfWriter</code> (via <code>__new__</code>) <strong>must</strong>
+set <code>rescue_mnp=False</code> (or <code>True</code>) explicitly, or <code>_gbcms_column_names()</code> will raise
+<code>AttributeError</code>. See <code>test_phase2_output.py</code> for examples.</p>
 <h3 id="development-developer-guide-variant-type-specific-investigation">Variant-Type-Specific Investigation<a class="headerlink" href="#development-developer-guide-variant-type-specific-investigation" title="Permanent link">¶</a></h3>
 <p>When debugging specific variant types, use targeted <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slices:</p>
 <table>
@@ -11541,13 +11834,13 @@ Use mouse to pan and zoom
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled=""><span class="task-list-indicator"></span></label> No silent failures: missing inputs must fail-fast or require explicit opt-out</li>
 </ul>
 <p>To run all Python checks in one pass:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-developer-guide-__codelineno-8-1"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#development-developer-guide-__codelineno-8-2"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#development-developer-guide-__codelineno-8-3"></a>mypy<span class="w"> </span>src/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#development-developer-guide-__codelineno-8-4"></a>pytest<span class="w"> </span>-v
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#development-developer-guide-__codelineno-10-1"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#development-developer-guide-__codelineno-10-2"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#development-developer-guide-__codelineno-10-3"></a>mypy<span class="w"> </span>src/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#development-developer-guide-__codelineno-10-4"></a>pytest<span class="w"> </span>-v
 </code></pre></div>
 <p>To run all Rust checks:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-developer-guide-__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#development-developer-guide-__codelineno-11-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
 </code></pre></div>
 <hr>
 <h2 id="development-developer-guide-environment-variables">Environment Variables<a class="headerlink" href="#development-developer-guide-environment-variables" title="Permanent link">¶</a></h2>
@@ -11572,7 +11865,7 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#development-developer-guide-__codelineno-10-1"></a><span class="nv">GBCMS_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span><span class="nv">RUST_LOG</span><span class="o">=</span>debug<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#development-developer-guide-__codelineno-12-1"></a><span class="nv">GBCMS_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span><span class="nv">RUST_LOG</span><span class="o">=</span>debug<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...
 </code></pre></div>
 <hr>
 <h2 id="development-developer-guide-generating-a-pdf">Generating a PDF<a class="headerlink" href="#development-developer-guide-generating-a-pdf" title="Permanent link">¶</a></h2>
@@ -11581,7 +11874,7 @@ Use mouse to pan and zoom
 <ol>
 <li>
 <p>Start the docs server:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#development-developer-guide-__codelineno-11-1"></a>mkdocs<span class="w"> </span>serve
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#development-developer-guide-__codelineno-13-1"></a>mkdocs<span class="w"> </span>serve
 </code></pre></div>
 </li>
 <li>
@@ -11589,12 +11882,12 @@ Use mouse to pan and zoom
 </li>
 <li>
 <p>Open the DevTools console (<code>F12</code> → Console tab) and paste:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#development-developer-guide-__codelineno-12-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#development-developer-guide-__codelineno-12-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#development-developer-guide-__codelineno-12-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#development-developer-guide-__codelineno-12-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#development-developer-guide-__codelineno-12-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#development-developer-guide-__codelineno-12-6"></a><span class="p">});</span>
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#development-developer-guide-__codelineno-14-1"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#development-developer-guide-__codelineno-14-2"></a><span class="w">  </span><span class="s1">'.md-sidebar,.md-header,.md-footer,.md-tabs,.md-source-file'</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#development-developer-guide-__codelineno-14-3"></a><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">remove</span><span class="p">());</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#development-developer-guide-__codelineno-14-4"></a><span class="nb">document</span><span class="p">.</span><span class="nx">querySelectorAll</span><span class="p">(</span><span class="s1">'.md-content'</span><span class="p">).</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#development-developer-guide-__codelineno-14-5"></a><span class="w">  </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">maxWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'100%'</span><span class="p">;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">style</span><span class="p">.</span><span class="nx">padding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'0 1cm'</span><span class="p">;</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#development-developer-guide-__codelineno-14-6"></a><span class="p">});</span>
 </code></pre></div>
 </li>
 <li>
@@ -11734,6 +12027,16 @@ Use mouse to pan and zoom
 <td style="text-align: left;"><code>test_phase2_output.py</code></td>
 <td style="text-align: left;">Diagnostic columns (any_alt, partial_alt, n_count) <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr></td>
 </tr>
+<tr>
+<td style="text-align: left;">Diagnostic Flags</td>
+<td style="text-align: left;"><code>test_diagnostic_flags.py</code></td>
+<td style="text-align: left;">gbcms_diagnostic flag computation (ZERO_ALT, PARTIAL_DOMINANT, etc.)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue</td>
+<td style="text-align: left;"><code>test_rescue_mnp.py</code></td>
+<td style="text-align: left;">--rescue-mnp flag, conditional columns, candidate filtering, audit trail</td>
+</tr>
 </tbody>
 </table>
 <h3 id="development-testing-guide-rust-level-tests">Rust-Level Tests<a class="headerlink" href="#development-testing-guide-rust-level-tests" title="Permanent link">¶</a></h3>
@@ -11812,9 +12115,11 @@ Use mouse to pan and zoom
 <a id="__codelineno-2-18" name="__codelineno-2-18" href="#development-testing-guide-__codelineno-2-18"></a>├── test_normalization.py        # Left-alignment, REF validation, window expansion
 <a id="__codelineno-2-19" name="__codelineno-2-19" href="#development-testing-guide-__codelineno-2-19"></a>├── test_pipeline_v2.py          # End-to-end pipeline
 <a id="__codelineno-2-20" name="__codelineno-2-20" href="#development-testing-guide-__codelineno-2-20"></a>├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#development-testing-guide-__codelineno-2-21"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#development-testing-guide-__codelineno-2-22"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#development-testing-guide-__codelineno-2-23"></a>└── test_strand_counts.py        # Strand-specific counts
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#development-testing-guide-__codelineno-2-21"></a>├── test_diagnostic_flags.py     # v4.2.0 gbcms_diagnostic flag computation
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#development-testing-guide-__codelineno-2-22"></a>├── test_rescue_mnp.py           # v4.3.0 --rescue-mnp MNP decomposition rescue
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#development-testing-guide-__codelineno-2-23"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#development-testing-guide-__codelineno-2-24"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#development-testing-guide-__codelineno-2-25"></a>└── test_strand_counts.py        # Strand-specific counts
 </code></pre></div>
 <hr>
 <h2 id="development-testing-guide-writing-tests">Writing Tests<a class="headerlink" href="#development-testing-guide-writing-tests" title="Permanent link">¶</a></h2>
@@ -12453,8 +12758,102 @@ Use mouse to pan and zoom
 <p>All notable changes to this project will be documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="development-changelog-410-2026-05-04">[4.1.0] - 2026-05-04<a class="headerlink" href="#development-changelog-410-2026-05-04" title="Permanent link">¶</a></h2>
+<h2 id="development-changelog-430-unreleased">[4.3.0] - Unreleased<a class="headerlink" href="#development-changelog-430-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>--rescue-mnp</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</strong>: Enables <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue pass for sparse multi-base
+  substitutions. When <code>ad=0</code> and <code>MNP_SPARSE_DISC</code> is flagged, decomposes the
+  <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> into individual <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> positions and re-counts via <code>count_bam_binned</code>.
+  Available in both <code>gbcms dna</code> and <code>gbcms rna</code> modes.</li>
+<li><strong><code>gbcms_rescue</code> column (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>)</strong>: Conditional — only present when
+  <code>--rescue-mnp</code> is enabled. Contains structured audit trail:
+  <code>method=decomposed;original_alt=0;positions=chr:pos(R&gt;A):count,...</code>.
+  Failed rescues include <code>outcome=no_signal</code>.</li>
+<li><strong><code>GR</code> INFO key (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)</strong>: Conditional — only present when <code>--rescue-mnp</code> is
+  enabled. Uses pipe <code>|</code> separator (consistent with <code>GD</code>).</li>
+</ul>
+<h3 id="development-changelog-notes">📝 Notes<a class="headerlink" href="#development-changelog-notes" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Invariant 1 breakage</strong>: After rescue, <code>any_alt = ad + partial_alt</code> no
+  longer holds for rescued variants. <code>ad</code> is updated with the best decomposed
+  <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> count while <code>any_alt</code> and <code>partial_alt</code> retain original <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>-level values
+  as forensic evidence.</li>
+<li><strong>Rescue strategy</strong>: Python-side post-processing using decomposed <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>
+  re-counting. Coordinate shift strategy is reserved for a future release.</li>
+</ul>
+<h3 id="development-changelog-tests">🧪 Tests<a class="headerlink" href="#development-changelog-tests" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>[NEW]</strong> <code>tests/test_rescue_mnp.py</code> — 12 tests covering config defaults,
+  conditional column/INFO presence, candidate identification, guard rails
+  (skip non-<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, skip ad&gt;0, skip FAIL), audit trail format, no-signal cases,
+  column count with rescue, and invariant breakage documentation.</li>
+</ul>
+<hr>
+<h2 id="development-changelog-420-unreleased">[4.2.0] - Unreleased<a class="headerlink" href="#development-changelog-420-unreleased" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-breaking-changes">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>validation_status</code> → <code>gbcms_status</code></strong>: <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column and Python API parameter
+  renamed. <code>gbcms_status</code> now uses semicolon-separated multi-value format
+  (e.g., <code>PASS;WARN_REF_CORRECTED</code>, <code>PASS;MULTI_ALLELIC</code>). The first token
+  is always <code>PASS</code> or <code>FAIL_*</code>.</li>
+<li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>VS</code> → <code>GS</code>/<code>GD</code>/<code>GR</code></strong>: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO key <code>VS</code> replaced by <code>GS</code>
+  (status), <code>GD</code> (diagnostic), and <code>GR</code> (rescue). Downstream <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> parsers
+  must update field references.</li>
+<li><strong>Status value format</strong>: Old underscore-joined statuses
+  (<code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS_MULTI_ALLELIC</code>) replaced with
+  semicolon-separated (<code>PASS;WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS;MULTI_ALLELIC</code>).</li>
+</ul>
+<h3 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>gbcms_diagnostic</code> column (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) + <code>GD</code> INFO key (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)</strong>: Post-counting
+  diagnostic flags computed automatically. Flags include:<ul>
+<li><code>ZERO_ALT</code>: No confirmed ALT reads despite successful counting.</li>
+<li><code>PARTIAL_DOMINANT</code>: More structural/partial evidence than confirmed ALT.</li>
+<li><code>MNP_SPARSE_DISC(n/m)</code>: <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> with ≤50% discriminating positions.</li>
+<li><code>HIGH_N_FRACTION(f)</code>: N-base fraction exceeding 5% at discriminating positions.</li>
+</ul>
+</li>
+<li><strong><code>gbcms_rescue</code> column (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) + <code>GR</code> INFO key (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)</strong>: Rescue audit trail.
+  Empty until <code>--rescue-mnp</code> is enabled (v4.3.0).</li>
+<li><strong><code>has_nearby_evidence</code> (Rust)</strong>: New <code>ClassifyResult</code> field propagating
+  structural evidence from variant checkers (INS/DEL/Complex) and alignment
+  backends (<abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>/<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>). Enables <code>partial_alt</code> counting for INDELs.</li>
+<li><strong><code>partial_alt</code> now populated for INDELs</strong>: Previously always 0 for
+  <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/INDEL. Now fired when the counting engine detects nearby structural
+  evidence (right-length INDEL, non-zero ALT alignment score).</li>
+<li><strong>Diagnostic flag summary logging</strong>: <code>info</code>-level log of diagnostic flag
+  distribution per sample (e.g., <code>ZERO_ALT=12, PARTIAL_DOMINANT=3</code>).</li>
+</ul>
+<h3 id="development-changelog-fixed">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>partial_alt</code> description</strong>: Documentation corrected to reflect that
+  <code>partial_alt</code> is now populated for all variant types, not just <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex.</li>
+</ul>
+<h3 id="development-changelog-tests_1">🧪 Tests<a class="headerlink" href="#development-changelog-tests_1" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>[NEW]</strong> <code>tests/test_diagnostic_flags.py</code> — 15 tests covering all 4
+  diagnostic flags, multi-flag combinations, FAIL exclusion, boundary
+  conditions, and parametric formatting.</li>
+<li>Updated <code>test_normalization.py</code> (12 refs), <code>test_pipeline_v2.py</code> (4 refs),
+  <code>test_phase2_output.py</code> (column count 24→26), <code>test_multi_allelic.py</code> for
+  <code>gbcms_status</code> rename.</li>
+<li>All 224 Python tests pass; all 119 Rust tests pass.</li>
+</ul>
+<h3 id="development-changelog-documentation">📚 Documentation<a class="headerlink" href="#development-changelog-documentation" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Updated</strong> <code>docs/reference/output-formats.md</code> — <code>gbcms_status</code>,
+  <code>gbcms_diagnostic</code>, <code>gbcms_rescue</code> columns; <code>partial_alt</code> description
+  corrected; prefix behavior updated.</li>
+<li><strong>Updated</strong> <code>docs/reference/variant-normalization.md</code> — status field name
+  and multi-value format.</li>
+<li><strong>Updated</strong> <code>docs/reference/allele-classification.md</code> — multi-allelic
+  status format.</li>
+<li><strong>Updated</strong> <code>docs/reference/architecture.md</code> — <code>partial_alt</code> description.</li>
+<li><strong>Updated</strong> <code>docs/cli/normalize.md</code> — <code>gbcms_status</code> column name.</li>
+<li><strong>Updated</strong> <code>docs/resources/troubleshooting.md</code> — status field references.</li>
+</ul>
+<h2 id="development-changelog-410-2026-05-04">[4.1.0] - 2026-05-04<a class="headerlink" href="#development-changelog-410-2026-05-04" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-breaking-changes_1">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms run</code> command removed</strong>: The deprecated <code>gbcms run</code> alias (introduced
   in v4.0.0 as a transitional shim) has been removed. Use <code>gbcms dna</code> instead —
@@ -12465,7 +12864,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>alignment_backend</code> changed from <code>'hmm'</code> to <code>'pairhmm'</code>. Pipelines relying
   on the old Nextflow defaults may see behavior changes.</li>
 </ul>
-<h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Physical fragment sizing</strong>: Rust-native fragment size calculation using
   aligned read positions instead of TLEN, improving accuracy for supplementary
@@ -12501,7 +12900,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Extended trace fields</strong>: IO diagnostics (<code>rchar</code>, <code>wchar</code>, <code>syscr</code>, <code>syscw</code>,
   <code>read_bytes</code>, <code>write_bytes</code>) added to execution trace.</li>
 </ul>
-<h3 id="development-changelog-fixed">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_1">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dual-axis gridline artifact</strong>: Fixed Plotly <code>yaxis2</code> overlay creating a
   duplicate x-axis line in <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> histograms by standardizing <code>mirror: false</code>,
@@ -12520,7 +12919,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>--no-strandedness</code> only when disabled (was incorrectly passing
   <code>--enforce-strandedness</code> as an additive flag).</li>
 </ul>
-<h3 id="development-changelog-documentation">📚 Documentation<a class="headerlink" href="#development-changelog-documentation" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_1">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/reference/mfsd-report.md</code> — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> interactive report reference
   covering Fragment Origin Signal classification, interactive features, output
@@ -12545,7 +12944,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Updated</strong> <code>nextflow/modules/local/gbcms/dna/main.nf</code> — wired <code>--mfsd-report</code> flags
   through the DNA module with HTML report output channel (<code>emit: mfsd_report</code>).</li>
 </ul>
-<h3 id="development-changelog-tests">🧪 Tests<a class="headerlink" href="#development-changelog-tests" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_2">🧪 Tests<a class="headerlink" href="#development-changelog-tests_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>tests/test_mfsd_report.py</code> — 13 unit tests covering report creation,
   navigator presence/absence, Plotly integration, theme toggle, branding, summary
@@ -12566,7 +12965,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Ruff UP015 fix: removed unnecessary <code>"r"</code> mode argument from <code>open()</code>.</li>
 </ul>
 <h3 id="development-changelog-n-base-diagnostic-integration-phases-03">🧬 N-Base Diagnostic Integration (Phases 0–3)<a class="headerlink" href="#development-changelog-n-base-diagnostic-integration-phases-03" title="Permanent link">¶</a></h3>
-<h4 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Diagnostic output columns</strong>: <code>any_alt</code>, <code>partial_alt</code>, <code>n_count</code> appended to
   all <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (24 gbcms DNA columns total, up from 21).</li>
@@ -12593,7 +12992,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> ThirdAllele handling</strong>: Mixed-vote reads now track <code>positions_matching_alt</code>
   for diagnostic partial_alt counting instead of being silently discarded.</li>
 </ul>
-<h4 id="development-changelog-tests_1">🧪 Tests<a class="headerlink" href="#development-changelog-tests_1" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-tests_3">🧪 Tests<a class="headerlink" href="#development-changelog-tests_3" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>[NEW]</strong> <code>tests/test_mnp_concordance.py</code> — 6 tests for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> concordance with
   C++ gbcms on production duplex BAMs.</li>
@@ -12603,7 +13002,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   match tracking, invariant enforcement, and edge cases (all-N reads, mixed BQ/N).</li>
 <li>Updated <code>tests/test_column_count_delta_is_three</code> to assert 24 gbcms DNA columns.</li>
 </ul>
-<h4 id="development-changelog-documentation_1">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_1" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-documentation_2">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_2" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Updated</strong> <code>docs/reference/counting-metrics.md</code> — diagnostic columns, invariant
   tables, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> tag definitions, N-base handling section.</li>
@@ -12618,7 +13017,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   failures matrix, invariant table, updated test counts.</li>
 </ul>
 <h2 id="development-changelog-401-2026-03-24">[4.0.1] - 2026-03-24<a class="headerlink" href="#development-changelog-401-2026-03-24" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_1">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_2">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>was_normalized</code> flag accuracy</strong>: Split into granular <code>was_anchor_resolved</code>
   and <code>was_left_aligned</code> flags with backward-compatible <code>was_normalized</code> getter.
@@ -12649,7 +13048,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and reference docs updated with new column descriptions.</li>
 </ul>
 <h2 id="development-changelog-400-2026-03-20">[4.0.0] - 2026-03-20<a class="headerlink" href="#development-changelog-400-2026-03-20" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-breaking-changes_1">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-breaking-changes_2">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow module split</strong>: Single <code>run/main.nf</code> replaced by three dedicated
   modules — <code>dna/main.nf</code>, <code>rna/main.nf</code>, <code>normalize/main.nf</code>. Consumer
@@ -12659,7 +13058,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   logic, and statistics extracted from <code>counting/</code> into <code>shared/</code>. Any Rust
   consumer crate linking against gbcms internals must update import paths.</li>
 </ul>
-<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 3 <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> unification</strong> (<code>feat: unify check_complex Phase 3</code>):
   Complex indel classification now routes through a unified pangenomic pipeline
@@ -12679,7 +13078,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   column-level schema reference for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output under all mode/flag
   combinations (DNA vs RNA, with <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, with normalization columns).</li>
 </ul>
-<h3 id="development-changelog-fixed_2">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_3">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Complex indel classification</strong> (<code>fix: correctly classify complex indels</code>):
   Fixes for Phase 3 dispatch cases 2, 3, and 4 — previously misclassified
@@ -12704,7 +13103,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>parquet_writer.rs</code> relocated</strong>: Moved from <code>counting/</code> into <code>shared/</code> during
   module extraction.</li>
 </ul>
-<h3 id="development-changelog-documentation_2">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_3">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_3" title="Permanent link">¶</a></h3>
 <p>Major documentation overhaul — 28+ files updated:
 - Complete MkDocs plugin utilization pass (tabbed, details, admonitions,
   mermaid, code annotations, glightbox) across all reference pages
@@ -12730,7 +13129,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>test_cli_dna_rna.py</code>: mypy <code>attr-defined</code> fixed by annotating <code>_click_app</code>
   as <code>click.Group</code>; <code>Set[str | None]</code> → <code>Set[str]</code> via <code>if p.name is not None</code></li>
 </ul>
-<h3 id="development-changelog-tests_2">🧪 Tests<a class="headerlink" href="#development-changelog-tests_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_4">🧪 Tests<a class="headerlink" href="#development-changelog-tests_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>tests/test_pipeline_rna.py</code> (NEW): 7 pipeline-level integration tests for
   RNA mode output — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO headers, INFO values, FORMAT field, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column
@@ -12742,7 +13141,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>All test <code>MockCounts</code> helpers updated with RNA fields</li>
 </ul>
 <h2 id="development-changelog-300-2026-03-05">[3.0.0] - 2026-03-05<a class="headerlink" href="#development-changelog-300-2026-03-05" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-breaking-changes_2">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-breaking-changes_3">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Package renamed</strong>: <code>py-gbcms</code> → <code>gbcms</code>. Update your dependencies:
   <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#development-changelog-__codelineno-0-1"></a>pip<span class="w"> </span>uninstall<span class="w"> </span>py-gbcms
@@ -12751,7 +13150,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   A final <code>py-gbcms==3.0.0</code> deprecation stub on PyPI re-exports <code>gbcms</code> and
   issues a <code>DeprecationWarning</code> for smooth migration.</li>
 </ul>
-<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> native integration</strong>: <code>--mfsd</code> and <code>--mfsd-parquet</code> flags output a
   Parquet file with 31 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns + 7 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields via the Rust native
@@ -12762,13 +13161,13 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>py-gbcms</code> deprecation stub</strong>: <code>compat/py-gbcms/</code> shim published to PyPI
   as <code>py-gbcms==3.0.0</code> for backwards compatibility during migration.</li>
 </ul>
-<h3 id="development-changelog-fixed_3">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_4">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_4" title="Permanent link">¶</a></h3>
 <ul>
 <li>Parquet output compression switched from SNAPPY to ZSTD(1).</li>
 <li>Resolved <code>mypy</code> <code>AlignedSegment.cigar</code> attribute errors in test suite.</li>
 <li>Lint and stale-comment cleanup post Phase 6 audit.</li>
 </ul>
-<h3 id="development-changelog-documentation_3">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_4">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_4" title="Permanent link">¶</a></h3>
 <ul>
 <li>Full documentation sync with codebase after Phase 6 (<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>) merge.</li>
 <li>PDF generation guide added to developer documentation.</li>
@@ -12779,14 +13178,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Added <code>mkdocs-print-site-plugin</code> to <abbr title="Continuous Integration - Automated build and test system">CI</abbr> docs install step and <code>pyproject.toml</code>.</li>
 </ul>
 <h2 id="development-changelog-280-2026-02-23">[2.8.0] - 2026-02-23<a class="headerlink" href="#development-changelog-280-2026-02-23" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> alignment backend</strong>: Alternative Phase 3 alignment via <code>--alignment-backend hmm</code> with probabilistic scoring using base quality probabilities. Configurable <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold (default 2.3 ≈ ln(10)) and gap probabilities for repeat/non-repeat regions. 6 new <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options. Exposed as first-class Nextflow params in <code>nextflow.config</code></li>
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> min-BQ-across-block quality strategy</strong>: <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality now assessed using min(BQ) across the entire block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>. Low-quality <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads now fall through to <code>check_complex</code> for masked comparison instead of being silently skipped</li>
 <li><strong>Per-phase ClassifyResult counters</strong>: Diagnostic counters track how many reads are resolved in each classification phase (Phase 1/2/2.5/3)</li>
 <li><strong><code>--trace</code> flag</strong>: Two-tier Rust logging — <code>--verbose</code> for debug, <code>--trace</code> for per-read classification diagnostics via pyo3-log</li>
 </ul>
-<h3 id="development-changelog-fixed_4">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_5">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2/2.5 overcounting</strong>: Complex variants with <code>REF &gt;&gt; ALT</code> now skip Phase 2 Case B and Phase 2.5 when <code>ref_len &gt; 2 × alt_len</code> — short ALT trivially matches, edit distance is biased toward shorter allele</li>
 <li><strong>Phase 3 bypass for pure DEL/INS</strong>: Removed <code>is_worth_realignment</code> prefilter — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> structure is ground truth for pure deletions/insertions, prefilter was overcounting</li>
@@ -12799,7 +13198,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Rust module structure</strong>: Split <code>counting.rs</code> (1904 LOC) and <code>normalize.rs</code> (1221 LOC) into idiomatic module directories: <code>counting/</code> (7 modules) and <code>normalize/</code> (7 modules)</li>
 <li><strong>AlignmentBackend threading</strong>: <code>AlignmentBackend</code> enum threaded through all Phase 3 call sites</li>
 </ul>
-<h3 id="development-changelog-documentation_4">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_5">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Comprehensive audit</strong>: 28 fixes across 23 files — all GitBook URLs → MkDocs, version templating (X.Y.Z), undocumented <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options, 5 mermaid diagrams updated for post-2.7.0 logic, architecture module tree refreshed, <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> documented end-to-end</li>
 <li>Deleted stale <code>nextflow/CHANGES.md</code></li>
@@ -12811,7 +13210,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Update test expectations for new behavior</li>
 <li><abbr title="Continuous Integration - Automated build and test system">CI</abbr>: skip test workflow for docs-only changes</li>
 </ul>
-<h3 id="development-changelog-tests_3">🧪 Tests<a class="headerlink" href="#development-changelog-tests_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_5">🧪 Tests<a class="headerlink" href="#development-changelog-tests_5" title="Permanent link">¶</a></h3>
 <ul>
 <li>8 Python alignment backend integration tests</li>
 <li>5 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>-vs-<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> concordance tests</li>
@@ -12819,12 +13218,12 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Multi-allelic isolation, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/neither, fragment consensus, normalization tests</li>
 </ul>
 <h2 id="development-changelog-270-2026-02-19">[2.7.0] - 2026-02-19<a class="headerlink" href="#development-changelog-270-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
 </ul>
-<h3 id="development-changelog-fixed_5">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_6">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Allele-based dispatch</strong> (<code>check_allele_with_qual</code>): Routes by <code>ref_len × alt_len</code> instead of unreliable <code>variant_type</code> string labels. <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (1×1), insertion (1×N), deletion (N×1), <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (N×N equal), complex (N×M unequal) — eliminates misrouting when callers emit inconsistent type annotations</li>
 <li><strong><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> semiglobal argument order</strong>: Fixed <code>ref_hap</code>/<code>alt_hap</code> argument swap in semiglobal alignment that was scoring reads against the wrong haplotype</li>
@@ -12842,15 +13241,15 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Tests</strong>: Updated <code>test_fuzzy_complex::TestLengthMismatch</code> expectation to reflect Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback behavior</li>
 </ul>
 <h2 id="development-changelog-261-2026-02-19">[2.6.1] - 2026-02-19<a class="headerlink" href="#development-changelog-261-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_6">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_7">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
-<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Tolerant REF validation</strong>: Variants with ≥90% REF match against the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> are now counted (status <code>PASS_WARN_REF_CORRECTED</code>) instead of being silently rejected. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF is used for haplotype construction. Variants with &lt;90% match are still rejected as <code>REF_MISMATCH</code></li>
 </ul>
-<h3 id="development-changelog-documentation_5">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_6">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Visual posters</strong>: Added overview, normalization, and read-filter/counting-metrics posters (JPG) to reference documentation pages with lightbox support</li>
 <li><strong>Embedded PDFs</strong>: Added inline PDF viewer for allele classification guide and detailed overview presentation via <code>mkdocs-pdf</code> plugin</li>
@@ -12861,7 +13260,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>deploy-docs.yml</code></strong>: Added <code>mkdocs-pdf</code> to docs <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pip install dependencies</li>
 </ul>
 <h2 id="development-changelog-260-2026-02-18">[2.6.0] - 2026-02-18<a class="headerlink" href="#development-changelog-260-2026-02-18" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Adaptive context padding</strong>: Dynamically increases <code>ref_context</code> flanking in tandem repeat regions (homopolymer through hexanucleotide). Formula: <code>max(default, repeat_span/2 + 3)</code>, capped at 50bp. Enabled by default (<code>--adaptive-context/--no-adaptive-context</code>)</li>
 <li><strong><code>gbcms normalize</code> command</strong>: Standalone variant normalization (left-align + REF validate) without counting, outputs <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> with original and normalized coordinates</li>
@@ -12869,7 +13268,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Docs restructure</strong>: Split monolithic <code>variant-counting.md</code> into 4 focused pages: Variant Normalization, Allele Classification, Counting Metrics, Read Filters</li>
 <li><strong><abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> install docs</strong>: Micromamba-based source install with Python 3.13</li>
 </ul>
-<h3 id="development-changelog-fixed_7">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_8">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Interior REF guard</strong> for large deletions (&gt;50bp): Reads falling entirely within a deleted region are now correctly classified as REF instead of ALT by Smith-Waterman</li>
 <li><strong>Windowed reciprocal overlap</strong>: Improved shifted indel detection using bidirectional overlap scoring</li>
@@ -12885,7 +13284,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow pipeline diagram</strong> added to docs index</li>
 </ul>
 <h2 id="development-changelog-250-2026-02-12">[2.5.0] - 2026-02-12<a class="headerlink" href="#development-changelog-250-2026-02-12" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--preserve-barcode</code> flag</strong>: Keeps original <code>Tumor_Sample_Barcode</code> from input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> instead of overriding with <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> sample name (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows)</li>
 <li><strong><code>--column-prefix</code> parameter</strong>: Controls prefix for gbcms count columns in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (default: none; use <code>--column-prefix t_</code> for legacy compatibility) ⚠️</li>
@@ -12895,7 +13294,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow <code>--filter_by_sample</code> parameter</strong> and samplesheet <code>tsb</code> column for multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows</li>
 <li><strong>Nextflow documentation</strong>: Samplesheet <code>tsb</code> column guide, <code>--filter_by_sample</code> parameter reference, multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> filtering examples</li>
 </ul>
-<h3 id="development-changelog-fixed_8">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_9">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment quality extraction</strong> (critical): All variant-type handlers (<code>check_insertion</code>, <code>check_deletion</code>, <code>check_mnp</code>, <code>check_complex</code>) now return actual <code>base_qual</code> from <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk instead of 0 — fixes systematic ALT undercount for indels in fragment-level consensus</li>
 <li><strong>FILTER_MAF heredoc conflict</strong>: Restructured script from Python shebang to <code>python3 &lt;&lt; 'PYEOF'</code> pattern, resolving <code>SyntaxError</code> from bash syntax in Python context</li>
@@ -12912,7 +13311,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow config</strong>: Added <code>column_prefix</code>, <code>preserve_barcode</code>, <code>filter_by_sample</code> parameters</li>
 </ul>
 <h2 id="development-changelog-240-2026-02-10">[2.4.0] - 2026-02-10<a class="headerlink" href="#development-changelog-240-2026-02-10" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment Consensus Engine</strong>: <code>FragmentEvidence</code> struct with u64 QNAME hashing and quality-weighted R1/R2 consensus; ambiguous fragments are discarded (not assigned to REF)</li>
 <li><strong><code>--fragment-qual-threshold</code></strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> option (default 10) controlling consensus quality difference for fragment conflict resolution</li>
@@ -12928,7 +13327,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>--version</code> flag</strong>: Added to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>gbcms --version</code>)</li>
 <li><strong>Deploy-Docs Workflow</strong>: Replaced <code>mkdocs gh-deploy</code> with <code>mike</code> for multi-version documentation; deploys <code>stable</code> (tagged version) from main and <code>dev</code> from develop branch; added <code>extra.version.provider: mike</code> to <code>mkdocs.yml</code> with version switcher widget</li>
 </ul>
-<h3 id="development-changelog-fixed_9">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_10">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment double-counting bug</strong>: R1+R2 pairs previously counted as two independent observations; now collapsed via quality-weighted consensus</li>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Input Hardening</strong>: Graceful handling of missing/malformed fields with warnings instead of crashes</li>
@@ -12936,7 +13335,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Type stubs</strong>: <code>_rs.pyi</code> and <code>gbcms_rs.pyi</code> synced with Rust bindings (added <code>ref_context</code>, <code>ref_context_start</code>, <code>fragment_qual_threshold</code>)</li>
 <li><strong>Linting</strong>: All files pass black, ruff, and mypy</li>
 </ul>
-<h3 id="development-changelog-documentation_6">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_7">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_7" title="Permanent link">¶</a></h3>
 <ul>
 <li>Architecture comparison table updated with windowed indels and masked comparison</li>
 <li>Nextflow config and docs updated with new <code>min_baseq</code> default</li>
@@ -12946,7 +13345,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>.antigravity</code> project files updated with current Rust LOC (~1270) and test counts (47)</li>
 </ul>
 <h2 id="development-changelog-230-2026-02-06">[2.3.0] - 2026-02-06<a class="headerlink" href="#development-changelog-230-2026-02-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow <abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> Auto-Discovery</strong>: Checks <code>.bam.bai</code> and <code>.bai</code> extensions automatically</li>
 <li><strong>Documentation Modernization</strong>: Hierarchical navigation, glightbox, panzoom, abbreviations</li>
@@ -12961,14 +13360,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>GitHub Actions</strong>: Consolidated deploy-docs workflows, added caching and PR validation</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Wheels</strong>: Migrated from <code>manylinux_2_28</code> to <code>manylinux_2_34</code> (AlmaLinux 9 with OpenSSL 3.0+)</li>
 </ul>
-<h3 id="development-changelog-fixed_10">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_11">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow</strong>: Empty <code>--suffix</code> argument no longer causes failures</li>
 <li><strong>Admonitions</strong>: Converted GitHub-style alerts to MkDocs syntax</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Build</strong>: Resolved <code>curl-sys</code> OpenSSL version conflict by switching to manylinux_2_34</li>
 </ul>
 <h2 id="development-changelog-220-2026-02-04">[2.2.0] - 2026-02-04<a class="headerlink" href="#development-changelog-220-2026-02-04" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Multi-platform Wheel Publishing</strong>: Maturin-based <abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds for Linux (x86_64, aarch64), macOS (Intel, Apple Silicon), and Windows</li>
 <li><strong>Structured Logging</strong>: New <code>utils/logging.py</code> module with Rich console output, timing utilities, and log file support</li>
@@ -12982,7 +13381,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Code Quality</strong>: Added <code>__all__</code> exports, docstrings, and type hints across all modules</li>
 <li><strong>StrEnum</strong>: Modern enum pattern with Python 3.10 backport</li>
 </ul>
-<h3 id="development-changelog-documentation_7">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_8">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_8" title="Permanent link">¶</a></h3>
 <ul>
 <li>New <code>docs/ARCHITECTURE.md</code> with system diagrams</li>
 <li>New <code>docs/DEVELOPMENT.md</code> (developer guide)</li>
@@ -12990,7 +13389,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Updated MkDocs with mermaid2 plugin and snippet includes</li>
 </ul>
 <h2 id="development-changelog-212-2025-11-25">[2.1.2] - 2025-11-25<a class="headerlink" href="#development-changelog-212-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_11">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_12">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_12" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Fixed source distribution size issue by correctly excluding large files (tests, docs, etc.) via <code>pyproject.toml</code> configuration.</li>
 </ul>
@@ -12999,7 +13398,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <p class="admonition-title">Yanked Release</p>
 <p>This release was yanked from PyPI due to a source distribution size limit error. Use 2.1.2 instead.</p>
 </div>
-<h3 id="development-changelog-fixed_12">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_13">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_13" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Added MANIFEST.in (failed to work with Hatchling) to reduce source distribution size</li>
 <li><strong>Documentation</strong>: Added comprehensive Installation guide</li>
@@ -13007,7 +13406,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Documentation</strong>: Added Changelog to documentation navigation</li>
 </ul>
 <h2 id="development-changelog-210-2025-11-25">[2.1.0] - 2025-11-25<a class="headerlink" href="#development-changelog-210-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_14">✨ Added<a class="headerlink" href="#development-changelog-added_14" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-nextflow-workflow">Nextflow Workflow<a class="headerlink" href="#development-changelog-nextflow-workflow" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Production-ready Nextflow workflow</strong> for processing multiple samples in parallel</li>
@@ -13019,7 +13418,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Resource management</strong> with automatic retry and scaling</li>
 <li><strong>Comprehensive documentation</strong> in <code>docs/NEXTFLOW.md</code> and <code>nextflow/README.md</code></li>
 </ul>
-<h4 id="development-changelog-documentation_8">Documentation<a class="headerlink" href="#development-changelog-documentation_8" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-documentation_9">Documentation<a class="headerlink" href="#development-changelog-documentation_9" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Usage pattern comparison</strong> guide (<code>docs/WORKFLOWS.md</code>) for choosing between <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and Nextflow</li>
 <li><strong>MkDocs integration</strong> for beautiful GitHub Pages documentation</li>
@@ -13035,7 +13434,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>GitBook integration</strong>: configured to read from <code>main</code> branch</li>
 <li><strong>Nextflow module</strong>: improved parameter passing with meta.suffix support</li>
 </ul>
-<h3 id="development-changelog-documentation_9">📝 Documentation<a class="headerlink" href="#development-changelog-documentation_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_10">📝 Documentation<a class="headerlink" href="#development-changelog-documentation_10" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete Nextflow workflow guide with SLURM examples</li>
 <li>Per-sample suffix usage examples</li>
@@ -13046,7 +13445,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="development-changelog-200-2025-11-21">[2.0.0] - 2025-11-21<a class="headerlink" href="#development-changelog-200-2025-11-21" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-major-rewrite">🚀 Major Rewrite<a class="headerlink" href="#development-changelog-major-rewrite" title="Permanent link">¶</a></h3>
 <p>Version 2.0.0 represents a complete rewrite of py-gbcms with a focus on performance, correctness, and modern architecture.</p>
-<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_15">✨ Added<a class="headerlink" href="#development-changelog-added_15" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-core-features">Core Features<a class="headerlink" href="#development-changelog-core-features" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Rust-based Counting Engine</strong>: Hybrid Python/Rust architecture for 20x+ performance improvement</li>
@@ -13120,14 +13519,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Unused Dependencies</strong>: Removed <code>cyvcf2</code> and <code>numba</code> (no longer needed)</li>
 <li><strong>Pre-commit Hooks</strong>: Removed in favor of explicit linting in <abbr title="Continuous Integration - Automated build and test system">CI</abbr></li>
 </ul>
-<h3 id="development-changelog-fixed_13">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_14">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_14" title="Permanent link">¶</a></h3>
 <ul>
 <li>Correct handling of complex variants (MNPs, DelIns)</li>
 <li>Proper strand assignment for fragment counting</li>
 <li>Reference validation against <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> for all variant types</li>
 <li>Thread-safe <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> access with per-thread readers</li>
 </ul>
-<h3 id="development-changelog-documentation_10">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_11">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_11" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete rewrite of all documentation</li>
 <li>New guides: <code>INSTALLATION.md</code>, <code>CLI_FEATURES.md</code>, <code>INPUT_OUTPUT.md</code></li>
@@ -13150,7 +13549,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Filter validation for all read flag combinations</li>
 <li>Integration tests with real-world data</li>
 </ul>
-<h3 id="development-changelog-breaking-changes_3">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-breaking-changes_4">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_4" title="Permanent link">¶</a></h3>
 <p>Version 2.0.0 is <strong>not backward compatible</strong> with 1.x. Key breaking changes:</p>
 <ol>
 <li><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> syntax</strong>: Use <code>gbcms run</code> instead of <code>python -m gbcms.cli</code></li>
@@ -13417,7 +13816,7 @@ chromosome naming is consistent across <abbr title="Variant Call Format - Standa
 <p>Common mismatch: <code>chr1</code> vs <code>1</code>. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> and variant file must match.</p>
 </details>
 <details class="question">
-<summary><code>FETCH_FAILED</code> in <code>validation_status</code> for all variants on a chromosome</summary>
+<summary><code>FETCH_FAILED</code> in <code>gbcms_status</code> for all variants on a chromosome</summary>
 <p>See chromosome mismatch above. Also check:
 - <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> <code>.fai</code> index is present (<code>samtools faidx reference.fa</code>)
 - No truncated / corrupted <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></p>
@@ -13429,7 +13828,7 @@ chromosome naming is consistent across <abbr title="Variant Call Format - Standa
 <p>Check in this order:</p>
 <ol>
 <li>
-<p><strong><code>validation_status</code></strong> column — if <code>REF_MISMATCH</code> or <code>FETCH_FAILED</code>, the variant
+<p><strong><code>gbcms_status</code></strong> column — if <code>REF_MISMATCH</code> or <code>FETCH_FAILED</code>, the variant
    was excluded from counting. See <a href="#resources-troubleshooting-normalization-issues">Normalization Issues</a>.</p>
 </li>
 <li>
@@ -13548,7 +13947,7 @@ discordant fragments — typical of noisy or error-prone positions. Adjust with
 <hr>
 <h2 id="resources-troubleshooting-normalization-issues">Normalization Issues<a class="headerlink" href="#resources-troubleshooting-normalization-issues" title="Permanent link">¶</a></h2>
 <details class="question">
-<summary><code>REF_MISMATCH</code> in <code>validation_status</code> — what does it mean?</summary>
+<summary><code>REF_MISMATCH</code> in <code>gbcms_status</code> — what does it mean?</summary>
 <p>The REF allele in the variant file does not match the reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> at the stated position.
 gbcms requires ≥90% base match to auto-correct; below that, the variant is excluded.</p>
 <p>Common causes:
@@ -13561,17 +13960,17 @@ gbcms requires ≥90% base match to auto-correct; below that, the variant is exc
 </code></pre></div>
 </details>
 <details class="question">
-<summary><code>PASS_WARN_REF_CORRECTED</code> — is this a problem?</summary>
+<summary><code>PASS;WARN_REF_CORRECTED</code> — is this a problem?</summary>
 <p>The REF allele was ≥90% match — corrected to <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> sequence and counting proceeded normally.
 The original <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF is preserved in the <code>original_ref</code> column (when <code>--show-normalization</code> is set).</p>
 <p>This is <strong>not</strong> a problem in most cases. Common benign cause: 27bp EGFR exon 19 deletion
 with 26/27 bases correct and 1 trailing base that's a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact.</p>
 <p>If you want to audit all corrected variants:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#resources-troubleshooting-__codelineno-14-1"></a>grep<span class="w"> </span><span class="s2">"PASS_WARN_REF_CORRECTED"</span><span class="w"> </span>output.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#resources-troubleshooting-__codelineno-14-1"></a>grep<span class="w"> </span><span class="s2">"PASS;WARN_REF_CORRECTED"</span><span class="w"> </span>output.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
 </code></pre></div>
 </details>
 <details class="question">
-<summary><code>PASS_WARN_HOMOPOLYMER_DECOMP</code> — what changed?</summary>
+<summary><code>PASS;WARN_HOMOPOLYMER_DECOMP</code> — what changed?</summary>
 <p>The variant overlapped a homopolymer, and the corrected allele (e.g., <code>CCCCCC→CCCCT</code> instead
 of <code>CCCCCC→T</code>) got more ALT support. The corrected allele counts were used.
 <code>used_decomposed = True</code> in the output.</p>
