@@ -48,6 +48,8 @@ flowchart LR
         Load["Load Variants"]
         Prepare["Prepare\n(validate + left-align + decomp detect)"]
         Count["Count Reads"]
+        Diag["Diagnostics\n(gbcms_diagnostic flags)"]
+        Rescue["Rescue\n(--rescue-mnp)"]:::optional
     end
 
     subgraph Output ["Required Output"]
@@ -62,8 +64,13 @@ flowchart LR
     FASTA --> Prepare
     Prepare --> Count
     BAM --> Count
-    Count --> Result
+    Count --> Diag
+    Diag -.->|"--rescue-mnp"| Rescue
+    Diag --> Result
+    Rescue --> Result
     Count -.->|"--mfsd-parquet"| Parquet
+
+    classDef optional fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
 
 ---
@@ -299,10 +306,111 @@ sequenceDiagram
             Note over Rust: Compute Fisher strand bias
         end
         Rust-->>Pipeline: Vec[BaseCounts]
+        Pipeline->>Pipeline: _compute_diagnostics()
+        opt --rescue-mnp enabled
+            Pipeline->>Pipeline: _rescue_mnp_pass() — identify candidates
+            Pipeline->>Rust: count_bam_binned(synthetic SNPs)
+            Rust-->>Pipeline: Vec[BaseCounts] for SNPs
+            Pipeline->>Pipeline: Update ad, populate gbcms_rescue
+        end
     end
 
     Pipeline->>Pipeline: Write output (VCF/MAF)
 ```
+
+---
+
+## MNP Rescue Pass (`--rescue-mnp`, v4.3.0)
+
+The rescue pass recovers `alt_count` for MNP variants where `ad == 0` by decomposing
+the MNP into individual SNP positions and re-counting each one independently.
+
+### Why Python, Not Rust?
+
+The original design spec proposed implementing rescue in Rust. The final implementation
+uses **Python orchestration calling the existing Rust counting engine**. This was a
+deliberate architectural decision:
+
+```mermaid
+flowchart LR
+    subgraph Python ["🐍 Python — Orchestration"]
+        Filter["Filter candidates\n(PASS + ad==0 + MNP_SPARSE_DISC)"]
+        Build["Build synthetic SNPs\nfrom disc positions"]
+        Map["Map counts back\npick best rescue"]
+        Audit["Populate gbcms_rescue\naudit trail"]
+    end
+
+    subgraph Rust ["🦀 Rust — Counting"]
+        Prepare["prepare_variants()\nREF validation"]
+        Count["count_bam_binned()\nBAM I/O + read classification"]
+    end
+
+    Filter --> Build --> Prepare
+    Prepare --> Count
+    Count --> Map --> Audit
+
+    classDef pythonStyle fill:#3776ab,color:#fff,stroke:#2c5f8a,stroke-width:2px;
+    classDef rustStyle fill:#dea584,color:#000,stroke:#c48a6a,stroke-width:2px;
+    class Python pythonStyle;
+    class Rust rustStyle;
+```
+
+| Concern | If implemented in Rust | Actual (Python + Rust) |
+|:--------|:----------------------|:-----------------------|
+| **BAM I/O** | Rust (fast) | **Rust** via `count_bam_binned()` — same speed |
+| **Read classification** | Rust (fast) | **Rust** — unchanged |
+| **Candidate filtering** | Would duplicate Python diagnostic logic | **Python** — direct access to `gbcms_diagnostic` |
+| **Synthetic variant creation** | New Rust API surface needed | **Python** — uses existing `rs.Variant()` |
+| **Config access** | Entire config struct across FFI boundary | **Python** — `self.config.*` already available |
+| **Audit trail formatting** | Awkward string manipulation in Rust | **Python** — natural |
+| **Unit testing** | Hard to mock BAM interactions | **Python** — `SimpleNamespace` mocks |
+| **Performance impact** | Negligible improvement | **< 1 second** added to 30–120s pipeline |
+
+!!! info "Key Insight"
+    The rescue engine is an **orchestration layer**, not a counting engine. The expensive
+    work (BAM I/O, read classification, allele counting) is still 100% Rust. Python
+    decides _what_ to re-count and _what to do_ with the results — typically 5–50
+    synthetic SNPs per sample, handled in a single batched `count_bam_binned()` call.
+
+### Rescue Candidate Criteria
+
+A variant qualifies for rescue when **all four** conditions are met:
+
+| # | Condition | Rationale |
+|:--|:----------|:----------|
+| 1 | `gbcms_status` starts with `PASS` | FAIL variants have unreliable coordinates |
+| 2 | `ad == 0` | Variants with confirmed ALT reads don't need rescue |
+| 3 | `MNP_SPARSE_DISC` in `gbcms_diagnostic` | Only sparse MNPs are susceptible to phantom-position dropout |
+| 4 | `ref_len == alt_len > 1` (MNP) | SNPs and INDELs are never MNP rescue candidates |
+
+### Rescue Strategy: Decomposed SNP Counting
+
+```
+MNP:  GAGGG → AAGGA  (5bp, positions 0-4)
+Disc: pos 0 (G→A) ✓, pos 4 (G→A) ✓  → 2/5 discriminating
+
+Decompose into:
+  SNP₁: G→A at chr5:1295250  → count_bam_binned() → ad=108
+  SNP₂: G→A at chr5:1295254  → count_bam_binned() → ad=0
+
+Best rescue: ad=108 (from SNP₁)
+Audit: method=decomposed;original_alt=0;positions=chr5:1295251(G>A):108,chr5:1295255(G>A):0
+```
+
+### Invariant Impact
+
+After rescue, **Invariant 1** (`any_alt = ad + partial_alt`) intentionally breaks:
+
+| Field | Before Rescue | After Rescue | Source |
+|:------|:-------------|:-------------|:-------|
+| `ad` (alt_count) | 0 | **108** (updated) | Rescue engine |
+| `partial_alt` | 108 | 108 (unchanged) | Original MNP check — forensic evidence |
+| `any_alt` | 108 | 108 (unchanged) | Original MNP check — forensic evidence |
+| `gbcms_rescue` | _(empty)_ | `method=decomposed;original_alt=0;...` | Rescue audit trail |
+
+The `gbcms_rescue` audit trail preserves the `original_alt=0` value and documents
+the rescue provenance, enabling downstream users to reconcile the invariant breakage.
+
 
 ---
 
