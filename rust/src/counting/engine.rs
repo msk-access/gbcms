@@ -1110,16 +1110,33 @@ fn count_variant_from_cache(
         // Decomposed counting (any_alt / partial_alt):
         // - Full ALT match: ad++, any_alt++ (invariant: any_alt = ad + partial_alt)
         // - Partial ALT match (some discriminating positions match ALT): any_alt++, partial_alt++
-        // - Neither/REF: no any_alt/partial_alt change
+        // - Nearby evidence (right-length INDEL, close alignment score): any_alt++, partial_alt++
+        // - Neither/REF with no evidence: no any_alt/partial_alt change
+        //
+        // Note: has_nearby_evidence propagates structural evidence from variant checkers
+        // and alignment backends. This captures reads with right-length INDELs but wrong
+        // sequences (e.g., PAX5 A>CCC) that were previously lost as silent REF calls.
         if !is_ref && !is_alt {
             // Check for partial ALT evidence before skipping
-            if result.partial_match_count > 0 {
+            if result.partial_match_count > 0 || result.has_nearby_evidence {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
-                trace!("partial_alt++: {} positions matched ALT (any_alt={}, partial_alt={})",
-                    result.partial_match_count, counts.any_alt, counts.partial_alt);
+                trace!("partial_alt++: partial_match={} nearby_evidence={} (any_alt={}, partial_alt={})",
+                    result.partial_match_count, result.has_nearby_evidence,
+                    counts.any_alt, counts.partial_alt);
             }
             continue;
+        }
+
+        // is_ref with nearby evidence: the read is classified as REF, but
+        // the checker found structural evidence of the variant (e.g., right-length
+        // INDEL with wrong sequence). Count as partial_alt to enable the
+        // PARTIAL_DOMINANT diagnostic flag. The read still counts as rd++.
+        if is_ref && result.has_nearby_evidence {
+            counts.any_alt += 1;
+            counts.partial_alt += 1;
+            trace!("partial_alt++ (nearby evidence on REF read): any_alt={}, partial_alt={}",
+                counts.any_alt, counts.partial_alt);
         }
 
         if is_ref {
@@ -1589,14 +1606,21 @@ fn count_single_variant(
         // Decomposed counting (any_alt / partial_alt):
         // - Full ALT match: ad++, any_alt++ (invariant: any_alt = ad + partial_alt)
         // - Partial ALT match (some discriminating positions match ALT): any_alt++, partial_alt++
-        // - Neither/REF: no any_alt/partial_alt change
+        // - Nearby evidence (right-length INDEL, close alignment score): any_alt++, partial_alt++
+        // - Neither/REF with no evidence: no any_alt/partial_alt change
         if !is_ref && !is_alt {
             // Check for partial ALT evidence before skipping
-            if result.partial_match_count > 0 {
+            if result.partial_match_count > 0 || result.has_nearby_evidence {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
             }
             continue;
+        }
+
+        // is_ref with nearby evidence: count as partial_alt (see single-variant path).
+        if is_ref && result.has_nearby_evidence {
+            counts.any_alt += 1;
+            counts.partial_alt += 1;
         }
 
         if is_ref {

@@ -44,6 +44,13 @@ pub enum ClassifyPhase {
 /// `has_n_base` signals that the read carried an N base at ≥1 discriminating
 /// position. Used by the engine to accumulate `n_count` for duplex masking
 /// QC (follows bam-readcount's explicit N separation model).
+///
+/// `has_nearby_evidence` signals that the checker found structural evidence of
+/// the variant (e.g., right-length INDEL with wrong sequence, non-zero ALT
+/// alignment score) but the final classification was REF or neither. Consumed
+/// by the engine to increment `partial_alt`/`any_alt` even for binary `is_ref`
+/// returns, enabling the `PARTIAL_DOMINANT` diagnostic flag to explain cases
+/// like PAX5 insertions where DMP over-counts by ignoring allele specificity.
 #[derive(Debug, Clone, Copy)]
 pub struct ClassifyResult {
     pub is_ref: bool,
@@ -56,19 +63,27 @@ pub struct ClassifyResult {
     /// Whether this read had an N base at ≥1 discriminating position.
     /// Used by engine to accumulate BaseCounts::n_count for duplex masking QC.
     pub has_n_base: bool,
+    /// Whether the checker found structural evidence of the variant but the
+    /// final classification was REF or neither. Set by:
+    /// - `check_insertion`/`check_deletion`: right-length INDEL, wrong sequence
+    /// - `check_complex` Levenshtein: ALT edit distance close to REF
+    /// - `classify_by_alignment`: ALT alignment score close to REF
+    ///
+    /// Consumed by engine to increment `partial_alt`/`any_alt`.
+    pub has_nearby_evidence: bool,
 }
 
 impl ClassifyResult {
     /// Create a new ClassifyResult with no partial match evidence.
     #[inline]
     pub fn new(is_ref: bool, is_alt: bool, qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref, is_alt, qual, phase, partial_match_count: 0, has_n_base: false }
+        Self { is_ref, is_alt, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false }
     }
 
     /// Neither REF nor ALT — read didn't classify (e.g., no coverage, low quality).
     #[inline]
     pub fn neither(phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: false }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false }
     }
 
     /// Neither REF nor ALT, and the read carried an N base at the variant position.
@@ -76,7 +91,7 @@ impl ClassifyResult {
     /// third-allele or low-BQ reads for diagnostic counting (BaseCounts::n_count).
     #[inline]
     pub fn neither_n(phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: true }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: true, has_nearby_evidence: false }
     }
 
     /// Neither REF nor ALT, but with partial ALT evidence at some positions.
@@ -85,19 +100,19 @@ impl ClassifyResult {
     /// `has_n`: true if the read had N at ≥1 discriminating position.
     #[inline]
     pub fn neither_with_partial(phase: ClassifyPhase, partial_count: u8, has_n: bool) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: partial_count, has_n_base: has_n }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: partial_count, has_n_base: has_n, has_nearby_evidence: false }
     }
 
     /// Shorthand for REF classification.
     #[inline]
     pub fn is_ref(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: true, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false }
+        Self { is_ref: true, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false }
     }
 
     /// Shorthand for ALT classification.
     #[inline]
     pub fn is_alt(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false }
+        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false }
     }
 
 }

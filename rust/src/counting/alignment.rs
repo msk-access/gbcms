@@ -336,7 +336,18 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
     if is_alt {
         ClassifyResult::is_alt(med_qual, ClassifyPhase::Alignment)
     } else if is_ref {
-        ClassifyResult::is_ref(med_qual, ClassifyPhase::Alignment)
+        let mut r = ClassifyResult::is_ref(med_qual, ClassifyPhase::Alignment);
+        // Propagate nearby evidence: read was classified as REF, but if ALT
+        // alignment score was close (within 2× margin), there is structural
+        // ALT support worth tracking for partial_alt/PARTIAL_DOMINANT diagnostic.
+        if alt_aln.score > 0 && alt_aln.score + 2 * margin >= ref_aln.score {
+            r.has_nearby_evidence = true;
+            trace!(
+                "Phase 3 SW: REF wins but ALT score close (alt={}, ref={}, margin={}) → has_nearby_evidence=true",
+                alt_aln.score, ref_aln.score, margin
+            );
+        }
+        r
     } else {
         // Tie or ambiguous: the read cannot confidently distinguish REF from
         // ALT.  Route to "neither" so this read still contributes to physical
@@ -347,7 +358,17 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
         let max_score = std::cmp::max(alt_aln.score, ref_aln.score);
         if max_score >= (read_len as i32) / 2 {
             trace!("Ambiguous tie (alt={}, ref={}) — routing to neither to preserve unbiased VAF", alt_aln.score, ref_aln.score);
-            ClassifyResult::new(false, false, med_qual, ClassifyPhase::Alignment)
+            let mut r = ClassifyResult::new(false, false, med_qual, ClassifyPhase::Alignment);
+            // Propagate nearby evidence: tie means ALT had non-trivial
+            // alignment support — worth tracking for partial_alt.
+            if alt_aln.score > 0 {
+                r.has_nearby_evidence = true;
+                trace!(
+                    "Phase 3 SW: tie with ALT score {} > 0 → has_nearby_evidence=true",
+                    alt_aln.score
+                );
+            }
+            r
         } else {
             ClassifyResult::neither(ClassifyPhase::Alignment)
         }

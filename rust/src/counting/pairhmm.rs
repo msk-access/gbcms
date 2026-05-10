@@ -382,7 +382,16 @@ pub fn classify_by_pairhmm(
     if llr > llr_threshold {
         ClassifyResult::is_alt(med_qual, ClassifyPhase::Alignment)  // ALT
     } else if llr < -llr_threshold {
-        ClassifyResult::is_ref(med_qual, ClassifyPhase::Alignment)  // REF
+        let mut r = ClassifyResult::is_ref(med_qual, ClassifyPhase::Alignment);  // REF
+        // Propagate nearby evidence: REF wins, but ALT LLR close → structural support.
+        if llr > -(2.0 * llr_threshold) {
+            r.has_nearby_evidence = true;
+            trace!(
+                "classify_by_pairhmm: REF wins but ALT close (llr={:.3}) → has_nearby_evidence=true",
+                llr
+            );
+        }
+        r
     } else {
         // Ambiguous: LLR within threshold — route to "neither"
         // Same logic as SW tie handling: contributes to DP but not RD/AD
@@ -391,7 +400,13 @@ pub fn classify_by_pairhmm(
             llr.abs(), llr_threshold
         );
         if *ll_alt > f64::NEG_INFINITY && *ll_ref > f64::NEG_INFINITY {
-            ClassifyResult::new(false, false, med_qual, ClassifyPhase::Alignment)
+            let mut r = ClassifyResult::new(false, false, med_qual, ClassifyPhase::Alignment);
+            r.has_nearby_evidence = true;
+            trace!(
+                "classify_by_pairhmm: tie with finite ALT ll={:.3} → has_nearby_evidence=true",
+                *ll_alt
+            );
+            r
         } else {
             ClassifyResult::neither(ClassifyPhase::Alignment)
         }
@@ -477,14 +492,32 @@ pub fn classify_by_marginalized_pairhmm(
     if llr > llr_threshold {
         ClassifyResult::is_alt(med_qual, ClassifyPhase::Alignment)
     } else if llr < -llr_threshold {
-        ClassifyResult::is_ref(med_qual, ClassifyPhase::Alignment)
+        let mut r = ClassifyResult::is_ref(med_qual, ClassifyPhase::Alignment);
+        // Propagate nearby evidence: REF wins, but if ALT LLR was within
+        // 2× threshold of REF, there is meaningful ALT support.
+        if llr > -(2.0 * llr_threshold) {
+            r.has_nearby_evidence = true;
+            trace!(
+                "marginalized_pairhmm: REF wins but ALT close (llr={:.3}, threshold={:.3}) → has_nearby_evidence=true",
+                llr, llr_threshold
+            );
+        }
+        r
     } else {
         trace!(
             "marginalized_pairhmm: ambiguous (|llr|={:.3} <= threshold={:.3})",
             llr.abs(), llr_threshold
         );
         if best_alt_ll > f64::NEG_INFINITY && best_ref_ll > f64::NEG_INFINITY {
-            ClassifyResult::new(false, false, med_qual, ClassifyPhase::Alignment)
+            let mut r = ClassifyResult::new(false, false, med_qual, ClassifyPhase::Alignment);
+            // Propagate nearby evidence: ambiguous with non-degenerate ALT
+            // likelihood means structural ALT support exists.
+            r.has_nearby_evidence = true;
+            trace!(
+                "marginalized_pairhmm: tie with finite ALT ll={:.3} → has_nearby_evidence=true",
+                best_alt_ll
+            );
+            r
         } else {
             ClassifyResult::neither(ClassifyPhase::Alignment)
         }

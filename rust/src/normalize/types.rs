@@ -15,10 +15,23 @@ pub struct PreparedVariant {
     #[pyo3(get)]
     pub variant: Variant,
 
-    /// Validation result: "PASS", "PASS_WARN_REF_CORRECTED",
-    /// "PASS_WARN_HOMOPOLYMER_DECOMP", "REF_MISMATCH", or "FETCH_FAILED".
+    /// gbcms normalization status. Semicolon-separated multi-value.
+    /// First token is always PASS or FAIL_*. Replaces old `validation_status`.
+    /// Examples: "PASS", "PASS;WARN_REF_CORRECTED", "FAIL_REF_MISMATCH".
     #[pyo3(get, set)]
-    pub validation_status: String,
+    pub gbcms_status: String,
+
+    /// Post-counting diagnostic flags. Semicolon-separated.
+    /// Empty string = no diagnostics. Set by Python pipeline after counting.
+    /// Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_SPARSE_DISC(2/5)".
+    #[pyo3(get, set)]
+    pub gbcms_diagnostic: String,
+
+    /// Rescue audit trail. Semicolon-separated key=value pairs.
+    /// Contains original_alt=N when rescue was attempted.
+    /// Empty string = no rescue. Only populated with --rescue-mnp (P1).
+    #[pyo3(get, set)]
+    pub gbcms_rescue: String,
 
     /// True if MAF anchor resolution (Step 1) changed pos/ref/alt.
     /// Only set for MAF input with dash alleles or different-length non-dash indels.
