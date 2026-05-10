@@ -231,6 +231,17 @@ def dna(
         "--show-normalization",
         help="Add norm_* columns showing left-aligned coordinates in output.",
     ),
+    # MNP rescue
+    rescue_mnp: bool = typer.Option(
+        False,
+        "--rescue-mnp",
+        help=(
+            "Enable MNP rescue pass for sparse multi-base substitutions. "
+            "When alt_count=0 and the variant has few discriminating positions, "
+            "decomposes the MNP into individual SNPs and re-counts. "
+            "Populates gbcms_rescue with a structured audit trail."
+        ),
+    ),
     # Performance
     threads: int = typer.Option(
         1, "--threads", "-t", help="Number of threads for parallel processing"
@@ -295,6 +306,8 @@ def dna(
     # ── 1. Logging (must be first so all subsequent checks log correctly) ──────
     setup_logging(verbose=verbose, trace=trace)
     logger.info("Running gbcms in DNA mode")
+    if rescue_mnp:
+        logger.info("MNP rescue pass enabled (--rescue-mnp)")
 
     # ── 2. Pre-model validation (semantic + cross-option checks) ───────────────
 
@@ -429,6 +442,7 @@ def dna(
             show_normalization=show_normalization,
             apply_baq=apply_baq,
             umi_tag=umi_tag,
+            rescue_mnp=rescue_mnp,
         )
 
         pipeline = Pipeline(config)
@@ -537,6 +551,17 @@ def rna(
         "--show-normalization",
         help="Add norm_* columns showing left-aligned coordinates in output.",
     ),
+    # MNP rescue
+    rescue_mnp: bool = typer.Option(
+        False,
+        "--rescue-mnp",
+        help=(
+            "Enable MNP rescue pass for sparse multi-base substitutions. "
+            "When alt_count=0 and the variant has few discriminating positions, "
+            "decomposes the MNP into individual SNPs and re-counts. "
+            "Populates gbcms_rescue with a structured audit trail."
+        ),
+    ),
     # Performance
     threads: int = typer.Option(
         1, "--threads", "-t", help="Number of threads for parallel processing"
@@ -600,6 +625,8 @@ def rna(
     # ── 1. Logging ──
     setup_logging(verbose=verbose, trace=trace)
     logger.info("Running gbcms in RNA mode")
+    if rescue_mnp:
+        logger.info("MNP rescue pass enabled (--rescue-mnp)")
 
     # ── 2. Pre-model validation ──
     _is_vcf_gz = _is_compressed_vcf(variant_file)
@@ -703,6 +730,7 @@ def rna(
             umi_tag=umi_tag,
             enforce_strandedness=enforce_strandedness,
             rna_editing_db=rna_editing_db,
+            rescue_mnp=rescue_mnp,
         )
 
         pipeline = Pipeline(config)
