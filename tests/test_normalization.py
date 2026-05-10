@@ -60,7 +60,7 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
-        self.assertEqual(pv.validation_status, "PASS")
+        self.assertEqual(pv.gbcms_status, "PASS")
         self.assertFalse(pv.was_anchor_resolved)
         self.assertFalse(pv.was_left_aligned)
         self.assertFalse(pv.was_normalized)
@@ -74,7 +74,7 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
-        self.assertNotEqual(pv.validation_status, "PASS")
+        self.assertNotEqual(pv.gbcms_status, "PASS")
 
     def test_maf_insertion_anchor_resolution(self):
         """MAF insertion (ref='-') should get anchor base prepended."""
@@ -84,7 +84,7 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, True, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
-        self.assertEqual(pv.validation_status, "PASS")
+        self.assertEqual(pv.gbcms_status, "PASS")
         # MAF anchor resolution should be detected
         self.assertTrue(pv.was_anchor_resolved)
         self.assertFalse(pv.was_left_aligned)
@@ -103,7 +103,7 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
-        self.assertEqual(pv.validation_status, "PASS")
+        self.assertEqual(pv.gbcms_status, "PASS")
         # Left-alignment should be detected (VCF input, no anchor step)
         self.assertFalse(pv.was_anchor_resolved)
         self.assertTrue(pv.was_left_aligned)
@@ -143,8 +143,8 @@ class TestNormalization(unittest.TestCase):
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertTrue(
-            pv.validation_status.startswith("PASS"),
-            f"Expected PASS status, got {pv.validation_status}",
+            pv.gbcms_status.startswith("PASS"),
+            f"Expected PASS status, got {pv.gbcms_status}",
         )
         # Variant should have normalized (shifted leftward)
         if pv.was_normalized:
@@ -183,7 +183,7 @@ class TestNormalization(unittest.TestCase):
             self.assertIn("chrom", header)
             self.assertIn("original_pos", header)
             self.assertIn("norm_pos", header)
-            self.assertIn("validation_status", header)
+            self.assertIn("gbcms_status", header)
             self.assertIn("was_anchor_resolved", header)
             self.assertIn("was_left_aligned", header)
             self.assertIn("was_normalized", header)
@@ -330,8 +330,8 @@ class TestNormalization(unittest.TestCase):
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertTrue(
-            pv.validation_status.startswith("PASS"),
-            f"Expected PASS status, got {pv.validation_status}",
+            pv.gbcms_status.startswith("PASS"),
+            f"Expected PASS status, got {pv.gbcms_status}",
         )
         self.assertTrue(pv.was_anchor_resolved, "Expected anchor resolution for dash-allele")
         self.assertTrue(pv.was_left_aligned, "Expected left-alignment in homopolymer")
@@ -351,9 +351,9 @@ class TestNormalization(unittest.TestCase):
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(
-            pv.validation_status,
+            pv.gbcms_status,
             "FAIL_ALT_CONTAINS_N",
-            f"Expected FAIL_ALT_CONTAINS_N, got {pv.validation_status}",
+            f"Expected FAIL_ALT_CONTAINS_N, got {pv.gbcms_status}",
         )
 
     def test_n_in_alt_allele_mnp_rejected(self):
@@ -363,9 +363,9 @@ class TestNormalization(unittest.TestCase):
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
         self.assertEqual(
-            pv.validation_status,
+            pv.gbcms_status,
             "FAIL_ALT_CONTAINS_N",
-            f"Expected FAIL_ALT_CONTAINS_N for MNP with N in ALT, got {pv.validation_status}",
+            f"Expected FAIL_ALT_CONTAINS_N for MNP with N in ALT, got {pv.gbcms_status}",
         )
 
 

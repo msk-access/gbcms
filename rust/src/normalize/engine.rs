@@ -109,7 +109,7 @@ pub fn prepare_variants(
             assign_multi_allelic_groups(&mut r);
 
             // Log summary
-            let valid = r.iter().filter(|p| p.validation_status == "PASS").count();
+            let valid = r.iter().filter(|p| p.gbcms_status == "PASS").count();
             let n_anchor = r.iter().filter(|p| p.was_anchor_resolved).count();
             let n_left = r.iter().filter(|p| p.was_left_aligned).count();
             let n_total = r.iter().filter(|p| p.was_normalized()).count();
@@ -165,7 +165,7 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
     while i < indices.len() {
         let idx = indices[i];
         // Skip non-PASS variants
-        if !variants[idx].validation_status.starts_with("PASS") {
+        if !variants[idx].gbcms_status.starts_with("PASS") {
             i += 1;
             continue;
         }
@@ -184,7 +184,7 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
             if &vj.chrom != chrom {
                 break; // Different chromosome
             }
-            if !variants[jdx].validation_status.starts_with("PASS") {
+            if !variants[jdx].gbcms_status.starts_with("PASS") {
                 j += 1;
                 continue;
             }
@@ -204,10 +204,10 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
             group_id += 1;
             for &member_idx in &group_members {
                 variants[member_idx].multi_allelic_group = Some(group_id);
-                // Append to validation_status so it surfaces in existing output columns
-                // e.g. "PASS" → "PASS_MULTI_ALLELIC"
-                if !variants[member_idx].validation_status.contains("MULTI_ALLELIC") {
-                    variants[member_idx].validation_status.push_str("_MULTI_ALLELIC");
+                // Append to gbcms_status so it surfaces in output columns
+                // e.g. "PASS" → "PASS;MULTI_ALLELIC"
+                if !variants[member_idx].gbcms_status.contains("MULTI_ALLELIC") {
+                    variants[member_idx].gbcms_status.push_str(";MULTI_ALLELIC");
                 }
             }
             debug!(
@@ -271,7 +271,9 @@ fn prepare_single_variant(
                 );
                 return Ok(PreparedVariant {
                     variant: variant.clone(),
-                    validation_status: "FETCH_FAILED".to_string(),
+                    gbcms_status: "FAIL_FETCH_FAILED".to_string(),
+                    gbcms_diagnostic: String::new(),
+                    gbcms_rescue: String::new(),
                     was_anchor_resolved: false,
                     was_left_aligned: false,
                     original_pos,
@@ -328,7 +330,9 @@ fn prepare_single_variant(
                 repeat_span: 0,
                 gene_strand: None,
             },
-            validation_status: status,
+            gbcms_status: status,
+            gbcms_diagnostic: String::new(),
+            gbcms_rescue: String::new(),
             was_anchor_resolved,
             was_left_aligned: false,
             original_pos,
@@ -360,7 +364,9 @@ fn prepare_single_variant(
                 repeat_span: 0,
                 gene_strand: None,
             },
-            validation_status: "FAIL_ALT_CONTAINS_N".to_string(),
+            gbcms_status: "FAIL_ALT_CONTAINS_N".to_string(),
+            gbcms_diagnostic: String::new(),
+            gbcms_rescue: String::new(),
             was_anchor_resolved,
             was_left_aligned: false,
             original_pos,
@@ -566,7 +572,9 @@ fn prepare_single_variant(
             repeat_span: variant_repeat_span,
             gene_strand: None,
         },
-        validation_status: "PASS".to_string(),
+        gbcms_status: "PASS".to_string(),
+        gbcms_diagnostic: String::new(),
+        gbcms_rescue: String::new(),
         was_anchor_resolved,
         was_left_aligned,
         original_pos,

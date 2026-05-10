@@ -76,7 +76,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     Common mismatch: `chr1` vs `1`. The FASTA and variant file must match.
 
-??? question "`FETCH_FAILED` in `validation_status` for all variants on a chromosome"
+??? question "`FETCH_FAILED` in `gbcms_status` for all variants on a chromosome"
 
     See chromosome mismatch above. Also check:
     - FASTA `.fai` index is present (`samtools faidx reference.fa`)
@@ -90,7 +90,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     Check in this order:
 
-    1. **`validation_status`** column — if `REF_MISMATCH` or `FETCH_FAILED`, the variant
+    1. **`gbcms_status`** column — if `REF_MISMATCH` or `FETCH_FAILED`, the variant
        was excluded from counting. See [Normalization Issues](#normalization-issues).
 
     2. **Complex Del+SNV routing** — if your variant has deletion format (`REF` longer than `ALT`,
@@ -195,7 +195,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ## Normalization Issues
 
-??? question "`REF_MISMATCH` in `validation_status` — what does it mean?"
+??? question "`REF_MISMATCH` in `gbcms_status` — what does it mean?"
 
     The REF allele in the variant file does not match the reference FASTA at the stated position.
     gbcms requires ≥90% base match to auto-correct; below that, the variant is excluded.
@@ -211,7 +211,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     grep "REF_MISMATCH" /tmp/norm/normalized.maf | head -5
     ```
 
-??? question "`PASS_WARN_REF_CORRECTED` — is this a problem?"
+??? question "`PASS;WARN_REF_CORRECTED` — is this a problem?"
 
     The REF allele was ≥90% match — corrected to FASTA sequence and counting proceeded normally.
     The original MAF REF is preserved in the `original_ref` column (when `--show-normalization` is set).
@@ -221,10 +221,10 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     If you want to audit all corrected variants:
     ```bash
-    grep "PASS_WARN_REF_CORRECTED" output.maf | wc -l
+    grep "PASS;WARN_REF_CORRECTED" output.maf | wc -l
     ```
 
-??? question "`PASS_WARN_HOMOPOLYMER_DECOMP` — what changed?"
+??? question "`PASS;WARN_HOMOPOLYMER_DECOMP` — what changed?"
 
     The variant overlapped a homopolymer, and the corrected allele (e.g., `CCCCCC→CCCCT` instead
     of `CCCCCC→T`) got more ALT support. The corrected allele counts were used.

@@ -5,6 +5,91 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2026-05-10
+
+### ⚠️ Breaking Changes
+
+- **`validation_status` → `gbcms_status`**: MAF column and Python API parameter
+  renamed. `gbcms_status` now uses semicolon-separated multi-value format
+  (e.g., `PASS;WARN_REF_CORRECTED`, `PASS;MULTI_ALLELIC`). The first token
+  is always `PASS` or `FAIL_*`.
+- **VCF `VS` → `GS`/`GD`/`GR`**: VCF INFO key `VS` replaced by `GS`
+  (status), `GD` (diagnostic), and `GR` (rescue). Downstream VCF parsers
+  must update field references.
+- **Status value format**: Old underscore-joined statuses
+  (`PASS_WARN_HOMOPOLYMER_DECOMP`, `PASS_MULTI_ALLELIC`) replaced with
+  semicolon-separated (`PASS;WARN_HOMOPOLYMER_DECOMP`, `PASS;MULTI_ALLELIC`).
+
+### ✨ Added
+
+- **`gbcms_diagnostic` column (MAF) + `GD` INFO key (VCF)**: Post-counting
+  diagnostic flags computed automatically. Flags include:
+    - `ZERO_ALT`: No confirmed ALT reads despite successful counting.
+    - `PARTIAL_DOMINANT`: More structural/partial evidence than confirmed ALT.
+    - `MNP_SPARSE_DISC(n/m)`: MNP with ≤50% discriminating positions.
+    - `HIGH_N_FRACTION(f)`: N-base fraction exceeding 5% at discriminating positions.
+- **`--rescue-mnp` CLI flag**: Enables MNP rescue pass for sparse multi-base
+  substitutions. When `ad=0` and `MNP_SPARSE_DISC` is flagged, decomposes the
+  MNP into individual SNP positions and re-counts via `count_bam_binned`.
+  Available in both `gbcms dna` and `gbcms rna` modes.
+- **`gbcms_rescue` column (MAF) + `GR` INFO key (VCF)**: Conditional —
+  only present when `--rescue-mnp` is enabled. Contains structured audit trail:
+  `method=decomposed;original_alt=0;positions=chr:pos(R>A):count,...`.
+  Failed rescues include `outcome=no_signal`.
+- **`has_nearby_evidence` (Rust)**: New `ClassifyResult` field propagating
+  structural evidence from variant checkers (INS/DEL/Complex) and alignment
+  backends (SW/PairHMM). Enables `partial_alt` counting for INDELs.
+- **`partial_alt` now populated for INDELs**: Previously always 0 for
+  SNP/INDEL. Now fired when the counting engine detects nearby structural
+  evidence (right-length INDEL, non-zero ALT alignment score).
+- **Diagnostic flag summary logging**: `info`-level log of diagnostic flag
+  distribution per sample (e.g., `ZERO_ALT=12, PARTIAL_DOMINANT=3`).
+
+### 🔧 Fixed
+
+- **`partial_alt` description**: Documentation corrected to reflect that
+  `partial_alt` is now populated for all variant types, not just MNP/Complex.
+
+### 📝 Notes
+
+- **Invariant 1 breakage (rescue only)**: After rescue, `any_alt = ad + partial_alt`
+  no longer holds for rescued variants. `ad` is updated with the best decomposed
+  SNP count while `any_alt` and `partial_alt` retain original MNP-level values
+  as forensic evidence.
+- **Rescue strategy**: Python-side post-processing using decomposed SNP
+  re-counting. Coordinate shift strategy is reserved for a future release.
+
+### 🧪 Tests
+
+- **[NEW]** `tests/test_diagnostic_flags.py` — 15 tests covering all 4
+  diagnostic flags, multi-flag combinations, FAIL exclusion, boundary
+  conditions, and parametric formatting.
+- **[NEW]** `tests/test_rescue_mnp.py` — 13 tests covering config defaults,
+  conditional column/INFO presence, candidate identification, guard rails
+  (skip non-MNP, skip ad>0, skip FAIL), audit trail format, no-signal cases,
+  column count with rescue, and invariant breakage verification.
+- Updated `test_normalization.py` (12 refs), `test_pipeline_v2.py` (4 refs),
+  `test_phase2_output.py` (column count 24→26), `test_multi_allelic.py` for
+  `gbcms_status` rename.
+- All 238 Python tests pass; all 119 Rust tests pass.
+
+### 📚 Documentation
+
+- **Updated** `docs/reference/output-formats.md` — `gbcms_status`,
+  `gbcms_diagnostic`, `gbcms_rescue` columns; `partial_alt` description
+  corrected; prefix behavior updated.
+- **Updated** `docs/reference/architecture.md` — MNP rescue architecture,
+  data flow diagram, Python-vs-Rust design rationale, invariant impact.
+- **Updated** `docs/development/developer-guide.md` — Rescue debugging,
+  extension guidelines, test fixture requirements.
+- **Updated** `docs/reference/variant-normalization.md` — status field name
+  and multi-value format.
+- **Updated** `docs/reference/allele-classification.md` — multi-allelic
+  status format.
+- **Updated** `docs/cli/normalize.md` — `gbcms_status` column name.
+- **Updated** `docs/resources/troubleshooting.md` — status field references.
+
+
 ## [4.1.0] - 2026-05-04
 
 ### ⚠️ Breaking Changes

@@ -2,7 +2,7 @@
 Tests for Gap 1A: Multi-Allelic Isolation.
 
 Phase 1: Verify that overlapping variants at the same locus are annotated with
-         matching multi_allelic_group IDs and _MULTI_ALLELIC validation_status.
+         matching multi_allelic_group IDs and ;MULTI_ALLELIC gbcms_status.
 
 Phase 2: Verify that reads carrying a sibling ALT allele are excluded from
          REF counts for the current variant.

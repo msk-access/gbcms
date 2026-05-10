@@ -14,6 +14,7 @@ import logging
 import time
 import types
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.progress import (
@@ -197,9 +198,7 @@ class Pipeline:
         )
 
         # Split into valid (for counting) and all (for output)
-        valid_indices = [
-            i for i, p in enumerate(prepared) if p.validation_status.startswith("PASS")
-        ]
+        valid_indices = [i for i, p in enumerate(prepared) if p.gbcms_status.startswith("PASS")]
         rs_variants = [prepared[i].variant for i in valid_indices]
 
         # Log validation results
@@ -210,7 +209,7 @@ class Pipeline:
             n_invalid,
             len(prepared),
         )
-        invalid = [p for p in prepared if not p.validation_status.startswith("PASS")]
+        invalid = [p for p in prepared if not p.gbcms_status.startswith("PASS")]
         for p in invalid[:5]:
             logger.warning(
                 "Rejected variant: %s:%d %s>%s — %s",
@@ -218,7 +217,7 @@ class Pipeline:
                 p.original_pos + 1,
                 p.original_ref,
                 p.original_alt,
-                p.validation_status,
+                p.gbcms_status,
             )
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
@@ -416,14 +415,21 @@ class Pipeline:
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 
-            # Update validation_status for variants where decomposed allele won
+            # Update gbcms_status for variants where decomposed allele won
             for idx, counts in zip(valid_indices, counts_list, strict=True):
                 if counts.used_decomposed:
-                    prepared[idx].validation_status = "PASS_WARN_HOMOPOLYMER_DECOMP"
+                    prepared[idx].gbcms_status = "PASS;WARN_HOMOPOLYMER_DECOMP"
 
             # Merge counts back into full variant list
             # Valid variants get real counts; rejected variants get zero counts.
             full_counts = self._merge_counts(prepared, counts_list, valid_indices)
+
+            # Post-counting: compute diagnostic flags (gbcms_diagnostic)
+            self._compute_diagnostics(prepared, full_counts)
+
+            # Post-counting: MNP rescue pass (optional, --rescue-mnp)
+            if self.config.rescue_mnp:
+                self._rescue_mnp_pass(prepared, full_counts, bam_path, sample_name)
 
             # Write Output (all variants, including rejected with zero counts)
             self._write_output(sample_name, variants, full_counts, prepared)
@@ -457,6 +463,286 @@ class Pipeline:
             else:
                 merged.append(_zero_counts())
         return merged
+
+    @staticmethod
+    def _compute_diagnostics(prepared: list, full_counts: list) -> None:
+        """Compute post-counting diagnostic flags and populate gbcms_diagnostic.
+
+        Diagnostic flags are semicolon-separated and stored in each
+        PreparedVariant's gbcms_diagnostic field. Only PASS variants receive
+        diagnostics; FAIL variants keep gbcms_diagnostic empty.
+
+        Flags (per design §3):
+            ZERO_ALT: ad == 0 and variant was successfully counted.
+            PARTIAL_DOMINANT: partial_alt > ad (more structural evidence
+                than confirmed ALT calls).
+            MNP_SPARSE_DISC(n/m): for MNPs (ref_len == alt_len > 1),
+                fewer than half of positions are discriminating.
+            HIGH_N_FRACTION(f): n_count / dp > 0.05 (duplex masking hotspot).
+        """
+        flag_counts: dict[str, int] = {}
+
+        for pv, counts in zip(prepared, full_counts, strict=True):
+            # Only PASS variants get diagnostics; FAIL variants are not counted
+            if not pv.gbcms_status.startswith("PASS"):
+                continue
+
+            flags: list[str] = []
+
+            # ZERO_ALT: no confirmed ALT reads despite successful counting
+            if counts.ad == 0:
+                flags.append("ZERO_ALT")
+
+            # PARTIAL_DOMINANT: more structural/partial evidence than confirmed ALT
+            if counts.partial_alt > counts.ad:
+                flags.append("PARTIAL_DOMINANT")
+
+            # MNP_SPARSE_DISC: for MNPs, compute discriminating position ratio
+            ref_allele = pv.variant.ref_allele
+            alt_allele = pv.variant.alt_allele
+            ref_len = len(ref_allele)
+            alt_len = len(alt_allele)
+            if ref_len == alt_len and ref_len > 1:
+                # Count positions where ref != alt (discriminating positions)
+                disc = sum(1 for r, a in zip(ref_allele, alt_allele, strict=False) if r != a)
+                if ref_len > 0 and disc / ref_len <= 0.50:
+                    flags.append(f"MNP_SPARSE_DISC({disc}/{ref_len})")
+
+            # HIGH_N_FRACTION: high rate of N-bases at discriminating positions
+            if counts.dp > 0 and counts.n_count / counts.dp > 0.05:
+                frac = counts.n_count / counts.dp
+                flags.append(f"HIGH_N_FRACTION({frac:.2f})")
+
+            # Populate the diagnostic field
+            diagnostic = ";".join(flags)
+            pv.gbcms_diagnostic = diagnostic
+
+            # Track flag counts for logging
+            for flag_name in flags:
+                # Normalize parametric flags for counting
+                base_flag = flag_name.split("(")[0]
+                flag_counts[base_flag] = flag_counts.get(base_flag, 0) + 1
+
+        # Log diagnostic summary
+        if flag_counts:
+            summary = ", ".join(f"{flag}={count}" for flag, count in sorted(flag_counts.items()))
+            logger.info("Diagnostic flags: %s", summary)
+        else:
+            logger.debug("No diagnostic flags triggered")
+
+    def _rescue_mnp_pass(
+        self,
+        prepared: list,
+        full_counts: list,
+        bam_path: Path,
+        sample_name: str,
+    ) -> None:
+        """MNP rescue pass: decompose sparse MNPs into individual SNPs and re-count.
+
+        For each PASS variant where:
+          - ad == 0 (no confirmed ALT reads)
+          - variant is MNP (ref_len == alt_len > 1)
+          - MNP_SPARSE_DISC is flagged in gbcms_diagnostic
+
+        The method creates synthetic SNP variants at each discriminating position,
+        prepares and counts them via the Rust engine, and takes the best (highest
+        alt_count) as the rescued value.
+
+        After rescue, Invariant 1 (any_alt = ad + partial_alt) intentionally breaks.
+        The original any_alt and partial_alt are forensic evidence from the original
+        MNP check; only ad is updated with the rescued value.
+
+        Design reference: validation_status_design.md §2, §5.
+
+        Args:
+            prepared: Full list of PreparedVariant objects.
+            full_counts: Merged counts (one per variant).
+            bam_path: Path to BAM file for re-counting.
+            sample_name: Sample name for logging.
+        """
+        rescue_start = time.perf_counter()
+        rs = _get_rs()
+
+        # 1. Identify rescue candidates
+        candidates: list[tuple[int, list[tuple[int, str, str]]]] = []
+        for i, (pv, counts) in enumerate(zip(prepared, full_counts, strict=True)):
+            if not pv.gbcms_status.startswith("PASS"):
+                continue
+            if counts.ad != 0:
+                continue
+            if "MNP_SPARSE_DISC" not in pv.gbcms_diagnostic:
+                continue
+
+            ref_allele = pv.variant.ref_allele
+            alt_allele = pv.variant.alt_allele
+            ref_len = len(ref_allele)
+            alt_len = len(alt_allele)
+            if ref_len != alt_len or ref_len <= 1:
+                continue
+
+            # Extract discriminating positions (where ref != alt)
+            disc_positions: list[tuple[int, str, str]] = []
+            for offset in range(ref_len):
+                if ref_allele[offset] != alt_allele[offset]:
+                    abs_pos = pv.variant.pos + offset
+                    disc_positions.append((abs_pos, ref_allele[offset], alt_allele[offset]))
+
+            if disc_positions:
+                candidates.append((i, disc_positions))
+
+        if not candidates:
+            logger.debug("MNP rescue: no candidates found for %s", sample_name)
+            return
+
+        logger.info("MNP rescue: %d candidate(s) for %s", len(candidates), sample_name)
+
+        # 2. Build synthetic SNP variants for all candidates (batched)
+        snp_variants: list = []
+        snp_map: list[tuple[int, int]] = []  # (candidate_idx, disc_idx)
+
+        for cand_idx, (pv_idx, disc_positions) in enumerate(candidates):
+            pv = prepared[pv_idx]
+            for disc_idx, (abs_pos, ref_base, alt_base) in enumerate(disc_positions):
+                snp_v = rs.Variant(pv.variant.chrom, abs_pos, ref_base, alt_base, "SNP")
+                snp_variants.append(snp_v)
+                snp_map.append((cand_idx, disc_idx))
+
+        # 3. Prepare synthetic SNPs (REF validation + ref_context)
+        snp_prepared = rs.prepare_variants(
+            snp_variants,
+            str(self.config.reference_fasta),
+            self.config.quality.context_padding,
+            False,  # is_maf=False — these are synthetic
+            self.config.threads,
+            self.config.quality.adaptive_context,
+        )
+
+        # Filter to only valid SNPs
+        valid_snp_indices = [
+            j for j, sp in enumerate(snp_prepared) if sp.gbcms_status.startswith("PASS")
+        ]
+        valid_snp_variants = [snp_prepared[j].variant for j in valid_snp_indices]
+
+        if not valid_snp_variants:
+            logger.warning(
+                "MNP rescue: all synthetic SNPs failed REF validation for %s",
+                sample_name,
+            )
+            # Mark all candidates as failed rescue
+            for _cand_idx, (pv_idx, _disc_positions) in enumerate(candidates):
+                pv = prepared[pv_idx]
+                pv.gbcms_rescue = "method=decomposed;original_alt=0;outcome=ref_validation_failed"
+            return
+
+        # 4. Count synthetic SNPs against the BAM
+        # No decomposed variants or siblings for simple SNPs
+        snp_decomposed = [None] * len(valid_snp_variants)
+        snp_siblings: list[list] = [[] for _ in valid_snp_variants]
+
+        align_cfg = self.config.alignment
+        snp_counts = rs.count_bam_binned(
+            str(bam_path),
+            valid_snp_variants,
+            snp_decomposed,
+            min_mapq=self.config.quality.min_mapping_quality,
+            min_baseq=self.config.quality.min_base_quality,
+            filter_duplicates=self.config.filters.duplicates,
+            filter_secondary=self.config.filters.secondary,
+            filter_supplementary=self.config.filters.supplementary,
+            filter_qc_failed=self.config.filters.qc_failed,
+            filter_improper_pair=self.config.filters.improper_pair,
+            filter_indel=self.config.filters.indel,
+            threads=self.config.threads,
+            fragment_qual_threshold=self.config.quality.fragment_qual_threshold,
+            sibling_variants=snp_siblings,
+            alignment_backend=align_cfg.backend,
+            hmm_llr_threshold=align_cfg.hmm_llr_threshold,
+            hmm_gap_open=align_cfg.hmm_gap_open,
+            hmm_gap_extend=align_cfg.hmm_gap_extend,
+            hmm_gap_open_repeat=align_cfg.hmm_gap_open_repeat,
+            hmm_gap_extend_repeat=align_cfg.hmm_gap_extend_repeat,
+            apply_baq=self.config.apply_baq,
+            umi_tag=self.config.umi_tag,
+            mode=self.config.mode,
+            enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
+            rna_editing_db=(
+                str(self.config.rna_editing_db)  # type: ignore[attr-defined]
+                if getattr(self.config, "rna_editing_db", None)
+                else None
+            ),
+        )
+
+        # 5. Map counts back to valid SNP indices
+        # Build a full-index → count map for valid SNPs
+        snp_count_by_idx: dict[int, Any] = {}
+        for offset, j in enumerate(valid_snp_indices):
+            snp_count_by_idx[j] = snp_counts[offset]
+
+        # 6. For each candidate, find the best rescue position
+        rescued_count = 0
+        attempted_count = len(candidates)
+
+        for cand_idx, (pv_idx, disc_positions) in enumerate(candidates):
+            pv = prepared[pv_idx]
+            counts = full_counts[pv_idx]
+
+            best_alt = 0
+            positions_str_parts: list[str] = []
+
+            for disc_idx, (abs_pos, ref_base, alt_base) in enumerate(disc_positions):
+                # Find the global SNP index for this disc position
+                global_snp_idx = sum(len(candidates[c][1]) for c in range(cand_idx)) + disc_idx
+
+                snp_alt = 0
+                if global_snp_idx in snp_count_by_idx:
+                    snp_alt = snp_count_by_idx[global_snp_idx].ad
+
+                positions_str_parts.append(
+                    f"{pv.variant.chrom}:{abs_pos + 1}({ref_base}>{alt_base}):{snp_alt}"
+                )
+
+                if snp_alt > best_alt:
+                    best_alt = snp_alt
+
+            positions_str = ",".join(positions_str_parts)
+
+            if best_alt > 0:
+                # Successful rescue: update ad with best decomposed SNP count
+                counts.ad = best_alt
+                pv.gbcms_rescue = f"method=decomposed;original_alt=0;positions={positions_str}"
+                rescued_count += 1
+                logger.debug(
+                    "MNP rescue: %s:%d %s>%s → rescued alt=%d via decomposed SNPs",
+                    pv.variant.chrom,
+                    pv.variant.pos + 1,
+                    pv.variant.ref_allele,
+                    pv.variant.alt_allele,
+                    best_alt,
+                )
+            else:
+                # Failed rescue: no signal at any disc position
+                pv.gbcms_rescue = (
+                    f"method=decomposed;original_alt=0;outcome=no_signal;"
+                    f"positions={positions_str}"
+                )
+                logger.debug(
+                    "MNP rescue: %s:%d %s>%s → no signal at any disc position",
+                    pv.variant.chrom,
+                    pv.variant.pos + 1,
+                    pv.variant.ref_allele,
+                    pv.variant.alt_allele,
+                )
+
+        rescue_time = time.perf_counter() - rescue_start
+        failed_count = attempted_count - rescued_count
+        logger.info(
+            "MNP rescue: %d/%d rescued, %d failed (%.3fs) for %s",
+            rescued_count,
+            attempted_count,
+            failed_count,
+            rescue_time,
+            sample_name,
+        )
 
     def _load_variants(self) -> list[Variant]:
         """Load variants based on file extension."""
@@ -543,6 +829,7 @@ class Pipeline:
                 show_normalization=self.config.show_normalization,
                 mfsd=self.config.output.mfsd,
                 mode=self.config.mode,
+                rescue_mnp=self.config.rescue_mnp,
             )
         else:
             # mode= is required so RNA-specific MAF columns (rna_sense_depth, etc.)
@@ -555,6 +842,7 @@ class Pipeline:
                 show_normalization=self.config.show_normalization,
                 mfsd=self.config.output.mfsd,
                 mode=self.config.mode,
+                rescue_mnp=self.config.rescue_mnp,
             )
         logger.debug(
             "Writer initialised: format=%s, mode=%s, sample=%s, path=%s",
@@ -582,7 +870,9 @@ class Pipeline:
                 v,
                 counts,
                 sample_name=sample_name,
-                validation_status=pv.validation_status if pv else "PASS",
+                gbcms_status=pv.gbcms_status if pv else "PASS",
+                gbcms_diagnostic=pv.gbcms_diagnostic if pv else "",
+                gbcms_rescue=pv.gbcms_rescue if pv else "",
                 norm_variant=norm_v,
             )
 

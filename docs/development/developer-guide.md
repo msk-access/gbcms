@@ -184,6 +184,60 @@ Key invariants to check:
 | `any_alt = ad + partial_alt` | Must hold for every row (Phase 2 decomposition invariant) |
 | `any_alt >= ad` | Must hold for every row |
 | `n_count / DP ratio` | Should be low (<5%) for clean sites; high ratios flag duplex masking hotspots |
+| `gbcms_status` starts with `PASS` or `FAIL_` | First token is always the verdict; no empty values |
+| `gbcms_diagnostic` empty for FAIL variants | Diagnostics only computed for PASS variants |
+| `gbcms_diagnostic` semicolon-separated | Flags use `;` delimiter (MAF) or `\|` (VCF) |
+| `gbcms_rescue` conditional column | Only present when `--rescue-mnp` is enabled (v4.3.0) |
+
+### MNP Rescue Pass (`--rescue-mnp`)
+
+!!! warning "Rescue Invariant Exception"
+    When `--rescue-mnp` is used, **Invariant 1** (`any_alt = ad + partial_alt`) intentionally breaks
+    for rescued variants. The `ad` is updated with the best decomposed SNP count, while `any_alt`
+    and `partial_alt` retain original MNP-level values as forensic evidence. The `gbcms_rescue`
+    audit trail documents the rescue provenance.
+
+**Architecture**: The rescue engine is implemented in **Python** (`pipeline.py::_rescue_mnp_pass()`)
+calling the existing **Rust** counting engine (`count_bam_binned()`). This was a deliberate choice:
+
+- The rescue pass is an **orchestration layer** — it decides _what_ to re-count, not _how_
+- The expensive work (BAM I/O, read classification) stays in Rust
+- Python has direct access to `gbcms_diagnostic` flags (set by `_compute_diagnostics()`)
+- Candidate filtering uses Python string matching on diagnostic strings
+- The typical rescue workload is 5–50 synthetic SNPs per sample (< 1s overhead)
+
+See [Architecture → MNP Rescue Pass](../reference/architecture.md#mnp-rescue-pass-rescue-mnp-v430)
+for the full design rationale and data flow diagram.
+
+**Pipeline integration point** — rescue runs **after** diagnostics, **before** output:
+
+```
+count_bam_binned() → _merge_counts() → _compute_diagnostics() → _rescue_mnp_pass() → _write_output()
+```
+
+**Debugging rescue**:
+
+```bash
+# Enable rescue with debug logging to see per-variant decisions
+GBCMS_LOG_LEVEL=DEBUG gbcms dna --rescue-mnp --variants input.maf --bam sample:sample.bam --fasta ref.fa --format maf --output-dir out/
+
+# Look for rescue log lines:
+# INFO  — "MNP rescue: 3 candidate(s) for SAMPLE"
+# DEBUG — "MNP rescue: chr5:1295251 GAGGG>AAGGA → rescued alt=108 via decomposed SNPs"
+# INFO  — "MNP rescue: 2/3 rescued, 1 failed (0.342s) for SAMPLE"
+```
+
+**Extending rescue**: If adding a new rescue strategy (e.g. coordinate shift for the BRCA2 case):
+
+1. Add the strategy as a new code path in `_rescue_mnp_pass()`
+2. Use a different `method=` value in the audit trail (e.g. `method=coordinate_shift`)
+3. The `outcome=no_signal` sentinel is reserved for failed decomposed rescue
+4. Always log at DEBUG per-variant and INFO summary
+5. Add tests to `test_rescue_mnp.py` covering the new strategy's candidate criteria
+
+**Test fixtures**: Any manually instantiated `MafWriter`/`VcfWriter` (via `__new__`) **must**
+set `rescue_mnp=False` (or `True`) explicitly, or `_gbcms_column_names()` will raise
+`AttributeError`. See `test_phase2_output.py` for examples.
 
 ### Variant-Type-Specific Investigation
 

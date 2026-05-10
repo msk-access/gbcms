@@ -110,6 +110,7 @@ class MafWriter(OutputWriter):
         show_normalization: bool = False,
         mfsd: bool = False,
         mode: str = "dna",
+        rescue_mnp: bool = False,
     ):
         """
         Initialize MafWriter.
@@ -133,18 +134,20 @@ class MafWriter(OutputWriter):
         self.show_normalization = show_normalization
         self.mfsd = mfsd
         self.mode = mode
+        self.rescue_mnp = rescue_mnp
         self.file = open(path, "w")
         self.writer: csv.DictWriter | None = None
         self._headers_written = False
         logger.debug(
             "MafWriter initialized: path=%s, column_prefix='%s', "
-            "preserve_barcode=%s, show_normalization=%s, mfsd=%s, mode=%s",
+            "preserve_barcode=%s, show_normalization=%s, mfsd=%s, mode=%s, rescue_mnp=%s",
             path,
             column_prefix,
             preserve_barcode,
             show_normalization,
             mfsd,
             mode,
+            rescue_mnp,
         )
 
     def _gbcms_column_names(self) -> list[str]:
@@ -155,40 +158,48 @@ class MafWriter(OutputWriter):
             Ordered list of gbcms column names.
         """
         p = self.column_prefix
+        # Diagnostic columns (v4.2.0 three-column schema)
         cols = [
-            # Validation status
-            "validation_status",
-            # Core counts
-            f"{p}ref_count",
-            f"{p}alt_count",
-            f"{p}total_count",
-            f"{p}vaf",
-            # Fragment counts
-            f"{p}ref_count_fragment",
-            f"{p}alt_count_fragment",
-            f"{p}total_count_fragment",
-            f"{p}vaf_fragment",
-            # Strand bias (unprefixed — always unique)
-            "strand_bias_p_value",
-            "strand_bias_odds_ratio",
-            "fragment_strand_bias_p_value",
-            "fragment_strand_bias_odds_ratio",
-            # Strand counts
-            f"{p}ref_count_forward",
-            f"{p}ref_count_reverse",
-            f"{p}alt_count_forward",
-            f"{p}alt_count_reverse",
-            f"{p}ref_count_fragment_forward",
-            f"{p}ref_count_fragment_reverse",
-            f"{p}alt_count_fragment_forward",
-            f"{p}alt_count_fragment_reverse",
-            # Decomposed ALT counting (diagnostic, always present)
-            # any_alt = ad + partial_alt (see types.rs invariant)
-            f"{p}any_alt",
-            f"{p}partial_alt",
-            # N-base diagnostic: reads with N at discriminating position (duplex masking QC)
-            f"{p}n_count",
+            "gbcms_status",
+            "gbcms_diagnostic",
         ]
+        # gbcms_rescue column is only present when --rescue-mnp is enabled (design §5)
+        if self.rescue_mnp:
+            cols.append("gbcms_rescue")
+        cols.extend(
+            [
+                # Core counts
+                f"{p}ref_count",
+                f"{p}alt_count",
+                f"{p}total_count",
+                f"{p}vaf",
+                # Fragment counts
+                f"{p}ref_count_fragment",
+                f"{p}alt_count_fragment",
+                f"{p}total_count_fragment",
+                f"{p}vaf_fragment",
+                # Strand bias (unprefixed — always unique)
+                "strand_bias_p_value",
+                "strand_bias_odds_ratio",
+                "fragment_strand_bias_p_value",
+                "fragment_strand_bias_odds_ratio",
+                # Strand counts
+                f"{p}ref_count_forward",
+                f"{p}ref_count_reverse",
+                f"{p}alt_count_forward",
+                f"{p}alt_count_reverse",
+                f"{p}ref_count_fragment_forward",
+                f"{p}ref_count_fragment_reverse",
+                f"{p}alt_count_fragment_forward",
+                f"{p}alt_count_fragment_reverse",
+                # Decomposed ALT counting (diagnostic, always present)
+                # any_alt = ad + partial_alt (see types.rs invariant)
+                f"{p}any_alt",
+                f"{p}partial_alt",
+                # N-base diagnostic: reads with N at discriminating position (duplex masking QC)
+                f"{p}n_count",
+            ]
+        )
         if self.mfsd:
             # ── mFSD: Mutant Fragment Size Distribution (40 columns) ──────────
             # Only appended when --mfsd is set. Without the flag these columns
@@ -470,7 +481,9 @@ class MafWriter(OutputWriter):
         variant: Variant,
         counts: Any,
         sample_name: str = "TUMOR",
-        validation_status: str = "PASS",
+        gbcms_status: str = "PASS",
+        gbcms_diagnostic: str = "",
+        gbcms_rescue: str = "",
         norm_variant: Variant | None = None,
     ) -> None:
         """
@@ -486,7 +499,9 @@ class MafWriter(OutputWriter):
             variant: Normalized Variant with optional metadata from input MAF.
             counts: BaseCounts object from the Rust engine.
             sample_name: Sample name for Tumor_Sample_Barcode column.
-            validation_status: Validation status from prepare_variants().
+            gbcms_status: Normalization/counting status from prepare_variants().
+            gbcms_diagnostic: Post-counting diagnostic flags.
+            gbcms_rescue: Rescue audit trail.
             norm_variant: Optional left-aligned Variant (for --show-normalization).
         """
         # Initialize writer on first variant (headers depend on input format)
@@ -533,7 +548,11 @@ class MafWriter(OutputWriter):
             row["Tumor_Sample_Barcode"] = sample_name
 
         # Append gbcms count columns (both paths, never overwrites originals)
-        row["validation_status"] = validation_status
+        row["gbcms_status"] = gbcms_status
+        row["gbcms_diagnostic"] = gbcms_diagnostic
+        # gbcms_rescue only present when --rescue-mnp is enabled (design §5)
+        if self.rescue_mnp:
+            row["gbcms_rescue"] = gbcms_rescue
         # Extract Hugo_Symbol from MAF metadata for CH gene flagging (empty for VCF input)
         hugo = variant.metadata.get("Hugo_Symbol", "") if variant.metadata else ""
         row.update(self._populate_gbcms_counts(counts, hugo_symbol=hugo))
@@ -565,21 +584,25 @@ class VcfWriter(OutputWriter):
         show_normalization: bool = False,
         mfsd: bool = False,
         mode: str = "dna",
+        rescue_mnp: bool = False,
     ):
         self.path = path
         self.sample_name = sample_name
         self.show_normalization = show_normalization
         self.mfsd = mfsd
         self.mode = mode
+        self.rescue_mnp = rescue_mnp
         self.file = open(path, "w")
         self._headers_written = False
         logger.debug(
-            "VcfWriter initialized: path=%s, sample=%s, show_normalization=%s, mfsd=%s, mode=%s",
+            "VcfWriter initialized: path=%s, sample=%s, show_normalization=%s, "
+            "mfsd=%s, mode=%s, rescue_mnp=%s",
             path,
             sample_name,
             show_normalization,
             mfsd,
             mode,
+            rescue_mnp,
         )
 
     def _write_header(self):
@@ -591,15 +614,25 @@ class VcfWriter(OutputWriter):
             "##fileformat=VCFv4.2",
             "##source=gbcms",
             '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
-            '##INFO=<ID=VS,Number=1,Type=String,Description="Validation status from prepare_variants">',
-            '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">',
-            '##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">',
-            '##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">',
-            '##INFO=<ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio">',
-            '##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at >=1 discriminating position (any_alt = ad + partial_alt)">',
-            '##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions">',
-            '##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)">',
+            '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">',
+            '##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">',
         ]
+        # GR INFO header only included when --rescue-mnp is enabled (design §5)
+        if self.rescue_mnp:
+            headers.append(
+                '##INFO=<ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail">'
+            )
+        headers.extend(
+            [
+                '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">',
+                '##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">',
+                '##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">',
+                '##INFO=<ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio">',
+                '##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at >=1 discriminating position (any_alt = ad + partial_alt)">',
+                '##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions">',
+                '##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)">',
+            ]
+        )
         if self.mfsd:
             # mFSD INFO fields (7 primary diagnostics). VCF key = MAF column name uppercased.
             # Only added when --mfsd is set — keeps VCF header minimal for standard runs.
@@ -666,7 +699,9 @@ class VcfWriter(OutputWriter):
         variant: Variant,
         counts: Any,
         sample_name: str = "SAMPLE",
-        validation_status: str = "PASS",
+        gbcms_status: str = "PASS",
+        gbcms_diagnostic: str = "",
+        gbcms_rescue: str = "",
         norm_variant: Variant | None = None,
     ):
         if not self._headers_written:
@@ -676,17 +711,31 @@ class VcfWriter(OutputWriter):
         pos = variant.pos + 1
 
         # INFO fields (VCF spec: missing values use '.' not 'NA')
+        # VCF uses ';' as the INFO field delimiter, so multi-value fields
+        # (GS, GD) convert ';' → '|' to avoid parser mis-splitting.
+        # GR is handled conditionally below (only when --rescue-mnp).
+        gs_vcf = gbcms_status.replace(";", "|")
+        gd_vcf = gbcms_diagnostic.replace(";", "|") if gbcms_diagnostic else "."
         info_parts = [
             f"DP={counts.dp}",
-            f"VS={validation_status}",
-            f"SB_PVAL={counts.sb_pval:.4e}",
-            f"SB_OR={counts.sb_or:.4f}",
-            f"FSB_PVAL={counts.fsb_pval:.4e}",
-            f"FSB_OR={counts.fsb_or:.4f}",
-            f"AAD={counts.any_alt}",
-            f"PAD={counts.partial_alt}",
-            f"NAD={counts.n_count}",
+            f"GS={gs_vcf}",
+            f"GD={gd_vcf}",
         ]
+        # GR INFO value only included when --rescue-mnp is enabled (design §5)
+        if self.rescue_mnp:
+            gr_vcf = gbcms_rescue.replace(";", "|") if gbcms_rescue else "."
+            info_parts.append(f"GR={gr_vcf}")
+        info_parts.extend(
+            [
+                f"SB_PVAL={counts.sb_pval:.4e}",
+                f"SB_OR={counts.sb_or:.4f}",
+                f"FSB_PVAL={counts.fsb_pval:.4e}",
+                f"FSB_OR={counts.fsb_or:.4f}",
+                f"AAD={counts.any_alt}",
+                f"PAD={counts.partial_alt}",
+                f"NAD={counts.n_count}",
+            ]
+        )
         if self.mfsd:
             # mFSD primary diagnostic INFO fields (7 values).
             # Only populated when --mfsd is set; '.' for NaN per VCF spec.

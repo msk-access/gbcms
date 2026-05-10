@@ -354,6 +354,18 @@ class GbcmsBaseConfig(BaseModel):
         description="Add normalization columns showing left-aligned coordinates to output.",
     )
 
+    # MNP rescue pass (v4.3.0 — design §2)
+    rescue_mnp: bool = Field(
+        default=False,
+        description=(
+            "Enable MNP rescue pass for sparse multi-base substitutions. "
+            "When ad=0 and MNP_SPARSE_DISC is flagged, decomposes the MNP into "
+            "individual SNP positions and re-counts. Populates gbcms_rescue with "
+            "a structured audit trail. Intentionally breaks Invariant 1 "
+            "(any_alt = ad + partial_alt) for rescued variants."
+        ),
+    )
+
     @field_validator("variant_file", "reference_fasta")
     @classmethod
     def validate_file_exists(cls, v: Path) -> Path:

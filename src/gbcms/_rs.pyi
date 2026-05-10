@@ -116,7 +116,7 @@ class PreparedVariant:
     original_pos: int
     original_ref: str
     original_alt: str
-    validation_status: str
+    gbcms_status: str
     was_anchor_resolved: bool
     was_left_aligned: bool
     @property

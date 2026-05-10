@@ -838,6 +838,16 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                 trace!("Phase 2.5 → REF (edit distance margin, had_n={})", had_n);
                 let mut r = ClassifyResult::is_ref(med_haplotype_qual, ClassifyPhase::Levenshtein);
                 r.has_n_base = had_n;
+                // Propagate nearby evidence: Levenshtein classified as REF, but
+                // if ALT edit distance is close (within 3 edits of REF), the read
+                // has partial ALT evidence worth tracking for diagnostics.
+                if d_alt <= d_ref + 3 {
+                    r.has_nearby_evidence = true;
+                    trace!(
+                        "Phase 2.5: ALT edit distance {} close to REF {} → has_nearby_evidence=true",
+                        d_alt, d_ref
+                    );
+                }
                 return r;
             }
             // else: ambiguous, fall through to Phase 3
@@ -1254,7 +1264,18 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
              falling back to check_complex for Phase 3 SW",
             expected_ins_len, anchor_pos
         );
-        return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+        let mut result = phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+        // Propagate nearby evidence: Phase 3 may return is_ref or neither,
+        // but the CIGAR proved a length-matching insertion exists. Mark it
+        // so the engine can count this read as partial_alt evidence.
+        if !result.is_alt {
+            result.has_nearby_evidence = true;
+            trace!(
+                "check_insertion: Phase 3 did not confirm ALT, but nearby I({}) exists → has_nearby_evidence=true",
+                expected_ins_len
+            );
+        }
+        return result;
     }
 
     if found_ref_coverage {
@@ -1623,7 +1644,18 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
              falling back to check_complex for Phase 3 SW",
             expected_del_len, anchor_pos
         );
-        return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+        let mut result = phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+        // Propagate nearby evidence: Phase 3 may return is_ref or neither,
+        // but the CIGAR proved a length-matching deletion exists. Mark it
+        // so the engine can count this read as partial_alt evidence.
+        if !result.is_alt {
+            result.has_nearby_evidence = true;
+            trace!(
+                "check_deletion: Phase 3 did not confirm ALT, but nearby D({}) exists → has_nearby_evidence=true",
+                expected_del_len
+            );
+        }
+        return result;
     }
 
     if found_ref_coverage {
