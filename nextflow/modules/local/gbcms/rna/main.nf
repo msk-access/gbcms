@@ -4,7 +4,7 @@ process GBCMS_RNA {
 
     publishDir "${params.outdir}/gbcms", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:4.1.0"
+    container "ghcr.io/msk-access/gbcms:4.2.0"
 
     input:
     tuple val(meta), path(bam), path(bai), path(variants)
