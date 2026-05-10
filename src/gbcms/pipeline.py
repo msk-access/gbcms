@@ -856,6 +856,7 @@ class Pipeline:
                 show_normalization=self.config.show_normalization,
                 mfsd=self.config.output.mfsd,
                 mode=self.config.mode,
+                rescue_mnp=self.config.rescue_mnp,
             )
         else:
             # mode= is required so RNA-specific MAF columns (rna_sense_depth, etc.)
@@ -868,6 +869,7 @@ class Pipeline:
                 show_normalization=self.config.show_normalization,
                 mfsd=self.config.output.mfsd,
                 mode=self.config.mode,
+                rescue_mnp=self.config.rescue_mnp,
             )
         logger.debug(
             "Writer initialised: format=%s, mode=%s, sample=%s, path=%s",

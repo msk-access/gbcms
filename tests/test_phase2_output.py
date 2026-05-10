@@ -123,6 +123,7 @@ def test_maf_has_diagnostic_columns():
     writer.mfsd = False
     writer.show_normalization = False
     writer.mode = "dna"
+    writer.rescue_mnp = False
 
     cols = writer._gbcms_column_names()
     assert "any_alt" in cols, f"'any_alt' missing from MAF columns: {cols}"
@@ -159,6 +160,7 @@ def test_maf_diagnostic_columns_respect_prefix():
     writer.mfsd = False
     writer.show_normalization = False
     writer.mode = "dna"
+    writer.rescue_mnp = False
 
     cols = writer._gbcms_column_names()
     assert "t_any_alt" in cols, "'t_any_alt' missing from prefixed columns"
@@ -281,13 +283,15 @@ def test_column_count_delta_is_three():
     writer.mfsd = False
     writer.show_normalization = False
     writer.mode = "dna"
+    writer.rescue_mnp = False
 
     cols = writer._gbcms_column_names()
     # Phase 0/1 baseline was 21 (validation_status + 4 core + 4 frag + 4 bias + 8 strand)
     # Phase 2+2b added 3 (any_alt + partial_alt + n_count) = 24
-    # v4.2.0 added 2 (gbcms_diagnostic + gbcms_rescue, replaces validation_status with gbcms_status) = 26
-    assert len(cols) == 26, (
-        f"Expected 26 gbcms MAF columns (21 baseline + 3 diagnostic + 2 new columns), " f"got {len(cols)}: {cols}"
+    # v4.2.0 added 1 (gbcms_diagnostic, replaces validation_status with gbcms_status) = 25
+    # gbcms_rescue is conditional (only with --rescue-mnp), so excluded here
+    assert len(cols) == 25, (
+        f"Expected 25 gbcms MAF columns (21 baseline + 3 diagnostic + 1 new column), " f"got {len(cols)}: {cols}"
     )
 
 
@@ -341,7 +345,7 @@ def test_vcf_gs_gd_use_pipe_separator(tmp_path, mock_variant):
     """
     counts = _mock_counts(any_alt=0, partial_alt=0, n_count=0)
     vcf_path = tmp_path / "test.vcf"
-    writer = VcfWriter(vcf_path, sample_name="TUMOR")
+    writer = VcfWriter(vcf_path, sample_name="TUMOR", rescue_mnp=True)
     # Pass multi-value status and diagnostic with semicolons
     writer.write(
         mock_variant,

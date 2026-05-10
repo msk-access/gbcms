@@ -35,6 +35,7 @@ def test_rna_maf_has_rna_columns():
     writer.mfsd = False
     writer.show_normalization = False
     writer.mode = "rna"
+    writer.rescue_mnp = False
 
     columns = writer._gbcms_column_names()
     for col in RNA_MAF_COLUMNS:
@@ -48,6 +49,7 @@ def test_dna_maf_lacks_rna_columns():
     writer.mfsd = False
     writer.show_normalization = False
     writer.mode = "dna"
+    writer.rescue_mnp = False
 
     columns = writer._gbcms_column_names()
     for col in RNA_MAF_COLUMNS:
@@ -94,12 +96,14 @@ def test_rna_maf_column_count():
     dna_writer.mfsd = False
     dna_writer.show_normalization = False
     dna_writer.mode = "dna"
+    dna_writer.rescue_mnp = False
 
     rna_writer = MafWriter.__new__(MafWriter)
     rna_writer.column_prefix = ""
     rna_writer.mfsd = False
     rna_writer.show_normalization = False
     rna_writer.mode = "rna"
+    rna_writer.rescue_mnp = False
 
     dna_cols = dna_writer._gbcms_column_names()
     rna_cols = rna_writer._gbcms_column_names()
