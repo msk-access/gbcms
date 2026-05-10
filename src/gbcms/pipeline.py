@@ -14,6 +14,7 @@ import logging
 import time
 import types
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.progress import (
@@ -673,7 +674,7 @@ class Pipeline:
 
         # 5. Map counts back to valid SNP indices
         # Build a full-index → count map for valid SNPs
-        snp_count_by_idx: dict[int, object] = {}
+        snp_count_by_idx: dict[int, Any] = {}
         for offset, j in enumerate(valid_snp_indices):
             snp_count_by_idx[j] = snp_counts[offset]
 
