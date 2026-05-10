@@ -60,9 +60,9 @@ Technical terms used throughout the documentation.
 | Status | Meaning |
 |:-------|:--------|
 | **PASS** | Variant validated against reference, ready for counting |
-| **PASS_WARN_REF_CORRECTED** | REF allele ≥90% match; corrected to FASTA REF |
-| **PASS_WARN_HOMOPOLYMER_DECOMP** | Variant spans a homopolymer; dual-counted with corrected allele (corrected won) |
-| **PASS_MULTI_ALLELIC** | Variant overlaps another variant at the same locus; sibling ALT exclusion active |
+| **PASS;WARN_REF_CORRECTED** | REF allele ≥90% match; corrected to FASTA REF |
+| **PASS;WARN_HOMOPOLYMER_DECOMP** | Variant spans a homopolymer; dual-counted with corrected allele (corrected won) |
+| **PASS;MULTI_ALLELIC** | Variant overlaps another variant at the same locus; sibling ALT exclusion active |
 | **REF_MISMATCH** | REF allele does not match the reference genome at the stated position |
 | **FETCH_FAILED** | Could not fetch the reference region (chromosome not found, etc.) |
 

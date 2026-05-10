@@ -150,13 +150,13 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `DP` | Integer | Total read depth at position |
-    | `VS` | String | Validation status (`PASS`, `PASS_WARN_HOMOPOLYMER_DECOMP`, `PASS_WARN_REF_CORRECTED`, `REF_MISMATCH`, `FETCH_FAILED`, `FAIL_ALT_CONTAINS_N`) |
+    | `VS` | String | Validation status (`PASS`, `PASS;WARN_HOMOPOLYMER_DECOMP`, `PASS;WARN_REF_CORRECTED`, `REF_MISMATCH`, `FETCH_FAILED`, `FAIL_ALT_CONTAINS_N`) |
     | `SB_PVAL` | Float | Fisher's exact test p-value for read-level strand bias |
     | `SB_OR` | Float | Fisher's exact test odds ratio for read-level strand bias |
     | `FSB_PVAL` | Float | Fragment-level strand bias p-value |
     | `FSB_OR` | Float | Fragment-level strand bias odds ratio |
     | `AAD` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `AAD = AD + PAD` |
-    | `PAD` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions (MNP/Complex only; always 0 for SNP/indel) |
+    | `PAD` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions — now populated for all variant types including INDELs (via structural evidence propagation) |
     | `NAD` | Integer | N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric) |
 
 === "RNA mode only"
@@ -308,7 +308,9 @@ These columns are **always** appended regardless of input format.
 
     | Column | Type | Description |
     |:-------|:-----|:------------|
-    | `validation_status` | String | REF validation result (`PASS`, `REF_MISMATCH`, `FAIL_ALT_CONTAINS_N`, etc.) |
+    | `gbcms_status` | String | Normalization/counting status. Semicolon-separated multi-value. First token is always `PASS` or `FAIL_*`. Examples: `PASS`, `PASS;WARN_REF_CORRECTED`, `FAIL_REF_MISMATCH`. |
+    | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_SPARSE_DISC(2/5)`. |
+    | `gbcms_rescue` | String | Rescue audit trail. Empty until `--rescue-mnp` is enabled (v4.3.0). |
     | `ref_count` | Integer | REF read depth |
     | `alt_count` | Integer | ALT read depth |
     | `total_count` | Integer | Total read depth (DP) |
@@ -330,12 +332,12 @@ These columns are **always** appended regardless of input format.
     | `alt_count_fragment_forward` | Integer | ALT fragments on forward strand |
     | `alt_count_fragment_reverse` | Integer | ALT fragments on reverse strand |
     | `any_alt` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `any_alt = alt_count + partial_alt` |
-    | `partial_alt` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions (MNP/Complex only; always 0 for SNP/indel) |
+    | `partial_alt` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Now populated for all variant types including INDELs (via structural evidence propagation). |
     | `n_count` | Integer | N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric) |
 
 === "With `--column-prefix t_`"
 
-    All count columns above (except `validation_status` and strand bias) are
+    All count columns above (except `gbcms_status`, `gbcms_diagnostic`, `gbcms_rescue`, and strand bias) are
     prefixed with `t_`:
 
     | Column | Example |
@@ -360,7 +362,7 @@ These columns are **always** appended regardless of input format.
     ```
 
     !!! note
-        `validation_status` and the four `strand_bias_*` columns are **never
+        `gbcms_status`, `gbcms_diagnostic`, `gbcms_rescue`, and the four `strand_bias_*` columns are **never
         prefixed** — they are always unique even when count columns share a prefix.
 
 ---

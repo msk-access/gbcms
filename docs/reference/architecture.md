@@ -175,7 +175,7 @@ Three diagnostic fields are always present in VCF (FORMAT tags) and MAF output:
 | Field | VCF Tag | Description |
 |:------|:--------|:------------|
 | `any_alt` | `AAD` | Reads with ALT evidence at ≥1 discriminating position |
-| `partial_alt` | `PAD` | Reads matching ALT at some but not all positions (MNP/Complex only; always 0 for SNP/indel) |
+| `partial_alt` | `PAD` | Reads matching ALT at some but not all positions — now populated for all variant types including INDELs (via structural evidence propagation) |
 | `n_count` | `NAD` | Reads with N base at ≥1 discriminating position (duplex masking QC) |
 
 N bases are **strictly uninformative** — they increment `n_count` for QC monitoring but are excluded from RD, AD, any_alt, and partial_alt. See [Counting Metrics](counting-metrics.md) for full details.
