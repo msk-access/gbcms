@@ -40,6 +40,7 @@ pytest tests/test_accuracy.py -v
 | BAQ | `test_baq.py` | BAQ quality downgrade feature |
 | Phase 2 Output | `test_phase2_output.py` | Diagnostic columns (any_alt, partial_alt, n_count) MAF/VCF |
 | Diagnostic Flags | `test_diagnostic_flags.py` | gbcms_diagnostic flag computation (ZERO_ALT, PARTIAL_DOMINANT, etc.) |
+| MNP Rescue | `test_rescue_mnp.py` | --rescue-mnp flag, conditional columns, candidate filtering, audit trail |
 
 ### Rust-Level Tests
 
@@ -89,6 +90,7 @@ tests/
 ├── test_pipeline_v2.py          # End-to-end pipeline
 ├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
 ├── test_diagnostic_flags.py     # v4.2.0 gbcms_diagnostic flag computation
+├── test_rescue_mnp.py           # v4.3.0 --rescue-mnp MNP decomposition rescue
 ├── test_rna_output.py           # RNA MAF/VCF column presence/absence
 ├── test_shifted_indels.py       # Windowed indel detection (±5bp)
 └── test_strand_counts.py        # Strand-specific counts

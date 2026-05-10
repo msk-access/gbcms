@@ -316,7 +316,7 @@ These columns are **always** appended regardless of input format.
     |:-------|:-----|:------------|
     | `gbcms_status` | String | Normalization/counting status. Semicolon-separated multi-value. First token is always `PASS` or `FAIL_*`. Examples: `PASS`, `PASS;WARN_REF_CORRECTED`, `FAIL_REF_MISMATCH`. |
     | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_SPARSE_DISC(2/5)`. |
-    | `gbcms_rescue` | String | Rescue audit trail. Empty until `--rescue-mnp` is enabled (v4.3.0). |
+    | `gbcms_rescue` | String | **Conditional** — only present when `--rescue-mnp` is enabled. Structured audit trail for MNP decomposition rescue. Format: `method=decomposed;original_alt=0;positions=chr:pos(R>A):count,...`. Empty when no rescue was attempted. Failed rescues include `outcome=no_signal`. |
     | `ref_count` | Integer | REF read depth |
     | `alt_count` | Integer | ALT read depth |
     | `total_count` | Integer | Total read depth (DP) |

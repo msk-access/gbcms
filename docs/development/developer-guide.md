@@ -187,6 +187,13 @@ Key invariants to check:
 | `gbcms_status` starts with `PASS` or `FAIL_` | First token is always the verdict; no empty values |
 | `gbcms_diagnostic` empty for FAIL variants | Diagnostics only computed for PASS variants |
 | `gbcms_diagnostic` semicolon-separated | Flags use `;` delimiter (MAF) or `\|` (VCF) |
+| `gbcms_rescue` conditional column | Only present when `--rescue-mnp` is enabled (v4.3.0) |
+
+!!! warning "Rescue Invariant Exception"
+    When `--rescue-mnp` is used, **Invariant 1** (`any_alt = ad + partial_alt`) intentionally breaks
+    for rescued variants. The `ad` is updated with the best decomposed SNP count, while `any_alt`
+    and `partial_alt` retain original MNP-level values as forensic evidence. The `gbcms_rescue`
+    audit trail documents the rescue provenance.
 
 ### Variant-Type-Specific Investigation
 
