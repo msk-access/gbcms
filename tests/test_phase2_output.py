@@ -291,7 +291,8 @@ def test_column_count_delta_is_three():
     # v4.2.0 added 1 (gbcms_diagnostic, replaces validation_status with gbcms_status) = 25
     # gbcms_rescue is conditional (only with --rescue-mnp), so excluded here
     assert len(cols) == 25, (
-        f"Expected 25 gbcms MAF columns (21 baseline + 3 diagnostic + 1 new column), " f"got {len(cols)}: {cols}"
+        f"Expected 25 gbcms MAF columns (21 baseline + 3 diagnostic + 1 new column), "
+        f"got {len(cols)}: {cols}"
     )
 
 
@@ -362,18 +363,19 @@ def test_vcf_gs_gd_use_pipe_separator(tmp_path, mock_variant):
 
     # Split on ';' (VCF INFO delimiter) and find GS, GD, GR
     # Use maxsplit=1 because GR values contain '=' (e.g., method=decomposed|original_alt=0)
-    info_parts = {kv.split("=", 1)[0]: kv.split("=", 1)[1] for kv in info_field.split(";") if "=" in kv}
+    info_parts = {
+        kv.split("=", 1)[0]: kv.split("=", 1)[1] for kv in info_field.split(";") if "=" in kv
+    }
 
     # GS should use pipe, not semicolon
-    assert info_parts["GS"] == "PASS|WARN_REF_CORRECTED", (
-        f"GS should use pipe separator, got: {info_parts['GS']}"
-    )
+    assert (
+        info_parts["GS"] == "PASS|WARN_REF_CORRECTED"
+    ), f"GS should use pipe separator, got: {info_parts['GS']}"
     # GD should use pipe, not semicolon
-    assert info_parts["GD"] == "ZERO_ALT|PARTIAL_DOMINANT", (
-        f"GD should use pipe separator, got: {info_parts['GD']}"
-    )
+    assert (
+        info_parts["GD"] == "ZERO_ALT|PARTIAL_DOMINANT"
+    ), f"GD should use pipe separator, got: {info_parts['GD']}"
     # GR should use pipe, not semicolon
-    assert info_parts["GR"] == "method=decomposed|original_alt=0", (
-        f"GR should use pipe separator, got: {info_parts['GR']}"
-    )
-
+    assert (
+        info_parts["GR"] == "method=decomposed|original_alt=0"
+    ), f"GR should use pipe separator, got: {info_parts['GR']}"

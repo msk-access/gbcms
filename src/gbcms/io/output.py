@@ -166,38 +166,40 @@ class MafWriter(OutputWriter):
         # gbcms_rescue column is only present when --rescue-mnp is enabled (design §5)
         if self.rescue_mnp:
             cols.append("gbcms_rescue")
-        cols.extend([
-            # Core counts
-            f"{p}ref_count",
-            f"{p}alt_count",
-            f"{p}total_count",
-            f"{p}vaf",
-            # Fragment counts
-            f"{p}ref_count_fragment",
-            f"{p}alt_count_fragment",
-            f"{p}total_count_fragment",
-            f"{p}vaf_fragment",
-            # Strand bias (unprefixed — always unique)
-            "strand_bias_p_value",
-            "strand_bias_odds_ratio",
-            "fragment_strand_bias_p_value",
-            "fragment_strand_bias_odds_ratio",
-            # Strand counts
-            f"{p}ref_count_forward",
-            f"{p}ref_count_reverse",
-            f"{p}alt_count_forward",
-            f"{p}alt_count_reverse",
-            f"{p}ref_count_fragment_forward",
-            f"{p}ref_count_fragment_reverse",
-            f"{p}alt_count_fragment_forward",
-            f"{p}alt_count_fragment_reverse",
-            # Decomposed ALT counting (diagnostic, always present)
-            # any_alt = ad + partial_alt (see types.rs invariant)
-            f"{p}any_alt",
-            f"{p}partial_alt",
-            # N-base diagnostic: reads with N at discriminating position (duplex masking QC)
-            f"{p}n_count",
-        ])
+        cols.extend(
+            [
+                # Core counts
+                f"{p}ref_count",
+                f"{p}alt_count",
+                f"{p}total_count",
+                f"{p}vaf",
+                # Fragment counts
+                f"{p}ref_count_fragment",
+                f"{p}alt_count_fragment",
+                f"{p}total_count_fragment",
+                f"{p}vaf_fragment",
+                # Strand bias (unprefixed — always unique)
+                "strand_bias_p_value",
+                "strand_bias_odds_ratio",
+                "fragment_strand_bias_p_value",
+                "fragment_strand_bias_odds_ratio",
+                # Strand counts
+                f"{p}ref_count_forward",
+                f"{p}ref_count_reverse",
+                f"{p}alt_count_forward",
+                f"{p}alt_count_reverse",
+                f"{p}ref_count_fragment_forward",
+                f"{p}ref_count_fragment_reverse",
+                f"{p}alt_count_fragment_forward",
+                f"{p}alt_count_fragment_reverse",
+                # Decomposed ALT counting (diagnostic, always present)
+                # any_alt = ad + partial_alt (see types.rs invariant)
+                f"{p}any_alt",
+                f"{p}partial_alt",
+                # N-base diagnostic: reads with N at discriminating position (duplex masking QC)
+                f"{p}n_count",
+            ]
+        )
         if self.mfsd:
             # ── mFSD: Mutant Fragment Size Distribution (40 columns) ──────────
             # Only appended when --mfsd is set. Without the flag these columns
@@ -620,15 +622,17 @@ class VcfWriter(OutputWriter):
             headers.append(
                 '##INFO=<ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail">'
             )
-        headers.extend([
-            '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">',
-            '##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">',
-            '##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">',
-            '##INFO=<ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio">',
-            '##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at >=1 discriminating position (any_alt = ad + partial_alt)">',
-            '##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions">',
-            '##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)">',
-        ])
+        headers.extend(
+            [
+                '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">',
+                '##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">',
+                '##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">',
+                '##INFO=<ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio">',
+                '##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at >=1 discriminating position (any_alt = ad + partial_alt)">',
+                '##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions">',
+                '##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)">',
+            ]
+        )
         if self.mfsd:
             # mFSD INFO fields (7 primary diagnostics). VCF key = MAF column name uppercased.
             # Only added when --mfsd is set — keeps VCF header minimal for standard runs.
@@ -721,15 +725,17 @@ class VcfWriter(OutputWriter):
         if self.rescue_mnp:
             gr_vcf = gbcms_rescue.replace(";", "|") if gbcms_rescue else "."
             info_parts.append(f"GR={gr_vcf}")
-        info_parts.extend([
-            f"SB_PVAL={counts.sb_pval:.4e}",
-            f"SB_OR={counts.sb_or:.4f}",
-            f"FSB_PVAL={counts.fsb_pval:.4e}",
-            f"FSB_OR={counts.fsb_or:.4f}",
-            f"AAD={counts.any_alt}",
-            f"PAD={counts.partial_alt}",
-            f"NAD={counts.n_count}",
-        ])
+        info_parts.extend(
+            [
+                f"SB_PVAL={counts.sb_pval:.4e}",
+                f"SB_OR={counts.sb_or:.4f}",
+                f"FSB_PVAL={counts.fsb_pval:.4e}",
+                f"FSB_OR={counts.fsb_or:.4f}",
+                f"AAD={counts.any_alt}",
+                f"PAD={counts.partial_alt}",
+                f"NAD={counts.n_count}",
+            ]
+        )
         if self.mfsd:
             # mFSD primary diagnostic INFO fields (7 values).
             # Only populated when --mfsd is set; '.' for NaN per VCF spec.

@@ -144,9 +144,9 @@ def test_rescue_column_absent_without_flag():
     writer.rescue_mnp = False
 
     cols = writer._gbcms_column_names()
-    assert "gbcms_rescue" not in cols, (
-        f"gbcms_rescue should not be in columns without --rescue-mnp: {cols}"
-    )
+    assert (
+        "gbcms_rescue" not in cols
+    ), f"gbcms_rescue should not be in columns without --rescue-mnp: {cols}"
 
 
 # ── Test 3: MAF column present with flag ─────────────────────────────────────
@@ -162,9 +162,7 @@ def test_rescue_column_present_with_flag():
     writer.rescue_mnp = True
 
     cols = writer._gbcms_column_names()
-    assert "gbcms_rescue" in cols, (
-        f"gbcms_rescue should be in columns with --rescue-mnp: {cols}"
-    )
+    assert "gbcms_rescue" in cols, f"gbcms_rescue should be in columns with --rescue-mnp: {cols}"
 
 
 # ── Test 4: VCF GR absent without flag ───────────────────────────────────────
@@ -178,9 +176,7 @@ def test_vcf_gr_absent_without_flag(tmp_path):
     writer.close()
 
     header_text = vcf_path.read_text()
-    assert "ID=GR," not in header_text, (
-        "GR INFO header should not appear without --rescue-mnp"
-    )
+    assert "ID=GR," not in header_text, "GR INFO header should not appear without --rescue-mnp"
 
 
 # ── Test 5: VCF GR present with flag ─────────────────────────────────────────
@@ -194,9 +190,7 @@ def test_vcf_gr_present_with_flag(tmp_path):
     writer.close()
 
     header_text = vcf_path.read_text()
-    assert "ID=GR," in header_text, (
-        "GR INFO header should appear with --rescue-mnp"
-    )
+    assert "ID=GR," in header_text, "GR INFO header should appear with --rescue-mnp"
 
 
 # ── Test 6: Rescue fires for sparse MNP ──────────────────────────────────────
@@ -341,8 +335,7 @@ def test_rescue_audit_trail_format():
 def test_rescue_no_signal_format():
     """Failed rescue (all SNPs ad=0) should have outcome=no_signal."""
     rescue_str = (
-        "method=decomposed;original_alt=0;outcome=no_signal;"
-        "positions=chr5:1295229(C>T):0"
+        "method=decomposed;original_alt=0;outcome=no_signal;" "positions=chr5:1295229(C>T):0"
     )
 
     parts = rescue_str.split(";")
@@ -370,12 +363,8 @@ def test_column_count_with_rescue():
     writer.rescue_mnp = True
 
     cols = writer._gbcms_column_names()
-    assert len(cols) == 26, (
-        f"Expected 26 gbcms MAF columns with rescue, got {len(cols)}: {cols}"
-    )
-    assert cols[2] == "gbcms_rescue", (
-        f"gbcms_rescue should be the 3rd column, got {cols[2]}"
-    )
+    assert len(cols) == 26, f"Expected 26 gbcms MAF columns with rescue, got {len(cols)}: {cols}"
+    assert cols[2] == "gbcms_rescue", f"gbcms_rescue should be the 3rd column, got {cols[2]}"
 
 
 # ── Test 13: Invariant breakage after rescue ─────────────────────────────────
@@ -392,9 +381,7 @@ def test_invariant_breakage_after_rescue():
     counts = _mock_counts(ad=0, any_alt=108, partial_alt=108)
 
     # Invariant holds before rescue
-    assert counts.any_alt == counts.ad + counts.partial_alt, (
-        "Invariant 1 should hold before rescue"
-    )
+    assert counts.any_alt == counts.ad + counts.partial_alt, "Invariant 1 should hold before rescue"
 
     # Simulate rescue: ad is updated to best decomposed SNP count
     counts.ad = 108  # rescued
@@ -408,4 +395,3 @@ def test_invariant_breakage_after_rescue():
     assert counts.ad == 108
     assert counts.partial_alt == 108  # unchanged — forensic evidence
     assert counts.any_alt == 108  # unchanged — forensic evidence
-

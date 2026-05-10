@@ -197,9 +197,7 @@ class Pipeline:
         )
 
         # Split into valid (for counting) and all (for output)
-        valid_indices = [
-            i for i, p in enumerate(prepared) if p.gbcms_status.startswith("PASS")
-        ]
+        valid_indices = [i for i, p in enumerate(prepared) if p.gbcms_status.startswith("PASS")]
         rs_variants = [prepared[i].variant for i in valid_indices]
 
         # Log validation results
@@ -430,9 +428,7 @@ class Pipeline:
 
             # Post-counting: MNP rescue pass (optional, --rescue-mnp)
             if self.config.rescue_mnp:
-                self._rescue_mnp_pass(
-                    prepared, full_counts, bam_path, sample_name
-                )
+                self._rescue_mnp_pass(prepared, full_counts, bam_path, sample_name)
 
             # Write Output (all variants, including rejected with zero counts)
             self._write_output(sample_name, variants, full_counts, prepared)
@@ -507,9 +503,7 @@ class Pipeline:
             alt_len = len(alt_allele)
             if ref_len == alt_len and ref_len > 1:
                 # Count positions where ref != alt (discriminating positions)
-                disc = sum(
-                    1 for r, a in zip(ref_allele, alt_allele, strict=False) if r != a
-                )
+                disc = sum(1 for r, a in zip(ref_allele, alt_allele, strict=False) if r != a)
                 if ref_len > 0 and disc / ref_len <= 0.50:
                     flags.append(f"MNP_SPARSE_DISC({disc}/{ref_len})")
 
@@ -530,9 +524,7 @@ class Pipeline:
 
         # Log diagnostic summary
         if flag_counts:
-            summary = ", ".join(
-                f"{flag}={count}" for flag, count in sorted(flag_counts.items())
-            )
+            summary = ", ".join(f"{flag}={count}" for flag, count in sorted(flag_counts.items()))
             logger.info("Diagnostic flags: %s", summary)
         else:
             logger.debug("No diagnostic flags triggered")
@@ -592,9 +584,7 @@ class Pipeline:
             for offset in range(ref_len):
                 if ref_allele[offset] != alt_allele[offset]:
                     abs_pos = pv.variant.pos + offset
-                    disc_positions.append(
-                        (abs_pos, ref_allele[offset], alt_allele[offset])
-                    )
+                    disc_positions.append((abs_pos, ref_allele[offset], alt_allele[offset]))
 
             if disc_positions:
                 candidates.append((i, disc_positions))
@@ -603,9 +593,7 @@ class Pipeline:
             logger.debug("MNP rescue: no candidates found for %s", sample_name)
             return
 
-        logger.info(
-            "MNP rescue: %d candidate(s) for %s", len(candidates), sample_name
-        )
+        logger.info("MNP rescue: %d candidate(s) for %s", len(candidates), sample_name)
 
         # 2. Build synthetic SNP variants for all candidates (batched)
         snp_variants: list = []
@@ -613,12 +601,8 @@ class Pipeline:
 
         for cand_idx, (pv_idx, disc_positions) in enumerate(candidates):
             pv = prepared[pv_idx]
-            for disc_idx, (abs_pos, ref_base, alt_base) in enumerate(
-                disc_positions
-            ):
-                snp_v = rs.Variant(
-                    pv.variant.chrom, abs_pos, ref_base, alt_base, "SNP"
-                )
+            for disc_idx, (abs_pos, ref_base, alt_base) in enumerate(disc_positions):
+                snp_v = rs.Variant(pv.variant.chrom, abs_pos, ref_base, alt_base, "SNP")
                 snp_variants.append(snp_v)
                 snp_map.append((cand_idx, disc_idx))
 
@@ -634,9 +618,7 @@ class Pipeline:
 
         # Filter to only valid SNPs
         valid_snp_indices = [
-            j
-            for j, sp in enumerate(snp_prepared)
-            if sp.gbcms_status.startswith("PASS")
+            j for j, sp in enumerate(snp_prepared) if sp.gbcms_status.startswith("PASS")
         ]
         valid_snp_variants = [snp_prepared[j].variant for j in valid_snp_indices]
 
@@ -648,9 +630,7 @@ class Pipeline:
             # Mark all candidates as failed rescue
             for _cand_idx, (pv_idx, _disc_positions) in enumerate(candidates):
                 pv = prepared[pv_idx]
-                pv.gbcms_rescue = (
-                    "method=decomposed;original_alt=0;outcome=ref_validation_failed"
-                )
+                pv.gbcms_rescue = "method=decomposed;original_alt=0;outcome=ref_validation_failed"
             return
 
         # 4. Count synthetic SNPs against the BAM
@@ -683,9 +663,7 @@ class Pipeline:
             apply_baq=self.config.apply_baq,
             umi_tag=self.config.umi_tag,
             mode=self.config.mode,
-            enforce_strandedness=getattr(
-                self.config, "enforce_strandedness", False
-            ),
+            enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
             rna_editing_db=(
                 str(self.config.rna_editing_db)  # type: ignore[attr-defined]
                 if getattr(self.config, "rna_editing_db", None)
@@ -710,13 +688,9 @@ class Pipeline:
             best_alt = 0
             positions_str_parts: list[str] = []
 
-            for disc_idx, (abs_pos, ref_base, alt_base) in enumerate(
-                disc_positions
-            ):
+            for disc_idx, (abs_pos, ref_base, alt_base) in enumerate(disc_positions):
                 # Find the global SNP index for this disc position
-                global_snp_idx = sum(
-                    len(candidates[c][1]) for c in range(cand_idx)
-                ) + disc_idx
+                global_snp_idx = sum(len(candidates[c][1]) for c in range(cand_idx)) + disc_idx
 
                 snp_alt = 0
                 if global_snp_idx in snp_count_by_idx:
@@ -734,9 +708,7 @@ class Pipeline:
             if best_alt > 0:
                 # Successful rescue: update ad with best decomposed SNP count
                 counts.ad = best_alt
-                pv.gbcms_rescue = (
-                    f"method=decomposed;original_alt=0;positions={positions_str}"
-                )
+                pv.gbcms_rescue = f"method=decomposed;original_alt=0;positions={positions_str}"
                 rescued_count += 1
                 logger.debug(
                     "MNP rescue: %s:%d %s>%s → rescued alt=%d via decomposed SNPs",
