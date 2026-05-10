@@ -688,11 +688,16 @@ class VcfWriter(OutputWriter):
         pos = variant.pos + 1
 
         # INFO fields (VCF spec: missing values use '.' not 'NA')
+        # VCF uses ';' as the INFO field delimiter, so multi-value fields
+        # (GS, GD, GR) convert ';' → '|' to avoid parser mis-splitting.
+        gs_vcf = gbcms_status.replace(";", "|")
+        gd_vcf = gbcms_diagnostic.replace(";", "|") if gbcms_diagnostic else "."
+        gr_vcf = gbcms_rescue.replace(";", "|") if gbcms_rescue else "."
         info_parts = [
             f"DP={counts.dp}",
-            f"GS={gbcms_status}",
-            f"GD={gbcms_diagnostic or '.'}",
-            f"GR={gbcms_rescue or '.'}",
+            f"GS={gs_vcf}",
+            f"GD={gd_vcf}",
+            f"GR={gr_vcf}",
             f"SB_PVAL={counts.sb_pval:.4e}",
             f"SB_OR={counts.sb_or:.4f}",
             f"FSB_PVAL={counts.fsb_pval:.4e}",

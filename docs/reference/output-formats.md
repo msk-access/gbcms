@@ -72,7 +72,9 @@ written once. RNA-specific meta-lines are only included when running
     ##fileformat=VCFv4.2
     ##source=gbcms
     ##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
-    ##INFO=<ID=VS,Number=1,Type=String,Description="Validation status from prepare_variants">
+    ##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">
+    ##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">
+    ##INFO=<ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail">
     ##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">
     ##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">
     ##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">
@@ -100,7 +102,9 @@ written once. RNA-specific meta-lines are only included when running
     ##fileformat=VCFv4.2
     ##source=gbcms
     ##INFO=<ID=DP,...>
-    ##INFO=<ID=VS,...>
+    ##INFO=<ID=GS,...>
+    ##INFO=<ID=GD,...>
+    ##INFO=<ID=GR,...>
     ##INFO=<ID=SB_PVAL,...>
     ##INFO=<ID=SB_OR,...>
     ##INFO=<ID=FSB_PVAL,...>
@@ -150,7 +154,9 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `DP` | Integer | Total read depth at position |
-    | `VS` | String | Validation status (`PASS`, `PASS;WARN_HOMOPOLYMER_DECOMP`, `PASS;WARN_REF_CORRECTED`, `REF_MISMATCH`, `FETCH_FAILED`, `FAIL_ALT_CONTAINS_N`) |
+    | `GS` | String | gbcms normalization/counting status. Pipe-separated multi-value in VCF (e.g., `PASS\|WARN_REF_CORRECTED`). Semicolons in MAF. |
+    | `GD` | String | Post-counting diagnostic flags. Pipe-separated in VCF (e.g., `ZERO_ALT\|PARTIAL_DOMINANT`). Semicolons in MAF. `.` if none. |
+    | `GR` | String | Rescue audit trail. Pipe-separated key=value pairs. `.` if no rescue attempted. |
     | `SB_PVAL` | Float | Fisher's exact test p-value for read-level strand bias |
     | `SB_OR` | Float | Fisher's exact test odds ratio for read-level strand bias |
     | `FSB_PVAL` | Float | Fragment-level strand bias p-value |
@@ -230,10 +236,10 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
 
 ```vcf
 #CHROM  POS     ID      REF  ALT  QUAL  FILTER  INFO                                              FORMAT           sample1
-chr7    55174772  rs121913527  T    A    .     .     DP=312;VS=PASS;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000;AAD=22;PAD=0;NAD=3  GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD  0/1:290,22:145,145:10,12:72,73:5,6:0.0705:0.0735:22:0:3 # (1)!
+chr7    55174772  rs121913527  T    A    .     .     DP=312;GS=PASS;GD=.;GR=.;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000;AAD=22;PAD=0;NAD=3  GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD  0/1:290,22:145,145:10,12:72,73:5,6:0.0705:0.0735:22:0:3 # (1)!
 ```
 
-1. `DP=312` total reads; `VS=PASS` REF validated; `SB_PVAL=0.24` no significant strand bias; `AAD=22` reads with any ALT evidence; `PAD=0` no partial matches (SNP — always 0); `NAD=3` reads with N at variant position (duplex masking). FORMAT `DP=290,22` → 290 REF + 22 ALT reads. `VAF=0.0705` (read level), `FAF=0.0735` (fragment level).
+1. `DP=312` total reads; `GS=PASS` normalization status; `GD=.` no diagnostic flags; `GR=.` no rescue; `SB_PVAL=0.24` no significant strand bias; `AAD=22` reads with any ALT evidence; `PAD=0` no partial matches (SNP — always 0); `NAD=3` reads with N at variant position (duplex masking). FORMAT `DP=290,22` → 290 REF + 22 ALT reads. `VAF=0.0705` (read level), `FAF=0.0735` (fragment level).
 
 ---
 

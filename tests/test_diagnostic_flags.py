@@ -16,10 +16,7 @@ Covers:
 
 import types
 
-import pytest
-
 from gbcms.pipeline import Pipeline
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 

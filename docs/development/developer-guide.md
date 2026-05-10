@@ -184,6 +184,9 @@ Key invariants to check:
 | `any_alt = ad + partial_alt` | Must hold for every row (Phase 2 decomposition invariant) |
 | `any_alt >= ad` | Must hold for every row |
 | `n_count / DP ratio` | Should be low (<5%) for clean sites; high ratios flag duplex masking hotspots |
+| `gbcms_status` starts with `PASS` or `FAIL_` | First token is always the verdict; no empty values |
+| `gbcms_diagnostic` empty for FAIL variants | Diagnostics only computed for PASS variants |
+| `gbcms_diagnostic` semicolon-separated | Flags use `;` delimiter (MAF) or `\|` (VCF) |
 
 ### Variant-Type-Specific Investigation
 

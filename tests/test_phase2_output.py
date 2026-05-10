@@ -328,3 +328,48 @@ def test_mock_counts_invariants():
     assert z.any_alt == z.ad + z.partial_alt
     assert z.any_alt >= z.ad
     assert z.dp >= z.ad + z.partial_alt + z.n_count
+
+
+# ── Test 11: VCF GS/GD pipe separator ───────────────────────────────────
+
+
+def test_vcf_gs_gd_use_pipe_separator(tmp_path, mock_variant):
+    """VCF INFO GS/GD values convert ';' to '|' to avoid VCF delimiter conflict.
+
+    VCF uses ';' as the INFO field delimiter. Multi-value GS/GD/GR fields
+    must use '|' as their internal separator (design §6).
+    """
+    counts = _mock_counts(any_alt=0, partial_alt=0, n_count=0)
+    vcf_path = tmp_path / "test.vcf"
+    writer = VcfWriter(vcf_path, sample_name="TUMOR")
+    # Pass multi-value status and diagnostic with semicolons
+    writer.write(
+        mock_variant,
+        counts,
+        gbcms_status="PASS;WARN_REF_CORRECTED",
+        gbcms_diagnostic="ZERO_ALT;PARTIAL_DOMINANT",
+        gbcms_rescue="method=decomposed;original_alt=0",
+    )
+    writer.close()
+
+    data_lines = [line for line in vcf_path.read_text().splitlines() if not line.startswith("#")]
+    assert len(data_lines) == 1
+    info_field = data_lines[0].split("\t")[7]
+
+    # Split on ';' (VCF INFO delimiter) and find GS, GD, GR
+    # Use maxsplit=1 because GR values contain '=' (e.g., method=decomposed|original_alt=0)
+    info_parts = {kv.split("=", 1)[0]: kv.split("=", 1)[1] for kv in info_field.split(";") if "=" in kv}
+
+    # GS should use pipe, not semicolon
+    assert info_parts["GS"] == "PASS|WARN_REF_CORRECTED", (
+        f"GS should use pipe separator, got: {info_parts['GS']}"
+    )
+    # GD should use pipe, not semicolon
+    assert info_parts["GD"] == "ZERO_ALT|PARTIAL_DOMINANT", (
+        f"GD should use pipe separator, got: {info_parts['GD']}"
+    )
+    # GR should use pipe, not semicolon
+    assert info_parts["GR"] == "method=decomposed|original_alt=0", (
+        f"GR should use pipe separator, got: {info_parts['GR']}"
+    )
+

@@ -39,6 +39,7 @@ pytest tests/test_accuracy.py -v
 | RNA Output | `test_rna_output.py` | MAF/VCF RNA column presence/absence |
 | BAQ | `test_baq.py` | BAQ quality downgrade feature |
 | Phase 2 Output | `test_phase2_output.py` | Diagnostic columns (any_alt, partial_alt, n_count) MAF/VCF |
+| Diagnostic Flags | `test_diagnostic_flags.py` | gbcms_diagnostic flag computation (ZERO_ALT, PARTIAL_DOMINANT, etc.) |
 
 ### Rust-Level Tests
 
@@ -87,6 +88,7 @@ tests/
 ├── test_normalization.py        # Left-alignment, REF validation, window expansion
 ├── test_pipeline_v2.py          # End-to-end pipeline
 ├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
+├── test_diagnostic_flags.py     # v4.2.0 gbcms_diagnostic flag computation
 ├── test_rna_output.py           # RNA MAF/VCF column presence/absence
 ├── test_shifted_indels.py       # Windowed indel detection (±5bp)
 └── test_strand_counts.py        # Strand-specific counts

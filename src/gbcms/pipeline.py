@@ -502,7 +502,7 @@ class Pipeline:
             if ref_len == alt_len and ref_len > 1:
                 # Count positions where ref != alt (discriminating positions)
                 disc = sum(
-                    1 for r, a in zip(ref_allele, alt_allele) if r != a
+                    1 for r, a in zip(ref_allele, alt_allele, strict=False) if r != a
                 )
                 if ref_len > 0 and disc / ref_len <= 0.50:
                     flags.append(f"MNP_SPARSE_DISC({disc}/{ref_len})")
