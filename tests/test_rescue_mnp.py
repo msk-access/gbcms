@@ -13,6 +13,7 @@ Covers:
 10. Rescue audit trail format validation
 11. Rescue no-signal case (all SNPs have ad=0)
 12. Column count with rescue_mnp=True
+13. Invariant breakage after rescue (design §2)
 """
 
 import types
@@ -375,3 +376,36 @@ def test_column_count_with_rescue():
     assert cols[2] == "gbcms_rescue", (
         f"gbcms_rescue should be the 3rd column, got {cols[2]}"
     )
+
+
+# ── Test 13: Invariant breakage after rescue ─────────────────────────────────
+
+
+def test_invariant_breakage_after_rescue():
+    """After rescue, Invariant 1 (any_alt = ad + partial_alt) intentionally breaks.
+
+    This is by design: ad is updated with the best decomposed SNP count while
+    any_alt and partial_alt retain original MNP-level values as forensic evidence.
+    See validation_status_design.md §2 for the TERT example.
+    """
+    # Simulate the TERT-like case: before rescue
+    counts = _mock_counts(ad=0, any_alt=108, partial_alt=108)
+
+    # Invariant holds before rescue
+    assert counts.any_alt == counts.ad + counts.partial_alt, (
+        "Invariant 1 should hold before rescue"
+    )
+
+    # Simulate rescue: ad is updated to best decomposed SNP count
+    counts.ad = 108  # rescued
+
+    # Invariant intentionally breaks after rescue
+    assert counts.any_alt != counts.ad + counts.partial_alt, (
+        "Invariant 1 should break after rescue: "
+        f"any_alt({counts.any_alt}) != ad({counts.ad}) + partial_alt({counts.partial_alt})"
+    )
+    # Verify the expected broken state
+    assert counts.ad == 108
+    assert counts.partial_alt == 108  # unchanged — forensic evidence
+    assert counts.any_alt == 108  # unchanged — forensic evidence
+

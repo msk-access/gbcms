@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - Unreleased
+
+### ✨ Added
+
+- **`--rescue-mnp` CLI flag**: Enables MNP rescue pass for sparse multi-base
+  substitutions. When `ad=0` and `MNP_SPARSE_DISC` is flagged, decomposes the
+  MNP into individual SNP positions and re-counts via `count_bam_binned`.
+  Available in both `gbcms dna` and `gbcms rna` modes.
+- **`gbcms_rescue` column (MAF)**: Conditional — only present when
+  `--rescue-mnp` is enabled. Contains structured audit trail:
+  `method=decomposed;original_alt=0;positions=chr:pos(R>A):count,...`.
+  Failed rescues include `outcome=no_signal`.
+- **`GR` INFO key (VCF)**: Conditional — only present when `--rescue-mnp` is
+  enabled. Uses pipe `|` separator (consistent with `GD`).
+
+### 📝 Notes
+
+- **Invariant 1 breakage**: After rescue, `any_alt = ad + partial_alt` no
+  longer holds for rescued variants. `ad` is updated with the best decomposed
+  SNP count while `any_alt` and `partial_alt` retain original MNP-level values
+  as forensic evidence.
+- **Rescue strategy**: Python-side post-processing using decomposed SNP
+  re-counting. Coordinate shift strategy is reserved for a future release.
+
+### 🧪 Tests
+
+- **[NEW]** `tests/test_rescue_mnp.py` — 12 tests covering config defaults,
+  conditional column/INFO presence, candidate identification, guard rails
+  (skip non-MNP, skip ad>0, skip FAIL), audit trail format, no-signal cases,
+  column count with rescue, and invariant breakage documentation.
+
+---
+
 ## [4.2.0] - Unreleased
 
 ### ⚠️ Breaking Changes

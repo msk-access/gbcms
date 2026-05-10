@@ -140,13 +140,14 @@ class MafWriter(OutputWriter):
         self._headers_written = False
         logger.debug(
             "MafWriter initialized: path=%s, column_prefix='%s', "
-            "preserve_barcode=%s, show_normalization=%s, mfsd=%s, mode=%s",
+            "preserve_barcode=%s, show_normalization=%s, mfsd=%s, mode=%s, rescue_mnp=%s",
             path,
             column_prefix,
             preserve_barcode,
             show_normalization,
             mfsd,
             mode,
+            rescue_mnp,
         )
 
     def _gbcms_column_names(self) -> list[str]:
@@ -592,12 +593,14 @@ class VcfWriter(OutputWriter):
         self.file = open(path, "w")
         self._headers_written = False
         logger.debug(
-            "VcfWriter initialized: path=%s, sample=%s, show_normalization=%s, mfsd=%s, mode=%s",
+            "VcfWriter initialized: path=%s, sample=%s, show_normalization=%s, "
+            "mfsd=%s, mode=%s, rescue_mnp=%s",
             path,
             sample_name,
             show_normalization,
             mfsd,
             mode,
+            rescue_mnp,
         )
 
     def _write_header(self):
