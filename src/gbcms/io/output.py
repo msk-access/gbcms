@@ -156,8 +156,10 @@ class MafWriter(OutputWriter):
         """
         p = self.column_prefix
         cols = [
-            # Validation status
-            "validation_status",
+            # Diagnostic columns (v4.2.0 three-column schema)
+            "gbcms_status",
+            "gbcms_diagnostic",
+            "gbcms_rescue",
             # Core counts
             f"{p}ref_count",
             f"{p}alt_count",
@@ -470,7 +472,9 @@ class MafWriter(OutputWriter):
         variant: Variant,
         counts: Any,
         sample_name: str = "TUMOR",
-        validation_status: str = "PASS",
+        gbcms_status: str = "PASS",
+        gbcms_diagnostic: str = "",
+        gbcms_rescue: str = "",
         norm_variant: Variant | None = None,
     ) -> None:
         """
@@ -486,7 +490,9 @@ class MafWriter(OutputWriter):
             variant: Normalized Variant with optional metadata from input MAF.
             counts: BaseCounts object from the Rust engine.
             sample_name: Sample name for Tumor_Sample_Barcode column.
-            validation_status: Validation status from prepare_variants().
+            gbcms_status: Normalization/counting status from prepare_variants().
+            gbcms_diagnostic: Post-counting diagnostic flags.
+            gbcms_rescue: Rescue audit trail.
             norm_variant: Optional left-aligned Variant (for --show-normalization).
         """
         # Initialize writer on first variant (headers depend on input format)
@@ -533,7 +539,9 @@ class MafWriter(OutputWriter):
             row["Tumor_Sample_Barcode"] = sample_name
 
         # Append gbcms count columns (both paths, never overwrites originals)
-        row["validation_status"] = validation_status
+        row["gbcms_status"] = gbcms_status
+        row["gbcms_diagnostic"] = gbcms_diagnostic
+        row["gbcms_rescue"] = gbcms_rescue
         # Extract Hugo_Symbol from MAF metadata for CH gene flagging (empty for VCF input)
         hugo = variant.metadata.get("Hugo_Symbol", "") if variant.metadata else ""
         row.update(self._populate_gbcms_counts(counts, hugo_symbol=hugo))
@@ -591,7 +599,9 @@ class VcfWriter(OutputWriter):
             "##fileformat=VCFv4.2",
             "##source=gbcms",
             '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
-            '##INFO=<ID=VS,Number=1,Type=String,Description="Validation status from prepare_variants">',
+            '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">',
+            '##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">',
+            '##INFO=<ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail">',
             '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">',
             '##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">',
             '##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">',
@@ -666,7 +676,9 @@ class VcfWriter(OutputWriter):
         variant: Variant,
         counts: Any,
         sample_name: str = "SAMPLE",
-        validation_status: str = "PASS",
+        gbcms_status: str = "PASS",
+        gbcms_diagnostic: str = "",
+        gbcms_rescue: str = "",
         norm_variant: Variant | None = None,
     ):
         if not self._headers_written:
@@ -678,7 +690,9 @@ class VcfWriter(OutputWriter):
         # INFO fields (VCF spec: missing values use '.' not 'NA')
         info_parts = [
             f"DP={counts.dp}",
-            f"VS={validation_status}",
+            f"GS={gbcms_status}",
+            f"GD={gbcms_diagnostic or '.'}",
+            f"GR={gbcms_rescue or '.'}",
             f"SB_PVAL={counts.sb_pval:.4e}",
             f"SB_OR={counts.sb_or:.4f}",
             f"FSB_PVAL={counts.fsb_pval:.4e}",

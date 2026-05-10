@@ -62,7 +62,7 @@ def test_pipeline_v2(tmp_path):
     for pv, counts in zip(prepared, results, strict=True):
         # Use the original variant for output coords
         v = next(v for v in variants if v.chrom == pv.variant.chrom and v.pos == pv.original_pos)
-        writer.write(v, counts, validation_status=pv.validation_status)
+        writer.write(v, counts, gbcms_status=pv.gbcms_status)
     writer.close()
 
     # 5. Verify Output
@@ -76,7 +76,7 @@ def test_pipeline_v2(tmp_path):
         assert "vaf_fragment" in header
         assert "ref_count_forward" in header
         assert "alt_count_reverse" in header
-        assert "validation_status" in header
+        assert "gbcms_status" in header
 
 
 def test_pipeline_v2_binned(tmp_path):
@@ -152,7 +152,7 @@ def test_pipeline_v2_binned(tmp_path):
     writer = MafWriter(output_path)
     for pv, counts in zip(prepared, results_binned, strict=True):
         v = next(v for v in variants if v.chrom == pv.variant.chrom and v.pos == pv.original_pos)
-        writer.write(v, counts, validation_status=pv.validation_status)
+        writer.write(v, counts, gbcms_status=pv.gbcms_status)
     writer.close()
 
     # 5. Verify Output
@@ -163,4 +163,4 @@ def test_pipeline_v2_binned(tmp_path):
         header = lines[0].strip().split("\t")
         assert "ref_count" in header
         assert "vaf_fragment" in header
-        assert "validation_status" in header
+        assert "gbcms_status" in header

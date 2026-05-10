@@ -198,7 +198,7 @@ class Pipeline:
 
         # Split into valid (for counting) and all (for output)
         valid_indices = [
-            i for i, p in enumerate(prepared) if p.validation_status.startswith("PASS")
+            i for i, p in enumerate(prepared) if p.gbcms_status.startswith("PASS")
         ]
         rs_variants = [prepared[i].variant for i in valid_indices]
 
@@ -210,7 +210,7 @@ class Pipeline:
             n_invalid,
             len(prepared),
         )
-        invalid = [p for p in prepared if not p.validation_status.startswith("PASS")]
+        invalid = [p for p in prepared if not p.gbcms_status.startswith("PASS")]
         for p in invalid[:5]:
             logger.warning(
                 "Rejected variant: %s:%d %s>%s — %s",
@@ -218,7 +218,7 @@ class Pipeline:
                 p.original_pos + 1,
                 p.original_ref,
                 p.original_alt,
-                p.validation_status,
+                p.gbcms_status,
             )
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
@@ -416,10 +416,10 @@ class Pipeline:
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 
-            # Update validation_status for variants where decomposed allele won
+            # Update gbcms_status for variants where decomposed allele won
             for idx, counts in zip(valid_indices, counts_list, strict=True):
                 if counts.used_decomposed:
-                    prepared[idx].validation_status = "PASS_WARN_HOMOPOLYMER_DECOMP"
+                    prepared[idx].gbcms_status = "PASS;WARN_HOMOPOLYMER_DECOMP"
 
             # Merge counts back into full variant list
             # Valid variants get real counts; rejected variants get zero counts.
@@ -582,7 +582,9 @@ class Pipeline:
                 v,
                 counts,
                 sample_name=sample_name,
-                validation_status=pv.validation_status if pv else "PASS",
+                gbcms_status=pv.gbcms_status if pv else "PASS",
+                gbcms_diagnostic=pv.gbcms_diagnostic if pv else "",
+                gbcms_rescue=pv.gbcms_rescue if pv else "",
                 norm_variant=norm_v,
             )
 

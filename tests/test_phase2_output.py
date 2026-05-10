@@ -284,9 +284,10 @@ def test_column_count_delta_is_three():
 
     cols = writer._gbcms_column_names()
     # Phase 0/1 baseline was 21 (validation_status + 4 core + 4 frag + 4 bias + 8 strand)
-    # Phase 2+2b adds 3 (any_alt + partial_alt + n_count) = 24
-    assert len(cols) == 24, (
-        f"Expected 24 gbcms MAF columns (21 baseline + 3 diagnostic), " f"got {len(cols)}: {cols}"
+    # Phase 2+2b added 3 (any_alt + partial_alt + n_count) = 24
+    # v4.2.0 added 2 (gbcms_diagnostic + gbcms_rescue, replaces validation_status with gbcms_status) = 26
+    assert len(cols) == 26, (
+        f"Expected 26 gbcms MAF columns (21 baseline + 3 diagnostic + 2 new columns), " f"got {len(cols)}: {cols}"
     )
 
 
