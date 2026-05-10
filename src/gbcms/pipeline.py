@@ -425,6 +425,9 @@ class Pipeline:
             # Valid variants get real counts; rejected variants get zero counts.
             full_counts = self._merge_counts(prepared, counts_list, valid_indices)
 
+            # Post-counting: compute diagnostic flags (gbcms_diagnostic)
+            self._compute_diagnostics(prepared, full_counts)
+
             # Write Output (all variants, including rejected with zero counts)
             self._write_output(sample_name, variants, full_counts, prepared)
             self._stats["samples_processed"] += 1
@@ -457,6 +460,76 @@ class Pipeline:
             else:
                 merged.append(_zero_counts())
         return merged
+
+    @staticmethod
+    def _compute_diagnostics(prepared: list, full_counts: list) -> None:
+        """Compute post-counting diagnostic flags and populate gbcms_diagnostic.
+
+        Diagnostic flags are semicolon-separated and stored in each
+        PreparedVariant's gbcms_diagnostic field. Only PASS variants receive
+        diagnostics; FAIL variants keep gbcms_diagnostic empty.
+
+        Flags (per design §3):
+            ZERO_ALT: ad == 0 and variant was successfully counted.
+            PARTIAL_DOMINANT: partial_alt > ad (more structural evidence
+                than confirmed ALT calls).
+            MNP_SPARSE_DISC(n/m): for MNPs (ref_len == alt_len > 1),
+                fewer than half of positions are discriminating.
+            HIGH_N_FRACTION(f): n_count / dp > 0.05 (duplex masking hotspot).
+        """
+        flag_counts: dict[str, int] = {}
+
+        for pv, counts in zip(prepared, full_counts, strict=True):
+            # Only PASS variants get diagnostics; FAIL variants are not counted
+            if not pv.gbcms_status.startswith("PASS"):
+                continue
+
+            flags: list[str] = []
+
+            # ZERO_ALT: no confirmed ALT reads despite successful counting
+            if counts.ad == 0:
+                flags.append("ZERO_ALT")
+
+            # PARTIAL_DOMINANT: more structural/partial evidence than confirmed ALT
+            if counts.partial_alt > counts.ad:
+                flags.append("PARTIAL_DOMINANT")
+
+            # MNP_SPARSE_DISC: for MNPs, compute discriminating position ratio
+            ref_allele = pv.variant.ref_allele
+            alt_allele = pv.variant.alt_allele
+            ref_len = len(ref_allele)
+            alt_len = len(alt_allele)
+            if ref_len == alt_len and ref_len > 1:
+                # Count positions where ref != alt (discriminating positions)
+                disc = sum(
+                    1 for r, a in zip(ref_allele, alt_allele) if r != a
+                )
+                if ref_len > 0 and disc / ref_len <= 0.50:
+                    flags.append(f"MNP_SPARSE_DISC({disc}/{ref_len})")
+
+            # HIGH_N_FRACTION: high rate of N-bases at discriminating positions
+            if counts.dp > 0 and counts.n_count / counts.dp > 0.05:
+                frac = counts.n_count / counts.dp
+                flags.append(f"HIGH_N_FRACTION({frac:.2f})")
+
+            # Populate the diagnostic field
+            diagnostic = ";".join(flags)
+            pv.gbcms_diagnostic = diagnostic
+
+            # Track flag counts for logging
+            for flag_name in flags:
+                # Normalize parametric flags for counting
+                base_flag = flag_name.split("(")[0]
+                flag_counts[base_flag] = flag_counts.get(base_flag, 0) + 1
+
+        # Log diagnostic summary
+        if flag_counts:
+            summary = ", ".join(
+                f"{flag}={count}" for flag, count in sorted(flag_counts.items())
+            )
+            logger.info("Diagnostic flags: %s", summary)
+        else:
+            logger.debug("No diagnostic flags triggered")
 
     def _load_variants(self) -> list[Variant]:
         """Load variants based on file extension."""
