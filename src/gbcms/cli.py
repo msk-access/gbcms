@@ -236,10 +236,23 @@ def dna(
         False,
         "--rescue-mnp",
         help=(
-            "Enable MNP rescue pass for sparse multi-base substitutions. "
-            "When alt_count=0 and the variant has few discriminating positions, "
-            "decomposes the MNP into individual SNPs and re-counts. "
+            "Enable MNP rescue pass for multi-base substitutions. "
+            "When alt_count=0, decomposes the MNP into individual SNPs "
+            "and re-counts using the best discriminating position. "
             "Populates gbcms_rescue with a structured audit trail."
+        ),
+    ),
+    rescue_mnp_threshold: float = typer.Option(
+        1.0,
+        "--rescue-mnp-threshold",
+        min=0.0,
+        max=1.0,
+        help=(
+            "Maximum disc/len ratio for MNP rescue eligibility (0.0–1.0). "
+            "1.0 = rescue ALL MNPs (default, C++ compatible). "
+            "0.5 = only rescue sparse MNPs (≤50%% discriminating positions). "
+            "0.0 = disable rescue eligibility (diagnostics still emitted). "
+            "Only relevant when --rescue-mnp is enabled."
         ),
     ),
     # Performance
@@ -307,7 +320,10 @@ def dna(
     setup_logging(verbose=verbose, trace=trace)
     logger.info("Running gbcms in DNA mode")
     if rescue_mnp:
-        logger.info("MNP rescue pass enabled (--rescue-mnp)")
+        logger.info(
+            "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
+            rescue_mnp_threshold,
+        )
 
     # ── 2. Pre-model validation (semantic + cross-option checks) ───────────────
 
@@ -443,6 +459,7 @@ def dna(
             apply_baq=apply_baq,
             umi_tag=umi_tag,
             rescue_mnp=rescue_mnp,
+            rescue_mnp_threshold=rescue_mnp_threshold,
         )
 
         pipeline = Pipeline(config)
@@ -514,6 +531,26 @@ def rna(
         "--rna-editing-db",
         help="Path to REDIportal VCF of known A-to-I RNA editing sites.",
     ),
+    gtf: Path | None = typer.Option(
+        None,
+        "--gtf",
+        help=(
+            "Path to GTF annotation file (Ensembl/GENCODE). Enables exon "
+            "boundary distance calculation and BAQ suppression at annotated "
+            "splice junctions. Only chromosomes with variants are loaded."
+        ),
+    ),
+    # P5: Library type flag
+    library_type: str = typer.Option(
+        "capture",
+        "--library-type",
+        help=(
+            "RNA library type: 'capture' (default, IDT xGen-style) or "
+            "'amplicon'. In amplicon mode, R1/R2 pairs are treated as "
+            "independent observations (no fragment consensus) and "
+            "strandedness filtering is automatically disabled."
+        ),
+    ),
     # Quality thresholds (different defaults for RNA)
     min_mapq: int = typer.Option(
         1,
@@ -556,10 +593,23 @@ def rna(
         False,
         "--rescue-mnp",
         help=(
-            "Enable MNP rescue pass for sparse multi-base substitutions. "
-            "When alt_count=0 and the variant has few discriminating positions, "
-            "decomposes the MNP into individual SNPs and re-counts. "
+            "Enable MNP rescue pass for multi-base substitutions. "
+            "When alt_count=0, decomposes the MNP into individual SNPs "
+            "and re-counts using the best discriminating position. "
             "Populates gbcms_rescue with a structured audit trail."
+        ),
+    ),
+    rescue_mnp_threshold: float = typer.Option(
+        1.0,
+        "--rescue-mnp-threshold",
+        min=0.0,
+        max=1.0,
+        help=(
+            "Maximum disc/len ratio for MNP rescue eligibility (0.0–1.0). "
+            "1.0 = rescue ALL MNPs (default, C++ compatible). "
+            "0.5 = only rescue sparse MNPs (≤50%% discriminating positions). "
+            "0.0 = disable rescue eligibility (diagnostics still emitted). "
+            "Only relevant when --rescue-mnp is enabled."
         ),
     ),
     # Performance
@@ -620,13 +670,17 @@ def rna(
     - NH:i:1 MAPQ rescue for STAR-aligned reads
     - dUTP strandedness filtering (--enforce-strandedness)
     - A-to-I RNA editing site flagging (--rna-editing-db)
+    - GTF-informed splice boundary annotation (--gtf)
     - RT-aware PairHMM gap penalties
     """
     # ── 1. Logging ──
     setup_logging(verbose=verbose, trace=trace)
     logger.info("Running gbcms in RNA mode")
     if rescue_mnp:
-        logger.info("MNP rescue pass enabled (--rescue-mnp)")
+        logger.info(
+            "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
+            rescue_mnp_threshold,
+        )
 
     # ── 2. Pre-model validation ──
     _is_vcf_gz = _is_compressed_vcf(variant_file)
@@ -667,17 +721,29 @@ def rna(
         raise typer.Exit(code=1)
 
     logger.info("Found %d BAM file(s) to process", len(bams_dict))
+
+    # P5: Amplicon mode auto-disables strandedness (amplicon libraries are not stranded)
+    if library_type == "amplicon" and enforce_strandedness:
+        enforce_strandedness = False
+        logger.info(
+            "--library-type=amplicon: auto-disabled --enforce-strandedness "
+            "(amplicon libraries are not strand-specific)"
+        )
+
     logger.info(
         "Config: min_mapq=%d, apply_baq=%s, alignment_backend=%s, "
-        "enforce_strandedness=%s, umi_tag=%s",
+        "enforce_strandedness=%s, library_type=%s, umi_tag=%s",
         min_mapq,
         apply_baq,
         alignment_backend.value,
         enforce_strandedness,
+        library_type,
         umi_tag or "none",
     )
     if rna_editing_db:
         logger.info("RNA editing database: %s", rna_editing_db)
+    if gtf:
+        logger.info("GTF annotation: %s", gtf)
 
     try:
         output_config = OutputConfig(
@@ -730,7 +796,10 @@ def rna(
             umi_tag=umi_tag,
             enforce_strandedness=enforce_strandedness,
             rna_editing_db=rna_editing_db,
+            gtf=gtf,
+            library_type=library_type,
             rescue_mnp=rescue_mnp,
+            rescue_mnp_threshold=rescue_mnp_threshold,
         )
 
         pipeline = Pipeline(config)

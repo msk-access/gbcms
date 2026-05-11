@@ -110,6 +110,30 @@ class BaseCounts:
     antisense_strand_alt_count: int
     rna_editing_site_overlap: bool
     splice_spanning_count: int
+    # GTF-informed annotation (None when no GTF)
+    exon_boundary_dist: int | None
+    # P4b: Per-transcript counts (empty string when no GTF or no overlap)
+    transcript_read_counts: str
+    transcript_fragment_counts: str
+    # P4c: ASJD fields (defaults: flag=False, pval/qval=0.0, strings="", bools=False, ints=0)
+    asjd_flag: bool
+    asjd_pval: float
+    asjd_qval: float
+    asjd_ref_junction: str
+    asjd_alt_junction: str
+    asjd_ref_motif: str
+    asjd_alt_motif: str
+    asjd_ref_known: bool
+    asjd_alt_known: bool
+    asjd_n_ref_junc: int
+    asjd_n_alt_junc: int
+    asjd_n_ref_total: int
+    asjd_n_alt_total: int
+    asjd_diagnostic: str
+    # Copy-on-write method for MNP rescue pass (BaseCounts is frozen from Python)
+    def with_ad(self, new_ad: int) -> BaseCounts:
+        """Return a copy with `ad` replaced by `new_ad`."""
+        ...
 
 class PreparedVariant:
     variant: Variant
@@ -117,6 +141,14 @@ class PreparedVariant:
     original_ref: str
     original_alt: str
     gbcms_status: str
+    # Post-counting diagnostic flags (set by pipeline._compute_diagnostics).
+    # Semicolon-separated. Empty string when no diagnostics.
+    # Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
+    gbcms_diagnostic: str
+    # Rescue audit trail (set by pipeline._rescue_mnp_pass).
+    # Semicolon-separated key=value pairs. Empty string when no rescue attempted.
+    # Only populated when --rescue-mnp is enabled.
+    gbcms_rescue: str
     was_anchor_resolved: bool
     was_left_aligned: bool
     @property
@@ -174,6 +206,9 @@ def count_bam_binned(
     mode: str = "dna",
     enforce_strandedness: bool = False,
     rna_editing_db: str | None = None,
+    gtf_path: str | None = None,
+    reference_fasta: str | None = None,
+    library_type: str = "capture",
 ) -> list[BaseCounts]: ...
 def prepare_variants(
     variants: list[Variant],

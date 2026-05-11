@@ -53,6 +53,8 @@ Complete reference for all pipeline parameters.
 | `--filter_indel` | `false` | Filter reads with indels |
 | `--filter_by_sample` | `false` | Filter multi-sample MAF by `Tumor_Sample_Barcode` ([details](samplesheet.md#multi-sample-maf-filtering)) |
 | `--show_normalization` | `false` | Add `norm_*` columns showing left-aligned coordinates in output |
+| `--rescue_mnp` | `false` | Enable [MNP rescue pass](../reference/architecture.md#mnp-rescue-pass-rescue-mnp-v430) — decomposes MNPs into individual SNPs for re-counting when `ad=0` |
+| `--rescue_mnp_threshold` | `1.0` | Maximum disc/len ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs eligible (C++ compatible). `0.5` = conservative sparse-only mode. `0.0` = disable rescue eligibility (diagnostics still emitted). |
 
 ## UMI & BAQ Options
 

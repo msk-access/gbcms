@@ -21,6 +21,7 @@
 //! - Bias: sb_pval, sb_or, fsb_pval, fsb_or
 //! - Diagnostic: any_alt, partial_alt, n_count (Phase 2/2b)
 //! - RNA: sense_depth, antisense_depth, sense_strand_alt_count, splice_spanning_count
+//! - Annotation: exon_boundary_dist (GTF-informed, RNA mode only)
 
 use pyo3::prelude::*;
 use rust_htslib::bam::record::Cigar;
@@ -28,6 +29,7 @@ use rust_htslib::bam::{self, Read, Record};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
+use crate::annotation::AnnotationIndex;
 use crate::shared::stats::fisher_strand_bias;
 use crate::types::{BaseCounts, Variant};
 
@@ -449,7 +451,7 @@ pub fn count_bam(
 /// // parity testing until the 22-BAM regression confirms identical counts.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, rna_editing_db=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture"))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -477,6 +479,9 @@ pub fn count_bam_binned(
     mode: &str,
     enforce_strandedness: bool,
     rna_editing_db: Option<&str>,
+    gtf_path: Option<&str>,
+    reference_fasta: Option<&str>,
+    library_type: &str,
 ) -> PyResult<Vec<BaseCounts>> {
     // Parse alignment backend from string
     let backend = match alignment_backend {
@@ -508,11 +513,46 @@ pub fn count_bam_binned(
     // Wrap in Arc for thread-safe sharing across rayon workers
     let editing_sites = std::sync::Arc::new(editing_sites);
 
+    // ── P4a: Build GTF annotation index (if GTF provided, RNA mode only) ──
+    // Loaded ONCE at init, then shared across all bins/threads via Arc.
+    // Only builds for chromosomes that have variants (variant-guided streaming).
+    let annotation: Option<std::sync::Arc<AnnotationIndex>> = match (mode, gtf_path) {
+        ("rna", Some(path)) => {
+            let variant_chroms: HashSet<String> = variants.iter()
+                .map(|v| v.chrom.trim_start_matches("chr").to_string())
+                .collect();
+            let annot = crate::annotation::parse_gtf(path, &variant_chroms)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
+                    format!("Failed to load GTF annotation: {}", e)
+                ))?;
+            info!(
+                "P4a: Built annotation index from {} — {} exons, {} transcripts, {} chromosomes",
+                path, annot.n_exons(), annot.n_transcripts(), annot.n_chromosomes(),
+            );
+            Some(std::sync::Arc::new(annot))
+        }
+        ("rna", None) => {
+            debug!("P4a: No GTF provided, annotation features disabled");
+            None
+        }
+        _ => None,  // DNA mode: no annotation, no log noise
+    };
+
+    // Store FASTA path for thread-local readers (used by ASJD motif classification)
+    let fasta_path_owned: Option<String> = reference_fasta.map(|p| p.to_string());
+
+    // P5: Convert library_type string to boolean for amplicon mode.
+    // In amplicon mode, R1/R2 hash to separate "fragments" (no consensus).
+    let amplicon_mode = library_type == "amplicon";
+
     if mode == "rna" {
         info!(
-            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, rna_editing_db={}",
+            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, \
+             rna_editing_db={}, gtf={}, library_type={}",
             variants.len(), apply_baq, umi_tag, alignment_backend,
             rna_editing_db.unwrap_or("none"),
+            gtf_path.unwrap_or("none"),
+            library_type,
         );
     } else {
         info!(
@@ -561,11 +601,18 @@ pub fn count_bam_binned(
             bins.par_iter()
                 .map_init(
                     || {
-                        bam::IndexedReader::from_path(&bam_path).map_err(|e| {
+                        let bam_reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
                             anyhow::anyhow!("Failed to open BAM: {}", e)
-                        })
+                        });
+                        // Thread-local FASTA reader for splice motif classification
+                        // (only opened when FASTA path is provided; None in DNA mode)
+                        let fasta_reader: Option<bio::io::fasta::IndexedReader<std::fs::File>> =
+                            fasta_path_owned.as_ref().and_then(|path| {
+                                bio::io::fasta::IndexedReader::from_file(path).ok()
+                            });
+                        (bam_reader, fasta_reader)
                     },
-                    |bam_result, bin| {
+                    |(bam_result, fasta_reader), bin| {
                         let bam = match bam_result {
                             Ok(b) => b,
                             Err(e) => return Err(anyhow::anyhow!("BAM init failed: {}", e)),
@@ -602,6 +649,9 @@ pub fn count_bam_binned(
                             mode,
                             enforce_strandedness,
                             &editing_sites,
+                            &annotation,
+                            fasta_reader,
+                            amplicon_mode,
                         )?)
                     },
                 )
@@ -621,6 +671,28 @@ pub fn count_bam_binned(
             for (vi, counts) in pairs {
                 all_counts[vi] = counts;
             }
+
+            // ── P4c: BH-FDR correction for ASJD p-values ──
+            // Requires all p-values simultaneously, so must run after all bins
+            // are processed. Only runs in RNA mode with annotation present.
+            // In DNA mode, asjd_pval defaults to 0.0 (Default trait), which
+            // would falsely trigger the `p < 1.0` guard — the mode check
+            // prevents this unnecessary O(n log n) sort.
+            if mode == "rna" {
+                let pvals: Vec<f64> = all_counts.iter().map(|c| c.asjd_pval).collect();
+                let has_asjd_data = pvals.iter().any(|&p| p < 1.0);
+                if has_asjd_data {
+                    let qvals = crate::shared::stats::benjamini_hochberg(&pvals);
+                    for (i, q) in qvals.into_iter().enumerate() {
+                        all_counts[i].asjd_qval = q;
+                    }
+                    debug!(
+                        "P4c BH-FDR: corrected {} ASJD p-values",
+                        pvals.len(),
+                    );
+                }
+            }
+
             Ok(all_counts)
         }
         Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e))),
@@ -716,6 +788,9 @@ fn count_bin_shared(
     mode: &str,
     enforce_strandedness: bool,
     editing_sites: &Option<HashSet<(String, i64)>>,
+    annotation: &Option<std::sync::Arc<AnnotationIndex>>,
+    fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
+    amplicon_mode: bool,
 ) -> Result<Vec<(usize, BaseCounts)>> {
 
     // ══════════════════════════════════════════════════════════════════════
@@ -810,19 +885,19 @@ fn count_bin_shared(
             filter_improper_pair, filter_indel,
             fragment_qual_threshold, backend,
             apply_baq, umi_tag, mode, enforce_strandedness,
-            editing_sites,
+            editing_sites, annotation, amplicon_mode,
         )?;
 
         // Dual-count for decomposed variants: run the same classification
         // against the decomposed variant form and take the higher ALT count.
-        let final_counts = if let Some(ref decomp) = decomposed[vi] {
+        let mut final_counts = if let Some(ref decomp) = decomposed[vi] {
             let counts_decomp = count_variant_from_cache(
                 &read_cache, decomp, siblings,
                 min_mapq, min_baseq,
                 filter_improper_pair, filter_indel,
                 fragment_qual_threshold, backend,
                 apply_baq, umi_tag, mode, enforce_strandedness,
-                editing_sites,
+                editing_sites, annotation, amplicon_mode,
             )?;
 
             if counts_decomp.ad > counts_orig.ad {
@@ -836,6 +911,45 @@ fn count_bin_shared(
         } else {
             counts_orig
         };
+
+        // ── P4b: Per-transcript counting (RNA + GTF only) ──
+        // For each overlapping transcript, count reads whose splice junctions
+        // are compatible with that transcript's intron structure. Reuses the
+        // same read cache — no additional BAM I/O.
+        if let Some(ref annot) = *annotation {
+            let (read_cts, frag_cts) = count_per_transcript(
+                &read_cache, variant, siblings, annot,
+                min_mapq, min_baseq, fragment_qual_threshold,
+                backend, apply_baq, umi_tag, enforce_strandedness,
+                amplicon_mode,
+            );
+            final_counts.transcript_read_counts = read_cts;
+            final_counts.transcript_fragment_counts = frag_cts;
+
+            // ── P4c: Allele-Specific Junction Divergence (ASJD) ──
+            // Compare splice junction usage between REF and ALT reads.
+            // asjd_qval initialized to asjd_pval; corrected post-counting
+            // via benjamini_hochberg() in count_bam_binned().
+            let asjd = detect_asjd(
+                &read_cache, variant, siblings, annot,
+                min_mapq, min_baseq, backend, apply_baq, enforce_strandedness,
+                fasta_reader,
+            );
+            final_counts.asjd_flag = asjd.flag;
+            final_counts.asjd_pval = asjd.pval;
+            final_counts.asjd_qval = asjd.pval; // Placeholder — BH-corrected post-counting
+            final_counts.asjd_ref_junction = asjd.ref_junction;
+            final_counts.asjd_alt_junction = asjd.alt_junction;
+            final_counts.asjd_ref_motif = asjd.ref_motif;
+            final_counts.asjd_alt_motif = asjd.alt_motif;
+            final_counts.asjd_ref_known = asjd.ref_known;
+            final_counts.asjd_alt_known = asjd.alt_known;
+            final_counts.asjd_n_ref_junc = asjd.n_ref_junc;
+            final_counts.asjd_n_alt_junc = asjd.n_alt_junc;
+            final_counts.asjd_n_ref_total = asjd.n_ref_total;
+            final_counts.asjd_n_alt_total = asjd.n_alt_total;
+            final_counts.asjd_diagnostic = asjd.diagnostic;
+        }
 
         results.push((vi, final_counts));
     }
@@ -874,9 +988,19 @@ fn count_variant_from_cache(
     mode: &str,
     enforce_strandedness: bool,
     editing_sites: &Option<HashSet<(String, i64)>>,
+    annotation: &Option<std::sync::Arc<AnnotationIndex>>,
+    amplicon_mode: bool,
 ) -> Result<BaseCounts> {
 
     let mut counts = BaseCounts::default();
+
+    // ── P4a: Compute exon boundary distance (GTF-informed) ──
+    // Set once per variant, not per read. Used for BAQ suppression
+    // and as an output column. None when no GTF is provided.
+    let exon_boundary_dist: Option<i32> = annotation.as_ref().map(|annot| {
+        annot.nearest_splice_distance(&variant.chrom, variant.pos)
+    });
+    counts.exon_boundary_dist = exon_boundary_dist;
 
     // Fragment tracking: QNAME hash -> FragmentEvidence
     let mut fragments: HashMap<u64, FragmentEvidence> = HashMap::new();
@@ -996,7 +1120,12 @@ fn count_variant_from_cache(
         // When BAQ is enabled, bases near indels and splice junctions
         // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
         // on for RNA (no upstream BQ recalibration).
-        let baq_adjusted = if apply_baq {
+        // ── P4a: GTF-informed BAQ suppression ──
+        // At annotated splice boundaries (within 5bp), BAQ downgrade
+        // would incorrectly penalize reads that legitimately span the
+        // exon junction. Suppress BAQ when exon_boundary_dist <= 5.
+        let suppress_baq = matches!(exon_boundary_dist, Some(d) if d <= 5);
+        let baq_adjusted = if apply_baq && !suppress_baq {
             apply_heuristic_baq(record)
         } else {
             None
@@ -1066,7 +1195,7 @@ fn count_variant_from_cache(
         // UMI-aware fragment grouping: when umi_tag is set, reads with
         // different UMIs are treated as distinct molecules. The UMI is
         // extracted from the BAM aux tag (e.g., RX:Z:ACGT).
-        let mol_hash = if let Some(tag) = umi_tag {
+        let mut mol_hash = if let Some(tag) = umi_tag {
             let umi_bytes = record.aux(&tag)
                 .ok()
                 .and_then(|aux| match aux {
@@ -1079,6 +1208,13 @@ fn count_variant_from_cache(
         };
         let is_read1 = record.is_first_in_template();
         let is_forward = !is_reverse;
+
+        // P5: Amplicon mode — XOR read number into fragment hash so R1 and R2
+        // are treated as independent observations (no fragment consensus).
+        // This bypasses R1/R2 merging without modifying fragment.rs.
+        if amplicon_mode {
+            mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
+        }
 
         let evidence = fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
 
@@ -2008,6 +2144,594 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     }
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// P4b: PER-TRANSCRIPT COUNTING
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Per-transcript read and fragment counts for a single variant.
+///
+/// For each transcript whose exons overlap the variant, this function:
+/// 1. Filters the read cache by splice-junction compatibility
+/// 2. Re-invokes allele classification on compatible reads
+/// 3. Applies fragment consensus per-transcript
+/// 4. Formats results as semicolon-separated strings
+///
+/// Returns `(transcript_read_counts, transcript_fragment_counts)`.
+///
+/// Both are empty strings when:
+/// - No transcripts overlap the variant position
+/// - The variant is intronic
+/// - The chromosome has no annotation
+///
+/// # Format
+///
+/// Read:     `"ENST...:AD,RD,DP;ENST...:AD,RD,DP"`
+/// Fragment: `"ENST...:ADF,RDF,DPF;ENST...:ADF,RDF,DPF"`
+///
+/// # Performance
+///
+/// Re-invokes allele classification per transcript × per read, but this is
+/// acceptable given:
+/// - Typical gene loci have 1–3 overlapping transcripts
+/// - RNA-seq depth is modest (50–200×)
+/// - No additional BAM I/O — reuses the existing read cache
+#[allow(clippy::too_many_arguments)]
+fn count_per_transcript(
+    read_cache: &[Record],
+    variant: &Variant,
+    sibling_variants: &[Variant],
+    annotation: &AnnotationIndex,
+    min_mapq: u8,
+    min_baseq: u8,
+    fragment_qual_threshold: u8,
+    backend: &AlignmentBackend,
+    apply_baq: bool,
+    umi_tag: Option<[u8; 2]>,
+    enforce_strandedness: bool,
+    amplicon_mode: bool,
+) -> (String, String) {
+    // Step 1: Find overlapping transcripts
+    let chrom = variant.chrom.trim_start_matches("chr");
+    let transcript_ids = annotation.overlapping_transcripts(chrom, variant.pos);
+
+    if transcript_ids.is_empty() {
+        return (String::new(), String::new());
+    }
+
+    trace!(
+        "P4b: {} overlapping transcripts at {}:{} ({})",
+        transcript_ids.len(), variant.chrom, variant.pos + 1,
+        transcript_ids.join(", "),
+    );
+
+    // Step 2: Compute variant overlap window (same as count_variant_from_cache)
+    let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
+    let v_start = (variant.pos - window_pad).max(0);
+    let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
+
+    // Step 3: Create aligners (same pattern as count_variant_from_cache)
+    let score_fn = |a: u8, b: u8| -> i32 {
+        if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
+    };
+    let gap_open: i32 = -5;
+    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
+
+    // Step 4: Per-transcript counting
+    let mut read_entries: Vec<String> = Vec::with_capacity(transcript_ids.len());
+    let mut frag_entries: Vec<String> = Vec::with_capacity(transcript_ids.len());
+
+    for tx_id in &transcript_ids {
+        let tx_introns = match annotation.get_transcript_introns(tx_id) {
+            Some(ti) => ti,
+            None => {
+                // Should not happen if overlapping_transcripts returned this ID,
+                // but guard against index inconsistency.
+                debug!(
+                    "P4b: transcript {} has no intron data, skipping",
+                    tx_id,
+                );
+                continue;
+            }
+        };
+
+        // Per-transcript counters
+        let mut tx_ad: u32 = 0;
+        let mut tx_rd: u32 = 0;
+        let mut tx_dp: u32 = 0;
+        let mut tx_fragments: HashMap<u64, FragmentEvidence> = HashMap::new();
+
+        // Fresh aligners per transcript to avoid cross-contamination
+        let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+        let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+
+        for record in read_cache {
+            // ── Overlap check: does this read overlap the variant window?
+            let r_start = record.pos();
+            let r_end = read_ref_end(record);
+            if r_start >= v_end || r_end <= v_start {
+                continue;
+            }
+
+            // ── Standard filters (same as count_variant_from_cache)
+            if record.mapq() < min_mapq && !super::rna::is_valid_rna_alignment(record, min_mapq) {
+                continue;
+            }
+
+            // ── Strandedness filter
+            if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand) {
+                continue;
+            }
+
+            // ── P4b: Splice-junction compatibility check
+            let observed_junctions = super::rna::extract_splice_junctions(record);
+            if !annotation.is_read_compatible(&observed_junctions, tx_introns, 5) {
+                continue; // Incompatible junctions → skip for this transcript
+            }
+
+            // ── BAQ (same suppression logic as main counting)
+            let baq_adjusted = if apply_baq {
+                apply_heuristic_baq(record)
+            } else {
+                None
+            };
+            let effective_quals: &[u8] = match &baq_adjusted {
+                Some(adj) => adj,
+                None => record.qual(),
+            };
+
+            // ── Allele classification
+            let result = check_allele_with_qual(
+                record, variant, sibling_variants, effective_quals, min_baseq,
+                &mut alt_aligner, &mut ref_aligner, backend,
+            );
+
+            // ── Anchor overlap check (same as main counting)
+            let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;
+            if !overlaps_anchor {
+                continue;
+            }
+
+            // ── Count reads
+            tx_dp += 1;
+
+            // ── Fragment tracking
+            let mut mol_hash = if let Some(tag) = umi_tag {
+                let umi_bytes = record.aux(&tag)
+                    .ok()
+                    .and_then(|aux| match aux {
+                        rust_htslib::bam::record::Aux::String(s) => Some(s.as_bytes()),
+                        _ => None,
+                    });
+                hash_molecule(record.qname(), umi_bytes)
+            } else {
+                hash_qname(record.qname())
+            };
+            let is_read1 = record.is_first_in_template();
+            let is_forward = !record.is_reverse();
+            let tlen = mfsd::calc_physical_insert_size(record);
+
+            // P5: Amplicon mode — same XOR trick as count_variant_from_cache
+            if amplicon_mode {
+                mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
+            }
+
+            let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
+            evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base);
+
+            if result.is_ref {
+                tx_rd += 1;
+            } else if result.is_alt {
+                tx_ad += 1;
+            }
+        }
+
+        // ── Fragment resolution for this transcript
+        let mut tx_adf: u32 = 0;
+        let mut tx_rdf: u32 = 0;
+        let mut tx_dpf: u32 = 0;
+        let qual_diff = fragment_qual_threshold;
+
+        for evidence in tx_fragments.values() {
+            let (frag_ref, frag_alt) = evidence.resolve(qual_diff);
+            tx_dpf += 1;
+            if frag_ref { tx_rdf += 1; }
+            else if frag_alt { tx_adf += 1; }
+        }
+
+        // Format: "ENST...:AD,RD,DP"
+        read_entries.push(format!("{}:{},{},{}", tx_id, tx_ad, tx_rd, tx_dp));
+        frag_entries.push(format!("{}:{},{},{}", tx_id, tx_adf, tx_rdf, tx_dpf));
+
+        trace!(
+            "P4b: {} → read AD={} RD={} DP={}, frag ADF={} RDF={} DPF={}",
+            tx_id, tx_ad, tx_rd, tx_dp, tx_adf, tx_rdf, tx_dpf,
+        );
+    }
+
+    if read_entries.is_empty() {
+        return (String::new(), String::new());
+    }
+
+    (read_entries.join(";"), frag_entries.join(";"))
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// P4c: ALLELE-SPECIFIC JUNCTION DIVERGENCE (ASJD)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Result of ASJD detection for a single variant.
+#[derive(Debug)]
+struct AsjdResult {
+    flag: bool,
+    pval: f64,
+    ref_junction: String,
+    alt_junction: String,
+    ref_motif: String,
+    alt_motif: String,
+    ref_known: bool,
+    alt_known: bool,
+    n_ref_junc: u32,
+    n_alt_junc: u32,
+    n_ref_total: u32,
+    n_alt_total: u32,
+    diagnostic: String,
+}
+
+impl AsjdResult {
+    /// Empty result when ASJD detection is not applicable (no annotation,
+    /// no junction reads, etc.).
+    fn empty() -> Self {
+        Self {
+            flag: false,
+            pval: 1.0,
+            ref_junction: String::new(),
+            alt_junction: String::new(),
+            ref_motif: String::new(),
+            alt_motif: String::new(),
+            ref_known: false,
+            alt_known: false,
+            n_ref_junc: 0,
+            n_alt_junc: 0,
+            n_ref_total: 0,
+            n_alt_total: 0,
+            diagnostic: String::new(),
+        }
+    }
+}
+
+/// Per-junction forward/reverse read counts for strand discordance detection.
+///
+/// In stranded (dUTP) RNA-seq libraries, reads spanning a real splice junction
+/// should originate from a single transcript strand. If the dominant ALT junction
+/// has substantial support from **both** strands (minority strand fraction ≥ 30%),
+/// it indicates the junction may be an alignment artifact (e.g., DNA contamination
+/// or mismapping) rather than a genuine RNA splice event.
+///
+/// The `STRAND_DISCORDANT` diagnostic flag fires when:
+/// `min(forward, reverse) / (forward + reverse) >= 0.30`
+#[derive(Default, Debug)]
+struct JunctionStrandCounts {
+    forward: u32,
+    reverse: u32,
+}
+
+impl JunctionStrandCounts {
+    /// Total read count across both strands.
+    fn total(&self) -> u32 {
+        self.forward + self.reverse
+    }
+
+    /// Minority strand fraction: 0.0 = perfectly stranded, 0.5 = fully mixed.
+    fn minority_strand_fraction(&self) -> f64 {
+        let total = self.total();
+        if total == 0 {
+            return 0.0;
+        }
+        let minority = std::cmp::min(self.forward, self.reverse);
+        minority as f64 / total as f64
+    }
+}
+
+/// Detect allele-specific junction divergence at a variant site.
+/// Classify the splice motif at a junction by reading donor/acceptor dinucleotides
+/// from the reference FASTA.
+///
+/// Splice junctions are defined by intron boundaries:
+/// - **Donor** (5' end): 2bp at `junction_start` (first 2 bases of intron)
+/// - **Acceptor** (3' end): 2bp at `junction_end - 2` (last 2 bases of intron)
+///
+/// | Donor | Acceptor | Motif  | Spliceosome |
+/// |-------|----------|--------|-------------|
+/// | GT    | AG       | GT-AG  | U2 major    |
+/// | GC    | AG       | GC-AG  | U2 minor    |
+/// | AT    | AC       | AT-AC  | U12         |
+/// | other | other    | OTHER  | Non-canonical |
+///
+/// Returns `"UNKNOWN"` if FASTA reader is unavailable or fetch fails.
+fn classify_splice_motif(
+    fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
+    chrom: &str,
+    junction_start: i64,
+    junction_end: i64,
+) -> String {
+    let reader = match fasta_reader.as_mut() {
+        Some(r) => r,
+        None => return "UNKNOWN".to_string(),
+    };
+
+    // Fetch donor dinucleotide (2bp at intron start)
+    let donor = match crate::normalize::fasta::fetch_region(
+        reader, chrom, junction_start as u64, (junction_start + 2) as u64,
+    ) {
+        Ok(bases) if bases.len() == 2 => {
+            [bases[0].to_ascii_uppercase(), bases[1].to_ascii_uppercase()]
+        }
+        _ => return "UNKNOWN".to_string(),
+    };
+
+    // Fetch acceptor dinucleotide (2bp at intron end - 2)
+    let acceptor = match crate::normalize::fasta::fetch_region(
+        reader, chrom, (junction_end - 2) as u64, junction_end as u64,
+    ) {
+        Ok(bases) if bases.len() == 2 => {
+            [bases[0].to_ascii_uppercase(), bases[1].to_ascii_uppercase()]
+        }
+        _ => return "UNKNOWN".to_string(),
+    };
+
+    // Classify the motif
+    match (donor, acceptor) {
+        ([b'G', b'T'], [b'A', b'G']) => "GT-AG".to_string(),
+        ([b'G', b'C'], [b'A', b'G']) => "GC-AG".to_string(),
+        ([b'A', b'T'], [b'A', b'C']) => "AT-AC".to_string(),
+        _ => "OTHER".to_string(),
+    }
+}
+
+///
+/// Partitions reads from the cache into REF- and ALT-classified sets,
+/// collects splice junctions from each partition, and tests whether
+/// the junction distributions differ significantly (Fisher's exact test).
+///
+/// # Algorithm
+///
+/// 1. Re-classify reads (same as count_variant_from_cache) to partition into REF/ALT
+/// 2. Extract CIGAR N ops from each partition → per-allele junction multiset with strand info
+/// 3. Find the dominant junction in each partition
+/// 4. If dominant junctions differ, run Fisher's exact 2x2 test
+/// 5. Classify splice motifs (FASTA lookup), check GTF annotation, build diagnostic flags
+/// 6. Check strand discordance on the ALT dominant junction (dUTP artifact detection)
+///
+/// # Parameters
+///
+/// - `read_cache`: All reads in the genomic bin (shared across variants)
+/// - `variant`: The variant being analyzed
+/// - `sibling_variants`: Multi-allelic sibling variants at the same locus
+/// - `annotation`: The GTF annotation index
+/// - `min_mapq`, `min_baseq`, etc.: Standard counting parameters
+#[allow(clippy::too_many_arguments)]
+fn detect_asjd(
+    read_cache: &[Record],
+    variant: &Variant,
+    sibling_variants: &[Variant],
+    annotation: &AnnotationIndex,
+    min_mapq: u8,
+    min_baseq: u8,
+    backend: &AlignmentBackend,
+    apply_baq: bool,
+    enforce_strandedness: bool,
+    fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
+) -> AsjdResult {
+    let chrom = variant.chrom.trim_start_matches("chr");
+    let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
+    let v_start = (variant.pos - window_pad).max(0);
+    let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
+
+    // Create aligners
+    let score_fn = |a: u8, b: u8| -> i32 {
+        if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
+    };
+    let gap_open: i32 = -5;
+    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
+    let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+    let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+
+    // Step 1: Partition reads into REF/ALT and collect junctions with strand info
+    // Tracks forward/reverse read counts per junction for STRAND_DISCORDANT detection.
+    // In dUTP libraries, real splice junctions should be supported by reads from a
+    // single strand; mixed-strand evidence suggests alignment artifacts.
+    let mut ref_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
+    let mut alt_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
+    let mut n_ref_total: u32 = 0;
+    let mut n_alt_total: u32 = 0;
+
+    for record in read_cache {
+        let r_start = record.pos();
+        let r_end = read_ref_end(record);
+        if r_start >= v_end || r_end <= v_start {
+            continue;
+        }
+
+        // Standard filters
+        if record.mapq() < min_mapq && !super::rna::is_valid_rna_alignment(record, min_mapq) {
+            continue;
+        }
+        if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand) {
+            continue;
+        }
+
+        // BAQ
+        let baq_adjusted = if apply_baq {
+            apply_heuristic_baq(record)
+        } else {
+            None
+        };
+        let effective_quals: &[u8] = match &baq_adjusted {
+            Some(adj) => adj,
+            None => record.qual(),
+        };
+
+        // Classify allele
+        let result = check_allele_with_qual(
+            record, variant, sibling_variants, effective_quals, min_baseq,
+            &mut alt_aligner, &mut ref_aligner, backend,
+        );
+
+        // Only interested in reads with splice junctions
+        let junctions = super::rna::extract_splice_junctions(record);
+        if junctions.is_empty() {
+            continue;
+        }
+
+        // Read strand (BAM FLAG bit 0x10)
+        let is_reverse = record.is_reverse();
+
+        // Partition by allele classification, tracking strand per junction
+        if result.is_ref {
+            n_ref_total += 1;
+            for j in &junctions {
+                let entry = ref_junction_counts.entry(*j).or_default();
+                if is_reverse { entry.reverse += 1; } else { entry.forward += 1; }
+            }
+        } else if result.is_alt {
+            n_alt_total += 1;
+            for j in &junctions {
+                let entry = alt_junction_counts.entry(*j).or_default();
+                if is_reverse { entry.reverse += 1; } else { entry.forward += 1; }
+            }
+        }
+    }
+
+    // Step 2: Check minimum evidence thresholds
+    let mut diag_flags: Vec<&str> = Vec::new();
+
+    if n_ref_total < 10 {
+        diag_flags.push("LOW_REF_JUNC");
+    }
+    if n_alt_total < 5 {
+        diag_flags.push("LOW_ALT_JUNC");
+    }
+
+    // If either partition has no junction reads, no divergence can be detected
+    if ref_junction_counts.is_empty() || alt_junction_counts.is_empty() {
+        return AsjdResult {
+            diagnostic: diag_flags.join(";"),
+            n_ref_total,
+            n_alt_total,
+            ..AsjdResult::empty()
+        };
+    }
+
+    // Step 3: Find dominant junction in each partition (by total reads across both strands)
+    let (ref_dom_junc, ref_dom_strand_info) = ref_junction_counts
+        .iter()
+        .max_by_key(|(_, sc)| sc.total())
+        .map(|(j, sc)| (*j, sc))
+        .unwrap(); // safe: checked non-empty above
+    let n_ref_junc = ref_dom_strand_info.total();
+
+    let (alt_dom_junc, alt_dom_strand_info) = alt_junction_counts
+        .iter()
+        .max_by_key(|(_, sc)| sc.total())
+        .map(|(j, sc)| (*j, sc))
+        .unwrap();
+    let n_alt_junc = alt_dom_strand_info.total();
+
+    // Check for multi-junction in ALT reads
+    let alt_distinct_junctions = alt_junction_counts.len();
+    if alt_distinct_junctions > 2 {
+        diag_flags.push("MULTI_JUNCTION");
+    }
+
+    // Step 4: Compare dominant junctions
+    let same_junction = (ref_dom_junc.0 - alt_dom_junc.0).abs() <= 5
+        && (ref_dom_junc.1 - alt_dom_junc.1).abs() <= 5;
+
+    let (pval, flag) = if same_junction {
+        // Same dominant junction → no divergence
+        (1.0, false)
+    } else {
+        // Different dominant junctions → Fisher's exact test
+        // 2x2 table: [REF on ref_junc, REF on alt_junc] vs [ALT on ref_junc, ALT on alt_junc]
+        let ref_on_ref_junc = ref_junction_counts.get(&ref_dom_junc).map_or(0, |sc| sc.total());
+        let ref_on_alt_junc = ref_junction_counts.get(&alt_dom_junc).map_or(0, |sc| sc.total());
+        let alt_on_ref_junc = alt_junction_counts.get(&ref_dom_junc).map_or(0, |sc| sc.total());
+        let alt_on_alt_junc = alt_junction_counts.get(&alt_dom_junc).map_or(0, |sc| sc.total());
+
+        let (p, _or) = crate::shared::stats::fisher_exact_2x2(
+            ref_on_ref_junc, ref_on_alt_junc,
+            alt_on_ref_junc, alt_on_alt_junc,
+        );
+
+        (p, p < 0.05 && n_alt_junc >= 5 && n_ref_junc >= 10)
+    };
+
+    // Step 5: Classify splice motifs and GTF annotation
+    let ref_known = annotation.is_junction_known(chrom, ref_dom_junc.0, ref_dom_junc.1, 5);
+    let alt_known = annotation.is_junction_known(chrom, alt_dom_junc.0, alt_dom_junc.1, 5);
+
+    if !alt_known && !same_junction {
+        diag_flags.push("NOVEL_ALT_JUNC");
+    }
+
+    let ref_junction_str = format!("{}-{}", ref_dom_junc.0, ref_dom_junc.1);
+    let alt_junction_str = format!("{}-{}", alt_dom_junc.0, alt_dom_junc.1);
+
+    // Step 5b: Classify splice motifs from reference sequence
+    // Splice junctions have a donor (5') and acceptor (3') dinucleotide:
+    //   Donor:   2bp at junction_start (intron start)
+    //   Acceptor: 2bp at junction_end - 2 (intron end)
+    // Canonical motifs: GT-AG (U2), GC-AG (U2 minor), AT-AC (U12)
+    let ref_motif = classify_splice_motif(fasta_reader, chrom, ref_dom_junc.0, ref_dom_junc.1);
+    let alt_motif = classify_splice_motif(fasta_reader, chrom, alt_dom_junc.0, alt_dom_junc.1);
+
+    // NON_CANONICAL_MOTIF diagnostic flag
+    if !same_junction && alt_motif == "OTHER" {
+        diag_flags.push("NON_CANONICAL_MOTIF");
+    }
+
+    // Step 5c: Strand discordance detection on the dominant ALT junction
+    // In dUTP libraries, reads from a genuine splice event should be predominantly
+    // on one strand. A minority strand fraction ≥ 30% (with ≥5 total reads to avoid
+    // noise at low depth) indicates the junction may be an alignment artifact.
+    let alt_minority_frac = alt_dom_strand_info.minority_strand_fraction();
+    if !same_junction && n_alt_junc >= 5 && alt_minority_frac >= 0.30 {
+        diag_flags.push("STRAND_DISCORDANT");
+        debug!(
+            "P4c STRAND_DISCORDANT: {}:{} alt_junc={}-{} fwd={} rev={} minority_frac={:.2}",
+            variant.chrom, variant.pos + 1,
+            alt_dom_junc.0, alt_dom_junc.1,
+            alt_dom_strand_info.forward, alt_dom_strand_info.reverse,
+            alt_minority_frac,
+        );
+    }
+
+    trace!(
+        "P4c ASJD: {}:{} flag={} pval={:.4e} ref={}({}) alt={}({}) ref_n={}/{} alt_n={}/{} alt_strand={}F/{}R",
+        variant.chrom, variant.pos + 1, flag, pval,
+        ref_junction_str, ref_motif, alt_junction_str, alt_motif,
+        n_ref_junc, n_ref_total, n_alt_junc, n_alt_total,
+        alt_dom_strand_info.forward, alt_dom_strand_info.reverse,
+    );
+
+    AsjdResult {
+        flag,
+        pval,
+        ref_junction: ref_junction_str,
+        alt_junction: alt_junction_str,
+        ref_motif,
+        alt_motif,
+        ref_known,
+        alt_known,
+        n_ref_junc,
+        n_alt_junc,
+        n_ref_total,
+        n_alt_total,
+        diagnostic: diag_flags.join(";"),
+    }
+}
 
 
 

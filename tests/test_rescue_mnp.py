@@ -3,10 +3,10 @@
 Covers:
 1.  Default config: rescue_mnp is False
 2.  MAF output: gbcms_rescue column absent without flag
-3.  MAF output: gbcms_rescue column present with flag
-4.  VCF output: GR absent without flag
-5.  VCF output: GR present with flag
-6.  Rescue fires for sparse MNP (ad=0, MNP_SPARSE_DISC)
+3.  MNP_DISC_RATIO always emitted, MNP_RESCUE_ELIGIBLE based on threshold
+4.  HIGH_N_FRACTION(f) flag fires when n_count/dp > 0.05
+5.  Multi-flag combination (ZERO_ALT + MNP_DISC_RATIO + MNP_RESCUE_ELIGIBLE)
+6.  Rescue fires for MNP (ad=0, MNP_RESCUE_ELIGIBLE)
 7.  Rescue skips non-MNP variants
 8.  Rescue skips variants with non-zero ad
 9.  Rescue skips FAIL variants
@@ -197,13 +197,13 @@ def test_vcf_gr_present_with_flag(tmp_path):
 
 
 def test_rescue_candidate_identification():
-    """_rescue_mnp_pass identifies candidates: PASS + ad==0 + MNP_SPARSE_DISC."""
-    # Create a sparse MNP: 5bp, only 2 discriminating positions
+    """_rescue_mnp_pass identifies candidates: PASS + ad==0 + MNP_RESCUE_ELIGIBLE."""
+    # Create a sparse MNP: 5bp, only 1 discriminating position
     pv = _mock_prepared_variant(
         ref_allele="CCCCC",
         alt_allele="CTCCC",  # only position 1 differs
         gbcms_status="PASS",
-        gbcms_diagnostic="ZERO_ALT;MNP_SPARSE_DISC(1/5)",
+        gbcms_diagnostic="ZERO_ALT;MNP_DISC_RATIO(1/5);MNP_RESCUE_ELIGIBLE",
     )
     counts = _mock_counts(ad=0, any_alt=0, partial_alt=0)
 
@@ -218,7 +218,7 @@ def test_rescue_candidate_identification():
             continue
         if c.ad != 0:
             continue
-        if "MNP_SPARSE_DISC" not in p.gbcms_diagnostic:
+        if "MNP_RESCUE_ELIGIBLE" not in p.gbcms_diagnostic:
             continue
 
         ref_allele = p.variant.ref_allele
@@ -267,7 +267,7 @@ def test_rescue_skips_non_mnp():
             len(pv.variant.ref_allele) == len(pv.variant.alt_allele)
             and len(pv.variant.ref_allele) > 1
         )
-        assert not is_mnp or "MNP_SPARSE_DISC" not in pv.gbcms_diagnostic
+        assert not is_mnp or "MNP_RESCUE_ELIGIBLE" not in pv.gbcms_diagnostic
 
 
 # ── Test 8: Rescue skips non-zero ad ──────────────────────────────────────────
@@ -279,7 +279,7 @@ def test_rescue_skips_nonzero_ad():
         ref_allele="CCCCC",
         alt_allele="CTCCC",
         gbcms_status="PASS",
-        gbcms_diagnostic="MNP_SPARSE_DISC(1/5)",
+        gbcms_diagnostic="MNP_DISC_RATIO(1/5);MNP_RESCUE_ELIGIBLE",
     )
     counts = _mock_counts(ad=3)  # non-zero
 

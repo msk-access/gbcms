@@ -1,6 +1,8 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 use pyo3::prelude::*;
 
+#[allow(dead_code)] // annotation types used internally by engine.rs (not exported to Python)
+mod annotation;
 mod counting;
 mod normalize;
 mod shared;

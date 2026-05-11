@@ -328,5 +328,93 @@ pub struct BaseCounts {
     /// Reads supporting ALT that span a splice junction — CIGAR N (SPL in VCF).
     #[pyo3(get)]
     pub splice_spanning_count: u32,
+
+    // ── GTF-informed annotation (None when no GTF provided) ──────────────
+    /// Distance (bp) to nearest annotated exon boundary (EBD in VCF).
+    /// None when no GTF is provided. 0 = at boundary. Used for BAQ suppression
+    /// at splice sites. Only populated in RNA mode with `--gtf`.
+    #[pyo3(get)]
+    pub exon_boundary_dist: Option<i32>,
+
+    // ── P4b: Per-transcript counts (empty when no GTF or no overlap) ─────
+    /// Per-transcript read-level counts (TXRC in VCF).
+    /// Format: "ENST...:AD,RD,DP;ENST...:AD,RD,DP"
+    /// Empty string when no GTF, no overlapping transcripts, or DNA mode.
+    #[pyo3(get)]
+    pub transcript_read_counts: String,
+
+    /// Per-transcript fragment-level counts (TXFC in VCF).
+    /// Format: "ENST...:ADF,RDF,DPF;ENST...:ADF,RDF,DPF"
+    /// Empty string when no GTF, no overlapping transcripts, or DNA mode.
+    #[pyo3(get)]
+    pub transcript_fragment_counts: String,
+
+    // ── P4c: Allele-Specific Junction Divergence (ASJD) ──────────────────
+    // All fields default to false/0.0/"" via #[derive(Default)], producing
+    // clean output when no GTF is provided or in DNA mode.
+
+    /// True when Fisher's exact test p < 0.05 for junction divergence.
+    #[pyo3(get)]
+    pub asjd_flag: bool,
+    /// Raw Fisher exact p-value (1.0 when no divergence or insufficient data).
+    #[pyo3(get)]
+    pub asjd_pval: f64,
+    /// Benjamini-Hochberg FDR-corrected q-value (set post-counting).
+    #[pyo3(get)]
+    pub asjd_qval: f64,
+
+    /// Dominant REF junction as "start-end" (empty when no junction reads).
+    #[pyo3(get)]
+    pub asjd_ref_junction: String,
+    /// Dominant ALT junction as "start-end".
+    #[pyo3(get)]
+    pub asjd_alt_junction: String,
+
+    /// Splice motif for REF junction (GT-AG, GC-AG, AT-AC, or OTHER).
+    #[pyo3(get)]
+    pub asjd_ref_motif: String,
+    /// Splice motif for ALT junction.
+    #[pyo3(get)]
+    pub asjd_alt_motif: String,
+
+    /// Whether the REF dominant junction matches a GTF-annotated intron.
+    #[pyo3(get)]
+    pub asjd_ref_known: bool,
+    /// Whether the ALT dominant junction matches a GTF-annotated intron.
+    #[pyo3(get)]
+    pub asjd_alt_known: bool,
+
+    /// REF reads supporting the dominant junction.
+    #[pyo3(get)]
+    pub asjd_n_ref_junc: u32,
+    /// ALT reads supporting the dominant junction.
+    #[pyo3(get)]
+    pub asjd_n_alt_junc: u32,
+    /// Total REF reads with any splice junction.
+    #[pyo3(get)]
+    pub asjd_n_ref_total: u32,
+    /// Total ALT reads with any splice junction.
+    #[pyo3(get)]
+    pub asjd_n_alt_total: u32,
+
+    /// Semicolon-separated diagnostic flags (e.g., "LOW_ALT_JUNC;NOVEL_ALT_JUNC").
+    #[pyo3(get)]
+    pub asjd_diagnostic: String,
 }
 
+#[pymethods]
+impl BaseCounts {
+    /// Return a copy with `ad` replaced by `new_ad`.
+    ///
+    /// Used by the Python MNP rescue pass (`--rescue-mnp`) which needs to
+    /// update `ad` after decomposing a sparse MNP into individual SNPs.
+    /// Preserves immutability of the original struct from the Python side —
+    /// all fields are `#[pyo3(get)]` only, so this copy-on-write method is
+    /// the only way to produce a modified `BaseCounts` from Python.
+    fn with_ad(&self, new_ad: u32) -> BaseCounts {
+        BaseCounts {
+            ad: new_ad,
+            ..self.clone()
+        }
+    }
+}

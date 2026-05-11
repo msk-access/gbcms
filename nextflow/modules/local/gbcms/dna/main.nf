@@ -4,7 +4,7 @@ process GBCMS_DNA {
 
     publishDir "${params.outdir}/gbcms", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:4.2.0"
+    container "ghcr.io/msk-access/gbcms:5.0.0"
 
     input:
     tuple val(meta), path(bam), path(bai), path(variants)
@@ -38,8 +38,8 @@ process GBCMS_DNA {
     // Show normalization columns in output
     def show_norm_arg = params.show_normalization ? "--show-normalization" : ""
 
-    // MNP rescue pass (v4.3.0 — decomposes sparse MNPs into SNPs for re-counting)
-    def rescue_mnp_arg = params.rescue_mnp ? "--rescue-mnp" : ""
+    // MNP rescue pass (v4.3.0 — decomposes MNPs into SNPs for re-counting)
+    def rescue_mnp_arg = params.rescue_mnp ? "--rescue-mnp --rescue-mnp-threshold ${params.rescue_mnp_threshold}" : ""
 
     // Adaptive context padding in repeat regions
     def adaptive_arg = params.adaptive_context ? "" : "--no-adaptive-context"

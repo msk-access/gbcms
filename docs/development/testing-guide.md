@@ -251,7 +251,7 @@ samtools mpileup -r 1:11168293-11168293 -q 20 -f ref.fa sample.bam | \
 | io/output.py | 90% | 84% |
 | models/core.py | 90% | 96% |
 
-**Current totals**: 207 Python + 119 Rust tests.
+**Current totals**: 255 Python + 143 Rust tests.
 
 Run coverage report:
 

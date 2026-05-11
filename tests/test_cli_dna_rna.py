@@ -91,3 +91,30 @@ def test_rna_requires_variants():
     """RNA command without --variants should fail."""
     result = runner.invoke(app, ["rna", "--fasta", "/tmp/fake.fa", "--output-dir", "/tmp"])
     assert result.exit_code != 0
+
+
+# ── v5.0.0: Library Type + GTF Option Isolation ─────────────────────────
+
+
+def test_rna_has_library_type_option():
+    """RNA command has --library-type option."""
+    rna_params = _get_param_names("rna")
+    assert "library_type" in rna_params
+
+
+def test_rna_has_gtf_option():
+    """RNA command has --gtf option."""
+    rna_params = _get_param_names("rna")
+    assert "gtf" in rna_params
+
+
+def test_dna_lacks_library_type_option():
+    """DNA command should NOT have --library-type (RNA-only)."""
+    dna_params = _get_param_names("dna")
+    assert "library_type" not in dna_params
+
+
+def test_dna_lacks_gtf_option():
+    """DNA command should NOT have --gtf (RNA-only)."""
+    dna_params = _get_param_names("dna")
+    assert "gtf" not in dna_params
