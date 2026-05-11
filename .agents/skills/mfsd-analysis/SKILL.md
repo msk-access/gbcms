@@ -1,0 +1,27 @@
+# mFSD Analysis Patterns
+
+## Overview
+
+mFSD (modified Fragment Size Distribution) analysis is **opt-in** via `--mfsd`.
+
+## Column Gating
+
+- Without `--mfsd`: 145 MAF columns (0 `mfsd_*`)
+- With `--mfsd`: 179 MAF columns (+34 `mfsd_*`)
+- VCF INFO: exactly 7 `MFSD_*` fields added only when `--mfsd` is set
+- Columns are **absent** when off, not NA-filled
+
+## Parquet Output
+
+- `--mfsd-parquet` requires `--mfsd` (validated at both CLI and Pydantic)
+- Written by `write_fsd_parquet()` in Rust via `arrow`/`parquet` crates
+- ZSTD(1) compression: `parquet = { default-features = false, features = ["arrow", "zstd"] }`
+- `ref_sizes`/`alt_sizes` are Rust-internal — no `#[pyo3(get)]`
+- Called from `pipeline.py` after `count_bam()`, not inside the counting engine
+
+## Key Files
+- `rust/src/counting/mfsd.rs`: KS test, LLR, pairwise comparisons
+- `rust/src/counting/parquet_writer.rs`: Arrow/ZSTD native Parquet
+- `src/gbcms/io/output.py`: MafWriter column gating
+- `src/gbcms/report/mfsd_report.py`: HTML report generator
+- `tests/test_mfsd_flag.py`: column count assertions
