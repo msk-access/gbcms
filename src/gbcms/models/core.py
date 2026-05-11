@@ -505,9 +505,7 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         """Validate library type is supported."""
         v = v.lower().strip()
         if v not in ("capture", "amplicon"):
-            raise ValueError(
-                f"Invalid library_type '{v}'. Must be 'capture' or 'amplicon'."
-            )
+            raise ValueError(f"Invalid library_type '{v}'. Must be 'capture' or 'amplicon'.")
         return v
 
     @field_validator("rna_editing_db")
@@ -526,9 +524,7 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
             if not v.exists():
                 raise ValueError(f"GTF annotation file not found: {v}")
             if not v.name.endswith((".gtf", ".gtf.gz")):
-                raise ValueError(
-                    f"GTF file must have .gtf or .gtf.gz extension, got: {v.name}"
-                )
+                raise ValueError(f"GTF file must have .gtf or .gtf.gz extension, got: {v.name}")
         return v
 
     @model_validator(mode="after")

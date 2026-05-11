@@ -192,9 +192,9 @@ def test_amplicon_auto_disables_strandedness(tmp_path):
         enforce_strandedness=True,  # should be auto-overridden
     )
     assert config.library_type == "amplicon"
-    assert config.enforce_strandedness is False, (
-        "amplicon mode should auto-disable enforce_strandedness via model_validator"
-    )
+    assert (
+        config.enforce_strandedness is False
+    ), "amplicon mode should auto-disable enforce_strandedness via model_validator"
 
 
 # ── v5.0.0: rescue_mnp_threshold Config Validation ─────────────────────
@@ -227,4 +227,3 @@ def test_rescue_mnp_threshold_rejects_below_0():
             {"rescue_mnp_threshold": -0.1},
             context={"_skip_file_validation": True},
         )
-

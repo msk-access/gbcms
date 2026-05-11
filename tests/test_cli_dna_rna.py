@@ -118,4 +118,3 @@ def test_dna_lacks_gtf_option():
     """DNA command should NOT have --gtf (RNA-only)."""
     dna_params = _get_param_names("dna")
     assert "gtf" not in dna_params
-
