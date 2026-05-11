@@ -654,18 +654,23 @@ pub fn count_bam_binned(
 
             // ── P4c: BH-FDR correction for ASJD p-values ──
             // Requires all p-values simultaneously, so must run after all bins
-            // are processed. Only runs when annotation was built (RNA + GTF).
-            let pvals: Vec<f64> = all_counts.iter().map(|c| c.asjd_pval).collect();
-            let has_asjd_data = pvals.iter().any(|&p| p < 1.0);
-            if has_asjd_data {
-                let qvals = crate::shared::stats::benjamini_hochberg(&pvals);
-                for (i, q) in qvals.into_iter().enumerate() {
-                    all_counts[i].asjd_qval = q;
+            // are processed. Only runs in RNA mode with annotation present.
+            // In DNA mode, asjd_pval defaults to 0.0 (Default trait), which
+            // would falsely trigger the `p < 1.0` guard — the mode check
+            // prevents this unnecessary O(n log n) sort.
+            if mode == "rna" {
+                let pvals: Vec<f64> = all_counts.iter().map(|c| c.asjd_pval).collect();
+                let has_asjd_data = pvals.iter().any(|&p| p < 1.0);
+                if has_asjd_data {
+                    let qvals = crate::shared::stats::benjamini_hochberg(&pvals);
+                    for (i, q) in qvals.into_iter().enumerate() {
+                        all_counts[i].asjd_qval = q;
+                    }
+                    debug!(
+                        "P4c BH-FDR: corrected {} ASJD p-values",
+                        pvals.len(),
+                    );
                 }
-                debug!(
-                    "P4c BH-FDR: corrected {} ASJD p-values",
-                    pvals.len(),
-                );
             }
 
             Ok(all_counts)

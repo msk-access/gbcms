@@ -64,6 +64,9 @@ pub struct ExonRecord {
 pub struct TranscriptIntrons {
     /// Transcript ID.
     pub transcript_id: String,
+    /// Numeric chromosome ID (key into chrom_map). Used by `is_junction_known()`
+    /// to filter transcripts by chromosome before intron matching.
+    pub chrom_id: u32,
     /// Introns as (start, end) pairs in genomic coordinates (0-based, exclusive end).
     /// Derived from consecutive exon boundaries: intron_start = exon_n.end,
     /// intron_end = exon_{n+1}.start.
@@ -269,10 +272,9 @@ impl AnnotationIndex {
             None => return false,
         };
 
-        // Check all transcripts on this chromosome for matching introns
-        for ti in self.transcript_introns.values() {
+        // Only check transcripts on the target chromosome (chrom_id filter)
+        for ti in self.transcript_introns.values().filter(|ti| ti.chrom_id == chrom_id) {
             for &(i_start, i_end) in &ti.introns {
-                // TranscriptIntrons only stores introns for transcripts on loaded chromosomes
                 if (junction_start as i32 - i_start).abs() <= tolerance
                     && (junction_end as i32 - i_end).abs() <= tolerance
                 {
@@ -281,8 +283,6 @@ impl AnnotationIndex {
             }
         }
 
-        // Also verify the chromosome ID is actually in our index (defensive)
-        let _ = chrom_id;
         false
     }
 
@@ -352,6 +352,7 @@ mod tests {
             "ENST00000001".to_string(),
             TranscriptIntrons {
                 transcript_id: "ENST00000001".to_string(),
+                chrom_id: 0,
                 introns: vec![(200, 300)],
             },
         );

@@ -59,6 +59,8 @@ pub fn parse_gtf(
 
     // Track exon coordinates per transcript for intron derivation
     let mut transcript_exons: HashMap<String, Vec<(i32, i32)>> = HashMap::new();
+    // Track transcript → chrom_id for TranscriptIntrons construction
+    let mut transcript_chrom_ids: HashMap<String, u32> = HashMap::new();
 
     let mut total_lines = 0u64;
     let mut skipped_non_exon = 0u64;
@@ -150,9 +152,11 @@ pub fn parse_gtf(
 
         // Track for intron derivation
         transcript_exons
-            .entry(transcript_id)
+            .entry(transcript_id.clone())
             .or_default()
             .push((start, end));
+        // Track chrom_id per transcript (all exons of a transcript share the same chromosome)
+        transcript_chrom_ids.entry(transcript_id).or_insert(chrom_id);
     }
 
     if exons.is_empty() {
@@ -230,7 +234,8 @@ pub fn parse_gtf(
             transcript_introns.insert(
                 tx_id.clone(),
                 TranscriptIntrons {
-                    transcript_id: tx_id,
+                    transcript_id: tx_id.clone(),
+                    chrom_id: *transcript_chrom_ids.get(&tx_id).unwrap_or(&0),
                     introns,
                 },
             );
