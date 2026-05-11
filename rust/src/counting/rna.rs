@@ -134,9 +134,51 @@ pub fn has_splice_junction(record: &Record) -> bool {
     record.cigar().iter().any(|op| matches!(op, Cigar::RefSkip(_)))
 }
 
+/// Extract splice junction coordinates from a read's CIGAR string.
+///
+/// Each CIGAR `N` (RefSkip) operation represents a spliced-out intron.
+/// Returns a Vec of `(intron_start, intron_end)` pairs in 0-based genomic
+/// coordinates (exclusive end), matching the convention used by
+/// [`AnnotationIndex::is_read_compatible`].
+///
+/// Returns an empty Vec for reads without splice junctions (e.g., DNA reads,
+/// or RNA reads that fall entirely within a single exon).
+///
+/// # Example
+///
+/// A read aligned at pos=100 with CIGAR `50M200N50M` has:
+/// - Match: [100, 150)
+/// - Intron: [150, 350)  ← returned as (150, 350)
+/// - Match: [350, 400)
+///
+/// Used by:
+/// - **P4b**: Splice-junction compatibility check per transcript.
+/// - **P4c**: ASJD — comparing junction distributions between REF/ALT reads.
+#[allow(dead_code)] // P4b/P4c: called by engine.rs once wired
+pub fn extract_splice_junctions(record: &Record) -> Vec<(i64, i64)> {
+    let mut junctions = Vec::new();
+    let mut ref_pos = record.pos(); // 0-based start position
 
+    for op in record.cigar().iter() {
+        match op {
+            // Operations that consume reference bases
+            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) | Cigar::Del(len) => {
+                ref_pos += *len as i64;
+            }
+            // RefSkip (N) = splice junction
+            Cigar::RefSkip(len) => {
+                let intron_start = ref_pos;
+                let intron_end = ref_pos + *len as i64;
+                junctions.push((intron_start, intron_end));
+                ref_pos = intron_end;
+            }
+            // Operations that do NOT consume reference bases
+            Cigar::Ins(_) | Cigar::SoftClip(_) | Cigar::HardClip(_) | Cigar::Pad(_) => {}
+        }
+    }
 
-
+    junctions
+}
 /// Build an O(1) lookup set of known RNA editing sites from REDIportal TABLE1.
 ///
 /// Parses the REDIportal TABLE1 format (tab-delimited, with header row):
