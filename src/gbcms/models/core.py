@@ -358,11 +358,25 @@ class GbcmsBaseConfig(BaseModel):
     rescue_mnp: bool = Field(
         default=False,
         description=(
-            "Enable MNP rescue pass for sparse multi-base substitutions. "
-            "When ad=0 and MNP_SPARSE_DISC is flagged, decomposes the MNP into "
-            "individual SNP positions and re-counts. Populates gbcms_rescue with "
-            "a structured audit trail. Intentionally breaks Invariant 1 "
-            "(any_alt = ad + partial_alt) for rescued variants."
+            "Enable MNP rescue pass for multi-base substitutions. "
+            "When ad=0, decomposes the MNP into individual SNP positions "
+            "and re-counts using the best discriminating position. "
+            "Controlled by --rescue-mnp-threshold for eligibility gating. "
+            "Populates gbcms_rescue with a structured audit trail. "
+            "Intentionally breaks Invariant 1 (any_alt = ad + partial_alt) "
+            "for rescued variants."
+        ),
+    )
+    rescue_mnp_threshold: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Maximum discriminating-position ratio (disc/len) for MNP rescue "
+            "eligibility. 1.0 = rescue ALL MNPs (C++ gbcms permissive behavior). "
+            "0.5 = only rescue sparse MNPs (≤50%% discriminating positions). "
+            "0.0 = disable rescue eligibility (diagnostics still emitted). "
+            "Only relevant when --rescue-mnp is enabled."
         ),
     )
 
@@ -462,6 +476,40 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         ),
     )
 
+    # GTF annotation for splice-site-aware counting
+    gtf: Path | None = Field(
+        default=None,
+        description=(
+            "Path to GTF annotation file (Ensembl/GENCODE). When provided, "
+            "enables exon boundary distance calculation and BAQ suppression "
+            "at annotated splice junctions. Adds exon_boundary_dist column "
+            "to output. Only chromosomes with variants are loaded "
+            "(variant-guided streaming)."
+        ),
+    )
+
+    # P5: Library type flag — controls fragment consensus behavior
+    library_type: str = Field(
+        default="capture",
+        description=(
+            "RNA library type: 'capture' (default, IDT xGen-style) or "
+            "'amplicon'. In amplicon mode, R1/R2 read pairs are treated "
+            "as independent observations (no fragment consensus), and "
+            "strandedness filtering is automatically disabled."
+        ),
+    )
+
+    @field_validator("library_type")
+    @classmethod
+    def validate_library_type(cls, v: str) -> str:
+        """Validate library type is supported."""
+        v = v.lower().strip()
+        if v not in ("capture", "amplicon"):
+            raise ValueError(
+                f"Invalid library_type '{v}'. Must be 'capture' or 'amplicon'."
+            )
+        return v
+
     @field_validator("rna_editing_db")
     @classmethod
     def validate_editing_db(cls, v: Path | None) -> Path | None:
@@ -469,6 +517,38 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         if v is not None and not v.exists():
             raise ValueError(f"RNA editing database not found: {v}")
         return v
+
+    @field_validator("gtf")
+    @classmethod
+    def validate_gtf(cls, v: Path | None) -> Path | None:
+        """Validate GTF annotation file exists and has correct extension."""
+        if v is not None:
+            if not v.exists():
+                raise ValueError(f"GTF annotation file not found: {v}")
+            if not v.name.endswith((".gtf", ".gtf.gz")):
+                raise ValueError(
+                    f"GTF file must have .gtf or .gtf.gz extension, got: {v.name}"
+                )
+        return v
+
+    @model_validator(mode="after")
+    def validate_amplicon_strandedness(self) -> "GbcmsRnaConfig":
+        """P5: Auto-disable strandedness for amplicon libraries.
+
+        Amplicon libraries are not strand-specific, so enforcing dUTP
+        strandedness filtering would incorrectly discard ~50% of reads.
+        This model-level guard ensures both CLI and programmatic callers
+        get correct behavior without needing to know the dependency.
+        """
+        if self.library_type == "amplicon" and self.enforce_strandedness:
+            import logging
+
+            logging.getLogger("gbcms.models").warning(
+                "library_type='amplicon' is incompatible with enforce_strandedness=True. "
+                "Auto-disabling strandedness filtering (amplicon libraries are not strand-specific)."
+            )
+            self.enforce_strandedness = False
+        return self
 
 
 # Deprecated alias for backward compatibility — use GbcmsDnaConfig directly.

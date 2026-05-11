@@ -4,6 +4,94 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [5.0.0] - Unreleased
+
+### ⚠️ Breaking Changes
+
+- **New RNA output columns**: When `--gtf` is provided, 17 additional columns are
+  appended to RNA output (1 exon boundary, 2 per-transcript, 14 ASJD). Downstream
+  parsers expecting a fixed column count must be updated.
+- **Fragment counts in amplicon mode**: When `--library-type amplicon` is used,
+  fragment counts (`dpf`, `rdf`, `adf`) will approximate read counts (`dp`, `rd`,
+  `ad`) because R1/R2 fragment consensus is bypassed. This is expected behavior,
+  not a bug.
+
+### ✨ Added
+
+- **GTF-based transcript annotation** (`--gtf`): RNA mode can now load an
+  Ensembl/GENCODE GTF file to enable:
+    - **Exon boundary distance** (`exon_boundary_dist`): Signed distance to the
+      nearest exon boundary for splice-proximal variant filtering.
+    - **Per-transcript counting** (`transcript_read_counts`,
+      `transcript_fragment_counts`): ALT counts stratified by overlapping
+      transcript, resolving ambiguity at multi-transcript loci.
+    - **Aberrant Splice Junction Detection (ASJD)**: 14 columns comparing
+      observed read splice junctions against annotated transcript splice sites.
+      Flags novel vs annotated junctions with REF/ALT stratification.
+- **`--library-type` CLI flag**: RNA library preparation method selector.
+  `capture` (default, IDT xGen-style) or `amplicon`. Available on `gbcms rna` only.
+- **Amplicon mode — fragment consensus bypass**: When `--library-type amplicon`
+  is set, the Rust counting engine XORs `mol_hash` with a read-specific tag
+  (`0x1` for R1, `0x2` for R2), treating each read as an independent molecule.
+  This prevents incorrect R1/R2 merging in amplicon libraries where both reads
+  are PCR duplicates of the same template.
+- **Amplicon auto-strandedness override**: Both the CLI (`cli.py`) and model
+  validator (`GbcmsRnaConfig.model_validator`) auto-disable `enforce_strandedness`
+  when `library_type="amplicon"`, with a warning. This ensures safe defaults for
+  both CLI and API users.
+- **Per-read strand tracking in junction accumulator**: RNA reads now carry
+  per-read strand orientation through the splice junction accumulator, enabling
+  accurate sense/antisense counting at splice-spanning positions.
+- **COITree annotation index** (`rust/src/annotation/`): New Rust module
+  providing O(log n + k) exon overlap queries via cache-oblivious interval
+  trees. Built once at startup, shared immutably across Rayon threads via
+  `Arc<AnnotationIndex>`.
+- **Splice mask construction**: Per-transcript `HashSet<(chrom, start, end)>`
+  for O(1) splice site lookup during ASJD computation.
+- **BH multiple-testing correction** (`shared/stats.rs`): Benjamini-Hochberg
+  FDR correction added for strand bias p-values across variants.
+- **Nextflow `library_type` parameter**: Registered in `nextflow.config` and
+  threaded through `rna/main.nf` for amplicon mode support in pipeline runs.
+
+### 🔧 Fixed
+
+- **`lib.rs` dead-code comment**: Updated annotation type comment to reflect
+  that annotation types are now fully wired (previously noted as unused).
+
+### 🧪 Tests
+
+- **255 Python tests** (up from 238): 17 new tests covering:
+    - `test_config_isolation.py`: 11 tests for `library_type` field/validator,
+      GTF field, DNA isolation, amplicon auto-strandedness, and `rescue_mnp_threshold`
+      range validation (default, shared, >1.0 rejection, <0.0 rejection).
+    - `test_cli_dna_rna.py`: 4 tests for `--library-type` and `--gtf` option
+      isolation between DNA and RNA commands.
+    - `test_diagnostic_flags.py`: 2 tests for `MNP_RESCUE_ELIGIBLE` threshold-based
+      eligibility (conservative 0.50 mode).
+- **143 Rust tests** (up from 119): 24 new tests covering:
+    - GTF parsing and chromosome normalization
+    - COITree overlap queries
+    - Splice distance computation
+    - BH FDR correction
+    - Fisher's exact test edge cases
+- **0 Clippy warnings** (strict `-D warnings` mode).
+
+### 📚 Documentation
+
+- **[NEW]** `docs/reference/rna-annotation.md` — GTF requirements, annotation
+  index architecture, exon boundary distance, per-transcript counting, and
+  ASJD detection reference.
+- **Updated** `docs/cli/rna.md` — `--gtf` and `--library-type` options, updated
+  pipeline diagram with annotation layer, amplicon example tab, amplicon override
+  warning, updated DNA vs RNA comparison table.
+- **Updated** `docs/reference/output-formats.md` — GTF-aware MAF columns (17),
+  amplicon mode behavioral note.
+- **Updated** `docs/reference/architecture.md` — AnnotationIndex in system
+  overview diagram, `annotation/` module in tree, config diagram with
+  `library_type` and `gtf` fields, `stats.rs` BH correction note.
+- **Updated** `docs/development/developer-guide.md` — `annotation/` module in
+  project structure diagram.
+- **Updated** `mkdocs.yml` — "RNA Annotation" added to navigation.
 
 ## [4.2.0] - 2026-05-10
 
@@ -26,12 +114,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diagnostic flags computed automatically. Flags include:
     - `ZERO_ALT`: No confirmed ALT reads despite successful counting.
     - `PARTIAL_DOMINANT`: More structural/partial evidence than confirmed ALT.
-    - `MNP_SPARSE_DISC(n/m)`: MNP with ≤50% discriminating positions.
+    - `MNP_DISC_RATIO(n/m)`: MNP discriminating position ratio (always emitted for MNPs).
+    - `MNP_RESCUE_ELIGIBLE`: MNP qualifies for rescue (disc/len ≤ `--rescue-mnp-threshold`).
     - `HIGH_N_FRACTION(f)`: N-base fraction exceeding 5% at discriminating positions.
-- **`--rescue-mnp` CLI flag**: Enables MNP rescue pass for sparse multi-base
-  substitutions. When `ad=0` and `MNP_SPARSE_DISC` is flagged, decomposes the
+- **`--rescue-mnp` CLI flag**: Enables MNP rescue pass for multi-base
+  substitutions. When `ad=0` and `MNP_RESCUE_ELIGIBLE` is flagged, decomposes the
   MNP into individual SNP positions and re-counts via `count_bam_binned`.
   Available in both `gbcms dna` and `gbcms rna` modes.
+- **`--rescue-mnp-threshold` CLI flag**: Maximum disc/len ratio for MNP rescue
+  eligibility (0.0–1.0, default: 1.0). At 1.0, all MNPs are eligible (C++ gbcms
+  compatible). Set to 0.5 for conservative sparse-only mode.
 - **`gbcms_rescue` column (MAF) + `GR` INFO key (VCF)**: Conditional —
   only present when `--rescue-mnp` is enabled. Contains structured audit trail:
   `method=decomposed;original_alt=0;positions=chr:pos(R>A):count,...`.
@@ -61,9 +153,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧪 Tests
 
-- **[NEW]** `tests/test_diagnostic_flags.py` — 15 tests covering all 4
+- **[NEW]** `tests/test_diagnostic_flags.py` — 17 tests covering all 4
   diagnostic flags, multi-flag combinations, FAIL exclusion, boundary
-  conditions, and parametric formatting.
+  conditions, parametric formatting, and `rescue_mnp_threshold`-based
+  eligibility gating (permissive 1.0 and conservative 0.50 modes).
 - **[NEW]** `tests/test_rescue_mnp.py` — 13 tests covering config defaults,
   conditional column/INFO presence, candidate identification, guard rails
   (skip non-MNP, skip ad>0, skip FAIL), audit trail format, no-signal cases,

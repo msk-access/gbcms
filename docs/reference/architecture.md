@@ -19,6 +19,7 @@ flowchart TB
         Counter --> WFA[WFA Fast Path - wfa_router.rs]
         Counter --> PairHMM[PairHMM Backend - pairhmm.rs]
         Counter --> Stats[Strand Bias - stats.rs]
+        Counter --> Annot[Annotation Index - annotation/]:::annot
         ParquetWriter[write_fsd_parquet - parquet_writer.rs]
     end
     
@@ -28,6 +29,7 @@ flowchart TB
     
     classDef pythonStyle fill:#3776ab,color:#fff,stroke:#2c5f8a,stroke-width:2px;
     classDef rustStyle fill:#dea584,color:#000,stroke:#c48a6a,stroke-width:2px;
+    classDef annot fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     class Python pythonStyle;
     class Rust rustStyle;
 ```
@@ -208,6 +210,9 @@ src/gbcms/
 
 rust/src/
 ├── lib.rs                    # PyO3 module exports
+├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
+│   ├── mod.rs                # AnnotationIndex struct, parse_gtf()
+│   └── types.rs              # ExonRecord, TranscriptInfo
 ├── counting/
 │   ├── mod.rs                # Submodule re-exports
 │   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
@@ -232,7 +237,7 @@ rust/src/
 ├── shared/
 │   ├── mod.rs                # Submodule re-exports
 │   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
-│   ├── stats.rs              # Fisher's exact test (strand bias)
+│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
 │   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
 │   ├── baq.rs                # BAQ heuristic (Li 2011)
 │   └── bam_utils.rs          # median_qual, find_read_pos
@@ -252,7 +257,7 @@ flowchart TB
 
     DnaConfig --> DnaD["mode=dna\nMAPQ=20"]
     RnaConfig --> RnaD["mode=rna, MAPQ=1\npairhmm relaxed RT gaps"]
-    RnaConfig --> RnaX["enforce_strandedness\nrna_editing_db"]
+    RnaConfig --> RnaX["enforce_strandedness\nrna_editing_db\nlibrary_type\ngtf"]
 
     Base --> Filters["ReadFilters"]
     Base --> Quality["QualityThresholds"]
@@ -334,7 +339,7 @@ deliberate architectural decision:
 ```mermaid
 flowchart LR
     subgraph Python ["🐍 Python — Orchestration"]
-        Filter["Filter candidates\n(PASS + ad==0 + MNP_SPARSE_DISC)"]
+        Filter["Filter candidates\n(PASS + ad==0 + MNP_RESCUE_ELIGIBLE)"]
         Build["Build synthetic SNPs\nfrom disc positions"]
         Map["Map counts back\npick best rescue"]
         Audit["Populate gbcms_rescue\naudit trail"]
@@ -380,7 +385,7 @@ A variant qualifies for rescue when **all four** conditions are met:
 |:--|:----------|:----------|
 | 1 | `gbcms_status` starts with `PASS` | FAIL variants have unreliable coordinates |
 | 2 | `ad == 0` | Variants with confirmed ALT reads don't need rescue |
-| 3 | `MNP_SPARSE_DISC` in `gbcms_diagnostic` | Only sparse MNPs are susceptible to phantom-position dropout |
+| 3 | `MNP_RESCUE_ELIGIBLE` in `gbcms_diagnostic` | Disc/len ratio ≤ `--rescue-mnp-threshold` (default 1.0 = all MNPs). Set to 0.5 for conservative sparse-only mode. |
 | 4 | `ref_len == alt_len > 1` (MNP) | SNPs and INDELs are never MNP rescue candidates |
 
 ### Rescue Strategy: Decomposed SNP Counting
@@ -435,6 +440,7 @@ the rescue provenance, enabling downstream users to reconcile the invariant brea
 ## Related
 
 - [Allele Classification](allele-classification.md) — How each variant type is counted
+- [RNA Annotation](rna-annotation.md) — GTF annotation, per-transcript counting, ASJD detection
 - [RNA Splice-Junction Handling](rna-splice-handling.md) — How gbcms handles splice-boundary artifacts vs GATK SplitNCigarReads
 - [Variant Normalization](variant-normalization.md) — How variants are prepared before counting
 - [Input Formats](input-formats.md) — VCF and MAF specifications

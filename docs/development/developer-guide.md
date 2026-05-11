@@ -85,6 +85,7 @@ flowchart LR
         Lib["lib.rs"] --> Count["counting/"]
         Lib --> Norm["normalize/"]
         Lib --> Shared["shared/"]
+        Lib --> Ann["annotation/"]:::annot
         Count --> Eng["engine.rs"]
         Count --> VC["variant_checks.rs"]
         Count --> PH["pairhmm.rs"]
@@ -102,6 +103,8 @@ flowchart LR
 
     Pipeline --> Rust
     Normalize --> Rust
+
+    classDef annot fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 ```
 
 !!! tip "Performance: Genomic Binning"

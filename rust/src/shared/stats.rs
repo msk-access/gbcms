@@ -1,26 +1,46 @@
 //! Statistical tests shared across analysis modes.
 //!
-//! Currently provides Fisher's exact test for strand bias (used by counting).
-//! Will also host Beta-Binomial LOH test (used by HLA) in a future release.
+//! Provides:
+//! - [`fisher_exact_2x2`]: Fisher's exact test for any 2×2 contingency table
+//!   (strand bias, ASJD junction comparison).
+//! - [`benjamini_hochberg`]: Benjamini-Hochberg FDR correction for multiple
+//!   hypothesis testing (ASJD q-values).
 //!
 //! Used by:
 //! - `counting/engine.rs` — Fisher strand bias per variant
-//! - `hla/aggregate.rs` (future) — Beta-Binomial LOH p-value
+//! - `counting/engine.rs` — ASJD junction comparison (P4c)
+//! - `counting/engine.rs` — BH correction across variants (P4c)
 
 use statrs::distribution::{Discrete, Hypergeometric};
 
-/// Calculate Fisher's Exact Test for strand bias.
+/// Calculate Fisher's Exact Test for a 2×2 contingency table.
 ///
 /// Returns (p-value, odds ratio).
 ///
-/// Contingency table:
-/// [[ref_fwd, ref_rev],
-///  [alt_fwd, alt_rev]]
-pub fn fisher_strand_bias(ref_fwd: u32, ref_rev: u32, alt_fwd: u32, alt_rev: u32) -> (f64, f64) {
-    let a = ref_fwd as u64;
-    let b = ref_rev as u64;
-    let c = alt_fwd as u64;
-    let d = alt_rev as u64;
+/// Generic 2×2 table layout:
+/// ```text
+///     [[a, b],
+///      [c, d]]
+/// ```
+///
+/// **Strand bias usage** (existing):
+/// ```text
+///     [[ref_fwd, ref_rev],
+///      [alt_fwd, alt_rev]]
+/// ```
+///
+/// **ASJD usage** (P4c):
+/// ```text
+///     [[ref_junction_A, ref_junction_B],
+///      [alt_junction_A, alt_junction_B]]
+/// ```
+///
+/// Renamed from `fisher_strand_bias` in v5.0.0 for generality.
+pub fn fisher_exact_2x2(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
+    let a = a as u64;
+    let b = b as u64;
+    let c = c as u64;
+    let d = d as u64;
 
     let n = a + b + c + d;
     if n == 0 {
@@ -85,4 +105,182 @@ pub fn fisher_strand_bias(ref_fwd: u32, ref_rev: u32, alt_fwd: u32, alt_rev: u32
     }
 
     (p_value, odds_ratio)
+}
+
+/// Backward-compatible alias for existing callers.
+///
+/// Delegates to [`fisher_exact_2x2`]. Existing code can continue to use this
+/// name without modification.
+#[inline]
+pub fn fisher_strand_bias(ref_fwd: u32, ref_rev: u32, alt_fwd: u32, alt_rev: u32) -> (f64, f64) {
+    fisher_exact_2x2(ref_fwd, ref_rev, alt_fwd, alt_rev)
+}
+
+/// Benjamini-Hochberg FDR correction for multiple hypothesis testing.
+///
+/// Given a slice of raw p-values, returns a Vec of adjusted q-values.
+/// The q-values are monotonically non-decreasing and capped at 1.0.
+///
+/// # Algorithm
+///
+/// 1. Sort p-values in descending order (by index).
+/// 2. Walk from largest to smallest: q_i = min(p_i * n / rank, q_{i+1}).
+/// 3. Cap all values at 1.0.
+///
+/// This matches R's `p.adjust(method = "BH")` exactly.
+///
+/// # Parameters
+///
+/// - `pvalues`: raw p-values (must be in [0, 1]).
+///
+/// # Returns
+///
+/// Vec of adjusted q-values, same length and order as input.
+///
+/// # Example
+///
+/// ```
+/// # use _rs::shared::stats::benjamini_hochberg;
+/// let pvals = vec![0.01, 0.04, 0.03, 0.10, 0.50];
+/// let qvals = benjamini_hochberg(&pvals);
+/// // Matches R: p.adjust(c(0.01, 0.04, 0.03, 0.10, 0.50), method="BH")
+/// // → [0.05, 0.0667, 0.05, 0.125, 0.50]
+/// ```
+#[allow(dead_code)] // P4c: called by engine.rs count_bam_binned() once wired
+pub fn benjamini_hochberg(pvalues: &[f64]) -> Vec<f64> {
+    let n = pvalues.len();
+    if n == 0 {
+        return vec![];
+    }
+
+    // Sort indices by descending p-value
+    let mut indices: Vec<usize> = (0..n).collect();
+    indices.sort_by(|&a, &b| {
+        pvalues[b]
+            .partial_cmp(&pvalues[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut qvalues = vec![0.0; n];
+    let mut cummin = f64::INFINITY;
+
+    for (rank_from_end, &idx) in indices.iter().enumerate() {
+        // rank_from_end: 0 = largest p-value, n-1 = smallest
+        let rank = n - rank_from_end; // 1-based rank from smallest
+        let adjusted = (pvalues[idx] * n as f64) / rank as f64;
+        cummin = cummin.min(adjusted).min(1.0);
+        qvalues[idx] = cummin;
+    }
+
+    qvalues
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── fisher_exact_2x2 tests ──
+
+    #[test]
+    fn test_fisher_no_bias() {
+        // Balanced table: no strand bias
+        let (p, _or) = fisher_exact_2x2(10, 10, 10, 10);
+        assert!(p > 0.9, "Balanced table should have p ~1.0, got {}", p);
+    }
+
+    #[test]
+    fn test_fisher_strong_bias() {
+        // Extreme bias: all ref on fwd, all alt on rev
+        let (p, _or) = fisher_exact_2x2(20, 0, 0, 20);
+        assert!(p < 0.001, "Extreme bias should have p < 0.001, got {}", p);
+    }
+
+    #[test]
+    fn test_fisher_empty_table() {
+        let (p, or) = fisher_exact_2x2(0, 0, 0, 0);
+        assert_eq!(p, 1.0);
+        assert_eq!(or, 0.0);
+    }
+
+    #[test]
+    fn test_fisher_backward_compat() {
+        // Verify the alias produces identical results
+        let (p1, or1) = fisher_exact_2x2(5, 15, 12, 3);
+        let (p2, or2) = fisher_strand_bias(5, 15, 12, 3);
+        assert_eq!(p1, p2);
+        assert_eq!(or1, or2);
+    }
+
+    // ── benjamini_hochberg tests ──
+
+    #[test]
+    fn test_bh_empty() {
+        let q = benjamini_hochberg(&[]);
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn test_bh_single() {
+        let q = benjamini_hochberg(&[0.05]);
+        assert_eq!(q, vec![0.05]);
+    }
+
+    #[test]
+    fn test_bh_matches_r() {
+        // Standard BH procedure on p = [0.01, 0.04, 0.03, 0.10, 0.50]:
+        // Ascending ranks: p[0]=0.01 (rank 1), p[2]=0.03 (rank 2), p[1]=0.04 (rank 3),
+        //                  p[3]=0.10 (rank 4), p[4]=0.50 (rank 5)
+        // Adjusted: [0.05, 0.0667, 0.075, 0.125, 0.50]
+        // After cummin (descending): [0.05, 0.0667, 0.0667, 0.125, 0.50]
+        let pvals = vec![0.01, 0.04, 0.03, 0.10, 0.50];
+        let qvals = benjamini_hochberg(&pvals);
+
+        let expected = [0.05, 1.0 / 15.0, 1.0 / 15.0, 0.125, 0.50];
+        for (i, (&q, &e)) in qvals.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (q - e).abs() < 1e-10,
+                "q[{}] = {}, expected {}",
+                i,
+                q,
+                e
+            );
+        }
+    }
+
+    #[test]
+    fn test_bh_preserves_order() {
+        // All same p-values → all same q-values
+        let pvals = vec![0.05; 10];
+        let qvals = benjamini_hochberg(&pvals);
+        for q in &qvals {
+            assert!((q - 0.05).abs() < 1e-10, "q = {}", q);
+        }
+    }
+
+    #[test]
+    fn test_bh_caps_at_one() {
+        // Large p-values should be capped at 1.0
+        let pvals = vec![0.9, 0.95, 0.99];
+        let qvals = benjamini_hochberg(&pvals);
+        for q in &qvals {
+            assert!(*q <= 1.0, "q should be <= 1.0, got {}", q);
+        }
+    }
+
+    #[test]
+    fn test_bh_monotonic() {
+        // Sorted p-values should produce monotonically non-decreasing q-values
+        let pvals = vec![0.001, 0.01, 0.05, 0.1, 0.5];
+        let qvals = benjamini_hochberg(&pvals);
+        for i in 1..qvals.len() {
+            assert!(
+                qvals[i] >= qvals[i - 1] - 1e-10,
+                "q[{}]={} < q[{}]={}",
+                i,
+                qvals[i],
+                i - 1,
+                qvals[i - 1]
+            );
+        }
+    }
 }
