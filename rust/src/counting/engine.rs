@@ -2376,6 +2376,39 @@ impl AsjdResult {
     }
 }
 
+/// Per-junction forward/reverse read counts for strand discordance detection.
+///
+/// In stranded (dUTP) RNA-seq libraries, reads spanning a real splice junction
+/// should originate from a single transcript strand. If the dominant ALT junction
+/// has substantial support from **both** strands (minority strand fraction ≥ 30%),
+/// it indicates the junction may be an alignment artifact (e.g., DNA contamination
+/// or mismapping) rather than a genuine RNA splice event.
+///
+/// The `STRAND_DISCORDANT` diagnostic flag fires when:
+/// `min(forward, reverse) / (forward + reverse) >= 0.30`
+#[derive(Default, Debug)]
+struct JunctionStrandCounts {
+    forward: u32,
+    reverse: u32,
+}
+
+impl JunctionStrandCounts {
+    /// Total read count across both strands.
+    fn total(&self) -> u32 {
+        self.forward + self.reverse
+    }
+
+    /// Minority strand fraction: 0.0 = perfectly stranded, 0.5 = fully mixed.
+    fn minority_strand_fraction(&self) -> f64 {
+        let total = self.total();
+        if total == 0 {
+            return 0.0;
+        }
+        let minority = std::cmp::min(self.forward, self.reverse);
+        minority as f64 / total as f64
+    }
+}
+
 /// Detect allele-specific junction divergence at a variant site.
 /// Classify the splice motif at a junction by reading donor/acceptor dinucleotides
 /// from the reference FASTA.
@@ -2440,10 +2473,11 @@ fn classify_splice_motif(
 /// # Algorithm
 ///
 /// 1. Re-classify reads (same as count_variant_from_cache) to partition into REF/ALT
-/// 2. Extract CIGAR N ops from each partition → per-allele junction multiset
+/// 2. Extract CIGAR N ops from each partition → per-allele junction multiset with strand info
 /// 3. Find the dominant junction in each partition
 /// 4. If dominant junctions differ, run Fisher's exact 2x2 test
-/// 5. Classify motifs, check GTF annotation, build diagnostic flags
+/// 5. Classify splice motifs (FASTA lookup), check GTF annotation, build diagnostic flags
+/// 6. Check strand discordance on the ALT dominant junction (dUTP artifact detection)
 ///
 /// # Parameters
 ///
@@ -2479,10 +2513,12 @@ fn detect_asjd(
     let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
     let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
 
-    // Step 1: Partition reads into REF/ALT and collect junctions
-    // Junction → count maps for each allele
-    let mut ref_junction_counts: HashMap<(i64, i64), u32> = HashMap::new();
-    let mut alt_junction_counts: HashMap<(i64, i64), u32> = HashMap::new();
+    // Step 1: Partition reads into REF/ALT and collect junctions with strand info
+    // Tracks forward/reverse read counts per junction for STRAND_DISCORDANT detection.
+    // In dUTP libraries, real splice junctions should be supported by reads from a
+    // single strand; mixed-strand evidence suggests alignment artifacts.
+    let mut ref_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
+    let mut alt_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
     let mut n_ref_total: u32 = 0;
     let mut n_alt_total: u32 = 0;
 
@@ -2524,16 +2560,21 @@ fn detect_asjd(
             continue;
         }
 
-        // Partition by allele classification
+        // Read strand (BAM FLAG bit 0x10)
+        let is_reverse = record.is_reverse();
+
+        // Partition by allele classification, tracking strand per junction
         if result.is_ref {
             n_ref_total += 1;
             for j in &junctions {
-                *ref_junction_counts.entry(*j).or_insert(0) += 1;
+                let entry = ref_junction_counts.entry(*j).or_default();
+                if is_reverse { entry.reverse += 1; } else { entry.forward += 1; }
             }
         } else if result.is_alt {
             n_alt_total += 1;
             for j in &junctions {
-                *alt_junction_counts.entry(*j).or_insert(0) += 1;
+                let entry = alt_junction_counts.entry(*j).or_default();
+                if is_reverse { entry.reverse += 1; } else { entry.forward += 1; }
             }
         }
     }
@@ -2558,18 +2599,20 @@ fn detect_asjd(
         };
     }
 
-    // Step 3: Find dominant junction in each partition
-    let (ref_dom_junc, n_ref_junc) = ref_junction_counts
+    // Step 3: Find dominant junction in each partition (by total reads across both strands)
+    let (ref_dom_junc, ref_dom_strand_info) = ref_junction_counts
         .iter()
-        .max_by_key(|(_, count)| *count)
-        .map(|(j, c)| (*j, *c))
+        .max_by_key(|(_, sc)| sc.total())
+        .map(|(j, sc)| (*j, sc))
         .unwrap(); // safe: checked non-empty above
+    let n_ref_junc = ref_dom_strand_info.total();
 
-    let (alt_dom_junc, n_alt_junc) = alt_junction_counts
+    let (alt_dom_junc, alt_dom_strand_info) = alt_junction_counts
         .iter()
-        .max_by_key(|(_, count)| *count)
-        .map(|(j, c)| (*j, *c))
+        .max_by_key(|(_, sc)| sc.total())
+        .map(|(j, sc)| (*j, sc))
         .unwrap();
+    let n_alt_junc = alt_dom_strand_info.total();
 
     // Check for multi-junction in ALT reads
     let alt_distinct_junctions = alt_junction_counts.len();
@@ -2587,10 +2630,10 @@ fn detect_asjd(
     } else {
         // Different dominant junctions → Fisher's exact test
         // 2x2 table: [REF on ref_junc, REF on alt_junc] vs [ALT on ref_junc, ALT on alt_junc]
-        let ref_on_ref_junc = ref_junction_counts.get(&ref_dom_junc).copied().unwrap_or(0);
-        let ref_on_alt_junc = ref_junction_counts.get(&alt_dom_junc).copied().unwrap_or(0);
-        let alt_on_ref_junc = alt_junction_counts.get(&ref_dom_junc).copied().unwrap_or(0);
-        let alt_on_alt_junc = alt_junction_counts.get(&alt_dom_junc).copied().unwrap_or(0);
+        let ref_on_ref_junc = ref_junction_counts.get(&ref_dom_junc).map_or(0, |sc| sc.total());
+        let ref_on_alt_junc = ref_junction_counts.get(&alt_dom_junc).map_or(0, |sc| sc.total());
+        let alt_on_ref_junc = alt_junction_counts.get(&ref_dom_junc).map_or(0, |sc| sc.total());
+        let alt_on_alt_junc = alt_junction_counts.get(&alt_dom_junc).map_or(0, |sc| sc.total());
 
         let (p, _or) = crate::shared::stats::fisher_exact_2x2(
             ref_on_ref_junc, ref_on_alt_junc,
@@ -2624,11 +2667,28 @@ fn detect_asjd(
         diag_flags.push("NON_CANONICAL_MOTIF");
     }
 
+    // Step 5c: Strand discordance detection on the dominant ALT junction
+    // In dUTP libraries, reads from a genuine splice event should be predominantly
+    // on one strand. A minority strand fraction ≥ 30% (with ≥5 total reads to avoid
+    // noise at low depth) indicates the junction may be an alignment artifact.
+    let alt_minority_frac = alt_dom_strand_info.minority_strand_fraction();
+    if !same_junction && n_alt_junc >= 5 && alt_minority_frac >= 0.30 {
+        diag_flags.push("STRAND_DISCORDANT");
+        debug!(
+            "P4c STRAND_DISCORDANT: {}:{} alt_junc={}-{} fwd={} rev={} minority_frac={:.2}",
+            variant.chrom, variant.pos + 1,
+            alt_dom_junc.0, alt_dom_junc.1,
+            alt_dom_strand_info.forward, alt_dom_strand_info.reverse,
+            alt_minority_frac,
+        );
+    }
+
     trace!(
-        "P4c ASJD: {}:{} flag={} pval={:.4e} ref={}({}) alt={}({}) ref_n={}/{} alt_n={}/{}",
+        "P4c ASJD: {}:{} flag={} pval={:.4e} ref={}({}) alt={}({}) ref_n={}/{} alt_n={}/{} alt_strand={}F/{}R",
         variant.chrom, variant.pos + 1, flag, pval,
         ref_junction_str, ref_motif, alt_junction_str, alt_motif,
         n_ref_junc, n_ref_total, n_alt_junc, n_alt_total,
+        alt_dom_strand_info.forward, alt_dom_strand_info.reverse,
     );
 
     AsjdResult {
