@@ -111,6 +111,7 @@ class MafWriter(OutputWriter):
         mfsd: bool = False,
         mode: str = "dna",
         rescue_mnp: bool = False,
+        has_gtf: bool = False,
     ):
         """
         Initialize MafWriter.
@@ -135,12 +136,13 @@ class MafWriter(OutputWriter):
         self.mfsd = mfsd
         self.mode = mode
         self.rescue_mnp = rescue_mnp
+        self.has_gtf = has_gtf
         self.file = open(path, "w")
         self.writer: csv.DictWriter | None = None
         self._headers_written = False
         logger.debug(
             "MafWriter initialized: path=%s, column_prefix='%s', "
-            "preserve_barcode=%s, show_normalization=%s, mfsd=%s, mode=%s, rescue_mnp=%s",
+            "preserve_barcode=%s, show_normalization=%s, mfsd=%s, mode=%s, rescue_mnp=%s, has_gtf=%s",
             path,
             column_prefix,
             preserve_barcode,
@@ -148,6 +150,7 @@ class MafWriter(OutputWriter):
             mfsd,
             mode,
             rescue_mnp,
+            has_gtf,
         )
 
     def _gbcms_column_names(self) -> list[str]:
@@ -267,25 +270,29 @@ class MafWriter(OutputWriter):
                 "rna_alt_sense_count",
                 "rna_editing_site",
                 "rna_splice_spanning",
-                "exon_boundary_dist",
-                "transcript_read_counts",
-                "transcript_fragment_counts",
-                # P4c: ASJD columns
-                "asjd_flag",
-                "asjd_pval",
-                "asjd_qval",
-                "asjd_ref_junction",
-                "asjd_alt_junction",
-                "asjd_ref_motif",
-                "asjd_alt_motif",
-                "asjd_ref_known",
-                "asjd_alt_known",
-                "asjd_n_ref_junc",
-                "asjd_n_alt_junc",
-                "asjd_n_ref_total",
-                "asjd_n_alt_total",
-                "asjd_diagnostic",
             ]
+            # GTF annotation columns — only present when --gtf is provided
+            if self.has_gtf:
+                cols += [
+                    "exon_boundary_dist",
+                    "transcript_read_counts",
+                    "transcript_fragment_counts",
+                    # P4c: ASJD columns
+                    "asjd_flag",
+                    "asjd_pval",
+                    "asjd_qval",
+                    "asjd_ref_junction",
+                    "asjd_alt_junction",
+                    "asjd_ref_motif",
+                    "asjd_alt_motif",
+                    "asjd_ref_known",
+                    "asjd_alt_known",
+                    "asjd_n_ref_junc",
+                    "asjd_n_alt_junc",
+                    "asjd_n_ref_total",
+                    "asjd_n_alt_total",
+                    "asjd_diagnostic",
+                ]
 
         return cols
 
@@ -401,30 +408,36 @@ class MafWriter(OutputWriter):
                     "rna_alt_sense_count": str(counts.sense_strand_alt_count),
                     "rna_editing_site": str(counts.rna_editing_site_overlap),
                     "rna_splice_spanning": str(counts.splice_spanning_count),
-                    "exon_boundary_dist": (
-                        str(counts.exon_boundary_dist)
-                        if counts.exon_boundary_dist is not None
-                        else ""
-                    ),
-                    "transcript_read_counts": counts.transcript_read_counts,
-                    "transcript_fragment_counts": counts.transcript_fragment_counts,
-                    # P4c: ASJD
-                    "asjd_flag": str(counts.asjd_flag),
-                    "asjd_pval": f"{counts.asjd_pval:.4e}" if counts.asjd_pval < 1.0 else "",
-                    "asjd_qval": f"{counts.asjd_qval:.4e}" if counts.asjd_qval < 1.0 else "",
-                    "asjd_ref_junction": counts.asjd_ref_junction,
-                    "asjd_alt_junction": counts.asjd_alt_junction,
-                    "asjd_ref_motif": counts.asjd_ref_motif,
-                    "asjd_alt_motif": counts.asjd_alt_motif,
-                    "asjd_ref_known": str(counts.asjd_ref_known),
-                    "asjd_alt_known": str(counts.asjd_alt_known),
-                    "asjd_n_ref_junc": str(counts.asjd_n_ref_junc),
-                    "asjd_n_alt_junc": str(counts.asjd_n_alt_junc),
-                    "asjd_n_ref_total": str(counts.asjd_n_ref_total),
-                    "asjd_n_alt_total": str(counts.asjd_n_alt_total),
-                    "asjd_diagnostic": counts.asjd_diagnostic,
                 }
             )
+            # GTF annotation count columns — only populated when --gtf is provided
+            if self.has_gtf:
+                result.update(
+                    {
+                        "exon_boundary_dist": (
+                            str(counts.exon_boundary_dist)
+                            if counts.exon_boundary_dist is not None
+                            else ""
+                        ),
+                        "transcript_read_counts": counts.transcript_read_counts,
+                        "transcript_fragment_counts": counts.transcript_fragment_counts,
+                        # P4c: ASJD
+                        "asjd_flag": str(counts.asjd_flag),
+                        "asjd_pval": f"{counts.asjd_pval:.4e}" if counts.asjd_pval < 1.0 else "",
+                        "asjd_qval": f"{counts.asjd_qval:.4e}" if counts.asjd_qval < 1.0 else "",
+                        "asjd_ref_junction": counts.asjd_ref_junction,
+                        "asjd_alt_junction": counts.asjd_alt_junction,
+                        "asjd_ref_motif": counts.asjd_ref_motif,
+                        "asjd_alt_motif": counts.asjd_alt_motif,
+                        "asjd_ref_known": str(counts.asjd_ref_known),
+                        "asjd_alt_known": str(counts.asjd_alt_known),
+                        "asjd_n_ref_junc": str(counts.asjd_n_ref_junc),
+                        "asjd_n_alt_junc": str(counts.asjd_n_alt_junc),
+                        "asjd_n_ref_total": str(counts.asjd_n_ref_total),
+                        "asjd_n_alt_total": str(counts.asjd_n_alt_total),
+                        "asjd_diagnostic": counts.asjd_diagnostic,
+                    }
+                )
 
         if self.mfsd:
             # ── mFSD derived metrics ───────────────────────────────────────────
@@ -625,6 +638,7 @@ class VcfWriter(OutputWriter):
         mfsd: bool = False,
         mode: str = "dna",
         rescue_mnp: bool = False,
+        has_gtf: bool = False,
     ):
         self.path = path
         self.sample_name = sample_name
@@ -632,17 +646,19 @@ class VcfWriter(OutputWriter):
         self.mfsd = mfsd
         self.mode = mode
         self.rescue_mnp = rescue_mnp
+        self.has_gtf = has_gtf
         self.file = open(path, "w")
         self._headers_written = False
         logger.debug(
             "VcfWriter initialized: path=%s, sample=%s, show_normalization=%s, "
-            "mfsd=%s, mode=%s, rescue_mnp=%s",
+            "mfsd=%s, mode=%s, rescue_mnp=%s, has_gtf=%s",
             path,
             sample_name,
             show_normalization,
             mfsd,
             mode,
             rescue_mnp,
+            has_gtf,
         )
 
     def _write_header(self):
@@ -704,24 +720,30 @@ class VcfWriter(OutputWriter):
                     '##INFO=<ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand">',
                     '##INFO=<ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site (A>G on + strand or T>C on - strand)">',
                     '##INFO=<ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)">',
-                    '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) to nearest annotated exon boundary. Missing (.) when no GTF provided.">',
-                    '##INFO=<ID=TXRC,Number=1,Type=String,Description="Per-transcript read counts. Format: ENST:AD,RD,DP|ENST:AD,RD,DP. Empty when no GTF or no overlap.">',
-                    '##INFO=<ID=TXFC,Number=1,Type=String,Description="Per-transcript fragment counts. Format: ENST:ADF,RDF,DPF|ENST:ADF,RDF,DPF. Empty when no GTF or no overlap.">',
-                    # P4c: ASJD INFO headers
-                    '##INFO=<ID=ASJD,Number=0,Type=Flag,Description="Allele-specific junction divergence detected (Fisher p<0.05)">',
-                    '##INFO=<ID=ASJDP,Number=1,Type=Float,Description="ASJD raw Fisher exact p-value">',
-                    '##INFO=<ID=ASJDQ,Number=1,Type=Float,Description="ASJD BH-corrected q-value">',
-                    '##INFO=<ID=ASJDRJ,Number=1,Type=String,Description="ASJD dominant REF junction (start-end)">',
-                    '##INFO=<ID=ASJDAJ,Number=1,Type=String,Description="ASJD dominant ALT junction (start-end)">',
-                    '##INFO=<ID=ASJDRM,Number=1,Type=String,Description="ASJD REF splice motif">',
-                    '##INFO=<ID=ASJDAM,Number=1,Type=String,Description="ASJD ALT splice motif">',
-                    '##INFO=<ID=ASJDRK,Number=1,Type=Integer,Description="ASJD REF junction known in GTF (1/0)">',
-                    '##INFO=<ID=ASJDAK,Number=1,Type=Integer,Description="ASJD ALT junction known in GTF (1/0)">',
-                    '##INFO=<ID=ASJDNR,Number=1,Type=Integer,Description="ASJD REF reads on dominant junction">',
-                    '##INFO=<ID=ASJDNA,Number=1,Type=Integer,Description="ASJD ALT reads on dominant junction">',
-                    '##INFO=<ID=ASJDD,Number=1,Type=String,Description="ASJD diagnostic flags (pipe-separated)">',
                 ]
             )
+            # GTF annotation INFO headers — only when --gtf is provided
+            if self.has_gtf:
+                headers.extend(
+                    [
+                        '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) to nearest annotated exon boundary. Missing (.) when no GTF provided.">',
+                        '##INFO=<ID=TXRC,Number=1,Type=String,Description="Per-transcript read counts. Format: ENST:AD,RD,DP|ENST:AD,RD,DP. Empty when no GTF or no overlap.">',
+                        '##INFO=<ID=TXFC,Number=1,Type=String,Description="Per-transcript fragment counts. Format: ENST:ADF,RDF,DPF|ENST:ADF,RDF,DPF. Empty when no GTF or no overlap.">',
+                        # P4c: ASJD INFO headers
+                        '##INFO=<ID=ASJD,Number=0,Type=Flag,Description="Allele-specific junction divergence detected (Fisher p<0.05)">',
+                        '##INFO=<ID=ASJDP,Number=1,Type=Float,Description="ASJD raw Fisher exact p-value">',
+                        '##INFO=<ID=ASJDQ,Number=1,Type=Float,Description="ASJD BH-corrected q-value">',
+                        '##INFO=<ID=ASJDRJ,Number=1,Type=String,Description="ASJD dominant REF junction (start-end)">',
+                        '##INFO=<ID=ASJDAJ,Number=1,Type=String,Description="ASJD dominant ALT junction (start-end)">',
+                        '##INFO=<ID=ASJDRM,Number=1,Type=String,Description="ASJD REF splice motif">',
+                        '##INFO=<ID=ASJDAM,Number=1,Type=String,Description="ASJD ALT splice motif">',
+                        '##INFO=<ID=ASJDRK,Number=1,Type=Integer,Description="ASJD REF junction known in GTF (1/0)">',
+                        '##INFO=<ID=ASJDAK,Number=1,Type=Integer,Description="ASJD ALT junction known in GTF (1/0)">',
+                        '##INFO=<ID=ASJDNR,Number=1,Type=Integer,Description="ASJD REF reads on dominant junction">',
+                        '##INFO=<ID=ASJDNA,Number=1,Type=Integer,Description="ASJD ALT reads on dominant junction">',
+                        '##INFO=<ID=ASJDD,Number=1,Type=String,Description="ASJD diagnostic flags (pipe-separated)">',
+                    ]
+                )
         headers.extend(
             [
                 '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
@@ -826,35 +848,37 @@ class VcfWriter(OutputWriter):
             )
             if counts.rna_editing_site_overlap:
                 info_parts.append("RED")
-            # EBD: exon boundary distance (GTF-informed, '.' when no GTF)
-            ebd = counts.exon_boundary_dist
-            info_parts.append(f"EBD={ebd if ebd is not None else '.'}")
-            # TXRC/TXFC: per-transcript counts (empty → '.', ';' → '|' for VCF)
-            txrc = counts.transcript_read_counts
-            txfc = counts.transcript_fragment_counts
-            info_parts.append(f"TXRC={txrc.replace(';', '|') if txrc else '.'}")
-            info_parts.append(f"TXFC={txfc.replace(';', '|') if txfc else '.'}")
-            # P4c: ASJD VCF INFO values
-            if counts.asjd_flag:
-                info_parts.append("ASJD")
-            if counts.asjd_pval < 1.0:
-                info_parts.append(f"ASJDP={counts.asjd_pval:.4e}")
-                info_parts.append(f"ASJDQ={counts.asjd_qval:.4e}")
-            if counts.asjd_ref_junction:
-                info_parts.append(f"ASJDRJ={counts.asjd_ref_junction}")
-            if counts.asjd_alt_junction:
-                info_parts.append(f"ASJDAJ={counts.asjd_alt_junction}")
-            if counts.asjd_ref_motif:
-                info_parts.append(f"ASJDRM={counts.asjd_ref_motif}")
-            if counts.asjd_alt_motif:
-                info_parts.append(f"ASJDAM={counts.asjd_alt_motif}")
-            info_parts.append(f"ASJDRK={int(counts.asjd_ref_known)}")
-            info_parts.append(f"ASJDAK={int(counts.asjd_alt_known)}")
-            if counts.asjd_n_ref_junc > 0 or counts.asjd_n_alt_junc > 0:
-                info_parts.append(f"ASJDNR={counts.asjd_n_ref_junc}")
-                info_parts.append(f"ASJDNA={counts.asjd_n_alt_junc}")
-            if counts.asjd_diagnostic:
-                info_parts.append(f"ASJDD={counts.asjd_diagnostic.replace(';', '|')}")
+            # GTF annotation INFO values — only when --gtf is provided
+            if self.has_gtf:
+                # EBD: exon boundary distance (GTF-informed, '.' when no GTF)
+                ebd = counts.exon_boundary_dist
+                info_parts.append(f"EBD={ebd if ebd is not None else '.'}")
+                # TXRC/TXFC: per-transcript counts (empty → '.', ';' → '|' for VCF)
+                txrc = counts.transcript_read_counts
+                txfc = counts.transcript_fragment_counts
+                info_parts.append(f"TXRC={txrc.replace(';', '|') if txrc else '.'}")
+                info_parts.append(f"TXFC={txfc.replace(';', '|') if txfc else '.'}")
+                # P4c: ASJD VCF INFO values
+                if counts.asjd_flag:
+                    info_parts.append("ASJD")
+                if counts.asjd_pval < 1.0:
+                    info_parts.append(f"ASJDP={counts.asjd_pval:.4e}")
+                    info_parts.append(f"ASJDQ={counts.asjd_qval:.4e}")
+                if counts.asjd_ref_junction:
+                    info_parts.append(f"ASJDRJ={counts.asjd_ref_junction}")
+                if counts.asjd_alt_junction:
+                    info_parts.append(f"ASJDAJ={counts.asjd_alt_junction}")
+                if counts.asjd_ref_motif:
+                    info_parts.append(f"ASJDRM={counts.asjd_ref_motif}")
+                if counts.asjd_alt_motif:
+                    info_parts.append(f"ASJDAM={counts.asjd_alt_motif}")
+                info_parts.append(f"ASJDRK={int(counts.asjd_ref_known)}")
+                info_parts.append(f"ASJDAK={int(counts.asjd_alt_known)}")
+                if counts.asjd_n_ref_junc > 0 or counts.asjd_n_alt_junc > 0:
+                    info_parts.append(f"ASJDNR={counts.asjd_n_ref_junc}")
+                    info_parts.append(f"ASJDNA={counts.asjd_n_alt_junc}")
+                if counts.asjd_diagnostic:
+                    info_parts.append(f"ASJDD={counts.asjd_diagnostic.replace(';', '|')}")
         info = ";".join(info_parts)
 
         # FORMAT fields

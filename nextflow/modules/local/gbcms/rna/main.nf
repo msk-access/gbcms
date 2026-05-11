@@ -36,8 +36,8 @@ process GBCMS_RNA {
     // Show normalization columns in output
     def show_norm_arg = params.show_normalization ? "--show-normalization" : ""
 
-    // MNP rescue pass (v4.3.0 — decomposes sparse MNPs into SNPs for re-counting)
-    def rescue_mnp_arg = params.rescue_mnp ? "--rescue-mnp" : ""
+    // MNP rescue pass (v4.3.0 — decomposes MNPs into SNPs for re-counting)
+    def rescue_mnp_arg = params.rescue_mnp ? "--rescue-mnp --rescue-mnp-threshold ${params.rescue_mnp_threshold}" : ""
 
     // Adaptive context padding in repeat regions
     def adaptive_arg = params.adaptive_context ? "" : "--no-adaptive-context"
@@ -64,6 +64,9 @@ process GBCMS_RNA {
 
     // RNA-specific: GTF annotation for splice-site-aware counting
     def gtf_arg = params.gtf ? "--gtf ${params.gtf}" : ""
+
+    // P5: RNA library type — 'capture' (default) or 'amplicon'
+    def library_type_arg = params.library_type != 'capture' ? "--library-type ${params.library_type}" : ""
 
     // RNA-specific: dUTP strandedness enforcement
     // CLI default for RNA is --enforce-strandedness (true), so pass --no-strandedness only if disabled
@@ -98,6 +101,7 @@ process GBCMS_RNA {
         ${editing_db_arg} \\
         ${gtf_arg} \\
         ${strandedness_arg} \\
+        ${library_type_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml

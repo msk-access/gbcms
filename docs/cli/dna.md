@@ -114,6 +114,33 @@ Unique Molecular Identifier (UMI) support for molecule-level deduplication.
         --variants variants.vcf --bam sample.bam --fasta ref.fa -o results/
     ```
 
+## MNP Rescue Options
+
+The rescue pass recovers `alt_count` for MNP (multi-nucleotide polymorphism) variants where
+the full block match yields `ad=0`, by decomposing the MNP into individual SNP positions and
+re-counting each one independently. See [Architecture → MNP Rescue Pass](../reference/architecture.md#mnp-rescue-pass-rescue-mnp-v430)
+for the full design rationale.
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--rescue-mnp` | `false` | Enable MNP rescue pass. When `ad=0` and the variant is `MNP_RESCUE_ELIGIBLE`, decomposes the MNP into individual SNP positions and re-counts via the Rust engine. |
+| `--rescue-mnp-threshold` | `1.0` | Maximum discriminating/length ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs are eligible (C++ gbcms compatible, default). `0.5` = conservative sparse-only mode (≤50% discriminating positions). `0.0` = disable rescue eligibility (MNP_DISC_RATIO diagnostics are still emitted). Only used when `--rescue-mnp` is enabled. |
+
+!!! info "Diagnostic Flags"
+    When rescue is enabled, two diagnostic flags are emitted for every MNP variant:
+
+    - **`MNP_DISC_RATIO(n/m)`** — Always emitted. Shows the ratio of discriminating positions to total MNP length.
+    - **`MNP_RESCUE_ELIGIBLE`** — Emitted only when disc/len ≤ `--rescue-mnp-threshold`. Marks the variant as a rescue candidate.
+
+!!! tip "Choosing the threshold"
+    ```bash
+    # Permissive (default) — rescue all MNPs, matching C++ gbcms behavior
+    gbcms dna --rescue-mnp --variants input.maf --bam sample:sample.bam --fasta ref.fa -o out/
+
+    # Conservative — rescue only sparse MNPs (≤50% discriminating positions)
+    gbcms dna --rescue-mnp --rescue-mnp-threshold 0.5 --variants input.maf --bam sample:sample.bam --fasta ref.fa -o out/
+    ```
+
 ## Debugging Options
 
 | Option | Default | Description |

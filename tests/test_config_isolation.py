@@ -134,3 +134,97 @@ def test_rna_editing_db_validates_path(tmp_path):
             output=OutputConfig(directory=tmp_path),
             rna_editing_db=tmp_path / "nonexistent.vcf",
         )
+
+
+# ── v5.0.0: Library Type + GTF Fields ───────────────────────────────────
+
+
+def test_rna_has_library_type_field():
+    """GbcmsRnaConfig has library_type with default 'capture'."""
+    assert "library_type" in GbcmsRnaConfig.model_fields
+    assert GbcmsRnaConfig.model_fields["library_type"].default == "capture"
+
+
+def test_rna_library_type_validator_rejects_invalid():
+    """library_type rejects unsupported values at field validation."""
+    with pytest.raises(ValueError, match="Invalid library_type"):
+        GbcmsRnaConfig.validate_library_type("pcr")
+
+
+def test_rna_library_type_validator_normalizes_case():
+    """library_type normalizes to lowercase."""
+    assert GbcmsRnaConfig.validate_library_type("Amplicon") == "amplicon"
+    assert GbcmsRnaConfig.validate_library_type("CAPTURE") == "capture"
+
+
+def test_dna_lacks_library_type_field():
+    """GbcmsDnaConfig must NOT have library_type."""
+    assert "library_type" not in GbcmsDnaConfig.model_fields
+
+
+def test_rna_has_gtf_field():
+    """GbcmsRnaConfig has gtf field with default None."""
+    assert "gtf" in GbcmsRnaConfig.model_fields
+    assert GbcmsRnaConfig.model_fields["gtf"].default is None
+
+
+def test_dna_lacks_gtf_field():
+    """GbcmsDnaConfig must NOT have gtf."""
+    assert "gtf" not in GbcmsDnaConfig.model_fields
+
+
+def test_amplicon_auto_disables_strandedness(tmp_path):
+    """model_validator auto-disables enforce_strandedness when library_type='amplicon'."""
+    # Create real dummy files so Pydantic path validators pass
+    vcf = tmp_path / "dummy.vcf"
+    vcf.write_text("##fileformat=VCFv4.2\n")
+    fasta = tmp_path / "dummy.fa"
+    fasta.write_text(">chr1\nACGT\n")
+    fai = tmp_path / "dummy.fa.fai"
+    fai.write_text("chr1\t4\t6\t4\t5\n")
+
+    config = GbcmsRnaConfig(
+        variant_file=vcf,
+        bam_files={},
+        reference_fasta=fasta,
+        output=OutputConfig(directory=tmp_path),
+        library_type="amplicon",
+        enforce_strandedness=True,  # should be auto-overridden
+    )
+    assert config.library_type == "amplicon"
+    assert config.enforce_strandedness is False, (
+        "amplicon mode should auto-disable enforce_strandedness via model_validator"
+    )
+
+
+# ── v5.0.0: rescue_mnp_threshold Config Validation ─────────────────────
+
+
+def test_rescue_mnp_threshold_default():
+    """rescue_mnp_threshold defaults to 1.0 (permissive, C++ compatible)."""
+    assert GbcmsBaseConfig.model_fields["rescue_mnp_threshold"].default == 1.0
+
+
+def test_rescue_mnp_threshold_shared():
+    """Both DNA and RNA configs inherit rescue_mnp_threshold from base."""
+    assert "rescue_mnp_threshold" in GbcmsDnaConfig.model_fields
+    assert "rescue_mnp_threshold" in GbcmsRnaConfig.model_fields
+
+
+def test_rescue_mnp_threshold_rejects_above_1():
+    """rescue_mnp_threshold > 1.0 is rejected by Pydantic ge/le constraint."""
+    with pytest.raises(ValidationError, match="rescue_mnp_threshold"):
+        GbcmsBaseConfig.model_validate(
+            {"rescue_mnp_threshold": 1.5},
+            context={"_skip_file_validation": True},
+        )
+
+
+def test_rescue_mnp_threshold_rejects_below_0():
+    """rescue_mnp_threshold < 0.0 is rejected by Pydantic ge/le constraint."""
+    with pytest.raises(ValidationError, match="rescue_mnp_threshold"):
+        GbcmsBaseConfig.model_validate(
+            {"rescue_mnp_threshold": -0.1},
+            context={"_skip_file_validation": True},
+        )
+

@@ -187,6 +187,28 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `MFSD_ALT_COUNT` | Integer | ALT-classified fragments in 50–1000 bp size window |
     | `MFSD_REF_COUNT` | Integer | REF-classified fragments in 50–1000 bp size window |
 
+=== "--gtf only (RNA mode)"
+
+    These fields are emitted **only** when `gbcms rna --gtf <file>` is provided.
+
+    | Field | Type | Description |
+    |:------|:-----|:------------|
+    | `EBD` | Integer | Distance to nearest annotated exon boundary (`.` when no GTF) |
+    | `TXRC` | String | Per-transcript read counts. Format: `ENST:AD,RD,DP\|ENST:AD,RD,DP` |
+    | `TXFC` | String | Per-transcript fragment counts. Format: `ENST:ADF,RDF,DPF\|ENST:ADF,RDF,DPF` |
+    | `ASJD` | Flag | Allele-Specific Junction Divergence detected |
+    | `ASJDP` | Float | ASJD raw Fisher exact p-value |
+    | `ASJDQ` | Float | ASJD BH-corrected q-value |
+    | `ASJDRJ` | String | REF dominant junction (`start-end`) |
+    | `ASJDAJ` | String | ALT dominant junction (`start-end`) |
+    | `ASJDRM` | String | REF splice motif (GT-AG/GC-AG/AT-AC/OTHER/UNKNOWN) |
+    | `ASJDAM` | String | ALT splice motif |
+    | `ASJDRK` | Integer | REF junction in GTF (1/0) |
+    | `ASJDAK` | Integer | ALT junction in GTF (1/0) |
+    | `ASJDNR` | Integer | REF reads on dominant junction |
+    | `ASJDNA` | Integer | ALT reads on dominant junction |
+    | `ASJDD` | String | ASJD diagnostic flags (pipe-separated) |
+
 === "--show-normalization only"
 
     | Field | Type | Description |
@@ -315,7 +337,7 @@ These columns are **always** appended regardless of input format.
     | Column | Type | Description |
     |:-------|:-----|:------------|
     | `gbcms_status` | String | Normalization/counting status. Semicolon-separated multi-value. First token is always `PASS` or `FAIL_*`. Examples: `PASS`, `PASS;WARN_REF_CORRECTED`, `FAIL_REF_MISMATCH`. |
-    | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_SPARSE_DISC(2/5)`. |
+    | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`. |
     | `gbcms_rescue` | String | **Conditional** — only present when `--rescue-mnp` is enabled. Structured audit trail for MNP decomposition rescue. Format: `method=decomposed;original_alt=0;positions=chr:pos(R>A):count,...`. Empty when no rescue was attempted. Failed rescues include `outcome=no_signal`. |
     | `ref_count` | Integer | REF read depth |
     | `alt_count` | Integer | ALT read depth |
@@ -388,6 +410,67 @@ These columns are **always** appended regardless of input format.
 | `rna_splice_spanning` | Integer | ALT reads whose alignment spans a splice junction (`N` CIGAR operation) |
 
 ---
+
+### GTF-Aware MAF Columns (v5.0.0)
+
+!!! info "RNA mode + `--gtf` only"
+    These columns are appended **only** when using `gbcms rna --gtf <file>`. They are
+    completely absent without the `--gtf` flag — no empty/NA placeholders.
+
+#### Exon Boundary Distance
+
+| Column | Type | Description |
+|:-------|:-----|:------------|
+| `exon_boundary_dist` | Integer | Signed distance to the nearest exon boundary. Positive = exonic (distance from exon edge inward); negative = intronic (distance from nearest exon edge outward). `0` = exactly at an exon boundary. |
+
+#### Per-Transcript Counts
+
+| Column | Type | Description |
+|:-------|:-----|:------------|
+| `transcript_read_counts` | String | Semicolon-separated per-transcript read-level count triplets. Format: `ENST...:AD,RD,DP;ENST...:AD,RD,DP`. Example: `ENST00000269305:11,140,162;ENST00000445888:7,95,108`. Empty when no GTF or no overlapping transcripts. |
+| `transcript_fragment_counts` | String | Same format as `transcript_read_counts` but with fragment-level counts: `ENST...:ADF,RDF,DPF`. Fragment counts ≤ read counts for each transcript. |
+
+#### Aberrant Splice Junction Detection (ASJD)
+
+| Column | Type | Description |
+|:-------|:-----|:------------|
+| `asjd_flag` | Boolean | `True` when allele-specific junction divergence is detected (Fisher p < 0.05) |
+| `asjd_pval` | Float | Raw Fisher exact test p-value comparing REF vs ALT junction usage |
+| `asjd_qval` | Float | Benjamini-Hochberg corrected q-value (FDR control across all variants) |
+| `asjd_ref_junction` | String | Dominant REF junction coordinates (`start-end`), empty if no junction |
+| `asjd_alt_junction` | String | Dominant ALT junction coordinates (`start-end`), empty if no junction |
+| `asjd_ref_motif` | String | Splice motif at REF junction: `GT-AG`, `GC-AG`, `AT-AC`, `OTHER`, or `UNKNOWN` |
+| `asjd_alt_motif` | String | Splice motif at ALT junction (same categories) |
+| `asjd_ref_known` | Boolean | `True` if the REF dominant junction matches a GTF-annotated intron |
+| `asjd_alt_known` | Boolean | `True` if the ALT dominant junction matches a GTF-annotated intron |
+| `asjd_n_ref_junc` | Integer | REF reads on the dominant junction |
+| `asjd_n_alt_junc` | Integer | ALT reads on the dominant junction |
+| `asjd_n_ref_total` | Integer | Total REF reads with any splice junction |
+| `asjd_n_alt_total` | Integer | Total ALT reads with any splice junction |
+| `asjd_diagnostic` | String | Semicolon-separated QC flags (see [Diagnostic Flags](#asjd-diagnostic-flags)) |
+
+##### ASJD Diagnostic Flags
+
+| Flag | Condition | Meaning |
+|:-----|:----------|:--------|
+| `LOW_ALT_JUNC` | `asjd_n_alt_junc < 5` | Insufficient ALT junction evidence |
+| `LOW_REF_JUNC` | `asjd_n_ref_junc < 10` | Insufficient REF baseline |
+| `NOVEL_ALT_JUNC` | `asjd_alt_known == false` | ALT uses unannotated junction |
+| `NON_CANONICAL_MOTIF` | ALT motif not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
+| `STRAND_DISCORDANT` | ALT junction minority strand ≥ 30% | dUTP artifact |
+| `MULTI_JUNCTION` | ALT reads use > 2 junctions | Complex splicing event |
+
+---
+
+### Library Type Behavioral Note (v5.0.0)
+
+!!! warning "Amplicon Mode"
+    When `--library-type amplicon` is used, fragment counts (`dpf`, `rdf`, `adf`,
+    `ref_count_fragment`, `alt_count_fragment`) will approximate read counts (`dp`, `rd`, `ad`,
+    `ref_count`, `alt_count`). This is expected — amplicon mode bypasses R1/R2 fragment
+    consensus merging, treating each read as an independent observation.
+
+    This does **not** affect DNA mode output — `library_type` is an RNA-only parameter.
 
 ??? note "mFSD MAF Columns (`--mfsd` only)"
 

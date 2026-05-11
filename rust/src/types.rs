@@ -402,3 +402,19 @@ pub struct BaseCounts {
     pub asjd_diagnostic: String,
 }
 
+#[pymethods]
+impl BaseCounts {
+    /// Return a copy with `ad` replaced by `new_ad`.
+    ///
+    /// Used by the Python MNP rescue pass (`--rescue-mnp`) which needs to
+    /// update `ad` after decomposing a sparse MNP into individual SNPs.
+    /// Preserves immutability of the original struct from the Python side —
+    /// all fields are `#[pyo3(get)]` only, so this copy-on-write method is
+    /// the only way to produce a modified `BaseCounts` from Python.
+    fn with_ad(&self, new_ad: u32) -> BaseCounts {
+        BaseCounts {
+            ad: new_ad,
+            ..self.clone()
+        }
+    }
+}

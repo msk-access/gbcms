@@ -2,7 +2,7 @@
 
 Count alleles in RNA-seq BAMs with transcriptome-aware filtering.
 
-RNA mode extends the core DNA counting engine with filters and metrics specific to RNA-seq data: STAR-aware MAPQ rescue, dUTP strandedness filtering, splice junction tracking, and A-to-I RNA editing site flagging.
+RNA mode extends the core DNA counting engine with filters and metrics specific to RNA-seq data: STAR-aware MAPQ rescue, dUTP strandedness filtering, splice junction tracking, A-to-I RNA editing site flagging, GTF-based transcript annotation, and amplicon library support.
 
 ## When to Use
 
@@ -12,7 +12,9 @@ RNA mode extends the core DNA counting engine with filters and metrics specific 
 | cfDNA (ACCESS, IMPACT) | `gbcms dna` |
 | WGS / WES / Panel | `gbcms dna` |
 | STAR + dUTP RNA-seq | `gbcms rna` |
+| STAR + dUTP + GTF annotation | `gbcms rna --gtf genes.gtf` |
 | Unstranded RNA-seq | `gbcms rna --no-strandedness` |
+| Amplicon RNA libraries | `gbcms rna --library-type amplicon` |
 
 ## Synopsis
 
@@ -30,6 +32,7 @@ flowchart LR
         VCF["VCF/MAF"]
         FASTA["Reference"]
         DB["REDIportal DB"]:::optional
+        GTF["GTF Annotation"]:::optional
     end
 
     subgraph Filters ["RNA Filters"]
@@ -46,6 +49,13 @@ flowchart LR
         Edit["RNA Editing Flagging"]
     end
 
+    subgraph Annotation ["GTF Annotation (v5.0.0)"]
+        direction TB
+        ExonDist["Exon Boundary Distance"]
+        TxCount["Per-Transcript Counts"]
+        ASJD["Splice Junction Detection"]
+    end
+
     BAM --> NH --> Strand --> Classify
     VCF --> Classify
     FASTA --> Classify
@@ -53,9 +63,12 @@ flowchart LR
     Classify --> Splice
     Classify --> Edit
     DB -.->|"optional"| Edit
+    GTF -.->|"optional"| Annotation
+    Classify --> Annotation
     Sense --> Out(["RNA VCF/MAF"]):::pass
     Splice --> Out
     Edit --> Out
+    Annotation -.-> Out
 
     classDef filter fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
     classDef optional fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:1px,stroke-dasharray:4;
@@ -68,7 +81,7 @@ flowchart LR
 ## Required Arguments
 
 !!! info "Shared Arguments"
-    RNA mode shares all [required arguments](dna.md#required-arguments), [output options](dna.md#output-options), [filtering options](dna.md#filtering-options), [BAQ options](dna.md#baq-options), [UMI options](dna.md#umi-options), and [debugging options](dna.md#debugging-options) with DNA mode. See the [`gbcms dna` reference](dna.md) for full descriptions.
+    RNA mode shares all [required arguments](dna.md#required-arguments), [output options](dna.md#output-options), [filtering options](dna.md#filtering-options), [BAQ options](dna.md#baq-options), [UMI options](dna.md#umi-options), [MNP rescue options](dna.md#mnp-rescue-options), and [debugging options](dna.md#debugging-options) with DNA mode. See the [`gbcms dna` reference](dna.md) for full descriptions.
 
 !!! tip "BAQ is On by Default in RNA Mode"
     Unlike DNA mode, `--apply-baq` defaults to **on** for RNA. BAQ penalizes bases within 5 bp of both indels and splice junctions (CIGAR `N`), serving as a lightweight alternative to GATK SplitNCigarReads. Disable with `--no-baq` if your upstream workflow already runs SplitNCigarReads or BQSR. See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
@@ -86,6 +99,44 @@ flowchart LR
 
 These options are **only available** on `gbcms rna`, not on `gbcms dna`.
 
+### GTF Annotation (v5.0.0)
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--gtf` | _(none)_ | Path to Ensembl/GENCODE GTF annotation file (`.gtf` or `.gtf.gz`). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. |
+
+!!! info "What `--gtf` Enables"
+    When a GTF file is provided, gbcms builds a `COITree`-based annotation index and adds:
+
+    - **`exon_boundary_dist`** — Signed distance to the nearest exon boundary (positive = exonic, negative = intronic)
+    - **Per-transcript read/fragment counts** — Semicolon-separated `GENE:TX:READ_COUNT` and `GENE:TX:FRAG_COUNT` strings
+    - **ASJD detection** — 14 columns for Aberrant Splice Junction Detection, comparing read splice junctions against annotated transcript splice sites
+
+    See [RNA Annotation](../reference/rna-annotation.md) for full details.
+
+!!! tip "GTF Format Requirements"
+    gbcms supports both Ensembl (`.gtf`) and GENCODE (`.gtf.gz`) GTF files. The parser reads `exon` feature rows and uses `gene_name` and `transcript_id` attributes.
+
+    ```bash
+    # Ensembl
+    wget https://ftp.ensembl.org/pub/release-112/gtf/homo_sapiens/Homo_sapiens.GRCh38.112.gtf.gz
+    # GENCODE
+    wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencode.v46.annotation.gtf.gz
+    ```
+
+### Library Type (v5.0.0)
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--library-type` | `capture` | RNA library preparation method: `capture` (IDT xGen-style, default) or `amplicon` |
+
+!!! info "Amplicon Mode Behavior"
+    In **amplicon** libraries, R1 and R2 reads are PCR duplicates of the same template molecule — they are **not** independent fragment ends like in capture libraries. When `--library-type amplicon` is set:
+
+    1. **Fragment consensus bypass**: R1 and R2 are treated as independent observations (XOR trick on `mol_hash`), preventing incorrect merging.
+    2. **Strandedness auto-disabled**: Amplicon libraries are not strand-specific, so `--enforce-strandedness` is automatically set to `False` with a warning.
+    3. **Effect on counts**: `dpf ≈ dp` (fragment counts approach read counts) because no R1/R2 merging occurs.
+
 ### Strandedness Filtering
 
 | Option | Default | Description |
@@ -96,6 +147,9 @@ These options are **only available** on `gbcms rna`, not on `gbcms dna`.
     In dUTP-stranded RNA-seq, the second strand (synthesized with dUTP) is degraded, so sequenced reads reflect the **antisense** strand of the original mRNA. The strandedness filter uses the variant's `gene_strand` annotation (from the input MAF) to determine whether each read's orientation is consistent with the expected transcript direction.
 
     **Disable** with `--no-strandedness` for unstranded RNA-seq libraries where read orientation is random.
+
+!!! warning "Amplicon Override"
+    When `--library-type amplicon` is used, `--enforce-strandedness` is **automatically disabled** regardless of the CLI flag value. Amplicon libraries are not strand-specific by design.
 
 ```mermaid
 flowchart TD
@@ -276,6 +330,20 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 
     1. STAR-aligned BAMs should have the `NH` tag for multi-mapping rescue.
 
+=== "With GTF Annotation"
+
+    ```bash
+    gbcms rna \
+        --variants mutations.maf \
+        --bam tumor_rna:aligned.bam \
+        --fasta hg38.fa \
+        --gtf Homo_sapiens.GRCh38.112.gtf.gz \ # (1)!
+        --format maf \
+        --output-dir results/
+    ```
+
+    1.  Enables exon boundary distance, per-transcript counting, and ASJD detection. See [RNA Annotation](../reference/rna-annotation.md).
+
 === "With Editing DB"
 
     ```bash
@@ -289,6 +357,19 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     ```
 
     1.  REDIportal TABLE1 format. Download from [REDIportal](http://srv00.recas.ba.infn.it/atlas/).
+
+=== "Amplicon Library"
+
+    ```bash
+    gbcms rna \
+        --variants mutations.vcf \
+        --bam amplicon_sample:amplicon.bam \
+        --fasta reference.fa \
+        --library-type amplicon \ # (1)!
+        --output-dir results/
+    ```
+
+    1.  Bypasses fragment consensus (R1/R2 treated as independent). Auto-disables `--enforce-strandedness`.
 
 === "Unstranded Library"
 
@@ -329,7 +410,9 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 | **BAQ default** | off | **on** (no upstream BQSR; splice penalty) |
 | **Strandedness filter** | N/A | enabled (dUTP) |
 | **RNA editing flagging** | N/A | optional (`--rna-editing-db`) |
-| **Output columns** | Standard (DP, RD, AD, etc.) | Standard **+ 5 RNA columns** |
+| **GTF annotation** | N/A | optional (`--gtf`) |
+| **Library type** | N/A | `capture` (default) or `amplicon` |
+| **Output columns** | Standard (DP, RD, AD, etc.) | Standard **+ 5 RNA columns** (+17 with `--gtf`) |
 | **mFSD analysis** | ✅ available | ❌ not available |
 
 !!! note "No mFSD in RNA Mode"
@@ -342,6 +425,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 - [gbcms dna](dna.md) — DNA/cfDNA counting
 - [Quick Start](../getting-started/quickstart.md) — Common patterns
 - [Output Formats](../reference/output-formats.md) — Complete VCF and MAF column-level schema (RNA columns, INFO/FORMAT fields)
+- [RNA Annotation](../reference/rna-annotation.md) — GTF annotation, per-transcript counting, ASJD detection
 - [Read Filters](../reference/read-filters.md) — Filter cascade details
 - [Counting & Metrics](../reference/counting-metrics.md) — How reads become counts
 - [Allele Classification](../reference/allele-classification.md) — How each variant type is counted

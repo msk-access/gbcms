@@ -451,7 +451,7 @@ pub fn count_bam(
 /// // parity testing until the 22-BAM regression confirms identical counts.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, rna_editing_db=None, gtf_path=None, reference_fasta=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture"))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -481,6 +481,7 @@ pub fn count_bam_binned(
     rna_editing_db: Option<&str>,
     gtf_path: Option<&str>,
     reference_fasta: Option<&str>,
+    library_type: &str,
 ) -> PyResult<Vec<BaseCounts>> {
     // Parse alignment backend from string
     let backend = match alignment_backend {
@@ -540,12 +541,18 @@ pub fn count_bam_binned(
     // Store FASTA path for thread-local readers (used by ASJD motif classification)
     let fasta_path_owned: Option<String> = reference_fasta.map(|p| p.to_string());
 
+    // P5: Convert library_type string to boolean for amplicon mode.
+    // In amplicon mode, R1/R2 hash to separate "fragments" (no consensus).
+    let amplicon_mode = library_type == "amplicon";
+
     if mode == "rna" {
         info!(
-            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, rna_editing_db={}, gtf={}",
+            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, \
+             rna_editing_db={}, gtf={}, library_type={}",
             variants.len(), apply_baq, umi_tag, alignment_backend,
             rna_editing_db.unwrap_or("none"),
             gtf_path.unwrap_or("none"),
+            library_type,
         );
     } else {
         info!(
@@ -644,6 +651,7 @@ pub fn count_bam_binned(
                             &editing_sites,
                             &annotation,
                             fasta_reader,
+                            amplicon_mode,
                         )?)
                     },
                 )
@@ -782,6 +790,7 @@ fn count_bin_shared(
     editing_sites: &Option<HashSet<(String, i64)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
+    amplicon_mode: bool,
 ) -> Result<Vec<(usize, BaseCounts)>> {
 
     // ══════════════════════════════════════════════════════════════════════
@@ -876,7 +885,7 @@ fn count_bin_shared(
             filter_improper_pair, filter_indel,
             fragment_qual_threshold, backend,
             apply_baq, umi_tag, mode, enforce_strandedness,
-            editing_sites, annotation,
+            editing_sites, annotation, amplicon_mode,
         )?;
 
         // Dual-count for decomposed variants: run the same classification
@@ -888,7 +897,7 @@ fn count_bin_shared(
                 filter_improper_pair, filter_indel,
                 fragment_qual_threshold, backend,
                 apply_baq, umi_tag, mode, enforce_strandedness,
-                editing_sites, annotation,
+                editing_sites, annotation, amplicon_mode,
             )?;
 
             if counts_decomp.ad > counts_orig.ad {
@@ -912,6 +921,7 @@ fn count_bin_shared(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
                 backend, apply_baq, umi_tag, enforce_strandedness,
+                amplicon_mode,
             );
             final_counts.transcript_read_counts = read_cts;
             final_counts.transcript_fragment_counts = frag_cts;
@@ -979,6 +989,7 @@ fn count_variant_from_cache(
     enforce_strandedness: bool,
     editing_sites: &Option<HashSet<(String, i64)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
+    amplicon_mode: bool,
 ) -> Result<BaseCounts> {
 
     let mut counts = BaseCounts::default();
@@ -1184,7 +1195,7 @@ fn count_variant_from_cache(
         // UMI-aware fragment grouping: when umi_tag is set, reads with
         // different UMIs are treated as distinct molecules. The UMI is
         // extracted from the BAM aux tag (e.g., RX:Z:ACGT).
-        let mol_hash = if let Some(tag) = umi_tag {
+        let mut mol_hash = if let Some(tag) = umi_tag {
             let umi_bytes = record.aux(&tag)
                 .ok()
                 .and_then(|aux| match aux {
@@ -1197,6 +1208,13 @@ fn count_variant_from_cache(
         };
         let is_read1 = record.is_first_in_template();
         let is_forward = !is_reverse;
+
+        // P5: Amplicon mode — XOR read number into fragment hash so R1 and R2
+        // are treated as independent observations (no fragment consensus).
+        // This bypasses R1/R2 merging without modifying fragment.rs.
+        if amplicon_mode {
+            mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
+        }
 
         let evidence = fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
 
@@ -2171,6 +2189,7 @@ fn count_per_transcript(
     apply_baq: bool,
     umi_tag: Option<[u8; 2]>,
     enforce_strandedness: bool,
+    amplicon_mode: bool,
 ) -> (String, String) {
     // Step 1: Find overlapping transcripts
     let chrom = variant.chrom.trim_start_matches("chr");
@@ -2277,7 +2296,7 @@ fn count_per_transcript(
             tx_dp += 1;
 
             // ── Fragment tracking
-            let mol_hash = if let Some(tag) = umi_tag {
+            let mut mol_hash = if let Some(tag) = umi_tag {
                 let umi_bytes = record.aux(&tag)
                     .ok()
                     .and_then(|aux| match aux {
@@ -2291,6 +2310,12 @@ fn count_per_transcript(
             let is_read1 = record.is_first_in_template();
             let is_forward = !record.is_reverse();
             let tlen = mfsd::calc_physical_insert_size(record);
+
+            // P5: Amplicon mode — same XOR trick as count_variant_from_cache
+            if amplicon_mode {
+                mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
+            }
+
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
             evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base);
 

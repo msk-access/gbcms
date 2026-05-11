@@ -23,7 +23,7 @@ pub struct PreparedVariant {
 
     /// Post-counting diagnostic flags. Semicolon-separated.
     /// Empty string = no diagnostics. Set by Python pipeline after counting.
-    /// Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_SPARSE_DISC(2/5)".
+    /// Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
     #[pyo3(get, set)]
     pub gbcms_diagnostic: String,
 

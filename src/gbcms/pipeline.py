@@ -417,6 +417,7 @@ class Pipeline:
                     else None
                 ),
                 reference_fasta=str(self.config.reference_fasta),
+                library_type=getattr(self.config, "library_type", "capture"),
             )
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
@@ -470,8 +471,7 @@ class Pipeline:
                 merged.append(_zero_counts())
         return merged
 
-    @staticmethod
-    def _compute_diagnostics(prepared: list, full_counts: list) -> None:
+    def _compute_diagnostics(self, prepared: list, full_counts: list) -> None:
         """Compute post-counting diagnostic flags and populate gbcms_diagnostic.
 
         Diagnostic flags are semicolon-separated and stored in each
@@ -482,8 +482,9 @@ class Pipeline:
             ZERO_ALT: ad == 0 and variant was successfully counted.
             PARTIAL_DOMINANT: partial_alt > ad (more structural evidence
                 than confirmed ALT calls).
-            MNP_SPARSE_DISC(n/m): for MNPs (ref_len == alt_len > 1),
-                fewer than half of positions are discriminating.
+            MNP_DISC_RATIO(n/m): for MNPs (ref_len == alt_len > 1),
+                always emitted showing discriminating position ratio.
+            MNP_RESCUE_ELIGIBLE: disc/len ≤ rescue_mnp_threshold.
             HIGH_N_FRACTION(f): n_count / dp > 0.05 (duplex masking hotspot).
         """
         flag_counts: dict[str, int] = {}
@@ -503,7 +504,9 @@ class Pipeline:
             if counts.partial_alt > counts.ad:
                 flags.append("PARTIAL_DOMINANT")
 
-            # MNP_SPARSE_DISC: for MNPs, compute discriminating position ratio
+            # MNP_DISC_RATIO: for MNPs, always emit discriminating position ratio
+            # as a diagnostic signal. Additionally, mark rescue eligibility
+            # based on the configurable --rescue-mnp-threshold.
             ref_allele = pv.variant.ref_allele
             alt_allele = pv.variant.alt_allele
             ref_len = len(ref_allele)
@@ -511,8 +514,10 @@ class Pipeline:
             if ref_len == alt_len and ref_len > 1:
                 # Count positions where ref != alt (discriminating positions)
                 disc = sum(1 for r, a in zip(ref_allele, alt_allele, strict=False) if r != a)
-                if ref_len > 0 and disc / ref_len <= 0.50:
-                    flags.append(f"MNP_SPARSE_DISC({disc}/{ref_len})")
+                ratio = disc / ref_len if ref_len > 0 else 0.0
+                flags.append(f"MNP_DISC_RATIO({disc}/{ref_len})")
+                if ratio <= self.config.rescue_mnp_threshold:
+                    flags.append("MNP_RESCUE_ELIGIBLE")
 
             # HIGH_N_FRACTION: high rate of N-bases at discriminating positions
             if counts.dp > 0 and counts.n_count / counts.dp > 0.05:
@@ -543,12 +548,12 @@ class Pipeline:
         bam_path: Path,
         sample_name: str,
     ) -> None:
-        """MNP rescue pass: decompose sparse MNPs into individual SNPs and re-count.
+        """MNP rescue pass: decompose MNPs into individual SNPs and re-count.
 
         For each PASS variant where:
           - ad == 0 (no confirmed ALT reads)
           - variant is MNP (ref_len == alt_len > 1)
-          - MNP_SPARSE_DISC is flagged in gbcms_diagnostic
+          - MNP_RESCUE_ELIGIBLE is flagged (disc/len ≤ rescue_mnp_threshold)
 
         The method creates synthetic SNP variants at each discriminating position,
         prepares and counts them via the Rust engine, and takes the best (highest
@@ -576,7 +581,7 @@ class Pipeline:
                 continue
             if counts.ad != 0:
                 continue
-            if "MNP_SPARSE_DISC" not in pv.gbcms_diagnostic:
+            if "MNP_RESCUE_ELIGIBLE" not in pv.gbcms_diagnostic:
                 continue
 
             ref_allele = pv.variant.ref_allele
@@ -682,6 +687,7 @@ class Pipeline:
                 else None
             ),
             reference_fasta=str(self.config.reference_fasta),
+            library_type=getattr(self.config, "library_type", "capture"),
         )
 
         # 5. Map counts back to valid SNP indices
@@ -719,8 +725,11 @@ class Pipeline:
             positions_str = ",".join(positions_str_parts)
 
             if best_alt > 0:
-                # Successful rescue: update ad with best decomposed SNP count
-                counts.ad = best_alt
+                # Successful rescue: replace counts with a copy carrying the
+                # best decomposed SNP alt_count.  BaseCounts is a frozen PyO3
+                # struct (#[pyo3(get)] only), so we use copy-on-write via
+                # with_ad() rather than direct field mutation.
+                full_counts[pv_idx] = counts.with_ad(best_alt)
                 pv.gbcms_rescue = f"method=decomposed;original_alt=0;positions={positions_str}"
                 rescued_count += 1
                 logger.debug(
@@ -842,6 +851,7 @@ class Pipeline:
                 mfsd=self.config.output.mfsd,
                 mode=self.config.mode,
                 rescue_mnp=self.config.rescue_mnp,
+                has_gtf=bool(getattr(self.config, "gtf", None)),
             )
         else:
             # mode= is required so RNA-specific MAF columns (rna_sense_depth, etc.)
@@ -855,6 +865,7 @@ class Pipeline:
                 mfsd=self.config.output.mfsd,
                 mode=self.config.mode,
                 rescue_mnp=self.config.rescue_mnp,
+                has_gtf=bool(getattr(self.config, "gtf", None)),
             )
         logger.debug(
             "Writer initialised: format=%s, mode=%s, sample=%s, path=%s",
