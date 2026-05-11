@@ -1,8 +1,8 @@
 //! GTF file parser for building [`AnnotationIndex`].
 //!
-//! Parses Ensembl and GENCODE GTF formats, extracting exon records and
-//! deriving intron boundaries per transcript. Supports variant-guided
-//! streaming to reduce memory by only loading chromosomes with variants.
+//! Uses the [`noodles_gtf`] crate for standards-compliant record parsing,
+//! with our business logic layered on top: variant-guided streaming,
+//! chromosome normalization, GENCODE version stripping, and intron derivation.
 //!
 //! # Supported GTF formats
 //!
@@ -18,15 +18,16 @@ use std::collections::{HashMap, HashSet};
 use std::io::BufRead;
 
 use log::{debug, info, warn};
+use noodles_gtf as gtf;
 
 use super::{AnnotationIndex, ExonRecord, TranscriptIntrons};
 use coitrees::{COITree, IntervalNode, IntervalTree};
 
 /// Parse a GTF file and build an [`AnnotationIndex`].
 ///
-/// Only loads exon records from chromosomes present in `variant_chroms`
-/// (variant-guided streaming). This typically reduces memory by 40-60%
-/// for targeted panels like MSK-IMPACT.
+/// Uses `noodles_gtf::Reader` for standards-compliant GTF parsing. Only loads
+/// exon records from chromosomes present in `variant_chroms` (variant-guided
+/// streaming), typically reducing memory by 40-60% for targeted panels.
 ///
 /// # Parameters
 ///
@@ -36,8 +37,7 @@ use coitrees::{COITree, IntervalNode, IntervalTree};
 ///
 /// # Errors
 ///
-/// Returns `Err` if the file cannot be opened or contains no parseable exon
-/// records for the requested chromosomes.
+/// Returns `Err` if the file cannot be opened or contains unparseable records.
 pub fn parse_gtf(
     gtf_path: &str,
     variant_chroms: &HashSet<String>,
@@ -51,7 +51,7 @@ pub fn parse_gtf(
 
     let file = std::fs::File::open(gtf_path)
         .map_err(|e| anyhow::anyhow!("Failed to open GTF file '{}': {}", gtf_path, e))?;
-    let reader = std::io::BufReader::new(file);
+    let buf_reader = std::io::BufReader::new(file);
 
     let mut exons: Vec<ExonRecord> = Vec::new();
     let mut chrom_map: HashMap<String, u32> = HashMap::new();
@@ -65,31 +65,39 @@ pub fn parse_gtf(
     let mut skipped_chrom = 0u64;
     let mut skipped_parse = 0u64;
 
-    for line_result in reader.lines() {
+    // Use noodles-gtf line-by-line parsing with our filtering logic.
+    // We read raw lines and parse via Record::from_str to handle comments
+    // and maintain variant-guided streaming (skip chroms without variants).
+    for line_result in buf_reader.lines() {
         let line = line_result?;
         total_lines += 1;
 
         // Skip comment lines (GTF header)
-        if line.starts_with('#') {
+        if line.starts_with('#') || line.is_empty() {
             continue;
         }
 
-        // GTF is tab-delimited: chrom, source, feature, start, end, score, strand, frame, attributes
-        let fields: Vec<&str> = line.splitn(9, '\t').collect();
-        if fields.len() < 9 {
-            skipped_parse += 1;
-            continue;
-        }
+        // Parse the line using noodles-gtf
+        let record: gtf::Record = match line.parse() {
+            Ok(r) => r,
+            Err(e) => {
+                skipped_parse += 1;
+                debug!("GTF parse error at line {}: {}", total_lines, e);
+                continue;
+            }
+        };
 
         // Only parse exon records
-        let feature = fields[2];
-        if feature != "exon" {
+        if record.ty() != "exon" {
             skipped_non_exon += 1;
             continue;
         }
 
         // Normalize chromosome: strip "chr" prefix
-        let chrom = fields[0].trim_start_matches("chr").to_string();
+        let chrom = record
+            .reference_sequence_name()
+            .trim_start_matches("chr")
+            .to_string();
 
         // Variant-guided filter: skip chromosomes without variants
         if !variant_chroms.contains(&chrom) {
@@ -97,37 +105,31 @@ pub fn parse_gtf(
             continue;
         }
 
-        // Parse coordinates (GTF is 1-based inclusive → convert to 0-based exclusive-end)
-        let start_1based: i32 = match fields[3].parse() {
-            Ok(v) => v,
-            Err(_) => {
-                skipped_parse += 1;
-                continue;
-            }
-        };
-        let end_1based: i32 = match fields[4].parse() {
-            Ok(v) => v,
-            Err(_) => {
-                skipped_parse += 1;
-                continue;
-            }
-        };
+        // Convert coordinates: noodles Position is 1-based → 0-based exclusive-end
+        let start_1based: i32 = usize::from(record.start()) as i32;
+        let end_1based: i32 = usize::from(record.end()) as i32;
         let start = start_1based - 1; // 0-based inclusive
         let end = end_1based; // 0-based exclusive (GTF end is 1-based inclusive)
 
-        // Parse strand
-        let strand = fields[6].chars().next().unwrap_or('+');
+        // Parse strand via noodles (returns Option<Strand>)
+        let strand = match record.strand() {
+            Some(noodles_gtf::record::Strand::Reverse) => '-',
+            _ => '+', // Forward or unstranded defaults to '+'
+        };
 
-        // Parse attributes for transcript_id and gene_id
-        let attrs = fields[8];
-        let transcript_id = match extract_attribute(attrs, "transcript_id") {
-            Some(id) => id,
+        // Extract transcript_id and gene_id from noodles-parsed attributes
+        let attrs = record.attributes();
+        let transcript_id = match attrs.get("transcript_id") {
+            Some(id) => strip_gencode_version(id).to_string(),
             None => {
                 skipped_parse += 1;
                 continue;
             }
         };
-        let gene_id = extract_attribute(attrs, "gene_id").unwrap_or_default();
+        let gene_id = attrs
+            .get("gene_id")
+            .map(|id| strip_gencode_version(id).to_string())
+            .unwrap_or_default();
 
         // Assign chromosome numeric ID
         let chrom_id = *chrom_map.entry(chrom).or_insert_with(|| {
@@ -249,40 +251,29 @@ pub fn parse_gtf(
     ))
 }
 
-// ─── Attribute Parsing ───────────────────────────────────────────────────────
+// ─── GENCODE Version Stripping ───────────────────────────────────────────────
 
-/// Extract a named attribute value from a GTF attribute string.
+/// Strip GENCODE version suffix from an identifier.
 ///
-/// GTF attributes are semicolon-separated key-value pairs:
-/// `gene_id "ENSG00000141510"; transcript_id "ENST00000269305"; ...`
+/// GENCODE IDs have version suffixes (e.g., `ENST00000269305.8`).
+/// Ensembl IDs do not. This function strips the suffix only if the
+/// part after the last dot is purely numeric.
 ///
-/// Handles both quoted (`"value"`) and unquoted values.
-/// Strips GENCODE version suffixes (e.g., `ENST00000269305.8` → `ENST00000269305`).
-fn extract_attribute(attrs: &str, key: &str) -> Option<String> {
-    for part in attrs.split(';') {
-        let trimmed = part.trim();
-        if let Some(rest) = trimmed.strip_prefix(key) {
-            let rest = rest.trim();
-            // Remove surrounding quotes if present
-            let value = rest.trim_matches('"').trim();
-            if value.is_empty() {
-                continue;
-            }
-            // Strip GENCODE version suffix (e.g., "ENST00000269305.8" → "ENST00000269305")
-            let clean = if let Some(dot_pos) = value.rfind('.') {
-                // Only strip if the part after the dot is numeric (version suffix)
-                if value[dot_pos + 1..].chars().all(|c| c.is_ascii_digit()) {
-                    &value[..dot_pos]
-                } else {
-                    value
-                }
-            } else {
-                value
-            };
-            return Some(clean.to_string());
+/// # Examples
+///
+/// ```text
+/// "ENST00000269305.8" → "ENST00000269305"
+/// "ENSG00000141510"   → "ENSG00000141510" (unchanged)
+/// "gene.name.1"       → "gene.name"       (numeric after last dot)
+/// ```
+fn strip_gencode_version(id: &str) -> &str {
+    if let Some(dot_pos) = id.rfind('.') {
+        // Only strip if the part after the dot is numeric (version suffix)
+        if id[dot_pos + 1..].chars().all(|c| c.is_ascii_digit()) {
+            return &id[..dot_pos];
         }
     }
-    None
+    id
 }
 
 #[cfg(test)]
@@ -290,35 +281,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_extract_attribute_ensembl() {
-        let attrs = r#"gene_id "ENSG00000141510"; transcript_id "ENST00000269305"; exon_number "4";"#;
-        assert_eq!(
-            extract_attribute(attrs, "gene_id"),
-            Some("ENSG00000141510".to_string())
-        );
-        assert_eq!(
-            extract_attribute(attrs, "transcript_id"),
-            Some("ENST00000269305".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_attribute_gencode_version_strip() {
-        let attrs = r#"gene_id "ENSG00000141510.11"; transcript_id "ENST00000269305.8";"#;
-        assert_eq!(
-            extract_attribute(attrs, "gene_id"),
-            Some("ENSG00000141510".to_string())
-        );
-        assert_eq!(
-            extract_attribute(attrs, "transcript_id"),
-            Some("ENST00000269305".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_attribute_missing() {
-        let attrs = r#"gene_id "ENSG00000141510";"#;
-        assert_eq!(extract_attribute(attrs, "transcript_id"), None);
+    fn test_strip_gencode_version() {
+        assert_eq!(strip_gencode_version("ENST00000269305.8"), "ENST00000269305");
+        assert_eq!(strip_gencode_version("ENSG00000141510.11"), "ENSG00000141510");
+        assert_eq!(strip_gencode_version("ENSG00000141510"), "ENSG00000141510");
+        assert_eq!(strip_gencode_version("gene.name"), "gene.name"); // non-numeric after dot
     }
 
     #[test]

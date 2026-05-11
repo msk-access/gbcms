@@ -514,6 +514,15 @@ def rna(
         "--rna-editing-db",
         help="Path to REDIportal VCF of known A-to-I RNA editing sites.",
     ),
+    gtf: Path | None = typer.Option(
+        None,
+        "--gtf",
+        help=(
+            "Path to GTF annotation file (Ensembl/GENCODE). Enables exon "
+            "boundary distance calculation and BAQ suppression at annotated "
+            "splice junctions. Only chromosomes with variants are loaded."
+        ),
+    ),
     # Quality thresholds (different defaults for RNA)
     min_mapq: int = typer.Option(
         1,
@@ -620,6 +629,7 @@ def rna(
     - NH:i:1 MAPQ rescue for STAR-aligned reads
     - dUTP strandedness filtering (--enforce-strandedness)
     - A-to-I RNA editing site flagging (--rna-editing-db)
+    - GTF-informed splice boundary annotation (--gtf)
     - RT-aware PairHMM gap penalties
     """
     # ── 1. Logging ──
@@ -678,6 +688,8 @@ def rna(
     )
     if rna_editing_db:
         logger.info("RNA editing database: %s", rna_editing_db)
+    if gtf:
+        logger.info("GTF annotation: %s", gtf)
 
     try:
         output_config = OutputConfig(
@@ -730,6 +742,7 @@ def rna(
             umi_tag=umi_tag,
             enforce_strandedness=enforce_strandedness,
             rna_editing_db=rna_editing_db,
+            gtf=gtf,
             rescue_mnp=rescue_mnp,
         )
 

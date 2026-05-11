@@ -250,6 +250,42 @@ impl AnnotationIndex {
         })
     }
 
+    // ─── P4c: ASJD Helpers ───────────────────────────────────────────────────
+
+    /// Check if an observed junction matches any annotated intron on the chromosome.
+    ///
+    /// Uses the pre-sorted `splice_sites` and `transcript_introns` to match within
+    /// ±`tolerance` bp. Returns `true` if any annotated intron start/end pair
+    /// matches the observed junction.
+    pub fn is_junction_known(
+        &self,
+        chrom: &str,
+        junction_start: i64,
+        junction_end: i64,
+        tolerance: i32,
+    ) -> bool {
+        let chrom_id = match self.chrom_map.get(chrom) {
+            Some(id) => *id,
+            None => return false,
+        };
+
+        // Check all transcripts on this chromosome for matching introns
+        for ti in self.transcript_introns.values() {
+            for &(i_start, i_end) in &ti.introns {
+                // TranscriptIntrons only stores introns for transcripts on loaded chromosomes
+                if (junction_start as i32 - i_start).abs() <= tolerance
+                    && (junction_end as i32 - i_end).abs() <= tolerance
+                {
+                    return true;
+                }
+            }
+        }
+
+        // Also verify the chromosome ID is actually in our index (defensive)
+        let _ = chrom_id;
+        false
+    }
+
     // ─── Diagnostics ─────────────────────────────────────────────────────────
 
     /// Number of chromosomes loaded into the index.

@@ -110,6 +110,26 @@ class BaseCounts:
     antisense_strand_alt_count: int
     rna_editing_site_overlap: bool
     splice_spanning_count: int
+    # GTF-informed annotation (None when no GTF)
+    exon_boundary_dist: int | None
+    # P4b: Per-transcript counts (empty string when no GTF or no overlap)
+    transcript_read_counts: str
+    transcript_fragment_counts: str
+    # P4c: ASJD fields (defaults: flag=False, pval/qval=0.0, strings="", bools=False, ints=0)
+    asjd_flag: bool
+    asjd_pval: float
+    asjd_qval: float
+    asjd_ref_junction: str
+    asjd_alt_junction: str
+    asjd_ref_motif: str
+    asjd_alt_motif: str
+    asjd_ref_known: bool
+    asjd_alt_known: bool
+    asjd_n_ref_junc: int
+    asjd_n_alt_junc: int
+    asjd_n_ref_total: int
+    asjd_n_alt_total: int
+    asjd_diagnostic: str
 
 class PreparedVariant:
     variant: Variant
@@ -174,6 +194,7 @@ def count_bam_binned(
     mode: str = "dna",
     enforce_strandedness: bool = False,
     rna_editing_db: str | None = None,
+    gtf_path: str | None = None,
 ) -> list[BaseCounts]: ...
 def prepare_variants(
     variants: list[Variant],

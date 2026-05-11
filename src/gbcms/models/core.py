@@ -462,12 +462,37 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         ),
     )
 
+    # GTF annotation for splice-site-aware counting
+    gtf: Path | None = Field(
+        default=None,
+        description=(
+            "Path to GTF annotation file (Ensembl/GENCODE). When provided, "
+            "enables exon boundary distance calculation and BAQ suppression "
+            "at annotated splice junctions. Adds exon_boundary_dist column "
+            "to output. Only chromosomes with variants are loaded "
+            "(variant-guided streaming)."
+        ),
+    )
+
     @field_validator("rna_editing_db")
     @classmethod
     def validate_editing_db(cls, v: Path | None) -> Path | None:
         """Validate RNA editing database file exists."""
         if v is not None and not v.exists():
             raise ValueError(f"RNA editing database not found: {v}")
+        return v
+
+    @field_validator("gtf")
+    @classmethod
+    def validate_gtf(cls, v: Path | None) -> Path | None:
+        """Validate GTF annotation file exists and has correct extension."""
+        if v is not None:
+            if not v.exists():
+                raise ValueError(f"GTF annotation file not found: {v}")
+            if not v.name.endswith((".gtf", ".gtf.gz")):
+                raise ValueError(
+                    f"GTF file must have .gtf or .gtf.gz extension, got: {v.name}"
+                )
         return v
 
 

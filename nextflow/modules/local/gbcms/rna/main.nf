@@ -62,6 +62,9 @@ process GBCMS_RNA {
     // RNA-specific: REDIportal editing database
     def editing_db_arg = params.rna_editing_db ? "--rna-editing-db ${params.rna_editing_db}" : ""
 
+    // RNA-specific: GTF annotation for splice-site-aware counting
+    def gtf_arg = params.gtf ? "--gtf ${params.gtf}" : ""
+
     // RNA-specific: dUTP strandedness enforcement
     // CLI default for RNA is --enforce-strandedness (true), so pass --no-strandedness only if disabled
     def strandedness_arg = params.enforce_strandedness ? "" : "--no-strandedness"
@@ -93,6 +96,7 @@ process GBCMS_RNA {
         ${umi_arg} \\
         ${baq_arg} \\
         ${editing_db_arg} \\
+        ${gtf_arg} \\
         ${strandedness_arg} \\
         ${args}
 

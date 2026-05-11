@@ -411,6 +411,11 @@ class Pipeline:
                     if getattr(self.config, "rna_editing_db", None)
                     else None
                 ),
+                gtf_path=(
+                    str(self.config.gtf)  # type: ignore[attr-defined]
+                    if getattr(self.config, "gtf", None)
+                    else None
+                ),
             )
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
@@ -668,6 +673,11 @@ class Pipeline:
             rna_editing_db=(
                 str(self.config.rna_editing_db)  # type: ignore[attr-defined]
                 if getattr(self.config, "rna_editing_db", None)
+                else None
+            ),
+            gtf_path=(
+                str(self.config.gtf)  # type: ignore[attr-defined]
+                if getattr(self.config, "gtf", None)
                 else None
             ),
         )
