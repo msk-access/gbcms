@@ -201,7 +201,14 @@ impl AnnotationIndex {
         let mut transcript_ids = Vec::new();
 
         tree.query(pos_i32, pos_i32 + 1, |node| {
-            let exon = &self.exons[*node.metadata];
+            // COITree metadata type varies by SIMD backend:
+            //   nosimd: IntervalNode<usize, _> → field is usize
+            //   NEON/AVX: Interval<&usize>     → field is &usize
+            // Use Borrow<usize> to handle both uniformly.
+            use std::borrow::Borrow;
+            #[allow(noop_method_call)] // redundant on NEON/AVX, essential on nosimd
+            let idx: &usize = node.metadata.borrow();
+            let exon = &self.exons[*idx];
             // Deduplicate: a position may overlap multiple exons of the same transcript
             if !transcript_ids.contains(&exon.transcript_id) {
                 transcript_ids.push(exon.transcript_id.clone());
