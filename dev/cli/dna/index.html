@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -661,6 +661,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mnp-rescue-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MNP Rescue Options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#debugging-options" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -984,6 +995,8 @@
       
         
       
+        
+      
     
     
     
@@ -1186,6 +1199,34 @@
     
   
     RNA Splice Handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/rna-annotation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RNA Annotation
   
 
     
@@ -1786,6 +1827,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mnp-rescue-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MNP Rescue Options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#debugging-options" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2190,6 +2242,49 @@ Using <code>--mfsd-report</code> auto-enables <code>--mfsd</code> and <code>--mf
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>results/
 </code></pre></div>
 </div>
+<h2 id="mnp-rescue-options"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Options<a class="headerlink" href="#mnp-rescue-options" title="Permanent link">¶</a></h2>
+<p>The rescue pass recovers <code>alt_count</code> for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (multi-nucleotide polymorphism) variants where
+the full block match yields <code>ad=0</code>, by decomposing the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> into individual <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> positions and
+re-counting each one independently. See <a href="../../reference/architecture/#mnp-rescue-pass-rescue-mnp-v430">Architecture → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Pass</a>
+for the full design rationale.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--rescue-mnp</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Enable <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue pass. When <code>ad=0</code> and the variant is <code>MNP_RESCUE_ELIGIBLE</code>, decomposes the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> into individual <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> positions and re-counts via the Rust engine.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rescue-mnp-threshold</code></td>
+<td style="text-align: left;"><code>1.0</code></td>
+<td style="text-align: left;">Maximum discriminating/length ratio for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue eligibility (0.0–1.0). <code>1.0</code> = all MNPs are eligible (C++ gbcms compatible, default). <code>0.5</code> = conservative sparse-only mode (≤50% discriminating positions). <code>0.0</code> = disable rescue eligibility (MNP_DISC_RATIO diagnostics are still emitted). Only used when <code>--rescue-mnp</code> is enabled.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">Diagnostic Flags</p>
+<p>When rescue is enabled, two diagnostic flags are emitted for every <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> variant:</p>
+<ul>
+<li><strong><code>MNP_DISC_RATIO(n/m)</code></strong> — Always emitted. Shows the ratio of discriminating positions to total <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> length.</li>
+<li><strong><code>MNP_RESCUE_ELIGIBLE</code></strong> — Emitted only when disc/len ≤ <code>--rescue-mnp-threshold</code>. Marks the variant as a rescue candidate.</li>
+</ul>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Choosing the threshold</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Permissive (default) — rescue all MNPs, matching C++ gbcms behavior</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--rescue-mnp<span class="w"> </span>--variants<span class="w"> </span>input.maf<span class="w"> </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>out/
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Conservative — rescue only sparse MNPs (≤50% discriminating positions)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--rescue-mnp<span class="w"> </span>--rescue-mnp-threshold<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span>--variants<span class="w"> </span>input.maf<span class="w"> </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>out/
+</code></pre></div>
+</div>
 <h2 id="debugging-options">Debugging Options<a class="headerlink" href="#debugging-options" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -2272,56 +2367,56 @@ Using <code>--mfsd-report</code> auto-enables <code>--mfsd</code> and <code>--mf
 <div class="tabbed-set tabbed-alternate" data-tabs="1:5"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><input id="__tabbed_1_3" name="__tabbed_1" type="radio"><input id="__tabbed_1_4" name="__tabbed_1" type="radio"><input id="__tabbed_1_5" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">Single <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></label><label for="__tabbed_1_2">Multiple BAMs</label><label for="__tabbed_1_3">With Filtering</label><label for="__tabbed_1_4">With Normalization</label><label for="__tabbed_1_5">With <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> Tags</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li>The <code>sample:</code> prefix sets the output filename. Without it, the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> filename stem is used.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span>--bam<span class="w"> </span>normal:normal.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="c1"># (1)!</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span>--bam<span class="w"> </span>normal:normal.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="c1"># (1)!</span>
 </code></pre></div>
 <ol>
 <li><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output preserves all input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns and appends gbcms count columns.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span>--filter-duplicates<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span>--filter-duplicates<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span>--min-mapq<span class="w"> </span><span class="m">30</span>
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span>--show-normalization<span class="w"> </span><span class="c1"># (1)!</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span>--show-normalization<span class="w"> </span><span class="c1"># (1)!</span>
 </code></pre></div>
 <ol>
 <li>Appends <code>norm_chrom</code>, <code>norm_pos</code>, <code>norm_ref</code>, <code>norm_alt</code> columns showing left-aligned coordinates.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:umi_deduped.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span>--umi-tag<span class="w"> </span>RX<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span>--bam<span class="w"> </span>sample:umi_deduped.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span>--umi-tag<span class="w"> </span>RX<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li>The <code>RX</code> tag is the standard SAM tag for <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> barcodes (fgbio, gencore).</li>
@@ -2372,7 +2467,7 @@ Using <code>--mfsd-report</code> auto-enables <code>--mfsd</code> and <code>--mf
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 4, 2026 17:32:49 UTC"><span class="timeago" datetime="2026-05-04T17:32:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 4, 2026 17:32:49 UTC">2026-05-04</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 11, 2026 18:19:17 UTC"><span class="timeago" datetime="2026-05-11T18:19:17+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 11, 2026 18:19:17 UTC">2026-05-11</span>
   </span>
 
     

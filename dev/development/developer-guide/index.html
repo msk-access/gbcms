@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -434,6 +434,18 @@
     
   
     RNA Splice Handling
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/rna-annotation/">
+<span class="md-ellipsis">
+    
+  
+    RNA Annotation
   
 
     
@@ -1147,6 +1159,7 @@
         Lib["lib.rs"] --&gt; Count["counting/"]
         Lib --&gt; Norm["normalize/"]
         Lib --&gt; Shared["shared/"]
+        Lib --&gt; Ann["annotation/"]:::annot
         Count --&gt; Eng["engine.rs"]
         Count --&gt; VC["variant_checks.rs"]
         Count --&gt; PH["pairhmm.rs"]
@@ -1164,6 +1177,8 @@
 
     Pipeline --&gt; Rust
     Normalize --&gt; Rust
+
+    classDef annot fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -1590,7 +1605,7 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 10, 2026 21:03:11 UTC"><span class="timeago" datetime="2026-05-10T21:03:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 10, 2026 21:03:11 UTC">2026-05-10</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 11, 2026 18:19:17 UTC"><span class="timeago" datetime="2026-05-11T18:19:17+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 11, 2026 18:19:17 UTC">2026-05-11</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -327,6 +327,24 @@
 </a>
 <nav aria-label="RNA-Specific Options" class="md-nav">
 <ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#gtf-annotation-v500">
+<span class="md-ellipsis">
+      
+        GTF Annotation (v5.0.0)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#library-type-v500">
+<span class="md-ellipsis">
+      
+        Library Type (v5.0.0)
+      
+    </span>
+</a>
+</li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#strandedness-filtering">
 <span class="md-ellipsis">
@@ -644,6 +662,18 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/rna-annotation/">
+<span class="md-ellipsis">
+    
+  
+    RNA Annotation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="../../reference/allele-classification/">
 <span class="md-ellipsis">
     
@@ -903,6 +933,24 @@
 <nav aria-label="RNA-Specific Options" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#gtf-annotation-v500">
+<span class="md-ellipsis">
+      
+        GTF Annotation (v5.0.0)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#library-type-v500">
+<span class="md-ellipsis">
+      
+        Library Type (v5.0.0)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#strandedness-filtering">
 <span class="md-ellipsis">
       
@@ -1066,7 +1114,7 @@
 <article class="md-content__inner md-typeset">
 <div><h1 id="gbcms-rna">gbcms rna<a class="headerlink" href="#gbcms-rna" title="Permanent link">¶</a></h1>
 <p>Count alleles in RNA-seq BAMs with transcriptome-aware filtering.</p>
-<p>RNA mode extends the core DNA counting engine with filters and metrics specific to RNA-seq data: <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aware <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> rescue, <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strandedness filtering, splice junction tracking, and A-to-I RNA editing site flagging.</p>
+<p>RNA mode extends the core DNA counting engine with filters and metrics specific to RNA-seq data: <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aware <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> rescue, <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strandedness filtering, splice junction tracking, A-to-I RNA editing site flagging, GTF-based transcript annotation, and amplicon library support.</p>
 <h2 id="when-to-use">When to Use<a class="headerlink" href="#when-to-use" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -1089,8 +1137,16 @@
 <td style="text-align: left;"><code>gbcms rna</code></td>
 </tr>
 <tr>
+<td style="text-align: left;"><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> + <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> + GTF annotation</td>
+<td style="text-align: left;"><code>gbcms rna --gtf genes.gtf</code></td>
+</tr>
+<tr>
 <td style="text-align: left;">Unstranded RNA-seq</td>
 <td style="text-align: left;"><code>gbcms rna --no-strandedness</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Amplicon RNA libraries</td>
+<td style="text-align: left;"><code>gbcms rna --library-type amplicon</code></td>
 </tr>
 </tbody>
 </table>
@@ -1125,6 +1181,7 @@
         VCF["VCF/MAF"]
         FASTA["Reference"]
         DB["REDIportal DB"]:::optional
+        GTF["GTF Annotation"]:::optional
     end
 
     subgraph Filters ["RNA Filters"]
@@ -1141,6 +1198,13 @@
         Edit["RNA Editing Flagging"]
     end
 
+    subgraph Annotation ["GTF Annotation (v5.0.0)"]
+        direction TB
+        ExonDist["Exon Boundary Distance"]
+        TxCount["Per-Transcript Counts"]
+        ASJD["Splice Junction Detection"]
+    end
+
     BAM --&gt; NH --&gt; Strand --&gt; Classify
     VCF --&gt; Classify
     FASTA --&gt; Classify
@@ -1148,9 +1212,12 @@
     Classify --&gt; Splice
     Classify --&gt; Edit
     DB -.-&gt;|"optional"| Edit
+    GTF -.-&gt;|"optional"| Annotation
+    Classify --&gt; Annotation
     Sense --&gt; Out(["RNA VCF/MAF"]):::pass
     Splice --&gt; Out
     Edit --&gt; Out
+    Annotation -.-&gt; Out
 
     classDef filter fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
     classDef optional fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:1px,stroke-dasharray:4;
@@ -1165,7 +1232,7 @@ Use mouse to pan and zoom
 <h2 id="required-arguments">Required Arguments<a class="headerlink" href="#required-arguments" title="Permanent link">¶</a></h2>
 <div class="admonition info">
 <p class="admonition-title">Shared Arguments</p>
-<p>RNA mode shares all <a href="../dna/#required-arguments">required arguments</a>, <a href="../dna/#output-options">output options</a>, <a href="../dna/#filtering-options">filtering options</a>, <a href="../dna/#baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> options</a>, <a href="../dna/#umi-options"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> options</a>, and <a href="../dna/#debugging-options">debugging options</a> with DNA mode. See the <a href="../dna/"><code>gbcms dna</code> reference</a> for full descriptions.</p>
+<p>RNA mode shares all <a href="../dna/#required-arguments">required arguments</a>, <a href="../dna/#output-options">output options</a>, <a href="../dna/#filtering-options">filtering options</a>, <a href="../dna/#baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> options</a>, <a href="../dna/#umi-options"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> options</a>, <a href="../dna/#mnp-rescue-options"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue options</a>, and <a href="../dna/#debugging-options">debugging options</a> with DNA mode. See the <a href="../dna/"><code>gbcms dna</code> reference</a> for full descriptions.</p>
 </div>
 <div class="admonition tip">
 <p class="admonition-title"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is On by Default in RNA Mode</p>
@@ -1200,6 +1267,68 @@ Use mouse to pan and zoom
 <hr>
 <h2 id="rna-specific-options">RNA-Specific Options<a class="headerlink" href="#rna-specific-options" title="Permanent link">¶</a></h2>
 <p>These options are <strong>only available</strong> on <code>gbcms rna</code>, not on <code>gbcms dna</code>.</p>
+<h3 id="gtf-annotation-v500">GTF Annotation (v5.0.0)<a class="headerlink" href="#gtf-annotation-v500" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--gtf</code></td>
+<td style="text-align: left;"><em>(none)</em></td>
+<td style="text-align: left;">Path to Ensembl/GENCODE GTF annotation file (<code>.gtf</code> or <code>.gtf.gz</code>). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">What <code>--gtf</code> Enables</p>
+<p>When a GTF file is provided, gbcms builds a <code>COITree</code>-based annotation index and adds:</p>
+<ul>
+<li><strong><code>exon_boundary_dist</code></strong> — Signed distance to the nearest exon boundary (positive = exonic, negative = intronic)</li>
+<li><strong>Per-transcript read/fragment counts</strong> — Semicolon-separated <code>GENE:TX:READ_COUNT</code> and <code>GENE:TX:FRAG_COUNT</code> strings</li>
+<li><strong>ASJD detection</strong> — 14 columns for Aberrant Splice Junction Detection, comparing read splice junctions against annotated transcript splice sites</li>
+</ul>
+<p>See <a href="../../reference/rna-annotation/">RNA Annotation</a> for full details.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">GTF Format Requirements</p>
+<p>gbcms supports both Ensembl (<code>.gtf</code>) and GENCODE (<code>.gtf.gz</code>) GTF files. The parser reads <code>exon</code> feature rows and uses <code>gene_name</code> and <code>transcript_id</code> attributes.</p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a><span class="c1"># Ensembl</span>
+<a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>wget<span class="w"> </span>https://ftp.ensembl.org/pub/release-112/gtf/homo_sapiens/Homo_sapiens.GRCh38.112.gtf.gz
+<a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a><span class="c1"># GENCODE</span>
+<a href="#__codelineno-1-4" id="__codelineno-1-4" name="__codelineno-1-4"></a>wget<span class="w"> </span>https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencode.v46.annotation.gtf.gz
+</code></pre></div>
+</div>
+<h3 id="library-type-v500">Library Type (v5.0.0)<a class="headerlink" href="#library-type-v500" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--library-type</code></td>
+<td style="text-align: left;"><code>capture</code></td>
+<td style="text-align: left;">RNA library preparation method: <code>capture</code> (IDT xGen-style, default) or <code>amplicon</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">Amplicon Mode Behavior</p>
+<p>In <strong>amplicon</strong> libraries, R1 and R2 reads are PCR duplicates of the same template molecule — they are <strong>not</strong> independent fragment ends like in capture libraries. When <code>--library-type amplicon</code> is set:</p>
+<ol>
+<li><strong>Fragment consensus bypass</strong>: R1 and R2 are treated as independent observations (XOR trick on <code>mol_hash</code>), preventing incorrect merging.</li>
+<li><strong>Strandedness auto-disabled</strong>: Amplicon libraries are not strand-specific, so <code>--enforce-strandedness</code> is automatically set to <code>False</code> with a warning.</li>
+<li><strong>Effect on counts</strong>: <code>dpf ≈ dp</code> (fragment counts approach read counts) because no R1/R2 merging occurs.</li>
+</ol>
+</div>
 <h3 id="strandedness-filtering">Strandedness Filtering<a class="headerlink" href="#strandedness-filtering" title="Permanent link">¶</a></h3>
 <table>
 <thead>
@@ -1221,6 +1350,10 @@ Use mouse to pan and zoom
 <p class="admonition-title">Biological Context: <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> Stranded Libraries</p>
 <p>In <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq, the second strand (synthesized with <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>) is degraded, so sequenced reads reflect the <strong>antisense</strong> strand of the original mRNA. The strandedness filter uses the variant's <code>gene_strand</code> annotation (from the input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) to determine whether each read's orientation is consistent with the expected transcript direction.</p>
 <p><strong>Disable</strong> with <code>--no-strandedness</code> for unstranded RNA-seq libraries where read orientation is random.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Amplicon Override</p>
+<p>When <code>--library-type amplicon</code> is used, <code>--enforce-strandedness</code> is <strong>automatically disabled</strong> regardless of the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag value. Amplicon libraries are not strand-specific by design.</p>
 </div>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
@@ -1281,8 +1414,8 @@ Use mouse to pan and zoom
 <div class="admonition tip">
 <p class="admonition-title">Obtaining REDIportal</p>
 <p>Download from <a href="http://srv00.recas.ba.infn.it/atlas/">REDIportal</a>:
-</p><div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a><span class="c1"># Download TABLE1 format (tab-separated, 1-based coordinates)</span>
-<a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>wget<span class="w"> </span>http://srv00.recas.ba.infn.it/atlas/download/TABLE1_hg38.txt.gz
+</p><div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a><span class="c1"># Download TABLE1 format (tab-separated, 1-based coordinates)</span>
+<a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>wget<span class="w"> </span>http://srv00.recas.ba.infn.it/atlas/download/TABLE1_hg38.txt.gz
 </code></pre></div>
 The file is loaded once at startup and stored as a hash set for O(1) lookup per variant.
 </div>
@@ -1402,7 +1535,7 @@ Use mouse to pan and zoom
 <p>For variants positioned very close to a splice junction, the D6 consensus intron-snipping step (which removes introns from the <code>ref_context</code> before Phase 3 alignment) requires <strong>&gt;50% of local reads to carry a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> op</strong> at the same position. If the variant sits at a boundary where only ~40% of reads span the junction with an <code>N</code> op — e.g., because many soft-clipped reads end just before the junction — the intron is <strong>not snipped</strong>.</p>
 <p>In this case Phase 3 aligns the read against an unspliced (intron-containing) reference context. The alignment score is lower than it would be against the mature mRNA sequence, and the read may fall back to <code>neither</code> rather than being classified as REF or ALT. This affects <code>dp</code> (depth) but not correctness for reads that <em>do</em> span the junction cleanly.</p>
 <p><strong>Workaround:</strong> Use <code>--trace</code> logging and grep for <code>D6 splice</code> to confirm whether intron snipping fired for the variant of interest:
-</p><div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>rna<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"D6 splice\|&lt;chrom&gt;:&lt;pos&gt;"</span>
+</p><div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>rna<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"D6 splice\|&lt;chrom&gt;:&lt;pos&gt;"</span>
 </code></pre></div>
 </div>
 <hr>
@@ -1572,51 +1705,76 @@ Use mouse to pan and zoom
 </details>
 <hr>
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">¶</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><input id="__tabbed_1_3" name="__tabbed_1" type="radio"><input id="__tabbed_1_4" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">Basic RNA</label><label for="__tabbed_1_2">With Editing DB</label><label for="__tabbed_1_3">Unstranded Library</label><label for="__tabbed_1_4">With <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> Tags</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:6"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><input id="__tabbed_1_3" name="__tabbed_1" type="radio"><input id="__tabbed_1_4" name="__tabbed_1" type="radio"><input id="__tabbed_1_5" name="__tabbed_1" type="radio"><input id="__tabbed_1_6" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">Basic RNA</label><label for="__tabbed_1_2">With GTF Annotation</label><label for="__tabbed_1_3">With Editing DB</label><label for="__tabbed_1_4">Amplicon Library</label><label for="__tabbed_1_5">Unstranded Library</label><label for="__tabbed_1_6">With <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> Tags</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:star_aligned.bam<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a href="#__codelineno-3-4" id="__codelineno-3-4" name="__codelineno-3-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-3-5" id="__codelineno-3-5" name="__codelineno-3-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-4-2" id="__codelineno-4-2" name="__codelineno-4-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-4-3" id="__codelineno-4-3" name="__codelineno-4-3"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:star_aligned.bam<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a href="#__codelineno-4-4" id="__codelineno-4-4" name="__codelineno-4-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-4-5" id="__codelineno-4-5" name="__codelineno-4-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aligned BAMs should have the <code>NH</code> tag for multi-mapping rescue.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-4-2" id="__codelineno-4-2" name="__codelineno-4-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-4-3" id="__codelineno-4-3" name="__codelineno-4-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor_rna:aligned.bam<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-4-4" id="__codelineno-4-4" name="__codelineno-4-4"></a><span class="w">    </span>--fasta<span class="w"> </span>hg38.fa<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-4-5" id="__codelineno-4-5" name="__codelineno-4-5"></a><span class="w">    </span>--rna-editing-db<span class="w"> </span>TABLE1_hg38.txt.gz<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a href="#__codelineno-4-6" id="__codelineno-4-6" name="__codelineno-4-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-4-7" id="__codelineno-4-7" name="__codelineno-4-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-5-1" id="__codelineno-5-1" name="__codelineno-5-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-5-2" id="__codelineno-5-2" name="__codelineno-5-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-5-3" id="__codelineno-5-3" name="__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor_rna:aligned.bam<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-5-4" id="__codelineno-5-4" name="__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>hg38.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-5-5" id="__codelineno-5-5" name="__codelineno-5-5"></a><span class="w">    </span>--gtf<span class="w"> </span>Homo_sapiens.GRCh38.112.gtf.gz<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a href="#__codelineno-5-6" id="__codelineno-5-6" name="__codelineno-5-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-5-7" id="__codelineno-5-7" name="__codelineno-5-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+</code></pre></div>
+<ol>
+<li>Enables exon boundary distance, per-transcript counting, and ASJD detection. See <a href="../../reference/rna-annotation/">RNA Annotation</a>.</li>
+</ol>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-2" id="__codelineno-6-2" name="__codelineno-6-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-3" id="__codelineno-6-3" name="__codelineno-6-3"></a><span class="w">    </span>--bam<span class="w"> </span>tumor_rna:aligned.bam<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-4" id="__codelineno-6-4" name="__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>hg38.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-5" id="__codelineno-6-5" name="__codelineno-6-5"></a><span class="w">    </span>--rna-editing-db<span class="w"> </span>TABLE1_hg38.txt.gz<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a href="#__codelineno-6-6" id="__codelineno-6-6" name="__codelineno-6-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-6-7" id="__codelineno-6-7" name="__codelineno-6-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li>REDIportal TABLE1 format. Download from <a href="http://srv00.recas.ba.infn.it/atlas/">REDIportal</a>.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-5-1" id="__codelineno-5-1" name="__codelineno-5-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-5-2" id="__codelineno-5-2" name="__codelineno-5-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-5-3" id="__codelineno-5-3" name="__codelineno-5-3"></a><span class="w">    </span>--bam<span class="w"> </span>unstranded:aligned.bam<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-5-4" id="__codelineno-5-4" name="__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-5-5" id="__codelineno-5-5" name="__codelineno-5-5"></a><span class="w">    </span>--no-strandedness<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
-<a href="#__codelineno-5-6" id="__codelineno-5-6" name="__codelineno-5-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-7-1" id="__codelineno-7-1" name="__codelineno-7-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-7-2" id="__codelineno-7-2" name="__codelineno-7-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-7-3" id="__codelineno-7-3" name="__codelineno-7-3"></a><span class="w">    </span>--bam<span class="w"> </span>amplicon_sample:amplicon.bam<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-7-4" id="__codelineno-7-4" name="__codelineno-7-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-7-5" id="__codelineno-7-5" name="__codelineno-7-5"></a><span class="w">    </span>--library-type<span class="w"> </span>amplicon<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a href="#__codelineno-7-6" id="__codelineno-7-6" name="__codelineno-7-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+</code></pre></div>
+<ol>
+<li>Bypasses fragment consensus (R1/R2 treated as independent). Auto-disables <code>--enforce-strandedness</code>.</li>
+</ol>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-8-1" id="__codelineno-8-1" name="__codelineno-8-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-2" id="__codelineno-8-2" name="__codelineno-8-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-3" id="__codelineno-8-3" name="__codelineno-8-3"></a><span class="w">    </span>--bam<span class="w"> </span>unstranded:aligned.bam<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-4" id="__codelineno-8-4" name="__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-5" id="__codelineno-8-5" name="__codelineno-8-5"></a><span class="w">    </span>--no-strandedness<span class="w"> </span><span class="se">\ </span><span class="c1"># (1)!</span>
+<a href="#__codelineno-8-6" id="__codelineno-8-6" name="__codelineno-8-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <ol>
 <li>Disables <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strand filtering for unstranded RNA-seq protocols.</li>
 </ol>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-2" id="__codelineno-6-2" name="__codelineno-6-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-3" id="__codelineno-6-3" name="__codelineno-6-3"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:umi_tagged.bam<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-4" id="__codelineno-6-4" name="__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-5" id="__codelineno-6-5" name="__codelineno-6-5"></a><span class="w">    </span>--umi-tag<span class="w"> </span>RX<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-6" id="__codelineno-6-6" name="__codelineno-6-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-9-1" id="__codelineno-9-1" name="__codelineno-9-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-9-2" id="__codelineno-9-2" name="__codelineno-9-2"></a><span class="w">    </span>--variants<span class="w"> </span>mutations.vcf<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-9-3" id="__codelineno-9-3" name="__codelineno-9-3"></a><span class="w">    </span>--bam<span class="w"> </span>rna_sample:umi_tagged.bam<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-9-4" id="__codelineno-9-4" name="__codelineno-9-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-9-5" id="__codelineno-9-5" name="__codelineno-9-5"></a><span class="w">    </span>--umi-tag<span class="w"> </span>RX<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-9-6" id="__codelineno-9-6" name="__codelineno-9-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 </div>
 </div>
@@ -1678,9 +1836,19 @@ Use mouse to pan and zoom
 <td style="text-align: left;">optional (<code>--rna-editing-db</code>)</td>
 </tr>
 <tr>
+<td style="text-align: left;"><strong>GTF annotation</strong></td>
+<td style="text-align: left;">N/A</td>
+<td style="text-align: left;">optional (<code>--gtf</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Library type</strong></td>
+<td style="text-align: left;">N/A</td>
+<td style="text-align: left;"><code>capture</code> (default) or <code>amplicon</code></td>
+</tr>
+<tr>
 <td style="text-align: left;"><strong>Output columns</strong></td>
 <td style="text-align: left;">Standard (<abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>, <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>, <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, etc.)</td>
-<td style="text-align: left;">Standard <strong>+ 5 RNA columns</strong></td>
+<td style="text-align: left;">Standard <strong>+ 5 RNA columns</strong> (+17 with <code>--gtf</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> analysis</strong></td>
@@ -1699,6 +1867,7 @@ Use mouse to pan and zoom
 <li><a href="../dna/">gbcms dna</a> — DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> counting</li>
 <li><a href="../../getting-started/quickstart/">Quick Start</a> — Common patterns</li>
 <li><a href="../../reference/output-formats/">Output Formats</a> — Complete <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column-level schema (RNA columns, INFO/FORMAT fields)</li>
+<li><a href="../../reference/rna-annotation/">RNA Annotation</a> — GTF annotation, per-transcript counting, ASJD detection</li>
 <li><a href="../../reference/read-filters/">Read Filters</a> — Filter cascade details</li>
 <li><a href="../../reference/counting-metrics/">Counting &amp; Metrics</a> — How reads become counts</li>
 <li><a href="../../reference/allele-classification/">Allele Classification</a> — How each variant type is counted</li>
@@ -1711,7 +1880,7 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 4, 2026 17:17:14 UTC"><span class="timeago" datetime="2026-05-04T17:17:14+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 4, 2026 17:17:14 UTC">2026-05-04</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 11, 2026 18:19:17 UTC"><span class="timeago" datetime="2026-05-11T18:19:17+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 11, 2026 18:19:17 UTC">2026-05-11</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

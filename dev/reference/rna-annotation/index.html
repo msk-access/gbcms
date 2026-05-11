@@ -3,23 +3,24 @@
 <meta content="width=device-width,initial-scale=1" name="viewport">
 <meta content="High-performance variant counting from BAM files" name="description">
 <meta content="MSK-ACCESS" name="author">
-<link href="https://msk-access.github.io/gbcms/dev/" rel="canonical">
-<link href="getting-started/" rel="next">
-<link href="assets/images/favicon.png" rel="icon">
+<link href="https://msk-access.github.io/gbcms/dev/reference/rna-annotation/" rel="canonical">
+<link href="../rna-splice-handling/" rel="prev">
+<link href="../allele-classification/" rel="next">
+<link href="../../assets/images/favicon.png" rel="icon">
 <meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator">
-<title>gbcms</title>
-<link href="assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet">
-<link href="assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
+<title>RNA Annotation - gbcms</title>
+<link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet">
+<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
 <link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet">
 <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
-<link href="css/print-site.css" rel="stylesheet">
-<link href="css/print-site-material.css" rel="stylesheet">
-<link href="css/timeago.css" rel="stylesheet">
-<link href="stylesheets/extra.css" rel="stylesheet">
-<link href="assets/stylesheets/panzoom.css" rel="stylesheet">
-<script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
-<link href="assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+<link href="../../css/print-site.css" rel="stylesheet">
+<link href="../../css/print-site-material.css" rel="stylesheet">
+<link href="../../css/timeago.css" rel="stylesheet">
+<link href="../../stylesheets/extra.css" rel="stylesheet">
+<link href="../../assets/stylesheets/panzoom.css" rel="stylesheet">
+<script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+<link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
             html.glightbox-open { overflow: initial; height: 100%; }
             .gslide-title { margin-top: 0px; user-select: text; }
             .gslide-desc { color: #666; user-select: text; }
@@ -36,7 +37,7 @@
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
 <label class="md-overlay" for="__drawer"></label>
 <div data-md-component="skip">
-<a class="md-skip" href="#gbcms">
+<a class="md-skip" href="#rna-annotation">
           Skip to content
         </a>
 </div>
@@ -46,7 +47,7 @@
 </div>
 <header class="md-header md-header--shadow" data-md-component="header">
 <nav aria-label="Header" class="md-header__inner md-grid">
-<a aria-label="gbcms" class="md-header__button md-logo" data-md-component="logo" href="." title="gbcms">
+<a aria-label="gbcms" class="md-header__button md-logo" data-md-component="logo" href="../.." title="gbcms">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
 </a>
 <label class="md-header__button md-icon" for="__drawer">
@@ -62,7 +63,7 @@
 <div class="md-header__topic" data-md-component="header-topic">
 <span class="md-ellipsis">
             
-              Home
+              RNA Annotation
             
           </span>
 </div>
@@ -130,7 +131,7 @@
 <div class="md-sidebar__inner">
 <nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
 <label class="md-nav__title" for="__drawer">
-<a aria-label="gbcms" class="md-nav__button md-logo" data-md-component="logo" href="." title="gbcms">
+<a aria-label="gbcms" class="md-nav__button md-logo" data-md-component="logo" href="../.." title="gbcms">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
 </a>
     gbcms
@@ -146,20 +147,8 @@
 </a>
 </div>
 <ul class="md-nav__list" data-md-scrollfix="">
-<li class="md-nav__item md-nav__item--active">
-<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox">
-<label class="md-nav__link md-nav__link--active" for="__toc">
-<span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-<span class="md-nav__icon md-icon"></span>
-</label>
-<a class="md-nav__link md-nav__link--active" href=".">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../..">
 <span class="md-ellipsis">
     
   
@@ -169,86 +158,11 @@
     
   </span>
 </a>
-<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
-<label class="md-nav__title" for="__toc">
-<span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#what-it-does">
-<span class="md-ellipsis">
-      
-        What It Does
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#visual-overview">
-<span class="md-ellipsis">
-      
-        Visual Overview
-      
-    </span>
-</a>
-<nav aria-label="Visual Overview" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#key-metrics">
-<span class="md-ellipsis">
-      
-        Key Metrics
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#quick-start">
-<span class="md-ellipsis">
-      
-        Quick Start
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#choose-your-workflow">
-<span class="md-ellipsis">
-      
-        Choose Your Workflow
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#architecture">
-<span class="md-ellipsis">
-      
-        Architecture
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#documentation">
-<span class="md-ellipsis">
-      
-        Documentation
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
 </li>
 <li class="md-nav__item md-nav__item--section md-nav__item--nested">
 <input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_2" type="checkbox">
 <div class="md-nav__link md-nav__container">
-<a class="md-nav__link" href="getting-started/">
+<a class="md-nav__link" href="../../getting-started/">
 <span class="md-ellipsis">
     
   
@@ -273,7 +187,7 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="getting-started/installation/">
+<a class="md-nav__link" href="../../getting-started/installation/">
 <span class="md-ellipsis">
     
   
@@ -285,7 +199,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="getting-started/quickstart/">
+<a class="md-nav__link" href="../../getting-started/quickstart/">
 <span class="md-ellipsis">
     
   
@@ -302,7 +216,7 @@
 <li class="md-nav__item md-nav__item--section md-nav__item--nested">
 <input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_3" type="checkbox">
 <div class="md-nav__link md-nav__container">
-<a class="md-nav__link" href="cli/">
+<a class="md-nav__link" href="../../cli/">
 <span class="md-ellipsis">
     
   
@@ -327,7 +241,7 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="cli/dna/">
+<a class="md-nav__link" href="../../cli/dna/">
 <span class="md-ellipsis">
     
   
@@ -339,7 +253,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="cli/rna/">
+<a class="md-nav__link" href="../../cli/rna/">
 <span class="md-ellipsis">
     
   
@@ -351,7 +265,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="cli/normalize/">
+<a class="md-nav__link" href="../../cli/normalize/">
 <span class="md-ellipsis">
     
   
@@ -368,7 +282,7 @@
 <li class="md-nav__item md-nav__item--section md-nav__item--nested">
 <input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_4" type="checkbox">
 <div class="md-nav__link md-nav__container">
-<a class="md-nav__link" href="nextflow/">
+<a class="md-nav__link" href="../../nextflow/">
 <span class="md-ellipsis">
     
   
@@ -393,7 +307,7 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="nextflow/samplesheet/">
+<a class="md-nav__link" href="../../nextflow/samplesheet/">
 <span class="md-ellipsis">
     
   
@@ -405,7 +319,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="nextflow/parameters/">
+<a class="md-nav__link" href="../../nextflow/parameters/">
 <span class="md-ellipsis">
     
   
@@ -417,7 +331,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="nextflow/examples/">
+<a class="md-nav__link" href="../../nextflow/examples/">
 <span class="md-ellipsis">
     
   
@@ -431,8 +345,8 @@
 </ul>
 </nav>
 </li>
-<li class="md-nav__item md-nav__item--section md-nav__item--nested">
-<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_5" type="checkbox">
+<li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_5" type="checkbox">
 <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
 <span class="md-ellipsis">
     
@@ -444,7 +358,7 @@
   </span>
 <span class="md-nav__icon md-icon"></span>
 </label>
-<nav aria-expanded="false" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<nav aria-expanded="true" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
 <label class="md-nav__title" for="__nav_5">
 <span class="md-nav__icon md-icon"></span>
             
@@ -455,7 +369,7 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/architecture/">
+<a class="md-nav__link" href="../architecture/">
 <span class="md-ellipsis">
     
   
@@ -467,7 +381,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/input-formats/">
+<a class="md-nav__link" href="../input-formats/">
 <span class="md-ellipsis">
     
   
@@ -479,7 +393,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/output-formats/">
+<a class="md-nav__link" href="../output-formats/">
 <span class="md-ellipsis">
     
   
@@ -491,7 +405,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/variant-normalization/">
+<a class="md-nav__link" href="../variant-normalization/">
 <span class="md-ellipsis">
     
   
@@ -503,7 +417,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/read-filters/">
+<a class="md-nav__link" href="../read-filters/">
 <span class="md-ellipsis">
     
   
@@ -515,7 +429,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/rna-splice-handling/">
+<a class="md-nav__link" href="../rna-splice-handling/">
 <span class="md-ellipsis">
     
   
@@ -526,8 +440,20 @@
   </span>
 </a>
 </li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="reference/rna-annotation/">
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox">
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    RNA Annotation
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
 <span class="md-ellipsis">
     
   
@@ -537,9 +463,195 @@
     
   </span>
 </a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#gtf-requirements">
+<span class="md-ellipsis">
+      
+        GTF Requirements
+      
+    </span>
+</a>
+<nav aria-label="GTF Requirements" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#supported-formats">
+<span class="md-ellipsis">
+      
+        Supported Formats
+      
+    </span>
+</a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/allele-classification/">
+<a class="md-nav__link" href="#download">
+<span class="md-ellipsis">
+      
+        Download
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#parsing-details">
+<span class="md-ellipsis">
+      
+        Parsing Details
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#variant-guided-filtering">
+<span class="md-ellipsis">
+      
+        Variant-Guided Filtering
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#annotation-index-architecture">
+<span class="md-ellipsis">
+      
+        Annotation Index Architecture
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#feature-1-exon-boundary-distance">
+<span class="md-ellipsis">
+      
+        Feature 1: Exon Boundary Distance
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#feature-2-per-transcript-counting">
+<span class="md-ellipsis">
+      
+        Feature 2: Per-Transcript Counting
+      
+    </span>
+</a>
+<nav aria-label="Feature 2: Per-Transcript Counting" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm">
+<span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#output-columns">
+<span class="md-ellipsis">
+      
+        Output Columns
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#feature-3-aberrant-splice-junction-detection-asjd">
+<span class="md-ellipsis">
+      
+        Feature 3: Aberrant Splice Junction Detection (ASJD)
+      
+    </span>
+</a>
+<nav aria-label="Feature 3: Aberrant Splice Junction Detection (ASJD)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-it-works">
+<span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#output-columns-14">
+<span class="md-ellipsis">
+      
+        Output Columns (14)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#diagnostic-flags">
+<span class="md-ellipsis">
+      
+        Diagnostic Flags
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#performance-and-memory">
+<span class="md-ellipsis">
+      
+        Performance and Memory
+      
+    </span>
+</a>
+<nav aria-label="Performance and Memory" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#memory">
+<span class="md-ellipsis">
+      
+        Memory
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#time">
+<span class="md-ellipsis">
+      
+        Time
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#related">
+<span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../allele-classification/">
 <span class="md-ellipsis">
     
   
@@ -551,7 +663,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/counting-metrics/">
+<a class="md-nav__link" href="../counting-metrics/">
 <span class="md-ellipsis">
     
   
@@ -563,7 +675,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/mfsd-report/">
+<a class="md-nav__link" href="../mfsd-report/">
 <span class="md-ellipsis">
     
   
@@ -575,7 +687,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/complex-indels/">
+<a class="md-nav__link" href="../complex-indels/">
 <span class="md-ellipsis">
     
   
@@ -587,7 +699,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="reference/glossary/">
+<a class="md-nav__link" href="../glossary/">
 <span class="md-ellipsis">
     
   
@@ -625,7 +737,7 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="development/developer-guide/">
+<a class="md-nav__link" href="../../development/developer-guide/">
 <span class="md-ellipsis">
     
   
@@ -637,7 +749,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="development/testing-guide/">
+<a class="md-nav__link" href="../../development/testing-guide/">
 <span class="md-ellipsis">
     
   
@@ -649,7 +761,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="development/release-guide/">
+<a class="md-nav__link" href="../../development/release-guide/">
 <span class="md-ellipsis">
     
   
@@ -661,7 +773,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="development/changelog/">
+<a class="md-nav__link" href="../../development/changelog/">
 <span class="md-ellipsis">
     
   
@@ -673,7 +785,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="development/contributing/">
+<a class="md-nav__link" href="../../development/contributing/">
 <span class="md-ellipsis">
     
   
@@ -711,7 +823,7 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="resources/troubleshooting/">
+<a class="md-nav__link" href="../../resources/troubleshooting/">
 <span class="md-ellipsis">
     
   
@@ -723,7 +835,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="resources/citation/">
+<a class="md-nav__link" href="../../resources/citation/">
 <span class="md-ellipsis">
     
   
@@ -752,29 +864,47 @@
     </label>
 <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#what-it-does">
+<a class="md-nav__link" href="#gtf-requirements">
 <span class="md-ellipsis">
       
-        What It Does
+        GTF Requirements
+      
+    </span>
+</a>
+<nav aria-label="GTF Requirements" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#supported-formats">
+<span class="md-ellipsis">
+      
+        Supported Formats
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#visual-overview">
+<a class="md-nav__link" href="#download">
 <span class="md-ellipsis">
       
-        Visual Overview
+        Download
       
     </span>
 </a>
-<nav aria-label="Visual Overview" class="md-nav">
-<ul class="md-nav__list">
+</li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#key-metrics">
+<a class="md-nav__link" href="#parsing-details">
 <span class="md-ellipsis">
       
-        Key Metrics
+        Parsing Details
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#variant-guided-filtering">
+<span class="md-ellipsis">
+      
+        Variant-Guided Filtering
       
     </span>
 </a>
@@ -783,37 +913,130 @@
 </nav>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#quick-start">
+<a class="md-nav__link" href="#annotation-index-architecture">
 <span class="md-ellipsis">
       
-        Quick Start
+        Annotation Index Architecture
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#choose-your-workflow">
+<a class="md-nav__link" href="#feature-1-exon-boundary-distance">
 <span class="md-ellipsis">
       
-        Choose Your Workflow
+        Feature 1: Exon Boundary Distance
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#architecture">
+<a class="md-nav__link" href="#feature-2-per-transcript-counting">
 <span class="md-ellipsis">
       
-        Architecture
+        Feature 2: Per-Transcript Counting
+      
+    </span>
+</a>
+<nav aria-label="Feature 2: Per-Transcript Counting" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm">
+<span class="md-ellipsis">
+      
+        Algorithm
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#documentation">
+<a class="md-nav__link" href="#output-columns">
 <span class="md-ellipsis">
       
-        Documentation
+        Output Columns
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#feature-3-aberrant-splice-junction-detection-asjd">
+<span class="md-ellipsis">
+      
+        Feature 3: Aberrant Splice Junction Detection (ASJD)
+      
+    </span>
+</a>
+<nav aria-label="Feature 3: Aberrant Splice Junction Detection (ASJD)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-it-works">
+<span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#output-columns-14">
+<span class="md-ellipsis">
+      
+        Output Columns (14)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#diagnostic-flags">
+<span class="md-ellipsis">
+      
+        Diagnostic Flags
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#performance-and-memory">
+<span class="md-ellipsis">
+      
+        Performance and Memory
+      
+    </span>
+</a>
+<nav aria-label="Performance and Memory" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#memory">
+<span class="md-ellipsis">
+      
+        Memory
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#time">
+<span class="md-ellipsis">
+      
+        Time
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#related">
+<span class="md-ellipsis">
+      
+        Related
       
     </span>
 </a>
@@ -824,16 +1047,87 @@
 </div>
 </div>
 <div class="md-content" data-md-component="content">
+<nav aria-label="Navigation" class="md-path">
+<ol class="md-path__list">
+<li class="md-path__item">
+<a class="md-path__link" href="../..">
+<span class="md-ellipsis">
+    Home
+  </span>
+</a>
+</li>
+<li class="md-path__item">
+<a class="md-path__link" href="../architecture/">
+<span class="md-ellipsis">
+    How It Works
+  </span>
+</a>
+</li>
+</ol>
+</nav>
 <article class="md-content__inner md-typeset">
-<div><h1 id="gbcms">gbcms<a class="headerlink" href="#gbcms" title="Permanent link">¶</a></h1>
-<blockquote>
-<p><strong>Get Base Counts Multi-Sample</strong> — High-performance variant counting from <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> files</p>
-</blockquote>
-<p><a href="https://pypi.org/project/gbcms/"><img alt="Version" src="https://img.shields.io/pypi/v/gbcms"></a>
-<a href="https://pypi.org/project/gbcms/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/gbcms"></a>
-<a href="https://github.com/msk-access/gbcms/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/msk-access/gbcms"></a></p>
-<h2 id="what-it-does">What It Does<a class="headerlink" href="#what-it-does" title="Permanent link">¶</a></h2>
-<p><abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> extracts <strong>allele counts</strong> and <strong>variant metrics</strong> at specified positions in <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> files:</p>
+<div><h1 id="rna-annotation">RNA Annotation<a class="headerlink" href="#rna-annotation" title="Permanent link">¶</a></h1>
+<p>GTF-based transcript annotation for RNA-seq variant counting (v5.0.0).</p>
+<div class="admonition info">
+<p class="admonition-title">Requires <code>--gtf</code></p>
+<p>All features described on this page are enabled only when a GTF annotation file
+is provided via <code>--gtf</code> on the <code>gbcms rna</code> command. Without <code>--gtf</code>, RNA mode
+operates identically to v4.2.0 — no annotation columns are added.</p>
+</div>
+<hr>
+<h2 id="gtf-requirements">GTF Requirements<a class="headerlink" href="#gtf-requirements" title="Permanent link">¶</a></h2>
+<p>gbcms supports <strong>Ensembl</strong> and <strong>GENCODE</strong> GTF annotation files.</p>
+<h3 id="supported-formats">Supported Formats<a class="headerlink" href="#supported-formats" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Source</th>
+<th style="text-align: left;">Format</th>
+<th style="text-align: left;">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Ensembl</td>
+<td style="text-align: left;"><code>.gtf</code> or <code>.gtf.gz</code></td>
+<td style="text-align: left;"><code>Homo_sapiens.GRCh38.112.gtf.gz</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">GENCODE</td>
+<td style="text-align: left;"><code>.gtf.gz</code></td>
+<td style="text-align: left;"><code>gencode.v46.annotation.gtf.gz</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="download">Download<a class="headerlink" href="#download" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a><span class="c1"># Ensembl (recommended for GRCh38)</span>
+<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>wget<span class="w"> </span>https://ftp.ensembl.org/pub/release-112/gtf/homo_sapiens/Homo_sapiens.GRCh38.112.gtf.gz
+<a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a>
+<a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a><span class="c1"># GENCODE</span>
+<a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>wget<span class="w"> </span>https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencode.v46.annotation.gtf.gz
+</code></pre></div>
+<h3 id="parsing-details">Parsing Details<a class="headerlink" href="#parsing-details" title="Permanent link">¶</a></h3>
+<p>The GTF parser (<code>rust/src/annotation/</code>) reads <strong>exon</strong> feature rows and extracts:</p>
+<ul>
+<li><code>gene_name</code> attribute → gene symbol</li>
+<li><code>transcript_id</code> attribute → transcript identifier</li>
+<li><code>seqname</code> (column 1) → chromosome (with <code>chr</code> prefix normalization)</li>
+<li><code>start</code>, <code>end</code> (columns 4-5) → 1-based exon coordinates</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Chromosome Normalization</p>
+<p>Chromosomes are normalized by stripping the <code>chr</code> prefix for internal matching
+(e.g., <code>chr1</code> → <code>1</code>). This ensures compatibility regardless of whether the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>
+uses UCSC (<code>chr1</code>) or Ensembl (<code>1</code>) naming.</p>
+</div>
+<h3 id="variant-guided-filtering">Variant-Guided Filtering<a class="headerlink" href="#variant-guided-filtering" title="Permanent link">¶</a></h3>
+<p>To minimize memory usage, the GTF parser <strong>only loads chromosomes that contain
+variants</strong>. If your variant file has variants on 3 chromosomes out of 25 in the
+GTF, only those 3 are indexed.</p>
+<hr>
+<h2 id="annotation-index-architecture">Annotation Index Architecture<a class="headerlink" href="#annotation-index-architecture" title="Permanent link">¶</a></h2>
+<p>The annotation index is built once at pipeline startup and shared across all
+counting threads via <code>Arc&lt;AnnotationIndex&gt;</code>.</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -854,67 +1148,127 @@
 </svg>
 </button>
 </nav>
-<pre class="mermaid"><code>block-beta
-    columns 3
-    VCF["📄 VCF/MAF\nVariant positions"]:1
-    Engine["⚡ gbcms\nPython + Rust"]:1
-    Counts["📊 Allele Counts\nDP · RD · AD · VAF"]:1
-    BAM["🗂️ BAM Files\n(1 to N samples)"]:1
-    space:1
-    Metrics["🧬 Fragment Counts\nStrand bias · mFSD"]:1
-
-    VCF --&gt; Engine
-    BAM --&gt; Engine
-    Engine --&gt; Counts
-    Engine --&gt; Metrics
+<pre class="mermaid"><code>flowchart LR
+    GTF["GTF File"] --&gt; Parse["parse_gtf()"]
+    Variants["Variant Chroms"] --&gt; Parse
+    Parse --&gt; Index["AnnotationIndex"]
+    Index --&gt; COI["COITree per Chrom"]
+    Index --&gt; SpliceMask["Splice Sites per Transcript"]
+    COI --&gt; ExonDist["exon_boundary_dist()"]
+    COI --&gt; TxLookup["Overlapping Transcripts"]
+    SpliceMask --&gt; ASJD["Splice Junction Comparison"]
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
 </div>
-<h2 id="visual-overview">Visual Overview<a class="headerlink" href="#visual-overview" title="Permanent link">¶</a></h2>
-<p><embed alt="gbcms overview — architecture, counting, and output" src="assets/posters/overview_4.0.0.pdf" style="min-height:75vh;width:100%" type="application/pdf"></p>
-<h3 id="key-metrics">Key Metrics<a class="headerlink" href="#key-metrics" title="Permanent link">¶</a></h3>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Metric</th>
-<th style="text-align: left;">Formula</th>
-<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Component</th>
+<th style="text-align: left;">Data Structure</th>
+<th style="text-align: left;">Purpose</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong><abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr></strong></td>
-<td style="text-align: left;"><code>AD / (RD + AD)</code></td>
-<td style="text-align: left;">Variant Allele Frequency</td>
+<td style="text-align: left;"><code>COITree</code></td>
+<td style="text-align: left;">Interval tree per chromosome</td>
+<td style="text-align: left;">O(log n + k) exon overlap queries</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>Strand Bias</strong></td>
-<td style="text-align: left;">Fisher's exact test</td>
-<td style="text-align: left;">Detect sequencing artifacts</td>
+<td style="text-align: left;"><code>SpliceMask</code></td>
+<td style="text-align: left;"><code>HashSet&lt;(chrom, start, end)&gt;</code> per transcript</td>
+<td style="text-align: left;">O(1) splice site lookup for ASJD</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>Fragment Counts</strong></td>
-<td style="text-align: left;">Deduplicated pairs</td>
-<td style="text-align: left;">PCR-aware counting</td>
+<td style="text-align: left;"><code>Arc&lt;AnnotationIndex&gt;</code></td>
+<td style="text-align: left;">Thread-safe shared reference</td>
+<td style="text-align: left;">Zero-copy sharing across Rayon threads</td>
 </tr>
 </tbody>
 </table>
 <hr>
-<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a><span class="c1"># Install</span>
-<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>pip<span class="w"> </span>install<span class="w"> </span>gbcms
-<a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a>
-<a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a><span class="c1"># DNA/cfDNA counting</span>
-<a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>results/
-<a href="#__codelineno-0-6" id="__codelineno-0-6" name="__codelineno-0-6"></a>
-<a href="#__codelineno-0-7" id="__codelineno-0-7" name="__codelineno-0-7"></a><span class="c1"># RNA-seq counting</span>
-<a href="#__codelineno-0-8" id="__codelineno-0-8" name="__codelineno-0-8"></a>gbcms<span class="w"> </span>rna<span class="w"> </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span>--bam<span class="w"> </span>rna:aligned.bam<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>results/
-</code></pre></div>
-<p><strong>→ <a href="getting-started/installation/">Full Installation Guide</a></strong> | <strong>→ <a href="getting-started/quickstart/"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Examples</a></strong></p>
+<h2 id="feature-1-exon-boundary-distance">Feature 1: Exon Boundary Distance<a class="headerlink" href="#feature-1-exon-boundary-distance" title="Permanent link">¶</a></h2>
+<p>For each variant, gbcms computes the signed distance to the <strong>nearest exon boundary</strong>
+across all overlapping transcripts.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Value</th>
+<th style="text-align: left;">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Positive</td>
+<td style="text-align: left;">Variant is exonic, N bases from the nearest exon edge</td>
+</tr>
+<tr>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">Variant is exactly at an exon boundary</td>
+</tr>
+<tr>
+<td style="text-align: left;">Negative</td>
+<td style="text-align: left;">Variant is intronic, N bases from the nearest exon edge</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output column</strong>: <code>exon_boundary_dist</code> (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>)</p>
+<div class="admonition info">
+<p class="admonition-title">Clinical Relevance</p>
+<p>Variants near exon-intron boundaries (|distance| ≤ 2-5 bp) may affect
+splicing by disrupting splice donor/acceptor sites. The <code>exon_boundary_dist</code>
+column enables downstream filtering for splice-proximal variants.</p>
+</div>
 <hr>
-<h2 id="choose-your-workflow">Choose Your Workflow<a class="headerlink" href="#choose-your-workflow" title="Permanent link">¶</a></h2>
+<h2 id="feature-2-per-transcript-counting">Feature 2: Per-Transcript Counting<a class="headerlink" href="#feature-2-per-transcript-counting" title="Permanent link">¶</a></h2>
+<p>When <code>--gtf</code> is provided, the engine counts ALT reads and fragments
+<strong>per overlapping transcript</strong>. This resolves ambiguity when a variant
+overlaps multiple transcripts with different exon structures.</p>
+<h3 id="algorithm">Algorithm<a class="headerlink" href="#algorithm" title="Permanent link">¶</a></h3>
+<ol>
+<li>For each variant, query the <code>COITree</code> to find all transcripts whose
+   exons overlap the variant position.</li>
+<li>For each overlapping transcript, extract the splice site mask.</li>
+<li>During counting, reads are attributed to transcripts based on splice
+   junction compatibility:</li>
+<li>A read's <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> operations (splice junctions) are compared
+     against the transcript's annotated splice sites.</li>
+<li>Reads with matching splice junctions are counted toward that transcript.</li>
+</ol>
+<h3 id="output-columns">Output Columns<a class="headerlink" href="#output-columns" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Format</th>
+<th style="text-align: left;">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>transcript_read_counts</code></td>
+<td style="text-align: left;"><code>ENST:AD,RD,DP;...</code></td>
+<td style="text-align: left;"><code>ENST00000269305:11,140,162;ENST00000445888:7,95,108</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>transcript_fragment_counts</code></td>
+<td style="text-align: left;"><code>ENST:ADF,RDF,DPF;...</code></td>
+<td style="text-align: left;"><code>ENST00000269305:6,72,83;ENST00000445888:4,48,55</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Invariant</p>
+<p>For each transcript: <code>fragment_count ≤ read_count</code> (fragments are
+R1/R2 consensus; reads are individual observations).</p>
+</div>
+<hr>
+<h2 id="feature-3-aberrant-splice-junction-detection-asjd">Feature 3: Aberrant Splice Junction Detection (ASJD)<a class="headerlink" href="#feature-3-aberrant-splice-junction-detection-asjd" title="Permanent link">¶</a></h2>
+<p>ASJD compares the splice junctions observed in reads against the
+annotated splice sites from the GTF to detect potential aberrant splicing.</p>
+<h3 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">¶</a></h3>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -936,91 +1290,127 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    Start(["What data?"]):::start
-    Start --&gt;|"DNA / cfDNA\nWGS / WES / Panel"| DNA(["gbcms dna"]):::dna
-    Start --&gt;|"RNA-seq\n(STAR-aligned, dUTP)"| RNA(["gbcms rna"]):::rna
-
-    DNA --&gt; NsamD{"Many samples?
-≥10 BAMs"}
-    RNA --&gt; NsamR{"Many samples?
-≥10 BAMs"}
-
-    NsamD --&gt;|"No"| CLI(["🖥️ CLI"]):::cli
-    NsamD --&gt;|"Yes"| HPC{"HPC / SLURM?"}
-    NsamR --&gt;|"No"| CLI
-    NsamR --&gt;|"Yes"| HPC
-
-    HPC --&gt;|"Yes"| NF(["🔷 Nextflow"]):::nf
-    HPC --&gt;|"No"| CLI
-
-    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
-    classDef dna fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef rna fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
-    classDef cli fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
-    classDef nf fill:#2c3e50,color:#fff,stroke:#1a2530,stroke-width:2px;
+    Read(["📖 Splice-Spanning Read"]) --&gt; Extract["Extract CIGAR N junctions"]
+    Extract --&gt; Compare{"Junction in annotation?"}
+    Compare --&gt;|"Yes"| Annotated["Annotated junction count++"]
+    Compare --&gt;|"No"| Novel["Novel junction count++"]
+    Annotated --&gt; Summary["Per-variant ASJD summary"]
+    Novel --&gt; Summary
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
 </div>
+<p>For each variant:</p>
+<ol>
+<li>All reads with <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> operations (splice junctions) are collected.</li>
+<li>Each observed junction <code>(chrom, start, end)</code> is looked up in the GTF splice mask.</li>
+<li>Junctions present in the annotation are <strong>annotated</strong>; absent ones are <strong>novel</strong>.</li>
+<li>Counts are stratified by allele (REF vs ALT) for differential analysis.</li>
+</ol>
+<h3 id="output-columns-14">Output Columns (14)<a class="headerlink" href="#output-columns-14" title="Permanent link">¶</a></h3>
+<p>See <a href="../output-formats/#aberrant-splice-junction-detection-asjd">Output Formats → ASJD</a> for the complete column reference.</p>
+<h3 id="diagnostic-flags">Diagnostic Flags<a class="headerlink" href="#diagnostic-flags" title="Permanent link">¶</a></h3>
+<p>The <code>asjd_diagnostic</code> column provides semicolon-separated QC flags:</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Workflow</th>
-<th style="text-align: left;">Best For</th>
-<th style="text-align: left;">Guide</th>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Condition</th>
+<th style="text-align: left;">Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr></strong></td>
-<td style="text-align: left;">1-10 samples, local/single server</td>
-<td style="text-align: left;"><a href="getting-started/quickstart/">Quick Start</a></td>
+<td style="text-align: left;"><code>LOW_ALT_JUNC</code></td>
+<td style="text-align: left;"><code>asjd_n_alt_junc &lt; 5</code></td>
+<td style="text-align: left;">Insufficient ALT junction evidence</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>Nextflow</strong></td>
-<td style="text-align: left;">10+ samples, <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>/SLURM</td>
-<td style="text-align: left;"><a href="nextflow/">Nextflow Guide</a></td>
+<td style="text-align: left;"><code>LOW_REF_JUNC</code></td>
+<td style="text-align: left;"><code>asjd_n_ref_junc &lt; 10</code></td>
+<td style="text-align: left;">Insufficient REF baseline</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NOVEL_ALT_JUNC</code></td>
+<td style="text-align: left;"><code>asjd_alt_known == false</code></td>
+<td style="text-align: left;">ALT uses unannotated junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NON_CANONICAL_MOTIF</code></td>
+<td style="text-align: left;">ALT motif not GT-AG/GC-AG/AT-AC</td>
+<td style="text-align: left;">Likely mapping artifact</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
+<td style="text-align: left;">ALT junction minority strand ≥ 30%</td>
+<td style="text-align: left;"><abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> artifact</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
+<td style="text-align: left;">ALT reads use &gt; 2 junctions</td>
+<td style="text-align: left;">Complex splicing event</td>
 </tr>
 </tbody>
 </table>
 <hr>
-<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">¶</a></h2>
-<p>Python/Rust hybrid for maximum performance:</p>
-<p>See <strong><a href="reference/architecture/">Architecture Reference →</a></strong> for full diagrams covering system layers, data flow, genomic binning, coordinate system, config hierarchy, and end-to-end sequence.</p>
-<p><strong>→ <a href="reference/architecture/">Technical Details</a></strong> | <strong>→ <a href="reference/allele-classification/">How It Works</a></strong></p>
-<hr>
-<h2 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">¶</a></h2>
+<h2 id="performance-and-memory">Performance and Memory<a class="headerlink" href="#performance-and-memory" title="Permanent link">¶</a></h2>
+<h3 id="memory">Memory<a class="headerlink" href="#memory" title="Permanent link">¶</a></h3>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Section</th>
-<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Input</th>
+<th style="text-align: left;">Approximate Memory</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><a href="getting-started/">Getting Started</a></td>
-<td style="text-align: left;">Installation and first run</td>
+<td style="text-align: left;">Ensembl GRCh38 full GTF</td>
+<td style="text-align: left;">~200 MB for full index</td>
 </tr>
 <tr>
-<td style="text-align: left;"><a href="cli/"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a></td>
-<td style="text-align: left;">Command-line usage</td>
-</tr>
-<tr>
-<td style="text-align: left;"><a href="nextflow/">Nextflow Pipeline</a></td>
-<td style="text-align: left;"><abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> workflow</td>
-</tr>
-<tr>
-<td style="text-align: left;"><a href="reference/architecture/">How It Works</a></td>
-<td style="text-align: left;">Architecture, algorithms, and formats</td>
-</tr>
-<tr>
-<td style="text-align: left;"><a href="development/developer-guide/">Development</a></td>
-<td style="text-align: left;">Contributing guide</td>
+<td style="text-align: left;">With variant-guided filtering (typical)</td>
+<td style="text-align: left;">~5-20 MB (3/25 chroms)</td>
 </tr>
 </tbody>
 </table>
+<h3 id="time">Time<a class="headerlink" href="#time" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Operation</th>
+<th style="text-align: left;">Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">GTF parsing + index build</td>
+<td style="text-align: left;">5-15 seconds (one-time)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Per-variant annotation lookup</td>
+<td style="text-align: left;">O(log n) via COITree</td>
+</tr>
+<tr>
+<td style="text-align: left;">Per-read splice junction check</td>
+<td style="text-align: left;">O(1) via HashSet</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">The GTF is loaded once</p>
+<p>The annotation index is built once at pipeline startup and shared
+immutably across all counting threads. There is no per-variant or
+per-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> parsing overhead.</p>
+</div>
+<hr>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="../../cli/rna/">RNA Command</a> — <code>--gtf</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> option</li>
+<li><a href="../output-formats/">Output Formats</a> — GTF-aware column reference</li>
+<li><a href="../rna-splice-handling/">RNA Splice Handling</a> — <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> and consensus intron snipping</li>
+<li><a href="../architecture/">Architecture</a> — System overview with annotation layer</li>
+</ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
 <p><span hidden="">abbreviations</span></p></div>
@@ -1029,13 +1419,13 @@ Use mouse to pan and zoom
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 17:40:03 UTC"><span class="timeago" datetime="2026-03-20T17:40:03+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 17:40:03 UTC">2026-03-20</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 11, 2026 18:19:17 UTC"><span class="timeago" datetime="2026-05-11T18:19:17+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 11, 2026 18:19:17 UTC">2026-05-11</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="February 6, 2026 16:48:48 UTC"><span class="timeago" datetime="2026-02-06T16:48:48+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="February 6, 2026 16:48:48 UTC">2026-02-06</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 11, 2026 18:19:17 UTC"><span class="timeago" datetime="2026-05-11T18:19:17+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 11, 2026 18:19:17 UTC">2026-05-11</span>
 </span>
 </aside>
 </article>
@@ -1070,15 +1460,15 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
 <div class="md-dialog" data-md-component="dialog">
 <div class="md-dialog__inner md-typeset"></div>
 </div>
-<script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
-<script src="assets/javascripts/bundle.79ae519e.min.js"></script>
-<script src="js/print-site.js"></script>
-<script src="js/timeago.min.js"></script>
-<script src="js/timeago_mkdocs_material.js"></script>
-<script src="javascripts/mathjax.js"></script>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+<script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script src="../../js/print-site.js"></script>
+<script src="../../js/timeago.min.js"></script>
+<script src="../../js/timeago_mkdocs_material.js"></script>
+<script src="../../javascripts/mathjax.js"></script>
 <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
-<script src="assets/javascripts/panzoom.min.js"></script>
-<script src="assets/javascripts/zoompan.js"></script>
+<script src="../../assets/javascripts/panzoom.min.js"></script>
+<script src="../../assets/javascripts/zoompan.js"></script>
 <script type="module">import mermaid from "https://unpkg.com/mermaid@11.4.0/dist/mermaid.esm.min.mjs";
 window.mermaidConfig = {default: {
     startOnLoad: false
