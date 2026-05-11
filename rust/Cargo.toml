@@ -31,3 +31,8 @@ parquet = { version = "53", default-features = false, features = ["arrow", "zstd
 wfa2lib-rs = { git = "https://github.com/COMBINE-lab/wfa2lib-rs", rev = "7d6ec921" }
 # Gzip decompression for REDIportal RNA editing DB (.txt.gz support)
 flate2 = "1"
+# ── P4a: GTF-informed splice mask (v5.0.0) ─────────────────────────────────
+# COITree: cache-oblivious interval tree for O(n+m) exon overlap queries.
+coitrees = "0.4"
+# noodles-gtf: pure-Rust GTF parser. No cmake dependency.
+noodles-gtf = "0.37"

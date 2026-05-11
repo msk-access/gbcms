@@ -1,6 +1,8 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 use pyo3::prelude::*;
 
+#[allow(dead_code)] // P4a/P4b/P4c: used by engine.rs once wired
+mod annotation;
 mod counting;
 mod normalize;
 mod shared;
