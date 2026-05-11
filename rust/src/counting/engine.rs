@@ -451,7 +451,7 @@ pub fn count_bam(
 /// // parity testing until the 22-BAM regression confirms identical counts.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, rna_editing_db=None, gtf_path=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, rna_editing_db=None, gtf_path=None, reference_fasta=None))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -480,6 +480,7 @@ pub fn count_bam_binned(
     enforce_strandedness: bool,
     rna_editing_db: Option<&str>,
     gtf_path: Option<&str>,
+    reference_fasta: Option<&str>,
 ) -> PyResult<Vec<BaseCounts>> {
     // Parse alignment backend from string
     let backend = match alignment_backend {
@@ -536,6 +537,9 @@ pub fn count_bam_binned(
         _ => None,  // DNA mode: no annotation, no log noise
     };
 
+    // Store FASTA path for thread-local readers (used by ASJD motif classification)
+    let fasta_path_owned: Option<String> = reference_fasta.map(|p| p.to_string());
+
     if mode == "rna" {
         info!(
             "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, rna_editing_db={}, gtf={}",
@@ -590,11 +594,18 @@ pub fn count_bam_binned(
             bins.par_iter()
                 .map_init(
                     || {
-                        bam::IndexedReader::from_path(&bam_path).map_err(|e| {
+                        let bam_reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
                             anyhow::anyhow!("Failed to open BAM: {}", e)
-                        })
+                        });
+                        // Thread-local FASTA reader for splice motif classification
+                        // (only opened when FASTA path is provided; None in DNA mode)
+                        let fasta_reader: Option<bio::io::fasta::IndexedReader<std::fs::File>> =
+                            fasta_path_owned.as_ref().and_then(|path| {
+                                bio::io::fasta::IndexedReader::from_file(path).ok()
+                            });
+                        (bam_reader, fasta_reader)
                     },
-                    |bam_result, bin| {
+                    |(bam_result, fasta_reader), bin| {
                         let bam = match bam_result {
                             Ok(b) => b,
                             Err(e) => return Err(anyhow::anyhow!("BAM init failed: {}", e)),
@@ -632,6 +643,7 @@ pub fn count_bam_binned(
                             enforce_strandedness,
                             &editing_sites,
                             &annotation,
+                            fasta_reader,
                         )?)
                     },
                 )
@@ -769,6 +781,7 @@ fn count_bin_shared(
     enforce_strandedness: bool,
     editing_sites: &Option<HashSet<(String, i64)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
+    fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
 ) -> Result<Vec<(usize, BaseCounts)>> {
 
     // ══════════════════════════════════════════════════════════════════════
@@ -910,6 +923,7 @@ fn count_bin_shared(
             let asjd = detect_asjd(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, backend, apply_baq, enforce_strandedness,
+                fasta_reader,
             );
             final_counts.asjd_flag = asjd.flag;
             final_counts.asjd_pval = asjd.pval;
@@ -2363,6 +2377,61 @@ impl AsjdResult {
 }
 
 /// Detect allele-specific junction divergence at a variant site.
+/// Classify the splice motif at a junction by reading donor/acceptor dinucleotides
+/// from the reference FASTA.
+///
+/// Splice junctions are defined by intron boundaries:
+/// - **Donor** (5' end): 2bp at `junction_start` (first 2 bases of intron)
+/// - **Acceptor** (3' end): 2bp at `junction_end - 2` (last 2 bases of intron)
+///
+/// | Donor | Acceptor | Motif  | Spliceosome |
+/// |-------|----------|--------|-------------|
+/// | GT    | AG       | GT-AG  | U2 major    |
+/// | GC    | AG       | GC-AG  | U2 minor    |
+/// | AT    | AC       | AT-AC  | U12         |
+/// | other | other    | OTHER  | Non-canonical |
+///
+/// Returns `"UNKNOWN"` if FASTA reader is unavailable or fetch fails.
+fn classify_splice_motif(
+    fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
+    chrom: &str,
+    junction_start: i64,
+    junction_end: i64,
+) -> String {
+    let reader = match fasta_reader.as_mut() {
+        Some(r) => r,
+        None => return "UNKNOWN".to_string(),
+    };
+
+    // Fetch donor dinucleotide (2bp at intron start)
+    let donor = match crate::normalize::fasta::fetch_region(
+        reader, chrom, junction_start as u64, (junction_start + 2) as u64,
+    ) {
+        Ok(bases) if bases.len() == 2 => {
+            [bases[0].to_ascii_uppercase(), bases[1].to_ascii_uppercase()]
+        }
+        _ => return "UNKNOWN".to_string(),
+    };
+
+    // Fetch acceptor dinucleotide (2bp at intron end - 2)
+    let acceptor = match crate::normalize::fasta::fetch_region(
+        reader, chrom, (junction_end - 2) as u64, junction_end as u64,
+    ) {
+        Ok(bases) if bases.len() == 2 => {
+            [bases[0].to_ascii_uppercase(), bases[1].to_ascii_uppercase()]
+        }
+        _ => return "UNKNOWN".to_string(),
+    };
+
+    // Classify the motif
+    match (donor, acceptor) {
+        ([b'G', b'T'], [b'A', b'G']) => "GT-AG".to_string(),
+        ([b'G', b'C'], [b'A', b'G']) => "GC-AG".to_string(),
+        ([b'A', b'T'], [b'A', b'C']) => "AT-AC".to_string(),
+        _ => "OTHER".to_string(),
+    }
+}
+
 ///
 /// Partitions reads from the cache into REF- and ALT-classified sets,
 /// collects splice junctions from each partition, and tests whether
@@ -2394,6 +2463,7 @@ fn detect_asjd(
     backend: &AlignmentBackend,
     apply_baq: bool,
     enforce_strandedness: bool,
+    fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
 ) -> AsjdResult {
     let chrom = variant.chrom.trim_start_matches("chr");
     let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
@@ -2541,12 +2611,18 @@ fn detect_asjd(
     let ref_junction_str = format!("{}-{}", ref_dom_junc.0, ref_dom_junc.1);
     let alt_junction_str = format!("{}-{}", alt_dom_junc.0, alt_dom_junc.1);
 
-    // Motif classification requires reference sequence — we use "UNKNOWN" if
-    // ref_context is unavailable. In practice, splice motifs are determined
-    // at the genomic level and would require BAM header reference access.
-    // For now, we report the junction coordinates and known/novel status.
-    let ref_motif = if ref_known { "CANONICAL".to_string() } else { "UNKNOWN".to_string() };
-    let alt_motif = if alt_known { "CANONICAL".to_string() } else { "UNKNOWN".to_string() };
+    // Step 5b: Classify splice motifs from reference sequence
+    // Splice junctions have a donor (5') and acceptor (3') dinucleotide:
+    //   Donor:   2bp at junction_start (intron start)
+    //   Acceptor: 2bp at junction_end - 2 (intron end)
+    // Canonical motifs: GT-AG (U2), GC-AG (U2 minor), AT-AC (U12)
+    let ref_motif = classify_splice_motif(fasta_reader, chrom, ref_dom_junc.0, ref_dom_junc.1);
+    let alt_motif = classify_splice_motif(fasta_reader, chrom, alt_dom_junc.0, alt_dom_junc.1);
+
+    // NON_CANONICAL_MOTIF diagnostic flag
+    if !same_junction && alt_motif == "OTHER" {
+        diag_flags.push("NON_CANONICAL_MOTIF");
+    }
 
     trace!(
         "P4c ASJD: {}:{} flag={} pval={:.4e} ref={}({}) alt={}({}) ref_n={}/{} alt_n={}/{}",

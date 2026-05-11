@@ -416,6 +416,7 @@ class Pipeline:
                     if getattr(self.config, "gtf", None)
                     else None
                 ),
+                reference_fasta=str(self.config.reference_fasta),
             )
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
@@ -680,6 +681,7 @@ class Pipeline:
                 if getattr(self.config, "gtf", None)
                 else None
             ),
+            reference_fasta=str(self.config.reference_fasta),
         )
 
         # 5. Map counts back to valid SNP indices

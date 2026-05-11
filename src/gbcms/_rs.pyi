@@ -195,6 +195,7 @@ def count_bam_binned(
     enforce_strandedness: bool = False,
     rna_editing_db: str | None = None,
     gtf_path: str | None = None,
+    reference_fasta: str | None = None,
 ) -> list[BaseCounts]: ...
 def prepare_variants(
     variants: list[Variant],
