@@ -1,6 +1,6 @@
 [project]
 name = "gbcms"
-version = "4.2.0"
+version = "5.0.0"
 description = "Python implementation of GetBaseCountsMultiSample (gbcms) for calculating base counts in BAM files"
 authors = [
     {name = "MSK-ACCESS", email = "shahr2@mskcc.org"}
