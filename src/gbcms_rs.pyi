@@ -132,7 +132,7 @@ class BaseCounts:
     asjd_n_alt_total: int
     asjd_diagnostic: str
     # Copy-on-write method for MNP rescue pass (BaseCounts is frozen from Python)
-    def with_ad(self, new_ad: int) -> "BaseCounts":
+    def with_ad(self, new_ad: int) -> BaseCounts:
         """Return a copy with `ad` replaced by `new_ad`."""
         ...
 
