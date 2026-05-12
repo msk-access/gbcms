@@ -1,0 +1,2816 @@
+<!DOCTYPE html><html class="no-js" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width,initial-scale=1" name="viewport">
+<meta content="High-performance variant counting from BAM files" name="description">
+<meta content="MSK-ACCESS" name="author">
+<link href="https://msk-access.github.io/gbcms/5.1.0/reference/allele-classification/" rel="canonical">
+<link href="../rna-annotation/" rel="prev">
+<link href="../counting-metrics/" rel="next">
+<link href="../../assets/images/favicon.png" rel="icon">
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator">
+<title>Allele Classification - gbcms</title>
+<link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet">
+<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet">
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../../css/print-site.css" rel="stylesheet">
+<link href="../../css/print-site-material.css" rel="stylesheet">
+<link href="../../css/timeago.css" rel="stylesheet">
+<link href="../../stylesheets/extra.css" rel="stylesheet">
+<link href="../../assets/stylesheets/panzoom.css" rel="stylesheet">
+<script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+<link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style><meta name="panzoom-theme" content="material">
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#allele-classification">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="gbcms" class="md-header__button md-logo" data-md-component="logo" href="../.." title="gbcms">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            gbcms
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Allele Classification
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="custom" data-md-color-media="(prefers-color-scheme: light)" data-md-color-primary="custom" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio">
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="custom" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-primary="custom" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio">
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text">
+<label class="md-search__icon md-icon" for="__search">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+<div class="md-search__suggest" data-md-component="search-suggest"></div>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/msk-access/gbcms" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="gbcms" class="md-nav__button md-logo" data-md-component="logo" href="../.." title="gbcms">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    gbcms
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/msk-access/gbcms" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_2" type="checkbox">
+<div class="md-nav__link md-nav__container">
+<a class="md-nav__link" href="../../getting-started/">
+<span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+</a>
+<label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+<span class="md-nav__icon md-icon"></span>
+</label>
+</div>
+<nav aria-expanded="false" aria-labelledby="__nav_2_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_2">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/installation/">
+<span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/quickstart/">
+<span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_3" type="checkbox">
+<div class="md-nav__link md-nav__container">
+<a class="md-nav__link" href="../../cli/">
+<span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+</a>
+<label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+<span class="md-nav__icon md-icon"></span>
+</label>
+</div>
+<nav aria-expanded="false" aria-labelledby="__nav_3_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/dna/">
+<span class="md-ellipsis">
+    
+  
+    DNA Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/rna/">
+<span class="md-ellipsis">
+    
+  
+    RNA Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/normalize/">
+<span class="md-ellipsis">
+    
+  
+    Normalize Command
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_4" type="checkbox">
+<div class="md-nav__link md-nav__container">
+<a class="md-nav__link" href="../../nextflow/">
+<span class="md-ellipsis">
+    
+  
+    Nextflow Pipeline
+  
+
+    
+  </span>
+</a>
+<label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+<span class="md-nav__icon md-icon"></span>
+</label>
+</div>
+<nav aria-expanded="false" aria-labelledby="__nav_4_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Nextflow Pipeline
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../nextflow/samplesheet/">
+<span class="md-ellipsis">
+    
+  
+    Samplesheet
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../nextflow/parameters/">
+<span class="md-ellipsis">
+    
+  
+    Parameters
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../nextflow/examples/">
+<span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_5" type="checkbox">
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    How It Works
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="true" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    How It Works
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../input-formats/">
+<span class="md-ellipsis">
+    
+  
+    Input Formats
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../output-formats/">
+<span class="md-ellipsis">
+    
+  
+    Output Formats
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../variant-normalization/">
+<span class="md-ellipsis">
+    
+  
+    Variant Normalization
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../read-filters/">
+<span class="md-ellipsis">
+    
+  
+    Read Filters
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../rna-splice-handling/">
+<span class="md-ellipsis">
+    
+  
+    RNA Splice Handling
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../rna-annotation/">
+<span class="md-ellipsis">
+    
+  
+    RNA Annotation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox">
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Allele Classification
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Allele Classification
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#dispatch">
+<span class="md-ellipsis">
+      
+        Dispatch
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#snp-single-nucleotide-polymorphism">
+<span class="md-ellipsis">
+      
+        SNP (Single Nucleotide Polymorphism)
+      
+    </span>
+</a>
+<nav aria-label="SNP (Single Nucleotide Polymorphism)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm">
+<span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#visual-example">
+<span class="md-ellipsis">
+      
+        Visual Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#insertion">
+<span class="md-ellipsis">
+      
+        Insertion
+      
+    </span>
+</a>
+<nav aria-label="Insertion" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm_1">
+<span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+</a>
+<nav aria-label="Algorithm" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-detection">
+<span class="md-ellipsis">
+      
+        Part A — CIGAR-Based Strict Detection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-b-windowed-scan-s1s2s3-safeguards">
+<span class="md-ellipsis">
+      
+        Part B — Windowed Scan + S1/S2/S3 Safeguards
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#windowed-scan-safeguards">
+<span class="md-ellipsis">
+      
+        Windowed Scan Safeguards
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#visual-example_1">
+<span class="md-ellipsis">
+      
+        Visual Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#deletion">
+<span class="md-ellipsis">
+      
+        Deletion
+      
+    </span>
+</a>
+<nav aria-label="Deletion" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm_2">
+<span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+</a>
+<nav aria-label="Algorithm" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-reciprocal-overlap-detection">
+<span class="md-ellipsis">
+      
+        Part A — CIGAR-Based Strict + Reciprocal-Overlap Detection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-b-windowed-scan-s1s2s3-safeguards_1">
+<span class="md-ellipsis">
+      
+        Part B — Windowed Scan + S1/S2/S3 Safeguards
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-c-evaluation-interior-ref-guard">
+<span class="md-ellipsis">
+      
+        Part C — Evaluation + Interior REF Guard
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#windowed-scan-safeguards-1">
+<span class="md-ellipsis">
+      
+        Windowed Scan Safeguards
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#visual-example_2">
+<span class="md-ellipsis">
+      
+        Visual Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mnp-multi-nucleotide-polymorphism">
+<span class="md-ellipsis">
+      
+        MNP (Multi-Nucleotide Polymorphism)
+      
+    </span>
+</a>
+<nav aria-label="MNP (Multi-Nucleotide Polymorphism)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm_3">
+<span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#classification-outcomes">
+<span class="md-ellipsis">
+      
+        Classification Outcomes
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#contiguity-check">
+<span class="md-ellipsis">
+      
+        Contiguity Check
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#complex-indel-substitution">
+<span class="md-ellipsis">
+      
+        Complex (Indel + Substitution)
+      
+    </span>
+</a>
+<nav aria-label="Complex (Indel + Substitution)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-overview">
+<span class="md-ellipsis">
+      
+        Phase Overview
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-1-2-detail">
+<span class="md-ellipsis">
+      
+        Phase 1 + 2 Detail
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-25-detail-edit-distance-fast-path">
+<span class="md-ellipsis">
+      
+        Phase 2.5 Detail — Edit Distance Fast-Path
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-3-detail-wfa-pairhmm-see-alignment-fallback">
+<span class="md-ellipsis">
+      
+        Phase 3 Detail — WFA → PairHMM (see Alignment Fallback)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-1-haplotype-reconstruction">
+<span class="md-ellipsis">
+      
+        Phase 1: Haplotype Reconstruction
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-2-masked-comparison">
+<span class="md-ellipsis">
+      
+        Phase 2: Masked Comparison
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-25-edit-distance">
+<span class="md-ellipsis">
+      
+        Phase 2.5: Edit Distance
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-3-alignment-fallback">
+<span class="md-ellipsis">
+      
+        Phase 3: Alignment Fallback
+      
+    </span>
+</a>
+<nav aria-label="Phase 3: Alignment Fallback" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#dual-trigger-local-fallback">
+<span class="md-ellipsis">
+      
+        Dual-Trigger Local Fallback
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ambiguous-tie-unbiased-vaf-preservation">
+<span class="md-ellipsis">
+      
+        Ambiguous Tie — Unbiased VAF Preservation
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#multi-allelic-behavior">
+<span class="md-ellipsis">
+      
+        Multi-Allelic Behavior
+      
+    </span>
+</a>
+<nav aria-label="Multi-Allelic Behavior" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-1-annotation">
+<span class="md-ellipsis">
+      
+        Phase 1: Annotation
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-2-sibling-alt-exclusion">
+<span class="md-ellipsis">
+      
+        Phase 2: Sibling ALT Exclusion
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#dynamic-sw-gap-penalties">
+<span class="md-ellipsis">
+      
+        Dynamic SW Gap Penalties
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#limitations">
+<span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#related">
+<span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../counting-metrics/">
+<span class="md-ellipsis">
+    
+  
+    Counting &amp; Metrics
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../mfsd-report/">
+<span class="md-ellipsis">
+    
+  
+    mFSD Report
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../complex-indels/">
+<span class="md-ellipsis">
+    
+  
+    Complex Indels
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../glossary/">
+<span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_6" type="checkbox">
+<label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_6_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_6">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/developer-guide/">
+<span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/testing-guide/">
+<span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/release-guide/">
+<span class="md-ellipsis">
+    
+  
+    Release Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/changelog/">
+<span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/contributing/">
+<span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_7" type="checkbox">
+<label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Resources
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_7_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_7">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Resources
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../resources/troubleshooting/">
+<span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../resources/citation/">
+<span class="md-ellipsis">
+    
+  
+    Citation
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#dispatch">
+<span class="md-ellipsis">
+      
+        Dispatch
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#snp-single-nucleotide-polymorphism">
+<span class="md-ellipsis">
+      
+        SNP (Single Nucleotide Polymorphism)
+      
+    </span>
+</a>
+<nav aria-label="SNP (Single Nucleotide Polymorphism)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm">
+<span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#visual-example">
+<span class="md-ellipsis">
+      
+        Visual Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#insertion">
+<span class="md-ellipsis">
+      
+        Insertion
+      
+    </span>
+</a>
+<nav aria-label="Insertion" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm_1">
+<span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+</a>
+<nav aria-label="Algorithm" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-detection">
+<span class="md-ellipsis">
+      
+        Part A — CIGAR-Based Strict Detection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-b-windowed-scan-s1s2s3-safeguards">
+<span class="md-ellipsis">
+      
+        Part B — Windowed Scan + S1/S2/S3 Safeguards
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#windowed-scan-safeguards">
+<span class="md-ellipsis">
+      
+        Windowed Scan Safeguards
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#visual-example_1">
+<span class="md-ellipsis">
+      
+        Visual Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#deletion">
+<span class="md-ellipsis">
+      
+        Deletion
+      
+    </span>
+</a>
+<nav aria-label="Deletion" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm_2">
+<span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+</a>
+<nav aria-label="Algorithm" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-reciprocal-overlap-detection">
+<span class="md-ellipsis">
+      
+        Part A — CIGAR-Based Strict + Reciprocal-Overlap Detection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-b-windowed-scan-s1s2s3-safeguards_1">
+<span class="md-ellipsis">
+      
+        Part B — Windowed Scan + S1/S2/S3 Safeguards
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#part-c-evaluation-interior-ref-guard">
+<span class="md-ellipsis">
+      
+        Part C — Evaluation + Interior REF Guard
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#windowed-scan-safeguards-1">
+<span class="md-ellipsis">
+      
+        Windowed Scan Safeguards
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#visual-example_2">
+<span class="md-ellipsis">
+      
+        Visual Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mnp-multi-nucleotide-polymorphism">
+<span class="md-ellipsis">
+      
+        MNP (Multi-Nucleotide Polymorphism)
+      
+    </span>
+</a>
+<nav aria-label="MNP (Multi-Nucleotide Polymorphism)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#algorithm_3">
+<span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#classification-outcomes">
+<span class="md-ellipsis">
+      
+        Classification Outcomes
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#contiguity-check">
+<span class="md-ellipsis">
+      
+        Contiguity Check
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#complex-indel-substitution">
+<span class="md-ellipsis">
+      
+        Complex (Indel + Substitution)
+      
+    </span>
+</a>
+<nav aria-label="Complex (Indel + Substitution)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-overview">
+<span class="md-ellipsis">
+      
+        Phase Overview
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-1-2-detail">
+<span class="md-ellipsis">
+      
+        Phase 1 + 2 Detail
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-25-detail-edit-distance-fast-path">
+<span class="md-ellipsis">
+      
+        Phase 2.5 Detail — Edit Distance Fast-Path
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-3-detail-wfa-pairhmm-see-alignment-fallback">
+<span class="md-ellipsis">
+      
+        Phase 3 Detail — WFA → PairHMM (see Alignment Fallback)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-1-haplotype-reconstruction">
+<span class="md-ellipsis">
+      
+        Phase 1: Haplotype Reconstruction
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-2-masked-comparison">
+<span class="md-ellipsis">
+      
+        Phase 2: Masked Comparison
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-25-edit-distance">
+<span class="md-ellipsis">
+      
+        Phase 2.5: Edit Distance
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-3-alignment-fallback">
+<span class="md-ellipsis">
+      
+        Phase 3: Alignment Fallback
+      
+    </span>
+</a>
+<nav aria-label="Phase 3: Alignment Fallback" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#dual-trigger-local-fallback">
+<span class="md-ellipsis">
+      
+        Dual-Trigger Local Fallback
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ambiguous-tie-unbiased-vaf-preservation">
+<span class="md-ellipsis">
+      
+        Ambiguous Tie — Unbiased VAF Preservation
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#multi-allelic-behavior">
+<span class="md-ellipsis">
+      
+        Multi-Allelic Behavior
+      
+    </span>
+</a>
+<nav aria-label="Multi-Allelic Behavior" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-1-annotation">
+<span class="md-ellipsis">
+      
+        Phase 1: Annotation
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-2-sibling-alt-exclusion">
+<span class="md-ellipsis">
+      
+        Phase 2: Sibling ALT Exclusion
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#dynamic-sw-gap-penalties">
+<span class="md-ellipsis">
+      
+        Dynamic SW Gap Penalties
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#limitations">
+<span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#related">
+<span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<nav aria-label="Navigation" class="md-path">
+<ol class="md-path__list">
+<li class="md-path__item">
+<a class="md-path__link" href="../..">
+<span class="md-ellipsis">
+    Home
+  </span>
+</a>
+</li>
+<li class="md-path__item">
+<a class="md-path__link" href="../architecture/">
+<span class="md-ellipsis">
+    How It Works
+  </span>
+</a>
+</li>
+</ol>
+</nav>
+<article class="md-content__inner md-typeset">
+<div><h1 id="allele-classification">Allele Classification<a class="headerlink" href="#allele-classification" title="Permanent link">¶</a></h1>
+<p>How gbcms classifies each read as supporting the <strong>reference</strong> allele, the <strong>alternate</strong> allele, or <strong>neither</strong>.</p>
+<div class="admonition tip">
+<p class="admonition-title">Detailed Visual Reference (PDF)</p>
+<p><embed alt="Allele Classification Visual Guide" src="../../assets/posters/allele_classification_4.0.0.pdf" style="min-height:75vh;width:100%" type="application/pdf"></p>
+</div>
+<h2 id="dispatch">Dispatch<a class="headerlink" href="#dispatch" title="Permanent link">¶</a></h2>
+<p>After passing <a href="../read-filters/">read filters</a>, each read is dispatched to a <strong>type-specific</strong> allele checker based on the variant's <strong>allele lengths</strong> (<code>ref_len</code> × <code>alt_len</code>), not on the <code>variant_type</code> string. This makes dispatch robust against inconsistent upstream type labels:</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    Fetch(["📥 Fetch Reads"]):::fetch --&gt; Filter(["🔍 Apply Filters"]):::filter
+    Filter --&gt; Dispatch{{"Dispatch\nref_len × alt_len?"}}
+
+    Dispatch --&gt;|"1 × 1"| SNP["check_snp"]
+    Dispatch --&gt;|"N × N"| MNP["check_mnp"]
+    Dispatch --&gt;|"1 × N"| INS["check_insertion"]
+    Dispatch --&gt;|"N × 1, alt[0]==ref[0]"| DEL["check_deletion"]
+    Dispatch --&gt;|"N × 1, alt[0]≠ref[0]\nor complex"| CPX["check_complex"]
+
+    MNP -.-&gt;|"inconclusive"| CPX
+    INS -.-&gt;|"Phase 3 fallback"| CPX
+    DEL -.-&gt;|"del_len ≥ 5, S3 fail"| CPX
+
+    SNP --&gt; Count(["📊 Update Counts"]):::count
+    INS --&gt; Count
+    DEL --&gt; Count
+    MNP --&gt; Count
+    CPX --&gt; Count
+
+    classDef fetch fill:#4a90d9,color:#fff,stroke:#2c6fad,stroke-width:2px;
+    classDef filter fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
+    classDef count fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Allele-Length and Anchor-Base Routing</p>
+<p>Dispatch uses <code>ref_allele.len()</code> and <code>alt_allele.len()</code> as the primary selector. For <code>N×1</code> variants (deletion format), it additionally checks whether the anchor base substitutes (<code>alt_allele[0] ≠ ref_allele[0]</code>):</p>
+<ul>
+<li><strong>Pure deletion</strong> (<code>alt[0] == ref[0]</code>) → <code>check_deletion</code> — e.g., <code>AC→A</code> where anchor A is preserved</li>
+<li><strong>Complex Del+SNV</strong> (<code>alt[0] ≠ ref[0]</code>) → <code>check_complex</code> — e.g., <code>GC→T</code> where anchor G also substitutes to T</li>
+</ul>
+<p>This distinction is critical: <code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. <code>check_complex</code> handles these via Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> haplotype alignment.</p>
+<p><code>check_deletion</code> also falls back to <code>check_complex</code> for large deletions (≥5bp) where S3 sequence validation fails due to <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifting the anchor position (see <a href="#windowed-scan-safeguards-1">Deletion — Windowed Safeguards</a>).</p>
+</div>
+<hr>
+<h2 id="snp-single-nucleotide-polymorphism"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (Single Nucleotide Polymorphism)<a class="headerlink" href="#snp-single-nucleotide-polymorphism" title="Permanent link">¶</a></h2>
+<p>A single base substitution — the simplest and most common variant type.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Property</th>
+<th style="text-align: left;">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Detection</td>
+<td style="text-align: left;"><code>len(REF) == 1 &amp;&amp; len(ALT) == 1</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Position</td>
+<td style="text-align: left;">0-based index of the substituted base</td>
+</tr>
+<tr>
+<td style="text-align: left;">Quality check</td>
+<td style="text-align: left;">Base quality at the position must meet <code>--min-baseq</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="algorithm">Algorithm<a class="headerlink" href="#algorithm" title="Permanent link">¶</a></h3>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TD
+    Start(["🧬 SNP Check"]):::start --&gt; Walk["Walk CIGAR to variant pos"]
+    Walk --&gt; CigarOp{"CIGAR op at pos\nis M or X?"}
+    CigarOp --&gt;|"No (I/D/N/S)"| Neither0(["Neither — no consumable base"]):::neither
+    CigarOp --&gt;|"Yes"| Found{"Position found?"}
+    Found --&gt;|No| Neither1(["Neither"]):::neither
+    Found --&gt;|Yes| BQ{"Base quality ≥ min_baseq?"}
+    BQ --&gt;|No| Neither2(["Neither"]):::neither
+    BQ --&gt;|Yes| NCheck{"Base is N?"}
+    NCheck --&gt;|Yes| NeitherN(["Neither (has_n_base=true)\n→ n_count++"]):::nbase
+    NCheck --&gt;|No| Compare["Compare base to REF and ALT"]
+    Compare --&gt; IsRef{"base == REF?"}
+    IsRef --&gt;|Yes| Ref(["✅ REF"]):::ref
+    IsRef --&gt;|No| IsAlt{"base == ALT?"}
+    IsAlt --&gt;|Yes| Alt(["🔴 ALT"]):::alt
+    IsAlt --&gt;|No| Neither3(["Neither"]):::neither
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef nbase fill:#e67e22,color:#fff,stroke:#d35400,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<div class="admonition info">
+<p class="admonition-title">N-Base Guard (Defense-in-Depth)</p>
+<p>N bases (e.g., from duplex collapsing via fgbio) are explicitly checked <strong>after</strong> the BQ gate and treated as uninformative — they are classified as neither REF nor ALT and signal <code>has_n_base=true</code>, causing the engine to increment <code>n_count</code> (NAD in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>). This is defense-in-depth: fgbio assigns BQ ≈ 2 to duplex-masked positions (caught by the BQ gate), but raw BAMs may have arbitrary BQ for N bases.</p>
+</div>
+<h3 id="visual-example">Visual Example<a class="headerlink" href="#visual-example" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>Variant: chr1:100 C→T (SNP)
+<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>
+<a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a>Reference: 5'─ ...G  A  T  C  G  A  T  C  G  A... ─3'
+<a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a>                          98 99 100 101
+<a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>                               ▲
+<a href="#__codelineno-0-6" id="__codelineno-0-6" name="__codelineno-0-6"></a>                           variant pos
+<a href="#__codelineno-0-7" id="__codelineno-0-7" name="__codelineno-0-7"></a>
+<a href="#__codelineno-0-8" id="__codelineno-0-8" name="__codelineno-0-8"></a>Read 1:    5'─ ...G  A  T [T] G  A  T  C... ─3'   → ALT ✅
+<a href="#__codelineno-0-9" id="__codelineno-0-9" name="__codelineno-0-9"></a>                               ↑
+<a href="#__codelineno-0-10" id="__codelineno-0-10" name="__codelineno-0-10"></a>                          base=T matches ALT
+<a href="#__codelineno-0-11" id="__codelineno-0-11" name="__codelineno-0-11"></a>
+<a href="#__codelineno-0-12" id="__codelineno-0-12" name="__codelineno-0-12"></a>Read 2:    5'─ ...G  A  T [C] G  A  T  C... ─3'   → REF ✅
+<a href="#__codelineno-0-13" id="__codelineno-0-13" name="__codelineno-0-13"></a>                               ↑
+<a href="#__codelineno-0-14" id="__codelineno-0-14" name="__codelineno-0-14"></a>                          base=C matches REF
+<a href="#__codelineno-0-15" id="__codelineno-0-15" name="__codelineno-0-15"></a>
+<a href="#__codelineno-0-16" id="__codelineno-0-16" name="__codelineno-0-16"></a>Read 3:    5'─ ...G  A  T [A] G  A  T  C... ─3'   → Neither
+<a href="#__codelineno-0-17" id="__codelineno-0-17" name="__codelineno-0-17"></a>                               ↑
+<a href="#__codelineno-0-18" id="__codelineno-0-18" name="__codelineno-0-18"></a>                          base=A ≠ REF or ALT
+</code></pre></div>
+<hr>
+<h2 id="insertion">Insertion<a class="headerlink" href="#insertion" title="Permanent link">¶</a></h2>
+<p>Bases inserted after an <strong>anchor</strong> position. The anchor is the last reference base before the inserted sequence.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Property</th>
+<th style="text-align: left;">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Detection</td>
+<td style="text-align: left;"><code>len(REF) == 1 &amp;&amp; len(ALT) &gt; 1</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Position</td>
+<td style="text-align: left;">0-based index of the <strong>anchor</strong> base</td>
+</tr>
+<tr>
+<td style="text-align: left;">Quality check</td>
+<td style="text-align: left;">Quality-masked sequence comparison</td>
+</tr>
+</tbody>
+</table>
+<h3 id="algorithm_1">Algorithm<a class="headerlink" href="#algorithm_1" title="Permanent link">¶</a></h3>
+<p>The insertion check uses a <strong>single <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk</strong> with four detection strategies:</p>
+<h4 id="part-a-cigar-based-strict-detection">Part A — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict Detection<a class="headerlink" href="#part-a-cigar-based-strict-detection" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    Start(["🧬 Insertion Check"]):::start --&gt; Walk["Walk CIGAR → left to right"]
+    Walk --&gt; MatchBlk{"Match block contains anchor?"}
+    MatchBlk --&gt;|No| WinCheck(["→ Windowed Scan"]):::next
+    MatchBlk --&gt;|Yes| Bwd{"Anchor at block start\nAND prev op = Ins?"}
+    Bwd --&gt;|Yes| BwdMatch{"Length + seq match?\n(quality-masked)"}
+    BwdMatch --&gt;|Yes| BWAlt(["🔴 ALT — backward"]):::alt
+    BwdMatch --&gt;|No| Fwd
+    Bwd --&gt;|No| Fwd{"Anchor at block end?"}
+    Fwd --&gt;|No| RefCov["Mark ref coverage"]
+    Fwd --&gt;|Yes| Next{"Next op = Ins?"}
+    Next --&gt;|No| RefCov
+    Next --&gt;|Yes| StrictMatch{"Length + seq match?\n(quality-masked)"}
+    StrictMatch --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
+    StrictMatch --&gt;|No| RefCov
+    RefCov --&gt; WinCheck
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="part-b-windowed-scan-s1s2s3-safeguards">Part B — Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#part-b-windowed-scan-s1s2s3-safeguards" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TD
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within ±5bp window?"}
+    CheckWin --&gt;|No| Continue["Continue CIGAR walk"]
+    CheckWin --&gt;|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
+    S1 --&gt;|Yes| S3{"S3: Anchor base\nmatches ref?"}
+    S3 --&gt;|No| Continue
+    S3 --&gt;|Yes| S2["S2: Track closest match"]
+    S2 --&gt; Continue
+    S1 --&gt;|No| LenMatch{"Same length?"}
+    LenMatch --&gt;|Yes| FlagP3["Flag has_nearby_length_match"]:::fallback
+    LenMatch --&gt;|No| Continue
+    FlagP3 --&gt; Continue
+    Continue --&gt; MoreOps{"More CIGAR ops?"}
+    MoreOps --&gt;|Yes| CheckWin
+    MoreOps --&gt;|No| Eval{"Windowed candidate found?"}
+    Eval --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
+    Eval --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
+    P3Check --&gt;|Yes| CPX(["🔄 check_complex"]):::fallback
+    P3Check --&gt;|No| HasRef{"Read covered anchor?"}
+    HasRef --&gt;|Yes| Ref(["✅ REF"]):::ref
+    HasRef --&gt;|No| Neither(["⧯ Neither"]):::neither
+
+    classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h3 id="windowed-scan-safeguards">Windowed Scan Safeguards<a class="headerlink" href="#windowed-scan-safeguards" title="Permanent link">¶</a></h3>
+<p>Three layers of validation prevent false-positive windowed matches:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Safeguard</th>
+<th style="text-align: left;">Check</th>
+<th style="text-align: left;">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>S1</strong></td>
+<td style="text-align: left;">Inserted sequence matches expected ALT bases (quality-masked)</td>
+<td style="text-align: left;">Prevents matching unrelated insertions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>S2</strong></td>
+<td style="text-align: left;">Closest match wins (minimum distance from anchor)</td>
+<td style="text-align: left;">When multiple candidates exist, picks the most likely</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>S3</strong></td>
+<td style="text-align: left;">Reference base at shifted anchor matches original anchor base</td>
+<td style="text-align: left;">Ensures the shifted position is biologically equivalent</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Phase 3 Haplotype Fallback (has_nearby_length_match)</p>
+<p>When the windowed scan finds an insertion that matches in <strong>length</strong> but not <strong>sequence</strong> (e.g., aligner represents the biological event with shifted bases in a repeat), the engine flags <code>has_nearby_length_match</code> and falls back to <code>check_complex</code> for <strong>Phase 3 <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> arbitration</strong>. This ensures ambiguous cases are resolved by haplotype comparison rather than strict sequence matching.</p>
+</div>
+<h3 id="visual-example_1">Visual Example<a class="headerlink" href="#visual-example_1" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>Variant: chr1:100 A→ATG (insertion of TG after anchor A)
+<a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>
+<a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>Reference:     5'─ ...C  G  A ── C  G  T  A... ─3'
+<a href="#__codelineno-1-4" id="__codelineno-1-4" name="__codelineno-1-4"></a>                          99 100  101 102
+<a href="#__codelineno-1-5" id="__codelineno-1-5" name="__codelineno-1-5"></a>                               ▲
+<a href="#__codelineno-1-6" id="__codelineno-1-6" name="__codelineno-1-6"></a>                          anchor pos
+<a href="#__codelineno-1-7" id="__codelineno-1-7" name="__codelineno-1-7"></a>
+<a href="#__codelineno-1-8" id="__codelineno-1-8" name="__codelineno-1-8"></a>Read 1 (ALT, strict):  CIGAR = 5M 2I 5M
+<a href="#__codelineno-1-9" id="__codelineno-1-9" name="__codelineno-1-9"></a>               5'─ ...C  G  A [T  G] C  G  T  A... ─3'
+<a href="#__codelineno-1-10" id="__codelineno-1-10" name="__codelineno-1-10"></a>                               └──┘
+<a href="#__codelineno-1-11" id="__codelineno-1-11" name="__codelineno-1-11"></a>                          inserted bases at anchor → ALT ✅ (strict)
+<a href="#__codelineno-1-12" id="__codelineno-1-12" name="__codelineno-1-12"></a>
+<a href="#__codelineno-1-13" id="__codelineno-1-13" name="__codelineno-1-13"></a>Read 2 (ALT, windowed): CIGAR = 7M 2I 3M
+<a href="#__codelineno-1-14" id="__codelineno-1-14" name="__codelineno-1-14"></a>               5'─ ...C  G  A  C  G [T  G] T  A... ─3'
+<a href="#__codelineno-1-15" id="__codelineno-1-15" name="__codelineno-1-15"></a>                                          └──┘
+<a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>                    insertion shifted +2bp, same seq → ALT ✅ (windowed)
+<a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>
+<a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>Read 3 (REF):  CIGAR = 10M
+<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>               5'─ ...C  G  A  C  G  T  A... ─3'
+<a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>                               ↑
+<a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>                          no insertion after anchor → REF ✅
+</code></pre></div>
+<hr>
+<h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">¶</a></h2>
+<p>Bases deleted after an <strong>anchor</strong> position. Mirrors insertion but looks for <code>Del</code> <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> operations.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Property</th>
+<th style="text-align: left;">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Detection</td>
+<td style="text-align: left;"><code>len(REF) &gt; 1 &amp;&amp; len(ALT) == 1</code> AND <code>alt[0] == ref[0]</code> (pure deletion)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Position</td>
+<td style="text-align: left;">0-based index of the <strong>anchor</strong> base</td>
+</tr>
+<tr>
+<td style="text-align: left;">Quality check</td>
+<td style="text-align: left;">Quality-masked ref-context comparison</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">Complex Del+SNV: Routed to <code>check_complex</code></p>
+<p>When <code>len(REF) &gt; 1 &amp;&amp; len(ALT) == 1</code> but the anchor base <strong>also substitutes</strong> (<code>alt[0] ≠ ref[0]</code>), the variant is a <strong>complex Del+SNV</strong> and is routed directly to <code>check_complex</code> — not <code>check_deletion</code>. This handles variants such as:</p>
+<ul>
+<li><strong>SOX9</strong> <code>GC→T</code>: anchor G substitutes to T, C is deleted. D(1) reads classified as ALT via Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>.</li>
+<li><strong>ABL1</strong> <code>AG→T</code>: anchor A substitutes to T, G is deleted.</li>
+</ul>
+<p><code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards compare anchor bases assuming the anchor is preserved. For these variants, the anchor changes — feeding them to <code>check_deletion</code> would incorrectly classify all DEL reads as REF (alt=0).</p>
+</div>
+<h3 id="algorithm_2">Algorithm<a class="headerlink" href="#algorithm_2" title="Permanent link">¶</a></h3>
+<p>Same single-walk strategy as insertion, with four additional features:</p>
+<ol>
+<li>
+<p><strong>Reciprocal overlap matching</strong> — For large deletions (≥50bp), if the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> shows a deletion at the anchor but with a different length, gbcms accepts it if the reciprocal overlap is ≥50% (SV-caller standard, used by SURVIVOR):</p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a>reciprocal_overlap = min(expected, found) / max(expected, found)
+<a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>Accept if expected_del ≥ 50bp AND reciprocal_overlap ≥ 0.50
+</code></pre></div>
+</li>
+<li>
+<p><strong>Interior REF guard</strong> — For large deletions (≥50bp), reads that start <em>inside</em> the deleted region are classified as REF directly, without falling back to Smith-Waterman. This prevents overcounting caused by the <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> aligner's bias toward shorter ALT haplotypes.</p>
+</li>
+<li>
+<p><strong>Left-alignment Phase 3 fallback</strong> — For large deletions (≥5bp) where the windowed scan finds a matching-length Del but S3 sequence validation fails (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifted the anchor further left than the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position), the engine flags <code>has_nearby_length_match</code> and routes to <code>check_complex</code> for Phase 3 arbitration. Short deletions (&lt;5bp) with failed S3 remain <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF — they are almost certainly unrelated spurious deletions, not left-alignment artifacts. See <a href="../complex-indels/#case-3-tp53-12bp-left-alignment-shifted-deletion">Case 3 in the Complex Indels guide</a>.</p>
+</li>
+<li>
+<p><strong>Haplotype fallback</strong> — When no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found and the read doesn't cover the anchor, falls back to <code>check_complex</code> for haplotype-based comparison.</p>
+</li>
+</ol>
+<h4 id="part-a-cigar-based-strict-reciprocal-overlap-detection">Part A — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict + Reciprocal-Overlap Detection<a class="headerlink" href="#part-a-cigar-based-strict-reciprocal-overlap-detection" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    Start(["🧬 Deletion Check"]):::start --&gt; Walk["Walk CIGAR → left to right"]
+    Walk --&gt; MatchBlk{"Match block contains anchor?"}
+    MatchBlk --&gt;|No| WinCheck(["→ Windowed Scan"]):::next
+    MatchBlk --&gt;|Yes| AtEnd{"Anchor at block end?"}
+    AtEnd --&gt;|No| RefCov["Mark ref coverage"]
+    AtEnd --&gt;|Yes| NextDel{"Next op = Del?"}
+    NextDel --&gt;|No| RefCov
+    NextDel --&gt;|Yes| LenMatch{"Length matches exactly?"}
+    LenMatch --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
+    LenMatch --&gt;|No| Recip{"≥50bp AND\noverlap ≥50%?"}
+    Recip --&gt;|Yes| TolAlt(["🔴 ALT — tolerant SV"]):::alt
+    Recip --&gt;|No| CPX(["🔄 check_complex"]):::fallback
+    RefCov --&gt; WinCheck
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="part-b-windowed-scan-s1s2s3-safeguards_1">Part B — Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#part-b-windowed-scan-s1s2s3-safeguards_1" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TD
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Del within ±5bp window?"}
+    CheckWin --&gt;|No| Continue["Continue walk"]
+    CheckWin --&gt;|Yes| S1{"S1: Length check"}
+    S1 --&gt;|"Exact match"| S3{"S3: Ref bases match?"}
+    S1 --&gt;|"≥50bp + overlap ≥50%"| S2Track["S2: Track closest (SV)"]  
+    S1 --&gt;|"No match"| Continue
+    S3 --&gt;|Yes| S2["S2: Track closest"]
+    S3 --&gt;|"No, del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 --&gt;|"No, del_len &lt; 5"| Continue
+    S2Track --&gt; Continue
+    S2 --&gt; Continue
+    FlagP3 --&gt; Continue
+    Continue --&gt; MoreOps{"More ops?"}
+    MoreOps --&gt;|Yes| CheckWin
+    MoreOps --&gt;|No| Eval(["→ Evaluation"]):::next
+
+    classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="part-c-evaluation-interior-ref-guard">Part C — Evaluation + Interior REF Guard<a class="headerlink" href="#part-c-evaluation-interior-ref-guard" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TD
+    EvalIn(["→ from windowed scan"]):::entry --&gt; Win{"Windowed match found?"}
+    Win --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
+    Win --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
+    P3Check --&gt;|Yes| CPX(["🔄 check_complex"]):::fallback
+    P3Check --&gt;|No| Interior{"Interior read?\n(≧50bp del, read starts inside span)"}
+    Interior --&gt;|Yes| IntRef(["✅ REF — interior guard"]):::ref
+    Interior --&gt;|No| HasRef{"Anchor covered?"}
+    HasRef --&gt;|Yes| Ref(["✅ REF"]):::ref
+    HasRef --&gt;|No| CPX
+
+    classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h3 id="windowed-scan-safeguards-1">Windowed Scan Safeguards<a class="headerlink" href="#windowed-scan-safeguards-1" title="Permanent link">¶</a></h3>
+<p>Three layers of validation prevent false-positive windowed matches:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Safeguard</th>
+<th style="text-align: left;">Check</th>
+<th style="text-align: left;">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>S1</strong></td>
+<td style="text-align: left;">Deleted length matches expected <code>ref_len − 1</code> (or reciprocal overlap ≥50% for large dels)</td>
+<td style="text-align: left;">Prevents matching wrong-length deletions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>S2</strong></td>
+<td style="text-align: left;">Closest match wins (minimum distance from anchor)</td>
+<td style="text-align: left;">When multiple candidates exist, picks the most likely</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>S3</strong></td>
+<td style="text-align: left;">Reference bases at the shifted deletion position match expected deleted sequence</td>
+<td style="text-align: left;">Verifies the shifted Del is biologically the same event</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>del_len ≥ 5 guard</strong></td>
+<td style="text-align: left;">Only flag <code>has_nearby_length_match</code> for Dels ≥5bp that fail S3</td>
+<td style="text-align: left;">Short (1–4bp) Dels failing S3 are almost certainly spurious noise — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> remains definitive. Longer Dels can fail S3 due to <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifting the anchor away from the actual <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">has_nearby_length_match Phase 3 Fallback</p>
+<p>When the windowed scan finds a deletion that matches in <strong>length</strong> (≥5bp) but S3 sequence validation fails (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifted the anchor further left than where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> appears), the engine flags <code>has_nearby_length_match</code> and falls back to <code>check_complex</code> for Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> haplotype arbitration.</p>
+<p>Example: <strong>TP53 <code>GACCGTGCAAGT→-</code> (12bp)</strong> — left-alignment moves the anchor 3bp left of the actual <code>D(12)</code> position in reads. S3 compares the wrong reference slice and fails. Phase 3 correctly classifies these as ALT.</p>
+<p>Short deletions (1–4bp) failing S3 use <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF: a 1bp Del in the wrong reference context is almost certainly an unrelated noise deletion, not a left-alignment artifact.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Interior REF Guard</p>
+<p>For deletions &gt;50bp, reads that fall <strong>entirely within</strong> the deleted region would be incorrectly classified as ALT by Smith-Waterman (because the short ALT haplotype aligns better than the long REF haplotype). The interior REF guard catches these reads early and classifies them as REF before they reach Phase 3.</p>
+</div>
+<h3 id="visual-example_2">Visual Example<a class="headerlink" href="#visual-example_2" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>Variant: chr1:100 ACG→A (deletion of CG after anchor A)
+<a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a>
+<a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a>Reference:     5'─ ...T  G  A  C  G  T  A  C... ─3'
+<a href="#__codelineno-3-4" id="__codelineno-3-4" name="__codelineno-3-4"></a>                          99 100 101 102
+<a href="#__codelineno-3-5" id="__codelineno-3-5" name="__codelineno-3-5"></a>                               ▲
+<a href="#__codelineno-3-6" id="__codelineno-3-6" name="__codelineno-3-6"></a>                          anchor pos
+<a href="#__codelineno-3-7" id="__codelineno-3-7" name="__codelineno-3-7"></a>
+<a href="#__codelineno-3-8" id="__codelineno-3-8" name="__codelineno-3-8"></a>Read 1 (ALT, strict):  CIGAR = 5M 2D 5M
+<a href="#__codelineno-3-9" id="__codelineno-3-9" name="__codelineno-3-9"></a>               5'─ ...T  G  A  ──  ──  T  A  C... ─3'
+<a href="#__codelineno-3-10" id="__codelineno-3-10" name="__codelineno-3-10"></a>                               └─────┘
+<a href="#__codelineno-3-11" id="__codelineno-3-11" name="__codelineno-3-11"></a>                          2bp deletion at anchor → ALT ✅ (strict)
+<a href="#__codelineno-3-12" id="__codelineno-3-12" name="__codelineno-3-12"></a>
+<a href="#__codelineno-3-13" id="__codelineno-3-13" name="__codelineno-3-13"></a>Read 2 (ALT, windowed): CIGAR = 7M 2D 3M
+<a href="#__codelineno-3-14" id="__codelineno-3-14" name="__codelineno-3-14"></a>               5'─ ...T  G  A  C  G  T  ──  ──  A  C... ─3'
+<a href="#__codelineno-3-15" id="__codelineno-3-15" name="__codelineno-3-15"></a>                                              └─────┘
+<a href="#__codelineno-3-16" id="__codelineno-3-16" name="__codelineno-3-16"></a>                  deletion shifted +2bp, same length, ref matches → ALT ✅ (windowed)
+<a href="#__codelineno-3-17" id="__codelineno-3-17" name="__codelineno-3-17"></a>
+<a href="#__codelineno-3-18" id="__codelineno-3-18" name="__codelineno-3-18"></a>Read 3 (REF):  CIGAR = 12M
+<a href="#__codelineno-3-19" id="__codelineno-3-19" name="__codelineno-3-19"></a>               5'─ ...T  G  A  C  G  T  A  C... ─3'
+<a href="#__codelineno-3-20" id="__codelineno-3-20" name="__codelineno-3-20"></a>                               ↑
+<a href="#__codelineno-3-21" id="__codelineno-3-21" name="__codelineno-3-21"></a>                          no deletion after anchor → REF ✅
+</code></pre></div>
+<hr>
+<h2 id="mnp-multi-nucleotide-polymorphism"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (Multi-Nucleotide Polymorphism)<a class="headerlink" href="#mnp-multi-nucleotide-polymorphism" title="Permanent link">¶</a></h2>
+<p>Multiple adjacent bases substituted simultaneously.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Property</th>
+<th style="text-align: left;">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Detection</td>
+<td style="text-align: left;"><code>len(REF) == len(ALT) &amp;&amp; len(REF) &gt; 1</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Position</td>
+<td style="text-align: left;">0-based index of the first substituted base</td>
+</tr>
+<tr>
+<td style="text-align: left;">Quality check</td>
+<td style="text-align: left;"><strong>Per-position masked evaluation</strong> at discriminating positions only (where REF ≠ ALT). N bases and low-BQ bases are masked independently.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="algorithm_3">Algorithm<a class="headerlink" href="#algorithm_3" title="Permanent link">¶</a></h3>
+<p>The <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> checker uses <strong>masked per-position evaluation</strong> — each discriminating position is independently assessed, and only unmasked positions vote for the final classification.</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TD
+    Start(["🧬 MNP Check"]):::start --&gt; Find["Find read position of first base"]
+    Find --&gt; Found{"Position found?"}
+    Found --&gt;|No| CPX
+    Found --&gt;|Yes| Cover{"Read covers entire MNP region?"}
+    Cover --&gt;|No| CPX
+    Cover --&gt;|Yes| Contig{"No indels within MNP block?"}
+    Contig --&gt;|"Indel found"| CPX
+    Contig --&gt;|"Contiguous"| PerPos["Per-position masked evaluation"]
+
+    PerPos --&gt; Loop{"For each discriminating pos\n(where REF ≠ ALT)"}
+    Loop --&gt; Mask{"BQ &lt; min_baseq\nOR base is N?"}
+    Mask --&gt;|Yes| Masked["Position masked\n(cannot vote)"]
+    Mask --&gt;|No| Vote{"Unmasked: compare\nbase to REF/ALT"}
+    Vote --&gt; AltVote["ALT vote"]
+    Vote --&gt; RefVote["REF vote"]
+    Vote --&gt; OtherVote["Other vote"]
+
+    Masked --&gt; NextPos( )
+    AltVote --&gt; NextPos
+    RefVote --&gt; NextPos
+    OtherVote --&gt; NextPos
+    NextPos --&gt; MorePos{"More positions?"}
+    MorePos --&gt;|Yes| Loop
+    MorePos --&gt;|No| Classify
+
+    Classify{"All unmasked = 0?"}
+    Classify --&gt;|Yes| LowQ(["⬜ LowQuality\n→ check_complex"]):::fallback
+    Classify --&gt;|No| AllAlt{"All unmasked\nmatch ALT?"}
+    AllAlt --&gt;|Yes| Alt(["🔴 ALT"]):::alt
+    AllAlt --&gt;|No| AllRef{"All unmasked\nmatch REF?"}
+    AllRef --&gt;|Yes| Ref(["✅ REF"]):::ref
+    AllRef --&gt;|No| Third(["⬜ ThirdAllele\n(partial_alt tracked)"]):::neither
+
+    CPX(["🔄 check_complex\n(Phase 3 fallback)"]):::fallback
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Masked Per-Position Strategy</p>
+<p>Each <strong>discriminating position</strong> (where REF[i] ≠ ALT[i]) is independently evaluated:</p>
+<ol>
+<li><strong>Mask check</strong>: If <code>BQ &lt; --min-baseq</code> OR base is N → position is masked (cannot vote)</li>
+<li><strong>Vote</strong>: Unmasked positions vote REF, ALT, or other based on the actual base</li>
+<li><strong>Classify</strong>: Based on unmasked vote totals</li>
+</ol>
+<p>This is an improvement over C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>, which gates on <code>min(BQ)</code> across <strong>all</strong> positions. For GC-rich regions (e.g., TERT promoter) or long ONPs with few discriminating positions, the old strategy dropped reads due to low quality at positions that don't matter for classification.</p>
+<p><strong>Non-discriminating positions</strong> (where REF[i] == ALT[i]) are completely ignored — they carry no information for allele classification.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">N-Base Handling at Discriminating Positions</p>
+<p>N bases at discriminating positions are masked regardless of their reported base quality (defense-in-depth). An N base matching ALT is <strong>not</strong> counted as ALT evidence — it is uninformative. If <strong>any</strong> discriminating position has an N base, <code>has_n_base=true</code> is set on the classification result, causing the engine to increment <code>n_count</code> (NAD in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>) for duplex masking QC.</p>
+</div>
+<h3 id="classification-outcomes">Classification Outcomes<a class="headerlink" href="#classification-outcomes" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Condition</th>
+<th style="text-align: left;">Result</th>
+<th style="text-align: left;">partial_alt</th>
+<th style="text-align: left;">has_n_base</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">All unmasked match ALT</td>
+<td style="text-align: left;"><strong>ALT</strong></td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">true if any N at discrim. pos</td>
+</tr>
+<tr>
+<td style="text-align: left;">All unmasked match REF</td>
+<td style="text-align: left;"><strong>REF</strong></td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">true if any N at discrim. pos</td>
+</tr>
+<tr>
+<td style="text-align: left;">Mixed unmasked (some ALT, some REF/other)</td>
+<td style="text-align: left;"><strong>ThirdAllele</strong> → check_complex</td>
+<td style="text-align: left;"><code>positions_matching_alt</code></td>
+<td style="text-align: left;">true if any N at discrim. pos</td>
+</tr>
+<tr>
+<td style="text-align: left;">All discriminating positions masked</td>
+<td style="text-align: left;"><strong>LowQuality</strong> → check_complex</td>
+<td style="text-align: left;"><code>positions_matching_alt</code></td>
+<td style="text-align: left;">true if any N at discrim. pos</td>
+</tr>
+<tr>
+<td style="text-align: left;">Read doesn't cover / has indel in block</td>
+<td style="text-align: left;"><strong>Structural</strong> → check_complex</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">false</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Partial ALT Tracking</p>
+<p>When a read has mixed unmasked votes (some match ALT, some match REF or other), the count of ALT-matching unmasked positions is recorded as <code>positions_matching_alt</code>. This feeds into the engine's <code>partial_alt</code> counter (PAD in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>), enabling diagnostic analysis of reads with partial evidence of the mutation.</p>
+</div>
+<h3 id="contiguity-check">Contiguity Check<a class="headerlink" href="#contiguity-check" title="Permanent link">¶</a></h3>
+<p>The contiguity check is performed <strong>first</strong> (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> base — if the distance doesn't equal <code>len - 1</code>, an indel exists within the block and the read is routed to <code>check_complex</code> for haplotype-based resolution.</p>
+<div class="admonition warning">
+<p class="admonition-title">Phase 3 Fallback Conditions</p>
+<p><code>check_complex</code> is invoked for both <strong>structural</strong> issues and <strong>quality</strong> issues:</p>
+<ul>
+<li>Read position not found in <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk</li>
+<li>Read doesn't cover the entire <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> region</li>
+<li>Indel detected within the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> block (contiguity check)</li>
+<li><strong>All discriminating positions masked</strong> — Phase 2/3 haplotype-based classification may still resolve the read</li>
+</ul>
+<p>The first three indicate a complex variant misannotated as an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>; the last leverages haplotype reconstruction to rescue reads that per-position evaluation cannot classify.</p>
+</div>
+<hr>
+<h2 id="complex-indel-substitution">Complex (Indel + Substitution)<a class="headerlink" href="#complex-indel-substitution" title="Permanent link">¶</a></h2>
+<p>Variants where REF and ALT differ in both sequence <strong>and</strong> length. Also used for <strong>complex Del+SNV</strong> variants dispatched from the <code>N×1</code> path when the anchor base substitutes. Uses a sophisticated <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Property</th>
+<th style="text-align: left;">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Detection</td>
+<td style="text-align: left;">Fallback for all other combinations; also <code>N×1</code> with <code>alt[0] ≠ ref[0]</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Position</td>
+<td style="text-align: left;">0-based index of the first reference base</td>
+</tr>
+<tr>
+<td style="text-align: left;">Quality check</td>
+<td style="text-align: left;">Masked comparison — bases below <code>--min-baseq</code> are masked</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">REF Fallback for Large Deletion-Direction Variants</p>
+<p>When <code>check_complex</code> is invoked for a deletion-direction variant (<code>ref_len &gt; alt_len</code>) and <code>is_worth_realignment()</code> returns <code>false</code> (the read has a clean M-only <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> with no indels in the variant window), Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> is skipped. Instead, gbcms checks whether <strong>any M-block covers the anchor position</strong>. If yes, the read is classified as <strong>REF</strong>.</p>
+<p>Without this fallback, REF reads for large deletions (e.g., <strong>NF2 ~100bp DEL</strong>) would be misclassified as 'neither' — clean REF reads naturally have no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence warranting realignment, so skipping Phase 3 without a REF fallback silently drops all REF counts.</p>
+<p>See <a href="../complex-indels/#case-2-nf2-large-deletion-ref-reads-invisible">Case 2 in the Complex Indels guide</a> for the full worked example.</p>
+</div>
+<h4 id="phase-overview">Phase Overview<a class="headerlink" href="#phase-overview" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>stateDiagram-v2
+    direction LR
+    [*] --&gt; Phase1 : read enters check_complex
+
+    Phase1 : Phase 1\nHaplotype Reconstruction\n─ CIGAR walk → read_seq
+    Phase2 : Phase 2\nMasked Comparison\n─ quality-masked haplotype match
+    Phase25 : Phase 2.5\nEdit Distance\n─ Levenshtein fast-path
+    Phase3 : Phase 3\nWFA → PairHMM\n─ dual-haplotype alignment
+
+    Phase1 --&gt; Phase2 : always
+    Phase2 --&gt; REF : exact REF match
+    Phase2 --&gt; ALT : exact ALT match
+    Phase2 --&gt; Phase25 : ambiguous / no match
+    Phase25 --&gt; REF : edit dist REF wins (&gt;1 margin)
+    Phase25 --&gt; ALT : edit dist ALT wins (&gt;1 margin)
+    Phase25 --&gt; Phase3 : tied or large-del skip
+    Phase3 --&gt; REF : confident REF call
+    Phase3 --&gt; ALT : confident ALT call
+    Phase3 --&gt; Neither : below threshold
+
+    REF : ✅ REF
+    ALT : 🔴 ALT
+    Neither : ⚪ Neither
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="phase-1-2-detail">Phase 1 + 2 Detail<a class="headerlink" href="#phase-1-2-detail" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TD
+    Start(["🧬 Complex Check"]):::start --&gt; Walk["Walk CIGAR → rebuild read_seq"]
+
+    Walk --&gt; Ops{"CIGAR op type?"}
+    Ops --&gt;|"M / = / X"| Match["Append overlapping bases + quals"]
+    Ops --&gt;|"I"| InsOp["Append inserted bases + quals"]
+    Ops --&gt;|"D / N"| Del["Advance ref_pos only"]
+    Ops --&gt;|"S (soft-clip)"| SC{"Overlaps variant?"}
+    SC --&gt;|Yes| SCAdd["Append soft-clipped bases"]
+    SC --&gt;|No| SCSkip["Skip"]
+    Match --&gt; LoopBack( )
+    InsOp --&gt; LoopBack
+    Del --&gt; LoopBack
+    SCAdd --&gt; LoopBack
+    SCSkip --&gt; LoopBack
+    LoopBack --&gt; |"more ops?"| Ops
+    LoopBack --&gt; |"done"| Guards
+
+    Guards["Post-reconstruction guards"]
+    Guards --&gt; LargeGuard{"ref_len &gt; 50 AND<br>recon &lt; 10% of ref?"}
+    LargeGuard --&gt;|Yes| P25(["→ Phase 2.5"]):::next
+    LargeGuard --&gt;|No| LenRatio{"ref_len &gt; 2 × alt_len?"}
+    LenRatio --&gt;|Yes| P3Direct(["→ Phase 3 directly"]):::next
+    LenRatio --&gt;|No| LenCheck{"Recon length matches?"}
+
+    LenCheck --&gt;|"ALT and REF"| CaseA["Case A: Dual compare<br>+ ambiguity detection"]
+    LenCheck --&gt;|"ALT only"| CaseB["Case B: ALT-only compare"]
+    LenCheck --&gt;|"REF only"| CaseC["Case C: REF-only compare"]
+    LenCheck --&gt;|"Neither"| P25
+
+    CaseA --&gt; Ambig{"Reliable bases<br>match BOTH?"}
+    Ambig --&gt;|Yes| Neither1(["⚪ Neither — ambiguous"]):::neither
+    Ambig --&gt;|No| Matches{"Which allele?"}
+    Matches --&gt;|ALT| Alt1(["🔴 ALT"]):::alt
+    Matches --&gt;|REF| Ref1(["✅ REF"]):::ref
+    Matches --&gt;|Neither| P25
+
+    CaseB --&gt; AltMatch{"0 mismatches on<br>reliable bases?"}
+    AltMatch --&gt;|Yes| Alt2(["🔴 ALT"]):::alt
+    AltMatch --&gt;|No| P25
+
+    CaseC --&gt; RefMatch{"0 mismatches on<br>reliable bases?"}
+    RefMatch --&gt;|Yes| Ref2(["✅ REF"]):::ref
+    RefMatch --&gt;|No| P25
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="phase-25-detail-edit-distance-fast-path">Phase 2.5 Detail — Edit Distance Fast-Path<a class="headerlink" href="#phase-25-detail-edit-distance-fast-path" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TD
+    P25in(["→ from Phase 2"]):::entry
+    P25in --&gt; ReconLen{"recon_len ≥ 2?"}
+    ReconLen --&gt;|No| P3(["→ Phase 3"]):::next
+    ReconLen --&gt;|Yes| RatioGuard{"ref_len &gt; 2 × alt_len?"}
+    RatioGuard --&gt;|Yes| P3
+    RatioGuard --&gt;|No| EditDist["Compute Levenshtein distance<br>to REF and ALT alleles"]
+    EditDist --&gt; EDMargin{"&gt; 1 edit margin?"}
+    EDMargin --&gt;|"ALT closer"| Alt25(["🔴 ALT"]):::alt
+    EDMargin --&gt;|"REF closer"| Ref25(["✅ REF"]):::ref
+    EDMargin --&gt;|"Tied"| P3
+
+    classDef entry fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h4 id="phase-3-detail-wfa-pairhmm-see-alignment-fallback">Phase 3 Detail — <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> → <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> (see <a href="#phase-3-alignment-fallback">Alignment Fallback</a>)<a class="headerlink" href="#phase-3-detail-wfa-pairhmm-see-alignment-fallback" title="Permanent link">¶</a></h4>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart LR
+    P3in(["→ from Phase 2.5"]):::entry --&gt; Extract["Extract raw read window"]
+    Extract --&gt; Backend{"--alignment-backend?"}
+
+    Backend --&gt;|"pairhmm (default)"| WFA["WFA edit-distance triage<br>vs pangenomic haplotypes"]
+    WFA --&gt; WFAClear{"Clear winner?"}
+    WFAClear --&gt;|"Yes (~70-80%)"| WFADone{"Which allele?"}
+    WFADone --&gt;|ALT| AltW(["🔴 ALT"]):::alt
+    WFADone --&gt;|REF| RefW(["✅ REF"]):::ref
+    WFAClear --&gt;|"Ambiguous"| HMM["Marginalized PairHMM LLR"]
+    HMM --&gt; LLR{"LLR &gt; threshold?"}
+    LLR --&gt;|Confident| HMMDone{"Which allele?"}
+    LLR --&gt;|"Below threshold"| N4(["⚪ Neither"]):::neither
+    HMMDone --&gt;|ALT| AltH(["🔴 ALT"]):::alt
+    HMMDone --&gt;|REF| RefH(["✅ REF"]):::ref
+
+    Backend --&gt;|"sw"| SW["Semiglobal SW alignment<br>vs REF + ALT haplotypes"]
+    SW --&gt; Margin{"Score diff ≥ 2?"}
+    Margin --&gt;|"Confident"| ConfCheck{"Dual-trigger?<br>(borderline / poor)"}
+    Margin --&gt;|"Tied"| N3(["⚪ Neither"]):::neither
+    ConfCheck --&gt;|No| SWDone{"Which allele?"}
+    ConfCheck --&gt;|Yes| LocalSW["Local SW alignment<br>(soft-clips bad flanks)"]
+    LocalSW --&gt; LocalDone{"Score diff ≥ 2?"}
+    LocalDone --&gt;|ALT| AltL(["🔴 ALT"]):::alt
+    LocalDone --&gt;|REF| RefL(["✅ REF"]):::ref
+    LocalDone --&gt;|"Tied"| N2(["⚪ Neither"]):::neither
+    SWDone --&gt;|ALT| AltS(["🔴 ALT"]):::alt
+    SWDone --&gt;|REF| RefS(["✅ REF"]):::ref
+
+    classDef entry fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
+    classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
+    classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<h3 id="phase-1-haplotype-reconstruction">Phase 1: Haplotype Reconstruction<a class="headerlink" href="#phase-1-haplotype-reconstruction" title="Permanent link">¶</a></h3>
+<p>Walks the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> to rebuild what the read shows for the genomic region <code>[pos, pos + ref_len)</code>. Each <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> operation contributes differently:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"><abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> Op</th>
+<th style="text-align: left;">Action</th>
+<th style="text-align: left;">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">M / = / X</td>
+<td style="text-align: left;">Append overlapping bases and qualities</td>
+<td style="text-align: left;">Standard aligned bases</td>
+</tr>
+<tr>
+<td style="text-align: left;">I</td>
+<td style="text-align: left;">Append inserted bases if <code>ref_pos</code> is within variant region</td>
+<td style="text-align: left;">Captures insertions</td>
+</tr>
+<tr>
+<td style="text-align: left;">D / N</td>
+<td style="text-align: left;">Advance <code>ref_pos</code> without appending</td>
+<td style="text-align: left;">Deletions skip</td>
+</tr>
+<tr>
+<td style="text-align: left;">S</td>
+<td style="text-align: left;">Append if <code>ref_pos</code> overlaps variant window</td>
+<td style="text-align: left;">Recovers soft-clipped evidence</td>
+</tr>
+<tr>
+<td style="text-align: left;">H / P</td>
+<td style="text-align: left;">No action</td>
+<td style="text-align: left;">Hard clips have no sequence</td>
+</tr>
+</tbody>
+</table>
+<h3 id="phase-2-masked-comparison">Phase 2: Masked Comparison<a class="headerlink" href="#phase-2-masked-comparison" title="Permanent link">¶</a></h3>
+<p>Instead of exact matching, bases with quality below <code>--min-baseq</code> <strong>or N bases</strong> are <strong>masked out</strong> — they cannot vote for either allele. Three cases based on reconstructed sequence length:</p>
+<div class="admonition info">
+<p class="admonition-title">N-Base Detection in Reconstructed Haplotype</p>
+<p>During Phase 1 reconstruction, if any base in the reconstructed sequence at a discriminating position is N, it is masked alongside low-BQ bases. If <strong>any</strong> N base is detected in the variant region, <code>has_n_base=true</code> is set, causing the engine to increment <code>n_count</code> (NAD in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>). N bases are treated identically to BQ=0 in the masked comparison — they cannot contribute evidence for either allele.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Case</th>
+<th style="text-align: left;">Condition</th>
+<th style="text-align: left;">Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>A</strong></td>
+<td style="text-align: left;"><code>recon == alt == ref</code> length</td>
+<td style="text-align: left;">Dual compare + ambiguity detection</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>B</strong></td>
+<td style="text-align: left;"><code>recon == alt</code> length only</td>
+<td style="text-align: left;">ALT-only masked compare</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>C</strong></td>
+<td style="text-align: left;"><code>recon == ref</code> length only</td>
+<td style="text-align: left;">REF-only masked compare</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition important">
+<p class="admonition-title">Ambiguity Detection (Case A)</p>
+<p>When reliable bases match <strong>both</strong> REF and ALT (possible when they differ only at masked positions), the read is discarded rather than guessed. This prevents false calls at positions where low-quality bases happen to match one allele.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Large-REF Guard</p>
+<p>For variants with REF &gt;50bp, if the reconstruction is &lt;10% of the REF length (e.g., 1bp recon for a 1024bp deletion), Phase 2 is skipped entirely. A tiny reconstruction would trivially match a short ALT allele, causing overcounting. Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> handles these correctly.</p>
+</div>
+<h3 id="phase-25-edit-distance">Phase 2.5: Edit Distance<a class="headerlink" href="#phase-25-edit-distance" title="Permanent link">¶</a></h3>
+<p>When Phase 2's strict length comparison fails (Case A/B/C don't match), gbcms measures the <strong>Levenshtein edit distance</strong> between the reconstruction and each allele. This catches cases where the reconstruction is off by 1-2 bases due to an incomplete variant definition:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Value</th>
+<th style="text-align: left;">Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Margin</td>
+<td style="text-align: left;">&gt;1 edit</td>
+<td style="text-align: left;">Prevents noise on very short strings</td>
+</tr>
+<tr>
+<td style="text-align: left;">Min recon length</td>
+<td style="text-align: left;">2 bases</td>
+<td style="text-align: left;">Single-base reconstructions are too short for reliable edit distance</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Phase 2.5 is Supplementary</p>
+<p>Phase 2.5 helps edge cases with longer reconstructions. For variants like EPHA7 where the strict reconstruction is only 1bp (<code>"C"</code>), the <code>recon_len &gt;= 2</code> guard skips Phase 2.5 entirely — the fix comes from Phase 3's local fallback instead.</p>
+</div>
+<h3 id="phase-3-alignment-fallback">Phase 3: Alignment Fallback<a class="headerlink" href="#phase-3-alignment-fallback" title="Permanent link">¶</a></h3>
+<p>When Phase 2 and Phase 2.5 both fail, the engine expands to the full <code>ref_context</code> window and performs <strong>dual-haplotype alignment</strong> against both REF and ALT haplotypes.</p>
+<p><strong>Default backend: <code>pairhmm</code> (two-stage <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> + <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>)</strong></p>
+<ol>
+<li><strong>Pangenomic haplotype matrix</strong> — build <code>REF_hap</code> and <code>ALT_hap</code> extended with flanking context</li>
+<li><strong><abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> fast-path triage</strong> (<code>wfa2lib-rs</code>) — edit-distance alignment resolves ~70-80% of reads instantly at O(s²) cost; if the edit-distance gap between REF and ALT is unambiguous, the read is classified immediately</li>
+<li><strong>Marginalized <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></strong> (escalated only when <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> is ambiguous) — integrates per-base quality probabilities into alignment scoring, producing a Log-Likelihood Ratio (<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>) confidence score; default threshold 2.3 ≈ ln(10)</li>
+</ol>
+<p><strong>Alternative backend: <code>sw</code></strong></p>
+<p>Runs Smith-Waterman directly on every Phase 3 read (no <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> pre-filter):</p>
+<ol>
+<li><strong>Build haplotypes</strong>: <code>REF_hap = left_ctx + REF + right_ctx</code>, <code>ALT_hap = left_ctx + ALT + right_ctx</code></li>
+<li><strong>Mask</strong>: Replace low-quality bases with <code>N</code> (scores 0 against any base)</li>
+<li><strong>Align</strong>: Semiglobal alignment — read (query) is fully consumed, haplotype (text) has free overhangs</li>
+<li><strong>Score</strong>: ALT wins if <code>alt_score ≥ ref_score + 2</code>; REF wins if <code>ref_score ≥ alt_score + 2</code></li>
+<li><strong>Dual-trigger check</strong>: For indel/complex variants, if the semiglobal result is low-confidence, retry with local alignment</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;"><code>pairhmm</code></th>
+<th style="text-align: left;"><code>sw</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Fast-path</td>
+<td style="text-align: left;"><abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> edit-distance (~70-80% resolved)</td>
+<td style="text-align: left;">None (every read goes to full alignment)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Confidence score</td>
+<td style="text-align: left;"><abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> (quality-weighted)</td>
+<td style="text-align: left;">Score margin ≥ 2</td>
+</tr>
+<tr>
+<td style="text-align: left;">Tunable gap probs</td>
+<td style="text-align: left;">Yes (<code>--gap-open-prob</code> etc.)</td>
+<td style="text-align: left;">Fixed affine: open −5, extend −1</td>
+</tr>
+<tr>
+<td style="text-align: left;">Default threshold</td>
+<td style="text-align: left;"><code>--llr-threshold 2.3</code></td>
+<td style="text-align: left;">Margin ≥ 2</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">When to use <code>sw</code></p>
+<p>Use <code>--alignment-backend sw</code> only if you need exact reproducibility with gbcms &lt;3.0.0. The <code>pairhmm</code> default is faster (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> pre-filter) and more accurate in low-quality or repeat-dense regions (quality-weighted <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> scoring).</p>
+</div>
+<h4 id="dual-trigger-local-fallback">Dual-Trigger Local Fallback<a class="headerlink" href="#dual-trigger-local-fallback" title="Permanent link">¶</a></h4>
+<p>For <strong>complex variants</strong> (both alleles &gt; 1bp with different lengths), semiglobal alignment can produce confident but incorrect calls when the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> definition is incomplete (e.g., a complex variant missing an adjacent SNV). The ALT haplotype then has a "frameshifted flank" — right-context bases that don't match the biological read. Semiglobal forces gap penalties through this invalid flank.</p>
+<blockquote>
+<p>[!NOTE]
+The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>TCC→CT</code>, <code>ATGA→CATG</code>), not to pure insertions or deletions. Pure indels are well-handled by semiglobal alignment, and applying local fallback would risk false positives in homopolymer regions.</p>
+</blockquote>
+<p>Two conditions detect low-confidence semiglobal results:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Trigger</th>
+<th style="text-align: left;">Condition</th>
+<th style="text-align: left;">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Borderline</strong></td>
+<td style="text-align: left;"><code>abs(alt_score - ref_score) ≤ margin + 1</code></td>
+<td style="text-align: left;">Score difference barely decisive</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Poor quality</strong></td>
+<td style="text-align: left;"><code>max(scores) &lt; read_len / 2</code></td>
+<td style="text-align: left;">Both haplotypes heavily penalized</td>
+</tr>
+</tbody>
+</table>
+<p>When <strong>either</strong> trigger fires, the engine retries with <strong>local alignment</strong> (<code>Aligner::local()</code>), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side.</p>
+<div class="admonition tip">
+<p class="admonition-title">Performance: Aligner Reuse</p>
+<p><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> aligners are created <strong>once per variant</strong> in <code>count_single_variant()</code> and reused for all reads. The <code>bio::alignment::pairwise::Aligner</code> reuses internal <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> buffers, avoiding repeated heap allocation.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Raw Read Window Extraction</p>
+<p>Phase 3 uses <code>extract_raw_read_window()</code> instead of <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-projected extraction. For complex variants (e.g., <code>TCC→CT</code> represented as <code>DEL+INS</code> in <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>), <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> projection produces a hybrid sequence matching neither haplotype. Raw extraction returns the contiguous read bases that <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> can correctly classify.</p>
+</div>
+<h4 id="ambiguous-tie-unbiased-vaf-preservation">Ambiguous Tie — Unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> Preservation<a class="headerlink" href="#ambiguous-tie-unbiased-vaf-preservation" title="Permanent link">¶</a></h4>
+<p>For small Complex and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> variants, biological reads heavily affected by surrounding genetic polymorphism can result in 50% partial matches against the Alternate array. Mathematically, this scores an exact numerical <strong>tie</strong> between the <code>REF</code> and <code>ALT</code> haplotypes (<code>alt_score = 11, ref_score = 11</code>). </p>
+<p>These ambiguous reads are routed to <strong>neither</strong> (<code>is_ref = false, is_alt = false</code>). They still contribute to physical Total Depth (<code>DP</code>) via the anchor overlap gate, but do <strong>not</strong> inflate <code>RD</code> or <code>AD</code>. This preserves an unbiased <code>VAF = AD / (RD + AD)</code> — critical for low-<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> detection where even small <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> inflation can push a variant below the clinical Limit of Detection.</p>
+<hr>
+<h2 id="multi-allelic-behavior">Multi-Allelic Behavior<a class="headerlink" href="#multi-allelic-behavior" title="Permanent link">¶</a></h2>
+<p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
+<h3 id="phase-1-annotation">Phase 1: Annotation<a class="headerlink" href="#phase-1-annotation" title="Permanent link">¶</a></h3>
+<p>During normalization, <code>assign_multi_allelic_groups()</code> identifies overlapping variants using a <strong>sweep-line algorithm</strong> over sorted <code>(chrom, pos)</code> coordinates. Variants whose REF spans intersect receive a shared <code>multi_allelic_group</code> ID, and their <code>gbcms_status</code> is appended with <code>;MULTI_ALLELIC</code> (e.g., <code>PASS;MULTI_ALLELIC</code>).</p>
+<h3 id="phase-2-sibling-alt-exclusion">Phase 2: Sibling ALT Exclusion<a class="headerlink" href="#phase-2-sibling-alt-exclusion" title="Permanent link">¶</a></h3>
+<p>During counting, reads classified as <strong>REF</strong> for a variant are additionally checked against all <strong>sibling variants</strong> in the same group. For each sibling, the full <code>check_allele_with_qual()</code> pipeline (including <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> reconstruction and <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment) determines if the read actually carries the sibling's ALT allele. If so, the read is <strong>excluded from REF</strong> for the current variant.</p>
+<div class="admonition important">
+<p class="admonition-title">This prevents systematic REF inflation at multi-allelic loci, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> estimation.</p>
+</div>
+<hr>
+<h2 id="dynamic-sw-gap-penalties">Dynamic <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> Gap Penalties<a class="headerlink" href="#dynamic-sw-gap-penalties" title="Permanent link">¶</a></h2>
+<p>Phase 3's Smith-Waterman aligners use <strong>adaptive affine gap penalties</strong> tuned by the local repeat context:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Context</th>
+<th style="text-align: left;"><code>gap_extend</code></th>
+<th style="text-align: left;">Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Stable DNA (<code>repeat_span &lt; 10bp</code>)</td>
+<td style="text-align: left;">-1</td>
+<td style="text-align: left;">Standard penalty — prevents spurious gap extension</td>
+</tr>
+<tr>
+<td style="text-align: left;">Tandem repeat (<code>repeat_span ≥ 10bp</code>)</td>
+<td style="text-align: left;">0 (free)</td>
+<td style="text-align: left;">Absorbs polymerase slippage noise — prevents undercounting in <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr> regions</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>repeat_span</code> is computed during normalization using <code>find_tandem_repeat()</code> and stored on the <code>Variant</code> struct. <code>gap_open</code> remains fixed at -5 in all cases.</p>
+<div class="admonition tip">
+<p class="admonition-title"><abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-High Tumors</p>
+<p>In microsatellite-unstable tumors, insertions/deletions within long homopolymer or dinucleotide repeats are common. The free gap extension ensures these slippage-like variants get correctly classified rather than artificially rejected by high gap penalties.</p>
+</div>
+<hr>
+<h2 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">¶</a></h2>
+<ol>
+<li>
+<p><strong>Windowed scan range</strong> — Indels shifted beyond the context padding from their expected position won't be detected by the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-based check. Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> can catch some of these via <code>ref_context</code>, but only if the read shows evidence (indels/clips) near the variant. <a href="../variant-normalization/#adaptive-context-padding">Adaptive context padding</a> (enabled by default) utilizes a multi-anchor footprint sweep to dramatically widen the padded detection bounds natively for INDEL clusters.</p>
+</li>
+<li>
+<p><strong>Score margin ≥ 2</strong> — The <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> margin is fixed at 2 points to prevent ambiguous calls. Reads failing to achieve definitive spacing are routed to <strong>neither</strong> — they contribute to <code>DP</code> but not to <code>RD</code> or <code>AD</code>, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>.</p>
+</li>
+<li>
+<p><strong>Soft-clip recovery</strong> — Phase 1 includes soft-clipped bases that overlap the variant window, but only when <code>ref_pos</code> is within the variant region. Soft clips at the edge of reads far from the variant are not considered.</p>
+</li>
+<li>
+<p><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> strict matching</strong> — <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> strict matching is all-or-nothing, but inconclusive reads fall back to the complex variant classification chain (Phase 2 → 2.5 → 3). The fallback rescues reads with low-quality bases or partial matches that strict matching would reject.</p>
+</li>
+<li>
+<p><strong>Incomplete variant definitions</strong> — When the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> represents a complex event incompletely (e.g., <code>TCC→CT</code> omitting an adjacent SNV), reads may carry a different <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> signature than expected. The dual-trigger local fallback in Phase 3 mitigates this by soft-clipping "frameshifted flanks" caused by the definition mismatch.</p>
+</li>
+</ol>
+<hr>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="../variant-normalization/">Variant Normalization</a> — How variants are prepared before classification</li>
+<li><a href="../read-filters/">Read Filters</a> — Which reads reach the allele checker</li>
+<li><a href="../counting-metrics/">Counting &amp; Metrics</a> — How classifications become counts</li>
+<li><a href="../glossary/">Glossary</a> — Term definitions</li>
+</ul>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div>
+<aside class="md-source-file">
+<span class="md-source-file__fact">
+<span class="md-icon" title="Last update">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 10, 2026 20:19:24 UTC"><span class="timeago" datetime="2026-05-10T20:19:24+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 10, 2026 20:19:24 UTC">2026-05-10</span>
+</span>
+<span class="md-source-file__fact">
+<span class="md-icon" title="Created">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="February 18, 2026 21:59:37 UTC"><span class="timeago" datetime="2026-02-18T21:59:37+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="February 18, 2026 21:59:37 UTC">2026-02-18</span>
+</span>
+</aside>
+</article>
+</div>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+<div class="md-copyright__highlight">
+      Developed by <a href="https://github.com/rhshah">Ronak H Shah</a> @ 
+<a href="https://www.mskcc.org">MSKCC</a> | 
+Built with <a href="https://antigravity.google/">Antigravity</a> | 
+<a href="https://github.com/msk-access/gbcms/blob/main/LICENSE">AGPL-3.0</a>
+</div>
+</div>
+<div class="md-social">
+<a class="md-social__link" href="https://github.com/msk-access/gbcms" rel="noopener" target="_blank" title="github.com">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+<script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script src="../../js/print-site.js"></script>
+<script src="../../js/timeago.min.js"></script>
+<script src="../../js/timeago_mkdocs_material.js"></script>
+<script src="../../javascripts/mathjax.js"></script>
+<script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script src="../../assets/javascripts/panzoom.min.js"></script>
+<script src="../../assets/javascripts/zoompan.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@11.4.0/dist/mermaid.esm.min.mjs";
+window.mermaidConfig = {default: {
+    startOnLoad: false
+}};</script>
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
