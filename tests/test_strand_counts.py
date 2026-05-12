@@ -115,12 +115,14 @@ def test_vcf_output(tmp_path, mock_variant, mock_counts):
     header_lines = [line for line in lines if line.startswith("##")]
     format_lines = [line for line in header_lines if line.startswith("##FORMAT")]
 
-    # Verify Number=2 for count fields
-    assert any("ID=DP,Number=2" in line for line in format_lines)
-    assert any("ID=RD,Number=2" in line for line in format_lines)
-    assert any("ID=AD,Number=2" in line for line in format_lines)
-    assert any("ID=RDF,Number=2" in line for line in format_lines)
-    assert any("ID=ADF,Number=2" in line for line in format_lines)
+    # Verify VCF 4.2 spec-compliant FORMAT headers (v5.1)
+    assert any("ID=DP,Number=1" in line for line in format_lines)
+    assert any("ID=AD,Number=R" in line for line in format_lines)
+    assert any("ID=ADF,Number=R" in line for line in format_lines)
+    assert any("ID=ADR,Number=R" in line for line in format_lines)
+    assert any("ID=FAD,Number=R" in line for line in format_lines)
+    assert any("ID=FADF,Number=R" in line for line in format_lines)
+    assert any("ID=FADR,Number=R" in line for line in format_lines)
 
     # Verify Number=1 for VAF/FAF
     assert any("ID=VAF,Number=1" in line for line in format_lines)
@@ -139,12 +141,14 @@ def test_vcf_output(tmp_path, mock_variant, mock_counts):
 
     data_dict = dict(zip(format_keys, sample_values, strict=True))
 
-    # Verify values
-    assert data_dict["DP"] == "15,5"  # ref_total, alt_total
-    assert data_dict["RD"] == "10,5"  # ref_fwd, ref_rev
-    assert data_dict["AD"] == "2,3"  # alt_fwd, alt_rev
-    assert data_dict["RDF"] == "4,3"  # ref_frag_fwd, ref_frag_rev
-    assert data_dict["ADF"] == "1,2"  # alt_frag_fwd, alt_frag_rev
+    # Verify values (v5.1 spec-compliant layout)
+    assert data_dict["DP"] == "20"  # single int: total depth
+    assert data_dict["AD"] == "15,5"  # Number=R: ref_total,alt_total
+    assert data_dict["ADF"] == "10,2"  # fwd strand: ref_fwd,alt_fwd
+    assert data_dict["ADR"] == "5,3"  # rev strand: ref_rev,alt_rev
+    assert data_dict["FAD"] == "7,3"  # fragment: ref_frag,alt_frag
+    assert data_dict["FADF"] == "4,1"  # frag fwd: ref_frag_fwd,alt_frag_fwd
+    assert data_dict["FADR"] == "3,2"  # frag rev: ref_frag_rev,alt_frag_rev
 
     # Verify VAF calculations
     # VAF = AD / (RD + AD) = 5 / 20 = 0.25

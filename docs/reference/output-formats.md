@@ -75,24 +75,26 @@ written once. RNA-specific meta-lines are only included when running
     ##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">
     ##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">
     ##INFO=<ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail">
+    ##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)">
+    ##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth">
+    ##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)">
     ##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">
     ##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">
     ##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">
     ##INFO=<ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio">
-    ##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at >=1 discriminating position (any_alt = ad + partial_alt)">
-    ##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions">
-    ##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)">
     ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
-    ##FORMAT=<ID=AD,Number=2,Type=Integer,Description="Allelic depths for the ref and alt alleles (fwd,rev)">
-    ##FORMAT=<ID=DP,Number=2,Type=Integer,Description="Approximate read depth (ref_total,alt_total)">
-    ##FORMAT=<ID=RD,Number=2,Type=Integer,Description="Reference read depth (fwd,rev)">
-    ##FORMAT=<ID=RDF,Number=2,Type=Integer,Description="Ref Fragment Count (fwd,rev)">
-    ##FORMAT=<ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)">
-    ##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)">
-    ##FORMAT=<ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)">
-    ##FORMAT=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (reads with any ALT evidence)">
-    ##FORMAT=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth (partial ALT only)">
-    ##FORMAT=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth (reads with N at discriminating position)">
+    ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Total read depth">
+    ##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)">
+    ##FORMAT=<ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)">
+    ##FORMAT=<ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)">
+    ##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)">
+    ##FORMAT=<ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)">
+    ##FORMAT=<ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand">
+    ##FORMAT=<ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand">
+    ##FORMAT=<ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)">
+    ##FORMAT=<ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)">
+    ##FORMAT=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth">
+    ##FORMAT=<ID=NAD,Number=1,Type=Integer,Description="N-base depth">
     #CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  <sample_name>
     ```
 
@@ -105,6 +107,9 @@ written once. RNA-specific meta-lines are only included when running
     ##INFO=<ID=GS,...>
     ##INFO=<ID=GD,...>
     ##INFO=<ID=GR,...>
+    ##INFO=<ID=AAD,...>
+    ##INFO=<ID=PAD,...>
+    ##INFO=<ID=NAD,...>
     ##INFO=<ID=SB_PVAL,...>
     ##INFO=<ID=SB_OR,...>
     ##INFO=<ID=FSB_PVAL,...>
@@ -115,13 +120,18 @@ written once. RNA-specific meta-lines are only included when running
     ##INFO=<ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site">
     ##INFO=<ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)">
     ##FORMAT=<ID=GT,...>
-    ##FORMAT=<ID=AD,...>
     ##FORMAT=<ID=DP,...>
-    ##FORMAT=<ID=RD,...>
-    ##FORMAT=<ID=RDF,...>
+    ##FORMAT=<ID=AD,...>
     ##FORMAT=<ID=ADF,...>
+    ##FORMAT=<ID=ADR,...>
     ##FORMAT=<ID=VAF,...>
+    ##FORMAT=<ID=FAD,...>
+    ##FORMAT=<ID=FADF,...>
+    ##FORMAT=<ID=FADR,...>
     ##FORMAT=<ID=FAF,...>
+    ##FORMAT=<ID=AAD,...>
+    ##FORMAT=<ID=PAD,...>
+    ##FORMAT=<ID=NAD,...>
     ##FORMAT=<ID=SEN,Number=1,Type=Integer,Description="Sense strand depth">
     ##FORMAT=<ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth">
     ##FORMAT=<ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count">
@@ -157,13 +167,13 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `GS` | String | gbcms normalization/counting status. Pipe-separated multi-value in VCF (e.g., `PASS\|WARN_REF_CORRECTED`). Semicolons in MAF. |
     | `GD` | String | Post-counting diagnostic flags. Pipe-separated in VCF (e.g., `ZERO_ALT\|PARTIAL_DOMINANT`). Semicolons in MAF. `.` if none. |
     | `GR` | String | Rescue audit trail. Pipe-separated key=value pairs. `.` if no rescue attempted. |
+    | `AAD` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `AAD = AD + PAD` |
+    | `PAD` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Populated for all variant types including INDELs (via Phase 3 structural evidence propagation). |
+    | `NAD` | Integer | N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric) |
     | `SB_PVAL` | Float | Fisher's exact test p-value for read-level strand bias |
     | `SB_OR` | Float | Fisher's exact test odds ratio for read-level strand bias |
     | `FSB_PVAL` | Float | Fragment-level strand bias p-value |
     | `FSB_OR` | Float | Fragment-level strand bias odds ratio |
-    | `AAD` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `AAD = AD + PAD` |
-    | `PAD` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions — now populated for all variant types including INDELs (via structural evidence propagation) |
-    | `NAD` | Integer | N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric) |
 
 === "RNA mode only"
 
@@ -223,17 +233,19 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
 
 === "DNA mode"
 
-    `FORMAT` column: `GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD`
+    `FORMAT` column: `GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD`
 
     | Tag | Values | Description |
     |:----|:-------|:------------|
     | `GT` | `0/0` or `0/1` | Diploid genotype — `0/1` when any ALT reads present |
-    | `DP` | `rd,ad` | Total read depth split as ref_total,alt_total |
-    | `RD` | `fwd,rev` | REF read depth by strand |
-    | `AD` | `fwd,rev` | ALT read depth by strand |
-    | `RDF` | `fwd,rev` | REF fragment count by strand |
-    | `ADF` | `fwd,rev` | ALT fragment count by strand |
+    | `DP` | integer | Total read depth (single integer, VCF spec) |
+    | `AD` | `ref,alt` | Allelic depths — ref_total,alt_total (Number=R) |
+    | `ADF` | `ref_fwd,alt_fwd` | Forward strand per allele (bcftools convention) |
+    | `ADR` | `ref_rev,alt_rev` | Reverse strand per allele |
     | `VAF` | float | Variant allele fraction at read level |
+    | `FAD` | `ref_frag,alt_frag` | Fragment allelic depths (Number=R) |
+    | `FADF` | `ref_frag_fwd,alt_frag_fwd` | Fragment forward strand per allele |
+    | `FADR` | `ref_frag_rev,alt_frag_rev` | Fragment reverse strand per allele |
     | `FAF` | float | Variant allele fraction at fragment level |
     | `AAD` | integer | Any ALT Depth (reads with any ALT evidence) |
     | `PAD` | integer | Partial ALT Depth (partial ALT match only) |
@@ -241,7 +253,7 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
 
 === "RNA mode"
 
-    `FORMAT` column: `GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL`
+    `FORMAT` column: `GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL`
 
     All DNA fields above (including `AAD`, `PAD`, `NAD`), plus:
 
@@ -258,10 +270,10 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
 
 ```vcf
 #CHROM  POS     ID      REF  ALT  QUAL  FILTER  INFO                                              FORMAT           sample1
-chr7    55174772  rs121913527  T    A    .     .     DP=312;GS=PASS;GD=.;GR=.;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000;AAD=22;PAD=0;NAD=3  GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD  0/1:290,22:145,145:10,12:72,73:5,6:0.0705:0.0735:22:0:3 # (1)!
+chr7    55174772  rs121913527  T    A    .     .     DP=312;GS=PASS;GD=.;AAD=22;PAD=0;NAD=3;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000  GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD  0/1:312:290,22:145,10:145,12:0.0705:145,5:72,5:73,6:0.0735:22:0:3 # (1)!
 ```
 
-1. `DP=312` total reads; `GS=PASS` normalization status; `GD=.` no diagnostic flags; `GR=.` no rescue; `SB_PVAL=0.24` no significant strand bias; `AAD=22` reads with any ALT evidence; `PAD=0` no partial matches (SNP — always 0); `NAD=3` reads with N at variant position (duplex masking). FORMAT `DP=290,22` → 290 REF + 22 ALT reads. `VAF=0.0705` (read level), `FAF=0.0735` (fragment level).
+1. `DP=312` total reads; `GS=PASS` normalization status; `GD=.` no diagnostic flags; `AAD=22` reads with any ALT evidence; `PAD=0` no partial matches (SNP — always 0); `NAD=3` reads with N at variant position. FORMAT `DP=312` total depth (single int). `AD=290,22` → 290 REF + 22 ALT reads. `ADF=145,10` → forward strand. `ADR=145,12` → reverse strand. `VAF=0.0705` (read level). `FAD=145,5` → fragment counts. `FAF=0.0735` (fragment level).
 
 ---
 
@@ -341,27 +353,27 @@ These columns are **always** appended regardless of input format.
     | `gbcms_rescue` | String | **Conditional** — only present when `--rescue-mnp` is enabled. Structured audit trail for MNP decomposition rescue. Format: `method=decomposed;original_alt=0;positions=chr:pos(R>A):count,...`. Empty when no rescue was attempted. Failed rescues include `outcome=no_signal`. |
     | `ref_count` | Integer | REF read depth |
     | `alt_count` | Integer | ALT read depth |
+    | `any_alt` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `any_alt = alt_count + partial_alt` |
+    | `partial_alt` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Populated for all variant types including INDELs (via Phase 3 structural evidence propagation). |
+    | `n_count` | Integer | N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric) |
     | `total_count` | Integer | Total read depth (DP) |
     | `vaf` | Float | Read-level variant allele fraction |
-    | `ref_count_fragment` | Integer | REF fragment count |
-    | `alt_count_fragment` | Integer | ALT fragment count |
-    | `total_count_fragment` | Integer | Total fragment count |
-    | `vaf_fragment` | Float | Fragment-level variant allele fraction |
-    | `strand_bias_p_value` | Float | Fisher's exact test p-value (read-level) |
-    | `strand_bias_odds_ratio` | Float | Fisher's exact test odds ratio (read-level) |
-    | `fragment_strand_bias_p_value` | Float | Fragment-level strand bias p-value |
-    | `fragment_strand_bias_odds_ratio` | Float | Fragment-level strand bias odds ratio |
     | `ref_count_forward` | Integer | REF reads on forward strand |
     | `ref_count_reverse` | Integer | REF reads on reverse strand |
     | `alt_count_forward` | Integer | ALT reads on forward strand |
     | `alt_count_reverse` | Integer | ALT reads on reverse strand |
+    | `strand_bias_p_value` | Float | Fisher's exact test p-value (read-level) |
+    | `strand_bias_odds_ratio` | Float | Fisher's exact test odds ratio (read-level) |
+    | `ref_count_fragment` | Integer | REF fragment count |
+    | `alt_count_fragment` | Integer | ALT fragment count |
+    | `total_count_fragment` | Integer | Total fragment count |
+    | `vaf_fragment` | Float | Fragment-level variant allele fraction |
     | `ref_count_fragment_forward` | Integer | REF fragments on forward strand |
     | `ref_count_fragment_reverse` | Integer | REF fragments on reverse strand |
     | `alt_count_fragment_forward` | Integer | ALT fragments on forward strand |
     | `alt_count_fragment_reverse` | Integer | ALT fragments on reverse strand |
-    | `any_alt` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `any_alt = alt_count + partial_alt` |
-    | `partial_alt` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Now populated for all variant types including INDELs (via structural evidence propagation). |
-    | `n_count` | Integer | N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric) |
+    | `fragment_strand_bias_p_value` | Float | Fragment-level strand bias p-value |
+    | `fragment_strand_bias_odds_ratio` | Float | Fragment-level strand bias odds ratio |
 
 === "With `--column-prefix t_`"
 

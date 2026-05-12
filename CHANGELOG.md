@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Breaking Changes
+
+- **MAF column order reordered** (v5.1 schema):
+  `any_alt`, `partial_alt`, `n_count` moved from end to immediately after
+  `alt_count` for discoverability. Read strand counts (`ref_count_forward`, etc.)
+  now precede derived strand bias statistics. Read and fragment metric layers
+  fully separated (no interleaving). Downstream MAF parsers using positional
+  indexing must be updated.
+- **VCF FORMAT fields restructured** (VCF 4.2 spec compliance):
+  - `DP` is now a single integer (total depth), was `ref,alt` pair.
+  - `AD` is now `Number=R` with `ref,alt` totals (VCF spec), was `fwd,rev`.
+  - `RD` and `RDF` removed. Replaced by `ADF` (forward strand `ref_fwd,alt_fwd`)
+    and `ADR` (reverse strand `ref_rev,alt_rev`) following bcftools convention.
+  - New `FAD`, `FADF`, `FADR` for fragment-level strand-by-allele counts.
+  - `FAF` renamed from position after `VAF` to after fragment group.
+  - Downstream VCF parsers expecting old `GT:DP:RD:AD:RDF:ADF:VAF:FAF:...` must
+    be updated to `GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:...`.
+- **VCF INFO field order changed**: `AAD`, `PAD`, `NAD` now appear immediately
+  after `GR` (before strand bias fields), matching the diagnostic proximity
+  principle.
+
 ### 🔧 Fixed
 
 - **Wrong-length insertion Phase 3 fallback** (PAX5-class discordance fix):
