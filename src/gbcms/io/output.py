@@ -912,13 +912,13 @@ class VcfWriter(OutputWriter):
         # ADF/ADR = strand-by-allele (bcftools convention),
         # FAD/FADF/FADR = fragment-level equivalents.
         gt = "0/1" if counts.ad > 0 else "0/0"
-        dp = str(counts.dp)                                     # single int (VCF spec)
-        ad = f"{counts.rd},{counts.ad}"                          # Number=R: ref,alt
-        adf = f"{counts.rd_fwd},{counts.ad_fwd}"                 # fwd strand: ref_fwd,alt_fwd
-        adr = f"{counts.rd_rev},{counts.ad_rev}"                 # rev strand: ref_rev,alt_rev
-        fad = f"{counts.rdf},{counts.adf}"                       # fragment: ref_frag,alt_frag
-        fadf = f"{counts.rdf_fwd},{counts.adf_fwd}"              # frag fwd: ref_frag_fwd,alt_frag_fwd
-        fadr = f"{counts.rdf_rev},{counts.adf_rev}"              # frag rev: ref_frag_rev,alt_frag_rev
+        dp = str(counts.dp)  # single int (VCF spec)
+        ad = f"{counts.rd},{counts.ad}"  # Number=R: ref,alt
+        adf = f"{counts.rd_fwd},{counts.ad_fwd}"  # fwd strand: ref_fwd,alt_fwd
+        adr = f"{counts.rd_rev},{counts.ad_rev}"  # rev strand: ref_rev,alt_rev
+        fad = f"{counts.rdf},{counts.adf}"  # fragment: ref_frag,alt_frag
+        fadf = f"{counts.rdf_fwd},{counts.adf_fwd}"  # frag fwd: ref_frag_fwd,alt_frag_fwd
+        fadr = f"{counts.rdf_rev},{counts.adf_rev}"  # frag rev: ref_frag_rev,alt_frag_rev
 
         total_reads = counts.rd + counts.ad
         vaf = counts.ad / total_reads if total_reads > 0 else 0.0
