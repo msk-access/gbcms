@@ -157,11 +157,25 @@ class MafWriter(OutputWriter):
         """
         Build the list of gbcms-generated count column names with the configured prefix.
 
+        Column order (v5.1):
+          1. Status & diagnostic flags
+          2. Core read counts + ALT decomposition (any_alt, partial_alt, n_count)
+          3. Read-level strand counts → derived strand bias
+          4. Core fragment counts
+          5. Fragment-level strand counts → derived fragment strand bias
+          6. Optional: mFSD, RNA, normalization
+
+        Design rationale:
+          - any_alt/partial_alt/n_count immediately after alt_count for discoverability
+          - Strand counts before strand bias (source data before derived metric)
+          - Read and fragment layers fully separated (no interleaving)
+
         Returns:
             Ordered list of gbcms column names.
         """
         p = self.column_prefix
-        # Diagnostic columns (v4.2.0 three-column schema)
+
+        # ── 1. Status & diagnostic flags ──────────────────────────────────────
         cols = [
             "gbcms_status",
             "gbcms_diagnostic",
@@ -169,38 +183,42 @@ class MafWriter(OutputWriter):
         # gbcms_rescue column is only present when --rescue-mnp is enabled (design §5)
         if self.rescue_mnp:
             cols.append("gbcms_rescue")
+
         cols.extend(
             [
-                # Core counts
+                # ── 2. Core read counts + ALT decomposition ──────────────────
                 f"{p}ref_count",
                 f"{p}alt_count",
-                f"{p}total_count",
-                f"{p}vaf",
-                # Fragment counts
-                f"{p}ref_count_fragment",
-                f"{p}alt_count_fragment",
-                f"{p}total_count_fragment",
-                f"{p}vaf_fragment",
-                # Strand bias (unprefixed — always unique)
-                "strand_bias_p_value",
-                "strand_bias_odds_ratio",
-                "fragment_strand_bias_p_value",
-                "fragment_strand_bias_odds_ratio",
-                # Strand counts
-                f"{p}ref_count_forward",
-                f"{p}ref_count_reverse",
-                f"{p}alt_count_forward",
-                f"{p}alt_count_reverse",
-                f"{p}ref_count_fragment_forward",
-                f"{p}ref_count_fragment_reverse",
-                f"{p}alt_count_fragment_forward",
-                f"{p}alt_count_fragment_reverse",
-                # Decomposed ALT counting (diagnostic, always present)
-                # any_alt = ad + partial_alt (see types.rs invariant)
+                # Decomposed ALT counting: any_alt = alt_count + partial_alt
+                # (see types.rs invariant). Placed here for immediate visibility
+                # alongside alt_count — critical for Phase 3 INDEL diagnostics.
                 f"{p}any_alt",
                 f"{p}partial_alt",
                 # N-base diagnostic: reads with N at discriminating position (duplex masking QC)
                 f"{p}n_count",
+                f"{p}total_count",
+                f"{p}vaf",
+                # ── 3. Read-level strand counts → strand bias ─────────────────
+                # Source counts first, then the derived Fisher test statistics.
+                f"{p}ref_count_forward",
+                f"{p}ref_count_reverse",
+                f"{p}alt_count_forward",
+                f"{p}alt_count_reverse",
+                # Strand bias (unprefixed — always unique)
+                "strand_bias_p_value",
+                "strand_bias_odds_ratio",
+                # ── 4. Core fragment counts ───────────────────────────────────
+                f"{p}ref_count_fragment",
+                f"{p}alt_count_fragment",
+                f"{p}total_count_fragment",
+                f"{p}vaf_fragment",
+                # ── 5. Fragment strand counts → fragment strand bias ──────────
+                f"{p}ref_count_fragment_forward",
+                f"{p}ref_count_fragment_reverse",
+                f"{p}alt_count_fragment_forward",
+                f"{p}alt_count_fragment_reverse",
+                "fragment_strand_bias_p_value",
+                "fragment_strand_bias_odds_ratio",
             ]
         )
         if self.mfsd:
@@ -678,15 +696,16 @@ class VcfWriter(OutputWriter):
             headers.append(
                 '##INFO=<ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail">'
             )
+        # INFO field order: DP → status → ALT decomposition → strand bias → mFSD
         headers.extend(
             [
+                '##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at >=1 discriminating position (any_alt = ad + partial_alt)">',
+                '##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions">',
+                '##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)">',
                 '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value">',
                 '##INFO=<ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio">',
                 '##INFO=<ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value">',
                 '##INFO=<ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio">',
-                '##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at >=1 discriminating position (any_alt = ad + partial_alt)">',
-                '##INFO=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions">',
-                '##INFO=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)">',
             ]
         )
         if self.mfsd:
@@ -744,19 +763,25 @@ class VcfWriter(OutputWriter):
                         '##INFO=<ID=ASJDD,Number=1,Type=String,Description="ASJD diagnostic flags (pipe-separated)">',
                     ]
                 )
+        # FORMAT fields: VCF 4.2 spec-compliant layout.
+        # DP = single int (total depth), AD = Number=R (ref,alt totals),
+        # ADF/ADR = strand-by-allele (bcftools convention),
+        # FAD/FADF/FADR = fragment-level equivalents.
         headers.extend(
             [
                 '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
-                '##FORMAT=<ID=AD,Number=2,Type=Integer,Description="Allelic depths for the ref and alt alleles (fwd,rev)">',
-                '##FORMAT=<ID=DP,Number=2,Type=Integer,Description="Approximate read depth (ref_total,alt_total)">',
-                '##FORMAT=<ID=RD,Number=2,Type=Integer,Description="Reference read depth (fwd,rev)">',
-                '##FORMAT=<ID=RDF,Number=2,Type=Integer,Description="Ref Fragment Count (fwd,rev)">',
-                '##FORMAT=<ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)">',
-                '##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)">',
-                '##FORMAT=<ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)">',
-                '##FORMAT=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (reads with any ALT evidence)">',
-                '##FORMAT=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth (partial ALT only)">',
-                '##FORMAT=<ID=NAD,Number=1,Type=Integer,Description="N-base Depth (reads with N at discriminating position)">',
+                '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Total read depth">',
+                '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)">',
+                '##FORMAT=<ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)">',
+                '##FORMAT=<ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)">',
+                '##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)">',
+                '##FORMAT=<ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)">',
+                '##FORMAT=<ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand (ref_frag_fwd,alt_frag_fwd)">',
+                '##FORMAT=<ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand (ref_frag_rev,alt_frag_rev)">',
+                '##FORMAT=<ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)">',
+                '##FORMAT=<ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)">',
+                '##FORMAT=<ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth">',
+                '##FORMAT=<ID=NAD,Number=1,Type=Integer,Description="N-base depth (reads with N at discriminating position)">',
             ]
         )
         if self.mode == "rna":
@@ -803,15 +828,16 @@ class VcfWriter(OutputWriter):
         if self.rescue_mnp:
             gr_vcf = gbcms_rescue.replace(";", "|") if gbcms_rescue else "."
             info_parts.append(f"GR={gr_vcf}")
+        # INFO order: ALT decomposition (near DP), then strand bias
         info_parts.extend(
             [
+                f"AAD={counts.any_alt}",
+                f"PAD={counts.partial_alt}",
+                f"NAD={counts.n_count}",
                 f"SB_PVAL={counts.sb_pval:.4e}",
                 f"SB_OR={counts.sb_or:.4f}",
                 f"FSB_PVAL={counts.fsb_pval:.4e}",
                 f"FSB_OR={counts.fsb_or:.4f}",
-                f"AAD={counts.any_alt}",
-                f"PAD={counts.partial_alt}",
-                f"NAD={counts.n_count}",
             ]
         )
         if self.mfsd:
@@ -881,13 +907,18 @@ class VcfWriter(OutputWriter):
                     info_parts.append(f"ASJDD={counts.asjd_diagnostic.replace(';', '|')}")
         info = ";".join(info_parts)
 
-        # FORMAT fields
+        # FORMAT fields — VCF 4.2 spec-compliant layout (v5.1).
+        # DP = single int (total depth), AD = ref,alt (Number=R),
+        # ADF/ADR = strand-by-allele (bcftools convention),
+        # FAD/FADF/FADR = fragment-level equivalents.
         gt = "0/1" if counts.ad > 0 else "0/0"
-        dp = f"{counts.rd},{counts.ad}"
-        rd = f"{counts.rd_fwd},{counts.rd_rev}"
-        ad = f"{counts.ad_fwd},{counts.ad_rev}"
-        rdf = f"{counts.rdf_fwd},{counts.rdf_rev}"
-        adf = f"{counts.adf_fwd},{counts.adf_rev}"
+        dp = str(counts.dp)  # single int (VCF spec)
+        ad = f"{counts.rd},{counts.ad}"  # Number=R: ref,alt
+        adf = f"{counts.rd_fwd},{counts.ad_fwd}"  # fwd strand: ref_fwd,alt_fwd
+        adr = f"{counts.rd_rev},{counts.ad_rev}"  # rev strand: ref_rev,alt_rev
+        fad = f"{counts.rdf},{counts.adf}"  # fragment: ref_frag,alt_frag
+        fadf = f"{counts.rdf_fwd},{counts.adf_fwd}"  # frag fwd: ref_frag_fwd,alt_frag_fwd
+        fadr = f"{counts.rdf_rev},{counts.adf_rev}"  # frag rev: ref_frag_rev,alt_frag_rev
 
         total_reads = counts.rd + counts.ad
         vaf = counts.ad / total_reads if total_reads > 0 else 0.0
@@ -896,16 +927,21 @@ class VcfWriter(OutputWriter):
         faf = counts.adf / total_frags if total_frags > 0 else 0.0
 
         if self.mode == "rna":
-            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL"
+            format_str = "GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL"
             sample_data = (
-                f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}"
+                f"{gt}:{dp}:{ad}:{adf}:{adr}:{vaf:.4f}"
+                f":{fad}:{fadf}:{fadr}:{faf:.4f}"
                 f":{counts.any_alt}:{counts.partial_alt}:{counts.n_count}"
                 f":{counts.sense_depth}:{counts.antisense_depth}"
                 f":{counts.sense_strand_alt_count}:{counts.splice_spanning_count}"
             )
         else:
-            format_str = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD"
-            sample_data = f"{gt}:{dp}:{rd}:{ad}:{rdf}:{adf}:{vaf:.4f}:{faf:.4f}:{counts.any_alt}:{counts.partial_alt}:{counts.n_count}"
+            format_str = "GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD"
+            sample_data = (
+                f"{gt}:{dp}:{ad}:{adf}:{adr}:{vaf:.4f}"
+                f":{fad}:{fadf}:{fadr}:{faf:.4f}"
+                f":{counts.any_alt}:{counts.partial_alt}:{counts.n_count}"
+            )
 
         row = [
             variant.chrom,

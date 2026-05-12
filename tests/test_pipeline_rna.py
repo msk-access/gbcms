@@ -258,7 +258,7 @@ def test_dna_pipeline_maf_lacks_rna_columns(tmp_path, snp_variant):
 def test_rna_pipeline_vcf_format_field_includes_rna_tags(rna_pipeline, snp_variant, tmp_path):
     """VCF FORMAT column in RNA mode must include SEN:ANT:ASEN:SPL tags.
 
-    Expected FORMAT string: GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL
+    Expected FORMAT string: GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL
     If VcfWriter's mode= test branch is ever broken, the RNA FORMAT tags
     will be missing and the sample data will be truncated.
     """
@@ -279,7 +279,7 @@ def test_rna_pipeline_vcf_format_field_includes_rna_tags(rna_pipeline, snp_varia
     sample_col = cols[9]  # sample column
 
     # Full FORMAT string for RNA mode (includes AAD:PAD:NAD before RNA tags)
-    expected_format = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL"
+    expected_format = "GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL"
     assert (
         format_str == expected_format
     ), f"RNA VCF FORMAT must be '{expected_format}', got: '{format_str}'"
@@ -302,7 +302,7 @@ def test_rna_pipeline_vcf_format_field_includes_rna_tags(rna_pipeline, snp_varia
 def test_dna_pipeline_vcf_format_field_lacks_rna_tags(tmp_path, snp_variant):
     """VCF FORMAT column in DNA mode must NOT include SEN/ANT/ASEN/SPL tags.
 
-    Expected FORMAT string: GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD
+    Expected FORMAT string: GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD
     """
     from gbcms.models.core import GbcmsDnaConfig
 
@@ -331,7 +331,7 @@ def test_dna_pipeline_vcf_format_field_lacks_rna_tags(tmp_path, snp_variant):
     assert data_lines, "No data rows written"
 
     format_str = data_lines[0].split("\t")[8]
-    expected_format = "GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD"
+    expected_format = "GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD"
     assert (
         format_str == expected_format
     ), f"DNA VCF FORMAT must be '{expected_format}', got: '{format_str}'"
