@@ -1062,7 +1062,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     let mut found_ref_coverage = false;
     let mut anchor_read_pos: Option<usize> = None; // read position of anchor base
     let mut best_windowed_match: Option<u64> = None; // distance of best windowed match
-    let mut has_nearby_length_match = false; // length-matching Ins found but seq check failed
+    let mut has_nearby_length_match = false; // nearby Ins needs Phase 3: wrong-seq or wrong-length
 
     for (i, op) in cigar_view.iter().enumerate() {
         match op {
@@ -1133,9 +1133,46 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                                         return ClassifyResult::is_alt(qual, ClassifyPhase::Structural); // ALT — strict match
                                     }
                                 }
+                            } else {
+                                // Wrong-length insertion at anchor: I(n) where n ≠ expected.
+                                // Mirrors check_deletion's strict wrong-length handling
+                                // (lines 1371-1419): route to Phase 3 (SW/PairHMM) for
+                                // haplotype-level arbitration. The read carries an insertion
+                                // at the exact anchor but of a different length — this is
+                                // structural evidence of a third allele (e.g., PAX5 I(1)
+                                // when expecting I(2)).
+                                //
+                                // Unlike deletions, insertions are point events in reference
+                                // space, so reciprocal overlap is not applicable — different
+                                // lengths genuinely indicate different alleles, not alignment
+                                // breakpoint ambiguity. Always fall back to Phase 3.
+                                let found_ins_len = ins_len_usize;
+                                trace!(
+                                    "check_insertion: I({}) at anchor {} but expected I({}), \
+                                     falling back to phase3_classify",
+                                    found_ins_len, anchor_pos, expected_ins_len
+                                );
+                                let mut result = phase3_classify(
+                                    record, variant, siblings, quals, min_baseq,
+                                    alt_aligner, ref_aligner, backend,
+                                );
+                                // Propagate nearby evidence: the read has an insertion at
+                                // the variant anchor (just wrong length), which is structural
+                                // evidence worth tracking even if Phase 3 returns REF.
+                                // Consumed by engine to increment partial_alt, enabling the
+                                // PARTIAL_DOMINANT diagnostic flag.
+                                if !result.is_alt {
+                                    result.has_nearby_evidence = true;
+                                    trace!(
+                                        "check_insertion: Phase 3 did not confirm ALT, but I({}) \
+                                         at anchor exists → has_nearby_evidence=true",
+                                        found_ins_len
+                                    );
+                                }
+                                return result;
                             }
                         }
-                        // Anchor at end but no matching insertion → REF coverage
+                        // Anchor at end but no insertion at all → REF coverage
                         found_ref_coverage = true;
                     } else {
                         // Anchor in middle of match block → read covers anchor without insertion
@@ -1218,6 +1255,28 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                                     );
                                 }
                             }
+                        } else {
+                            // Different-length insertion in window: I(n) where
+                            // n ≠ expected. Flag for Phase 3 fallback so the
+                            // post-walk handler at line ~1298 can route to
+                            // haplotype alignment and set has_nearby_evidence.
+                            //
+                            // Note: has_nearby_length_match is reused here despite
+                            // the name implying "same-length" — it means "needs
+                            // Phase 3 arbitration because an insertion exists nearby".
+                            // Both wrong-sequence and wrong-length cases get the same
+                            // post-walk treatment: Phase 3 + has_nearby_evidence.
+                            //
+                            // This also covers backward boundary insertions
+                            // (anchor_pos == ref_pos): the same insertion is at
+                            // block_end of the previous M block, which the windowed
+                            // scan processes on the prior loop iteration.
+                            has_nearby_length_match = true;
+                            trace!(
+                                "check_insertion: windowed I({}) at pos {} (expected I({})), \
+                                 different-length → flagging for Phase 3 fallback",
+                                ins_len_usize, ins_ref_pos, expected_ins_len
+                            );
                         }
                     }
                 }
@@ -1253,29 +1312,72 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
         return ClassifyResult::is_alt(anchor_qual, ClassifyPhase::CigarRecon); // ALT — windowed match
     }
 
-    // Phase 3 haplotype fallback: when a length-matching insertion exists nearby
-    // but the sequence check failed, the caller and aligner may represent the
-    // same biological event differently (e.g., FLT4 A→GGAT placed at different
-    // positions with different inserted bases). Suppress found_ref_coverage to
-    // let check_complex → Smith-Waterman arbitrate using full haplotype comparison.
+    // Phase 3 haplotype fallback: when a nearby insertion exists but doesn't match
+    // the expected variant — either wrong sequence (same length, S3 failed) or wrong
+    // length (different allele). In both cases, the aligner placed an insertion near
+    // the anchor that warrants haplotype-level arbitration. Route to Phase 3
+    // (Smith-Waterman/PairHMM) for full comparison, and propagate has_nearby_evidence
+    // if Phase 3 doesn't confirm ALT, so the engine counts it as partial_alt.
     if has_nearby_length_match && found_ref_coverage {
         trace!(
-            "check_insertion: nearby I({}) with seq mismatch at pos {}, \
-             falling back to check_complex for Phase 3 SW",
-            expected_ins_len, anchor_pos
+            "check_insertion: nearby insertion evidence at pos {} \
+             (wrong-seq or wrong-length), falling back to phase3_classify",
+            anchor_pos
         );
         let mut result = phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         // Propagate nearby evidence: Phase 3 may return is_ref or neither,
-        // but the CIGAR proved a length-matching insertion exists. Mark it
-        // so the engine can count this read as partial_alt evidence.
+        // but the CIGAR proved an insertion exists nearby. Mark it so the
+        // engine can count this read as partial_alt evidence, enabling the
+        // PARTIAL_DOMINANT diagnostic flag.
         if !result.is_alt {
             result.has_nearby_evidence = true;
             trace!(
-                "check_insertion: Phase 3 did not confirm ALT, but nearby I({}) exists → has_nearby_evidence=true",
-                expected_ins_len
+                "check_insertion: Phase 3 did not confirm ALT, but nearby insertion \
+                 exists at pos {} → has_nearby_evidence=true",
+                anchor_pos
             );
         }
         return result;
+    }
+
+    // P0-3: Haplotype fallback — when strict/windowed CIGAR matching found no
+    // insertion match and the read doesn't cover the anchor, try Phase 3
+    // (check_complex → Smith-Waterman/PairHMM) for haplotype-level comparison.
+    // Only fall back when NOT found_ref_coverage to avoid false positives on
+    // reads that genuinely show REF at this position.
+    //
+    // Mirrors check_deletion's !found_ref_coverage path (lines 1666-1692).
+    //
+    // CRITICAL: Only attempt Phase 3 if the read actually overlaps the anchor
+    // position (variant.pos). Reads that don't span the anchor have no
+    // information about the variant and must not be counted.
+    if !found_ref_coverage && best_windowed_match.is_none() {
+        let read_ref_end = {
+            let mut rend = record.pos();
+            for op in record.cigar().iter() {
+                match op {
+                    Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len)
+                    | Cigar::Del(len) | Cigar::RefSkip(len) => {
+                        rend += *len as i64;
+                    }
+                    _ => {}
+                }
+            }
+            rend
+        };
+
+        if record.pos() <= anchor_pos && read_ref_end > anchor_pos {
+            trace!(
+                "check_insertion: no CIGAR evidence at pos {}, read spans anchor \
+                 ({}..{}), falling back to phase3_classify",
+                anchor_pos, record.pos(), read_ref_end
+            );
+            return phase3_classify(
+                record, variant, siblings, quals, min_baseq,
+                alt_aligner, ref_aligner, backend,
+            );
+        }
+        // Otherwise: read doesn't overlap the anchor → no variant info
     }
 
     if found_ref_coverage {
@@ -1286,7 +1388,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
         //
         // Note: reads with soft-clip AT the anchor have
         // found_ref_coverage=false and are correctly routed to Phase 3
-        // via the !found_ref_coverage path above.
+        // via the !found_ref_coverage haplotype fallback above.
         return ClassifyResult::is_ref(anchor_qual, ClassifyPhase::Structural);
     }
     ClassifyResult::neither(ClassifyPhase::Structural) // Read does not cover the variant region
@@ -1458,6 +1560,26 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                                 false
                             }
                         } else {
+                            // Small wrong-length deletion in window (< 50bp,
+                            // reciprocal overlap n/a). Flag for Phase 3 fallback
+                            // for dels ≥ 5bp — short (1-4bp) wrong-length
+                            // deletions are almost certainly spurious noise in
+                            // homopolymer/STR regions; CIGAR is definitive for
+                            // those. Mirrors insertion windowed fix (Step 1.3).
+                            if del_len_usize >= 5 {
+                                has_nearby_length_match = true;
+                                trace!(
+                                    "check_deletion: windowed D({}) at pos {} (expected D({})), \
+                                     different-length (≥5bp) → flagging for Phase 3 fallback",
+                                    del_len_usize, del_ref_pos, expected_del_len
+                                );
+                            } else {
+                                trace!(
+                                    "check_deletion: windowed D({}) at pos {} (expected D({})), \
+                                     different-length (<5bp) → CIGAR definitive, not flagging",
+                                    del_len_usize, del_ref_pos, expected_del_len
+                                );
+                            }
                             false
                         };
 

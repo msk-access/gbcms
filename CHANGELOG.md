@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### 🔧 Fixed
+
+- **Wrong-length insertion Phase 3 fallback** (PAX5-class discordance fix):
+  `check_insertion` now routes wrong-length insertions at the strict anchor
+  position to Phase 3 (SW/PairHMM) for haplotype arbitration, mirroring
+  `check_deletion`'s existing behavior. Previously, a read with `I(1)` at the
+  anchor for an expected `I(2)` was silently classified as REF with no
+  diagnostic signal. Now classified as `partial_alt` via `has_nearby_evidence`,
+  triggering the `PARTIAL_DOMINANT` diagnostic flag.
+- **Wrong-length insertion windowed scan tracking**: Wrong-length insertions
+  within the ±window range now set `has_nearby_length_match`, routing to
+  Phase 3 fallback. Previously silently ignored.
+- **Insertion `!found_ref_coverage` haplotype fallback**: Added Phase 3
+  fallback for insertion reads where the CIGAR walk found no evidence but
+  the read spans the anchor (e.g., unusual CIGAR geometry, soft-clip at
+  anchor). Mirrors `check_deletion`'s existing `!found_ref_coverage` path.
+- **Wrong-length deletion windowed scan tracking**: Small wrong-length
+  deletions (≥5bp) in the windowed scan now set `has_nearby_length_match`
+  for Phase 3 fallback. Previously only large deletions (≥50bp) with
+  reciprocal overlap were tracked; small wrong-length deletions were
+  silently dropped.
+
 ## [5.0.0] - 2026-05-11
 
 ### ⚠️ Breaking Changes
