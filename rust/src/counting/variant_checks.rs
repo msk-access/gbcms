@@ -1135,12 +1135,11 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                                 }
                             } else {
                                 // Wrong-length insertion at anchor: I(n) where n ≠ expected.
-                                // Mirrors check_deletion's strict wrong-length handling
-                                // (lines 1371-1419): route to Phase 3 (SW/PairHMM) for
-                                // haplotype-level arbitration. The read carries an insertion
-                                // at the exact anchor but of a different length — this is
-                                // structural evidence of a third allele (e.g., PAX5 I(1)
-                                // when expecting I(2)).
+                                // Mirrors check_deletion's strict wrong-length handling:
+                                // route to Phase 3 (SW/PairHMM) for haplotype-level
+                                // arbitration. The read has an insertion at the exact
+                                // anchor but of a different length — structural evidence
+                                // of a third allele (e.g., PAX5 I(1) when expecting I(2)).
                                 //
                                 // Unlike deletions, insertions are point events in reference
                                 // space, so reciprocal overlap is not applicable — different
@@ -1258,7 +1257,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         } else {
                             // Different-length insertion in window: I(n) where
                             // n ≠ expected. Flag for Phase 3 fallback so the
-                            // post-walk handler at line ~1298 can route to
+                            // post-walk handler can route to
                             // haplotype alignment and set has_nearby_evidence.
                             //
                             // Note: has_nearby_length_match is reused here despite
@@ -1346,7 +1345,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     // Only fall back when NOT found_ref_coverage to avoid false positives on
     // reads that genuinely show REF at this position.
     //
-    // Mirrors check_deletion's !found_ref_coverage path (lines 1666-1692).
+    // Mirrors check_deletion's !found_ref_coverage path.
     //
     // CRITICAL: Only attempt Phase 3 if the read actually overlaps the anchor
     // position (variant.pos). Reads that don't span the anchor have no
@@ -1442,7 +1441,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     // When set alongside found_ref_coverage, the read carries a same-length deletion
     // placed at a different position by the aligner (often due to left-alignment
     // in a repeat context) — Phase 3 SW can arbitrate correctly.
-    let mut has_nearby_length_match = false;
+    let mut has_nearby_length_match = false; // nearby Del needs Phase 3: wrong-seq or wrong-length
 
 
     for (i, op) in cigar_view.iter().enumerate() {
@@ -1557,6 +1556,15 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
 
                                 true
                             } else {
+                                // Large deletion (≥50bp) but low reciprocal overlap
+                                // (<50%): significantly different deletion events.
+                                // Flag for Phase 3 haplotype arbitration.
+                                has_nearby_length_match = true;
+                                trace!(
+                                    "check_deletion: windowed D({}) at pos {} (expected D({})), \
+                                     low reciprocal overlap ({:.2} < 0.50) → flagging for Phase 3 fallback",
+                                    del_len_usize, del_ref_pos, expected_del_len, overlap
+                                );
                                 false
                             }
                         } else {
@@ -1754,27 +1762,29 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
         // Otherwise: read doesn't overlap the anchor → no variant info
     }
 
-    // Phase 3 fallback: when a length-matching deletion exists nearby but the
-    // S3 reference-sequence check failed (mismatched bases at the shifted position),
-    // the aligner may have placed the D op further right than the left-aligned
-    // anchor (e.g. TP53:7579309 DEL left-aligns anchor 3bp left of CIGAR D(12)).
-    // Suppress found_ref_coverage and route to Phase 3 SW for haplotype arbitration,
-    // mirroring the identical pattern in check_insertion.
+    // Phase 3 haplotype fallback: when a nearby deletion exists but doesn't match
+    // the expected variant — either wrong sequence (same length, S3 failed), wrong
+    // length (different allele ≥5bp), or large deletion with low reciprocal overlap
+    // (≥50bp, <50%). In all cases, the aligner placed a deletion near the anchor
+    // that warrants haplotype-level arbitration. Route to Phase 3 for full
+    // comparison, and propagate has_nearby_evidence if Phase 3 doesn't confirm ALT.
     if has_nearby_length_match && found_ref_coverage {
         trace!(
-            "check_deletion: nearby D({}) with seq mismatch at pos {}, \
-             falling back to check_complex for Phase 3 SW",
-            expected_del_len, anchor_pos
+            "check_deletion: nearby deletion evidence at pos {} \
+             (wrong-seq or wrong-length), falling back to phase3_classify",
+            anchor_pos
         );
         let mut result = phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         // Propagate nearby evidence: Phase 3 may return is_ref or neither,
-        // but the CIGAR proved a length-matching deletion exists. Mark it
-        // so the engine can count this read as partial_alt evidence.
+        // but the CIGAR proved a deletion exists nearby. Mark it so the
+        // engine can count this read as partial_alt evidence, enabling the
+        // PARTIAL_DOMINANT diagnostic flag.
         if !result.is_alt {
             result.has_nearby_evidence = true;
             trace!(
-                "check_deletion: Phase 3 did not confirm ALT, but nearby D({}) exists → has_nearby_evidence=true",
-                expected_del_len
+                "check_deletion: Phase 3 did not confirm ALT, but nearby deletion \
+                 exists at pos {} → has_nearby_evidence=true",
+                anchor_pos
             );
         }
         return result;

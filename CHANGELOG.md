@@ -23,11 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fallback for insertion reads where the CIGAR walk found no evidence but
   the read spans the anchor (e.g., unusual CIGAR geometry, soft-clip at
   anchor). Mirrors `check_deletion`'s existing `!found_ref_coverage` path.
-- **Wrong-length deletion windowed scan tracking**: Small wrong-length
-  deletions (≥5bp) in the windowed scan now set `has_nearby_length_match`
-  for Phase 3 fallback. Previously only large deletions (≥50bp) with
-  reciprocal overlap were tracked; small wrong-length deletions were
-  silently dropped.
+- **Wrong-length deletion windowed scan tracking**: Wrong-length deletions
+  in the windowed scan now set `has_nearby_length_match` for Phase 3
+  fallback. Covers two previously silent-drop cases:
+    - Small deletions (≥5bp, <50bp): always flagged (1-4bp excluded as
+      homopolymer noise)
+    - Large deletions (≥50bp) with low reciprocal overlap (<50%):
+      previously silently dropped, now flagged for Phase 3 arbitration
 
 ## [5.0.0] - 2026-05-11
 
