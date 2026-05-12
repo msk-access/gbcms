@@ -6151,25 +6151,27 @@ written once. RNA-specific meta-lines are only included when running
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#reference-output-formats-__codelineno-0-4"></a>##INFO=&lt;ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status"&gt;
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#reference-output-formats-__codelineno-0-5"></a>##INFO=&lt;ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags"&gt;
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#reference-output-formats-__codelineno-0-6"></a>##INFO=&lt;ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail"&gt;
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#reference-output-formats-__codelineno-0-7"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#reference-output-formats-__codelineno-0-8"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth: reads with evidence of ALT at &gt;=1 discriminating position (any_alt = ad + partial_alt)"&gt;
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth: reads matching ALT at some but not all discriminating positions"&gt;
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth: reads with N base at discriminating position (duplex masking QC)"&gt;
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#reference-output-formats-__codelineno-0-7"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#reference-output-formats-__codelineno-0-8"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##FORMAT=&lt;ID=AD,Number=2,Type=Integer,Description="Allelic depths for the ref and alt alleles (fwd,rev)"&gt;
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##FORMAT=&lt;ID=DP,Number=2,Type=Integer,Description="Approximate read depth (ref_total,alt_total)"&gt;
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##FORMAT=&lt;ID=RD,Number=2,Type=Integer,Description="Reference read depth (fwd,rev)"&gt;
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##FORMAT=&lt;ID=RDF,Number=2,Type=Integer,Description="Ref Fragment Count (fwd,rev)"&gt;
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##FORMAT=&lt;ID=ADF,Number=2,Type=Integer,Description="Alt Fragment Count (fwd,rev)"&gt;
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction (read level)"&gt;
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant Allele Fraction (fragment level)"&gt;
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (reads with any ALT evidence)"&gt;
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth (partial ALT only)"&gt;
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-output-formats-__codelineno-0-24"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (reads with N at discriminating position)"&gt;
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-output-formats-__codelineno-0-25"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-output-formats-__codelineno-0-24"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-output-formats-__codelineno-0-25"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#reference-output-formats-__codelineno-0-26"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#reference-output-formats-__codelineno-0-27"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 </div>
 <div class="tabbed-block">
@@ -6179,28 +6181,36 @@ written once. RNA-specific meta-lines are only included when running
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-output-formats-__codelineno-1-4"></a>##INFO=&lt;ID=GS,...&gt;
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-output-formats-__codelineno-1-5"></a>##INFO=&lt;ID=GD,...&gt;
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#reference-output-formats-__codelineno-1-6"></a>##INFO=&lt;ID=GR,...&gt;
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-output-formats-__codelineno-1-7"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#reference-output-formats-__codelineno-1-8"></a>##INFO=&lt;ID=SB_OR,...&gt;
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#reference-output-formats-__codelineno-1-9"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#reference-output-formats-__codelineno-1-10"></a>##INFO=&lt;ID=FSB_OR,...&gt;
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#reference-output-formats-__codelineno-1-11"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#reference-output-formats-__codelineno-1-12"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand"&gt;
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#reference-output-formats-__codelineno-1-13"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#reference-output-formats-__codelineno-1-14"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#reference-output-formats-__codelineno-1-15"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#reference-output-formats-__codelineno-1-16"></a>##FORMAT=&lt;ID=GT,...&gt;
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#reference-output-formats-__codelineno-1-17"></a>##FORMAT=&lt;ID=AD,...&gt;
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#reference-output-formats-__codelineno-1-18"></a>##FORMAT=&lt;ID=DP,...&gt;
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##FORMAT=&lt;ID=RD,...&gt;
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#reference-output-formats-__codelineno-1-20"></a>##FORMAT=&lt;ID=RDF,...&gt;
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#reference-output-formats-__codelineno-1-21"></a>##FORMAT=&lt;ID=ADF,...&gt;
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#reference-output-formats-__codelineno-1-22"></a>##FORMAT=&lt;ID=VAF,...&gt;
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#reference-output-formats-__codelineno-1-23"></a>##FORMAT=&lt;ID=FAF,...&gt;
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#reference-output-formats-__codelineno-1-24"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#reference-output-formats-__codelineno-1-25"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth"&gt;
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#reference-output-formats-__codelineno-1-26"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
-<a id="__codelineno-1-27" name="__codelineno-1-27" href="#reference-output-formats-__codelineno-1-27"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
-<a id="__codelineno-1-28" name="__codelineno-1-28" href="#reference-output-formats-__codelineno-1-28"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-output-formats-__codelineno-1-7"></a>##INFO=&lt;ID=AAD,...&gt;
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#reference-output-formats-__codelineno-1-8"></a>##INFO=&lt;ID=PAD,...&gt;
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#reference-output-formats-__codelineno-1-9"></a>##INFO=&lt;ID=NAD,...&gt;
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#reference-output-formats-__codelineno-1-10"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#reference-output-formats-__codelineno-1-11"></a>##INFO=&lt;ID=SB_OR,...&gt;
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#reference-output-formats-__codelineno-1-12"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#reference-output-formats-__codelineno-1-13"></a>##INFO=&lt;ID=FSB_OR,...&gt;
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#reference-output-formats-__codelineno-1-14"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#reference-output-formats-__codelineno-1-15"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand"&gt;
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#reference-output-formats-__codelineno-1-16"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#reference-output-formats-__codelineno-1-17"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#reference-output-formats-__codelineno-1-18"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##FORMAT=&lt;ID=GT,...&gt;
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#reference-output-formats-__codelineno-1-20"></a>##FORMAT=&lt;ID=DP,...&gt;
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#reference-output-formats-__codelineno-1-21"></a>##FORMAT=&lt;ID=AD,...&gt;
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#reference-output-formats-__codelineno-1-22"></a>##FORMAT=&lt;ID=ADF,...&gt;
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#reference-output-formats-__codelineno-1-23"></a>##FORMAT=&lt;ID=ADR,...&gt;
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#reference-output-formats-__codelineno-1-24"></a>##FORMAT=&lt;ID=VAF,...&gt;
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#reference-output-formats-__codelineno-1-25"></a>##FORMAT=&lt;ID=FAD,...&gt;
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#reference-output-formats-__codelineno-1-26"></a>##FORMAT=&lt;ID=FADF,...&gt;
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#reference-output-formats-__codelineno-1-27"></a>##FORMAT=&lt;ID=FADR,...&gt;
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#reference-output-formats-__codelineno-1-28"></a>##FORMAT=&lt;ID=FAF,...&gt;
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#reference-output-formats-__codelineno-1-29"></a>##FORMAT=&lt;ID=AAD,...&gt;
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#reference-output-formats-__codelineno-1-30"></a>##FORMAT=&lt;ID=PAD,...&gt;
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#reference-output-formats-__codelineno-1-31"></a>##FORMAT=&lt;ID=NAD,...&gt;
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#reference-output-formats-__codelineno-1-32"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
+<a id="__codelineno-1-33" name="__codelineno-1-33" href="#reference-output-formats-__codelineno-1-33"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth"&gt;
+<a id="__codelineno-1-34" name="__codelineno-1-34" href="#reference-output-formats-__codelineno-1-34"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
+<a id="__codelineno-1-35" name="__codelineno-1-35" href="#reference-output-formats-__codelineno-1-35"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
+<a id="__codelineno-1-36" name="__codelineno-1-36" href="#reference-output-formats-__codelineno-1-36"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 </div>
 </div>
@@ -6289,6 +6299,21 @@ written once. RNA-specific meta-lines are only included when running
 <td style="text-align: left;">Rescue audit trail. Pipe-separated key=value pairs. <code>.</code> if no rescue attempted.</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>AAD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: <code>AAD = AD + PAD</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PAD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Populated for all variant types including INDELs (via Phase 3 structural evidence propagation).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NAD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric)</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>SB_PVAL</code></td>
 <td style="text-align: left;">Float</td>
 <td style="text-align: left;">Fisher's exact test p-value for read-level strand bias</td>
@@ -6307,21 +6332,6 @@ written once. RNA-specific meta-lines are only included when running
 <td style="text-align: left;"><code>FSB_OR</code></td>
 <td style="text-align: left;">Float</td>
 <td style="text-align: left;">Fragment-level strand bias odds ratio</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>AAD</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: <code>AAD = AD + PAD</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>PAD</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions — now populated for all variant types including INDELs (via structural evidence propagation)</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>NAD</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric)</td>
 </tr>
 </tbody>
 </table>
@@ -6536,7 +6546,7 @@ written once. RNA-specific meta-lines are only included when running
 <div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="" id="reference-output-formats-__tabbed_3_1" name="reference-output-formats-__tabbed_3" type="radio"><input id="reference-output-formats-__tabbed_3_2" name="reference-output-formats-__tabbed_3" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_3_1">DNA mode</label><label for="reference-output-formats-__tabbed_3_2">RNA mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<p><code>FORMAT</code> column: <code>GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD</code></p>
+<p><code>FORMAT</code> column: <code>GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD</code></p>
 <table>
 <thead>
 <tr>
@@ -6553,33 +6563,43 @@ written once. RNA-specific meta-lines are only included when running
 </tr>
 <tr>
 <td style="text-align: left;"><code>DP</code></td>
-<td style="text-align: left;"><code>rd,ad</code></td>
-<td style="text-align: left;">Total read depth split as ref_total,alt_total</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>RD</code></td>
-<td style="text-align: left;"><code>fwd,rev</code></td>
-<td style="text-align: left;">REF read depth by strand</td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">Total read depth (single integer, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>AD</code></td>
-<td style="text-align: left;"><code>fwd,rev</code></td>
-<td style="text-align: left;">ALT read depth by strand</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>RDF</code></td>
-<td style="text-align: left;"><code>fwd,rev</code></td>
-<td style="text-align: left;">REF fragment count by strand</td>
+<td style="text-align: left;"><code>ref,alt</code></td>
+<td style="text-align: left;">Allelic depths — ref_total,alt_total (Number=R)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ADF</code></td>
-<td style="text-align: left;"><code>fwd,rev</code></td>
-<td style="text-align: left;">ALT fragment count by strand</td>
+<td style="text-align: left;"><code>ref_fwd,alt_fwd</code></td>
+<td style="text-align: left;">Forward strand per allele (bcftools convention)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ADR</code></td>
+<td style="text-align: left;"><code>ref_rev,alt_rev</code></td>
+<td style="text-align: left;">Reverse strand per allele</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>VAF</code></td>
 <td style="text-align: left;">float</td>
 <td style="text-align: left;">Variant allele fraction at read level</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAD</code></td>
+<td style="text-align: left;"><code>ref_frag,alt_frag</code></td>
+<td style="text-align: left;">Fragment allelic depths (Number=R)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FADF</code></td>
+<td style="text-align: left;"><code>ref_frag_fwd,alt_frag_fwd</code></td>
+<td style="text-align: left;">Fragment forward strand per allele</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FADR</code></td>
+<td style="text-align: left;"><code>ref_frag_rev,alt_frag_rev</code></td>
+<td style="text-align: left;">Fragment reverse strand per allele</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>FAF</code></td>
@@ -6605,7 +6625,7 @@ written once. RNA-specific meta-lines are only included when running
 </table>
 </div>
 <div class="tabbed-block">
-<p><code>FORMAT</code> column: <code>GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL</code></p>
+<p><code>FORMAT</code> column: <code>GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL</code></p>
 <p>All DNA fields above (including <code>AAD</code>, <code>PAD</code>, <code>NAD</code>), plus:</p>
 <table>
 <thead>
@@ -6644,10 +6664,10 @@ written once. RNA-specific meta-lines are only included when running
 <hr>
 <h3 id="reference-output-formats-annotated-example">Annotated Example<a class="headerlink" href="#reference-output-formats-annotated-example" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#reference-output-formats-__codelineno-2-1"></a>#CHROM  POS     ID      REF  ALT  QUAL  FILTER  INFO                                              FORMAT           sample1
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#reference-output-formats-__codelineno-2-2"></a>chr7    55174772  rs121913527  T    A    .     .     DP=312;GS=PASS;GD=.;GR=.;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000;AAD=22;PAD=0;NAD=3  GT:DP:RD:AD:RDF:ADF:VAF:FAF:AAD:PAD:NAD  0/1:290,22:145,145:10,12:72,73:5,6:0.0705:0.0735:22:0:3 # (1)!
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#reference-output-formats-__codelineno-2-2"></a>chr7    55174772  rs121913527  T    A    .     .     DP=312;GS=PASS;GD=.;AAD=22;PAD=0;NAD=3;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000  GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD  0/1:312:290,22:145,10:145,12:0.0705:145,5:72,5:73,6:0.0735:22:0:3 # (1)!
 </code></pre></div>
 <ol>
-<li><code>DP=312</code> total reads; <code>GS=PASS</code> normalization status; <code>GD=.</code> no diagnostic flags; <code>GR=.</code> no rescue; <code>SB_PVAL=0.24</code> no significant strand bias; <code>AAD=22</code> reads with any ALT evidence; <code>PAD=0</code> no partial matches (<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> — always 0); <code>NAD=3</code> reads with N at variant position (duplex masking). FORMAT <code>DP=290,22</code> → 290 REF + 22 ALT reads. <code>VAF=0.0705</code> (read level), <code>FAF=0.0735</code> (fragment level).</li>
+<li><code>DP=312</code> total reads; <code>GS=PASS</code> normalization status; <code>GD=.</code> no diagnostic flags; <code>AAD=22</code> reads with any ALT evidence; <code>PAD=0</code> no partial matches (<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> — always 0); <code>NAD=3</code> reads with N at variant position. FORMAT <code>DP=312</code> total depth (single int). <code>AD=290,22</code> → 290 REF + 22 ALT reads. <code>ADF=145,10</code> → forward strand. <code>ADR=145,12</code> → reverse strand. <code>VAF=0.0705</code> (read level). <code>FAD=145,5</code> → fragment counts. <code>FAF=0.0735</code> (fragment level).</li>
 </ol>
 <hr>
 <h2 id="reference-output-formats-maf-output-format-maf"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output (<code>--format maf</code>)<a class="headerlink" href="#reference-output-formats-maf-output-format-maf" title="Permanent link">¶</a></h2>
@@ -6821,6 +6841,21 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <td style="text-align: left;">ALT read depth</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>any_alt</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: <code>any_alt = alt_count + partial_alt</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>partial_alt</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Populated for all variant types including INDELs (via Phase 3 structural evidence propagation).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>n_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric)</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>total_count</code></td>
 <td style="text-align: left;">Integer</td>
 <td style="text-align: left;">Total read depth (<abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>)</td>
@@ -6829,46 +6864,6 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <td style="text-align: left;"><code>vaf</code></td>
 <td style="text-align: left;">Float</td>
 <td style="text-align: left;">Read-level variant allele fraction</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>ref_count_fragment</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">REF fragment count</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>alt_count_fragment</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">ALT fragment count</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>total_count_fragment</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Total fragment count</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>vaf_fragment</code></td>
-<td style="text-align: left;">Float</td>
-<td style="text-align: left;">Fragment-level variant allele fraction</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>strand_bias_p_value</code></td>
-<td style="text-align: left;">Float</td>
-<td style="text-align: left;">Fisher's exact test p-value (read-level)</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>strand_bias_odds_ratio</code></td>
-<td style="text-align: left;">Float</td>
-<td style="text-align: left;">Fisher's exact test odds ratio (read-level)</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>fragment_strand_bias_p_value</code></td>
-<td style="text-align: left;">Float</td>
-<td style="text-align: left;">Fragment-level strand bias p-value</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>fragment_strand_bias_odds_ratio</code></td>
-<td style="text-align: left;">Float</td>
-<td style="text-align: left;">Fragment-level strand bias odds ratio</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ref_count_forward</code></td>
@@ -6891,6 +6886,36 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <td style="text-align: left;">ALT reads on reverse strand</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>strand_bias_p_value</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fisher's exact test p-value (read-level)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>strand_bias_odds_ratio</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fisher's exact test odds ratio (read-level)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref_count_fragment</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF fragment count</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt_count_fragment</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT fragment count</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>total_count_fragment</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total fragment count</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vaf_fragment</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fragment-level variant allele fraction</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>ref_count_fragment_forward</code></td>
 <td style="text-align: left;">Integer</td>
 <td style="text-align: left;">REF fragments on forward strand</td>
@@ -6911,19 +6936,14 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <td style="text-align: left;">ALT fragments on reverse strand</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>any_alt</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: <code>any_alt = alt_count + partial_alt</code></td>
+<td style="text-align: left;"><code>fragment_strand_bias_p_value</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fragment-level strand bias p-value</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>partial_alt</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Now populated for all variant types including INDELs (via structural evidence propagation).</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>n_count</code></td>
-<td style="text-align: left;">Integer</td>
-<td style="text-align: left;">N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric)</td>
+<td style="text-align: left;"><code>fragment_strand_bias_odds_ratio</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fragment-level strand bias odds ratio</td>
 </tr>
 </tbody>
 </table>
@@ -13605,8 +13625,56 @@ Use mouse to pan and zoom
 <p>All notable changes to this project will be documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="development-changelog-500-unreleased">[5.0.0] - Unreleased<a class="headerlink" href="#development-changelog-500-unreleased" title="Permanent link">¶</a></h2>
+<h2 id="development-changelog-510-2026-05-11">[5.1.0] - 2026-05-11<a class="headerlink" href="#development-changelog-510-2026-05-11" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-breaking-changes">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column order reordered</strong> (v5.1 schema):
+  <code>any_alt</code>, <code>partial_alt</code>, <code>n_count</code> moved from end to immediately after
+  <code>alt_count</code> for discoverability. Read strand counts (<code>ref_count_forward</code>, etc.)
+  now precede derived strand bias statistics. Read and fragment metric layers
+  fully separated (no interleaving). Downstream <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> parsers using positional
+  indexing must be updated.</li>
+<li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> FORMAT fields restructured</strong> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> 4.2 spec compliance):</li>
+<li><code>DP</code> is now a single integer (total depth), was <code>ref,alt</code> pair.</li>
+<li><code>AD</code> is now <code>Number=R</code> with <code>ref,alt</code> totals (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec), was <code>fwd,rev</code>.</li>
+<li><code>RD</code> and <code>RDF</code> removed. Replaced by <code>ADF</code> (forward strand <code>ref_fwd,alt_fwd</code>)
+    and <code>ADR</code> (reverse strand <code>ref_rev,alt_rev</code>) following bcftools convention.</li>
+<li>New <code>FAD</code>, <code>FADF</code>, <code>FADR</code> for fragment-level strand-by-allele counts.</li>
+<li><code>FAF</code> renamed from position after <code>VAF</code> to after fragment group.</li>
+<li>Downstream <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> parsers expecting old <code>GT:DP:RD:AD:RDF:ADF:VAF:FAF:...</code> must
+    be updated to <code>GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:...</code>.</li>
+<li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO field order changed</strong>: <code>AAD</code>, <code>PAD</code>, <code>NAD</code> now appear immediately
+  after <code>GR</code> (before strand bias fields), matching the diagnostic proximity
+  principle.</li>
+</ul>
+<h3 id="development-changelog-fixed">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Wrong-length insertion Phase 3 fallback</strong> (PAX5-class discordance fix):
+  <code>check_insertion</code> now routes wrong-length insertions at the strict anchor
+  position to Phase 3 (<abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>/<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>) for haplotype arbitration, mirroring
+  <code>check_deletion</code>'s existing behavior. Previously, a read with <code>I(1)</code> at the
+  anchor for an expected <code>I(2)</code> was silently classified as REF with no
+  diagnostic signal. Now classified as <code>partial_alt</code> via <code>has_nearby_evidence</code>,
+  triggering the <code>PARTIAL_DOMINANT</code> diagnostic flag.</li>
+<li><strong>Wrong-length insertion windowed scan tracking</strong>: Wrong-length insertions
+  within the ±window range now set <code>has_nearby_length_match</code>, routing to
+  Phase 3 fallback. Previously silently ignored.</li>
+<li><strong>Insertion <code>!found_ref_coverage</code> haplotype fallback</strong>: Added Phase 3
+  fallback for insertion reads where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk found no evidence but
+  the read spans the anchor (e.g., unusual <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> geometry, soft-clip at
+  anchor). Mirrors <code>check_deletion</code>'s existing <code>!found_ref_coverage</code> path.</li>
+<li><strong>Wrong-length deletion windowed scan tracking</strong>: Wrong-length deletions
+  in the windowed scan now set <code>has_nearby_length_match</code> for Phase 3
+  fallback. Covers two previously silent-drop cases:<ul>
+<li>Small deletions (≥5bp, &lt;50bp): always flagged (1-4bp excluded as
+  homopolymer noise)</li>
+<li>Large deletions (≥50bp) with low reciprocal overlap (&lt;50%):
+  previously silently dropped, now flagged for Phase 3 arbitration</li>
+</ul>
+</li>
+</ul>
+<h2 id="development-changelog-500-2026-05-11">[5.0.0] - 2026-05-11<a class="headerlink" href="#development-changelog-500-2026-05-11" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-breaking-changes_1">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>New RNA output columns</strong>: When <code>--gtf</code> is provided, 17 additional columns are
   appended to RNA output (1 exon boundary, 2 per-transcript, 14 ASJD). Downstream
@@ -13655,7 +13723,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow <code>library_type</code> parameter</strong>: Registered in <code>nextflow.config</code> and
   threaded through <code>rna/main.nf</code> for amplicon mode support in pipeline runs.</li>
 </ul>
-<h3 id="development-changelog-fixed">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_1">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>lib.rs</code> dead-code comment</strong>: Updated annotation type comment to reflect
   that annotation types are now fully wired (previously noted as unused).</li>
@@ -13700,7 +13768,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Updated</strong> <code>mkdocs.yml</code> — "RNA Annotation" added to navigation.</li>
 </ul>
 <h2 id="development-changelog-420-2026-05-10">[4.2.0] - 2026-05-10<a class="headerlink" href="#development-changelog-420-2026-05-10" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-breaking-changes_1">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-breaking-changes_2">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>validation_status</code> → <code>gbcms_status</code></strong>: <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column and Python API parameter
   renamed. <code>gbcms_status</code> now uses semicolon-separated multi-value format
@@ -13744,7 +13812,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Diagnostic flag summary logging</strong>: <code>info</code>-level log of diagnostic flag
   distribution per sample (e.g., <code>ZERO_ALT=12, PARTIAL_DOMINANT=3</code>).</li>
 </ul>
-<h3 id="development-changelog-fixed_1">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_2">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>partial_alt</code> description</strong>: Documentation corrected to reflect that
   <code>partial_alt</code> is now populated for all variant types, not just <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex.</li>
@@ -13790,7 +13858,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Updated</strong> <code>docs/resources/troubleshooting.md</code> — status field references.</li>
 </ul>
 <h2 id="development-changelog-410-2026-05-04">[4.1.0] - 2026-05-04<a class="headerlink" href="#development-changelog-410-2026-05-04" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-breaking-changes_2">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-breaking-changes_3">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms run</code> command removed</strong>: The deprecated <code>gbcms run</code> alias (introduced
   in v4.0.0 as a transitional shim) has been removed. Use <code>gbcms dna</code> instead —
@@ -13837,7 +13905,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Extended trace fields</strong>: IO diagnostics (<code>rchar</code>, <code>wchar</code>, <code>syscr</code>, <code>syscw</code>,
   <code>read_bytes</code>, <code>write_bytes</code>) added to execution trace.</li>
 </ul>
-<h3 id="development-changelog-fixed_2">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_3">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dual-axis gridline artifact</strong>: Fixed Plotly <code>yaxis2</code> overlay creating a
   duplicate x-axis line in <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> histograms by standardizing <code>mirror: false</code>,
@@ -13954,7 +14022,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   failures matrix, invariant table, updated test counts.</li>
 </ul>
 <h2 id="development-changelog-401-2026-03-24">[4.0.1] - 2026-03-24<a class="headerlink" href="#development-changelog-401-2026-03-24" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_3">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_4">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>was_normalized</code> flag accuracy</strong>: Split into granular <code>was_anchor_resolved</code>
   and <code>was_left_aligned</code> flags with backward-compatible <code>was_normalized</code> getter.
@@ -13985,7 +14053,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and reference docs updated with new column descriptions.</li>
 </ul>
 <h2 id="development-changelog-400-2026-03-20">[4.0.0] - 2026-03-20<a class="headerlink" href="#development-changelog-400-2026-03-20" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-breaking-changes_3">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-breaking-changes_4">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow module split</strong>: Single <code>run/main.nf</code> replaced by three dedicated
   modules — <code>dna/main.nf</code>, <code>rna/main.nf</code>, <code>normalize/main.nf</code>. Consumer
@@ -14015,7 +14083,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   column-level schema reference for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output under all mode/flag
   combinations (DNA vs RNA, with <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, with normalization columns).</li>
 </ul>
-<h3 id="development-changelog-fixed_4">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_5">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Complex indel classification</strong> (<code>fix: correctly classify complex indels</code>):
   Fixes for Phase 3 dispatch cases 2, 3, and 4 — previously misclassified
@@ -14078,7 +14146,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>All test <code>MockCounts</code> helpers updated with RNA fields</li>
 </ul>
 <h2 id="development-changelog-300-2026-03-05">[3.0.0] - 2026-03-05<a class="headerlink" href="#development-changelog-300-2026-03-05" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-breaking-changes_4">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-breaking-changes_5">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Package renamed</strong>: <code>py-gbcms</code> → <code>gbcms</code>. Update your dependencies:
   <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#development-changelog-__codelineno-0-1"></a>pip<span class="w"> </span>uninstall<span class="w"> </span>py-gbcms
@@ -14098,7 +14166,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>py-gbcms</code> deprecation stub</strong>: <code>compat/py-gbcms/</code> shim published to PyPI
   as <code>py-gbcms==3.0.0</code> for backwards compatibility during migration.</li>
 </ul>
-<h3 id="development-changelog-fixed_5">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_6">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_6" title="Permanent link">¶</a></h3>
 <ul>
 <li>Parquet output compression switched from SNAPPY to ZSTD(1).</li>
 <li>Resolved <code>mypy</code> <code>AlignedSegment.cigar</code> attribute errors in test suite.</li>
@@ -14122,7 +14190,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Per-phase ClassifyResult counters</strong>: Diagnostic counters track how many reads are resolved in each classification phase (Phase 1/2/2.5/3)</li>
 <li><strong><code>--trace</code> flag</strong>: Two-tier Rust logging — <code>--verbose</code> for debug, <code>--trace</code> for per-read classification diagnostics via pyo3-log</li>
 </ul>
-<h3 id="development-changelog-fixed_6">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_7">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2/2.5 overcounting</strong>: Complex variants with <code>REF &gt;&gt; ALT</code> now skip Phase 2 Case B and Phase 2.5 when <code>ref_len &gt; 2 × alt_len</code> — short ALT trivially matches, edit distance is biased toward shorter allele</li>
 <li><strong>Phase 3 bypass for pure DEL/INS</strong>: Removed <code>is_worth_realignment</code> prefilter — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> structure is ground truth for pure deletions/insertions, prefilter was overcounting</li>
@@ -14160,7 +14228,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
 </ul>
-<h3 id="development-changelog-fixed_7">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_8">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Allele-based dispatch</strong> (<code>check_allele_with_qual</code>): Routes by <code>ref_len × alt_len</code> instead of unreliable <code>variant_type</code> string labels. <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (1×1), insertion (1×N), deletion (N×1), <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (N×N equal), complex (N×M unequal) — eliminates misrouting when callers emit inconsistent type annotations</li>
 <li><strong><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> semiglobal argument order</strong>: Fixed <code>ref_hap</code>/<code>alt_hap</code> argument swap in semiglobal alignment that was scoring reads against the wrong haplotype</li>
@@ -14178,7 +14246,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Tests</strong>: Updated <code>test_fuzzy_complex::TestLengthMismatch</code> expectation to reflect Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback behavior</li>
 </ul>
 <h2 id="development-changelog-261-2026-02-19">[2.6.1] - 2026-02-19<a class="headerlink" href="#development-changelog-261-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_8">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_9">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
@@ -14205,7 +14273,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Docs restructure</strong>: Split monolithic <code>variant-counting.md</code> into 4 focused pages: Variant Normalization, Allele Classification, Counting Metrics, Read Filters</li>
 <li><strong><abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> install docs</strong>: Micromamba-based source install with Python 3.13</li>
 </ul>
-<h3 id="development-changelog-fixed_9">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_10">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Interior REF guard</strong> for large deletions (&gt;50bp): Reads falling entirely within a deleted region are now correctly classified as REF instead of ALT by Smith-Waterman</li>
 <li><strong>Windowed reciprocal overlap</strong>: Improved shifted indel detection using bidirectional overlap scoring</li>
@@ -14231,7 +14299,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow <code>--filter_by_sample</code> parameter</strong> and samplesheet <code>tsb</code> column for multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows</li>
 <li><strong>Nextflow documentation</strong>: Samplesheet <code>tsb</code> column guide, <code>--filter_by_sample</code> parameter reference, multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> filtering examples</li>
 </ul>
-<h3 id="development-changelog-fixed_10">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_11">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment quality extraction</strong> (critical): All variant-type handlers (<code>check_insertion</code>, <code>check_deletion</code>, <code>check_mnp</code>, <code>check_complex</code>) now return actual <code>base_qual</code> from <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk instead of 0 — fixes systematic ALT undercount for indels in fragment-level consensus</li>
 <li><strong>FILTER_MAF heredoc conflict</strong>: Restructured script from Python shebang to <code>python3 &lt;&lt; 'PYEOF'</code> pattern, resolving <code>SyntaxError</code> from bash syntax in Python context</li>
@@ -14264,7 +14332,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>--version</code> flag</strong>: Added to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>gbcms --version</code>)</li>
 <li><strong>Deploy-Docs Workflow</strong>: Replaced <code>mkdocs gh-deploy</code> with <code>mike</code> for multi-version documentation; deploys <code>stable</code> (tagged version) from main and <code>dev</code> from develop branch; added <code>extra.version.provider: mike</code> to <code>mkdocs.yml</code> with version switcher widget</li>
 </ul>
-<h3 id="development-changelog-fixed_11">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_12">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_12" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment double-counting bug</strong>: R1+R2 pairs previously counted as two independent observations; now collapsed via quality-weighted consensus</li>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Input Hardening</strong>: Graceful handling of missing/malformed fields with warnings instead of crashes</li>
@@ -14297,7 +14365,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>GitHub Actions</strong>: Consolidated deploy-docs workflows, added caching and PR validation</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Wheels</strong>: Migrated from <code>manylinux_2_28</code> to <code>manylinux_2_34</code> (AlmaLinux 9 with OpenSSL 3.0+)</li>
 </ul>
-<h3 id="development-changelog-fixed_12">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_13">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_13" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow</strong>: Empty <code>--suffix</code> argument no longer causes failures</li>
 <li><strong>Admonitions</strong>: Converted GitHub-style alerts to MkDocs syntax</li>
@@ -14326,7 +14394,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Updated MkDocs with mermaid2 plugin and snippet includes</li>
 </ul>
 <h2 id="development-changelog-212-2025-11-25">[2.1.2] - 2025-11-25<a class="headerlink" href="#development-changelog-212-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_13">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_14">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_14" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Fixed source distribution size issue by correctly excluding large files (tests, docs, etc.) via <code>pyproject.toml</code> configuration.</li>
 </ul>
@@ -14335,7 +14403,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <p class="admonition-title">Yanked Release</p>
 <p>This release was yanked from PyPI due to a source distribution size limit error. Use 2.1.2 instead.</p>
 </div>
-<h3 id="development-changelog-fixed_14">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_14" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_15">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_15" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Added MANIFEST.in (failed to work with Hatchling) to reduce source distribution size</li>
 <li><strong>Documentation</strong>: Added comprehensive Installation guide</li>
@@ -14456,7 +14524,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Unused Dependencies</strong>: Removed <code>cyvcf2</code> and <code>numba</code> (no longer needed)</li>
 <li><strong>Pre-commit Hooks</strong>: Removed in favor of explicit linting in <abbr title="Continuous Integration - Automated build and test system">CI</abbr></li>
 </ul>
-<h3 id="development-changelog-fixed_15">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_15" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_16">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_16" title="Permanent link">¶</a></h3>
 <ul>
 <li>Correct handling of complex variants (MNPs, DelIns)</li>
 <li>Proper strand assignment for fragment counting</li>
@@ -14486,7 +14554,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Filter validation for all read flag combinations</li>
 <li>Integration tests with real-world data</li>
 </ul>
-<h3 id="development-changelog-breaking-changes_5">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-breaking-changes_6">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes_6" title="Permanent link">¶</a></h3>
 <p>Version 2.0.0 is <strong>not backward compatible</strong> with 1.x. Key breaking changes:</p>
 <ol>
 <li><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> syntax</strong>: Use <code>gbcms run</code> instead of <code>python -m gbcms.cli</code></li>
