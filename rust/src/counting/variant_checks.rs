@@ -1096,10 +1096,10 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                                 if reliable > 0 && mismatches == 0 {
                                     let qual = if read_pos < quals.len() { quals[read_pos] } else { 0 };
                                     trace!(
-                                        "check_insertion: backward boundary match at pos {}, qual={}",
+                                        "check_insertion: backward boundary match at pos {}, qual={} (structural)",
                                         anchor_pos, qual
                                     );
-                                    return ClassifyResult::is_alt(qual, ClassifyPhase::Structural); // ALT — backward match
+                                    return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural); // ALT — backward match
                                 }
                             }
                         }
@@ -1127,10 +1127,10 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                                         let arp = anchor_read_pos.unwrap_or(0);
                                         let qual = if arp < quals.len() { quals[arp] } else { 0 };
                                         trace!(
-                                            "check_insertion: strict match at pos {}, anchor_qual={}",
+                                            "check_insertion: strict match at pos {}, anchor_qual={} (structural)",
                                             anchor_pos, qual
                                         );
-                                        return ClassifyResult::is_alt(qual, ClassifyPhase::Structural); // ALT — strict match
+                                        return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural); // ALT — strict match
                                     }
                                 }
                             } else {
@@ -1308,7 +1308,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
             "check_insertion: windowed match for variant at pos {}, anchor_qual={}",
             anchor_pos, anchor_qual
         );
-        return ClassifyResult::is_alt(anchor_qual, ClassifyPhase::CigarRecon); // ALT — windowed match
+        return ClassifyResult::is_alt_structural(anchor_qual, ClassifyPhase::CigarRecon); // ALT — windowed INS match (structural)
     }
 
     // Phase 3 haplotype fallback: when a nearby insertion exists but doesn't match
@@ -1465,10 +1465,10 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                                 let arp = anchor_read_pos.unwrap_or(0);
                                 let qual = if arp < quals.len() { quals[arp] } else { 0 };
                                 trace!(
-                                    "check_deletion: strict match at pos {}, anchor_qual={}",
+                                    "check_deletion: strict match at pos {}, anchor_qual={} (structural)",
                                     anchor_pos, qual
                                 );
-                                return ClassifyResult::is_alt(qual, ClassifyPhase::Structural); // ALT — strict match
+                                return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural); // ALT — strict match
                             } else {
                                 // P0-3: D found at anchor but wrong length.
                                 // Use SV-caller-style reciprocal overlap matching:
@@ -1496,14 +1496,14 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                                     trace!(
                                         "check_deletion: tolerant match D({}) ≈ D({}) \
                                          at pos {} (reciprocal_overlap={:.2}, \
-                                         threshold=0.50, anchor_qual={})",
+                                         threshold=0.50, anchor_qual={}) (structural)",
                                         found_del_len,
                                         expected_del_len,
                                         anchor_pos,
                                         reciprocal_overlap,
                                         qual
                                     );
-                                    return ClassifyResult::is_alt(qual, ClassifyPhase::Structural); // ALT — tolerant match
+                                    return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural); // ALT — tolerant match
                                 }
 
                                 // Small deletion or low overlap: fall back to
@@ -1710,7 +1710,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
             "check_deletion: windowed match for variant at pos {}, anchor_qual={}",
             anchor_pos, anchor_qual
         );
-        return ClassifyResult::is_alt(anchor_qual, ClassifyPhase::CigarRecon); // ALT — windowed match
+        return ClassifyResult::is_alt_structural(anchor_qual, ClassifyPhase::CigarRecon); // ALT — windowed DEL match (structural)
     }
 
     // Note: an earlier version had an "interior REF guard" here that classified
