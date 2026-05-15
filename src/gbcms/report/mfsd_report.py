@@ -223,27 +223,17 @@ def generate_mfsd_report(
     logger.info("Generating mFSD report: parquet=%s, maf=%s", parquet_path, maf_path)
 
     # ── Load data ────────────────────────────────────────────────────────────
-    try:
-        import pyarrow.parquet as pq
-    except ImportError:
-        raise RuntimeError(
-            "pyarrow is required for mFSD report generation. " "Install with: pip install pyarrow"
-        ) from None
+    from gbcms.io.batch import read_maf as batch_read_maf
+    from gbcms.io.batch import read_parquet
 
-    table = pq.read_table(parquet_path)
-    parquet_df = table.to_pydict()
+    parquet_df = read_parquet(parquet_path).to_dict(as_series=False)
     n_variants_parquet = len(parquet_df.get("chrom", []))
     logger.info("Loaded %d variants from parquet", n_variants_parquet)
 
     # Load MAF for Hugo_Symbol and mFSD stats
-    import csv
-
+    maf_pl = batch_read_maf(maf_path)
     maf_data: dict[str, dict[str, str]] = {}
-    with open(maf_path) as f:
-        # Skip comment lines
-        lines = [line for line in f if not line.startswith("#")]
-    reader = csv.DictReader(lines, delimiter="\t")
-    for row in reader:
+    for row in maf_pl.iter_rows(named=True):
         key = f"{row.get('Chromosome', '')}:{row.get('Start_Position', '')}:{row.get('Reference_Allele', '')}:{row.get('Tumor_Seq_Allele2', '')}"
         maf_data[key] = row
     logger.info("Loaded %d variants from MAF", len(maf_data))

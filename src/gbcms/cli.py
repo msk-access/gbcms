@@ -22,6 +22,7 @@ from .models.core import (
     AlignmentConfig,
     GbcmsDnaConfig,
     GbcmsRnaConfig,
+    MergeConfig,
     OutputConfig,
     OutputFormat,
     QualityThresholds,
@@ -31,7 +32,7 @@ from .models.core import (
 from .pipeline import Pipeline
 from .utils import setup_logging
 
-__all__ = ["app", "dna", "rna", "normalize"]
+__all__ = ["app", "dna", "rna", "normalize", "merge"]
 
 logger = logging.getLogger(__name__)
 
@@ -857,6 +858,115 @@ def normalize(
         output=output,
         threads=threads,
     )
+
+
+@app.command()
+def merge(
+    inputs: list[str] = typer.Option(
+        ...,
+        "--input",
+        "-i",
+        help=(
+            "Input MAF in 'type:path' format (e.g., duplex:sample1-duplex.maf). "
+            "Repeatable. At least 2 required."
+        ),
+    ),
+    output: Path = typer.Option(
+        ...,
+        "--output",
+        "-o",
+        help="Output merged MAF path.",
+    ),
+    add_combined: bool = typer.Option(
+        True,
+        "--add-combined/--no-combined",
+        help=(
+            "Compute additive simplex_duplex_* fragment columns "
+            "when both duplex and simplex inputs are present."
+        ),
+    ),
+    legacy_naming: bool = typer.Option(
+        False,
+        "--legacy-naming",
+        help="Use t_{metric}_{type} naming (genotype_variants compatible).",
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-V", help="Enable debug logging"
+    ),
+):
+    """
+    Merge per-BAM-type genotyped MAFs into a single type-prefixed output.
+
+    Performs an outer join on the 5-column variant key (Chromosome,
+    Start_Position, End_Position, Reference_Allele, Tumor_Seq_Allele2),
+    prefixes all gbcms count columns with the BAM type label, and
+    optionally computes additive simplex+duplex combined columns.
+
+    Example::
+
+        gbcms merge \\
+            --input duplex:sample1-duplex.maf \\
+            --input simplex:sample1-simplex.maf \\
+            --output sample1-merged.maf
+    """
+    from pydantic import ValidationError
+
+    from .merge import merge_mafs
+
+    setup_logging(verbose=verbose, trace=False)
+    logger.info("gbcms merge v%s", __version__)
+
+    # ── Pre-model: parse type:path pairs ──────────────────────────────────
+    parsed: dict[str, Path] = {}
+    for inp in inputs:
+        if ":" not in inp:
+            logger.error(
+                "Invalid --input format '%s'. "
+                "Expected type:path (e.g., duplex:sample.maf)",
+                inp,
+            )
+            raise typer.Exit(code=1)
+        label, path_str = inp.split(":", 1)
+        label = label.strip().lower()
+        if not label:
+            logger.error("Empty BAM type label in --input '%s'", inp)
+            raise typer.Exit(code=1)
+        if not _COLUMN_PREFIX_RE.match(label):
+            logger.error(
+                "Invalid BAM type label '%s' — only letters, digits, "
+                "underscores allowed.",
+                label,
+            )
+            raise typer.Exit(code=1)
+        if label in parsed:
+            logger.error(
+                "Duplicate BAM type label '%s'. Each --input must have "
+                "a unique type label.",
+                label,
+            )
+            raise typer.Exit(code=1)
+        parsed[label] = Path(path_str)
+
+    # ── Model-time: Pydantic validation ───────────────────────────────────
+    try:
+        config = MergeConfig(
+            inputs=parsed,
+            output=output,
+            add_combined=add_combined,
+            legacy_naming=legacy_naming,
+        )
+    except ValidationError as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(code=1) from e
+
+    # ── Execute ───────────────────────────────────────────────────────────
+    try:
+        merge_mafs(config)
+    except Exception as e:
+        logger.exception("Merge failed: %s", e)
+        raise typer.Exit(code=1) from e
+
+    logger.info("Done.")
 
 
 def _parse_bam_inputs(
