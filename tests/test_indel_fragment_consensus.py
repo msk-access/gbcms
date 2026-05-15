@@ -21,10 +21,12 @@ Test coverage:
   3. DEL conflict: R1=M-block, R2=D-op → ALT wins (core fix)
   4. DEL agreement: both reads have D-op → ALT (no conflict)
   5. SNP conflict tie: quality-weighted consensus unchanged (regression)
-  6. INS singleton: single read with I-op → ALT (no conflict)
-  7. DEL singleton: single read with D-op → ALT (no conflict)
-  8. INS + REF agree: both reads M-block at INS site → REF
-  9. DEL + REF agree: both reads M-block at DEL site → REF
+  6. INS wrong-length: R1=2I (Phase 3), R2=1I (structural) → ALT wins
+  7. DEL wrong-length: R1=2D (Phase 3), R2=1D (structural) → ALT wins
+  8. INS singleton: single read with I-op → ALT (no conflict)
+  9. DEL singleton: single read with D-op → ALT (no conflict)
+  10. INS + REF agree: both reads M-block at INS site → REF
+  11. DEL + REF agree: both reads M-block at DEL site → REF
 """
 
 from helpers import build_bam, count_both, make_read
@@ -267,7 +269,119 @@ def test_snp_conflict_tie_unchanged(tmp_path):
     assert discarded == 1, f"Expected 1 discarded fragment, got {discarded}"
 
 
-# ── Test 6: INS singleton — single read with I-op → ALT ─────────────────
+# ── Test 6: Wrong-length INS — R1=2I (Phase 3), R2=1I (structural) ──────
+
+
+def test_ins_wrong_length_structural_alt_wins(tmp_path):
+    """
+    Wrong-length insertion: R1 has I(2) at the anchor (wrong length for a 1bp
+    INS target), R2 has I(1) at the anchor (correct length).
+
+    R1's I(2) goes to Phase 3 (phase3_classify) because the length doesn't
+    match the expected I(1). Phase 3 returns non-structural ALT or REF.
+    R2's I(1) matches exactly → is_alt_structural.
+
+    Either way, has_structural_alt=true from R2, so ALT wins unconditionally.
+    This tests the Phase 3 dispatch interaction with structural priority.
+
+    Variant: chr1:100, REF=A, ALT=AC (1bp insertion).
+    R1: 11M2I7M — wrong-length 2bp insertion at pos 100 → Phase 3
+    R2: 11M1I9M — correct-length 1bp insertion at pos 100 → structural ALT
+    """
+    # R1: wrong-length insertion (2bp instead of 1bp)
+    # 11 bases + 2 inserted + 7 = 20 query bases
+    r1 = _make_paired(
+        "frag_wl_ins",
+        "A" * 11 + "CC" + "A" * 7,
+        90,
+        ((0, 11), (1, 2), (0, 7)),
+        is_read1=True,
+        is_reverse=False,
+        quals=[79] * 20,
+    )
+    # R2: correct-length insertion (1bp)
+    # 11 bases + 1 inserted + 9 = 21 query bases
+    r2 = _make_paired(
+        "frag_wl_ins",
+        "A" * 11 + "C" + "A" * 9,
+        90,
+        ((0, 11), (1, 1), (0, 9)),
+        is_read1=False,
+        is_reverse=True,
+        quals=[79] * 21,
+    )
+    r1.next_reference_start = 90
+    r1.template_length = 20
+    r2.next_reference_start = 90
+    r2.template_length = 20
+
+    bam_path = build_bam(tmp_path, [r1, r2], filename="ins_wrong_len.bam")
+    counts = _count_indel_variant(bam_path, "A", "AC", "INS")
+
+    _assert_invariants(counts, "ins_wrong_length")
+    assert counts.dpf == 1, f"Expected 1 fragment, got {counts.dpf}"
+    # R2's correct I(1) is structural → ALT wins regardless of R1's Phase 3 result
+    assert counts.adf == 1, f"Expected adf=1 (structural ALT from R2), got {counts.adf}"
+    assert counts.rdf == 0, f"Expected rdf=0, got {counts.rdf}"
+
+
+# ── Test 7: Wrong-length DEL — R1=2D (Phase 3), R2=1D (structural) ──────
+
+
+def test_del_wrong_length_structural_alt_wins(tmp_path):
+    """
+    Wrong-length deletion: R1 has D(2) at the anchor (wrong length for a 1bp
+    DEL target), R2 has D(1) at the anchor (correct length).
+
+    R1's D(2) goes to Phase 3 (phase3_classify) because the length doesn't
+    match the expected D(1). Phase 3 returns non-structural ALT or REF.
+    R2's D(1) matches exactly → is_alt_structural.
+
+    Either way, has_structural_alt=true from R2, so ALT wins unconditionally.
+    This tests the Phase 3 dispatch interaction with structural priority.
+
+    Variant: chr1:100, REF=AC, ALT=A (1bp deletion at pos 101).
+    R1: 11M2D7M — wrong-length 2bp deletion at pos 101 → Phase 3
+    R2: 11M1D9M — correct-length 1bp deletion at pos 101 → structural ALT
+    """
+    # R1: wrong-length deletion (2bp instead of 1bp)
+    # Query: 11 + 7 = 18 bases, ref span: 11 + 2(del) + 7 = 20
+    r1 = _make_paired(
+        "frag_wl_del",
+        "A" * 18,
+        90,
+        ((0, 11), (2, 2), (0, 7)),
+        is_read1=True,
+        is_reverse=False,
+        quals=[79] * 18,
+    )
+    # R2: correct-length deletion (1bp)
+    # Query: 11 + 9 = 20 bases, ref span: 11 + 1(del) + 9 = 21
+    r2 = _make_paired(
+        "frag_wl_del",
+        "A" * 20,
+        90,
+        ((0, 11), (2, 1), (0, 9)),
+        is_read1=False,
+        is_reverse=True,
+        quals=[79] * 20,
+    )
+    r1.next_reference_start = 90
+    r1.template_length = 20
+    r2.next_reference_start = 90
+    r2.template_length = 21
+
+    bam_path = build_bam(tmp_path, [r1, r2], filename="del_wrong_len.bam")
+    counts = _count_indel_variant(bam_path, "AC", "A", "DEL")
+
+    _assert_invariants(counts, "del_wrong_length")
+    assert counts.dpf == 1, f"Expected 1 fragment, got {counts.dpf}"
+    # R2's correct D(1) is structural → ALT wins regardless of R1's Phase 3 result
+    assert counts.adf == 1, f"Expected adf=1 (structural ALT from R2), got {counts.adf}"
+    assert counts.rdf == 0, f"Expected rdf=0, got {counts.rdf}"
+
+
+# ── Test 8: INS singleton — single read with I-op → ALT ─────────────────
 
 
 def test_ins_singleton(tmp_path):
@@ -284,7 +398,7 @@ def test_ins_singleton(tmp_path):
     assert counts.adf == 1, f"Expected adf=1 (singleton ALT), got {counts.adf}"
 
 
-# ── Test 7: DEL singleton — single read with D-op → ALT ─────────────────
+# ── Test 9: DEL singleton — single read with D-op → ALT ─────────────────
 
 
 def test_del_singleton(tmp_path):
@@ -300,7 +414,7 @@ def test_del_singleton(tmp_path):
     assert counts.adf == 1, f"Expected adf=1 (singleton ALT), got {counts.adf}"
 
 
-# ── Test 8: INS REF agreement — both reads M-block → REF ────────────────
+# ── Test 10: INS REF agreement — both reads M-block → REF ───────────────
 
 
 def test_ins_ref_agreement(tmp_path):
@@ -326,7 +440,7 @@ def test_ins_ref_agreement(tmp_path):
     assert counts.adf == 0, f"Expected adf=0, got {counts.adf}"
 
 
-# ── Test 9: DEL REF agreement — both reads M-block → REF ────────────────
+# ── Test 11: DEL REF agreement — both reads M-block → REF ───────────────
 
 
 def test_del_ref_agreement(tmp_path):
