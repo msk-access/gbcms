@@ -196,26 +196,18 @@ def merge_mafs(config: MergeConfig) -> None:
     count_cols_in_output = [
         c
         for c in output_schema
-        if any(
-            c == f"{t}_{base}" for t in types for base in GBCMS_COUNT_BASENAMES
-        )
+        if any(c == f"{t}_{base}" for t in types for base in GBCMS_COUNT_BASENAMES)
     ]
     meta_cols_in_output = [
         c
         for c in output_schema
-        if any(
-            c == f"{t}_{base}" for t in types for base in GBCMS_META_BASENAMES
-        )
+        if any(c == f"{t}_{base}" for t in types for base in GBCMS_META_BASENAMES)
     ]
     if count_cols_in_output:
-        merged = merged.with_columns(
-            [pl.col(c).fill_null("0") for c in count_cols_in_output]
-        )
+        merged = merged.with_columns([pl.col(c).fill_null("0") for c in count_cols_in_output])
         logger.info("  Filled nulls → '0' for %d count columns", len(count_cols_in_output))
     if meta_cols_in_output:
-        merged = merged.with_columns(
-            [pl.col(c).fill_null("") for c in meta_cols_in_output]
-        )
+        merged = merged.with_columns([pl.col(c).fill_null("") for c in meta_cols_in_output])
         logger.info("  Filled nulls → '' for %d meta columns", len(meta_cols_in_output))
 
     # ── 4. Combined simplex+duplex columns ────────────────────────────────────
@@ -300,7 +292,9 @@ def _build_rename_map(columns: list[str], bam_type: str) -> dict[str, str]:
     prefix = f"{bam_type}_"
 
     # Check if columns are already prefixed
-    already_prefixed = any(c.startswith(prefix) for c in columns if _strip_prefix(c) in ALL_GBCMS_BASENAMES)
+    already_prefixed = any(
+        c.startswith(prefix) for c in columns if _strip_prefix(c) in ALL_GBCMS_BASENAMES
+    )
     if already_prefixed:
         logger.debug(
             "Columns in '%s' MAF already have '%s' prefix",
@@ -317,8 +311,7 @@ def _build_rename_map(columns: list[str], bam_type: str) -> dict[str, str]:
 
     if not rename_map:
         logger.warning(
-            "No gbcms count columns found in '%s' MAF. "
-            "Available columns: %s",
+            "No gbcms count columns found in '%s' MAF. " "Available columns: %s",
             bam_type,
             columns[:10],
         )
@@ -350,7 +343,7 @@ def _is_prefixed_gbcms_col(col: str, bam_type: str) -> bool:
     prefix = f"{bam_type}_"
     if not col.startswith(prefix):
         return False
-    basename = col[len(prefix):]
+    basename = col[len(prefix) :]
     return basename in ALL_GBCMS_BASENAMES
 
 
@@ -376,6 +369,7 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     Returns:
         LazyFrame with 20 additional simplex_duplex_* columns appended.
     """
+
     # ── Helper: cast + null-fill for a combined sum ───────────────────────
     def _sum(metric: str) -> pl.Expr:
         """Sum simplex_{metric} + duplex_{metric}, casting from string."""
@@ -394,9 +388,9 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         """Compute VAF = combined_alt / combined_total, 0/0 → 0.0."""
         alt = pl.col(f"simplex_duplex_{alt_metric}").cast(pl.Float64)
         total = pl.col(f"simplex_duplex_{total_name}").cast(pl.Float64)
-        return (
-            pl.when(total > 0).then(alt / total).otherwise(0.0)
-        ).alias(f"simplex_duplex_{vaf_name}")
+        return (pl.when(total > 0).then(alt / total).otherwise(0.0)).alias(
+            f"simplex_duplex_{vaf_name}"
+        )
 
     # ── Determine which additive metrics exist in the merged output ─────
     schema_names = set(lf.collect_schema().names())
@@ -440,9 +434,7 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         total_exprs.append(
             _total("ref_count_fragment", "alt_count_fragment", "total_count_fragment")
         )
-        vaf_exprs.append(
-            _vaf("alt_count_fragment", "total_count_fragment", "vaf_fragment")
-        )
+        vaf_exprs.append(_vaf("alt_count_fragment", "total_count_fragment", "vaf_fragment"))
 
     if total_exprs:
         lf = lf.with_columns(total_exprs)
@@ -512,10 +504,12 @@ def _compute_combined_strand_bias(
             alt_rev="simplex_duplex_alt_count_reverse",
             fisher_fn=fisher_exact_2x2,
         )
-        df = df.with_columns([
-            pl.Series("simplex_duplex_strand_bias_p_value", sb_results[0]),
-            pl.Series("simplex_duplex_strand_bias_odds_ratio", sb_results[1]),
-        ])
+        df = df.with_columns(
+            [
+                pl.Series("simplex_duplex_strand_bias_p_value", sb_results[0]),
+                pl.Series("simplex_duplex_strand_bias_odds_ratio", sb_results[1]),
+            ]
+        )
 
     # ── Fragment-level strand bias ────────────────────────────────────────
     if compute_fragment_sb:
@@ -527,10 +521,12 @@ def _compute_combined_strand_bias(
             alt_rev="simplex_duplex_alt_count_fragment_reverse",
             fisher_fn=fisher_exact_2x2,
         )
-        df = df.with_columns([
-            pl.Series("simplex_duplex_fragment_strand_bias_p_value", fsb_results[0]),
-            pl.Series("simplex_duplex_fragment_strand_bias_odds_ratio", fsb_results[1]),
-        ])
+        df = df.with_columns(
+            [
+                pl.Series("simplex_duplex_fragment_strand_bias_p_value", fsb_results[0]),
+                pl.Series("simplex_duplex_fragment_strand_bias_odds_ratio", fsb_results[1]),
+            ]
+        )
 
     logger.debug(
         "Computed combined strand bias for %d variants (read-level + fragment-level)",
@@ -600,14 +596,14 @@ def _apply_legacy_naming(
         prefix = f"{t}_"
         for col in df.columns:
             if col.startswith(prefix):
-                basename = col[len(prefix):]
+                basename = col[len(prefix) :]
                 if basename in ALL_GBCMS_BASENAMES:
                     rename_map[col] = f"t_{basename}_{t}"
 
     # Also rename combined columns if present
     for col in df.columns:
         if col.startswith("simplex_duplex_"):
-            basename = col[len("simplex_duplex_"):]
+            basename = col[len("simplex_duplex_") :]
             rename_map[col] = f"t_{basename}_simplex_duplex"
 
     if rename_map:

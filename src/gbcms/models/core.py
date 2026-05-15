@@ -604,4 +604,3 @@ class MergeConfig(BaseModel):
             if not path.exists():
                 raise ValueError(f"Input MAF for '{label}' not found: {path}")
         return v
-

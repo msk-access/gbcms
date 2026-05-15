@@ -44,7 +44,7 @@ flowchart TD
 
     **Defaults:** MAPQ 1 · base quality 20 · secondary/supplementary/QC-failed reads filtered · PairHMM relaxed RT gap penalties
 
-    → [Quick Start](quickstart.md#rna-seq) | [Full CLI Reference](../cli/rna.md)
+    → [Quick Start](quickstart.md) | [Full CLI Reference](../cli/rna.md)
 
 ---
 

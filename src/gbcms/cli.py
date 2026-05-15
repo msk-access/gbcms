@@ -890,9 +890,7 @@ def merge(
         "--legacy-naming",
         help="Use t_{metric}_{type} naming (genotype_variants compatible).",
     ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-V", help="Enable debug logging"
-    ),
+    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable debug logging"),
 ):
     """
     Merge per-BAM-type genotyped MAFs into a single type-prefixed output.
@@ -921,8 +919,7 @@ def merge(
     for inp in inputs:
         if ":" not in inp:
             logger.error(
-                "Invalid --input format '%s'. "
-                "Expected type:path (e.g., duplex:sample.maf)",
+                "Invalid --input format '%s'. " "Expected type:path (e.g., duplex:sample.maf)",
                 inp,
             )
             raise typer.Exit(code=1)
@@ -933,15 +930,13 @@ def merge(
             raise typer.Exit(code=1)
         if not _COLUMN_PREFIX_RE.match(label):
             logger.error(
-                "Invalid BAM type label '%s' — only letters, digits, "
-                "underscores allowed.",
+                "Invalid BAM type label '%s' — only letters, digits, " "underscores allowed.",
                 label,
             )
             raise typer.Exit(code=1)
         if label in parsed:
             logger.error(
-                "Duplicate BAM type label '%s'. Each --input must have "
-                "a unique type label.",
+                "Duplicate BAM type label '%s'. Each --input must have " "a unique type label.",
                 label,
             )
             raise typer.Exit(code=1)
