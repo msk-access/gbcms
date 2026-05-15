@@ -19,7 +19,14 @@ pub use crate::shared::bam_utils::{find_read_pos, median_qual};
 /// (cheapest first).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassifyPhase {
-    /// Phase 0: Direct CIGAR pattern match (SNPs, structural indels)
+    /// Phase 0: Direct CIGAR pattern match (SNPs, structural indels).
+    ///
+    /// NOTE: This phase name predates the `ClassifyResult::is_structural`
+    /// flag. `phase == Structural` does NOT imply `is_structural == true`.
+    /// The phase indicates WHERE classification happened (CIGAR walk);
+    /// the flag indicates WHETHER a CIGAR I/D op directly confirmed the
+    /// allele. SNPs classified at Phase 0 have `phase == Structural`
+    /// but `is_structural == false`.
     Structural,
     /// Phase 1: CIGAR-based sequence reconstruction + exact comparison
     CigarRecon,
@@ -71,19 +78,32 @@ pub struct ClassifyResult {
     ///
     /// Consumed by engine to increment `partial_alt`/`any_alt`.
     pub has_nearby_evidence: bool,
+    /// Whether this classification came from a direct CIGAR I/D op match.
+    ///
+    /// Set `true` on ALT returns from `check_insertion` (I op found) and
+    /// `check_deletion` (D op found). NOT set on REF returns (absence of
+    /// I/D op is the aligner's default, not counter-evidence) or Phase 3
+    /// alignment returns (probabilistic, not direct CIGAR).
+    ///
+    /// Used by `FragmentEvidence::resolve()` to prioritize structural
+    /// INDEL evidence over base-quality comparisons. When one read in a
+    /// fragment has `is_structural=true` ALT and the other has non-structural
+    /// REF, the structural ALT wins unconditionally — the quality comparison
+    /// is meaningless because both measure anchor BQ, not INDEL confidence.
+    pub is_structural: bool,
 }
 
 impl ClassifyResult {
     /// Create a new ClassifyResult with no partial match evidence.
     #[inline]
     pub fn new(is_ref: bool, is_alt: bool, qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref, is_alt, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false }
+        Self { is_ref, is_alt, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false }
     }
 
     /// Neither REF nor ALT — read didn't classify (e.g., no coverage, low quality).
     #[inline]
     pub fn neither(phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false }
     }
 
     /// Neither REF nor ALT, and the read carried an N base at the variant position.
@@ -91,7 +111,7 @@ impl ClassifyResult {
     /// third-allele or low-BQ reads for diagnostic counting (BaseCounts::n_count).
     #[inline]
     pub fn neither_n(phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: true, has_nearby_evidence: false }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: true, has_nearby_evidence: false, is_structural: false }
     }
 
     /// Neither REF nor ALT, but with partial ALT evidence at some positions.
@@ -100,19 +120,30 @@ impl ClassifyResult {
     /// `has_n`: true if the read had N at ≥1 discriminating position.
     #[inline]
     pub fn neither_with_partial(phase: ClassifyPhase, partial_count: u8, has_n: bool) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: partial_count, has_n_base: has_n, has_nearby_evidence: false }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: partial_count, has_n_base: has_n, has_nearby_evidence: false, is_structural: false }
     }
 
     /// Shorthand for REF classification.
     #[inline]
     pub fn is_ref(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: true, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false }
+        Self { is_ref: true, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false }
     }
 
     /// Shorthand for ALT classification.
     #[inline]
     pub fn is_alt(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false }
+        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false }
+    }
+
+    /// Shorthand for structural ALT classification (CIGAR I/D op match).
+    ///
+    /// Used by `check_insertion` and `check_deletion` when a matching
+    /// CIGAR operator directly confirms the ALT allele. The `is_structural`
+    /// flag enables `FragmentEvidence::resolve()` to prioritize this
+    /// evidence over base-quality comparisons.
+    #[inline]
+    pub fn is_alt_structural(qual: u8, phase: ClassifyPhase) -> Self {
+        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: true }
     }
 
 }

@@ -25,6 +25,7 @@ pytest tests/test_accuracy.py -v
 | Shifted Indels | `test_shifted_indels.py` | Windowed indel detection (±5bp), 3-layer safeguards |
 | Complex Masking | `test_fuzzy_complex.py` | Quality-aware masked comparison, ambiguity detection, MSI gap penalties |
 | Fragment Consensus | `test_fragment_consensus.py` | Quality-weighted R1/R2 conflict resolution, DPF invariant |
+| INDEL Fragment Consensus | `test_indel_fragment_consensus.py` | Structural ALT priority for INDEL conflicts, Phase 3 dispatch, SNP regression |
 | Normalization | `test_normalization.py` | Left-alignment, REF validation, homopolymer detection, dynamic window expansion |
 | DP Neither | `test_dp_neither.py` | Gap 1D: DP includes third-allele/neither reads |
 | Multi-Allelic | `test_multi_allelic.py` | Gap 1A: Sibling ALT exclusion, overlapping indel DP |
@@ -62,6 +63,7 @@ Rust tests live inside `#[cfg(test)]` modules and cover:
 | Window expansion | 1 | Gap 1B: >100bp repeat normalization |
 | MNP classification | 17 | Masked quality, partial counting, N-base handling |
 | N-base coverage | 8 | SNP/MNP/PairHMM N guards, n_count propagation |
+| Fragment consensus | 11 | `resolve()` structural ALT priority, `observe()` sticky flag, quality paths |
 | Invariants | 1 | `any_alt = ad + partial_alt`, depth decomposition |
 
 ---
@@ -81,6 +83,7 @@ tests/
 ├── test_dp_neither.py           # Gap 1D: DP includes third-allele reads
 ├── test_filters.py              # Read filtering
 ├── test_fragment_consensus.py   # Fragment-level quality consensus + DPF invariant
+├── test_indel_fragment_consensus.py  # INDEL structural ALT priority + Phase 3 dispatch
 ├── test_fuzzy_complex.py        # Quality-aware masked complex matching + MSI penalties
 ├── test_maf_preservation.py     # MAF column preservation
 ├── test_maf_reader.py           # MAF input parsing
@@ -222,6 +225,7 @@ awk -F'\t' 'NR==2 {print "REF="$41, "ALT="$42}' output/*.maf
 | DP Neither | `test_dp_neither.py` (3 cases) | ✅ |
 | Multi-Allelic | `test_multi_allelic.py` (4 cases) | ✅ |
 | Fragment Consensus | `test_fragment_consensus.py` (3 cases) | ✅ |
+| INDEL Fragment Consensus | `test_indel_fragment_consensus.py` (11 cases) | ✅ |
 | Window Expansion | `test_normalization.py` (9 cases) | ✅ |
 | MSI Gap Penalties | `test_fuzzy_complex.py::TestGap3A` | ✅ |
 
@@ -251,7 +255,7 @@ samtools mpileup -r 1:11168293-11168293 -q 20 -f ref.fa sample.bam | \
 | io/output.py | 90% | 84% |
 | models/core.py | 90% | 96% |
 
-**Current totals**: 255 Python + 143 Rust tests.
+**Current totals**: 266 Python + 161 Rust tests.
 
 Run coverage report:
 

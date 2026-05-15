@@ -42,7 +42,7 @@ Complete reference for all pipeline parameters.
 |:----------|:--------|:------------|
 | `--min_mapq` | `20` | Minimum mapping quality |
 | `--min_baseq` | `20` | Minimum base quality |
-| `--fragment_qual_threshold` | `10` | Quality margin for [fragment consensus](../reference/counting-metrics.md#fragment-counting) — when R1/R2 disagree, the higher-quality allele wins only if the difference exceeds this |
+| `--fragment_qual_threshold` | `10` | Quality margin for [fragment consensus](../reference/counting-metrics.md#fragment-counting) — when R1/R2 disagree on a non-INDEL variant, the higher-quality allele wins only if the difference exceeds this. INDEL conflicts with structural CIGAR evidence bypass this threshold. |
 | `--context_padding` | `5` | Minimum flanking bases for [Phase 3 alignment](../reference/allele-classification.md#phase-3-alignment-fallback) (auto-increased in repeats) |
 | `--adaptive_context` | `true` | Dynamically increase context padding in [tandem repeat regions](../reference/variant-normalization.md#adaptive-context-padding) |
 | `--filter_duplicates` | `true` | Filter duplicate reads |

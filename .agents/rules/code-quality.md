@@ -85,7 +85,7 @@ assert counts.rd == counts.rd_fwd + counts.rd_rev  # strand consistency
 assert counts.ad == counts.ad_fwd + counts.ad_rev
 ```
 
-## Test Suite: 255 Python + 143 Rust Tests
+## Test Suite: 266 Python + 161 Rust Tests
 
 | File | What It Tests |
 |:-----|:-------------|
@@ -96,6 +96,7 @@ assert counts.ad == counts.ad_fwd + counts.ad_rev
 | `test_strand_counts.py` | Strand-specific counting |
 | `test_alignment_backend.py` | SW vs PairHMM concordance |
 | `test_fragment_consensus.py` | Fragment quality consensus, DPF invariant |
+| `test_indel_fragment_consensus.py` | INDEL structural ALT priority, Phase 3 dispatch, SNP regression |
 | `test_multi_allelic.py` | Sibling ALT exclusion |
 | `test_dp_neither.py` | DP includes neither/third-allele reads |
 | `test_normalization.py` | Left-alignment, REF validation, window expansion |

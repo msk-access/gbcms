@@ -51,6 +51,16 @@ pub struct FragmentEvidence {
     /// Sticky: once set, never cleared. Used to split "neither-REF-nor-ALT"
     /// fragments into the N class vs. the NonREF class for mFSD analysis.
     pub has_n_base: bool,
+
+    // ── INDEL structural evidence ───────────────────────────────────────────────────
+    /// True if any read in this fragment had structural CIGAR evidence
+    /// (I/D op) confirming ALT. Sticky across reads — once set, never
+    /// cleared. Used by `resolve()` to prioritize structural evidence
+    /// over base-quality comparisons in R1-vs-R2 INDEL conflicts.
+    ///
+    /// Set by `observe()` when `is_structural=true && is_alt=true`.
+    /// Follows the same sticky-flag pattern as `has_n_base`.
+    pub has_structural_alt: bool,
 }
 
 impl FragmentEvidence {
@@ -64,6 +74,7 @@ impl FragmentEvidence {
             read2_orientation: None,
             insert_size: None,
             has_n_base: false,
+            has_structural_alt: false,
         }
     }
 
@@ -80,7 +91,12 @@ impl FragmentEvidence {
     ///   TLEN=0 (unpaired/unmapped mate) is skipped.
     /// - `is_n_base`: set `true` when the base at the variant position is 'N'.
     ///   Sticky across reads of the pair — once set, not cleared.
-    #[allow(clippy::too_many_arguments)] // 5 existing + tlen + is_n_base: unavoidable
+    /// ## Structural INDEL tracking
+    /// - `is_structural`: set `true` when the read's classification came from
+    ///   a direct CIGAR I/D op match (via `ClassifyResult::is_alt_structural`).
+    ///   Sticky across reads of the pair — once set, not cleared. Enables
+    ///   `resolve()` to prioritize structural evidence over BQ comparisons.
+    #[allow(clippy::too_many_arguments)]
     pub fn observe(
         &mut self,
         is_ref: bool,
@@ -90,7 +106,18 @@ impl FragmentEvidence {
         is_forward: bool,
         tlen: i32,
         is_n_base: bool,
+        is_structural: bool,
     ) {
+        // Guard: a read cannot be both REF and ALT simultaneously.
+        // ClassifyResult constructors enforce mutual exclusivity, so this
+        // should never fire. Compiles out in --release builds; in production,
+        // both best_*_qual update and resolve() falls through to quality
+        // comparison — suboptimal but not catastrophic.
+        debug_assert!(
+            !(is_ref && is_alt),
+            "FragmentEvidence::observe() called with both is_ref=true and is_alt=true"
+        );
+
         if is_ref && base_qual > self.best_ref_qual {
             self.best_ref_qual = base_qual;
             self.best_ref_orientation = Some(is_forward);
@@ -104,6 +131,13 @@ impl FragmentEvidence {
             self.read1_orientation = Some(is_forward);
         } else {
             self.read2_orientation = Some(is_forward);
+        }
+
+        // Structural CIGAR evidence: sticky flag (same pattern as has_n_base).
+        // Once a read in this fragment shows a matching I/D op for ALT,
+        // the flag stays set even if the other read has non-structural evidence.
+        if is_structural && is_alt {
+            self.has_structural_alt = true;
         }
 
         // mFSD: capture physical insert size — keep the MOST corrected value
@@ -126,7 +160,37 @@ impl FragmentEvidence {
     }
 
     /// Resolve this fragment's allele call using quality-weighted consensus.
-    /// Returns (is_ref, is_alt) — exactly one will be true.
+    ///
+    /// Returns `(is_ref, is_alt)`:
+    /// - `(true, false)` = REF wins
+    /// - `(false, true)` = ALT wins
+    /// - `(false, false)` = ambiguous, fragment discarded (counted in DPF
+    ///   but not RDF/ADF)
+    ///
+    /// ## Structural priority (INDEL-aware)
+    ///
+    /// When a fragment has structural ALT evidence (CIGAR I/D op matching
+    /// the target variant), ALT wins unconditionally regardless of quality.
+    ///
+    /// **Why**: For INDELs, both REF and ALT reads report anchor base quality
+    /// (the base before the insertion/deletion). This quality measures "how
+    /// confident is the anchor base call", NOT "how confident is the INDEL
+    /// detection." Comparing anchor BQs to resolve an INDEL conflict is
+    /// semantically meaningless — the CIGAR I/D op is the only signal that
+    /// discriminates between the two alleles.
+    ///
+    /// This applies to both insertions and deletions:
+    /// - INS: REF read's M-block is absence-of-insertion (zero-width in ref space)
+    /// - DEL: REF read's M-block is the aligner's default when it didn't detect
+    ///   the deletion (validated on DNMT3A duplex: all 7 conflict fragments were
+    ///   genuine D-op evidence with MAPQ=60 and correct length)
+    ///
+    /// ## Known limitations
+    ///
+    /// Variants classified through Phase 3 alignment (complex variants,
+    /// wrong-length INDELs) have `is_structural=false` and continue to use
+    /// quality-weighted consensus. This is intentional: Phase 3 classifications
+    /// are probabilistic, and quality arbitration is appropriate for them.
     pub fn resolve(&self, qual_diff_threshold: u8) -> (bool, bool) {
         let has_ref = self.best_ref_qual > 0;
         let has_alt = self.best_alt_qual > 0;
@@ -135,11 +199,15 @@ impl FragmentEvidence {
             (true, false) => (true, false),   // Only REF evidence
             (false, true) => (false, true),   // Only ALT evidence
             (true, true) => {
-                // Conflict: both alleles seen across reads in this fragment.
-                // Use quality-weighted consensus: higher quality wins.
-                // If quality difference is within threshold, discard the fragment
-                // to avoid biasing VAF in either direction — critical for low-VAF
-                // cfDNA detection where every fragment matters.
+                // Structural CIGAR evidence (I/D op) takes priority over
+                // base-quality comparison. When a read has a matching I/D op,
+                // the other read's "REF" is the aligner's default M-block —
+                // absence of INDEL detection, not counter-evidence.
+                if self.has_structural_alt {
+                    return (false, true);
+                }
+                // Non-structural conflict (SNPs, Phase 3 returns):
+                // quality-weighted consensus with threshold-based discard.
                 if self.best_ref_qual > self.best_alt_qual + qual_diff_threshold {
                     (true, false)  // REF wins by quality margin
                 } else if self.best_alt_qual > self.best_ref_qual + qual_diff_threshold {
@@ -200,4 +268,126 @@ pub fn hash_molecule(qname: &[u8], umi: Option<&[u8]>) -> u64 {
         umi_bytes.hash(&mut hasher);
     }
     hasher.finish()
+}
+
+// ── Unit Tests ──────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: create a FragmentEvidence with specific REF/ALT observations.
+    /// Simulates observe() calls with given qualities and structural flag.
+    fn evidence_with(
+        ref_qual: u8,
+        alt_qual: u8,
+        structural_alt: bool,
+    ) -> FragmentEvidence {
+        let mut ev = FragmentEvidence::new();
+        if ref_qual > 0 {
+            ev.observe(true, false, ref_qual, true, true, 200, false, false);
+        }
+        if alt_qual > 0 {
+            ev.observe(false, true, alt_qual, false, false, 200, false, structural_alt);
+        }
+        ev
+    }
+
+    // ── resolve() structural priority tests ───────────────────────────
+
+    #[test]
+    fn resolve_structural_alt_wins_despite_equal_quality() {
+        // Core fix: structural ALT wins even when REF and ALT have identical BQ.
+        // This is the exact scenario that was causing fragment discard before
+        // the INDEL consensus fix (both reads report anchor BQ = 79).
+        let ev = evidence_with(79, 79, true);
+        assert_eq!(ev.resolve(10), (false, true), "structural ALT should win");
+    }
+
+    #[test]
+    fn resolve_structural_alt_wins_despite_higher_ref_quality() {
+        // Structural ALT wins even when REF has significantly higher BQ.
+        // The quality comparison is meaningless for INDEL evidence.
+        let ev = evidence_with(90, 30, true);
+        assert_eq!(ev.resolve(10), (false, true), "structural ALT should win");
+    }
+
+    #[test]
+    fn resolve_non_structural_ref_wins_by_quality() {
+        // Without structural flag, normal quality consensus applies.
+        // REF quality exceeds ALT + threshold → REF wins.
+        let ev = evidence_with(90, 30, false);
+        assert_eq!(ev.resolve(10), (true, false), "REF should win by quality");
+    }
+
+    #[test]
+    fn resolve_non_structural_alt_wins_by_quality() {
+        // Without structural flag, ALT wins when ALT quality exceeds REF + threshold.
+        let ev = evidence_with(30, 90, false);
+        assert_eq!(ev.resolve(10), (false, true), "ALT should win by quality");
+    }
+
+    #[test]
+    fn resolve_non_structural_tie_discards() {
+        // Without structural flag, equal quality within threshold → discard.
+        // This is the SNP conflict behavior (unchanged by this fix).
+        let ev = evidence_with(30, 30, false);
+        assert_eq!(ev.resolve(10), (false, false), "tie should discard");
+    }
+
+    #[test]
+    fn resolve_ref_only_returns_ref() {
+        // Only REF evidence seen → REF wins. No conflict to resolve.
+        let ev = evidence_with(50, 0, false);
+        assert_eq!(ev.resolve(10), (true, false), "REF-only should return REF");
+    }
+
+    #[test]
+    fn resolve_alt_only_returns_alt() {
+        // Only ALT evidence seen → ALT wins. No conflict to resolve.
+        let ev = evidence_with(0, 50, false);
+        assert_eq!(ev.resolve(10), (false, true), "ALT-only should return ALT");
+    }
+
+    #[test]
+    fn resolve_no_evidence_returns_neither() {
+        // No evidence at all → neither. Should not normally happen
+        // (filtered upstream), but the function handles it gracefully.
+        let ev = FragmentEvidence::new();
+        assert_eq!(ev.resolve(10), (false, false), "no evidence → neither");
+    }
+
+    // ── observe() structural flag tests ──────────────────────────────
+
+    #[test]
+    fn observe_structural_flag_is_sticky() {
+        // Once has_structural_alt is set, it should persist even if
+        // a subsequent non-structural observation is made.
+        let mut ev = FragmentEvidence::new();
+        // First read: structural ALT
+        ev.observe(false, true, 30, true, true, 200, false, true);
+        assert!(ev.has_structural_alt, "should be set after structural ALT");
+        // Second read: non-structural REF
+        ev.observe(true, false, 90, false, false, 200, false, false);
+        assert!(ev.has_structural_alt, "should remain set (sticky)");
+    }
+
+    #[test]
+    fn observe_structural_ref_does_not_set_flag() {
+        // is_structural=true on a REF observation should NOT set the flag.
+        // This guards against a hypothetical bug where someone passes
+        // is_structural=true with is_ref=true (shouldn't happen, but
+        // defensive programming).
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 50, true, true, 200, false, true);
+        assert!(!ev.has_structural_alt, "REF obs should not set structural ALT flag");
+    }
+
+    #[test]
+    fn observe_non_structural_alt_does_not_set_flag() {
+        // Non-structural ALT (e.g., Phase 3 alignment) should not set the flag.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(false, true, 50, true, true, 200, false, false);
+        assert!(!ev.has_structural_alt, "non-structural ALT should not set flag");
+    }
 }

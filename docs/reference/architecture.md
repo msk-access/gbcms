@@ -429,7 +429,7 @@ the rescue provenance, enabling downstream users to reconcile the invariant brea
 | Complex quality handling | Exact match only (no quality awareness) | **Masked comparison** — bases below `--min-baseq` are masked out, ambiguity detection prevents false positives |
 | Base quality filtering | No base quality threshold | Default `--min-baseq 20` (Phred Q20) |
 | MNP handling | Not explicit | Dedicated `check_mnp` with contiguity check |
-| Fragment counting | Optional (`--fragment_count`), majority-rule | Always computed, quality-weighted consensus with discard |
+| Fragment counting | Optional (`--fragment_count`), majority-rule | Always computed, quality-weighted consensus with INDEL structural priority |
 | Positive strand counts | Optional (`--positive_count`) | Always computed |
 | Strand bias | Not computed | Fisher's exact test (read + fragment level) |
 | Fractional depth | `--fragment_fractional_weight` | Not implemented |
