@@ -1,0 +1,2793 @@
+<!DOCTYPE html><html class="no-js" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width,initial-scale=1" name="viewport">
+<meta content="High-performance variant counting from BAM files" name="description">
+<meta content="MSK-ACCESS" name="author">
+<link href="https://msk-access.github.io/gbcms/5.2.0/reference/output-formats/" rel="canonical">
+<link href="../input-formats/" rel="prev">
+<link href="../variant-normalization/" rel="next">
+<link href="../../assets/images/favicon.png" rel="icon">
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator">
+<title>Output Formats - gbcms</title>
+<link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet">
+<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet">
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../../css/print-site.css" rel="stylesheet">
+<link href="../../css/print-site-material.css" rel="stylesheet">
+<link href="../../css/timeago.css" rel="stylesheet">
+<link href="../../stylesheets/extra.css" rel="stylesheet">
+<link href="../../assets/stylesheets/panzoom.css" rel="stylesheet">
+<script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+<link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style><meta name="panzoom-theme" content="material">
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#output-formats">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="gbcms" class="md-header__button md-logo" data-md-component="logo" href="../.." title="gbcms">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            gbcms
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Output Formats
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="custom" data-md-color-media="(prefers-color-scheme: light)" data-md-color-primary="custom" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio">
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="custom" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-primary="custom" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio">
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text">
+<label class="md-search__icon md-icon" for="__search">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+<div class="md-search__suggest" data-md-component="search-suggest"></div>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/msk-access/gbcms" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="gbcms" class="md-nav__button md-logo" data-md-component="logo" href="../.." title="gbcms">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    gbcms
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/msk-access/gbcms" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_2" type="checkbox">
+<div class="md-nav__link md-nav__container">
+<a class="md-nav__link" href="../../getting-started/">
+<span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+</a>
+<label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+<span class="md-nav__icon md-icon"></span>
+</label>
+</div>
+<nav aria-expanded="false" aria-labelledby="__nav_2_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_2">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/installation/">
+<span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/quickstart/">
+<span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_3" type="checkbox">
+<div class="md-nav__link md-nav__container">
+<a class="md-nav__link" href="../../cli/">
+<span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+</a>
+<label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+<span class="md-nav__icon md-icon"></span>
+</label>
+</div>
+<nav aria-expanded="false" aria-labelledby="__nav_3_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/dna/">
+<span class="md-ellipsis">
+    
+  
+    DNA Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/rna/">
+<span class="md-ellipsis">
+    
+  
+    RNA Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/merge/">
+<span class="md-ellipsis">
+    
+  
+    Merge Command
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/normalize/">
+<span class="md-ellipsis">
+    
+  
+    Normalize Command
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_4" type="checkbox">
+<div class="md-nav__link md-nav__container">
+<a class="md-nav__link" href="../../nextflow/">
+<span class="md-ellipsis">
+    
+  
+    Nextflow Pipeline
+  
+
+    
+  </span>
+</a>
+<label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+<span class="md-nav__icon md-icon"></span>
+</label>
+</div>
+<nav aria-expanded="false" aria-labelledby="__nav_4_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Nextflow Pipeline
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../nextflow/samplesheet/">
+<span class="md-ellipsis">
+    
+  
+    Samplesheet
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../nextflow/parameters/">
+<span class="md-ellipsis">
+    
+  
+    Parameters
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../nextflow/examples/">
+<span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_5" type="checkbox">
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    How It Works
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="true" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    How It Works
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../input-formats/">
+<span class="md-ellipsis">
+    
+  
+    Input Formats
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox">
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Output Formats
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Output Formats
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-the-output-path-is-decided">
+<span class="md-ellipsis">
+      
+        How the Output Path Is Decided
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#vcf-output-format-vcf">
+<span class="md-ellipsis">
+      
+        VCF Output (--format vcf)
+      
+    </span>
+</a>
+<nav aria-label="VCF Output (--format vcf)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#file-header">
+<span class="md-ellipsis">
+      
+        File Header
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-fields">
+<span class="md-ellipsis">
+      
+        Fixed Fields
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#info-fields">
+<span class="md-ellipsis">
+      
+        INFO Fields
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#format-fields">
+<span class="md-ellipsis">
+      
+        FORMAT Fields
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#annotated-example">
+<span class="md-ellipsis">
+      
+        Annotated Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#maf-output-format-maf">
+<span class="md-ellipsis">
+      
+        MAF Output (--format maf)
+      
+    </span>
+</a>
+<nav aria-label="MAF Output (--format maf)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#two-output-paths">
+<span class="md-ellipsis">
+      
+        Two Output Paths
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tumor_sample_barcode-behaviour">
+<span class="md-ellipsis">
+      
+        Tumor_Sample_Barcode Behaviour
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#gbcms-count-columns">
+<span class="md-ellipsis">
+      
+        gbcms Count Columns
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rna-specific-maf-columns">
+<span class="md-ellipsis">
+      
+        RNA-Specific MAF Columns
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#gtf-aware-maf-columns-v500">
+<span class="md-ellipsis">
+      
+        GTF-Aware MAF Columns (v5.0.0)
+      
+    </span>
+</a>
+<nav aria-label="GTF-Aware MAF Columns (v5.0.0)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#exon-boundary-distance">
+<span class="md-ellipsis">
+      
+        Exon Boundary Distance
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#per-transcript-counts">
+<span class="md-ellipsis">
+      
+        Per-Transcript Counts
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#aberrant-splice-junction-detection-asjd">
+<span class="md-ellipsis">
+      
+        Aberrant Splice Junction Detection (ASJD)
+      
+    </span>
+</a>
+<nav aria-label="Aberrant Splice Junction Detection (ASJD)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#asjd-diagnostic-flags">
+<span class="md-ellipsis">
+      
+        ASJD Diagnostic Flags
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#library-type-behavioral-note-v500">
+<span class="md-ellipsis">
+      
+        Library Type Behavioral Note (v5.0.0)
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#merged-maf-output-gbcms-merge">
+<span class="md-ellipsis">
+      
+        Merged MAF Output (gbcms merge)
+      
+    </span>
+</a>
+<nav aria-label="Merged MAF Output (gbcms merge)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#type-prefixed-columns">
+<span class="md-ellipsis">
+      
+        Type-Prefixed Columns
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#combined-simplex_duplex_-columns">
+<span class="md-ellipsis">
+      
+        Combined simplex_duplex_* Columns
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#per-sample-file-naming">
+<span class="md-ellipsis">
+      
+        Per-Sample File Naming
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#missing-values">
+<span class="md-ellipsis">
+      
+        Missing Values
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#related">
+<span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../variant-normalization/">
+<span class="md-ellipsis">
+    
+  
+    Variant Normalization
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../read-filters/">
+<span class="md-ellipsis">
+    
+  
+    Read Filters
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../rna-splice-handling/">
+<span class="md-ellipsis">
+    
+  
+    RNA Splice Handling
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../rna-annotation/">
+<span class="md-ellipsis">
+    
+  
+    RNA Annotation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../allele-classification/">
+<span class="md-ellipsis">
+    
+  
+    Allele Classification
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../counting-metrics/">
+<span class="md-ellipsis">
+    
+  
+    Counting &amp; Metrics
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../mfsd-report/">
+<span class="md-ellipsis">
+    
+  
+    mFSD Report
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../complex-indels/">
+<span class="md-ellipsis">
+    
+  
+    Complex Indels
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../glossary/">
+<span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_6" type="checkbox">
+<label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_6_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_6">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/developer-guide/">
+<span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/testing-guide/">
+<span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/release-guide/">
+<span class="md-ellipsis">
+    
+  
+    Release Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/changelog/">
+<span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/contributing/">
+<span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_7" type="checkbox">
+<label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Resources
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_7_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_7">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Resources
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../resources/troubleshooting/">
+<span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../resources/citation/">
+<span class="md-ellipsis">
+    
+  
+    Citation
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-the-output-path-is-decided">
+<span class="md-ellipsis">
+      
+        How the Output Path Is Decided
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#vcf-output-format-vcf">
+<span class="md-ellipsis">
+      
+        VCF Output (--format vcf)
+      
+    </span>
+</a>
+<nav aria-label="VCF Output (--format vcf)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#file-header">
+<span class="md-ellipsis">
+      
+        File Header
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-fields">
+<span class="md-ellipsis">
+      
+        Fixed Fields
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#info-fields">
+<span class="md-ellipsis">
+      
+        INFO Fields
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#format-fields">
+<span class="md-ellipsis">
+      
+        FORMAT Fields
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#annotated-example">
+<span class="md-ellipsis">
+      
+        Annotated Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#maf-output-format-maf">
+<span class="md-ellipsis">
+      
+        MAF Output (--format maf)
+      
+    </span>
+</a>
+<nav aria-label="MAF Output (--format maf)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#two-output-paths">
+<span class="md-ellipsis">
+      
+        Two Output Paths
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tumor_sample_barcode-behaviour">
+<span class="md-ellipsis">
+      
+        Tumor_Sample_Barcode Behaviour
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#gbcms-count-columns">
+<span class="md-ellipsis">
+      
+        gbcms Count Columns
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rna-specific-maf-columns">
+<span class="md-ellipsis">
+      
+        RNA-Specific MAF Columns
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#gtf-aware-maf-columns-v500">
+<span class="md-ellipsis">
+      
+        GTF-Aware MAF Columns (v5.0.0)
+      
+    </span>
+</a>
+<nav aria-label="GTF-Aware MAF Columns (v5.0.0)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#exon-boundary-distance">
+<span class="md-ellipsis">
+      
+        Exon Boundary Distance
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#per-transcript-counts">
+<span class="md-ellipsis">
+      
+        Per-Transcript Counts
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#aberrant-splice-junction-detection-asjd">
+<span class="md-ellipsis">
+      
+        Aberrant Splice Junction Detection (ASJD)
+      
+    </span>
+</a>
+<nav aria-label="Aberrant Splice Junction Detection (ASJD)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#asjd-diagnostic-flags">
+<span class="md-ellipsis">
+      
+        ASJD Diagnostic Flags
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#library-type-behavioral-note-v500">
+<span class="md-ellipsis">
+      
+        Library Type Behavioral Note (v5.0.0)
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#merged-maf-output-gbcms-merge">
+<span class="md-ellipsis">
+      
+        Merged MAF Output (gbcms merge)
+      
+    </span>
+</a>
+<nav aria-label="Merged MAF Output (gbcms merge)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#type-prefixed-columns">
+<span class="md-ellipsis">
+      
+        Type-Prefixed Columns
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#combined-simplex_duplex_-columns">
+<span class="md-ellipsis">
+      
+        Combined simplex_duplex_* Columns
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#per-sample-file-naming">
+<span class="md-ellipsis">
+      
+        Per-Sample File Naming
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#missing-values">
+<span class="md-ellipsis">
+      
+        Missing Values
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#related">
+<span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<nav aria-label="Navigation" class="md-path">
+<ol class="md-path__list">
+<li class="md-path__item">
+<a class="md-path__link" href="../..">
+<span class="md-ellipsis">
+    Home
+  </span>
+</a>
+</li>
+<li class="md-path__item">
+<a class="md-path__link" href="../architecture/">
+<span class="md-ellipsis">
+    How It Works
+  </span>
+</a>
+</li>
+</ol>
+</nav>
+<article class="md-content__inner md-typeset">
+<div><h1 id="output-formats">Output Formats<a class="headerlink" href="#output-formats" title="Permanent link">¶</a></h1>
+<p>gbcms writes one output file per <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> sample. The output format, column
+composition, and sample-naming strategy all depend on the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flags used.</p>
+<div class="admonition info">
+<p class="admonition-title">Quick Reference</p>
+<p>Output file path: <code>{--output-dir}/{sample_name}{--suffix}.{vcf|maf}</code></p>
+<p><code>sample_name</code> is set by the <code>name:</code> prefix on <code>--bam</code> (e.g. <code>--bam tumor:tumor.bam</code>)
+or falls back to the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> filename stem.</p>
+</div>
+<hr>
+<h2 id="how-the-output-path-is-decided">How the Output Path Is Decided<a class="headerlink" href="#how-the-output-path-is-decided" title="Permanent link">¶</a></h2>
+<p>The diagram below shows every decision point from <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flags to the final
+output column set. Follow your input type and desired output format to see
+exactly what you get.</p>
+<div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
+<nav class="panzoom-nav">
+<button class="panzoom-info panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm169.8-90.7c7.9-22.3 29.1-37.3 52.8-37.3l58.3 0c34.9 0 63.1 28.3 63.1 63.1c0 22.6-12.1 43.5-31.7 54.8L280 264.4c-.2 13-10.9 23.6-24 23.6c-13.3 0-24-10.7-24-24l0-13.5c0-8.6 4.6-16.5 12.1-20.8l44.3-25.4c4.7-2.7 7.6-7.7 7.6-13.1c0-8.4-6.8-15.1-15.1-15.1l-58.3 0c-3.4 0-6.4 2.1-7.5 5.3l-.4 1.2c-4.4 12.5-18.2 19-30.6 14.6s-19-18.2-14.6-30.6l.4-1.2zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"></path>
+</svg>
+</button><button class="panzoom-reset panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M125.7 160l50.3 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L48 224c-17.7 0-32-14.3-32-32L16 64c0-17.7 14.3-32 32-32s32 14.3 32 32l0 51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+</svg>
+</button><button class="panzoom-max panzoom-button">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"></path>
+</svg>
+</button><button class="panzoom-min panzoom-button panzoom-hidden">
+<svg class="panzoom-icon" viewBox="0 0 448 512" xmlns="http://www.w3.org/2000/svg">
+<path d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"></path>
+</svg>
+</button>
+</nav>
+<pre class="mermaid"><code>flowchart TD
+    Input(["Input variants"]):::start
+
+    Input --&gt; InputType{"Input type?"}
+    InputType --&gt;|"VCF / VCF.GZ"| VCFIn["VCF-origin<br>no metadata"]:::vcf
+    InputType --&gt;|MAF| MAFIn["MAF-origin<br>full row metadata"]:::maf
+
+    FmtChoice{"--format?"}
+    VCFIn --&gt; FmtChoice
+    MAFIn --&gt; FmtChoice
+
+    FmtChoice --&gt;|vcf| VCFWriter["VcfWriter"]:::writer
+    FmtChoice --&gt;|maf| MAFWriter["MafWriter"]:::writer
+
+    VCFWriter --&gt; ModeVCF{"Mode?"}
+    ModeVCF --&gt;|dna| DNAVCF["VCF: standard INFO + FORMAT"]:::dna
+    ModeVCF --&gt;|rna| RNAVCF["VCF: + SEN ANT ASEN RED SPL"]:::rna
+
+    MAFWriter --&gt; ModeMAF{"Mode?"}
+    ModeMAF --&gt;|dna| DNAMAFPath{"Input?"}
+    ModeMAF --&gt;|rna| RNAMAFPath{"Input?"}
+
+    DNAMAFPath --&gt;|"VCF-origin"| DNAVMAF["GDC MAF columns + gbcms counts"]:::dna
+    DNAMAFPath --&gt;|"MAF-origin"| DNAMMAF["All original columns + gbcms counts"]:::dna
+
+    RNAMAFPath --&gt;|"VCF-origin"| RNAVMAF["GDC MAF columns + gbcms counts<br>+ 5 rna_* columns"]:::rna
+    RNAMAFPath --&gt;|"MAF-origin"| RNAMMAF["All original columns + gbcms counts<br>+ 5 rna_* columns"]:::rna
+
+    classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px
+    classDef vcf fill:#2471a3,color:#fff,stroke:#1a5276,stroke-width:2px
+    classDef maf fill:#117a65,color:#fff,stroke:#0e6655,stroke-width:2px
+    classDef writer fill:#7d6608,color:#fff,stroke:#6d5f07,stroke-width:2px
+    classDef dna fill:#1a5276,color:#fff,stroke:#154360,stroke-width:2px
+    classDef rna fill:#1e8449,color:#fff,stroke:#196f3d,stroke-width:2px
+</code></pre>
+<div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
+Use mouse to pan and zoom
+</div>
+</div>
+<hr>
+<h2 id="vcf-output-format-vcf"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> Output (<code>--format vcf</code>)<a class="headerlink" href="#vcf-output-format-vcf" title="Permanent link">¶</a></h2>
+<p>A standards-compliant VCFv4.2 file with one row per variant per sample.</p>
+<h3 id="file-header">File Header<a class="headerlink" href="#file-header" title="Permanent link">¶</a></h3>
+<p>The <code>##fileformat</code>, <code>##source</code>, and <code>##INFO</code>/<code>##FORMAT</code> meta-lines are
+written once. RNA-specific meta-lines are only included when running
+<code>gbcms rna</code> — the header is self-describing.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">DNA mode</label><label for="__tabbed_1_2">RNA mode</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>##fileformat=VCFv4.2
+<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>##source=gbcms
+<a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a>##INFO=&lt;ID=DP,Number=1,Type=Integer,Description="Total Depth"&gt;
+<a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a>##INFO=&lt;ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status"&gt;
+<a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>##INFO=&lt;ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags"&gt;
+<a href="#__codelineno-0-6" id="__codelineno-0-6" name="__codelineno-0-6"></a>##INFO=&lt;ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail"&gt;
+<a href="#__codelineno-0-7" id="__codelineno-0-7" name="__codelineno-0-7"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
+<a href="#__codelineno-0-8" id="__codelineno-0-8" name="__codelineno-0-8"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
+<a href="#__codelineno-0-9" id="__codelineno-0-9" name="__codelineno-0-9"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
+<a href="#__codelineno-0-10" id="__codelineno-0-10" name="__codelineno-0-10"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
+<a href="#__codelineno-0-11" id="__codelineno-0-11" name="__codelineno-0-11"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
+<a href="#__codelineno-0-12" id="__codelineno-0-12" name="__codelineno-0-12"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
+<a href="#__codelineno-0-13" id="__codelineno-0-13" name="__codelineno-0-13"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
+<a href="#__codelineno-0-14" id="__codelineno-0-14" name="__codelineno-0-14"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
+<a href="#__codelineno-0-15" id="__codelineno-0-15" name="__codelineno-0-15"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
+<a href="#__codelineno-0-16" id="__codelineno-0-16" name="__codelineno-0-16"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
+<a href="#__codelineno-0-17" id="__codelineno-0-17" name="__codelineno-0-17"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
+<a href="#__codelineno-0-18" id="__codelineno-0-18" name="__codelineno-0-18"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
+<a href="#__codelineno-0-19" id="__codelineno-0-19" name="__codelineno-0-19"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
+<a href="#__codelineno-0-20" id="__codelineno-0-20" name="__codelineno-0-20"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
+<a href="#__codelineno-0-21" id="__codelineno-0-21" name="__codelineno-0-21"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
+<a href="#__codelineno-0-22" id="__codelineno-0-22" name="__codelineno-0-22"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
+<a href="#__codelineno-0-23" id="__codelineno-0-23" name="__codelineno-0-23"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
+<a href="#__codelineno-0-24" id="__codelineno-0-24" name="__codelineno-0-24"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
+<a href="#__codelineno-0-25" id="__codelineno-0-25" name="__codelineno-0-25"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
+<a href="#__codelineno-0-26" id="__codelineno-0-26" name="__codelineno-0-26"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
+<a href="#__codelineno-0-27" id="__codelineno-0-27" name="__codelineno-0-27"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>##fileformat=VCFv4.2
+<a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>##source=gbcms
+<a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>##INFO=&lt;ID=DP,...&gt;
+<a href="#__codelineno-1-4" id="__codelineno-1-4" name="__codelineno-1-4"></a>##INFO=&lt;ID=GS,...&gt;
+<a href="#__codelineno-1-5" id="__codelineno-1-5" name="__codelineno-1-5"></a>##INFO=&lt;ID=GD,...&gt;
+<a href="#__codelineno-1-6" id="__codelineno-1-6" name="__codelineno-1-6"></a>##INFO=&lt;ID=GR,...&gt;
+<a href="#__codelineno-1-7" id="__codelineno-1-7" name="__codelineno-1-7"></a>##INFO=&lt;ID=AAD,...&gt;
+<a href="#__codelineno-1-8" id="__codelineno-1-8" name="__codelineno-1-8"></a>##INFO=&lt;ID=PAD,...&gt;
+<a href="#__codelineno-1-9" id="__codelineno-1-9" name="__codelineno-1-9"></a>##INFO=&lt;ID=NAD,...&gt;
+<a href="#__codelineno-1-10" id="__codelineno-1-10" name="__codelineno-1-10"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
+<a href="#__codelineno-1-11" id="__codelineno-1-11" name="__codelineno-1-11"></a>##INFO=&lt;ID=SB_OR,...&gt;
+<a href="#__codelineno-1-12" id="__codelineno-1-12" name="__codelineno-1-12"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
+<a href="#__codelineno-1-13" id="__codelineno-1-13" name="__codelineno-1-13"></a>##INFO=&lt;ID=FSB_OR,...&gt;
+<a href="#__codelineno-1-14" id="__codelineno-1-14" name="__codelineno-1-14"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
+<a href="#__codelineno-1-15" id="__codelineno-1-15" name="__codelineno-1-15"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand"&gt;
+<a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
+<a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
+<a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
+<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>##FORMAT=&lt;ID=GT,...&gt;
+<a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>##FORMAT=&lt;ID=DP,...&gt;
+<a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>##FORMAT=&lt;ID=AD,...&gt;
+<a href="#__codelineno-1-22" id="__codelineno-1-22" name="__codelineno-1-22"></a>##FORMAT=&lt;ID=ADF,...&gt;
+<a href="#__codelineno-1-23" id="__codelineno-1-23" name="__codelineno-1-23"></a>##FORMAT=&lt;ID=ADR,...&gt;
+<a href="#__codelineno-1-24" id="__codelineno-1-24" name="__codelineno-1-24"></a>##FORMAT=&lt;ID=VAF,...&gt;
+<a href="#__codelineno-1-25" id="__codelineno-1-25" name="__codelineno-1-25"></a>##FORMAT=&lt;ID=FAD,...&gt;
+<a href="#__codelineno-1-26" id="__codelineno-1-26" name="__codelineno-1-26"></a>##FORMAT=&lt;ID=FADF,...&gt;
+<a href="#__codelineno-1-27" id="__codelineno-1-27" name="__codelineno-1-27"></a>##FORMAT=&lt;ID=FADR,...&gt;
+<a href="#__codelineno-1-28" id="__codelineno-1-28" name="__codelineno-1-28"></a>##FORMAT=&lt;ID=FAF,...&gt;
+<a href="#__codelineno-1-29" id="__codelineno-1-29" name="__codelineno-1-29"></a>##FORMAT=&lt;ID=AAD,...&gt;
+<a href="#__codelineno-1-30" id="__codelineno-1-30" name="__codelineno-1-30"></a>##FORMAT=&lt;ID=PAD,...&gt;
+<a href="#__codelineno-1-31" id="__codelineno-1-31" name="__codelineno-1-31"></a>##FORMAT=&lt;ID=NAD,...&gt;
+<a href="#__codelineno-1-32" id="__codelineno-1-32" name="__codelineno-1-32"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
+<a href="#__codelineno-1-33" id="__codelineno-1-33" name="__codelineno-1-33"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth"&gt;
+<a href="#__codelineno-1-34" id="__codelineno-1-34" name="__codelineno-1-34"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
+<a href="#__codelineno-1-35" id="__codelineno-1-35" name="__codelineno-1-35"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
+<a href="#__codelineno-1-36" id="__codelineno-1-36" name="__codelineno-1-36"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+</code></pre></div>
+</div>
+</div>
+</div>
+<hr>
+<h3 id="fixed-fields">Fixed Fields<a class="headerlink" href="#fixed-fields" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Source</th>
+<th style="text-align: left;">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>CHROM</code></td>
+<td style="text-align: left;">Variant chromosome</td>
+<td style="text-align: left;">Preserved from input</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POS</code></td>
+<td style="text-align: left;">Variant position</td>
+<td style="text-align: left;">1-based (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> convention)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ID</code></td>
+<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>ID</code> field</td>
+<td style="text-align: left;"><code>.</code> when input is <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (no <code>ID</code> column)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>REF</code></td>
+<td style="text-align: left;">Reference allele</td>
+<td style="text-align: left;">From input; validated against <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ALT</code></td>
+<td style="text-align: left;">Alternate allele</td>
+<td style="text-align: left;">From input</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>QUAL</code></td>
+<td style="text-align: left;"><code>.</code></td>
+<td style="text-align: left;">Always missing — gbcms does not perform variant calling</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FILTER</code></td>
+<td style="text-align: left;"><code>.</code></td>
+<td style="text-align: left;">Not set</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="info-fields">INFO Fields<a class="headerlink" href="#info-fields" title="Permanent link">¶</a></h3>
+<p>The <code>INFO</code> column is a semicolon-separated list of <code>KEY=VALUE</code> pairs.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:5"><input checked="" id="__tabbed_2_1" name="__tabbed_2" type="radio"><input id="__tabbed_2_2" name="__tabbed_2" type="radio"><input id="__tabbed_2_3" name="__tabbed_2" type="radio"><input id="__tabbed_2_4" name="__tabbed_2" type="radio"><input id="__tabbed_2_5" name="__tabbed_2" type="radio"><div class="tabbed-labels"><label for="__tabbed_2_1">Always present (DNA + RNA)</label><label for="__tabbed_2_2">RNA mode only</label><label for="__tabbed_2_3">--mfsd only</label><label for="__tabbed_2_4">--gtf only (RNA mode)</label><label for="__tabbed_2_5">--show-normalization only</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>DP</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total read depth at position</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GS</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">gbcms normalization/counting status. Pipe-separated multi-value in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (e.g., <code>PASS\|WARN_REF_CORRECTED</code>). Semicolons in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GD</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Post-counting diagnostic flags. Pipe-separated in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (e.g., <code>ZERO_ALT\|PARTIAL_DOMINANT</code>). Semicolons in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>. <code>.</code> if none.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GR</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Rescue audit trail. Pipe-separated key=value pairs. <code>.</code> if no rescue attempted.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>AAD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: <code>AAD = AD + PAD</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PAD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Populated for all variant types including INDELs (via Phase 3 structural evidence propagation).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NAD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SB_PVAL</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fisher's exact test p-value for read-level strand bias</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SB_OR</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fisher's exact test odds ratio for read-level strand bias</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FSB_PVAL</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fragment-level strand bias p-value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FSB_OR</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fragment-level strand bias odds ratio</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>SEN</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total reads on the transcript <strong>sense</strong> strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANT</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total reads on the <strong>antisense</strong> strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASEN</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT reads on the sense strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SPL</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT reads spanning a splice junction (reads with <code>N</code> <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> op)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>RED</code></td>
+<td style="text-align: left;">Flag</td>
+<td style="text-align: left;">Present when the locus overlaps a known A-to-I RNA editing site (requires <code>--rna-editing-db</code>)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>MFSD_DELTA_ALT_REF</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">mean(ALT) − mean(REF) fragment size delta (bp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_KS_ALT_REF</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">2-sample KS D-statistic (ALT vs REF fragments)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_PVAL_ALT_REF</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS test p-value (ALT vs REF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_ALT_LLR</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_REF_LLR</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Log-likelihood ratio for REF fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_ALT_COUNT</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT-classified fragments in 50–1000 bp size window</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_REF_COUNT</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF-classified fragments in 50–1000 bp size window</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<p>These fields are emitted <strong>only</strong> when <code>gbcms rna --gtf &lt;file&gt;</code> is provided.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>EBD</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Distance to nearest annotated exon boundary (<code>.</code> when no GTF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>TXRC</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Per-transcript read counts. Format: <code>ENST:AD,RD,DP\|ENST:AD,RD,DP</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>TXFC</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Per-transcript fragment counts. Format: <code>ENST:ADF,RDF,DPF\|ENST:ADF,RDF,DPF</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJD</code></td>
+<td style="text-align: left;">Flag</td>
+<td style="text-align: left;">Allele-Specific Junction Divergence detected</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDP</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">ASJD raw Fisher exact p-value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDQ</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">ASJD BH-corrected q-value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDRJ</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">REF dominant junction (<code>start-end</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDAJ</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">ALT dominant junction (<code>start-end</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDRM</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">REF splice motif (GT-AG/GC-AG/AT-AC/OTHER/UNKNOWN)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDAM</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">ALT splice motif</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDRK</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF junction in GTF (1/0)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDAK</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT junction in GTF (1/0)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDNR</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF reads on dominant junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDNA</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT reads on dominant junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASJDD</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">ASJD diagnostic flags (pipe-separated)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>NORM_POS</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Left-aligned <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> position (1-based) after normalization</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NORM_REF</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Left-aligned REF allele</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NORM_ALT</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Left-aligned ALT allele</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<hr>
+<h3 id="format-fields">FORMAT Fields<a class="headerlink" href="#format-fields" title="Permanent link">¶</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="" id="__tabbed_3_1" name="__tabbed_3" type="radio"><input id="__tabbed_3_2" name="__tabbed_3" type="radio"><div class="tabbed-labels"><label for="__tabbed_3_1">DNA mode</label><label for="__tabbed_3_2">RNA mode</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p><code>FORMAT</code> column: <code>GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD</code></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tag</th>
+<th style="text-align: left;">Values</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>GT</code></td>
+<td style="text-align: left;"><code>0/0</code> or <code>0/1</code></td>
+<td style="text-align: left;">Diploid genotype — <code>0/1</code> when any ALT reads present</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DP</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">Total read depth (single integer, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>AD</code></td>
+<td style="text-align: left;"><code>ref,alt</code></td>
+<td style="text-align: left;">Allelic depths — ref_total,alt_total (Number=R)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ADF</code></td>
+<td style="text-align: left;"><code>ref_fwd,alt_fwd</code></td>
+<td style="text-align: left;">Forward strand per allele (bcftools convention)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ADR</code></td>
+<td style="text-align: left;"><code>ref_rev,alt_rev</code></td>
+<td style="text-align: left;">Reverse strand per allele</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>VAF</code></td>
+<td style="text-align: left;">float</td>
+<td style="text-align: left;">Variant allele fraction at read level</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAD</code></td>
+<td style="text-align: left;"><code>ref_frag,alt_frag</code></td>
+<td style="text-align: left;">Fragment allelic depths (Number=R)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FADF</code></td>
+<td style="text-align: left;"><code>ref_frag_fwd,alt_frag_fwd</code></td>
+<td style="text-align: left;">Fragment forward strand per allele</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FADR</code></td>
+<td style="text-align: left;"><code>ref_frag_rev,alt_frag_rev</code></td>
+<td style="text-align: left;">Fragment reverse strand per allele</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAF</code></td>
+<td style="text-align: left;">float</td>
+<td style="text-align: left;">Variant allele fraction at fragment level</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>AAD</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">Any ALT Depth (reads with any ALT evidence)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PAD</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">Partial ALT Depth (partial ALT match only)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NAD</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">N-base Depth (reads with N at discriminating position)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<p><code>FORMAT</code> column: <code>GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD:SEN:ANT:ASEN:SPL</code></p>
+<p>All DNA fields above (including <code>AAD</code>, <code>PAD</code>, <code>NAD</code>), plus:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tag</th>
+<th style="text-align: left;">Values</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>SEN</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">Sense-strand read depth</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANT</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">Antisense-strand read depth</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ASEN</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">ALT count on sense strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SPL</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">Splice-junction-spanning ALT count</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<hr>
+<h3 id="annotated-example">Annotated Example<a class="headerlink" href="#annotated-example" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a>#CHROM  POS     ID      REF  ALT  QUAL  FILTER  INFO                                              FORMAT           sample1
+<a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>chr7    55174772  rs121913527  T    A    .     .     DP=312;GS=PASS;GD=.;AAD=22;PAD=0;NAD=3;SB_PVAL=2.4000e-01;SB_OR=1.3000;FSB_PVAL=3.1000e-01;FSB_OR=1.1000  GT:DP:AD:ADF:ADR:VAF:FAD:FADF:FADR:FAF:AAD:PAD:NAD  0/1:312:290,22:145,10:145,12:0.0705:145,5:72,5:73,6:0.0735:22:0:3 # (1)!
+</code></pre></div>
+<ol>
+<li><code>DP=312</code> total reads; <code>GS=PASS</code> normalization status; <code>GD=.</code> no diagnostic flags; <code>AAD=22</code> reads with any ALT evidence; <code>PAD=0</code> no partial matches (<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> — always 0); <code>NAD=3</code> reads with N at variant position. FORMAT <code>DP=312</code> total depth (single int). <code>AD=290,22</code> → 290 REF + 22 ALT reads. <code>ADF=145,10</code> → forward strand. <code>ADR=145,12</code> → reverse strand. <code>VAF=0.0705</code> (read level). <code>FAD=145,5</code> → fragment counts. <code>FAF=0.0735</code> (fragment level).</li>
+</ol>
+<hr>
+<h2 id="maf-output-format-maf"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output (<code>--format maf</code>)<a class="headerlink" href="#maf-output-format-maf" title="Permanent link">¶</a></h2>
+<p>A tab-separated file following GDC <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> conventions. One row per variant per sample.</p>
+<h3 id="two-output-paths">Two Output Paths<a class="headerlink" href="#two-output-paths" title="Permanent link">¶</a></h3>
+<p>The set of columns in the first row of the header depends on whether the
+<strong>input</strong> was a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> or a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="" id="__tabbed_4_1" name="__tabbed_4" type="radio"><input id="__tabbed_4_2" name="__tabbed_4" type="radio"><div class="tabbed-labels"><label for="__tabbed_4_1"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></label><label for="__tabbed_4_2"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>gbcms generates a GDC-compatible <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> from scratch, since <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> records
+have no <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> metadata. The following <strong>fixed</strong> headers are always present:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>Hugo_Symbol</code></td>
+<td style="text-align: left;">Empty — not populated from <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Chromosome</code></td>
+<td style="text-align: left;">Chromosome name</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Start_Position</code></td>
+<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> start position</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>End_Position</code></td>
+<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> end position</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Strand</code></td>
+<td style="text-align: left;"><code>+</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Variant_Classification</code></td>
+<td style="text-align: left;">Derived from variant type</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Variant_Type</code></td>
+<td style="text-align: left;"><code>SNP</code>, <code>INS</code>, <code>DEL</code>, or <code>ONP</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Reference_Allele</code></td>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>-style REF (<code>-</code> for pure insertions)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Tumor_Seq_Allele1</code></td>
+<td style="text-align: left;">Reference allele (same as <code>Reference_Allele</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Tumor_Seq_Allele2</code></td>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>-style ALT (<code>-</code> for pure deletions)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Tumor_Sample_Barcode</code></td>
+<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> sample name (from <code>--bam name:path</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Matched_Norm_Sample_Barcode</code></td>
+<td style="text-align: left;">Empty</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vcf_id</code></td>
+<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>ID</code> field (rsID or <code>.</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vcf_pos</code></td>
+<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> 1-based <code>POS</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vcf_region</code></td>
+<td style="text-align: left;"><code>chr:pos</code> tracking field</td>
+</tr>
+</tbody>
+</table>
+<p>Then all <a href="#gbcms-count-columns">gbcms count columns</a> are appended.</p>
+</div>
+<div class="tabbed-block">
+<p>All original input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns are preserved <strong>exactly</strong> (values never
+overwritten, column order never changed). gbcms count columns are
+appended after the last original column.</p>
+<div class="admonition important">
+<p class="admonition-title">Column Pass-Through Guarantee</p>
+<p>Every column in your input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> — including custom lab-specific columns
+like <code>patient_id</code>, <code>assay_version</code>, pipeline provenance fields, etc. —
+appears unchanged in the output. Only new gbcms columns are added.</p>
+</div>
+</div>
+</div>
+</div>
+<hr>
+<h3 id="tumor_sample_barcode-behaviour"><code>Tumor_Sample_Barcode</code> Behaviour<a class="headerlink" href="#tumor_sample_barcode-behaviour" title="Permanent link">¶</a></h3>
+<div class="admonition caution">
+<p class="admonition-title">rsIDs in Tumor_Sample_Barcode?</p>
+<p>If you see rsIDs (e.g. <code>rs121913527</code>) in <code>Tumor_Sample_Barcode</code>, the
+likely cause is that your <strong>input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></strong> already has rsIDs in that column
+<strong>and you ran with <code>--preserve-barcode</code></strong>. The fix is either to not use
+<code>--preserve-barcode</code>, or to pre-clean the input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Input</th>
+<th style="text-align: center;"><code>--preserve-barcode</code></th>
+<th style="text-align: left;"><code>Tumor_Sample_Barcode</code> value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></td>
+<td style="text-align: center;">any</td>
+<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> <code>sample_name</code> (always — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> has no barcode)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></td>
+<td style="text-align: center;"><code>false</code> (default)</td>
+<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> <code>sample_name</code> overwrites original</td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></td>
+<td style="text-align: center;"><code>true</code></td>
+<td style="text-align: left;"><strong>Original value</strong> from input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="gbcms-count-columns">gbcms Count Columns<a class="headerlink" href="#gbcms-count-columns" title="Permanent link">¶</a></h3>
+<p>These columns are <strong>always</strong> appended regardless of input format.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="5:3"><input checked="" id="__tabbed_5_1" name="__tabbed_5" type="radio"><input id="__tabbed_5_2" name="__tabbed_5" type="radio"><input id="__tabbed_5_3" name="__tabbed_5" type="radio"><div class="tabbed-labels"><label for="__tabbed_5_1">Default (no prefix)</label><label for="__tabbed_5_2">With <code>--column-prefix t_</code></label><label for="__tabbed_5_3">With custom prefix</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>gbcms_status</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Normalization/counting status. Semicolon-separated multi-value. First token is always <code>PASS</code> or <code>FAIL_*</code>. Examples: <code>PASS</code>, <code>PASS;WARN_REF_CORRECTED</code>, <code>FAIL_REF_MISMATCH</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_diagnostic</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Examples: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_rescue</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;"><strong>Conditional</strong> — only present when <code>--rescue-mnp</code> is enabled. Structured audit trail for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> decomposition rescue. Format: <code>method=decomposed;original_alt=0;positions=chr:pos(R&gt;A):count,...</code>. Empty when no rescue was attempted. Failed rescues include <code>outcome=no_signal</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF read depth</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT read depth</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>any_alt</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: <code>any_alt = alt_count + partial_alt</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>partial_alt</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Populated for all variant types including INDELs (via Phase 3 structural evidence propagation).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>n_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>total_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total read depth (<abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vaf</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Read-level variant allele fraction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref_count_forward</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF reads on forward strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref_count_reverse</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF reads on reverse strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt_count_forward</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT reads on forward strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt_count_reverse</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT reads on reverse strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>strand_bias_p_value</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fisher's exact test p-value (read-level)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>strand_bias_odds_ratio</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fisher's exact test odds ratio (read-level)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref_count_fragment</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF fragment count</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt_count_fragment</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT fragment count</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>total_count_fragment</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total fragment count</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vaf_fragment</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fragment-level variant allele fraction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref_count_fragment_forward</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF fragments on forward strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref_count_fragment_reverse</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF fragments on reverse strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt_count_fragment_forward</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT fragments on forward strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt_count_fragment_reverse</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT fragments on reverse strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fragment_strand_bias_p_value</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fragment-level strand bias p-value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fragment_strand_bias_odds_ratio</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Fragment-level strand bias odds ratio</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<p>All count columns above (except <code>gbcms_status</code>, <code>gbcms_diagnostic</code>, <code>gbcms_rescue</code>, and strand bias) are
+prefixed with <code>t_</code>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>t_ref_count</code></td>
+<td style="text-align: left;"><code>80</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>t_alt_count</code></td>
+<td style="text-align: left;"><code>20</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>t_total_count</code></td>
+<td style="text-align: left;"><code>100</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>t_vaf</code></td>
+<td style="text-align: left;"><code>0.2000</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>t_ref_count_fragment</code></td>
+<td style="text-align: left;"><code>45</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">...</td>
+<td style="text-align: left;">...</td>
+</tr>
+</tbody>
+</table>
+<p>Use <code>--column-prefix t_</code> for downstream tools that expect the legacy
+<code>t_ref_count</code> / <code>t_alt_count</code> column naming.</p>
+</div>
+<div class="tabbed-block">
+<p>Any prefix matching <code>[A-Za-z0-9_]</code> is accepted:</p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--column-prefix<span class="w"> </span>plasma_<span class="w"> </span>...
+<a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a><span class="c1"># → plasma_ref_count, plasma_alt_count, plasma_total_count, ...</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code>gbcms_status</code>, <code>gbcms_diagnostic</code>, <code>gbcms_rescue</code>, and the four <code>strand_bias_*</code> columns are <strong>never
+prefixed</strong> — they are always unique even when count columns share a prefix.</p>
+</div>
+</div>
+</div>
+</div>
+<hr>
+<h3 id="rna-specific-maf-columns">RNA-Specific <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Columns<a class="headerlink" href="#rna-specific-maf-columns" title="Permanent link">¶</a></h3>
+<div class="admonition info">
+<p class="admonition-title">RNA mode only</p>
+<p>These 5 columns are appended <strong>only</strong> when using <code>gbcms rna</code>. They do not
+appear at all in DNA mode output.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>rna_sense_depth</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total reads on the transcript sense strand at this position</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rna_antisense_depth</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total reads on the antisense strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rna_alt_sense_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT reads on the sense strand</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rna_editing_site</code></td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;"><code>True</code> if the locus overlaps a known A-to-I editing site (requires <code>--rna-editing-db</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rna_splice_spanning</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT reads whose alignment spans a splice junction (<code>N</code> <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> operation)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="gtf-aware-maf-columns-v500">GTF-Aware <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Columns (v5.0.0)<a class="headerlink" href="#gtf-aware-maf-columns-v500" title="Permanent link">¶</a></h3>
+<div class="admonition info">
+<p class="admonition-title">RNA mode + <code>--gtf</code> only</p>
+<p>These columns are appended <strong>only</strong> when using <code>gbcms rna --gtf &lt;file&gt;</code>. They are
+completely absent without the <code>--gtf</code> flag — no empty/NA placeholders.</p>
+</div>
+<h4 id="exon-boundary-distance">Exon Boundary Distance<a class="headerlink" href="#exon-boundary-distance" title="Permanent link">¶</a></h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>exon_boundary_dist</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Signed distance to the nearest exon boundary. Positive = exonic (distance from exon edge inward); negative = intronic (distance from nearest exon edge outward). <code>0</code> = exactly at an exon boundary.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="per-transcript-counts">Per-Transcript Counts<a class="headerlink" href="#per-transcript-counts" title="Permanent link">¶</a></h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>transcript_read_counts</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Semicolon-separated per-transcript read-level count triplets. Format: <code>ENST...:AD,RD,DP;ENST...:AD,RD,DP</code>. Example: <code>ENST00000269305:11,140,162;ENST00000445888:7,95,108</code>. Empty when no GTF or no overlapping transcripts.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>transcript_fragment_counts</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Same format as <code>transcript_read_counts</code> but with fragment-level counts: <code>ENST...:ADF,RDF,DPF</code>. Fragment counts ≤ read counts for each transcript.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="aberrant-splice-junction-detection-asjd">Aberrant Splice Junction Detection (ASJD)<a class="headerlink" href="#aberrant-splice-junction-detection-asjd" title="Permanent link">¶</a></h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>asjd_flag</code></td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;"><code>True</code> when allele-specific junction divergence is detected (Fisher p &lt; 0.05)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_pval</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Raw Fisher exact test p-value comparing REF vs ALT junction usage</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_qval</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Benjamini-Hochberg corrected q-value (FDR control across all variants)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_ref_junction</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Dominant REF junction coordinates (<code>start-end</code>), empty if no junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_alt_junction</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Dominant ALT junction coordinates (<code>start-end</code>), empty if no junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_ref_motif</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Splice motif at REF junction: <code>GT-AG</code>, <code>GC-AG</code>, <code>AT-AC</code>, <code>OTHER</code>, or <code>UNKNOWN</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_alt_motif</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Splice motif at ALT junction (same categories)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_ref_known</code></td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;"><code>True</code> if the REF dominant junction matches a GTF-annotated intron</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_alt_known</code></td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;"><code>True</code> if the ALT dominant junction matches a GTF-annotated intron</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_n_ref_junc</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF reads on the dominant junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_n_alt_junc</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT reads on the dominant junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_n_ref_total</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total REF reads with any splice junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_n_alt_total</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Total ALT reads with any splice junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>asjd_diagnostic</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Semicolon-separated QC flags (see <a href="#asjd-diagnostic-flags">Diagnostic Flags</a>)</td>
+</tr>
+</tbody>
+</table>
+<h5 id="asjd-diagnostic-flags">ASJD Diagnostic Flags<a class="headerlink" href="#asjd-diagnostic-flags" title="Permanent link">¶</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Condition</th>
+<th style="text-align: left;">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>LOW_ALT_JUNC</code></td>
+<td style="text-align: left;"><code>asjd_n_alt_junc &lt; 5</code></td>
+<td style="text-align: left;">Insufficient ALT junction evidence</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>LOW_REF_JUNC</code></td>
+<td style="text-align: left;"><code>asjd_n_ref_junc &lt; 10</code></td>
+<td style="text-align: left;">Insufficient REF baseline</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NOVEL_ALT_JUNC</code></td>
+<td style="text-align: left;"><code>asjd_alt_known == false</code></td>
+<td style="text-align: left;">ALT uses unannotated junction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NON_CANONICAL_MOTIF</code></td>
+<td style="text-align: left;">ALT motif not GT-AG/GC-AG/AT-AC</td>
+<td style="text-align: left;">Likely mapping artifact</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
+<td style="text-align: left;">ALT junction minority strand ≥ 30%</td>
+<td style="text-align: left;"><abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> artifact</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
+<td style="text-align: left;">ALT reads use &gt; 2 junctions</td>
+<td style="text-align: left;">Complex splicing event</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="library-type-behavioral-note-v500">Library Type Behavioral Note (v5.0.0)<a class="headerlink" href="#library-type-behavioral-note-v500" title="Permanent link">¶</a></h3>
+<div class="admonition warning">
+<p class="admonition-title">Amplicon Mode</p>
+<p>When <code>--library-type amplicon</code> is used, fragment counts (<code>dpf</code>, <code>rdf</code>, <code>adf</code>,
+<code>ref_count_fragment</code>, <code>alt_count_fragment</code>) will approximate read counts (<code>dp</code>, <code>rd</code>, <code>ad</code>,
+<code>ref_count</code>, <code>alt_count</code>). This is expected — amplicon mode bypasses R1/R2 fragment
+consensus merging, treating each read as an independent observation.</p>
+<p>This does <strong>not</strong> affect DNA mode output — <code>library_type</code> is an RNA-only parameter.</p>
+</div>
+<details class="note">
+<summary><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Columns (<code>--mfsd</code> only)</summary>
+<p>34 columns are appended when <code>--mfsd</code> is set. They are completely absent
+without the flag (not NA-filled):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>mfsd_ref_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">REF-classified fragments in 50–1000 bp window</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_alt_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">ALT-classified fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_nonref_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Non-REF, non-ALT fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_n_count</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Fragments with no valid insert size</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_alt_llr</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Log-likelihood ratio (ALT fragments; positive = tumor-like)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ref_llr</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Log-likelihood ratio (REF fragments)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ref_mean</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mean fragment size for REF class (bp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_alt_mean</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mean fragment size for ALT class (bp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_nonref_mean</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mean fragment size for non-REF class (bp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_n_mean</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mean fragment size for N class (bp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_delta_alt_ref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">mean(ALT) − mean(REF) delta (bp)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ks_alt_ref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS D-stat (ALT vs REF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_pval_alt_ref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS p-value (ALT vs REF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_delta_alt_nonref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">mean(ALT) − mean(non-REF) delta</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ks_alt_nonref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS D-stat (ALT vs non-REF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_pval_alt_nonref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS p-value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_delta_ref_nonref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">mean(REF) − mean(non-REF) delta</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ks_ref_nonref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS D-stat</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_pval_ref_nonref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS p-value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_delta_alt_n</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">mean(ALT) − mean(N) delta</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ks_alt_n</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS D-stat</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_pval_alt_n</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS p-value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_delta_ref_n</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">mean(REF) − mean(N) delta</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ks_ref_n</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS D-stat</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_pval_ref_n</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS p-value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_delta_nonref_n</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">mean(non-REF) − mean(N) delta</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ks_nonref_n</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS D-stat</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_pval_nonref_n</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">KS p-value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_error_rate</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">non-REF fraction of valid <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_n_rate</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">N-class fraction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_size_ratio</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">mean(ALT) / mean(REF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_quality_score</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">1 − error_rate − n_rate</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_alt_confidence</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;"><code>HIGH</code> (≥5 ALT fragments), <code>LOW</code> (1–4), or <code>NONE</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ks_valid</code></td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;"><code>True</code> when both ALT and REF have ≥5 fragments for reliable KS test</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="note">
+<summary>Normalization <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Columns (<code>--show-normalization</code> only)</summary>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>{prefix}norm_Start_Position</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Left-aligned <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> start position</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>{prefix}norm_End_Position</code></td>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;">Left-aligned <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> end position</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>{prefix}norm_Reference_Allele</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Left-aligned REF allele</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>{prefix}norm_Tumor_Seq_Allele2</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Left-aligned ALT allele</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>{prefix}</code> matches <code>--column-prefix</code> (default: no prefix).</p>
+</details>
+<hr>
+<h2 id="merged-maf-output-gbcms-merge">Merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output (<code>gbcms merge</code>)<a class="headerlink" href="#merged-maf-output-gbcms-merge" title="Permanent link">¶</a></h2>
+<p>When multiple <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> types (e.g., duplex, simplex) are genotyped separately and merged
+via <code>gbcms merge</code>, the output <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> contains type-prefixed columns plus optional
+combined metrics.</p>
+<h3 id="type-prefixed-columns">Type-Prefixed Columns<a class="headerlink" href="#type-prefixed-columns" title="Permanent link">¶</a></h3>
+<p>Each input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s gbcms count columns are prefixed with the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> type label:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Input Label</th>
+<th style="text-align: left;">Example Columns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>duplex</code></td>
+<td style="text-align: left;"><code>duplex_ref_count</code>, <code>duplex_alt_count</code>, <code>duplex_vaf</code>, ...</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>simplex</code></td>
+<td style="text-align: left;"><code>simplex_ref_count</code>, <code>simplex_alt_count</code>, <code>simplex_vaf</code>, ...</td>
+</tr>
+</tbody>
+</table>
+<p>Annotation columns (e.g., <code>Hugo_Symbol</code>, <code>Chromosome</code>) are taken from the first
+input and <strong>not</strong> duplicated.</p>
+<h3 id="combined-simplex_duplex_-columns">Combined <code>simplex_duplex_*</code> Columns<a class="headerlink" href="#combined-simplex_duplex_-columns" title="Permanent link">¶</a></h3>
+<p>When both <code>simplex</code> and <code>duplex</code> inputs are present (and <code>--no-combined</code> is not
+set), 20 combined columns are appended. Duplex and simplex consensus molecules
+are distinct — counts are <strong>additive</strong> across <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> types with no double-counting.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Phase</th>
+<th style="text-align: left;">Columns</th>
+<th style="text-align: left;">Count</th>
+<th style="text-align: left;">Method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Additive sums</strong></td>
+<td style="text-align: left;">Read counts, strand counts, fragment counts, fragment strand counts</td>
+<td style="text-align: left;">12</td>
+<td style="text-align: left;"><code>simplex_{x} + duplex_{x}</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Derived totals</strong></td>
+<td style="text-align: left;"><code>total_count</code>, <code>total_count_fragment</code></td>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;"><code>ref + alt</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Derived VAFs</strong></td>
+<td style="text-align: left;"><code>vaf</code>, <code>vaf_fragment</code></td>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;"><code>alt / total</code> (0/0 → 0.0)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Strand bias</strong></td>
+<td style="text-align: left;"><code>strand_bias_p_value</code>, <code>strand_bias_odds_ratio</code>, <code>fragment_strand_bias_p_value</code>, <code>fragment_strand_bias_odds_ratio</code></td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">Rust Fisher exact 2×2 test</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Schema-Aware</p>
+<p>If strand-level columns are absent from the input MAFs (e.g., older gbcms versions),
+only the available metrics are computed. Missing columns are logged and skipped —
+the pipeline does not fail.</p>
+</div>
+<hr>
+<h2 id="per-sample-file-naming">Per-Sample File Naming<a class="headerlink" href="#per-sample-file-naming" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>{--output-dir}/{sample_name}{--suffix}.{vcf|maf}
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Component</th>
+<th style="text-align: left;">Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>sample_name</code></td>
+<td style="text-align: left;"><code>name</code> from <code>--bam name:path</code>; falls back to <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> filename stem</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--suffix</code></td>
+<td style="text-align: left;">Literal string appended before the extension (e.g. <code>.genotyped</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Extension</td>
+<td style="text-align: left;"><code>vcf</code> or <code>maf</code> depending on <code>--format</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-5-1" id="__codelineno-5-1" name="__codelineno-5-1"></a>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span>--suffix<span class="w"> </span>.fillout<span class="w"> </span>--format<span class="w"> </span>maf
+<a href="#__codelineno-5-2" id="__codelineno-5-2" name="__codelineno-5-2"></a><span class="c1"># → tumor.fillout.maf</span>
+<a href="#__codelineno-5-3" id="__codelineno-5-3" name="__codelineno-5-3"></a>
+<a href="#__codelineno-5-4" id="__codelineno-5-4" name="__codelineno-5-4"></a>--bam<span class="w"> </span>tumor.bam<span class="w"> </span>--format<span class="w"> </span>vcf
+<a href="#__codelineno-5-5" id="__codelineno-5-5" name="__codelineno-5-5"></a><span class="c1"># → tumor.vcf  (stem = "tumor")</span>
+</code></pre></div>
+<details class="note">
+<summary>Companion Parquet file (<code>--mfsd-parquet</code>)</summary>
+<p>When <code>--mfsd-parquet</code> is also set (alongside <code>--mfsd</code>), a second file is
+written alongside the main output:</p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a>{--output-dir}/{sample_name}{--suffix}.fsd.parquet
+</code></pre></div>
+<p>It contains per-variant raw fragment size arrays (<code>ref_sizes</code>, <code>alt_sizes</code>)
+for downstream <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> visualisations (density plots, empirical CDF comparisons).
+Written natively by Rust — no pyarrow dependency required.</p>
+</details>
+<hr>
+<h2 id="missing-values">Missing Values<a class="headerlink" href="#missing-values" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Format</th>
+<th style="text-align: left;">Missing value sentinel</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns</td>
+<td style="text-align: left;"><code>NA</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO numeric fields</td>
+<td style="text-align: left;"><code>.</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec)</td>
+</tr>
+</tbody>
+</table>
+<p>A value is <code>NA</code>/<code>.</code> when the count supporting it is zero (e.g. <code>mfsd_alt_mean</code>
+when no ALT fragments were observed) or when the input variant was rejected
+during preparation (all counts are zero-filled in that case).</p>
+<hr>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="../input-formats/">Input Formats</a> — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input requirements</li>
+<li><a href="../counting-metrics/">Counting &amp; Metrics</a> — How counts are computed from reads</li>
+<li><a href="../../cli/dna/">gbcms dna</a> — DNA mode <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> reference</li>
+<li><a href="../../cli/rna/">gbcms rna</a> — RNA mode <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> reference</li>
+<li><a href="../variant-normalization/">Variant Normalization</a> — How variants are prepared before counting</li>
+<li><a href="../allele-classification/">Allele Classification</a> — How each read is classified as REF/ALT/neither</li>
+</ul>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div>
+<aside class="md-source-file">
+<span class="md-source-file__fact">
+<span class="md-icon" title="Last update">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 15, 2026 21:41:39 UTC"><span class="timeago" datetime="2026-05-15T21:41:39+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 15, 2026 21:41:39 UTC">2026-05-15</span>
+</span>
+<span class="md-source-file__fact">
+<span class="md-icon" title="Created">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 16:14:55 UTC"><span class="timeago" datetime="2026-03-20T16:14:55+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 16:14:55 UTC">2026-03-20</span>
+</span>
+</aside>
+</article>
+</div>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+<div class="md-copyright__highlight">
+      Developed by <a href="https://github.com/rhshah">Ronak H Shah</a> @ 
+<a href="https://www.mskcc.org">MSKCC</a> | 
+Built with <a href="https://antigravity.google/">Antigravity</a> | 
+<a href="https://github.com/msk-access/gbcms/blob/main/LICENSE">AGPL-3.0</a>
+</div>
+</div>
+<div class="md-social">
+<a class="md-social__link" href="https://github.com/msk-access/gbcms" rel="noopener" target="_blank" title="github.com">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+<script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script src="../../js/print-site.js"></script>
+<script src="../../js/timeago.min.js"></script>
+<script src="../../js/timeago_mkdocs_material.js"></script>
+<script src="../../javascripts/mathjax.js"></script>
+<script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script src="../../assets/javascripts/panzoom.min.js"></script>
+<script src="../../assets/javascripts/zoompan.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@11.4.0/dist/mermaid.esm.min.mjs";
+window.mermaidConfig = {default: {
+    startOnLoad: false
+}};</script>
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
