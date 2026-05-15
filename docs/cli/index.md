@@ -1,6 +1,6 @@
 # CLI Reference
 
-The `gbcms` command-line interface provides two primary commands for variant counting — one for DNA/cfDNA and one for RNA-seq — plus a normalization utility.
+The `gbcms` command-line interface provides two primary commands for variant counting — one for DNA/cfDNA and one for RNA-seq — plus merge and normalization utilities.
 
 ## Commands
 
@@ -8,6 +8,7 @@ The `gbcms` command-line interface provides two primary commands for variant cou
 |:--------|:------------|
 | [**dna**](dna.md) | Count alleles in DNA/cfDNA BAM files |
 | [**rna**](rna.md) | Count alleles in RNA-seq BAMs with transcriptome-aware filtering |
+| [**merge**](merge.md) | Merge per-BAM-type MAFs into a single type-prefixed output |
 | [**normalize**](normalize.md) | Standalone variant normalization (no counting) |
 
 ## Quick Example

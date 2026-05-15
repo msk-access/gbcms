@@ -226,3 +226,17 @@ def write_fsd_parquet(
     alts: list[str],
     counts: list[BaseCounts],
 ) -> None: ...
+def fisher_exact_2x2(a: int, b: int, c: int, d: int) -> tuple[float, float]:
+    """Compute Fisher's exact test on a 2×2 contingency table.
+
+    Args:
+        a: Top-left cell (e.g., ref_forward)
+        b: Top-right cell (e.g., ref_reverse)
+        c: Bottom-left cell (e.g., alt_forward)
+        d: Bottom-right cell (e.g., alt_reverse)
+
+    Returns:
+        (p_value, odds_ratio) tuple. p_value is the two-sided Fisher exact
+        probability; odds_ratio is ad/bc (inf when bc=0).
+    """
+    ...

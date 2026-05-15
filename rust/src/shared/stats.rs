@@ -3,6 +3,7 @@
 //! Provides:
 //! - [`fisher_exact_2x2`]: Fisher's exact test for any 2×2 contingency table
 //!   (strand bias, ASJD junction comparison).
+//! - [`fisher_exact_2x2_py`]: Python-callable wrapper (exposed via `gbcms._rs`).
 //! - [`benjamini_hochberg`]: Benjamini-Hochberg FDR correction for multiple
 //!   hypothesis testing (ASJD q-values).
 //!
@@ -10,7 +11,9 @@
 //! - `counting/engine.rs` — Fisher strand bias per variant
 //! - `counting/engine.rs` — ASJD junction comparison (P4c)
 //! - `counting/engine.rs` — BH correction across variants (P4c)
+//! - `merge.py` — combined strand bias on merged simplex+duplex counts
 
+use pyo3::prelude::*;
 use statrs::distribution::{Discrete, Hypergeometric};
 
 /// Calculate Fisher's Exact Test for a 2×2 contingency table.
@@ -114,6 +117,26 @@ pub fn fisher_exact_2x2(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
 #[inline]
 pub fn fisher_strand_bias(ref_fwd: u32, ref_rev: u32, alt_fwd: u32, alt_rev: u32) -> (f64, f64) {
     fisher_exact_2x2(ref_fwd, ref_rev, alt_fwd, alt_rev)
+}
+
+/// Python-accessible Fisher's exact test for a 2×2 contingency table.
+///
+/// Returns ``(p_value, odds_ratio)``.
+///
+/// This is a thin wrapper around [`fisher_exact_2x2`] exposed to Python
+/// via PyO3. Used by the merge engine (``merge.py``) to compute combined
+/// strand bias statistics on summed simplex+duplex forward/reverse counts.
+///
+/// # Example (Python)
+///
+/// ```python
+/// from gbcms._rs import fisher_exact_2x2
+/// p_value, odds_ratio = fisher_exact_2x2(10, 12, 8, 15)
+/// ```
+#[pyfunction]
+#[pyo3(name = "fisher_exact_2x2")]
+pub fn fisher_exact_2x2_py(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
+    fisher_exact_2x2(a, b, c, d)
 }
 
 /// Benjamini-Hochberg FDR correction for multiple hypothesis testing.

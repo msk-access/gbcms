@@ -19,6 +19,7 @@ sample3,/path/to/sample3.bam,/path/to/sample3.bam.bai
 | `bam` | Yes | Path to BAM file |
 | `bai` | No | Path to BAM index (auto-discovers `.bam.bai` or `.bai`) |
 | `suffix` | No | Per-sample output suffix |
+| `bam_type` | No | BAM type label for [multi-BAM merging](#multi-bam-type-merging) (e.g., `duplex`, `simplex`) |
 | `tsb` | No | Tumor_Sample_Barcode pattern(s) for [MAF filtering](#multi-sample-maf-filtering) |
 
 ## BAI Auto-Discovery
@@ -83,6 +84,29 @@ Duplicate rows (matched by multiple patterns) are automatically deduplicated.
 
 !!! note
     Samples with 0 matching variants are skipped and reported in `pipeline_summary.tsv`.
+
+## Multi-BAM Type Merging
+
+When `--merge_counts` is enabled, samples with a `bam_type` column are grouped by sample ID
+and merged into a single output MAF with type-prefixed count columns.
+
+```csv
+sample,bam,bai,suffix,bam_type
+sample1,/path/to/sample1.duplex.bam,,-duplex,duplex
+sample1,/path/to/sample1.simplex.bam,,-simplex,simplex
+```
+
+When `bam_type` is set:
+
+1. The `--column-prefix` is **auto-derived** from the type label (e.g., `duplex_`)
+2. After per-BAM genotyping, the pipeline groups MAFs by sample and runs `gbcms merge`
+3. Combined `simplex_duplex_*` columns are computed when both types are present
+
+!!! tip "Minimum 2 BAM types per sample"
+    Merge requires at least 2 inputs per sample. Samples with only 1 BAM type
+    skip the merge step and output the single MAF directly.
+
+See [Merge CLI](../cli/merge.md) for details on the merge algorithm.
 
 ## Related
 
