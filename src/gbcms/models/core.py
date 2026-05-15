@@ -38,6 +38,7 @@ __all__ = [
     "GbcmsDnaConfig",
     "GbcmsRnaConfig",
     "GbcmsConfig",  # deprecated alias for GbcmsDnaConfig
+    "MergeConfig",
 ]
 
 
@@ -549,3 +550,57 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
 
 # Deprecated alias for backward compatibility — use GbcmsDnaConfig directly.
 GbcmsConfig = GbcmsDnaConfig
+
+
+class MergeConfig(BaseModel):
+    """Configuration for ``gbcms merge`` subcommand.
+
+    Merges multiple per-BAM-type genotyped MAFs into a single
+    type-prefixed output MAF.  Primary use case: duplex + simplex
+    ACCESS cfDNA genotyping.
+
+    Attributes:
+        inputs: Mapping of BAM type label to MAF path.
+            Example: ``{"duplex": Path("s1-duplex.maf"), "simplex": Path("s1-simplex.maf")}``.
+        output: Path for the merged output MAF.
+        add_combined: When True and both ``duplex`` and ``simplex`` inputs
+            are present, compute additive ``simplex_duplex_*`` columns.
+        legacy_naming: When True, use ``t_{metric}_{type}`` column naming
+            for backward compatibility with genotype_variants.
+    """
+
+    inputs: dict[str, Path] = Field(
+        description=(
+            "Mapping of BAM type label (e.g., 'duplex', 'simplex') to "
+            "genotyped MAF file path. At least 2 required."
+        ),
+    )
+    output: Path = Field(description="Output merged MAF file path.")
+    add_combined: bool = Field(
+        default=True,
+        description=(
+            "Compute additive simplex_duplex_* columns when both duplex "
+            "and simplex inputs are present."
+        ),
+    )
+    legacy_naming: bool = Field(
+        default=False,
+        description=(
+            "Use t_{metric}_{type} column naming for backward compatibility "
+            "with genotype_variants merge output."
+        ),
+    )
+
+    @field_validator("inputs")
+    @classmethod
+    def validate_inputs(cls, v: dict[str, Path]) -> dict[str, Path]:
+        """Require at least 2 inputs; validate all paths exist."""
+        if len(v) < 2:
+            raise ValueError(
+                f"At least 2 input MAFs required for merge, got {len(v)}. "
+                "Provide multiple --input type:path arguments."
+            )
+        for label, path in v.items():
+            if not path.exists():
+                raise ValueError(f"Input MAF for '{label}' not found: {path}")
+        return v

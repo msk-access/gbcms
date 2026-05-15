@@ -50,7 +50,7 @@ workflow {
 
     log.info """
     ============================================================
-      gbcms v5.1.0 — Nextflow Pipeline
+      gbcms v5.2.0 — Nextflow Pipeline
       Mode:     ${params.mode.toUpperCase()}
       Variants: ${params.variants}
       Output:   ${params.outdir}
@@ -73,6 +73,11 @@ workflow {
 
             // Optional: explicit Tumor_Sample_Barcode pattern for MAF filtering
             meta.tsb = row.containsKey('tsb') && row.tsb ? row.tsb : null
+
+            // Optional: BAM type label for multi-BAM merge (e.g., 'duplex', 'simplex').
+            // When set, auto-derives --column-prefix in the DNA module so counts
+            // are pre-prefixed, and enables groupTuple-based merging in the DNA workflow.
+            meta.bam_type = row.containsKey('bam_type') && row.bam_type ? row.bam_type : null
             
             def bam = file(row.bam, checkIfExists: true)
             

@@ -8,13 +8,15 @@ Example usage:
     $ gbcms dna -v variants.vcf -b sample.bam -f reference.fa -o output/
 """
 
-__version__ = "5.1.0"
+__version__ = "5.2.0"
 
+from .merge import merge_mafs
 from .models.core import (
     GbcmsBaseConfig,
     GbcmsConfig,
     GbcmsDnaConfig,
     GbcmsRnaConfig,
+    MergeConfig,
     OutputFormat,
     Variant,
     VariantType,
@@ -27,8 +29,10 @@ __all__ = [
     "GbcmsConfig",
     "GbcmsDnaConfig",
     "GbcmsRnaConfig",
+    "MergeConfig",
     "OutputFormat",
     "Pipeline",
     "Variant",
     "VariantType",
+    "merge_mafs",
 ]

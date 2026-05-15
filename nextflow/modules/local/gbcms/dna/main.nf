@@ -4,7 +4,7 @@ process GBCMS_DNA {
 
     publishDir "${params.outdir}/gbcms", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:5.1.0"
+    container "ghcr.io/msk-access/gbcms:5.2.0"
 
     input:
     tuple val(meta), path(bam), path(bai), path(variants)
@@ -28,8 +28,11 @@ process GBCMS_DNA {
     def suffix = meta.suffix ?: params.suffix
     def suffix_arg = suffix ? "--suffix ${suffix}" : ""
 
-    // Column prefix for MAF output count columns
-    def col_prefix = params.column_prefix ?: ''
+    // Column prefix for MAF output count columns.
+    // When bam_type is set (multi-BAM merge), auto-derive prefix from it
+    // (e.g., bam_type='duplex' → --column-prefix duplex_).
+    // Otherwise, fall back to global params.column_prefix.
+    def col_prefix = meta.bam_type ? "${meta.bam_type}_" : (params.column_prefix ?: '')
     def col_prefix_arg = col_prefix ? "--column-prefix ${col_prefix}" : ""
 
     // Preserve original Tumor_Sample_Barcode from input MAF

@@ -12,7 +12,7 @@ Complex indels fall into three categories that require special handling beyond t
 
 | Case | Example | Root Cause | Fix |
 |:-----|:--------|:-----------|:----|
-| [Del+SNV routing](#case-1-complex-delsnv-sox9-gcт) | SOX9 `GC→T`, ABL1 `AG→T` | Deletion-format variant with anchor substitution sent to `check_deletion` | Route to `check_complex` when `alt[0] ≠ ref[0]` |
+| [Del+SNV routing](#case-1-complex-delsnv-sox9) | SOX9 `GC→T`, ABL1 `AG→T` | Deletion-format variant with anchor substitution sent to `check_deletion` | Route to `check_complex` when `alt[0] ≠ ref[0]` |
 | [Clean-CIGAR REF reads](#case-2-nf2-large-deletion-ref-reads-invisible) | NF2 ~100bp DEL | REF reads skipped by `is_worth_realignment()` → misclassified as 'neither' | M-block anchor coverage REF fallback in `check_complex` |
 | [Left-alignment shift](#case-3-tp53-12bp-left-alignment-shifted-deletion) | TP53 12bp DEL | BWA anchor 3bp left of CIGAR `D` position → S3 validates wrong bases | `has_nearby_length_match` (del_len ≥ 5) → Phase 3 SW |
 
