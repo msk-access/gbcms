@@ -269,3 +269,125 @@ pub fn hash_molecule(qname: &[u8], umi: Option<&[u8]>) -> u64 {
     }
     hasher.finish()
 }
+
+// ── Unit Tests ──────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: create a FragmentEvidence with specific REF/ALT observations.
+    /// Simulates observe() calls with given qualities and structural flag.
+    fn evidence_with(
+        ref_qual: u8,
+        alt_qual: u8,
+        structural_alt: bool,
+    ) -> FragmentEvidence {
+        let mut ev = FragmentEvidence::new();
+        if ref_qual > 0 {
+            ev.observe(true, false, ref_qual, true, true, 200, false, false);
+        }
+        if alt_qual > 0 {
+            ev.observe(false, true, alt_qual, false, false, 200, false, structural_alt);
+        }
+        ev
+    }
+
+    // ── resolve() structural priority tests ───────────────────────────
+
+    #[test]
+    fn resolve_structural_alt_wins_despite_equal_quality() {
+        // Core fix: structural ALT wins even when REF and ALT have identical BQ.
+        // This is the exact scenario that was causing fragment discard before
+        // the INDEL consensus fix (both reads report anchor BQ = 79).
+        let ev = evidence_with(79, 79, true);
+        assert_eq!(ev.resolve(10), (false, true), "structural ALT should win");
+    }
+
+    #[test]
+    fn resolve_structural_alt_wins_despite_higher_ref_quality() {
+        // Structural ALT wins even when REF has significantly higher BQ.
+        // The quality comparison is meaningless for INDEL evidence.
+        let ev = evidence_with(90, 30, true);
+        assert_eq!(ev.resolve(10), (false, true), "structural ALT should win");
+    }
+
+    #[test]
+    fn resolve_non_structural_ref_wins_by_quality() {
+        // Without structural flag, normal quality consensus applies.
+        // REF quality exceeds ALT + threshold → REF wins.
+        let ev = evidence_with(90, 30, false);
+        assert_eq!(ev.resolve(10), (true, false), "REF should win by quality");
+    }
+
+    #[test]
+    fn resolve_non_structural_alt_wins_by_quality() {
+        // Without structural flag, ALT wins when ALT quality exceeds REF + threshold.
+        let ev = evidence_with(30, 90, false);
+        assert_eq!(ev.resolve(10), (false, true), "ALT should win by quality");
+    }
+
+    #[test]
+    fn resolve_non_structural_tie_discards() {
+        // Without structural flag, equal quality within threshold → discard.
+        // This is the SNP conflict behavior (unchanged by this fix).
+        let ev = evidence_with(30, 30, false);
+        assert_eq!(ev.resolve(10), (false, false), "tie should discard");
+    }
+
+    #[test]
+    fn resolve_ref_only_returns_ref() {
+        // Only REF evidence seen → REF wins. No conflict to resolve.
+        let ev = evidence_with(50, 0, false);
+        assert_eq!(ev.resolve(10), (true, false), "REF-only should return REF");
+    }
+
+    #[test]
+    fn resolve_alt_only_returns_alt() {
+        // Only ALT evidence seen → ALT wins. No conflict to resolve.
+        let ev = evidence_with(0, 50, false);
+        assert_eq!(ev.resolve(10), (false, true), "ALT-only should return ALT");
+    }
+
+    #[test]
+    fn resolve_no_evidence_returns_neither() {
+        // No evidence at all → neither. Should not normally happen
+        // (filtered upstream), but the function handles it gracefully.
+        let ev = FragmentEvidence::new();
+        assert_eq!(ev.resolve(10), (false, false), "no evidence → neither");
+    }
+
+    // ── observe() structural flag tests ──────────────────────────────
+
+    #[test]
+    fn observe_structural_flag_is_sticky() {
+        // Once has_structural_alt is set, it should persist even if
+        // a subsequent non-structural observation is made.
+        let mut ev = FragmentEvidence::new();
+        // First read: structural ALT
+        ev.observe(false, true, 30, true, true, 200, false, true);
+        assert!(ev.has_structural_alt, "should be set after structural ALT");
+        // Second read: non-structural REF
+        ev.observe(true, false, 90, false, false, 200, false, false);
+        assert!(ev.has_structural_alt, "should remain set (sticky)");
+    }
+
+    #[test]
+    fn observe_structural_ref_does_not_set_flag() {
+        // is_structural=true on a REF observation should NOT set the flag.
+        // This guards against a hypothetical bug where someone passes
+        // is_structural=true with is_ref=true (shouldn't happen, but
+        // defensive programming).
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 50, true, true, 200, false, true);
+        assert!(!ev.has_structural_alt, "REF obs should not set structural ALT flag");
+    }
+
+    #[test]
+    fn observe_non_structural_alt_does_not_set_flag() {
+        // Non-structural ALT (e.g., Phase 3 alignment) should not set the flag.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(false, true, 50, true, true, 200, false, false);
+        assert!(!ev.has_structural_alt, "non-structural ALT should not set flag");
+    }
+}
