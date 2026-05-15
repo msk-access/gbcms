@@ -13969,8 +13969,16 @@ Use mouse to pan and zoom
 </ul>
 <h3 id="development-release-guide-7-merge-to-main-creates-tag">7. Merge to main (creates tag)<a class="headerlink" href="#development-release-guide-7-merge-to-main-creates-tag" title="Permanent link">¶</a></h3>
 <p>After PR approval:
-- Squash and merge to <code>main</code>
+- <strong>Merge commit</strong> (do NOT squash) to <code>main</code>
 - <strong>Create tag</strong>: <code>git tag X.Y.Z &amp;&amp; git push origin X.Y.Z</code></p>
+<div class="admonition warning">
+<p class="admonition-title">Do NOT squash-merge release PRs</p>
+<p>Always use a <strong>regular merge commit</strong> for release PRs. Squash merging
+rewrites all commits into a single new SHA, which breaks shared ancestry
+between <code>main</code> and <code>develop</code>. This causes merge conflicts on every
+changed file during the Step 9 back-merge. Regular merge preserves
+commit history and makes the back-merge conflict-free.</p>
+</div>
 <h3 id="development-release-guide-8-ci-release-pipeline">8. <abbr title="Continuous Integration - Automated build and test system">CI</abbr> Release Pipeline<a class="headerlink" href="#development-release-guide-8-ci-release-pipeline" title="Permanent link">¶</a></h3>
 <p>The tag triggers <code>.github/workflows/release.yml</code>:</p>
 <ol>
