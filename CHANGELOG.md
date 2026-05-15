@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🔧 Fixed
+
+- **Fragment consensus: INDEL structural evidence priority** — When R1 and R2
+  of a duplex fragment disagree on an insertion or deletion, the read with direct
+  CIGAR evidence (I/D op) now wins the fragment consensus unconditionally, instead
+  of comparing anchor base qualities (which are identical for both reads and
+  caused systematic discard). This recovers ~2-5% of INDEL fragment-level evidence
+  that was previously lost, critical for low-VAF cfDNA detection.
+  - Insertions: `adf` increases by ~5% for conflict fragments (validated on RB1 INS)
+  - Deletions: `adf` increases by ~2% for conflict fragments (validated on DNMT3A DEL)
+  - Single-molecule events: `adf=0→1` recovery (validated on RUNX1 INS, ad=1)
+  - SNP behavior: unchanged (no structural flags on SNP classifications)
+  - Phase 3 alignment returns: unchanged (non-structural, quality comparison retained)
+
+### 🧪 Tests
+
+- **[NEW]** `tests/test_indel_fragment_consensus.py` — 9 tests covering INS/DEL
+  conflict recovery (structural ALT priority), agreement paths, singleton reads,
+  SNP regression (tie behavior unchanged), and REF agreement at INDEL sites.
+  All 4 counting invariants asserted per test.
+- **264 Python tests** (up from 255): 9 new INDEL fragment consensus tests.
+- **150 Rust tests** (up from 143): all pass, 0 Clippy warnings.
+
 ## [5.1.0] - 2026-05-11
 
 ### ⚠️ Breaking Changes
