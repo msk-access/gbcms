@@ -23,12 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧪 Tests
 
-- **[NEW]** `tests/test_indel_fragment_consensus.py` — 9 tests covering INS/DEL
-  conflict recovery (structural ALT priority), agreement paths, singleton reads,
-  SNP regression (tie behavior unchanged), and REF agreement at INDEL sites.
-  All 4 counting invariants asserted per test.
-- **264 Python tests** (up from 255): 9 new INDEL fragment consensus tests.
-- **150 Rust tests** (up from 143): all pass, 0 Clippy warnings.
+- **[NEW]** `tests/test_indel_fragment_consensus.py` — 11 tests covering INS/DEL
+  conflict recovery (structural ALT priority), wrong-length INDEL Phase 3 dispatch,
+  agreement paths, singleton reads, SNP regression (tie behavior unchanged), and
+  REF agreement at INDEL sites. All 4 counting invariants asserted per test.
+- **[NEW]** `rust/src/shared/fragment.rs` `#[cfg(test)]` — 11 Rust unit tests for
+  `FragmentEvidence::resolve()` structural priority and `observe()` sticky flag logic.
+- **266 Python tests** (up from 255): 11 new INDEL fragment consensus tests.
+- **161 Rust tests** (up from 150): 11 new fragment consensus unit tests, 0 Clippy warnings.
 
 ## [5.1.0] - 2026-05-11
 
