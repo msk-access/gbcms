@@ -2184,6 +2184,11 @@
 <td style="text-align: left;">Quality-weighted R1/R2 conflict resolution, <abbr title="Fragment Depth - Total unique fragments at a variant position">DPF</abbr> invariant</td>
 </tr>
 <tr>
+<td style="text-align: left;">INDEL Fragment Consensus</td>
+<td style="text-align: left;"><code>test_indel_fragment_consensus.py</code></td>
+<td style="text-align: left;">Structural ALT priority for INDEL conflicts, Phase 3 dispatch, <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> regression</td>
+</tr>
+<tr>
 <td style="text-align: left;">Normalization</td>
 <td style="text-align: left;"><code>test_normalization.py</code></td>
 <td style="text-align: left;">Left-alignment, REF validation, homopolymer detection, dynamic window expansion</td>
@@ -2313,6 +2318,11 @@
 <td style="text-align: left;"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> N guards, n_count propagation</td>
 </tr>
 <tr>
+<td style="text-align: left;">Fragment consensus</td>
+<td style="text-align: left;">11</td>
+<td style="text-align: left;"><code>resolve()</code> structural ALT priority, <code>observe()</code> sticky flag, quality paths</td>
+</tr>
+<tr>
 <td style="text-align: left;">Invariants</td>
 <td style="text-align: left;">1</td>
 <td style="text-align: left;"><code>any_alt = ad + partial_alt</code>, depth decomposition</td>
@@ -2333,19 +2343,20 @@
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>├── test_dp_neither.py           # Gap 1D: DP includes third-allele reads
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>├── test_filters.py              # Read filtering
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>├── test_fragment_consensus.py   # Fragment-level quality consensus + DPF invariant
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>├── test_fuzzy_complex.py        # Quality-aware masked complex matching + MSI penalties
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>├── test_maf_preservation.py     # MAF column preservation
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>├── test_maf_reader.py           # MAF input parsing
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>├── test_mfsd_flag.py            # mFSD flag behavior
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>├── test_multi_allelic.py        # Gap 1A: Sibling ALT exclusion
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>├── test_normalization.py        # Left-alignment, REF validation, window expansion
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>├── test_pipeline_v2.py          # End-to-end pipeline
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>├── test_diagnostic_flags.py     # v4.2.0 gbcms_diagnostic flag computation
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>├── test_rescue_mnp.py           # v4.3.0 --rescue-mnp MNP decomposition rescue
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>└── test_strand_counts.py        # Strand-specific counts
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>├── test_indel_fragment_consensus.py  # INDEL structural ALT priority + Phase 3 dispatch
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>├── test_fuzzy_complex.py        # Quality-aware masked complex matching + MSI penalties
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>├── test_maf_preservation.py     # MAF column preservation
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>├── test_maf_reader.py           # MAF input parsing
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>├── test_mfsd_flag.py            # mFSD flag behavior
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>├── test_multi_allelic.py        # Gap 1A: Sibling ALT exclusion
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>├── test_normalization.py        # Left-alignment, REF validation, window expansion
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>├── test_pipeline_v2.py          # End-to-end pipeline
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>├── test_diagnostic_flags.py     # v4.2.0 gbcms_diagnostic flag computation
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>├── test_rescue_mnp.py           # v4.3.0 --rescue-mnp MNP decomposition rescue
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>└── test_strand_counts.py        # Strand-specific counts
 </code></pre></div>
 <hr>
 <h2 id="writing-tests">Writing Tests<a class="headerlink" href="#writing-tests" title="Permanent link">¶</a></h2>
@@ -2575,6 +2586,11 @@
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
+<td style="text-align: left;">INDEL Fragment Consensus</td>
+<td style="text-align: left;"><code>test_indel_fragment_consensus.py</code> (11 cases)</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
 <td style="text-align: left;">Window Expansion</td>
 <td style="text-align: left;"><code>test_normalization.py</code> (9 cases)</td>
 <td style="text-align: center;">✅</td>
@@ -2635,7 +2651,7 @@
 </tr>
 </tbody>
 </table>
-<p><strong>Current totals</strong>: 255 Python + 143 Rust tests.</p>
+<p><strong>Current totals</strong>: 266 Python + 161 Rust tests.</p>
 <p>Run coverage report:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>pytest<span class="w"> </span>--cov<span class="o">=</span>gbcms<span class="w"> </span>--cov-report<span class="o">=</span>html
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>open<span class="w"> </span>htmlcov/index.html
@@ -2673,7 +2689,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 11, 2026 19:06:43 UTC"><span class="timeago" datetime="2026-05-11T19:06:43+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 11, 2026 19:06:43 UTC">2026-05-11</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 15, 2026 01:59:11 UTC"><span class="timeago" datetime="2026-05-15T01:59:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 15, 2026 01:59:11 UTC">2026-05-15</span>
   </span>
 
     

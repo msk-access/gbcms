@@ -4691,7 +4691,7 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;"><code>--fragment_qual_threshold</code></td>
 <td style="text-align: left;"><code>10</code></td>
-<td style="text-align: left;">Quality margin for <a href="#reference-counting-metrics-fragment-counting">fragment consensus</a> — when R1/R2 disagree, the higher-quality allele wins only if the difference exceeds this</td>
+<td style="text-align: left;">Quality margin for <a href="#reference-counting-metrics-fragment-counting">fragment consensus</a> — when R1/R2 disagree on a non-INDEL variant, the higher-quality allele wins only if the difference exceeds this. INDEL conflicts with structural <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence bypass this threshold.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--context_padding</code></td>
@@ -5828,7 +5828,7 @@ the rescue provenance, enabling downstream users to reconcile the invariant brea
 <tr>
 <td style="text-align: left;">Fragment counting</td>
 <td style="text-align: left;">Optional (<code>--fragment_count</code>), majority-rule</td>
-<td style="text-align: left;">Always computed, quality-weighted consensus with discard</td>
+<td style="text-align: left;">Always computed, quality-weighted consensus with INDEL structural priority</td>
 </tr>
 <tr>
 <td style="text-align: left;">Positive strand counts</td>
@@ -10452,7 +10452,7 @@ Use mouse to pan and zoom
 <h2 id="reference-counting-metrics-fragment-counting">Fragment Counting<a class="headerlink" href="#reference-counting-metrics-fragment-counting" title="Permanent link">¶</a></h2>
 <p>Fragment counting collapses read pairs into a single observation per fragment. This is critical for <strong><abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> sequencing</strong> (like MSK-ACCESS) where the same DNA fragment is sequenced from both ends — counting reads would double-count each fragment.</p>
 <h3 id="reference-counting-metrics-fragment-tracking">Fragment Tracking<a class="headerlink" href="#reference-counting-metrics-fragment-tracking" title="Permanent link">¶</a></h3>
-<p>Fragments are tracked using <strong>QNAME hashing</strong> — each read's QNAME is hashed to a <code>u64</code> key for memory-efficient lookup. The <code>FragmentEvidence</code> struct records the best base quality seen for REF and ALT across both reads in the pair.</p>
+<p>Fragments are tracked using <strong>QNAME hashing</strong> — each read's QNAME is hashed to a <code>u64</code> key for memory-efficient lookup. The <code>FragmentEvidence</code> struct records the best base quality seen for REF and ALT across both reads in the pair, plus a sticky <code>has_structural_alt</code> flag that captures whether any read had a direct <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> I/D op matching the target INDEL.</p>
 <p><strong>Phase A — Fragment Tracking</strong> (per-read pass):</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
@@ -10516,11 +10516,14 @@ Use mouse to pan and zoom
     <pre class="mermaid"><code>flowchart TD
     ForEach(["For each unique fragment"]):::start --&gt; HasBoth{"Both REF and ALT evidence?"}
     HasBoth --&gt;|No| Direct["Assign to whichever allele was seen"]
-    HasBoth --&gt;|Yes| QualCheck{"Quality difference &gt; threshold?"}
+    HasBoth --&gt;|Yes| Structural{"Structural INDEL evidence?\n(CIGAR I/D op on ALT read)"}
+    Structural --&gt;|Yes| StructAlt(["🔴 Count as ALT\n(structural priority)"]):::structural
+    Structural --&gt;|No| QualCheck{"Quality difference &gt; threshold?"}
     QualCheck --&gt;|"REF qual &gt;&gt; ALT"| Ref(["✅ Count as REF"]):::ref
     QualCheck --&gt;|"ALT qual &gt;&gt; REF"| Alt(["🔴 Count as ALT"]):::alt
     QualCheck --&gt;|"Within threshold"| Discard(["⚪ Discard — ambiguous"]):::discard
     Direct --&gt; Count
+    StructAlt --&gt; Count
     Ref --&gt; Count
     Alt --&gt; Count
     Discard --&gt; DPF["Counted in DPF only"]:::info
@@ -10529,6 +10532,7 @@ Use mouse to pan and zoom
     classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef structural fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef discard fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
     classDef info fill:#3498db25,stroke:#3498db;
 </code></pre> 
@@ -10537,7 +10541,7 @@ Use mouse to pan and zoom
 </div>
 </div>
 <h3 id="reference-counting-metrics-quality-weighted-consensus">Quality-Weighted Consensus<a class="headerlink" href="#reference-counting-metrics-quality-weighted-consensus" title="Permanent link">¶</a></h3>
-<p>When R1 and R2 of a fragment <strong>disagree</strong> (one supports REF, the other ALT), the engine resolves the conflict using base quality scores:</p>
+<p>When R1 and R2 of a fragment <strong>disagree</strong> (one supports REF, the other ALT), the engine resolves the conflict:</p>
 <table>
 <thead>
 <tr>
@@ -10547,6 +10551,11 @@ Use mouse to pan and zoom
 </tr>
 </thead>
 <tbody>
+<tr>
+<td style="text-align: left;"><strong>Structural INDEL</strong></td>
+<td style="text-align: left;">ALT read has direct <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> I/D op match</td>
+<td style="text-align: left;"><strong>Count as ALT</strong> (unconditionally)</td>
+</tr>
 <tr>
 <td style="text-align: left;"><strong>REF wins</strong></td>
 <td style="text-align: left;"><code>best_ref_qual &gt; best_alt_qual + threshold</code></td>
@@ -10565,6 +10574,10 @@ Use mouse to pan and zoom
 </tbody>
 </table>
 <p>The threshold is configurable via <code>--fragment-qual-threshold</code> (default: <strong>10</strong>).</p>
+<div class="admonition info">
+<p class="admonition-title">INDEL Structural Priority</p>
+<p>For insertions and deletions, the quality comparison between R1 and R2 is <strong>semantically meaningless</strong> — both reads report the anchor base quality (the base adjacent to the INDEL), not the quality of "was an INDEL detected here." When one read has a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> I/D operator matching the target variant, it wins unconditionally. This priority applies to both insertions (I op) and deletions (D op), and recovers ~2-5% of fragment-level INDEL evidence that was previously discarded as ambiguous. Variants classified through Phase 3 alignment (complex variants, wrong-length INDELs) are not affected — they use quality-weighted consensus as before.</p>
+</div>
 <div class="admonition important">
 <p class="admonition-title">Why Discard Instead of Defaulting to REF?</p>
 <p>Assigning ambiguous fragments to REF would systematically <strong>deflate <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr></strong> by inflating the reference count. In <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> sequencing where true variants can be at 0.1–1% <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>, this bias could mask real mutations. Discarding preserves an unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> estimate at the cost of slightly reduced power.</p>
@@ -11304,7 +11317,7 @@ Values are <code>NA</code> when either class has fewer than 5 fragments (<code>m
 <tr>
 <td style="text-align: left;">Fragment counting</td>
 <td style="text-align: left;">Optional (<code>--fragment_count</code>), majority-rule</td>
-<td style="text-align: left;">Always computed, quality-weighted consensus</td>
+<td style="text-align: left;">Always computed, quality-weighted consensus with INDEL structural priority</td>
 </tr>
 <tr>
 <td style="text-align: left;">Positive strand counts</td>
@@ -12825,6 +12838,11 @@ Use mouse to pan and zoom
 <td style="text-align: left;">Quality-weighted R1/R2 conflict resolution, <abbr title="Fragment Depth - Total unique fragments at a variant position">DPF</abbr> invariant</td>
 </tr>
 <tr>
+<td style="text-align: left;">INDEL Fragment Consensus</td>
+<td style="text-align: left;"><code>test_indel_fragment_consensus.py</code></td>
+<td style="text-align: left;">Structural ALT priority for INDEL conflicts, Phase 3 dispatch, <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> regression</td>
+</tr>
+<tr>
 <td style="text-align: left;">Normalization</td>
 <td style="text-align: left;"><code>test_normalization.py</code></td>
 <td style="text-align: left;">Left-alignment, REF validation, homopolymer detection, dynamic window expansion</td>
@@ -12954,6 +12972,11 @@ Use mouse to pan and zoom
 <td style="text-align: left;"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> N guards, n_count propagation</td>
 </tr>
 <tr>
+<td style="text-align: left;">Fragment consensus</td>
+<td style="text-align: left;">11</td>
+<td style="text-align: left;"><code>resolve()</code> structural ALT priority, <code>observe()</code> sticky flag, quality paths</td>
+</tr>
+<tr>
 <td style="text-align: left;">Invariants</td>
 <td style="text-align: left;">1</td>
 <td style="text-align: left;"><code>any_alt = ad + partial_alt</code>, depth decomposition</td>
@@ -12974,19 +12997,20 @@ Use mouse to pan and zoom
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#development-testing-guide-__codelineno-2-10"></a>├── test_dp_neither.py           # Gap 1D: DP includes third-allele reads
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#development-testing-guide-__codelineno-2-11"></a>├── test_filters.py              # Read filtering
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#development-testing-guide-__codelineno-2-12"></a>├── test_fragment_consensus.py   # Fragment-level quality consensus + DPF invariant
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#development-testing-guide-__codelineno-2-13"></a>├── test_fuzzy_complex.py        # Quality-aware masked complex matching + MSI penalties
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#development-testing-guide-__codelineno-2-14"></a>├── test_maf_preservation.py     # MAF column preservation
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#development-testing-guide-__codelineno-2-15"></a>├── test_maf_reader.py           # MAF input parsing
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#development-testing-guide-__codelineno-2-16"></a>├── test_mfsd_flag.py            # mFSD flag behavior
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#development-testing-guide-__codelineno-2-17"></a>├── test_multi_allelic.py        # Gap 1A: Sibling ALT exclusion
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#development-testing-guide-__codelineno-2-18"></a>├── test_normalization.py        # Left-alignment, REF validation, window expansion
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#development-testing-guide-__codelineno-2-19"></a>├── test_pipeline_v2.py          # End-to-end pipeline
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#development-testing-guide-__codelineno-2-20"></a>├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#development-testing-guide-__codelineno-2-21"></a>├── test_diagnostic_flags.py     # v4.2.0 gbcms_diagnostic flag computation
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#development-testing-guide-__codelineno-2-22"></a>├── test_rescue_mnp.py           # v4.3.0 --rescue-mnp MNP decomposition rescue
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#development-testing-guide-__codelineno-2-23"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#development-testing-guide-__codelineno-2-24"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#development-testing-guide-__codelineno-2-25"></a>└── test_strand_counts.py        # Strand-specific counts
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#development-testing-guide-__codelineno-2-13"></a>├── test_indel_fragment_consensus.py  # INDEL structural ALT priority + Phase 3 dispatch
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#development-testing-guide-__codelineno-2-14"></a>├── test_fuzzy_complex.py        # Quality-aware masked complex matching + MSI penalties
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#development-testing-guide-__codelineno-2-15"></a>├── test_maf_preservation.py     # MAF column preservation
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#development-testing-guide-__codelineno-2-16"></a>├── test_maf_reader.py           # MAF input parsing
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#development-testing-guide-__codelineno-2-17"></a>├── test_mfsd_flag.py            # mFSD flag behavior
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#development-testing-guide-__codelineno-2-18"></a>├── test_multi_allelic.py        # Gap 1A: Sibling ALT exclusion
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#development-testing-guide-__codelineno-2-19"></a>├── test_normalization.py        # Left-alignment, REF validation, window expansion
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#development-testing-guide-__codelineno-2-20"></a>├── test_pipeline_v2.py          # End-to-end pipeline
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#development-testing-guide-__codelineno-2-21"></a>├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#development-testing-guide-__codelineno-2-22"></a>├── test_diagnostic_flags.py     # v4.2.0 gbcms_diagnostic flag computation
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#development-testing-guide-__codelineno-2-23"></a>├── test_rescue_mnp.py           # v4.3.0 --rescue-mnp MNP decomposition rescue
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#development-testing-guide-__codelineno-2-24"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#development-testing-guide-__codelineno-2-25"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#development-testing-guide-__codelineno-2-26"></a>└── test_strand_counts.py        # Strand-specific counts
 </code></pre></div>
 <hr>
 <h2 id="development-testing-guide-writing-tests">Writing Tests<a class="headerlink" href="#development-testing-guide-writing-tests" title="Permanent link">¶</a></h2>
@@ -13216,6 +13240,11 @@ Use mouse to pan and zoom
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
+<td style="text-align: left;">INDEL Fragment Consensus</td>
+<td style="text-align: left;"><code>test_indel_fragment_consensus.py</code> (11 cases)</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
 <td style="text-align: left;">Window Expansion</td>
 <td style="text-align: left;"><code>test_normalization.py</code> (9 cases)</td>
 <td style="text-align: center;">✅</td>
@@ -13276,7 +13305,7 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
-<p><strong>Current totals</strong>: 255 Python + 143 Rust tests.</p>
+<p><strong>Current totals</strong>: 266 Python + 161 Rust tests.</p>
 <p>Run coverage report:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-testing-guide-__codelineno-9-1"></a>pytest<span class="w"> </span>--cov<span class="o">=</span>gbcms<span class="w"> </span>--cov-report<span class="o">=</span>html
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#development-testing-guide-__codelineno-9-2"></a>open<span class="w"> </span>htmlcov/index.html
@@ -13625,6 +13654,32 @@ Use mouse to pan and zoom
 <p>All notable changes to this project will be documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
+<h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Fragment consensus: INDEL structural evidence priority</strong> — When R1 and R2
+  of a duplex fragment disagree on an insertion or deletion, the read with direct
+  <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence (I/D op) now wins the fragment consensus unconditionally, instead
+  of comparing anchor base qualities (which are identical for both reads and
+  caused systematic discard). This recovers ~2-5% of INDEL fragment-level evidence
+  that was previously lost, critical for low-<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> detection.</li>
+<li>Insertions: <code>adf</code> increases by ~5% for conflict fragments (validated on RB1 INS)</li>
+<li>Deletions: <code>adf</code> increases by ~2% for conflict fragments (validated on DNMT3A DEL)</li>
+<li>Single-molecule events: <code>adf=0→1</code> recovery (validated on RUNX1 INS, ad=1)</li>
+<li><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> behavior: unchanged (no structural flags on <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> classifications)</li>
+<li>Phase 3 alignment returns: unchanged (non-structural, quality comparison retained)</li>
+</ul>
+<h3 id="development-changelog-tests">🧪 Tests<a class="headerlink" href="#development-changelog-tests" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>[NEW]</strong> <code>tests/test_indel_fragment_consensus.py</code> — 11 tests covering INS/DEL
+  conflict recovery (structural ALT priority), wrong-length INDEL Phase 3 dispatch,
+  agreement paths, singleton reads, <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> regression (tie behavior unchanged), and
+  REF agreement at INDEL sites. All 4 counting invariants asserted per test.</li>
+<li><strong>[NEW]</strong> <code>rust/src/shared/fragment.rs</code> <code>#[cfg(test)]</code> — 11 Rust unit tests for
+  <code>FragmentEvidence::resolve()</code> structural priority and <code>observe()</code> sticky flag logic.</li>
+<li><strong>266 Python tests</strong> (up from 255): 11 new INDEL fragment consensus tests.</li>
+<li><strong>161 Rust tests</strong> (up from 150): 11 new fragment consensus unit tests, 0 Clippy warnings.</li>
+</ul>
 <h2 id="development-changelog-510-2026-05-11">[5.1.0] - 2026-05-11<a class="headerlink" href="#development-changelog-510-2026-05-11" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-breaking-changes">⚠️ Breaking Changes<a class="headerlink" href="#development-changelog-breaking-changes" title="Permanent link">¶</a></h3>
 <ul>
@@ -13647,7 +13702,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   after <code>GR</code> (before strand bias fields), matching the diagnostic proximity
   principle.</li>
 </ul>
-<h3 id="development-changelog-fixed">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_1">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Wrong-length insertion Phase 3 fallback</strong> (PAX5-class discordance fix):
   <code>check_insertion</code> now routes wrong-length insertions at the strict anchor
@@ -13723,12 +13778,12 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow <code>library_type</code> parameter</strong>: Registered in <code>nextflow.config</code> and
   threaded through <code>rna/main.nf</code> for amplicon mode support in pipeline runs.</li>
 </ul>
-<h3 id="development-changelog-fixed_1">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_2">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>lib.rs</code> dead-code comment</strong>: Updated annotation type comment to reflect
   that annotation types are now fully wired (previously noted as unused).</li>
 </ul>
-<h3 id="development-changelog-tests">🧪 Tests<a class="headerlink" href="#development-changelog-tests" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_1">🧪 Tests<a class="headerlink" href="#development-changelog-tests_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>255 Python tests</strong> (up from 238): 17 new tests covering:<ul>
 <li><code>test_config_isolation.py</code>: 11 tests for <code>library_type</code> field/validator,
@@ -13812,7 +13867,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Diagnostic flag summary logging</strong>: <code>info</code>-level log of diagnostic flag
   distribution per sample (e.g., <code>ZERO_ALT=12, PARTIAL_DOMINANT=3</code>).</li>
 </ul>
-<h3 id="development-changelog-fixed_2">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_3">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>partial_alt</code> description</strong>: Documentation corrected to reflect that
   <code>partial_alt</code> is now populated for all variant types, not just <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex.</li>
@@ -13826,7 +13881,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Rescue strategy</strong>: Python-side post-processing using decomposed <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>
   re-counting. Coordinate shift strategy is reserved for a future release.</li>
 </ul>
-<h3 id="development-changelog-tests_1">🧪 Tests<a class="headerlink" href="#development-changelog-tests_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_2">🧪 Tests<a class="headerlink" href="#development-changelog-tests_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>tests/test_diagnostic_flags.py</code> — 17 tests covering all 4
   diagnostic flags, multi-flag combinations, FAIL exclusion, boundary
@@ -13905,7 +13960,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Extended trace fields</strong>: IO diagnostics (<code>rchar</code>, <code>wchar</code>, <code>syscr</code>, <code>syscw</code>,
   <code>read_bytes</code>, <code>write_bytes</code>) added to execution trace.</li>
 </ul>
-<h3 id="development-changelog-fixed_3">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_4">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dual-axis gridline artifact</strong>: Fixed Plotly <code>yaxis2</code> overlay creating a
   duplicate x-axis line in <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> histograms by standardizing <code>mirror: false</code>,
@@ -13949,7 +14004,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Updated</strong> <code>nextflow/modules/local/gbcms/dna/main.nf</code> — wired <code>--mfsd-report</code> flags
   through the DNA module with HTML report output channel (<code>emit: mfsd_report</code>).</li>
 </ul>
-<h3 id="development-changelog-tests_2">🧪 Tests<a class="headerlink" href="#development-changelog-tests_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_3">🧪 Tests<a class="headerlink" href="#development-changelog-tests_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>tests/test_mfsd_report.py</code> — 13 unit tests covering report creation,
   navigator presence/absence, Plotly integration, theme toggle, branding, summary
@@ -13997,7 +14052,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> ThirdAllele handling</strong>: Mixed-vote reads now track <code>positions_matching_alt</code>
   for diagnostic partial_alt counting instead of being silently discarded.</li>
 </ul>
-<h4 id="development-changelog-tests_3">🧪 Tests<a class="headerlink" href="#development-changelog-tests_3" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-tests_4">🧪 Tests<a class="headerlink" href="#development-changelog-tests_4" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>[NEW]</strong> <code>tests/test_mnp_concordance.py</code> — 6 tests for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> concordance with
   C++ gbcms on production duplex BAMs.</li>
@@ -14022,7 +14077,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   failures matrix, invariant table, updated test counts.</li>
 </ul>
 <h2 id="development-changelog-401-2026-03-24">[4.0.1] - 2026-03-24<a class="headerlink" href="#development-changelog-401-2026-03-24" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_4">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_5">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>was_normalized</code> flag accuracy</strong>: Split into granular <code>was_anchor_resolved</code>
   and <code>was_left_aligned</code> flags with backward-compatible <code>was_normalized</code> getter.
@@ -14083,7 +14138,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   column-level schema reference for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output under all mode/flag
   combinations (DNA vs RNA, with <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, with normalization columns).</li>
 </ul>
-<h3 id="development-changelog-fixed_5">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_6">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Complex indel classification</strong> (<code>fix: correctly classify complex indels</code>):
   Fixes for Phase 3 dispatch cases 2, 3, and 4 — previously misclassified
@@ -14134,7 +14189,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>test_cli_dna_rna.py</code>: mypy <code>attr-defined</code> fixed by annotating <code>_click_app</code>
   as <code>click.Group</code>; <code>Set[str | None]</code> → <code>Set[str]</code> via <code>if p.name is not None</code></li>
 </ul>
-<h3 id="development-changelog-tests_4">🧪 Tests<a class="headerlink" href="#development-changelog-tests_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_5">🧪 Tests<a class="headerlink" href="#development-changelog-tests_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>tests/test_pipeline_rna.py</code> (NEW): 7 pipeline-level integration tests for
   RNA mode output — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO headers, INFO values, FORMAT field, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column
@@ -14166,7 +14221,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>py-gbcms</code> deprecation stub</strong>: <code>compat/py-gbcms/</code> shim published to PyPI
   as <code>py-gbcms==3.0.0</code> for backwards compatibility during migration.</li>
 </ul>
-<h3 id="development-changelog-fixed_6">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_7">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_7" title="Permanent link">¶</a></h3>
 <ul>
 <li>Parquet output compression switched from SNAPPY to ZSTD(1).</li>
 <li>Resolved <code>mypy</code> <code>AlignedSegment.cigar</code> attribute errors in test suite.</li>
@@ -14190,7 +14245,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Per-phase ClassifyResult counters</strong>: Diagnostic counters track how many reads are resolved in each classification phase (Phase 1/2/2.5/3)</li>
 <li><strong><code>--trace</code> flag</strong>: Two-tier Rust logging — <code>--verbose</code> for debug, <code>--trace</code> for per-read classification diagnostics via pyo3-log</li>
 </ul>
-<h3 id="development-changelog-fixed_7">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_8">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2/2.5 overcounting</strong>: Complex variants with <code>REF &gt;&gt; ALT</code> now skip Phase 2 Case B and Phase 2.5 when <code>ref_len &gt; 2 × alt_len</code> — short ALT trivially matches, edit distance is biased toward shorter allele</li>
 <li><strong>Phase 3 bypass for pure DEL/INS</strong>: Removed <code>is_worth_realignment</code> prefilter — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> structure is ground truth for pure deletions/insertions, prefilter was overcounting</li>
@@ -14215,7 +14270,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Update test expectations for new behavior</li>
 <li><abbr title="Continuous Integration - Automated build and test system">CI</abbr>: skip test workflow for docs-only changes</li>
 </ul>
-<h3 id="development-changelog-tests_5">🧪 Tests<a class="headerlink" href="#development-changelog-tests_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_6">🧪 Tests<a class="headerlink" href="#development-changelog-tests_6" title="Permanent link">¶</a></h3>
 <ul>
 <li>8 Python alignment backend integration tests</li>
 <li>5 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>-vs-<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> concordance tests</li>
@@ -14228,7 +14283,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
 </ul>
-<h3 id="development-changelog-fixed_8">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_9">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Allele-based dispatch</strong> (<code>check_allele_with_qual</code>): Routes by <code>ref_len × alt_len</code> instead of unreliable <code>variant_type</code> string labels. <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (1×1), insertion (1×N), deletion (N×1), <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (N×N equal), complex (N×M unequal) — eliminates misrouting when callers emit inconsistent type annotations</li>
 <li><strong><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> semiglobal argument order</strong>: Fixed <code>ref_hap</code>/<code>alt_hap</code> argument swap in semiglobal alignment that was scoring reads against the wrong haplotype</li>
@@ -14246,7 +14301,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Tests</strong>: Updated <code>test_fuzzy_complex::TestLengthMismatch</code> expectation to reflect Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback behavior</li>
 </ul>
 <h2 id="development-changelog-261-2026-02-19">[2.6.1] - 2026-02-19<a class="headerlink" href="#development-changelog-261-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_9">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_10">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
@@ -14273,7 +14328,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Docs restructure</strong>: Split monolithic <code>variant-counting.md</code> into 4 focused pages: Variant Normalization, Allele Classification, Counting Metrics, Read Filters</li>
 <li><strong><abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> install docs</strong>: Micromamba-based source install with Python 3.13</li>
 </ul>
-<h3 id="development-changelog-fixed_10">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_11">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Interior REF guard</strong> for large deletions (&gt;50bp): Reads falling entirely within a deleted region are now correctly classified as REF instead of ALT by Smith-Waterman</li>
 <li><strong>Windowed reciprocal overlap</strong>: Improved shifted indel detection using bidirectional overlap scoring</li>
@@ -14299,7 +14354,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow <code>--filter_by_sample</code> parameter</strong> and samplesheet <code>tsb</code> column for multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows</li>
 <li><strong>Nextflow documentation</strong>: Samplesheet <code>tsb</code> column guide, <code>--filter_by_sample</code> parameter reference, multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> filtering examples</li>
 </ul>
-<h3 id="development-changelog-fixed_11">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_12">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_12" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment quality extraction</strong> (critical): All variant-type handlers (<code>check_insertion</code>, <code>check_deletion</code>, <code>check_mnp</code>, <code>check_complex</code>) now return actual <code>base_qual</code> from <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk instead of 0 — fixes systematic ALT undercount for indels in fragment-level consensus</li>
 <li><strong>FILTER_MAF heredoc conflict</strong>: Restructured script from Python shebang to <code>python3 &lt;&lt; 'PYEOF'</code> pattern, resolving <code>SyntaxError</code> from bash syntax in Python context</li>
@@ -14332,7 +14387,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>--version</code> flag</strong>: Added to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>gbcms --version</code>)</li>
 <li><strong>Deploy-Docs Workflow</strong>: Replaced <code>mkdocs gh-deploy</code> with <code>mike</code> for multi-version documentation; deploys <code>stable</code> (tagged version) from main and <code>dev</code> from develop branch; added <code>extra.version.provider: mike</code> to <code>mkdocs.yml</code> with version switcher widget</li>
 </ul>
-<h3 id="development-changelog-fixed_12">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_13">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_13" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment double-counting bug</strong>: R1+R2 pairs previously counted as two independent observations; now collapsed via quality-weighted consensus</li>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Input Hardening</strong>: Graceful handling of missing/malformed fields with warnings instead of crashes</li>
@@ -14365,7 +14420,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>GitHub Actions</strong>: Consolidated deploy-docs workflows, added caching and PR validation</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Wheels</strong>: Migrated from <code>manylinux_2_28</code> to <code>manylinux_2_34</code> (AlmaLinux 9 with OpenSSL 3.0+)</li>
 </ul>
-<h3 id="development-changelog-fixed_13">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_14">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_14" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow</strong>: Empty <code>--suffix</code> argument no longer causes failures</li>
 <li><strong>Admonitions</strong>: Converted GitHub-style alerts to MkDocs syntax</li>
@@ -14394,7 +14449,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Updated MkDocs with mermaid2 plugin and snippet includes</li>
 </ul>
 <h2 id="development-changelog-212-2025-11-25">[2.1.2] - 2025-11-25<a class="headerlink" href="#development-changelog-212-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_14">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_14" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_15">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_15" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Fixed source distribution size issue by correctly excluding large files (tests, docs, etc.) via <code>pyproject.toml</code> configuration.</li>
 </ul>
@@ -14403,7 +14458,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <p class="admonition-title">Yanked Release</p>
 <p>This release was yanked from PyPI due to a source distribution size limit error. Use 2.1.2 instead.</p>
 </div>
-<h3 id="development-changelog-fixed_15">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_15" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_16">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_16" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Added MANIFEST.in (failed to work with Hatchling) to reduce source distribution size</li>
 <li><strong>Documentation</strong>: Added comprehensive Installation guide</li>
@@ -14524,7 +14579,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Unused Dependencies</strong>: Removed <code>cyvcf2</code> and <code>numba</code> (no longer needed)</li>
 <li><strong>Pre-commit Hooks</strong>: Removed in favor of explicit linting in <abbr title="Continuous Integration - Automated build and test system">CI</abbr></li>
 </ul>
-<h3 id="development-changelog-fixed_16">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_16" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_17">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_17" title="Permanent link">¶</a></h3>
 <ul>
 <li>Correct handling of complex variants (MNPs, DelIns)</li>
 <li>Proper strand assignment for fragment counting</li>
