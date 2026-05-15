@@ -68,16 +68,24 @@ workflow {
             def meta = [:]
             meta.id = row.sample
             
-            // Per-sample suffix: use row.suffix if present, otherwise use global params.suffix
-            meta.suffix = row.containsKey('suffix') && row.suffix ? row.suffix : params.suffix
-
-            // Optional: explicit Tumor_Sample_Barcode pattern for MAF filtering
-            meta.tsb = row.containsKey('tsb') && row.tsb ? row.tsb : null
-
             // Optional: BAM type label for multi-BAM merge (e.g., 'duplex', 'simplex').
             // When set, auto-derives --column-prefix in the DNA module so counts
             // are pre-prefixed, and enables groupTuple-based merging in the DNA workflow.
             meta.bam_type = row.containsKey('bam_type') && row.bam_type ? row.bam_type : null
+
+            // Optional: explicit Tumor_Sample_Barcode pattern for MAF filtering
+            meta.tsb = row.containsKey('tsb') && row.tsb ? row.tsb : null
+
+            // Per-sample suffix: explicit row.suffix > auto-derived from bam_type > global params.suffix
+            // When bam_type is set but suffix is not, auto-derive suffix as "-{bam_type}"
+            // to disambiguate output filenames (e.g., sample1-duplex.maf vs sample1-simplex.maf).
+            if (row.containsKey('suffix') && row.suffix) {
+                meta.suffix = row.suffix
+            } else if (meta.bam_type) {
+                meta.suffix = "-${meta.bam_type}"
+            } else {
+                meta.suffix = params.suffix
+            }
             
             def bam = file(row.bam, checkIfExists: true)
             

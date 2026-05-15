@@ -92,15 +92,22 @@ and merged into a single output MAF with type-prefixed count columns.
 
 ```csv
 sample,bam,bai,suffix,bam_type
-sample1,/path/to/sample1.duplex.bam,,-duplex,duplex
-sample1,/path/to/sample1.simplex.bam,,-simplex,simplex
+sample1,/path/to/sample1.duplex.bam,,,duplex
+sample1,/path/to/sample1.simplex.bam,,,simplex
 ```
 
 When `bam_type` is set:
 
 1. The `--column-prefix` is **auto-derived** from the type label (e.g., `duplex_`)
-2. After per-BAM genotyping, the pipeline groups MAFs by sample and runs `gbcms merge`
-3. Combined `simplex_duplex_*` columns are computed when both types are present
+2. The output **suffix is auto-derived** as `-{bam_type}` (e.g., `sample1-duplex.maf`)
+   unless an explicit `suffix` column value is provided
+3. After per-BAM genotyping, the pipeline groups MAFs by sample and runs `gbcms merge`
+4. Combined `simplex_duplex_*` columns are computed when both types are present
+
+!!! tip "Suffix auto-derivation"
+    When `bam_type` is set, you do **not** need to set `suffix` — it is automatically
+    derived as `-{bam_type}`. Only set `suffix` explicitly if you need a custom value
+    that differs from the `bam_type` label.
 
 !!! tip "Minimum 2 BAM types per sample"
     Merge requires at least 2 inputs per sample. Samples with only 1 BAM type
