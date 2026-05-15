@@ -86,13 +86,39 @@ GBCMS_META_BASENAMES: list[str] = [
 # Combined set of all gbcms basenames for detection.
 ALL_GBCMS_BASENAMES: set[str] = set(GBCMS_COUNT_BASENAMES) | set(GBCMS_META_BASENAMES)
 
-# Fragment-level metrics used for simplex+duplex additive combination.
-# These are the only columns where addition is semantically meaningful
-# (read-level counts are NOT additive across BAM types).
-COMBINED_ADDITIVE: list[str] = [
+# Additive count basenames for simplex+duplex combination.
+# Duplex and simplex BAMs contain distinct consensus molecules — there is
+# no double-counting — so ALL count levels are additive across BAM types.
+#
+# Column order follows output.py sections:
+#   §2 read-level → §3 read strand → §4 fragment-level → §5 fragment strand
+COMBINED_ADDITIVE_READ: list[str] = [
+    "ref_count",
+    "alt_count",
+]
+COMBINED_ADDITIVE_READ_STRAND: list[str] = [
+    "ref_count_forward",
+    "ref_count_reverse",
+    "alt_count_forward",
+    "alt_count_reverse",
+]
+COMBINED_ADDITIVE_FRAGMENT: list[str] = [
     "ref_count_fragment",
     "alt_count_fragment",
 ]
+COMBINED_ADDITIVE_FRAGMENT_STRAND: list[str] = [
+    "ref_count_fragment_forward",
+    "ref_count_fragment_reverse",
+    "alt_count_fragment_forward",
+    "alt_count_fragment_reverse",
+]
+# Flat list of all additive basenames (for iteration).
+COMBINED_ADDITIVE_ALL: list[str] = (
+    COMBINED_ADDITIVE_READ
+    + COMBINED_ADDITIVE_READ_STRAND
+    + COMBINED_ADDITIVE_FRAGMENT
+    + COMBINED_ADDITIVE_FRAGMENT_STRAND
+)
 
 
 def merge_mafs(config: MergeConfig) -> None:
@@ -331,61 +357,226 @@ def _is_prefixed_gbcms_col(col: str, bam_type: str) -> bool:
 def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Add additive simplex_duplex_* combined columns.
 
-    Computes the sum of simplex and duplex fragment-level counts for
-    each metric in ``COMBINED_ADDITIVE``. Also computes a combined VAF.
+    Computes the sum of simplex and duplex counts at ALL levels:
+      - Read-level: ref_count, alt_count → total_count, vaf
+      - Read-level strand: ref/alt_count_forward/reverse → strand_bias
+      - Fragment-level: ref/alt_count_fragment → total_count_fragment, vaf_fragment
+      - Fragment strand: ref/alt_count_fragment_forward/reverse → fragment_strand_bias
 
-    Only fragment-level metrics are summed — read-level counts are NOT
-    additive across BAM types (a read can only come from one BAM).
+    Strand bias p-values and odds ratios are computed using the Rust
+    ``fisher_exact_2x2`` function (same implementation as the per-BAM engine),
+    ensuring numerical consistency.
+
+    Column order matches the canonical layout in ``output.py``:
+      §2 counts → §3 read strand + SB → §4 fragment counts → §5 fragment strand + FSB
 
     Args:
         lf: LazyFrame with simplex_* and duplex_* columns.
 
     Returns:
-        LazyFrame with additional simplex_duplex_* columns appended.
+        LazyFrame with 20 additional simplex_duplex_* columns appended.
     """
-    exprs: list[pl.Expr] = []
+    # ── Helper: cast + null-fill for a combined sum ───────────────────────
+    def _sum(metric: str) -> pl.Expr:
+        """Sum simplex_{metric} + duplex_{metric}, casting from string."""
+        return (
+            pl.col(f"simplex_{metric}").cast(pl.Int64, strict=False).fill_null(0)
+            + pl.col(f"duplex_{metric}").cast(pl.Int64, strict=False).fill_null(0)
+        ).alias(f"simplex_duplex_{metric}")
 
-    for metric in COMBINED_ADDITIVE:
-        simplex_col = f"simplex_{metric}"
-        duplex_col = f"duplex_{metric}"
-        combined_col = f"simplex_duplex_{metric}"
+    def _total(ref_metric: str, alt_metric: str, total_name: str) -> pl.Expr:
+        """Compute total = combined_ref + combined_alt."""
+        return (
+            pl.col(f"simplex_duplex_{ref_metric}") + pl.col(f"simplex_duplex_{alt_metric}")
+        ).alias(f"simplex_duplex_{total_name}")
 
-        # Cast string → Int64 for arithmetic, fill null → 0
-        exprs.append(
-            (
-                pl.col(simplex_col).cast(pl.Int64, strict=False).fill_null(0)
-                + pl.col(duplex_col).cast(pl.Int64, strict=False).fill_null(0)
-            ).alias(combined_col)
+    def _vaf(alt_metric: str, total_name: str, vaf_name: str) -> pl.Expr:
+        """Compute VAF = combined_alt / combined_total, 0/0 → 0.0."""
+        alt = pl.col(f"simplex_duplex_{alt_metric}").cast(pl.Float64)
+        total = pl.col(f"simplex_duplex_{total_name}").cast(pl.Float64)
+        return (
+            pl.when(total > 0).then(alt / total).otherwise(0.0)
+        ).alias(f"simplex_duplex_{vaf_name}")
+
+    # ── Determine which additive metrics exist in the merged output ─────
+    schema_names = set(lf.collect_schema().names())
+
+    def _has_both(metric: str) -> bool:
+        """Check if both simplex_{metric} and duplex_{metric} are present."""
+        return f"simplex_{metric}" in schema_names and f"duplex_{metric}" in schema_names
+
+    available_additive = [m for m in COMBINED_ADDITIVE_ALL if _has_both(m)]
+    if not available_additive:
+        logger.warning(
+            "No additive count columns found in merged output — "
+            "skipping combined column computation"
+        )
+        return lf
+
+    skipped = set(COMBINED_ADDITIVE_ALL) - set(available_additive)
+    if skipped:
+        logger.info(
+            "  Skipping %d additive metrics not in input: %s",
+            len(skipped),
+            sorted(skipped),
         )
 
-    # Compute combined total and VAF
-    exprs.append(
-        (
-            pl.col("simplex_ref_count_fragment").cast(pl.Int64, strict=False).fill_null(0)
-            + pl.col("duplex_ref_count_fragment").cast(pl.Int64, strict=False).fill_null(0)
-            + pl.col("simplex_alt_count_fragment").cast(pl.Int64, strict=False).fill_null(0)
-            + pl.col("duplex_alt_count_fragment").cast(pl.Int64, strict=False).fill_null(0)
-        ).alias("simplex_duplex_total_count_fragment")
-    )
+    # ── Phase 1: Additive sums (lazy, vectorized) ────────────────────────
+    sum_exprs = [_sum(m) for m in available_additive]
+    lf = lf.with_columns(sum_exprs)
+    logger.info("  Computed %d additive simplex_duplex sums", len(sum_exprs))
 
-    # VAF = alt / (alt + ref), handle division by zero → 0.0
-    combined_alt = (
-        pl.col("simplex_alt_count_fragment").cast(pl.Int64, strict=False).fill_null(0)
-        + pl.col("duplex_alt_count_fragment").cast(pl.Int64, strict=False).fill_null(0)
-    )
-    combined_total = (
-        pl.col("simplex_ref_count_fragment").cast(pl.Int64, strict=False).fill_null(0)
-        + pl.col("duplex_ref_count_fragment").cast(pl.Int64, strict=False).fill_null(0)
-        + combined_alt
-    )
-    exprs.append(
-        pl.when(combined_total > 0)
-        .then(combined_alt.cast(pl.Float64) / combined_total.cast(pl.Float64))
-        .otherwise(0.0)
-        .alias("simplex_duplex_vaf_fragment")
-    )
+    # ── Phase 2a: Derived totals (lazy, vectorized) ────────────────────────
+    total_exprs = []
+    vaf_exprs = []
 
-    return lf.with_columns(exprs)
+    # §2: Read-level total + VAF (only if ref_count + alt_count were summed)
+    if "ref_count" in available_additive and "alt_count" in available_additive:
+        total_exprs.append(_total("ref_count", "alt_count", "total_count"))
+        vaf_exprs.append(_vaf("alt_count", "total_count", "vaf"))
+
+    # §4: Fragment-level total + VAF (only if fragment counts were summed)
+    if "ref_count_fragment" in available_additive and "alt_count_fragment" in available_additive:
+        total_exprs.append(
+            _total("ref_count_fragment", "alt_count_fragment", "total_count_fragment")
+        )
+        vaf_exprs.append(
+            _vaf("alt_count_fragment", "total_count_fragment", "vaf_fragment")
+        )
+
+    if total_exprs:
+        lf = lf.with_columns(total_exprs)
+    # ── Phase 2b: VAFs (separate pass — depends on totals from 2a) ────────
+    if vaf_exprs:
+        lf = lf.with_columns(vaf_exprs)
+    if total_exprs or vaf_exprs:
+        logger.info(
+            "  Computed %d derived totals + %d VAFs",
+            len(total_exprs),
+            len(vaf_exprs),
+        )
+
+    # ── Phase 3: Strand bias via Rust Fisher exact test (eager, per-row) ──
+    # Only compute when all 4 directional columns are available
+    has_read_strand = all(m in available_additive for m in COMBINED_ADDITIVE_READ_STRAND)
+    has_frag_strand = all(m in available_additive for m in COMBINED_ADDITIVE_FRAGMENT_STRAND)
+
+    if has_read_strand or has_frag_strand:
+        df = lf.collect()
+        df = _compute_combined_strand_bias(
+            df,
+            compute_read_sb=has_read_strand,
+            compute_fragment_sb=has_frag_strand,
+        )
+        return df.lazy()
+
+    return lf
+
+
+def _compute_combined_strand_bias(
+    df: pl.DataFrame,
+    *,
+    compute_read_sb: bool = True,
+    compute_fragment_sb: bool = True,
+) -> pl.DataFrame:
+    """Compute Fisher strand bias on combined simplex+duplex counts.
+
+    Runs the Rust ``fisher_exact_2x2`` on the 2×2 contingency table:
+
+    .. code-block:: text
+
+                    Forward                     Reverse
+        Ref    simplex_duplex_ref_fwd    simplex_duplex_ref_rev
+        Alt    simplex_duplex_alt_fwd    simplex_duplex_alt_rev
+
+    Produces up to 4 columns (read-level SB + fragment-level FSB),
+    depending on which directional columns are available.
+
+    Args:
+        df: DataFrame with simplex_duplex_*_forward/reverse columns.
+        compute_read_sb: Whether to compute read-level strand bias.
+        compute_fragment_sb: Whether to compute fragment-level strand bias.
+
+    Returns:
+        DataFrame with additional strand bias columns.
+    """
+    from gbcms._rs import fisher_exact_2x2
+
+    # ── Read-level strand bias ────────────────────────────────────────────
+    if compute_read_sb:
+        sb_results = _apply_fisher(
+            df,
+            ref_fwd="simplex_duplex_ref_count_forward",
+            ref_rev="simplex_duplex_ref_count_reverse",
+            alt_fwd="simplex_duplex_alt_count_forward",
+            alt_rev="simplex_duplex_alt_count_reverse",
+            fisher_fn=fisher_exact_2x2,
+        )
+        df = df.with_columns([
+            pl.Series("simplex_duplex_strand_bias_p_value", sb_results[0]),
+            pl.Series("simplex_duplex_strand_bias_odds_ratio", sb_results[1]),
+        ])
+
+    # ── Fragment-level strand bias ────────────────────────────────────────
+    if compute_fragment_sb:
+        fsb_results = _apply_fisher(
+            df,
+            ref_fwd="simplex_duplex_ref_count_fragment_forward",
+            ref_rev="simplex_duplex_ref_count_fragment_reverse",
+            alt_fwd="simplex_duplex_alt_count_fragment_forward",
+            alt_rev="simplex_duplex_alt_count_fragment_reverse",
+            fisher_fn=fisher_exact_2x2,
+        )
+        df = df.with_columns([
+            pl.Series("simplex_duplex_fragment_strand_bias_p_value", fsb_results[0]),
+            pl.Series("simplex_duplex_fragment_strand_bias_odds_ratio", fsb_results[1]),
+        ])
+
+    logger.debug(
+        "Computed combined strand bias for %d variants (read-level + fragment-level)",
+        df.height,
+    )
+    return df
+
+
+def _apply_fisher(
+    df: pl.DataFrame,
+    *,
+    ref_fwd: str,
+    ref_rev: str,
+    alt_fwd: str,
+    alt_rev: str,
+    fisher_fn,
+) -> tuple[list[float], list[float]]:
+    """Apply Fisher's exact test row-by-row on strand count columns.
+
+    Args:
+        df: DataFrame with the strand count columns.
+        ref_fwd/ref_rev/alt_fwd/alt_rev: Column names for the 2×2 table.
+        fisher_fn: Callable(a, b, c, d) → (p_value, odds_ratio).
+
+    Returns:
+        Tuple of (p_values_list, odds_ratios_list).
+    """
+    rf = df[ref_fwd].to_list()
+    rr = df[ref_rev].to_list()
+    af = df[alt_fwd].to_list()
+    ar = df[alt_rev].to_list()
+
+    p_values: list[float] = []
+    odds_ratios: list[float] = []
+
+    for i in range(df.height):
+        # Values are Int64 from the additive sum phase
+        a = int(rf[i]) if rf[i] is not None else 0
+        b = int(rr[i]) if rr[i] is not None else 0
+        c = int(af[i]) if af[i] is not None else 0
+        d = int(ar[i]) if ar[i] is not None else 0
+        p, odds = fisher_fn(a, b, c, d)
+        p_values.append(p)
+        odds_ratios.append(odds)
+
+    return p_values, odds_ratios
 
 
 def _apply_legacy_naming(

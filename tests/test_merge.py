@@ -668,3 +668,247 @@ def test_merge_cli_invalid_input_format(tmp_path):
 
     assert result.exit_code == 1, f"Expected exit code 1, got {result.exit_code}"
 
+
+# ── Helpers for full-column tests ─────────────────────────────────────────
+
+
+def _make_full_variant_row(
+    chrom: str = "chr1",
+    start: str = "100",
+    end: str = "100",
+    ref: str = "A",
+    alt: str = "T",
+    **counts,
+) -> dict:
+    """Create a variant row with ALL count columns including strand directions.
+
+    Matches the canonical column set from output.py §2-§5.
+    """
+    row = {
+        "Chromosome": chrom,
+        "Start_Position": start,
+        "End_Position": end,
+        "Reference_Allele": ref,
+        "Tumor_Seq_Allele2": alt,
+        "Hugo_Symbol": "TP53",
+        # §2: Read-level counts
+        "ref_count": "10",
+        "alt_count": "5",
+        "total_count": "15",
+        "vaf": "0.333",
+        # §3: Read-level strand
+        "ref_count_forward": "6",
+        "ref_count_reverse": "4",
+        "alt_count_forward": "3",
+        "alt_count_reverse": "2",
+        "strand_bias_p_value": "1.0000e+00",
+        "strand_bias_odds_ratio": "1.0000",
+        # §4: Fragment-level counts
+        "ref_count_fragment": "8",
+        "alt_count_fragment": "4",
+        "total_count_fragment": "12",
+        "vaf_fragment": "0.333",
+        # §5: Fragment strand
+        "ref_count_fragment_forward": "5",
+        "ref_count_fragment_reverse": "3",
+        "alt_count_fragment_forward": "2",
+        "alt_count_fragment_reverse": "2",
+        "fragment_strand_bias_p_value": "1.0000e+00",
+        "fragment_strand_bias_odds_ratio": "1.0000",
+        # Meta
+        "gbcms_status": "OK",
+    }
+    row.update(counts)
+    return row
+
+
+# ── Test 21: Read-level combined columns ─────────────────────────────────
+
+
+def test_merge_combined_read_level(tmp_path):
+    """Combined read-level counts are additive (duplex + simplex reads are distinct)."""
+    duplex = tmp_path / "duplex.maf"
+    simplex = tmp_path / "simplex.maf"
+    output = tmp_path / "merged.maf"
+
+    _write_test_maf(duplex, [_make_full_variant_row(ref_count="20", alt_count="10")])
+    _write_test_maf(simplex, [_make_full_variant_row(ref_count="5", alt_count="3")])
+
+    config = MergeConfig(
+        inputs={"duplex": duplex, "simplex": simplex},
+        output=output,
+        add_combined=True,
+    )
+    merge_mafs(config)
+
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+
+    # Read-level additive sums
+    assert int(result["simplex_duplex_ref_count"][0]) == 25  # 20 + 5
+    assert int(result["simplex_duplex_alt_count"][0]) == 13  # 10 + 3
+    assert int(result["simplex_duplex_total_count"][0]) == 38  # 25 + 13
+    assert abs(float(result["simplex_duplex_vaf"][0]) - 13 / 38) < 0.001
+
+
+# ── Test 22: Fragment strand combined + Fisher bias ──────────────────────
+
+
+def test_merge_combined_strand_bias(tmp_path):
+    """Combined strand bias uses Rust Fisher exact test on summed counts.
+
+    Duplex: ref_fwd=10, ref_rev=10, alt_fwd=5, alt_rev=5 (balanced)
+    Simplex: ref_fwd=0, ref_rev=10, alt_fwd=10, alt_rev=0 (extreme bias)
+    Combined: ref_fwd=10, ref_rev=20, alt_fwd=15, alt_rev=5
+    """
+    duplex = tmp_path / "duplex.maf"
+    simplex = tmp_path / "simplex.maf"
+    output = tmp_path / "merged.maf"
+
+    _write_test_maf(
+        duplex,
+        [_make_full_variant_row(
+            ref_count_forward="10", ref_count_reverse="10",
+            alt_count_forward="5", alt_count_reverse="5",
+            ref_count_fragment_forward="10", ref_count_fragment_reverse="10",
+            alt_count_fragment_forward="5", alt_count_fragment_reverse="5",
+        )],
+    )
+    _write_test_maf(
+        simplex,
+        [_make_full_variant_row(
+            ref_count_forward="0", ref_count_reverse="10",
+            alt_count_forward="10", alt_count_reverse="0",
+            ref_count_fragment_forward="0", ref_count_fragment_reverse="10",
+            alt_count_fragment_forward="10", alt_count_fragment_reverse="0",
+        )],
+    )
+
+    config = MergeConfig(
+        inputs={"duplex": duplex, "simplex": simplex},
+        output=output,
+        add_combined=True,
+    )
+    merge_mafs(config)
+
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+
+    # Verify additive strand counts
+    assert int(result["simplex_duplex_ref_count_forward"][0]) == 10  # 10 + 0
+    assert int(result["simplex_duplex_ref_count_reverse"][0]) == 20  # 10 + 10
+    assert int(result["simplex_duplex_alt_count_forward"][0]) == 15  # 5 + 10
+    assert int(result["simplex_duplex_alt_count_reverse"][0]) == 5   # 5 + 0
+
+    # Verify strand bias columns exist and are not null
+    assert "simplex_duplex_strand_bias_p_value" in result.columns
+    assert "simplex_duplex_strand_bias_odds_ratio" in result.columns
+    assert "simplex_duplex_fragment_strand_bias_p_value" in result.columns
+    assert "simplex_duplex_fragment_strand_bias_odds_ratio" in result.columns
+
+    # Verify Fisher p-value is < 1.0 (biased table: 10/20 vs 15/5)
+    sb_p = float(result["simplex_duplex_strand_bias_p_value"][0])
+    assert sb_p < 0.05, f"Expected significant bias, got p={sb_p}"
+
+    # Fragment-level should give same result (same input values)
+    fsb_p = float(result["simplex_duplex_fragment_strand_bias_p_value"][0])
+    assert fsb_p < 0.05, f"Expected significant fragment bias, got p={fsb_p}"
+
+
+# ── Test 23: Full combined column order ──────────────────────────────────
+
+
+def test_merge_combined_column_order(tmp_path):
+    """All 20 combined columns are present in the correct canonical order.
+
+    Order must match output.py: §2 counts → §3 strand + SB → §4 fragment → §5 frag strand + FSB.
+    """
+    duplex = tmp_path / "duplex.maf"
+    simplex = tmp_path / "simplex.maf"
+    output = tmp_path / "merged.maf"
+
+    _write_test_maf(duplex, [_make_full_variant_row()])
+    _write_test_maf(simplex, [_make_full_variant_row()])
+
+    config = MergeConfig(
+        inputs={"duplex": duplex, "simplex": simplex},
+        output=output,
+        add_combined=True,
+    )
+    merge_mafs(config)
+
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+
+    # Extract all simplex_duplex_* columns in order
+    combined_cols = [c for c in result.columns if c.startswith("simplex_duplex_")]
+
+    expected_combined = [
+        # Phase 1: Additive sums (COMBINED_ADDITIVE_ALL order)
+        "simplex_duplex_ref_count",
+        "simplex_duplex_alt_count",
+        "simplex_duplex_ref_count_forward",
+        "simplex_duplex_ref_count_reverse",
+        "simplex_duplex_alt_count_forward",
+        "simplex_duplex_alt_count_reverse",
+        "simplex_duplex_ref_count_fragment",
+        "simplex_duplex_alt_count_fragment",
+        "simplex_duplex_ref_count_fragment_forward",
+        "simplex_duplex_ref_count_fragment_reverse",
+        "simplex_duplex_alt_count_fragment_forward",
+        "simplex_duplex_alt_count_fragment_reverse",
+        # Phase 2a: Derived totals (read + fragment)
+        "simplex_duplex_total_count",
+        "simplex_duplex_total_count_fragment",
+        # Phase 2b: Derived VAFs (read + fragment)
+        "simplex_duplex_vaf",
+        "simplex_duplex_vaf_fragment",
+        # Phase 3: Strand bias (read-level SB + fragment-level FSB)
+        "simplex_duplex_strand_bias_p_value",
+        "simplex_duplex_strand_bias_odds_ratio",
+        "simplex_duplex_fragment_strand_bias_p_value",
+        "simplex_duplex_fragment_strand_bias_odds_ratio",
+    ]
+
+    assert len(combined_cols) == 20, (
+        f"Expected 20 combined columns, got {len(combined_cols)}: {combined_cols}"
+    )
+    assert combined_cols == expected_combined, (
+        f"Column order mismatch:\nGot: {combined_cols}\nExpected: {expected_combined}"
+    )
+
+
+# ── Test 24: Balanced table → no strand bias ─────────────────────────────
+
+
+def test_merge_combined_strand_bias_balanced(tmp_path):
+    """Balanced strand counts yield p ≈ 1.0 (no bias)."""
+    duplex = tmp_path / "duplex.maf"
+    simplex = tmp_path / "simplex.maf"
+    output = tmp_path / "merged.maf"
+
+    # Both have perfectly balanced strand counts
+    _write_test_maf(
+        duplex,
+        [_make_full_variant_row(
+            ref_count_forward="10", ref_count_reverse="10",
+            alt_count_forward="5", alt_count_reverse="5",
+        )],
+    )
+    _write_test_maf(
+        simplex,
+        [_make_full_variant_row(
+            ref_count_forward="10", ref_count_reverse="10",
+            alt_count_forward="5", alt_count_reverse="5",
+        )],
+    )
+
+    config = MergeConfig(
+        inputs={"duplex": duplex, "simplex": simplex},
+        output=output,
+        add_combined=True,
+    )
+    merge_mafs(config)
+
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    sb_p = float(result["simplex_duplex_strand_bias_p_value"][0])
+    assert sb_p > 0.9, f"Expected p ~1.0 for balanced table, got {sb_p}"
+
+
