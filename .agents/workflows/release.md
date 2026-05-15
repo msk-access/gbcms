@@ -62,6 +62,7 @@ This project strictly utilizes a PR-driven **Git Flow**. Direct merging to `main
    - Title: `Release X.Y.Z`
    - Body: copy from CHANGELOG
    - Wait for CI to pass
+   - **Merge with merge commit** (do NOT squash — squash breaks back-merge ancestry)
 
 8. **After PR Merge — Tag**:
    ```bash
