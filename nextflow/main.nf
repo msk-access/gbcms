@@ -112,6 +112,21 @@ workflow {
             return [ meta, bam, bai ]
         }
         .set { ch_samplesheet }
+
+    // Validate: duplicate sample IDs without suffix/bam_type would produce
+    // identical output filenames, silently overwriting each other.
+    ch_samplesheet
+        .map { meta, bam, bai -> "${meta.id}${meta.suffix ?: ''}" }
+        .collect()
+        .map { keys ->
+            def dupes = keys.countBy { it }.findAll { k, v -> v > 1 }
+            if (dupes) {
+                error "Duplicate output keys detected: ${dupes.keySet().join(', ')}. " +
+                      "Multiple rows share the same sample ID without a distinguishing " +
+                      "'suffix' or 'bam_type' column. This would cause output files to " +
+                      "overwrite each other. Add a 'bam_type' or 'suffix' column to disambiguate."
+            }
+        }
     
     // Prepare reference inputs
     ch_variants_file = file(params.variants)
