@@ -79,7 +79,7 @@ Fragment counting collapses read pairs into a single observation per fragment. T
 
 ### Fragment Tracking
 
-Fragments are tracked using **QNAME hashing** — each read's QNAME is hashed to a `u64` key for memory-efficient lookup. The `FragmentEvidence` struct records the best base quality seen for REF and ALT across both reads in the pair.
+Fragments are tracked using **QNAME hashing** — each read's QNAME is hashed to a `u64` key for memory-efficient lookup. The `FragmentEvidence` struct records the best base quality seen for REF and ALT across both reads in the pair, plus a sticky `has_structural_alt` flag that captures whether any read had a direct CIGAR I/D op matching the target INDEL.
 
 **Phase A — Fragment Tracking** (per-read pass):
 
@@ -103,11 +103,14 @@ flowchart LR
 flowchart TD
     ForEach(["For each unique fragment"]):::start --> HasBoth{"Both REF and ALT evidence?"}
     HasBoth -->|No| Direct["Assign to whichever allele was seen"]
-    HasBoth -->|Yes| QualCheck{"Quality difference > threshold?"}
+    HasBoth -->|Yes| Structural{"Structural INDEL evidence?\n(CIGAR I/D op on ALT read)"}
+    Structural -->|Yes| StructAlt(["🔴 Count as ALT\n(structural priority)"]):::structural
+    Structural -->|No| QualCheck{"Quality difference > threshold?"}
     QualCheck -->|"REF qual >> ALT"| Ref(["✅ Count as REF"]):::ref
     QualCheck -->|"ALT qual >> REF"| Alt(["🔴 Count as ALT"]):::alt
     QualCheck -->|"Within threshold"| Discard(["⚪ Discard — ambiguous"]):::discard
     Direct --> Count
+    StructAlt --> Count
     Ref --> Count
     Alt --> Count
     Discard --> DPF["Counted in DPF only"]:::info
@@ -116,21 +119,26 @@ flowchart TD
     classDef start fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef structural fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef discard fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
     classDef info fill:#3498db25,stroke:#3498db;
 ```
 
 ### Quality-Weighted Consensus
 
-When R1 and R2 of a fragment **disagree** (one supports REF, the other ALT), the engine resolves the conflict using base quality scores:
+When R1 and R2 of a fragment **disagree** (one supports REF, the other ALT), the engine resolves the conflict:
 
 | Scenario | Condition | Result |
 |:---------|:----------|:-------|
+| **Structural INDEL** | ALT read has direct CIGAR I/D op match | **Count as ALT** (unconditionally) |
 | **REF wins** | `best_ref_qual > best_alt_qual + threshold` | Count as REF |
 | **ALT wins** | `best_alt_qual > best_ref_qual + threshold` | Count as ALT |
 | **Ambiguous** | Quality difference ≤ threshold | **Discard** (neither REF nor ALT) |
 
 The threshold is configurable via `--fragment-qual-threshold` (default: **10**).
+
+!!! info "INDEL Structural Priority"
+    For insertions and deletions, the quality comparison between R1 and R2 is **semantically meaningless** — both reads report the anchor base quality (the base adjacent to the INDEL), not the quality of "was an INDEL detected here." When one read has a CIGAR I/D operator matching the target variant, it wins unconditionally. This priority applies to both insertions (I op) and deletions (D op), and recovers ~2-5% of fragment-level INDEL evidence that was previously discarded as ambiguous. Variants classified through Phase 3 alignment (complex variants, wrong-length INDELs) are not affected — they use quality-weighted consensus as before.
 
 !!! important "Why Discard Instead of Defaulting to REF?"
     Assigning ambiguous fragments to REF would systematically **deflate VAF** by inflating the reference count. In cfDNA sequencing where true variants can be at 0.1–1% VAF, this bias could mask real mutations. Discarding preserves an unbiased VAF estimate at the cost of slightly reduced power.
@@ -416,7 +424,7 @@ When `--umi-tag` is specified (e.g., `--umi-tag RX`), fragment identity incorpor
 | Complex quality handling | Exact match only | **Masked comparison** — unreliable bases excluded |
 | Base quality filtering | No threshold | Default `--min-baseq 20` |
 | MNP handling | Not explicit | Dedicated `check_mnp` with contiguity check |
-| Fragment counting | Optional (`--fragment_count`), majority-rule | Always computed, quality-weighted consensus |
+| Fragment counting | Optional (`--fragment_count`), majority-rule | Always computed, quality-weighted consensus with INDEL structural priority |
 | Positive strand counts | Optional (`--positive_count`) | Always computed |
 | Strand bias | Not computed | Fisher's exact test (read + fragment level) |
 | Fractional depth | `--fragment_fractional_weight` | Not implemented |
