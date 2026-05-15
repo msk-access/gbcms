@@ -477,3 +477,194 @@ def test_merge_singleton_column_prefixing(tmp_path):
     )
     assert "simplex_gbcms_status" in result.columns
     assert "gbcms_status" not in result.columns, "Unprefixed gbcms_status should not exist"
+
+
+# ── Test 16: Asymmetric variant counts (many vs few, partial overlap) ────────
+
+
+def test_merge_asymmetric_row_counts(tmp_path):
+    """Duplex has 5 variants, simplex has 3, with 2 overlapping.
+
+    Expected: 6 rows (5 + 3 - 2 overlap = 6 unique variants).
+    Unmatched duplex-only rows should have simplex counts filled with "0".
+    Unmatched simplex-only row should have duplex counts filled with "0".
+    """
+    duplex = tmp_path / "duplex.maf"
+    simplex = tmp_path / "simplex.maf"
+    output = tmp_path / "merged.maf"
+
+    duplex_rows = [
+        _make_variant_row(start="100", ref_count="10"),  # overlap
+        _make_variant_row(start="200", ref_count="20"),  # overlap
+        _make_variant_row(start="300", ref_count="30"),  # duplex-only
+        _make_variant_row(start="400", ref_count="40"),  # duplex-only
+        _make_variant_row(start="500", ref_count="50"),  # duplex-only
+    ]
+    simplex_rows = [
+        _make_variant_row(start="100", ref_count="1"),  # overlap
+        _make_variant_row(start="200", ref_count="2"),  # overlap
+        _make_variant_row(start="600", ref_count="6"),  # simplex-only
+    ]
+
+    _write_test_maf(duplex, duplex_rows)
+    _write_test_maf(simplex, simplex_rows)
+
+    config = MergeConfig(
+        inputs={"duplex": duplex, "simplex": simplex},
+        output=output,
+        add_combined=False,
+    )
+    merge_mafs(config)
+
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    assert result.height == 6, f"Expected 6 rows (5+3-2 overlap), got {result.height}"
+
+    # Check overlap rows: both have real counts
+    overlap = result.filter(pl.col("Start_Position") == "100")
+    assert overlap["duplex_ref_count"].to_list() == ["10"]
+    assert overlap["simplex_ref_count"].to_list() == ["1"]
+
+    # Check duplex-only rows: simplex counts should be "0"
+    duplex_only = result.filter(pl.col("Start_Position") == "300")
+    assert duplex_only["duplex_ref_count"].to_list() == ["30"]
+    assert duplex_only["simplex_ref_count"].to_list() == ["0"]
+
+    # Check simplex-only rows: duplex counts should be "0"
+    simplex_only = result.filter(pl.col("Start_Position") == "600")
+    assert simplex_only["simplex_ref_count"].to_list() == ["6"]
+    assert simplex_only["duplex_ref_count"].to_list() == ["0"]
+
+
+# ── Test 17: Combined columns with unmatched variants ────────────────────────
+
+
+def test_merge_combined_with_unmatched(tmp_path):
+    """Combined simplex_duplex columns work correctly when one side is missing.
+
+    Duplex-only variant: simplex fragment counts are null → filled to 0.
+    Combined = duplex + 0 = duplex.
+    """
+    duplex = tmp_path / "duplex.maf"
+    simplex = tmp_path / "simplex.maf"
+    output = tmp_path / "merged.maf"
+
+    _write_test_maf(
+        duplex,
+        [_make_variant_row(start="100", ref_count_fragment="10", alt_count_fragment="5")],
+    )
+    _write_test_maf(
+        simplex,
+        [_make_variant_row(start="200", ref_count_fragment="3", alt_count_fragment="2")],
+    )
+
+    config = MergeConfig(
+        inputs={"duplex": duplex, "simplex": simplex},
+        output=output,
+        add_combined=True,
+    )
+    merge_mafs(config)
+
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    assert result.height == 2
+
+    # Duplex-only variant: combined = duplex + 0
+    duplex_only = result.filter(pl.col("Start_Position") == "100")
+    assert int(duplex_only["simplex_duplex_ref_count_fragment"][0]) == 10
+    assert int(duplex_only["simplex_duplex_alt_count_fragment"][0]) == 5
+
+    # Simplex-only variant: combined = 0 + simplex
+    simplex_only = result.filter(pl.col("Start_Position") == "200")
+    assert int(simplex_only["simplex_duplex_ref_count_fragment"][0]) == 3
+    assert int(simplex_only["simplex_duplex_alt_count_fragment"][0]) == 2
+
+
+# ── Test 18: Annotation columns on right-only variants ───────────────────────
+
+
+def test_merge_annotation_nulls_right_only(tmp_path):
+    """Simplex-only variants have null annotation columns (by design).
+
+    Annotations come from the left (first) frame. Variants that exist only
+    in the right (joining) frame will have NULL annotations because only
+    variant key + gbcms columns are selected from the right frame.
+    """
+    duplex = tmp_path / "duplex.maf"
+    simplex = tmp_path / "simplex.maf"
+    output = tmp_path / "merged.maf"
+
+    _write_test_maf(duplex, [_make_variant_row(start="100")])
+    _write_test_maf(simplex, [_make_variant_row(start="200")])
+
+    config = MergeConfig(
+        inputs={"duplex": duplex, "simplex": simplex},
+        output=output,
+        add_combined=False,
+    )
+    merge_mafs(config)
+
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+
+    # Duplex-only row (left): Hugo_Symbol preserved
+    left_row = result.filter(pl.col("Start_Position") == "100")
+    assert left_row["Hugo_Symbol"].to_list() == ["TP53"]
+
+    # Simplex-only row (right): Hugo_Symbol is null (annotations not carried from right)
+    right_row = result.filter(pl.col("Start_Position") == "200")
+    hugo = right_row["Hugo_Symbol"].to_list()[0]
+    assert hugo is None or hugo == "", (
+        f"Expected null/empty for right-only annotation, got: {hugo!r}"
+    )
+
+
+# ── Test 19: Meta column null-fill ───────────────────────────────────────────
+
+
+def test_merge_meta_null_fill(tmp_path):
+    """gbcms_status for unmatched variants is filled with '' (not null)."""
+    duplex = tmp_path / "duplex.maf"
+    simplex = tmp_path / "simplex.maf"
+    output = tmp_path / "merged.maf"
+
+    _write_test_maf(duplex, [_make_variant_row(start="100")])
+    _write_test_maf(simplex, [_make_variant_row(start="200")])
+
+    config = MergeConfig(
+        inputs={"duplex": duplex, "simplex": simplex},
+        output=output,
+        add_combined=False,
+    )
+    merge_mafs(config)
+
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+
+    # Duplex-only row: simplex_gbcms_status should be "" (not null)
+    duplex_only = result.filter(pl.col("Start_Position") == "100")
+    simplex_status = duplex_only["simplex_gbcms_status"].to_list()[0]
+    assert simplex_status is not None, "Meta column should not be null after fill"
+
+    # Simplex-only row: duplex_gbcms_status should be "" (not null)
+    simplex_only = result.filter(pl.col("Start_Position") == "200")
+    duplex_status = simplex_only["duplex_gbcms_status"].to_list()[0]
+    assert duplex_status is not None, "Meta column should not be null after fill"
+
+
+# ── Test 20: CLI invalid input format ────────────────────────────────────────
+
+
+def test_merge_cli_invalid_input_format(tmp_path):
+    """--input without colon separator exits with code 1 and error message."""
+    maf = tmp_path / "test.maf"
+    _write_test_maf(maf, [_make_variant_row()])
+
+    result = runner.invoke(
+        app,
+        [
+            "merge",
+            "--input", str(maf),  # Missing type: prefix
+            "--input", f"simplex:{maf}",
+            "--output", str(tmp_path / "merged.maf"),
+        ],
+    )
+
+    assert result.exit_code == 1, f"Expected exit code 1, got {result.exit_code}"
+

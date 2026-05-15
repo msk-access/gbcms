@@ -165,12 +165,20 @@ def merge_mafs(config: MergeConfig) -> None:
             len(join_cols) - len(VARIANT_KEY),
         )
 
-    # ── 3. Fill nulls → "0" for count columns ────────────────────────────────
+    # ── 3. Fill nulls → "0" for count columns, "" for meta columns ─────────
+    output_schema = merged.collect_schema().names()
     count_cols_in_output = [
         c
-        for c in merged.collect_schema().names()
+        for c in output_schema
         if any(
             c == f"{t}_{base}" for t in types for base in GBCMS_COUNT_BASENAMES
+        )
+    ]
+    meta_cols_in_output = [
+        c
+        for c in output_schema
+        if any(
+            c == f"{t}_{base}" for t in types for base in GBCMS_META_BASENAMES
         )
     ]
     if count_cols_in_output:
@@ -178,6 +186,11 @@ def merge_mafs(config: MergeConfig) -> None:
             [pl.col(c).fill_null("0") for c in count_cols_in_output]
         )
         logger.info("  Filled nulls → '0' for %d count columns", len(count_cols_in_output))
+    if meta_cols_in_output:
+        merged = merged.with_columns(
+            [pl.col(c).fill_null("") for c in meta_cols_in_output]
+        )
+        logger.info("  Filled nulls → '' for %d meta columns", len(meta_cols_in_output))
 
     # ── 4. Combined simplex+duplex columns ────────────────────────────────────
     if config.add_combined and "simplex" in frames and "duplex" in frames:
@@ -197,6 +210,20 @@ def merge_mafs(config: MergeConfig) -> None:
             "Merged output is empty (0 rows). Check that input MAFs "
             "contain data and share variant key columns."
         )
+
+    # Log unmatched variant counts per type for monitoring
+    # A variant is "unmatched" if its count columns are all "0" for that type
+    for t in types:
+        t_ref_col = f"{t}_ref_count"
+        if t_ref_col in result.columns:
+            n_unmatched = result.filter(pl.col(t_ref_col) == "0").height
+            if n_unmatched > 0:
+                logger.info(
+                    "  %d/%d variants have no %s counts (filled with 0)",
+                    n_unmatched,
+                    result.height,
+                    t,
+                )
 
     # Legacy naming pass (rename {type}_{metric} → t_{metric}_{type})
     if config.legacy_naming:
