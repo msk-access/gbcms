@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **`gbcms merge` command**: New CLI command for merging per-BAM-type genotyped
+  MAFs (e.g., duplex + simplex) into a single output with type-prefixed count
+  columns and optional additive combined metrics.
+- **Merge engine** (`src/gbcms/merge.py`): Polars-based lazy join engine with
+  3-phase combined column computation:
+  - Phase 1: Additive sums (12 read + fragment + strand count columns)
+  - Phase 2: Derived totals and VAFs
+  - Phase 3: Fisher's exact strand bias (read + fragment level) via Rust
+- **Batch I/O module** (`src/gbcms/io/batch.py`): Centralized Polars-based
+  `read_maf`, `scan_maf`, `read_parquet`, `write_maf` for batch operations.
+- **`MergeConfig` Pydantic model**: Validated configuration with ≥2 input
+  enforcement, file existence checks, and `add_combined`/`legacy_naming` options.
+- **`fisher_exact_2x2` PyO3 wrapper**: Exposed the existing Rust Fisher's exact
+  test as `gbcms._rs.fisher_exact_2x2()` for Python-side strand bias computation
+  in the merge engine, ensuring numerical parity with the primary counting engine.
+- **Nextflow `MERGE_COUNTS` process**: New module at
+  `nextflow/modules/local/gbcms/merge/main.nf` that calls `gbcms merge` with
+  `--input type:path` arguments built from grouped BAM type channels.
+- **Nextflow `bam_type` samplesheet column**: Optional column enabling automatic
+  `--column-prefix` derivation and `groupTuple`-based merge orchestration.
+- **Nextflow merge parameters**: `merge_counts`, `merge_add_combined`,
+  `merge_legacy_naming` in `nextflow.config`.
+- **Polars dependency**: `polars>=1.0.0` added as a core dependency.
+
 ### 🔧 Fixed
 
 - **Fragment consensus: INDEL structural evidence priority** — When R1 and R2
@@ -23,14 +49,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧪 Tests
 
+- **[NEW]** `tests/test_merge.py` — 24 tests covering variant key join,
+  multi-type merge, combined columns (read + fragment + strand), Fisher strand
+  bias (biased + balanced), column order validation, asymmetric row counts,
+  null-fill, legacy naming, and CLI input format validation.
+- **[NEW]** `tests/test_batch_io.py` — 8 tests covering `read_maf`, `scan_maf`,
+  `write_maf`, `read_parquet`, and error handling for missing files.
 - **[NEW]** `tests/test_indel_fragment_consensus.py` — 11 tests covering INS/DEL
   conflict recovery (structural ALT priority), wrong-length INDEL Phase 3 dispatch,
   agreement paths, singleton reads, SNP regression (tie behavior unchanged), and
   REF agreement at INDEL sites. All 4 counting invariants asserted per test.
 - **[NEW]** `rust/src/shared/fragment.rs` `#[cfg(test)]` — 11 Rust unit tests for
   `FragmentEvidence::resolve()` structural priority and `observe()` sticky flag logic.
-- **266 Python tests** (up from 255): 11 new INDEL fragment consensus tests.
+- **298 Python tests** (up from 255): 32 merge, 8 batch, 11 INDEL consensus tests.
 - **161 Rust tests** (up from 150): 11 new fragment consensus unit tests, 0 Clippy warnings.
+
+### 📚 Documentation
+
+- **[NEW]** `docs/cli/merge.md` — CLI reference for `gbcms merge` covering usage,
+  combined columns schema, Nextflow integration, and Fisher strand bias.
+- **Updated** `docs/cli/index.md` — Added `merge` command to commands table.
+- **Updated** `docs/reference/output-formats.md` — Added Merged MAF Output section
+  with type-prefixed columns and 20 combined metrics.
+- **Updated** `docs/reference/architecture.md` — Merge engine in system overview
+  diagram, `batch.py` and `merge.py` in module tree, `MergeConfig` in config diagram.
+- **Updated** `src/gbcms/_rs.pyi` — Added `fisher_exact_2x2` type stub.
+- **Updated** `src/gbcms/__init__.py` — Exported `merge_mafs` and `MergeConfig`.
 
 ## [5.1.0] - 2026-05-11
 

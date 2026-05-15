@@ -539,6 +539,44 @@ These columns are **always** appended regardless of input format.
 
 ---
 
+## Merged MAF Output (`gbcms merge`)
+
+When multiple BAM types (e.g., duplex, simplex) are genotyped separately and merged
+via `gbcms merge`, the output MAF contains type-prefixed columns plus optional
+combined metrics.
+
+### Type-Prefixed Columns
+
+Each input MAF's gbcms count columns are prefixed with the BAM type label:
+
+| Input Label | Example Columns |
+|:------------|:---------------|
+| `duplex` | `duplex_ref_count`, `duplex_alt_count`, `duplex_vaf`, ... |
+| `simplex` | `simplex_ref_count`, `simplex_alt_count`, `simplex_vaf`, ... |
+
+Annotation columns (e.g., `Hugo_Symbol`, `Chromosome`) are taken from the first
+input and **not** duplicated.
+
+### Combined `simplex_duplex_*` Columns
+
+When both `simplex` and `duplex` inputs are present (and `--no-combined` is not
+set), 20 combined columns are appended. Duplex and simplex consensus molecules
+are distinct — counts are **additive** across BAM types with no double-counting.
+
+| Phase | Columns | Count | Method |
+|:------|:--------|:------|:-------|
+| **Additive sums** | Read counts, strand counts, fragment counts, fragment strand counts | 12 | `simplex_{x} + duplex_{x}` |
+| **Derived totals** | `total_count`, `total_count_fragment` | 2 | `ref + alt` |
+| **Derived VAFs** | `vaf`, `vaf_fragment` | 2 | `alt / total` (0/0 → 0.0) |
+| **Strand bias** | `strand_bias_p_value`, `strand_bias_odds_ratio`, `fragment_strand_bias_p_value`, `fragment_strand_bias_odds_ratio` | 4 | Rust Fisher exact 2×2 test |
+
+!!! note "Schema-Aware"
+    If strand-level columns are absent from the input MAFs (e.g., older gbcms versions),
+    only the available metrics are computed. Missing columns are logged and skipped —
+    the pipeline does not fail.
+
+---
+
 ## Per-Sample File Naming
 
 ```

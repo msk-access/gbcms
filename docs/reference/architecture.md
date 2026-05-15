@@ -8,8 +8,10 @@ gbcms uses a hybrid Python/Rust architecture for maximum performance.
 flowchart TB
     subgraph Python [🐍 Python Layer]
         CLI[CLI - cli.py] -->|dna / rna| Pipeline[Orchestration - pipeline.py]
+        CLI -->|merge| Merge[Merge Engine - merge.py]
         Pipeline --> Reader[Input Adapters]
         Pipeline --> Writer[Output Writers]
+        Merge --> BatchIO[Batch I/O - io/batch.py]
     end
     
     subgraph Rust [🦀 Rust Layer]
@@ -26,6 +28,7 @@ flowchart TB
     Pipeline -->|PyO3| Counter
     Counter -->|BaseCounts| Pipeline
     Pipeline -->|mfsd-parquet| ParquetWriter
+    Merge -->|fisher_exact_2x2| Stats
     
     classDef pythonStyle fill:#3776ab,color:#fff,stroke:#2c5f8a,stroke-width:2px;
     classDef rustStyle fill:#dea584,color:#000,stroke:#c48a6a,stroke-width:2px;
@@ -195,16 +198,18 @@ N bases are **strictly uninformative** — they increment `n_count` for QC monit
 
 ```
 src/gbcms/
-├── cli.py           # Typer CLI (dna, rna, normalize, run commands)
+├── cli.py           # Typer CLI (dna, rna, merge, normalize commands)
 ├── pipeline.py      # Orchestration (~450 LOC)
+├── merge.py         # Multi-BAM MAF merge engine (Polars lazy joins)
 ├── normalize.py     # Standalone normalization workflow
 ├── core/
 │   └── kernel.py    # Coordinate normalization
 ├── io/
-│   ├── input.py     # VcfReader, MafReader
-│   └── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
+│   ├── input.py     # VcfReader, MafReader (streaming)
+│   ├── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
+│   └── batch.py     # Polars batch I/O (read/scan/write MAF, read Parquet)
 ├── models/
-│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, AlignmentConfig)
+│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, MergeConfig)
 └── utils/
     └── logging.py   # Structured logging
 

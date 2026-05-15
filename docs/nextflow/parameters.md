@@ -86,6 +86,16 @@ These parameters are only used when `--mode rna` is specified.
 | `--gap_open_prob_repeat` | `1e-2` | PairHMM gap-open probability for tandem repeat regions |
 | `--gap_extend_prob_repeat` | `0.5` | PairHMM gap-extend probability for tandem repeat regions |
 
+## Merge Options
+
+These parameters control the multi-BAM merge step. Requires a `bam_type` column in the [samplesheet](samplesheet.md#multi-bam-type-merging).
+
+| Parameter | Default | Description |
+|:----------|:--------|:------------|
+| `--merge_counts` | `false` | Enable multi-BAM merge — combine per-type MAFs into a single output with type-prefixed count columns. Requires `bam_type` in samplesheet. |
+| `--merge_add_combined` | `true` | When both `duplex` and `simplex` inputs are present, compute additive `simplex_duplex_*` combined columns (20 columns including strand bias). |
+| `--merge_legacy_naming` | `false` | Use `t_{metric}_{type}` naming (genotype_variants compatible). |
+
 ## Resource Limits
 
 | Parameter | Default | Description |
