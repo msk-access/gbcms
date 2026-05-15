@@ -1228,7 +1228,7 @@ fn count_variant_from_cache(
         // (base_qual==0 && !is_ref && !is_alt) which could mis-classify
         // true third-allele reads with qual=0 as N-class fragments.
         let tlen = mfsd::calc_physical_insert_size(record);
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base);
+        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural);
 
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
@@ -1734,7 +1734,7 @@ fn count_single_variant(
         let tlen = mfsd::calc_physical_insert_size(&record);
         let is_n_base = base_qual == 0 && !is_ref && !is_alt;
 
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base);
+        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural);
 
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
@@ -2317,7 +2317,7 @@ fn count_per_transcript(
             }
 
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-            evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base);
+            evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural);
 
             if result.is_ref {
                 tx_rd += 1;
