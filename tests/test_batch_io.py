@@ -60,10 +60,7 @@ def test_read_maf_skips_comments(tmp_path):
     """read_maf skips lines starting with '#'."""
     maf = tmp_path / "commented.maf"
     maf.write_text(
-        "# version 2.4\n"
-        "# Hugo_Symbol filter\n"
-        "Chromosome\tStart_Position\n"
-        "chr1\t100\n"
+        "# version 2.4\n" "# Hugo_Symbol filter\n" "Chromosome\tStart_Position\n" "chr1\t100\n"
     )
 
     df = read_maf(maf)

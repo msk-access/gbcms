@@ -15,7 +15,7 @@ This project strictly utilizes a PR-driven **Git Flow**. Direct merging to `main
    git checkout -b release/X.Y.Z
    ```
 
-2. **Version Bump (8 locations)**:
+2. **Version Bump (9 locations)**:
    Update all these files from OLD → NEW version:
 
    | File | Format |
@@ -28,6 +28,7 @@ This project strictly utilizes a PR-driven **Git Flow**. Direct merging to `main
    | `nextflow/modules/local/gbcms/dna/main.nf` | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
    | `nextflow/modules/local/gbcms/rna/main.nf` | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
    | `nextflow/modules/local/gbcms/normalize/main.nf` | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
+   | `nextflow/modules/local/gbcms/merge/main.nf` | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
 
 3. **Verify No Stale Versions**:
    ```bash

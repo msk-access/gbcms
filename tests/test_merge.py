@@ -407,9 +407,12 @@ def test_merge_cli_integration(tmp_path):
         app,
         [
             "merge",
-            "--input", f"duplex:{duplex}",
-            "--input", f"simplex:{simplex}",
-            "--output", str(output),
+            "--input",
+            f"duplex:{duplex}",
+            "--input",
+            f"simplex:{simplex}",
+            "--output",
+            str(output),
             "--no-combined",
         ],
     )
@@ -472,9 +475,9 @@ def test_merge_singleton_column_prefixing(tmp_path):
     merge_mafs(config)
 
     result = pl.read_csv(output, separator="\t", infer_schema_length=0)
-    assert "duplex_gbcms_status" in result.columns, (
-        f"Expected 'duplex_gbcms_status', got: {[c for c in result.columns if 'status' in c]}"
-    )
+    assert (
+        "duplex_gbcms_status" in result.columns
+    ), f"Expected 'duplex_gbcms_status', got: {[c for c in result.columns if 'status' in c]}"
     assert "simplex_gbcms_status" in result.columns
     assert "gbcms_status" not in result.columns, "Unprefixed gbcms_status should not exist"
 
@@ -611,9 +614,9 @@ def test_merge_annotation_nulls_right_only(tmp_path):
     # Simplex-only row (right): Hugo_Symbol is null (annotations not carried from right)
     right_row = result.filter(pl.col("Start_Position") == "200")
     hugo = right_row["Hugo_Symbol"].to_list()[0]
-    assert hugo is None or hugo == "", (
-        f"Expected null/empty for right-only annotation, got: {hugo!r}"
-    )
+    assert (
+        hugo is None or hugo == ""
+    ), f"Expected null/empty for right-only annotation, got: {hugo!r}"
 
 
 # ── Test 19: Meta column null-fill ───────────────────────────────────────────
@@ -660,9 +663,12 @@ def test_merge_cli_invalid_input_format(tmp_path):
         app,
         [
             "merge",
-            "--input", str(maf),  # Missing type: prefix
-            "--input", f"simplex:{maf}",
-            "--output", str(tmp_path / "merged.maf"),
+            "--input",
+            str(maf),  # Missing type: prefix
+            "--input",
+            f"simplex:{maf}",
+            "--output",
+            str(tmp_path / "merged.maf"),
         ],
     )
 
@@ -766,21 +772,33 @@ def test_merge_combined_strand_bias(tmp_path):
 
     _write_test_maf(
         duplex,
-        [_make_full_variant_row(
-            ref_count_forward="10", ref_count_reverse="10",
-            alt_count_forward="5", alt_count_reverse="5",
-            ref_count_fragment_forward="10", ref_count_fragment_reverse="10",
-            alt_count_fragment_forward="5", alt_count_fragment_reverse="5",
-        )],
+        [
+            _make_full_variant_row(
+                ref_count_forward="10",
+                ref_count_reverse="10",
+                alt_count_forward="5",
+                alt_count_reverse="5",
+                ref_count_fragment_forward="10",
+                ref_count_fragment_reverse="10",
+                alt_count_fragment_forward="5",
+                alt_count_fragment_reverse="5",
+            )
+        ],
     )
     _write_test_maf(
         simplex,
-        [_make_full_variant_row(
-            ref_count_forward="0", ref_count_reverse="10",
-            alt_count_forward="10", alt_count_reverse="0",
-            ref_count_fragment_forward="0", ref_count_fragment_reverse="10",
-            alt_count_fragment_forward="10", alt_count_fragment_reverse="0",
-        )],
+        [
+            _make_full_variant_row(
+                ref_count_forward="0",
+                ref_count_reverse="10",
+                alt_count_forward="10",
+                alt_count_reverse="0",
+                ref_count_fragment_forward="0",
+                ref_count_fragment_reverse="10",
+                alt_count_fragment_forward="10",
+                alt_count_fragment_reverse="0",
+            )
+        ],
     )
 
     config = MergeConfig(
@@ -796,7 +814,7 @@ def test_merge_combined_strand_bias(tmp_path):
     assert int(result["simplex_duplex_ref_count_forward"][0]) == 10  # 10 + 0
     assert int(result["simplex_duplex_ref_count_reverse"][0]) == 20  # 10 + 10
     assert int(result["simplex_duplex_alt_count_forward"][0]) == 15  # 5 + 10
-    assert int(result["simplex_duplex_alt_count_reverse"][0]) == 5   # 5 + 0
+    assert int(result["simplex_duplex_alt_count_reverse"][0]) == 5  # 5 + 0
 
     # Verify strand bias columns exist and are not null
     assert "simplex_duplex_strand_bias_p_value" in result.columns
@@ -867,12 +885,12 @@ def test_merge_combined_column_order(tmp_path):
         "simplex_duplex_fragment_strand_bias_odds_ratio",
     ]
 
-    assert len(combined_cols) == 20, (
-        f"Expected 20 combined columns, got {len(combined_cols)}: {combined_cols}"
-    )
-    assert combined_cols == expected_combined, (
-        f"Column order mismatch:\nGot: {combined_cols}\nExpected: {expected_combined}"
-    )
+    assert (
+        len(combined_cols) == 20
+    ), f"Expected 20 combined columns, got {len(combined_cols)}: {combined_cols}"
+    assert (
+        combined_cols == expected_combined
+    ), f"Column order mismatch:\nGot: {combined_cols}\nExpected: {expected_combined}"
 
 
 # ── Test 24: Balanced table → no strand bias ─────────────────────────────
@@ -887,17 +905,25 @@ def test_merge_combined_strand_bias_balanced(tmp_path):
     # Both have perfectly balanced strand counts
     _write_test_maf(
         duplex,
-        [_make_full_variant_row(
-            ref_count_forward="10", ref_count_reverse="10",
-            alt_count_forward="5", alt_count_reverse="5",
-        )],
+        [
+            _make_full_variant_row(
+                ref_count_forward="10",
+                ref_count_reverse="10",
+                alt_count_forward="5",
+                alt_count_reverse="5",
+            )
+        ],
     )
     _write_test_maf(
         simplex,
-        [_make_full_variant_row(
-            ref_count_forward="10", ref_count_reverse="10",
-            alt_count_forward="5", alt_count_reverse="5",
-        )],
+        [
+            _make_full_variant_row(
+                ref_count_forward="10",
+                ref_count_reverse="10",
+                alt_count_forward="5",
+                alt_count_reverse="5",
+            )
+        ],
     )
 
     config = MergeConfig(
@@ -910,5 +936,3 @@ def test_merge_combined_strand_bias_balanced(tmp_path):
     result = pl.read_csv(output, separator="\t", infer_schema_length=0)
     sb_p = float(result["simplex_duplex_strand_bias_p_value"][0])
     assert sb_p > 0.9, f"Expected p ~1.0 for balanced table, got {sb_p}"
-
-
