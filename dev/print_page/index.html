@@ -5405,85 +5405,94 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#nextflow-examples-__codelineno-1-5"></a><span class="w">    </span>--outdir<span class="w"> </span>results<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#nextflow-examples-__codelineno-1-6"></a><span class="w">    </span>-profile<span class="w"> </span>slurm
 </code></pre></div>
+<h2 id="nextflow-examples-cram-files">CRAM Files<a class="headerlink" href="#nextflow-examples-cram-files" title="Permanent link">¶</a></h2>
+<p>CRAM files are transparently supported in both DNA and RNA modes. The <code>--fasta</code> parameter is required for CRAM decoding. The pipeline automatically discovers <code>.crai</code> index files.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#nextflow-examples-__codelineno-2-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#nextflow-examples-__codelineno-2-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet_cram.csv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#nextflow-examples-__codelineno-2-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#nextflow-examples-__codelineno-2-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#nextflow-examples-__codelineno-2-5"></a><span class="w">    </span>--outdir<span class="w"> </span>results<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#nextflow-examples-__codelineno-2-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+</code></pre></div>
 <h2 id="nextflow-examples-rna-mode">RNA Mode<a class="headerlink" href="#nextflow-examples-rna-mode" title="Permanent link">¶</a></h2>
 <h3 id="nextflow-examples-basic-rna-seq">Basic RNA-seq<a class="headerlink" href="#nextflow-examples-basic-rna-seq" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#nextflow-examples-__codelineno-2-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#nextflow-examples-__codelineno-2-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#nextflow-examples-__codelineno-2-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#nextflow-examples-__codelineno-2-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#nextflow-examples-__codelineno-2-5"></a><span class="w">    </span>--mode<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#nextflow-examples-__codelineno-2-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#nextflow-examples-__codelineno-2-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
-</code></pre></div>
-<h3 id="nextflow-examples-rna-with-editing-database">RNA with Editing Database<a class="headerlink" href="#nextflow-examples-rna-with-editing-database" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#nextflow-examples-__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#nextflow-examples-__codelineno-3-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#nextflow-examples-__codelineno-3-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#nextflow-examples-__codelineno-3-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#nextflow-examples-__codelineno-3-5"></a><span class="w">    </span>--mode<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#nextflow-examples-__codelineno-3-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#nextflow-examples-__codelineno-3-7"></a><span class="w">    </span>--rna_editing_db<span class="w"> </span>/path/to/TABLE1_hg38_v3.txt<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#nextflow-examples-__codelineno-3-8"></a><span class="w">    </span>--enforce_strandedness<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#nextflow-examples-__codelineno-3-9"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#nextflow-examples-__codelineno-3-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
-<h2 id="nextflow-examples-maf-output"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output<a class="headerlink" href="#nextflow-examples-maf-output" title="Permanent link">¶</a></h2>
+<h3 id="nextflow-examples-rna-with-editing-database">RNA with Editing Database<a class="headerlink" href="#nextflow-examples-rna-with-editing-database" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#nextflow-examples-__codelineno-4-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#nextflow-examples-__codelineno-4-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#nextflow-examples-__codelineno-4-3"></a><span class="w">    </span>--variants<span class="w"> </span>input.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#nextflow-examples-__codelineno-4-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#nextflow-examples-__codelineno-4-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#nextflow-examples-__codelineno-4-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#nextflow-examples-__codelineno-4-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#nextflow-examples-__codelineno-4-5"></a><span class="w">    </span>--mode<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#nextflow-examples-__codelineno-4-6"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#nextflow-examples-__codelineno-4-7"></a><span class="w">    </span>--rna_editing_db<span class="w"> </span>/path/to/TABLE1_hg38_v3.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#nextflow-examples-__codelineno-4-8"></a><span class="w">    </span>--enforce_strandedness<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#nextflow-examples-__codelineno-4-9"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+</code></pre></div>
+<h2 id="nextflow-examples-maf-output"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output<a class="headerlink" href="#nextflow-examples-maf-output" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#nextflow-examples-__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#nextflow-examples-__codelineno-5-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#nextflow-examples-__codelineno-5-3"></a><span class="w">    </span>--variants<span class="w"> </span>input.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#nextflow-examples-__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#nextflow-examples-__codelineno-5-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#nextflow-examples-__codelineno-5-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
 <h2 id="nextflow-examples-strict-filtering">Strict Filtering<a class="headerlink" href="#nextflow-examples-strict-filtering" title="Permanent link">¶</a></h2>
 <p>Enable additional read filters beyond the defaults (duplicates, secondary, supplementary, and QC-failed are already on by default):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#nextflow-examples-__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#nextflow-examples-__codelineno-5-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#nextflow-examples-__codelineno-5-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#nextflow-examples-__codelineno-5-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#nextflow-examples-__codelineno-5-5"></a><span class="w">    </span>--filter_improper_pair<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#nextflow-examples-__codelineno-5-6"></a><span class="w">    </span>--filter_indel<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#nextflow-examples-__codelineno-5-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
-</code></pre></div>
-<h2 id="nextflow-examples-umi-aware-counting"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>-Aware Counting<a class="headerlink" href="#nextflow-examples-umi-aware-counting" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#nextflow-examples-__codelineno-6-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#nextflow-examples-__codelineno-6-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#nextflow-examples-__codelineno-6-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#nextflow-examples-__codelineno-6-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#nextflow-examples-__codelineno-6-5"></a><span class="w">    </span>--umi_tag<span class="w"> </span>XM<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#nextflow-examples-__codelineno-6-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#nextflow-examples-__codelineno-6-5"></a><span class="w">    </span>--filter_improper_pair<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#nextflow-examples-__codelineno-6-6"></a><span class="w">    </span>--filter_indel<span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#nextflow-examples-__codelineno-6-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
-<h2 id="nextflow-examples-multi-sample-maf-filtering">Multi-Sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Filtering<a class="headerlink" href="#nextflow-examples-multi-sample-maf-filtering" title="Permanent link">¶</a></h2>
-<p>Filter a multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> so each <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> only processes its own variants:</p>
+<h2 id="nextflow-examples-umi-aware-counting"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>-Aware Counting<a class="headerlink" href="#nextflow-examples-umi-aware-counting" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#nextflow-examples-__codelineno-7-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#nextflow-examples-__codelineno-7-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#nextflow-examples-__codelineno-7-3"></a><span class="w">    </span>--variants<span class="w"> </span>multi_sample.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#nextflow-examples-__codelineno-7-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#nextflow-examples-__codelineno-7-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#nextflow-examples-__codelineno-7-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#nextflow-examples-__codelineno-7-6"></a><span class="w">    </span>--filter_by_sample<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#nextflow-examples-__codelineno-7-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#nextflow-examples-__codelineno-7-5"></a><span class="w">    </span>--umi_tag<span class="w"> </span>XM<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#nextflow-examples-__codelineno-7-6"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+</code></pre></div>
+<h2 id="nextflow-examples-multi-sample-maf-filtering">Multi-Sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Filtering<a class="headerlink" href="#nextflow-examples-multi-sample-maf-filtering" title="Permanent link">¶</a></h2>
+<p>Filter a multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> so each <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM only processes its own variants:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#nextflow-examples-__codelineno-8-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#nextflow-examples-__codelineno-8-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#nextflow-examples-__codelineno-8-3"></a><span class="w">    </span>--variants<span class="w"> </span>multi_sample.maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#nextflow-examples-__codelineno-8-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#nextflow-examples-__codelineno-8-5"></a><span class="w">    </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#nextflow-examples-__codelineno-8-6"></a><span class="w">    </span>--filter_by_sample<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#nextflow-examples-__codelineno-8-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
 <p>With patient-level filtering via <code>tsb</code> column in samplesheet:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#nextflow-examples-__codelineno-8-1"></a>sample,bam,tsb
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#nextflow-examples-__codelineno-8-2"></a>patient_A,/path/to/A.bam,P-0012345
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#nextflow-examples-__codelineno-8-3"></a>patient_B,/path/to/B.bam,"P-0067890-T01,P-0067890-T02"
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#nextflow-examples-__codelineno-9-1"></a>sample,bam,tsb
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#nextflow-examples-__codelineno-9-2"></a>patient_A,/path/to/A.bam,P-0012345
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#nextflow-examples-__codelineno-9-3"></a>patient_B,/path/to/B.cram,"P-0067890-T01,P-0067890-T02"
 </code></pre></div>
 <p>See <a href="#nextflow-samplesheet-multi-sample-maf-filtering">Samplesheet — Multi-Sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Filtering</a> for details.</p>
 <h2 id="nextflow-examples-resume-failed-run">Resume Failed Run<a class="headerlink" href="#nextflow-examples-resume-failed-run" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#nextflow-examples-__codelineno-9-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#nextflow-examples-__codelineno-9-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#nextflow-examples-__codelineno-9-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#nextflow-examples-__codelineno-9-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#nextflow-examples-__codelineno-9-5"></a><span class="w">    </span>-profile<span class="w"> </span>docker<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#nextflow-examples-__codelineno-9-6"></a><span class="w">    </span>-resume
-</code></pre></div>
-<h2 id="nextflow-examples-custom-resource-limits">Custom Resource Limits<a class="headerlink" href="#nextflow-examples-custom-resource-limits" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#nextflow-examples-__codelineno-10-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#nextflow-examples-__codelineno-10-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#nextflow-examples-__codelineno-10-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#nextflow-examples-__codelineno-10-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#nextflow-examples-__codelineno-10-5"></a><span class="w">    </span>--max_cpus<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#nextflow-examples-__codelineno-10-6"></a><span class="w">    </span>--max_memory<span class="w"> </span><span class="m">32</span>.GB<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#nextflow-examples-__codelineno-10-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#nextflow-examples-__codelineno-10-5"></a><span class="w">    </span>-profile<span class="w"> </span>docker<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#nextflow-examples-__codelineno-10-6"></a><span class="w">    </span>-resume
+</code></pre></div>
+<h2 id="nextflow-examples-custom-resource-limits">Custom Resource Limits<a class="headerlink" href="#nextflow-examples-custom-resource-limits" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#nextflow-examples-__codelineno-11-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>nextflow/main.nf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#nextflow-examples-__codelineno-11-2"></a><span class="w">    </span>--input<span class="w"> </span>samplesheet.csv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#nextflow-examples-__codelineno-11-3"></a><span class="w">    </span>--variants<span class="w"> </span>variants.vcf<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#nextflow-examples-__codelineno-11-4"></a><span class="w">    </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#nextflow-examples-__codelineno-11-5"></a><span class="w">    </span>--max_cpus<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#nextflow-examples-__codelineno-11-6"></a><span class="w">    </span>--max_memory<span class="w"> </span><span class="m">32</span>.GB<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#nextflow-examples-__codelineno-11-7"></a><span class="w">    </span>-profile<span class="w"> </span>docker
 </code></pre></div>
 <h2 id="nextflow-examples-related">Related<a class="headerlink" href="#nextflow-examples-related" title="Permanent link">¶</a></h2>
 <ul>
@@ -14255,8 +14264,35 @@ commit history and makes the back-merge conflict-free.</p>
 <p>All notable changes to this project will be documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="development-changelog-520-2026-05-15">[5.2.0] - 2026-05-15<a class="headerlink" href="#development-changelog-520-2026-05-15" title="Permanent link">¶</a></h2>
+<h2 id="development-changelog-530-2026-05-16">[5.3.0] - 2026-05-16<a class="headerlink" href="#development-changelog-530-2026-05-16" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>CRAM Support</strong>: Full CRAM file support across all commands (<code>dna</code> and <code>rna</code>). The <code>--bam</code> argument now transparently accepts CRAM files.</li>
+<li><strong>CRAM Index Auto-Discovery</strong>: The Nextflow pipeline automatically discovers <code>.crai</code> or <code>.cram.crai</code> indexes in the same directory as the CRAM files.</li>
+<li><strong>Reference Binding</strong>: Rust engine's <code>IndexedReader</code> correctly initializes CRAM references using the provided <code>--fasta</code>.</li>
+</ul>
+<h3 id="development-changelog-changed">🔄 Changed<a class="headerlink" href="#development-changelog-changed" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Provenance Comment Lines</strong>: Output <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> files now include <code>#gbcms vX.Y.Z</code> and <code>#command ...</code> provenance lines before the header row in both DNA and RNA modes.</li>
+<li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> Header Provenance</strong>: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> headers now include <code>##source</code>, <code>##gbcms_command</code>, <code>##reference</code>, and <code>##contig</code> metadata in both DNA and RNA modes.</li>
+<li><strong>Strand Bias Sanitization</strong>: Handled edge cases in Fisher's exact test where structural strand arrays contain all zeros, returning <code>.</code>, <code>1.0</code>, or <code>NA</code> instead of <code>NaN</code>/<code>Inf</code>.</li>
+<li><strong>Merge Engine Robustness</strong>: <code>gbcms merge</code> uses Polars <code>comment_prefix</code> natively to skip provenance comment lines without failure.</li>
+</ul>
+<h3 id="development-changelog-documentation">📚 Documentation<a class="headerlink" href="#development-changelog-documentation" title="Permanent link">¶</a></h3>
+<ul>
+<li>Updated <code>cli/rna.md</code> to note CRAM and provenance support for RNA mode.</li>
+<li>Updated <code>cli/merge.md</code> to explain <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> comment line compatibility.</li>
+<li>Updated <code>cli/index.md</code> and diagrams to explicitly mention <code>BAM/CRAM Files</code>.</li>
+<li>Expanded <code>reference/input-formats.md</code> with explicit CRAM and <code>.crai</code> index requirements.</li>
+<li>Added DNA vs RNA comparison snippet in <code>reference/output-formats.md</code> demonstrating provenance headers.</li>
+</ul>
+<h3 id="development-changelog-tests">🧪 Tests<a class="headerlink" href="#development-changelog-tests" title="Permanent link">¶</a></h3>
+<ul>
+<li>Expanded testing suite (now 329 tests), providing integration coverage for RNA provenance headers and CRAM pipeline data flow.</li>
+<li>Added test validation for merge engine skipping <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> provenance comment lines safely.</li>
+</ul>
+<h2 id="development-changelog-520-2026-05-15">[5.2.0] - 2026-05-15<a class="headerlink" href="#development-changelog-520-2026-05-15" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms merge</code> command</strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> command for merging per-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-type genotyped
   MAFs (e.g., duplex + simplex) into a single output with type-prefixed count
@@ -14296,7 +14332,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> behavior: unchanged (no structural flags on <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> classifications)</li>
 <li>Phase 3 alignment returns: unchanged (non-structural, quality comparison retained)</li>
 </ul>
-<h3 id="development-changelog-tests">🧪 Tests<a class="headerlink" href="#development-changelog-tests" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_1">🧪 Tests<a class="headerlink" href="#development-changelog-tests_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>tests/test_merge.py</code> — 24 tests covering variant key join,
   multi-type merge, combined columns (read + fragment + strand), Fisher strand
@@ -14313,7 +14349,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>298 Python tests</strong> (up from 255): 32 merge, 8 batch, 11 INDEL consensus tests.</li>
 <li><strong>161 Rust tests</strong> (up from 150): 11 new fragment consensus unit tests, 0 Clippy warnings.</li>
 </ul>
-<h3 id="development-changelog-documentation">📚 Documentation<a class="headerlink" href="#development-changelog-documentation" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_1">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/cli/merge.md</code> — <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> reference for <code>gbcms merge</code> covering usage,
   combined columns schema, Nextflow integration, and Fisher strand bias.</li>
@@ -14384,7 +14420,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>ad</code>) because R1/R2 fragment consensus is bypassed. This is expected behavior,
   not a bug.</li>
 </ul>
-<h3 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>GTF-based transcript annotation</strong> (<code>--gtf</code>): RNA mode can now load an
   Ensembl/GENCODE GTF file to enable:<ul>
@@ -14428,7 +14464,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>lib.rs</code> dead-code comment</strong>: Updated annotation type comment to reflect
   that annotation types are now fully wired (previously noted as unused).</li>
 </ul>
-<h3 id="development-changelog-tests_1">🧪 Tests<a class="headerlink" href="#development-changelog-tests_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_2">🧪 Tests<a class="headerlink" href="#development-changelog-tests_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>255 Python tests</strong> (up from 238): 17 new tests covering:<ul>
 <li><code>test_config_isolation.py</code>: 11 tests for <code>library_type</code> field/validator,
@@ -14450,7 +14486,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </li>
 <li><strong>0 Clippy warnings</strong> (strict <code>-D warnings</code> mode).</li>
 </ul>
-<h3 id="development-changelog-documentation_1">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_2">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/reference/rna-annotation.md</code> — GTF requirements, annotation
   index architecture, exon boundary distance, per-transcript counting, and
@@ -14481,7 +14517,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   (<code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS_MULTI_ALLELIC</code>) replaced with
   semicolon-separated (<code>PASS;WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS;MULTI_ALLELIC</code>).</li>
 </ul>
-<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms_diagnostic</code> column (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) + <code>GD</code> INFO key (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)</strong>: Post-counting
   diagnostic flags computed automatically. Flags include:<ul>
@@ -14526,7 +14562,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Rescue strategy</strong>: Python-side post-processing using decomposed <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>
   re-counting. Coordinate shift strategy is reserved for a future release.</li>
 </ul>
-<h3 id="development-changelog-tests_2">🧪 Tests<a class="headerlink" href="#development-changelog-tests_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_3">🧪 Tests<a class="headerlink" href="#development-changelog-tests_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>tests/test_diagnostic_flags.py</code> — 17 tests covering all 4
   diagnostic flags, multi-flag combinations, FAIL exclusion, boundary
@@ -14541,7 +14577,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>gbcms_status</code> rename.</li>
 <li>All 238 Python tests pass; all 119 Rust tests pass.</li>
 </ul>
-<h3 id="development-changelog-documentation_2">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_3">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Updated</strong> <code>docs/reference/output-formats.md</code> — <code>gbcms_status</code>,
   <code>gbcms_diagnostic</code>, <code>gbcms_rescue</code> columns; <code>partial_alt</code> description
@@ -14569,7 +14605,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>alignment_backend</code> changed from <code>'hmm'</code> to <code>'pairhmm'</code>. Pipelines relying
   on the old Nextflow defaults may see behavior changes.</li>
 </ul>
-<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Physical fragment sizing</strong>: Rust-native fragment size calculation using
   aligned read positions instead of TLEN, improving accuracy for supplementary
@@ -14624,7 +14660,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>--no-strandedness</code> only when disabled (was incorrectly passing
   <code>--enforce-strandedness</code> as an additive flag).</li>
 </ul>
-<h3 id="development-changelog-documentation_3">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_4">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/reference/mfsd-report.md</code> — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> interactive report reference
   covering Fragment Origin Signal classification, interactive features, output
@@ -14649,7 +14685,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Updated</strong> <code>nextflow/modules/local/gbcms/dna/main.nf</code> — wired <code>--mfsd-report</code> flags
   through the DNA module with HTML report output channel (<code>emit: mfsd_report</code>).</li>
 </ul>
-<h3 id="development-changelog-tests_3">🧪 Tests<a class="headerlink" href="#development-changelog-tests_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_4">🧪 Tests<a class="headerlink" href="#development-changelog-tests_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>tests/test_mfsd_report.py</code> — 13 unit tests covering report creation,
   navigator presence/absence, Plotly integration, theme toggle, branding, summary
@@ -14670,7 +14706,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Ruff UP015 fix: removed unnecessary <code>"r"</code> mode argument from <code>open()</code>.</li>
 </ul>
 <h3 id="development-changelog-n-base-diagnostic-integration-phases-03">🧬 N-Base Diagnostic Integration (Phases 0–3)<a class="headerlink" href="#development-changelog-n-base-diagnostic-integration-phases-03" title="Permanent link">¶</a></h3>
-<h4 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Diagnostic output columns</strong>: <code>any_alt</code>, <code>partial_alt</code>, <code>n_count</code> appended to
   all <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (24 gbcms DNA columns total, up from 21).</li>
@@ -14687,7 +14723,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>ALT-contains-N rejection</strong>: Variants where the ALT allele contains N are
   rejected with <code>FAIL_ALT_CONTAINS_N</code> validation status and <code>warn!</code>-level log.</li>
 </ul>
-<h4 id="development-changelog-changed">🔄 Changed<a class="headerlink" href="#development-changelog-changed" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-changed_1">🔄 Changed<a class="headerlink" href="#development-changelog-changed_1" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality strategy</strong>: Replaced all-or-nothing <code>min(BQ across block)</code> gate
   with <strong>masked per-position evaluation</strong> — each discriminating position (REF ≠ ALT)
@@ -14697,7 +14733,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> ThirdAllele handling</strong>: Mixed-vote reads now track <code>positions_matching_alt</code>
   for diagnostic partial_alt counting instead of being silently discarded.</li>
 </ul>
-<h4 id="development-changelog-tests_4">🧪 Tests<a class="headerlink" href="#development-changelog-tests_4" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-tests_5">🧪 Tests<a class="headerlink" href="#development-changelog-tests_5" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>[NEW]</strong> <code>tests/test_mnp_concordance.py</code> — 6 tests for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> concordance with
   C++ gbcms on production duplex BAMs.</li>
@@ -14707,7 +14743,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   match tracking, invariant enforcement, and edge cases (all-N reads, mixed BQ/N).</li>
 <li>Updated <code>tests/test_column_count_delta_is_three</code> to assert 24 gbcms DNA columns.</li>
 </ul>
-<h4 id="development-changelog-documentation_4">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_4" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-documentation_5">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_5" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Updated</strong> <code>docs/reference/counting-metrics.md</code> — diagnostic columns, invariant
   tables, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> tag definitions, N-base handling section.</li>
@@ -14743,7 +14779,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   power-set sibling combinatorics for true multi-haplotype evaluation.
   Only affects <code>--alignment-backend hmm</code>.</li>
 </ul>
-<h3 id="development-changelog-changed_1">🔄 Changed<a class="headerlink" href="#development-changelog-changed_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_2">🔄 Changed<a class="headerlink" href="#development-changelog-changed_2" title="Permanent link">¶</a></h3>
 <ul>
 <li>Normalization logging now shows granular breakdown:
   <code>"X normalized (Y anchor-resolved, Z left-aligned)"</code> in both Rust engine
@@ -14763,7 +14799,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   logic, and statistics extracted from <code>counting/</code> into <code>shared/</code>. Any Rust
   consumer crate linking against gbcms internals must update import paths.</li>
 </ul>
-<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 3 <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> unification</strong> (<code>feat: unify check_complex Phase 3</code>):
   Complex indel classification now routes through a unified pangenomic pipeline
@@ -14808,7 +14844,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>parquet_writer.rs</code> relocated</strong>: Moved from <code>counting/</code> into <code>shared/</code> during
   module extraction.</li>
 </ul>
-<h3 id="development-changelog-documentation_5">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_6">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_6" title="Permanent link">¶</a></h3>
 <p>Major documentation overhaul — 28+ files updated:
 - Complete MkDocs plugin utilization pass (tabbed, details, admonitions,
   mermaid, code annotations, glightbox) across all reference pages
@@ -14834,7 +14870,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>test_cli_dna_rna.py</code>: mypy <code>attr-defined</code> fixed by annotating <code>_click_app</code>
   as <code>click.Group</code>; <code>Set[str | None]</code> → <code>Set[str]</code> via <code>if p.name is not None</code></li>
 </ul>
-<h3 id="development-changelog-tests_5">🧪 Tests<a class="headerlink" href="#development-changelog-tests_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_6">🧪 Tests<a class="headerlink" href="#development-changelog-tests_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>tests/test_pipeline_rna.py</code> (NEW): 7 pipeline-level integration tests for
   RNA mode output — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO headers, INFO values, FORMAT field, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column
@@ -14855,7 +14891,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   A final <code>py-gbcms==3.0.0</code> deprecation stub on PyPI re-exports <code>gbcms</code> and
   issues a <code>DeprecationWarning</code> for smooth migration.</li>
 </ul>
-<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> native integration</strong>: <code>--mfsd</code> and <code>--mfsd-parquet</code> flags output a
   Parquet file with 31 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns + 7 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields via the Rust native
@@ -14872,7 +14908,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Resolved <code>mypy</code> <code>AlignedSegment.cigar</code> attribute errors in test suite.</li>
 <li>Lint and stale-comment cleanup post Phase 6 audit.</li>
 </ul>
-<h3 id="development-changelog-documentation_6">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_7">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_7" title="Permanent link">¶</a></h3>
 <ul>
 <li>Full documentation sync with codebase after Phase 6 (<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>) merge.</li>
 <li>PDF generation guide added to developer documentation.</li>
@@ -14883,7 +14919,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Added <code>mkdocs-print-site-plugin</code> to <abbr title="Continuous Integration - Automated build and test system">CI</abbr> docs install step and <code>pyproject.toml</code>.</li>
 </ul>
 <h2 id="development-changelog-280-2026-02-23">[2.8.0] - 2026-02-23<a class="headerlink" href="#development-changelog-280-2026-02-23" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> alignment backend</strong>: Alternative Phase 3 alignment via <code>--alignment-backend hmm</code> with probabilistic scoring using base quality probabilities. Configurable <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold (default 2.3 ≈ ln(10)) and gap probabilities for repeat/non-repeat regions. 6 new <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options. Exposed as first-class Nextflow params in <code>nextflow.config</code></li>
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> min-BQ-across-block quality strategy</strong>: <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality now assessed using min(BQ) across the entire block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>. Low-quality <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads now fall through to <code>check_complex</code> for masked comparison instead of being silently skipped</li>
@@ -14903,7 +14939,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Rust module structure</strong>: Split <code>counting.rs</code> (1904 LOC) and <code>normalize.rs</code> (1221 LOC) into idiomatic module directories: <code>counting/</code> (7 modules) and <code>normalize/</code> (7 modules)</li>
 <li><strong>AlignmentBackend threading</strong>: <code>AlignmentBackend</code> enum threaded through all Phase 3 call sites</li>
 </ul>
-<h3 id="development-changelog-documentation_7">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_8">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Comprehensive audit</strong>: 28 fixes across 23 files — all GitBook URLs → MkDocs, version templating (X.Y.Z), undocumented <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options, 5 mermaid diagrams updated for post-2.7.0 logic, architecture module tree refreshed, <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> documented end-to-end</li>
 <li>Deleted stale <code>nextflow/CHANGES.md</code></li>
@@ -14915,7 +14951,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Update test expectations for new behavior</li>
 <li><abbr title="Continuous Integration - Automated build and test system">CI</abbr>: skip test workflow for docs-only changes</li>
 </ul>
-<h3 id="development-changelog-tests_6">🧪 Tests<a class="headerlink" href="#development-changelog-tests_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-tests_7">🧪 Tests<a class="headerlink" href="#development-changelog-tests_7" title="Permanent link">¶</a></h3>
 <ul>
 <li>8 Python alignment backend integration tests</li>
 <li>5 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>-vs-<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> concordance tests</li>
@@ -14923,7 +14959,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Multi-allelic isolation, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/neither, fragment consensus, normalization tests</li>
 </ul>
 <h2 id="development-changelog-270-2026-02-19">[2.7.0] - 2026-02-19<a class="headerlink" href="#development-changelog-270-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
@@ -14950,11 +14986,11 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
-<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Tolerant REF validation</strong>: Variants with ≥90% REF match against the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> are now counted (status <code>PASS_WARN_REF_CORRECTED</code>) instead of being silently rejected. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF is used for haplotype construction. Variants with &lt;90% match are still rejected as <code>REF_MISMATCH</code></li>
 </ul>
-<h3 id="development-changelog-documentation_8">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_9">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Visual posters</strong>: Added overview, normalization, and read-filter/counting-metrics posters (JPG) to reference documentation pages with lightbox support</li>
 <li><strong>Embedded PDFs</strong>: Added inline PDF viewer for allele classification guide and detailed overview presentation via <code>mkdocs-pdf</code> plugin</li>
@@ -14965,7 +15001,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>deploy-docs.yml</code></strong>: Added <code>mkdocs-pdf</code> to docs <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pip install dependencies</li>
 </ul>
 <h2 id="development-changelog-260-2026-02-18">[2.6.0] - 2026-02-18<a class="headerlink" href="#development-changelog-260-2026-02-18" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Adaptive context padding</strong>: Dynamically increases <code>ref_context</code> flanking in tandem repeat regions (homopolymer through hexanucleotide). Formula: <code>max(default, repeat_span/2 + 3)</code>, capped at 50bp. Enabled by default (<code>--adaptive-context/--no-adaptive-context</code>)</li>
 <li><strong><code>gbcms normalize</code> command</strong>: Standalone variant normalization (left-align + REF validate) without counting, outputs <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> with original and normalized coordinates</li>
@@ -14981,7 +15017,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style conversion</strong>: Corrected complex variant handling in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→internal coordinate conversion</li>
 <li><strong>Lint</strong>: Fixed ruff I001/E402/B905 and black formatting in <code>pipeline.py</code></li>
 </ul>
-<h3 id="development-changelog-changed_2">🔄 Changed<a class="headerlink" href="#development-changelog-changed_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_3">🔄 Changed<a class="headerlink" href="#development-changelog-changed_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dead code removed</strong>: <code>GenomicInterval</code> class, <code>Variant.interval</code> property, <code>fragment_counting</code> config field</li>
 <li><strong><code>fetch_single_base()</code> refactored</strong>: Delegates to <code>fetch_region()</code>, removing 33 lines of duplicated chr-prefix retry logic</li>
@@ -14989,7 +15025,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow pipeline diagram</strong> added to docs index</li>
 </ul>
 <h2 id="development-changelog-250-2026-02-12">[2.5.0] - 2026-02-12<a class="headerlink" href="#development-changelog-250-2026-02-12" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--preserve-barcode</code> flag</strong>: Keeps original <code>Tumor_Sample_Barcode</code> from input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> instead of overriding with <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> sample name (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows)</li>
 <li><strong><code>--column-prefix</code> parameter</strong>: Controls prefix for gbcms count columns in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (default: none; use <code>--column-prefix t_</code> for legacy compatibility) ⚠️</li>
@@ -15007,7 +15043,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>splitCsv</code> quote handling</strong>: Added <code>quote:'"'</code> parameter for correct RFC 4180 parsing of comma-separated TSB values within quoted CSV fields</li>
 <li><strong>mypy <code>no-redef</code> error</strong>: Removed redundant type annotation in <code>output.py</code> else branch</li>
 </ul>
-<h3 id="development-changelog-changed_3">🔄 Changed<a class="headerlink" href="#development-changelog-changed_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_4">🔄 Changed<a class="headerlink" href="#development-changelog-changed_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output column prefix default</strong>: Changed from <code>t_</code> to empty string (no prefix). Use <code>--column-prefix t_</code> for legacy <code>t_ref_count</code> / <code>t_alt_count</code> style columns ⚠️</li>
 <li><strong><code>MafWriter</code> refactored</strong>: <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> path preserves all original columns verbatim; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> path builds row from GDC fieldnames with <code>CoordinateKernel</code> coordinate conversion</li>
@@ -15016,7 +15052,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow config</strong>: Added <code>column_prefix</code>, <code>preserve_barcode</code>, <code>filter_by_sample</code> parameters</li>
 </ul>
 <h2 id="development-changelog-240-2026-02-10">[2.4.0] - 2026-02-10<a class="headerlink" href="#development-changelog-240-2026-02-10" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment Consensus Engine</strong>: <code>FragmentEvidence</code> struct with u64 QNAME hashing and quality-weighted R1/R2 consensus; ambiguous fragments are discarded (not assigned to REF)</li>
 <li><strong><code>--fragment-qual-threshold</code></strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> option (default 10) controlling consensus quality difference for fragment conflict resolution</li>
@@ -15026,7 +15062,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Normalization Docs</strong>: Added indel normalization and coordinate handling to <code>docs/reference/input-formats.md</code></li>
 <li><strong>47 Tests</strong>: Up from 16 — added <code>test_shifted_indels.py</code> (15), <code>test_fuzzy_complex.py</code> (14), <code>test_fragment_consensus.py</code> (4)</li>
 </ul>
-<h3 id="development-changelog-changed_4">🔄 Changed<a class="headerlink" href="#development-changelog-changed_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_5">🔄 Changed<a class="headerlink" href="#development-changelog-changed_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--min-baseq</code> default</strong>: <code>0</code> → <code>20</code> (Phred Q20) — activates quality masking by default for improved accuracy on low-coverage samples ⚠️</li>
 <li><strong><code>--version</code> flag</strong>: Added to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>gbcms --version</code>)</li>
@@ -15040,7 +15076,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Type stubs</strong>: <code>_rs.pyi</code> and <code>gbcms_rs.pyi</code> synced with Rust bindings (added <code>ref_context</code>, <code>ref_context_start</code>, <code>fragment_qual_threshold</code>)</li>
 <li><strong>Linting</strong>: All files pass black, ruff, and mypy</li>
 </ul>
-<h3 id="development-changelog-documentation_9">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_10">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_10" title="Permanent link">¶</a></h3>
 <ul>
 <li>Architecture comparison table updated with windowed indels and masked comparison</li>
 <li>Nextflow config and docs updated with new <code>min_baseq</code> default</li>
@@ -15050,14 +15086,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>.antigravity</code> project files updated with current Rust LOC (~1270) and test counts (47)</li>
 </ul>
 <h2 id="development-changelog-230-2026-02-06">[2.3.0] - 2026-02-06<a class="headerlink" href="#development-changelog-230-2026-02-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_14">✨ Added<a class="headerlink" href="#development-changelog-added_14" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow <abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> Auto-Discovery</strong>: Checks <code>.bam.bai</code> and <code>.bai</code> extensions automatically</li>
 <li><strong>Documentation Modernization</strong>: Hierarchical navigation, glightbox, panzoom, abbreviations</li>
 <li><strong>Performance Benchmarks</strong>: <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> duplex sample metrics in documentation</li>
 <li><strong>RHEL 8 Installation Guide</strong>: Conda-based source installation for legacy Linux</li>
 </ul>
-<h3 id="development-changelog-changed_5">🔄 Changed<a class="headerlink" href="#development-changelog-changed_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_6">🔄 Changed<a class="headerlink" href="#development-changelog-changed_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dockerfile</strong>: Added <code>procps</code>, <code>bash</code>, OCI labels, <code>maturin[patchelf]</code>, selective COPY</li>
 <li><strong>Nextflow Config</strong>: <code>--platform linux/amd64</code>, shell config, local profile, observability (trace/report/timeline/dag)</li>
@@ -15072,21 +15108,21 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Build</strong>: Resolved <code>curl-sys</code> OpenSSL version conflict by switching to manylinux_2_34</li>
 </ul>
 <h2 id="development-changelog-220-2026-02-04">[2.2.0] - 2026-02-04<a class="headerlink" href="#development-changelog-220-2026-02-04" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_14">✨ Added<a class="headerlink" href="#development-changelog-added_14" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_15">✨ Added<a class="headerlink" href="#development-changelog-added_15" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Multi-platform Wheel Publishing</strong>: Maturin-based <abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds for Linux (x86_64, aarch64), macOS (Intel, Apple Silicon), and Windows</li>
 <li><strong>Structured Logging</strong>: New <code>utils/logging.py</code> module with Rich console output, timing utilities, and log file support</li>
 <li><strong>Mermaid Diagrams</strong>: Architecture documentation with interactive flowcharts</li>
 <li><strong>Release Guide</strong>: Comprehensive <code>docs/RELEASE.md</code> with git-flow workflow</li>
 </ul>
-<h3 id="development-changelog-changed_6">🔄 Changed<a class="headerlink" href="#development-changelog-changed_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_7">🔄 Changed<a class="headerlink" href="#development-changelog-changed_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Folder Restructure</strong>: Moved Rust code to <code>rust/</code> (bundled as <code>gbcms._rs</code>)</li>
 <li><strong>Config Hierarchy</strong>: Nested Pydantic models (<code>ReadFilters</code>, <code>QualityThresholds</code>, <code>OutputConfig</code>) for better organization</li>
 <li><strong>Code Quality</strong>: Added <code>__all__</code> exports, docstrings, and type hints across all modules</li>
 <li><strong>StrEnum</strong>: Modern enum pattern with Python 3.10 backport</li>
 </ul>
-<h3 id="development-changelog-documentation_10">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_11">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_11" title="Permanent link">¶</a></h3>
 <ul>
 <li>New <code>docs/ARCHITECTURE.md</code> with system diagrams</li>
 <li>New <code>docs/DEVELOPMENT.md</code> (developer guide)</li>
@@ -15111,7 +15147,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Documentation</strong>: Added Changelog to documentation navigation</li>
 </ul>
 <h2 id="development-changelog-210-2025-11-25">[2.1.0] - 2025-11-25<a class="headerlink" href="#development-changelog-210-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_15">✨ Added<a class="headerlink" href="#development-changelog-added_15" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_16">✨ Added<a class="headerlink" href="#development-changelog-added_16" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-nextflow-workflow">Nextflow Workflow<a class="headerlink" href="#development-changelog-nextflow-workflow" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Production-ready Nextflow workflow</strong> for processing multiple samples in parallel</li>
@@ -15123,7 +15159,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Resource management</strong> with automatic retry and scaling</li>
 <li><strong>Comprehensive documentation</strong> in <code>docs/NEXTFLOW.md</code> and <code>nextflow/README.md</code></li>
 </ul>
-<h4 id="development-changelog-documentation_11">Documentation<a class="headerlink" href="#development-changelog-documentation_11" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-documentation_12">Documentation<a class="headerlink" href="#development-changelog-documentation_12" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Usage pattern comparison</strong> guide (<code>docs/WORKFLOWS.md</code>) for choosing between <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and Nextflow</li>
 <li><strong>MkDocs integration</strong> for beautiful GitHub Pages documentation</li>
@@ -15133,13 +15169,13 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Reorganized documentation structure</strong> with clear <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> vs Nextflow separation</li>
 <li><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Quick Start guide</strong> (<code>docs/quick-start.md</code>)</li>
 </ul>
-<h3 id="development-changelog-changed_7">🔧 Changed<a class="headerlink" href="#development-changelog-changed_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_8">🔧 Changed<a class="headerlink" href="#development-changelog-changed_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Documentation workflow</strong>: docs now live on <code>main</code> branch with automated deployment</li>
 <li><strong>GitBook integration</strong>: configured to read from <code>main</code> branch</li>
 <li><strong>Nextflow module</strong>: improved parameter passing with meta.suffix support</li>
 </ul>
-<h3 id="development-changelog-documentation_12">📝 Documentation<a class="headerlink" href="#development-changelog-documentation_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_13">📝 Documentation<a class="headerlink" href="#development-changelog-documentation_13" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete Nextflow workflow guide with SLURM examples</li>
 <li>Per-sample suffix usage examples</li>
@@ -15150,7 +15186,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="development-changelog-200-2025-11-21">[2.0.0] - 2025-11-21<a class="headerlink" href="#development-changelog-200-2025-11-21" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-major-rewrite">🚀 Major Rewrite<a class="headerlink" href="#development-changelog-major-rewrite" title="Permanent link">¶</a></h3>
 <p>Version 2.0.0 represents a complete rewrite of py-gbcms with a focus on performance, correctness, and modern architecture.</p>
-<h3 id="development-changelog-added_16">✨ Added<a class="headerlink" href="#development-changelog-added_16" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_17">✨ Added<a class="headerlink" href="#development-changelog-added_17" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-core-features">Core Features<a class="headerlink" href="#development-changelog-core-features" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Rust-based Counting Engine</strong>: Hybrid Python/Rust architecture for 20x+ performance improvement</li>
@@ -15192,7 +15228,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Comprehensive Tests</strong>: Extended test suite with accuracy and filter validation</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr>/<abbr title="Continuous Deployment - Automated release system">CD</abbr></strong>: GitHub Actions workflows for testing, linting, and releases</li>
 </ul>
-<h3 id="development-changelog-changed_8">🔄 Changed<a class="headerlink" href="#development-changelog-changed_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_9">🔄 Changed<a class="headerlink" href="#development-changelog-changed_9" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-architecture">Architecture<a class="headerlink" href="#development-changelog-architecture" title="Permanent link">¶</a></h4>
 <ul>
 <li>Migrated from pure Python to hybrid Python/Rust architecture</li>
@@ -15231,7 +15267,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Reference validation against <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> for all variant types</li>
 <li>Thread-safe <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> access with per-thread readers</li>
 </ul>
-<h3 id="development-changelog-documentation_13">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_14">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_14" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete rewrite of all documentation</li>
 <li>New guides: <code>INSTALLATION.md</code>, <code>CLI_FEATURES.md</code>, <code>INPUT_OUTPUT.md</code></li>
