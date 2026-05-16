@@ -2,9 +2,8 @@
 Test strand count output in VCF and MAF formats.
 """
 
-import csv
-
 import pytest
+from helpers import read_maf_output as _read_maf_output
 
 from gbcms.io.output import MafWriter, VcfWriter
 from gbcms.models.core import Variant, VariantType
@@ -167,9 +166,8 @@ def test_maf_output(tmp_path, mock_variant, mock_counts):
 
     assert output_path.exists()
 
-    with open(output_path) as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        row = next(reader)
+    reader = _read_maf_output(output_path)
+    row = next(reader)
 
     # VCF→MAF coordinate conversion (SNP at 0-based pos=100 → 1-based pos=101)
     assert row["Start_Position"] == "101"

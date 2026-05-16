@@ -10,13 +10,13 @@ They use small synthetic MAF files and a reference FASTA to verify:
 - show_normalization columns in MafWriter output
 """
 
-import csv
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
 import pysam
+from helpers import read_maf_output as _read_maf_output
 
 from gbcms import _rs as gbcms_rs
 from gbcms.io.output import MafWriter
@@ -263,8 +263,8 @@ class TestNormalization(unittest.TestCase):
         writer.write(variant, self._zero_counts(), norm_variant=norm_variant)
         writer.close()
 
-        with open(output_path) as f:
-            reader = csv.DictReader(f, delimiter="\t")
+        with open(output_path):
+            reader = _read_maf_output(output_path)
             rows = list(reader)
 
         self.assertEqual(len(rows), 1)
@@ -285,8 +285,8 @@ class TestNormalization(unittest.TestCase):
         writer.write(variant, self._zero_counts(), norm_variant=norm_variant)
         writer.close()
 
-        with open(output_path) as f:
-            reader = csv.DictReader(f, delimiter="\t")
+        with open(output_path):
+            reader = _read_maf_output(output_path)
             rows = list(reader)
 
         header = rows[0].keys()
@@ -307,8 +307,8 @@ class TestNormalization(unittest.TestCase):
         writer.write(variant, self._zero_counts())
         writer.close()
 
-        with open(output_path) as f:
-            reader = csv.DictReader(f, delimiter="\t")
+        with open(output_path):
+            reader = _read_maf_output(output_path)
             rows = list(reader)
 
         header = rows[0].keys()

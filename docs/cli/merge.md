@@ -87,6 +87,12 @@ flowchart LR
     - **Phase 3**: Fisher's exact test for strand bias (read + fragment level, via Rust)
 6. **Write** — Materialized DataFrame written as tab-separated MAF
 
+!!! info "Provenance Comment Lines (v5.3.0+)"
+    Starting in v5.3.0, gbcms MAF output includes `#gbcms` and `#command`
+    comment lines before the TSV header. The merge engine handles these
+    automatically — Polars `scan_csv` is configured with `comment_prefix="#"`,
+    which skips all `#`-prefixed lines. No manual pre-processing is needed.
+
 ---
 
 ## Combined Columns

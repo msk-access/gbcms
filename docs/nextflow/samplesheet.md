@@ -16,21 +16,34 @@ sample3,/path/to/sample3.bam,/path/to/sample3.bam.bai
 | Column | Required | Description |
 |:-------|:---------|:------------|
 | `sample` | Yes | Sample identifier (used in output filenames) |
-| `bam` | Yes | Path to BAM file |
-| `bai` | No | Path to BAM index (auto-discovers `.bam.bai` or `.bai`) |
+| `bam` | Yes | Path to BAM or CRAM file |
+| `bai` | No | Path to index file. Auto-discovers `.bam.bai`/`.bai` for BAM or `.cram.crai`/`.crai` for CRAM. |
 | `suffix` | No | Per-sample output suffix |
 | `bam_type` | No | BAM type label for [multi-BAM merging](#multi-bam-type-merging) (e.g., `duplex`, `simplex`) |
 | `tsb` | No | Tumor_Sample_Barcode pattern(s) for [MAF filtering](#multi-sample-maf-filtering) |
 
-## BAI Auto-Discovery
+## Index Auto-Discovery
 
-If `bai` column is empty, the pipeline checks for:
+If the `bai` column is empty, the pipeline auto-discovers the index based on the alignment file extension:
+
+**BAM files** (`.bam`):
 
 1. `<bam>.bai` (e.g., `sample.bam.bai`)
 2. `<bam_without_extension>.bai` (e.g., `sample.bai`)
 
+**CRAM files** (`.cram`, v5.3.0+):
+
+1. `<cram>.crai` (e.g., `sample.cram.crai`)
+2. `<cram_without_extension>.crai` (e.g., `sample.crai`)
+
 !!! tip
-    Leave the `bai` column empty to use auto-discovery.
+    Leave the `bai` column empty to use auto-discovery. You can also provide an
+    explicit index path of any naming convention.
+
+!!! info "CRAM Support (v5.3.0+)"
+    The `bam` column accepts both BAM and CRAM file paths.  The `--fasta` reference
+    is automatically threaded to the Rust engine and Python layers for CRAM decoding.
+    No additional configuration is needed.
 
 ## Per-Sample Suffix
 
@@ -92,15 +105,22 @@ and merged into a single output MAF with type-prefixed count columns.
 
 ```csv
 sample,bam,bai,suffix,bam_type
-sample1,/path/to/sample1.duplex.bam,,-duplex,duplex
-sample1,/path/to/sample1.simplex.bam,,-simplex,simplex
+sample1,/path/to/sample1.duplex.bam,,,duplex
+sample1,/path/to/sample1.simplex.bam,,,simplex
 ```
 
 When `bam_type` is set:
 
 1. The `--column-prefix` is **auto-derived** from the type label (e.g., `duplex_`)
-2. After per-BAM genotyping, the pipeline groups MAFs by sample and runs `gbcms merge`
-3. Combined `simplex_duplex_*` columns are computed when both types are present
+2. The output **suffix is auto-derived** as `-{bam_type}` (e.g., `sample1-duplex.maf`)
+   unless an explicit `suffix` column value is provided
+3. After per-BAM genotyping, the pipeline groups MAFs by sample and runs `gbcms merge`
+4. Combined `simplex_duplex_*` columns are computed when both types are present
+
+!!! tip "Suffix auto-derivation"
+    When `bam_type` is set, you do **not** need to set `suffix` — it is automatically
+    derived as `-{bam_type}`. Only set `suffix` explicitly if you need a custom value
+    that differs from the `bam_type` label.
 
 !!! tip "Minimum 2 BAM types per sample"
     Merge requires at least 2 inputs per sample. Samples with only 1 BAM type

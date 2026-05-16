@@ -26,6 +26,19 @@ nextflow run nextflow/main.nf \
     -profile slurm
 ```
 
+## CRAM Files
+
+CRAM files are transparently supported in both DNA and RNA modes. The `--fasta` parameter is required for CRAM decoding. The pipeline automatically discovers `.crai` index files.
+
+```bash
+nextflow run nextflow/main.nf \
+    --input samplesheet_cram.csv \
+    --variants variants.vcf \
+    --fasta reference.fa \
+    --outdir results \
+    -profile docker
+```
+
 ## RNA Mode
 
 ### Basic RNA-seq
@@ -92,7 +105,7 @@ nextflow run nextflow/main.nf \
 
 ## Multi-Sample MAF Filtering
 
-Filter a multi-sample MAF so each BAM only processes its own variants:
+Filter a multi-sample MAF so each BAM/CRAM only processes its own variants:
 
 ```bash
 nextflow run nextflow/main.nf \
@@ -109,7 +122,7 @@ With patient-level filtering via `tsb` column in samplesheet:
 ```csv
 sample,bam,tsb
 patient_A,/path/to/A.bam,P-0012345
-patient_B,/path/to/B.bam,"P-0067890-T01,P-0067890-T02"
+patient_B,/path/to/B.cram,"P-0067890-T01,P-0067890-T02"
 ```
 
 See [Samplesheet — Multi-Sample MAF Filtering](samplesheet.md#multi-sample-maf-filtering) for details.

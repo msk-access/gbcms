@@ -527,6 +527,21 @@ def _compute_combined_strand_bias(
                 pl.Series("simplex_duplex_fragment_strand_bias_odds_ratio", fsb_results[1]),
             ]
         )
+    # ── Sanitize NaN/Inf in strand bias columns ─────────────────────────────
+    # Fisher exact test returns NaN for OR when alt_total ≤ 1 (issue #19).
+    # Polars writes NaN as literal 'NaN' in CSV — convert to 'NA' for MAF.
+    sb_cols = [c for c in df.columns if "strand_bias" in c and c.startswith("simplex_duplex_")]
+    if sb_cols:
+        df = df.with_columns(
+            [
+                pl.col(c).cast(pl.Utf8).str.replace("NaN", "NA").str.replace("inf", "NA")
+                for c in sb_cols
+            ]
+        )
+        logger.debug(
+            "Sanitized %d combined strand bias columns (NaN/inf → NA)",
+            len(sb_cols),
+        )
 
     logger.debug(
         "Computed combined strand bias for %d variants (read-level + fragment-level)",

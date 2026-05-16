@@ -1,6 +1,6 @@
 # gbcms
 
-> **Get Base Counts Multi-Sample** — High-performance variant counting from BAM files
+> **Get Base Counts Multi-Sample** — High-performance variant counting from BAM/CRAM files
 
 [![Version](https://img.shields.io/pypi/v/gbcms)](https://pypi.org/project/gbcms/)
 [![Python](https://img.shields.io/pypi/pyversions/gbcms)](https://pypi.org/project/gbcms/)
@@ -8,7 +8,7 @@
 
 ## What It Does
 
-GBCMS extracts **allele counts** and **variant metrics** at specified positions in BAM files:
+GBCMS extracts **allele counts** and **variant metrics** at specified positions in BAM/CRAM files:
 
 ```mermaid
 block-beta
@@ -16,7 +16,7 @@ block-beta
     VCF["📄 VCF/MAF\nVariant positions"]:1
     Engine["⚡ gbcms\nPython + Rust"]:1
     Counts["📊 Allele Counts\nDP · RD · AD · VAF"]:1
-    BAM["🗂️ BAM Files\n(1 to N samples)"]:1
+    BAM["🗂️ BAM/CRAM Files\n(1 to N samples)"]:1
     space:1
     Metrics["🧬 Fragment Counts\nStrand bias · mFSD"]:1
 

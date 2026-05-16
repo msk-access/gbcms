@@ -8,7 +8,7 @@ Complete reference for all pipeline parameters.
 |:----------|:------------|
 | `--input` | Path to [samplesheet CSV](samplesheet.md) |
 | `--variants` | Path to [VCF/MAF](../reference/input-formats.md) variants file |
-| `--fasta` | Reference FASTA (with .fai index) |
+| `--fasta` | Reference FASTA (with .fai index). Also used for CRAM decoding. |
 
 ## Mode
 

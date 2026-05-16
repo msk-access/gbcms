@@ -1,6 +1,6 @@
 # gbcms rna
 
-Count alleles in RNA-seq BAMs with transcriptome-aware filtering.
+Count alleles in RNA-seq BAM/CRAM files with transcriptome-aware filtering.
 
 RNA mode extends the core DNA counting engine with filters and metrics specific to RNA-seq data: STAR-aware MAPQ rescue, dUTP strandedness filtering, splice junction tracking, A-to-I RNA editing site flagging, GTF-based transcript annotation, and amplicon library support.
 
@@ -28,7 +28,7 @@ gbcms rna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
 flowchart LR
     subgraph Inputs ["Inputs"]
         direction TB
-        BAM["BAM Files"]
+        BAM["BAM/CRAM Files"]
         VCF["VCF/MAF"]
         FASTA["Reference"]
         DB["REDIportal DB"]:::optional
@@ -83,14 +83,20 @@ flowchart LR
 !!! info "Shared Arguments"
     RNA mode shares all [required arguments](dna.md#required-arguments), [output options](dna.md#output-options), [filtering options](dna.md#filtering-options), [BAQ options](dna.md#baq-options), [UMI options](dna.md#umi-options), [MNP rescue options](dna.md#mnp-rescue-options), and [debugging options](dna.md#debugging-options) with DNA mode. See the [`gbcms dna` reference](dna.md) for full descriptions.
 
+!!! tip "Provenance & CRAM Support (v5.3.0+)"
+    RNA output includes the same provenance metadata as DNA mode — `##gbcms_command`,
+    `##reference`, `##contig`, and `##FILTER` in VCF headers; `#gbcms` and `#command`
+    comment lines in MAF output.  `--bam` accepts both BAM and CRAM files
+    transparently.  See [CRAM Support](dna.md#required-arguments) for details.
+
 !!! tip "BAQ is On by Default in RNA Mode"
     Unlike DNA mode, `--apply-baq` defaults to **on** for RNA. BAQ penalizes bases within 5 bp of both indels and splice junctions (CIGAR `N`), serving as a lightweight alternative to GATK SplitNCigarReads. Disable with `--no-baq` if your upstream workflow already runs SplitNCigarReads or BQSR. See [RNA Splice-Junction Handling](../reference/rna-splice-handling.md).
 
 | Option | Description |
 |:-------|:------------|
 | `--variants`, `-v` | VCF or MAF file |
-| `--bam`, `-b` | BAM file(s) |
-| `--fasta`, `-f` | Reference FASTA (with .fai index) |
+| `--bam`, `-b` | BAM or CRAM file(s) |
+| `--fasta`, `-f` | Reference FASTA (with .fai index). Also used for CRAM decoding. |
 | `--output-dir`, `-o` | Output directory |
 
 ---

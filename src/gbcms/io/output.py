@@ -7,6 +7,7 @@ to output files, handling format-specific columns and headers.
 
 import csv
 import logging
+import math
 from pathlib import Path
 from typing import Any
 
@@ -48,17 +49,48 @@ CH_GENES: frozenset[str] = frozenset(
 
 
 def _fmt(v: float) -> str:
-    """Format a float for MAF output. NaN → 'NA' (standard missing value for tabular formats)."""
-    import math
+    """Format a float for MAF output.
 
-    return "NA" if (isinstance(v, float) and math.isnan(v)) else f"{v:.4f}"
+    NaN/Inf → 'NA' (standard missing value for tabular formats).
+    Guards against both NaN and Inf which can arise from Fisher strand
+    bias when ALT total ≤ 1 (OR undefined, see issue #19).
+    """
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return "NA"
+    return f"{v:.4f}"
 
 
 def _fmt_vcf(v: float) -> str:
-    """Format a float for VCF INFO fields. NaN → '.' (VCF spec missing value sentinel)."""
-    import math
+    """Format a float for VCF INFO fields.
 
-    return "." if (isinstance(v, float) and math.isnan(v)) else f"{v:.4f}"
+    NaN/Inf → '.' (VCF 4.2 spec missing value sentinel).
+    The VCF spec does not support 'inf' or 'nan' in Float fields —
+    downstream tools (bcftools, GATK, VariantAnnotation) will reject them.
+    """
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return "."
+    return f"{v:.4f}"
+
+
+def _fmt_sci(v: float) -> str:
+    """Format a float in scientific notation for MAF output.
+
+    NaN/Inf → 'NA'. Used for strand bias p-values which need scientific
+    notation for very small values (e.g., 2.4000e-01).
+    """
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return "NA"
+    return f"{v:.4e}"
+
+
+def _fmt_vcf_sci(v: float) -> str:
+    """Format a float in scientific notation for VCF INFO fields.
+
+    NaN/Inf → '.' (VCF 4.2 spec). Used for strand bias p-values.
+    """
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return "."
+    return f"{v:.4e}"
 
 
 class OutputWriter:
@@ -112,6 +144,7 @@ class MafWriter(OutputWriter):
         mode: str = "dna",
         rescue_mnp: bool = False,
         has_gtf: bool = False,
+        command_line: str = "",
     ):
         """
         Initialize MafWriter.
@@ -128,6 +161,7 @@ class MafWriter(OutputWriter):
                 pairwise comparisons, derived metrics). Controlled by --mfsd flag.
             mode: Counting mode ('dna' or 'rna'). In RNA mode, 5 RNA-specific
                 columns are appended instead of mFSD columns.
+            command_line: Full CLI command for #command provenance header.
         """
         self.path = path
         self.column_prefix = column_prefix
@@ -137,7 +171,18 @@ class MafWriter(OutputWriter):
         self.mode = mode
         self.rescue_mnp = rescue_mnp
         self.has_gtf = has_gtf
+        self.command_line = command_line
         self.file = open(path, "w")
+
+        # Write provenance comment headers before TSV data (issue #19).
+        # These are #-prefixed lines that downstream readers skip via
+        # comment_prefix="#" (e.g., Polars read_maf in batch.py).
+        from .. import __version__
+
+        self.file.write(f"#gbcms v{__version__}\n")
+        if self.command_line:
+            self.file.write(f"#command {self.command_line}\n")
+
         self.writer: csv.DictWriter | None = None
         self._headers_written = False
         logger.debug(
@@ -396,11 +441,11 @@ class MafWriter(OutputWriter):
             f"{p}alt_count_fragment": str(counts.adf),
             f"{p}total_count_fragment": str(counts.dpf),
             f"{p}vaf_fragment": f"{vaf_frag:.4f}",
-            # Strand bias (unprefixed)
-            "strand_bias_p_value": f"{counts.sb_pval:.4e}",
-            "strand_bias_odds_ratio": f"{counts.sb_or:.4f}",
-            "fragment_strand_bias_p_value": f"{counts.fsb_pval:.4e}",
-            "fragment_strand_bias_odds_ratio": f"{counts.fsb_or:.4f}",
+            # Strand bias (unprefixed) — use _fmt/_fmt_sci guards for NaN/Inf (#19)
+            "strand_bias_p_value": _fmt_sci(counts.sb_pval),
+            "strand_bias_odds_ratio": _fmt(counts.sb_or),
+            "fragment_strand_bias_p_value": _fmt_sci(counts.fsb_pval),
+            "fragment_strand_bias_odds_ratio": _fmt(counts.fsb_or),
             # Strand counts
             f"{p}ref_count_forward": str(counts.rd_fwd),
             f"{p}ref_count_reverse": str(counts.rd_rev),
@@ -657,6 +702,9 @@ class VcfWriter(OutputWriter):
         mode: str = "dna",
         rescue_mnp: bool = False,
         has_gtf: bool = False,
+        command_line: str = "",
+        reference_fasta: str = "",
+        contigs: list[tuple[str, int]] | None = None,
     ):
         self.path = path
         self.sample_name = sample_name
@@ -665,6 +713,9 @@ class VcfWriter(OutputWriter):
         self.mode = mode
         self.rescue_mnp = rescue_mnp
         self.has_gtf = has_gtf
+        self.command_line = command_line
+        self.reference_fasta = reference_fasta
+        self.contigs = contigs or []
         self.file = open(path, "w")
         self._headers_written = False
         logger.debug(
@@ -682,15 +733,34 @@ class VcfWriter(OutputWriter):
     def _write_header(self):
         """Write VCF header lines.
 
-        mFSD ##INFO fields (7 lines) are only included when self.mfsd is True.
+        Includes provenance (version, command), reference, contig, and FILTER
+        headers per VCF 4.2 spec. mFSD ##INFO fields (7 lines) are only
+        included when self.mfsd is True.
         """
+        from .. import __version__
+
         headers = [
             "##fileformat=VCFv4.2",
-            "##source=gbcms",
-            '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
-            '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">',
-            '##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">',
+            f"##source=gbcms v{__version__}",
         ]
+        # Provenance headers (issue #19)
+        if self.command_line:
+            headers.append(f"##gbcms_command={self.command_line}")
+        if self.reference_fasta:
+            headers.append(f"##reference=file://{self.reference_fasta}")
+        # Contig headers — recommended by VCF 4.2 spec, required by some tools
+        for name, length in self.contigs:
+            headers.append(f"##contig=<ID={name},length={length}>")
+        # FILTER header — required by VCF 4.2 spec even when only PASS is used
+        headers.append('##FILTER=<ID=PASS,Description="All filters passed">')
+        # INFO fields
+        headers.extend(
+            [
+                '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
+                '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">',
+                '##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">',
+            ]
+        )
         # GR INFO header only included when --rescue-mnp is enabled (design §5)
         if self.rescue_mnp:
             headers.append(
@@ -834,10 +904,10 @@ class VcfWriter(OutputWriter):
                 f"AAD={counts.any_alt}",
                 f"PAD={counts.partial_alt}",
                 f"NAD={counts.n_count}",
-                f"SB_PVAL={counts.sb_pval:.4e}",
-                f"SB_OR={counts.sb_or:.4f}",
-                f"FSB_PVAL={counts.fsb_pval:.4e}",
-                f"FSB_OR={counts.fsb_or:.4f}",
+                f"SB_PVAL={_fmt_vcf_sci(counts.sb_pval)}",
+                f"SB_OR={_fmt_vcf(counts.sb_or)}",
+                f"FSB_PVAL={_fmt_vcf_sci(counts.fsb_pval)}",
+                f"FSB_OR={_fmt_vcf(counts.fsb_or)}",
             ]
         )
         if self.mfsd:

@@ -166,6 +166,49 @@ class Pipeline:
         logger.info("Starting gbcms pipeline")
         logger.info("Output directory: %s", self.config.output.directory)
 
+        # Log all resolved parameters at DEBUG for full reproducibility (#19)
+        logger.debug(
+            "Parameters:\n"
+            "  mode=%s\n"
+            "  reference_fasta=%s\n"
+            "  variant_file=%s\n"
+            "  bam_files=%s\n"
+            "  threads=%d\n"
+            "  output_format=%s\n"
+            "  output_suffix=%s\n"
+            "  column_prefix=%s\n"
+            "  min_mapq=%d\n"
+            "  min_baseq=%d\n"
+            "  fragment_qual_threshold=%d\n"
+            "  context_padding=%d\n"
+            "  adaptive_context=%s\n"
+            "  alignment_backend=%s\n"
+            "  apply_baq=%s\n"
+            "  umi_tag=%s\n"
+            "  show_normalization=%s\n"
+            "  rescue_mnp=%s\n"
+            "  mfsd=%s",
+            self.config.mode,
+            self.config.reference_fasta,
+            self.config.variant_file,
+            list(self.config.bam_files.keys()),
+            self.config.threads,
+            self.config.output.format.value,
+            self.config.output.suffix or "(none)",
+            self.config.output.column_prefix or "(none)",
+            self.config.quality.min_mapping_quality,
+            self.config.quality.min_base_quality,
+            self.config.quality.fragment_qual_threshold,
+            self.config.quality.context_padding,
+            self.config.quality.adaptive_context,
+            self.config.alignment.backend,
+            self.config.apply_baq,
+            self.config.umi_tag or "none",
+            self.config.show_normalization,
+            self.config.rescue_mnp,
+            self.config.output.mfsd,
+        )
+
         # 1. Load Variants (raw MAF/VCF coords)
         logger.debug("Loading variants from %s", self.config.variant_file)
         variants = self._load_variants()
@@ -801,11 +844,21 @@ class Pipeline:
         return variants
 
     def _validate_bam_header(self, bam_path: Path, variants: list[Variant]) -> bool:
-        """Check if BAM header contains chromosomes from variants."""
+        """Check if BAM/CRAM header contains chromosomes from variants.
+
+        Uses pysam auto-detect mode (no explicit format flag) so both BAM and
+        CRAM files are handled transparently.  For CRAM files, ``reference_filename``
+        is passed for correct header decoding.
+        """
         try:
             import pysam
 
-            with pysam.AlignmentFile(str(bam_path), "rb") as bam:
+            # Auto-detect format (BAM/CRAM) — reference_filename is required for CRAM
+            # decoding but harmless for BAM.
+            with pysam.AlignmentFile(
+                str(bam_path),
+                reference_filename=str(self.config.reference_fasta),
+            ) as bam:
                 bam_chroms = set(bam.references)
 
             norm_bam_chroms = {CoordinateKernel.normalize_chromosome(c) for c in bam_chroms}
@@ -817,8 +870,40 @@ class Pipeline:
                     return False
             return True
         except Exception as e:
-            logger.warning("Could not validate BAM header: %s", e)
+            logger.warning("Could not validate BAM/CRAM header: %s", e)
             return True
+
+    def _load_contigs_from_fai(self) -> list[tuple[str, int]]:
+        """Load contig names and lengths from the FASTA index (.fai).
+
+        Returns a list of (name, length) tuples for VCF ##contig headers.
+        Falls back to an empty list if the FAI is missing or malformed —
+        the pipeline should not fail just because of missing contig headers.
+        """
+        fai_path = Path(str(self.config.reference_fasta) + ".fai")
+        if not fai_path.exists():
+            logger.warning(
+                "FASTA index not found: %s — VCF ##contig headers will be omitted",
+                fai_path,
+            )
+            return []
+
+        contigs: list[tuple[str, int]] = []
+        try:
+            with open(fai_path) as f:
+                for line in f:
+                    parts = line.strip().split("\t")
+                    if len(parts) >= 2:
+                        contigs.append((parts[0], int(parts[1])))
+            logger.debug("Loaded %d contigs from %s", len(contigs), fai_path.name)
+        except (ValueError, OSError) as e:
+            logger.warning(
+                "Failed to parse FASTA index %s: %s — VCF ##contig headers will be omitted",
+                fai_path,
+                e,
+            )
+            return []
+        return contigs
 
     def _write_output(
         self,
@@ -841,6 +926,9 @@ class Pipeline:
 
         writer: VcfWriter | MafWriter
         if self.config.output.format == OutputFormat.VCF:
+            # Load contigs from FAI for VCF ##contig headers (lazy — only for VCF output)
+            contigs = self._load_contigs_from_fai()
+
             # mode= is required so RNA-specific INFO/FORMAT headers and data fields
             # (SEN, ANT, ASEN, RED, SPL) are included when self.config.mode == "rna".
             # Without it, VcfWriter defaults to mode="dna" and RNA columns are silently absent.
@@ -852,6 +940,9 @@ class Pipeline:
                 mode=self.config.mode,
                 rescue_mnp=self.config.rescue_mnp,
                 has_gtf=bool(getattr(self.config, "gtf", None)),
+                command_line=self.config.command_line,
+                reference_fasta=str(self.config.reference_fasta),
+                contigs=contigs,
             )
         else:
             # mode= is required so RNA-specific MAF columns (rna_sense_depth, etc.)
@@ -866,6 +957,7 @@ class Pipeline:
                 mode=self.config.mode,
                 rescue_mnp=self.config.rescue_mnp,
                 has_gtf=bool(getattr(self.config, "gtf", None)),
+                command_line=self.config.command_line,
             )
         logger.debug(
             "Writer initialised: format=%s, mode=%s, sample=%s, path=%s",

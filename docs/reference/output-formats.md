@@ -63,14 +63,21 @@ A standards-compliant VCFv4.2 file with one row per variant per sample.
 ### File Header
 
 The `##fileformat`, `##source`, and `##INFO`/`##FORMAT` meta-lines are
-written once. RNA-specific meta-lines are only included when running
-`gbcms rna` — the header is self-describing.
+written once. Provenance metadata (`##gbcms_command`, `##reference`,
+`##contig`, `##FILTER`) is included when available. RNA-specific
+meta-lines are only included when running `gbcms rna` — the header is
+self-describing.
 
 === "DNA mode"
 
     ```
     ##fileformat=VCFv4.2
-    ##source=gbcms
+    ##source=gbcms v5.3.0
+    ##gbcms_command=gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
+    ##reference=file:///path/to/ref.fa
+    ##contig=<ID=chr1,length=248956422>
+    ##contig=<ID=chr2,length=242193529>
+    ##FILTER=<ID=PASS,Description="All filters passed">
     ##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
     ##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">
     ##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">
@@ -98,11 +105,20 @@ written once. RNA-specific meta-lines are only included when running
     #CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  <sample_name>
     ```
 
+    !!! note "Provenance headers (v5.3.0)"
+        `##gbcms_command`, `##reference`, `##contig`, and `##FILTER` lines
+        are new in v5.3.0. `##contig` lines are auto-populated from the
+        `.fai` index of the reference FASTA when available.
+
 === "RNA mode"
 
     ```
     ##fileformat=VCFv4.2
-    ##source=gbcms
+    ##source=gbcms v5.3.0
+    ##gbcms_command=gbcms rna --bam rna_sample.bam --fasta ref.fa
+    ##reference=file:///path/to/ref.fa
+    ##contig=<ID=chr1,length=248956422>
+    ##FILTER=<ID=PASS,Description="All filters passed">
     ##INFO=<ID=DP,...>
     ##INFO=<ID=GS,...>
     ##INFO=<ID=GD,...>
@@ -280,6 +296,40 @@ chr7    55174772  rs121913527  T    A    .     .     DP=312;GS=PASS;GD=.;AAD=22;
 ## MAF Output (`--format maf`)
 
 A tab-separated file following GDC MAF conventions. One row per variant per sample.
+
+### Provenance Comment Lines (v5.3.0)
+
+Starting in v5.3.0, **both DNA and RNA** MAF output includes `#`-prefixed
+comment lines **before** the TSV header row. These lines provide provenance
+metadata for reproducibility:
+
+=== "DNA mode"
+
+    ```
+    #gbcms v5.3.0
+    #command gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
+    Hugo_Symbol	Chromosome	Start_Position	...
+    ```
+
+=== "RNA mode"
+
+    ```
+    #gbcms v5.3.0
+    #command gbcms rna --bam rna_sample:star.bam --fasta ref.fa --gtf genes.gtf
+    Hugo_Symbol	Chromosome	Start_Position	...
+    ```
+
+| Line | Content |
+|:-----|:--------|
+| `#gbcms vX.Y.Z` | gbcms version that produced this file |
+| `#command ...` | Full CLI command used (only when available) |
+
+!!! tip "Reading MAF files with provenance headers"
+    When parsing gbcms MAF output, skip lines starting with `#` before
+    reading the TSV header. In Python: `lines = [l for l in f if not l.startswith('#')]`.
+    Most R `read.table`/`read_tsv` functions handle `#` comments natively
+    via the `comment` parameter. The `gbcms merge` command handles these
+    comment lines automatically.
 
 ### Two Output Paths
 
@@ -623,6 +673,16 @@ are distinct — counts are **additive** across BAM types with no double-countin
 A value is `NA`/`.` when the count supporting it is zero (e.g. `mfsd_alt_mean`
 when no ALT fragments were observed) or when the input variant was rejected
 during preparation (all counts are zero-filled in that case).
+
+!!! note "Strand bias with ≤1 ALT read (v5.3.0)"
+    When a variant has 0 or 1 ALT reads, the Fisher strand bias test lacks
+    statistical power. In this case:
+
+    - `SB_OR` / `FSB_OR` → `.` (VCF) or `NA` (MAF) — odds ratio is undefined
+    - `SB_PVAL` / `FSB_PVAL` → `1.0` — no evidence of strand bias
+
+    Prior to v5.3.0, these fields could contain `inf` (VCF spec violation)
+    or `0.0` (incorrect p-value due to floating-point underflow).
 
 ---
 

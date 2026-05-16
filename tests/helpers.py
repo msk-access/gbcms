@@ -195,3 +195,24 @@ def count_both(
             )
 
     return results_binned
+
+
+# ── MAF Output Reading ───────────────────────────────────────────────────
+
+
+def read_maf_output(path):
+    """Read MAF output, skipping #-prefixed provenance comment lines.
+
+    MafWriter emits provenance headers (e.g., ``#gbcms v5.3.0``,
+    ``#command ...``) before the TSV header row.  These must be
+    skipped for ``csv.DictReader`` to parse the file correctly.
+
+    Returns:
+        csv.DictReader positioned at the first data row.
+    """
+    import csv
+    import io
+
+    with open(path) as f:
+        lines = [line for line in f if not line.startswith("#")]
+    return csv.DictReader(io.StringIO("".join(lines)), delimiter="\t")

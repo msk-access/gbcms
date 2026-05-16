@@ -132,8 +132,15 @@ git push origin release/X.Y.Z
 ### 7. Merge to main (creates tag)
 
 After PR approval:
-- Squash and merge to `main`
+- **Merge commit** (do NOT squash) to `main`
 - **Create tag**: `git tag X.Y.Z && git push origin X.Y.Z`
+
+!!! warning "Do NOT squash-merge release PRs"
+    Always use a **regular merge commit** for release PRs. Squash merging
+    rewrites all commits into a single new SHA, which breaks shared ancestry
+    between `main` and `develop`. This causes merge conflicts on every
+    changed file during the Step 9 back-merge. Regular merge preserves
+    commit history and makes the back-merge conflict-free.
 
 ### 8. CI Release Pipeline
 

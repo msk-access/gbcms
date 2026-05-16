@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] - 2026-05-16
+
+### ✨ Added
+
+- **CRAM Support**: Full CRAM file support across all commands (`dna` and `rna`). The `--bam` argument now transparently accepts CRAM files.
+- **CRAM Index Auto-Discovery**: The Nextflow pipeline automatically discovers `.crai` or `.cram.crai` indexes in the same directory as the CRAM files.
+- **Reference Binding**: Rust engine's `IndexedReader` correctly initializes CRAM references using the provided `--fasta`.
+
+### 🔄 Changed
+
+- **Provenance Comment Lines**: Output MAF files now include `#gbcms vX.Y.Z` and `#command ...` provenance lines before the header row in both DNA and RNA modes.
+- **VCF Header Provenance**: VCF headers now include `##source`, `##gbcms_command`, `##reference`, and `##contig` metadata in both DNA and RNA modes.
+- **Strand Bias Sanitization**: Handled edge cases in Fisher's exact test where structural strand arrays contain all zeros, returning `.`, `1.0`, or `NA` instead of `NaN`/`Inf`.
+- **Merge Engine Robustness**: `gbcms merge` uses Polars `comment_prefix` natively to skip provenance comment lines without failure.
+
+### 📚 Documentation
+
+- Updated `cli/rna.md` to note CRAM and provenance support for RNA mode.
+- Updated `cli/merge.md` to explain MAF comment line compatibility.
+- Updated `cli/index.md` and diagrams to explicitly mention `BAM/CRAM Files`.
+- Expanded `reference/input-formats.md` with explicit CRAM and `.crai` index requirements.
+- Added DNA vs RNA comparison snippet in `reference/output-formats.md` demonstrating provenance headers.
+
+### 🧪 Tests
+
+- Expanded testing suite (now 329 tests), providing integration coverage for RNA provenance headers and CRAM pipeline data flow.
+- Added test validation for merge engine skipping MAF provenance comment lines safely.
+
 ## [5.2.0] - 2026-05-15
 
 ### ✨ Added

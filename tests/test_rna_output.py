@@ -9,10 +9,10 @@ Verifies that:
 - Write round-trips produce correct field values and flag presence/absence
 """
 
-import csv
 import types
 
 import pytest
+from helpers import read_maf_output as _read_maf_output
 
 from gbcms.io.output import MafWriter, VcfWriter
 from gbcms.models.core import Variant, VariantType
@@ -260,9 +260,8 @@ def test_rna_maf_data_row_has_rna_column_values(tmp_path, rna_variant):
     writer.write(rna_variant, counts, sample_name="TUMOR")
     writer.close()
 
-    with open(maf_path) as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        row = next(reader)
+    reader = _read_maf_output(maf_path)
+    row = next(reader)
 
     assert (
         row["rna_sense_depth"] == "12"

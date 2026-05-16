@@ -9,6 +9,8 @@ Verifies that MafWriter in MAF→MAF mode:
 
 import csv
 
+from helpers import read_maf_output as _read_maf_output
+
 from gbcms.io.input import MafReader
 from gbcms.io.output import MafWriter
 
@@ -134,26 +136,25 @@ def test_maf_column_preservation(tmp_path):
     maf_writer.close()
 
     # 4. Verify output
-    with open(output_maf) as f:
-        csv_reader = csv.DictReader(f, delimiter="\t")
-        row = next(csv_reader)
+    csv_reader = _read_maf_output(output_maf)
+    row = next(csv_reader)
 
-        # Original columns preserved exactly
-        assert row["Hugo_Symbol"] == "TP53"
-        assert row["Entrez_Gene_Id"] == "7157"
-        assert row["Start_Position"] == "100", "Original Start_Position must be preserved"
-        assert row["End_Position"] == "100", "Original End_Position must be preserved"
-        assert row["Reference_Allele"] == "A", "Original Reference_Allele must be preserved"
-        assert row["Tumor_Seq_Allele2"] == "T", "Original Tumor_Seq_Allele2 must be preserved"
-        assert row["Variant_Type"] == "SNP", "Original Variant_Type must be preserved"
+    # Original columns preserved exactly
+    assert row["Hugo_Symbol"] == "TP53"
+    assert row["Entrez_Gene_Id"] == "7157"
+    assert row["Start_Position"] == "100", "Original Start_Position must be preserved"
+    assert row["End_Position"] == "100", "Original End_Position must be preserved"
+    assert row["Reference_Allele"] == "A", "Original Reference_Allele must be preserved"
+    assert row["Tumor_Seq_Allele2"] == "T", "Original Tumor_Seq_Allele2 must be preserved"
+    assert row["Variant_Type"] == "SNP", "Original Variant_Type must be preserved"
 
-        # Extra input columns must be preserved
-        assert row["Extra_Column"] == "custom_value", "Extra input columns must survive"
+    # Extra input columns must be preserved
+    assert row["Extra_Column"] == "custom_value", "Extra input columns must survive"
 
-        # gbcms count columns appended (no prefix by default)
-        assert row["total_count"] == "100"
-        assert row["ref_count"] == "80"
-        assert row["alt_count"] == "20"
+    # gbcms count columns appended (no prefix by default)
+    assert row["total_count"] == "100"
+    assert row["ref_count"] == "80"
+    assert row["alt_count"] == "20"
 
 
 def test_maf_column_prefix(tmp_path):
@@ -193,7 +194,7 @@ def test_maf_column_prefix(tmp_path):
     maf_writer.close()
 
     with open(output_maf) as f:
-        csv_reader = csv.DictReader(f, delimiter="\t")
+        csv_reader = _read_maf_output(output_maf)
         row = next(csv_reader)
         assert row["t_ref_count"] == "80"
         assert row["t_alt_count"] == "20"
@@ -239,7 +240,7 @@ def test_maf_preserve_barcode(tmp_path):
     w1.close()
 
     with open(out_default) as f:
-        row = next(csv.DictReader(f, delimiter="\t"))
+        row = next(_read_maf_output(out_default))
         assert (
             row["Tumor_Sample_Barcode"] == "Plasma_CtDNA"
         ), "Default should override barcode with BAM name"
@@ -251,7 +252,7 @@ def test_maf_preserve_barcode(tmp_path):
     w2.close()
 
     with open(out_preserve) as f:
-        row = next(csv.DictReader(f, delimiter="\t"))
+        row = next(_read_maf_output(out_preserve))
         assert (
             row["Tumor_Sample_Barcode"] == "C-XULUC7-L001-d01"
         ), "preserve_barcode=True should keep original barcode"
@@ -283,8 +284,8 @@ def test_vcf_to_maf_always_uses_sample_name(tmp_path):
     w.write(vcf_variant, MockCounts(), sample_name="RNASample_01")
     w.close()
 
-    with open(out_vcf_maf) as f:
-        row = next(csv.DictReader(f, delimiter="\t"))
+    with open(out_vcf_maf):
+        row = next(_read_maf_output(out_vcf_maf))
     assert row["Tumor_Sample_Barcode"] == "RNASample_01", (
         "VCF→MAF must always use BAM sample_name for Tumor_Sample_Barcode, "
         f"got: {row['Tumor_Sample_Barcode']!r}"

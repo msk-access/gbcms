@@ -50,7 +50,7 @@ workflow {
 
     log.info """
     ============================================================
-      gbcms v5.2.0 — Nextflow Pipeline
+      gbcms v5.3.0 — Nextflow Pipeline
       Mode:     ${params.mode.toUpperCase()}
       Variants: ${params.variants}
       Output:   ${params.outdir}
@@ -68,42 +68,80 @@ workflow {
             def meta = [:]
             meta.id = row.sample
             
-            // Per-sample suffix: use row.suffix if present, otherwise use global params.suffix
-            meta.suffix = row.containsKey('suffix') && row.suffix ? row.suffix : params.suffix
-
-            // Optional: explicit Tumor_Sample_Barcode pattern for MAF filtering
-            meta.tsb = row.containsKey('tsb') && row.tsb ? row.tsb : null
-
             // Optional: BAM type label for multi-BAM merge (e.g., 'duplex', 'simplex').
             // When set, auto-derives --column-prefix in the DNA module so counts
             // are pre-prefixed, and enables groupTuple-based merging in the DNA workflow.
             meta.bam_type = row.containsKey('bam_type') && row.bam_type ? row.bam_type : null
-            
-            def bam = file(row.bam, checkIfExists: true)
-            
-            // Handle BAI: if provided use it, otherwise auto-discover with both naming conventions
-            def bai
-            if (row.bai) {
-                bai = file(row.bai, checkIfExists: true)
+
+            // Optional: explicit Tumor_Sample_Barcode pattern for MAF filtering
+            meta.tsb = row.containsKey('tsb') && row.tsb ? row.tsb : null
+
+            // Per-sample suffix: explicit row.suffix > auto-derived from bam_type > global params.suffix
+            // When bam_type is set but suffix is not, auto-derive suffix as "-{bam_type}"
+            // to disambiguate output filenames (e.g., sample1-duplex.maf vs sample1-simplex.maf).
+            if (row.containsKey('suffix') && row.suffix) {
+                meta.suffix = row.suffix
+            } else if (meta.bam_type) {
+                meta.suffix = "-${meta.bam_type}"
             } else {
-                // Try both common BAI naming conventions: .bam.bai and .bai
+                meta.suffix = params.suffix
+            }
+            
+            def alignment = file(row.bam, checkIfExists: true)
+            
+            // Handle index: if provided use it, otherwise auto-discover.
+            // Supports both BAM (.bai) and CRAM (.crai) index conventions.
+            def idx
+            if (row.bai) {
+                idx = file(row.bai, checkIfExists: true)
+            } else if (row.bam.endsWith('.cram')) {
+                // CRAM index conventions: .cram.crai and .crai
+                def crai_path1 = "${row.bam}.crai"
+                def crai_path2 = row.bam.replaceAll(/\.cram$/, '.crai')
+                def crai1 = file(crai_path1)
+                def crai2 = file(crai_path2)
+                
+                if (crai1.exists()) {
+                    idx = crai1
+                } else if (crai2.exists()) {
+                    idx = crai2
+                } else {
+                    error "CRAI index not found for ${row.bam}. Searched: ${crai_path1}, ${crai_path2}"
+                }
+            } else {
+                // BAM index conventions: .bam.bai and .bai
                 def bai_path1 = "${row.bam}.bai"
                 def bai_path2 = row.bam.replaceAll(/\.bam$/, '.bai')
                 def bai1 = file(bai_path1)
                 def bai2 = file(bai_path2)
                 
                 if (bai1.exists()) {
-                    bai = bai1
+                    idx = bai1
                 } else if (bai2.exists()) {
-                    bai = bai2
+                    idx = bai2
                 } else {
                     error "BAI index not found for ${row.bam}. Searched: ${bai_path1}, ${bai_path2}"
                 }
             }
             
-            return [ meta, bam, bai ]
+            return [ meta, alignment, idx ]
         }
         .set { ch_samplesheet }
+
+    // Validate: duplicate sample IDs without suffix/bam_type would produce
+    // identical output filenames, silently overwriting each other.
+    ch_samplesheet
+        .map { meta, bam, bai -> "${meta.id}${meta.suffix ?: ''}" }
+        .collect()
+        .map { keys ->
+            def dupes = keys.countBy { it }.findAll { k, v -> v > 1 }
+            if (dupes) {
+                error "Duplicate output keys detected: ${dupes.keySet().join(', ')}. " +
+                      "Multiple rows share the same sample ID without a distinguishing " +
+                      "'suffix' or 'bam_type' column. This would cause output files to " +
+                      "overwrite each other. Add a 'bam_type' or 'suffix' column to disambiguate."
+            }
+        }
     
     // Prepare reference inputs
     ch_variants_file = file(params.variants)

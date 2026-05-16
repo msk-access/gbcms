@@ -68,7 +68,7 @@ def test_pipeline_v2(tmp_path):
     # 5. Verify Output
     assert output_path.exists()
     with open(output_path) as f:
-        lines = f.readlines()
+        lines = [line for line in f.readlines() if not line.startswith("#")]
         assert len(lines) > 1  # Header + Data
         header = lines[0].strip().split("\t")
         # Default prefix is '' so columns are unprefixed
@@ -158,7 +158,7 @@ def test_pipeline_v2_binned(tmp_path):
     # 5. Verify Output
     assert output_path.exists()
     with open(output_path) as f:
-        lines = f.readlines()
+        lines = [line for line in f.readlines() if not line.startswith("#")]
         assert len(lines) > 1
         header = lines[0].strip().split("\t")
         assert "ref_count" in header

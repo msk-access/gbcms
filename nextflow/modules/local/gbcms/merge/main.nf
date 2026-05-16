@@ -4,7 +4,7 @@ process MERGE_COUNTS {
 
     publishDir "${params.outdir}/gbcms/merged", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:5.2.0"
+    container "ghcr.io/msk-access/gbcms:5.3.0"
 
     input:
     tuple val(sample_id), val(bam_types), path(mafs)
