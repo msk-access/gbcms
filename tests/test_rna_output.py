@@ -12,11 +12,10 @@ Verifies that:
 import types
 
 import pytest
+from helpers import read_maf_output as _read_maf_output
 
 from gbcms.io.output import MafWriter, VcfWriter
 from gbcms.models.core import Variant, VariantType
-
-from helpers import read_maf_output as _read_maf_output
 
 # ── RNA vs DNA column names in MAF ────────────────────────────────────────
 

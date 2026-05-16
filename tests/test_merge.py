@@ -1005,13 +1005,13 @@ def test_merge_combined_strand_bias_nan_sanitized(tmp_path):
 
     # Odds ratio columns should be 'NA' (not NaN) since alt_total ≤ 1
     or_col = "simplex_duplex_strand_bias_odds_ratio"
-    assert result[or_col][0] == "NA", (
-        f"Expected 'NA' for odds ratio with alt_total ≤ 1, got: {result[or_col][0]!r}"
-    )
+    assert (
+        result[or_col][0] == "NA"
+    ), f"Expected 'NA' for odds ratio with alt_total ≤ 1, got: {result[or_col][0]!r}"
     fsor_col = "simplex_duplex_fragment_strand_bias_odds_ratio"
-    assert result[fsor_col][0] == "NA", (
-        f"Expected 'NA' for fragment odds ratio with alt_total ≤ 1, got: {result[fsor_col][0]!r}"
-    )
+    assert (
+        result[fsor_col][0] == "NA"
+    ), f"Expected 'NA' for fragment odds ratio with alt_total ≤ 1, got: {result[fsor_col][0]!r}"
 
 
 # ── Test 26: Merge handles MAF files with provenance comment lines ───────
@@ -1056,12 +1056,8 @@ def test_merge_handles_provenance_comment_lines(tmp_path):
     simplex = tmp_path / "simplex.maf"
     output = tmp_path / "merged.maf"
 
-    _write_test_maf_with_comments(
-        duplex, [_make_variant_row(ref_count="20", alt_count="10")]
-    )
-    _write_test_maf_with_comments(
-        simplex, [_make_variant_row(ref_count="5", alt_count="2")]
-    )
+    _write_test_maf_with_comments(duplex, [_make_variant_row(ref_count="20", alt_count="10")])
+    _write_test_maf_with_comments(simplex, [_make_variant_row(ref_count="5", alt_count="2")])
 
     config = MergeConfig(
         inputs={"duplex": duplex, "simplex": simplex},
@@ -1072,12 +1068,9 @@ def test_merge_handles_provenance_comment_lines(tmp_path):
 
     result = pl.read_csv(output, separator="\t", infer_schema_length=0)
     assert result.height == 1, f"Expected 1 row, got {result.height}"
-    assert "duplex_ref_count" in result.columns, (
-        f"Missing duplex_ref_count, got: {result.columns}"
-    )
+    assert "duplex_ref_count" in result.columns, f"Missing duplex_ref_count, got: {result.columns}"
     assert result["duplex_ref_count"].to_list() == ["20"]
     assert result["simplex_ref_count"].to_list() == ["5"]
     # Ensure no comment artifacts leaked into column names
     comment_cols = [c for c in result.columns if c.startswith("#")]
     assert comment_cols == [], f"Comment lines leaked as columns: {comment_cols}"
-

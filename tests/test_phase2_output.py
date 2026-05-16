@@ -15,12 +15,11 @@ Covers:
 import types
 
 import pytest
+from helpers import read_maf_output as _read_maf_output
 
 from gbcms.io.output import MafWriter, VcfWriter
 from gbcms.models.core import Variant, VariantType
 from gbcms.pipeline import _zero_counts
-
-from helpers import read_maf_output as _read_maf_output
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 

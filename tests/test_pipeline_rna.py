@@ -10,8 +10,8 @@ Does NOT require a real BAM or reference FASTA — only the output wiring
 is under test here.  End-to-end counting accuracy is covered by test_accuracy.py.
 """
 
-
 import pytest
+from helpers import read_maf_output as _read_maf_output
 
 from gbcms.models.core import (
     GbcmsRnaConfig,
@@ -94,9 +94,6 @@ def rna_pipeline(tmp_path) -> Pipeline:
     return Pipeline(config)
 
 
-from helpers import read_maf_output as _read_maf_output
-
-
 # ── VCF output tests ──────────────────────────────────────────────────────────
 
 
@@ -171,9 +168,8 @@ def test_rna_pipeline_maf_has_rna_column_headers(rna_pipeline, snp_variant, tmp_
     out_maf = out_dir / "rna_sample.maf"
     assert out_maf.exists(), f"Expected output MAF at {out_maf}"
 
-    with open(out_maf) as f:
-        reader = _read_maf_output(out_maf)
-        fieldnames = reader.fieldnames or []
+    reader = _read_maf_output(out_maf)
+    fieldnames = reader.fieldnames or []
 
     rna_cols = {
         "rna_sense_depth",
@@ -199,9 +195,8 @@ def test_rna_pipeline_maf_data_row_has_rna_values(rna_pipeline, snp_variant, tmp
     rna_pipeline._write_output("rna_sample", [snp_variant], [counts], prepared=None)
 
     out_maf = out_dir / "rna_sample.maf"
-    with open(out_maf) as f:
-        reader = _read_maf_output(out_maf)
-        row = next(reader)
+    reader = _read_maf_output(out_maf)
+    row = next(reader)
 
     assert row["rna_sense_depth"] == "18", f"Expected 18, got {row['rna_sense_depth']!r}"
     assert row["rna_antisense_depth"] == "5", f"Expected 5, got {row['rna_antisense_depth']!r}"
@@ -235,8 +230,7 @@ def test_dna_pipeline_maf_lacks_rna_columns(tmp_path, snp_variant):
     pipeline._write_output("dna_sample", [snp_variant], [_zero_counts()], prepared=None)
 
     out_maf = out_dir / "dna_sample.maf"
-    with open(out_maf) as f:
-        fieldnames = _read_maf_output(out_maf).fieldnames or []
+    fieldnames = _read_maf_output(out_maf).fieldnames or []
 
     rna_cols = [
         "rna_sense_depth",

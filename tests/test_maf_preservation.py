@@ -8,13 +8,11 @@ Verifies that MafWriter in MAF→MAF mode:
 """
 
 import csv
-from pathlib import Path
-
-from gbcms.io.input import MafReader
-from gbcms.io.output import MafWriter
 
 from helpers import read_maf_output as _read_maf_output
 
+from gbcms.io.input import MafReader
+from gbcms.io.output import MafWriter
 
 
 # Mock counts object matching Rust BaseCounts interface
@@ -286,7 +284,7 @@ def test_vcf_to_maf_always_uses_sample_name(tmp_path):
     w.write(vcf_variant, MockCounts(), sample_name="RNASample_01")
     w.close()
 
-    with open(out_vcf_maf) as f:
+    with open(out_vcf_maf):
         row = next(_read_maf_output(out_vcf_maf))
     assert row["Tumor_Sample_Barcode"] == "RNASample_01", (
         "VCF→MAF must always use BAM sample_name for Tumor_Sample_Barcode, "

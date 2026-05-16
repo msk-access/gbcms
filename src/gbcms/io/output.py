@@ -7,6 +7,7 @@ to output files, handling format-specific columns and headers.
 
 import csv
 import logging
+import math
 from pathlib import Path
 from typing import Any
 
@@ -45,8 +46,6 @@ CH_GENES: frozenset[str] = frozenset(
         "STAG2",
     }
 )
-
-import math
 
 
 def _fmt(v: float) -> str:
@@ -755,11 +754,13 @@ class VcfWriter(OutputWriter):
         # FILTER header — required by VCF 4.2 spec even when only PASS is used
         headers.append('##FILTER=<ID=PASS,Description="All filters passed">')
         # INFO fields
-        headers.extend([
-            '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
-            '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">',
-            '##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">',
-        ])
+        headers.extend(
+            [
+                '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
+                '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">',
+                '##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">',
+            ]
+        )
         # GR INFO header only included when --rescue-mnp is enabled (design §5)
         if self.rescue_mnp:
             headers.append(

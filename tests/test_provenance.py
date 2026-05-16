@@ -7,15 +7,13 @@ Covers plan steps:
   4g — VCF INFO strand bias NaN → '.' sentinel
 """
 
-import math
 from types import SimpleNamespace
 
 import pytest
+from helpers import read_maf_output
 
 from gbcms.io.output import MafWriter, VcfWriter, _fmt, _fmt_sci, _fmt_vcf, _fmt_vcf_sci
 from gbcms.models.core import Variant, VariantType
-
-from helpers import read_maf_output
 
 _nan = float("nan")
 
@@ -25,22 +23,59 @@ _nan = float("nan")
 
 def _mock_counts(**overrides):
     """Minimal mock counts with all required fields. Override any field via kwargs."""
-    defaults = dict(
-        dp=10, rd=8, ad=2, dp_fwd=5, dp_rev=5, rd_fwd=4, rd_rev=4,
-        ad_fwd=1, ad_rev=1, dpf=5, rdf=4, adf=1,
-        rdf_fwd=2, rdf_rev=2, adf_fwd=0, adf_rev=1,
-        sb_pval=1.0, sb_or=0.0, fsb_pval=1.0, fsb_or=0.0,
-        any_alt=2, partial_alt=0, n_count=0,
-        mfsd_ref_count=0, mfsd_alt_count=0, mfsd_nonref_count=0, mfsd_n_count=0,
-        mfsd_ref_mean=_nan, mfsd_alt_mean=_nan, mfsd_nonref_mean=_nan, mfsd_n_mean=_nan,
-        mfsd_alt_llr=_nan, mfsd_ref_llr=_nan,
-        mfsd_delta_alt_ref=_nan, mfsd_ks_alt_ref=_nan, mfsd_pval_alt_ref=_nan,
-        mfsd_delta_alt_nonref=_nan, mfsd_ks_alt_nonref=_nan, mfsd_pval_alt_nonref=_nan,
-        mfsd_delta_ref_nonref=_nan, mfsd_ks_ref_nonref=_nan, mfsd_pval_ref_nonref=_nan,
-        mfsd_delta_alt_n=_nan, mfsd_ks_alt_n=_nan, mfsd_pval_alt_n=_nan,
-        mfsd_delta_ref_n=_nan, mfsd_ks_ref_n=_nan, mfsd_pval_ref_n=_nan,
-        mfsd_delta_nonref_n=_nan, mfsd_ks_nonref_n=_nan, mfsd_pval_nonref_n=_nan,
-    )
+    defaults = {
+        "dp": 10,
+        "rd": 8,
+        "ad": 2,
+        "dp_fwd": 5,
+        "dp_rev": 5,
+        "rd_fwd": 4,
+        "rd_rev": 4,
+        "ad_fwd": 1,
+        "ad_rev": 1,
+        "dpf": 5,
+        "rdf": 4,
+        "adf": 1,
+        "rdf_fwd": 2,
+        "rdf_rev": 2,
+        "adf_fwd": 0,
+        "adf_rev": 1,
+        "sb_pval": 1.0,
+        "sb_or": 0.0,
+        "fsb_pval": 1.0,
+        "fsb_or": 0.0,
+        "any_alt": 2,
+        "partial_alt": 0,
+        "n_count": 0,
+        "mfsd_ref_count": 0,
+        "mfsd_alt_count": 0,
+        "mfsd_nonref_count": 0,
+        "mfsd_n_count": 0,
+        "mfsd_ref_mean": _nan,
+        "mfsd_alt_mean": _nan,
+        "mfsd_nonref_mean": _nan,
+        "mfsd_n_mean": _nan,
+        "mfsd_alt_llr": _nan,
+        "mfsd_ref_llr": _nan,
+        "mfsd_delta_alt_ref": _nan,
+        "mfsd_ks_alt_ref": _nan,
+        "mfsd_pval_alt_ref": _nan,
+        "mfsd_delta_alt_nonref": _nan,
+        "mfsd_ks_alt_nonref": _nan,
+        "mfsd_pval_alt_nonref": _nan,
+        "mfsd_delta_ref_nonref": _nan,
+        "mfsd_ks_ref_nonref": _nan,
+        "mfsd_pval_ref_nonref": _nan,
+        "mfsd_delta_alt_n": _nan,
+        "mfsd_ks_alt_n": _nan,
+        "mfsd_pval_alt_n": _nan,
+        "mfsd_delta_ref_n": _nan,
+        "mfsd_ks_ref_n": _nan,
+        "mfsd_pval_ref_n": _nan,
+        "mfsd_delta_nonref_n": _nan,
+        "mfsd_ks_nonref_n": _nan,
+        "mfsd_pval_nonref_n": _nan,
+    }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -177,9 +212,9 @@ def test_vcf_header_contains_filter_pass(tmp_path):
     writer.close()
 
     content = vcf_path.read_text()
-    assert '##FILTER=<ID=PASS,Description="All filters passed">' in content, (
-        "Missing FILTER PASS header"
-    )
+    assert (
+        '##FILTER=<ID=PASS,Description="All filters passed">' in content
+    ), "Missing FILTER PASS header"
 
 
 # ── 4f: MAF provenance comment line tests ────────────────────────────────
@@ -194,9 +229,9 @@ def test_maf_has_version_comment_line(tmp_path):
     with open(maf_path) as f:
         first_line = f.readline()
 
-    assert first_line.startswith("#gbcms v"), (
-        f"Expected first line to start with '#gbcms v', got: {first_line!r}"
-    )
+    assert first_line.startswith(
+        "#gbcms v"
+    ), f"Expected first line to start with '#gbcms v', got: {first_line!r}"
 
 
 def test_maf_has_command_comment_line(tmp_path):
@@ -209,7 +244,7 @@ def test_maf_has_command_comment_line(tmp_path):
     with open(maf_path) as f:
         lines = f.readlines()
 
-    command_lines = [l for l in lines if l.startswith("#command")]
+    command_lines = [line for line in lines if line.startswith("#command")]
     assert len(command_lines) == 1, f"Expected 1 #command line, found {len(command_lines)}"
     assert cmd in command_lines[0], f"Command not found in #command line: {command_lines[0]!r}"
 
@@ -237,7 +272,12 @@ def test_maf_comment_lines_skipped_by_reader(tmp_path, snp_variant):
 def test_vcf_info_nan_strand_bias_renders_as_dot(tmp_path, snp_variant):
     """VCF INFO fields SB_PVAL/SB_OR must render NaN as '.' (not literal 'nan')."""
     counts = _mock_counts(
-        ad=0, any_alt=0, sb_pval=1.0, sb_or=_nan, fsb_pval=1.0, fsb_or=_nan,
+        ad=0,
+        any_alt=0,
+        sb_pval=1.0,
+        sb_or=_nan,
+        fsb_pval=1.0,
+        fsb_or=_nan,
     )
 
     vcf_path = tmp_path / "nan_test.vcf"
@@ -245,7 +285,7 @@ def test_vcf_info_nan_strand_bias_renders_as_dot(tmp_path, snp_variant):
     writer.write(snp_variant, counts)
     writer.close()
 
-    data_lines = [l for l in vcf_path.read_text().splitlines() if not l.startswith("#")]
+    data_lines = [line for line in vcf_path.read_text().splitlines() if not line.startswith("#")]
     assert len(data_lines) == 1
 
     info_field = data_lines[0].split("\t")[7]
@@ -260,18 +300,37 @@ def test_vcf_info_nan_strand_bias_renders_as_dot(tmp_path, snp_variant):
 
 def _rna_mock_counts(**overrides):
     """Mock counts with RNA-specific fields."""
-    defaults = dict(
-        dp=10, rd=8, ad=2, dp_fwd=5, dp_rev=5, rd_fwd=4, rd_rev=4,
-        ad_fwd=1, ad_rev=1, dpf=5, rdf=4, adf=1,
-        rdf_fwd=2, rdf_rev=2, adf_fwd=0, adf_rev=1,
-        sb_pval=1.0, sb_or=0.0, fsb_pval=1.0, fsb_or=0.0,
-        any_alt=2, partial_alt=0, n_count=0,
+    defaults = {
+        "dp": 10,
+        "rd": 8,
+        "ad": 2,
+        "dp_fwd": 5,
+        "dp_rev": 5,
+        "rd_fwd": 4,
+        "rd_rev": 4,
+        "ad_fwd": 1,
+        "ad_rev": 1,
+        "dpf": 5,
+        "rdf": 4,
+        "adf": 1,
+        "rdf_fwd": 2,
+        "rdf_rev": 2,
+        "adf_fwd": 0,
+        "adf_rev": 1,
+        "sb_pval": 1.0,
+        "sb_or": 0.0,
+        "fsb_pval": 1.0,
+        "fsb_or": 0.0,
+        "any_alt": 2,
+        "partial_alt": 0,
+        "n_count": 0,
         # RNA-specific
-        sense_depth=6, antisense_depth=4,
-        sense_strand_alt_count=1,
-        rna_editing_site_overlap=0,
-        splice_spanning_count=0,
-    )
+        "sense_depth": 6,
+        "antisense_depth": 4,
+        "sense_strand_alt_count": 1,
+        "rna_editing_site_overlap": 0,
+        "splice_spanning_count": 0,
+    }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -296,9 +355,9 @@ def test_vcf_header_rna_mode_contains_provenance(tmp_path):
     assert f"##gbcms_command={cmd}" in content, "Missing ##gbcms_command in RNA mode"
     assert "##reference=file:///path/to/ref.fa" in content, "Missing ##reference in RNA mode"
     assert "##contig=<ID=chr1,length=248956422>" in content, "Missing ##contig in RNA mode"
-    assert '##FILTER=<ID=PASS,Description="All filters passed">' in content, (
-        "Missing ##FILTER in RNA mode"
-    )
+    assert (
+        '##FILTER=<ID=PASS,Description="All filters passed">' in content
+    ), "Missing ##FILTER in RNA mode"
 
 
 def test_maf_rna_mode_has_provenance_comments(tmp_path, snp_variant):
@@ -327,4 +386,3 @@ def test_maf_rna_mode_has_provenance_comments(tmp_path, snp_variant):
     # RNA-specific column must be present
     assert "rna_sense_depth" in row, f"Missing RNA column, got: {list(row.keys())}"
     assert row["rna_sense_depth"] == "6"
-

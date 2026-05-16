@@ -203,7 +203,7 @@ def count_both(
 def read_maf_output(path):
     """Read MAF output, skipping #-prefixed provenance comment lines.
 
-    MafWriter emits provenance headers (e.g., ``#gbcms v5.2.0``,
+    MafWriter emits provenance headers (e.g., ``#gbcms v5.3.0``,
     ``#command ...``) before the TSV header row.  These must be
     skipped for ``csv.DictReader`` to parse the file correctly.
 
@@ -216,4 +216,3 @@ def read_maf_output(path):
     with open(path) as f:
         lines = [line for line in f if not line.startswith("#")]
     return csv.DictReader(io.StringIO("".join(lines)), delimiter="\t")
-

@@ -532,10 +532,12 @@ def _compute_combined_strand_bias(
     # Polars writes NaN as literal 'NaN' in CSV — convert to 'NA' for MAF.
     sb_cols = [c for c in df.columns if "strand_bias" in c and c.startswith("simplex_duplex_")]
     if sb_cols:
-        df = df.with_columns([
-            pl.col(c).cast(pl.Utf8).str.replace("NaN", "NA").str.replace("inf", "NA")
-            for c in sb_cols
-        ])
+        df = df.with_columns(
+            [
+                pl.col(c).cast(pl.Utf8).str.replace("NaN", "NA").str.replace("inf", "NA")
+                for c in sb_cols
+            ]
+        )
         logger.debug(
             "Sanitized %d combined strand bias columns (NaN/inf → NA)",
             len(sb_cols),

@@ -16,13 +16,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pysam
+from helpers import read_maf_output as _read_maf_output
 
 from gbcms import _rs as gbcms_rs
 from gbcms.io.output import MafWriter
 from gbcms.models.core import Variant, VariantType
 from gbcms.normalize import normalize_variants
-
-from helpers import read_maf_output as _read_maf_output
 
 
 class TestNormalization(unittest.TestCase):
@@ -252,8 +251,6 @@ class TestNormalization(unittest.TestCase):
             mfsd_pval_nonref_n=_nan,
         )
 
-
-
     def test_show_normalization_columns(self):
         """MafWriter should include norm_* columns when show_normalization=True."""
         output_path = self.base_path / "test_norm.maf"
@@ -266,7 +263,7 @@ class TestNormalization(unittest.TestCase):
         writer.write(variant, self._zero_counts(), norm_variant=norm_variant)
         writer.close()
 
-        with open(output_path) as f:
+        with open(output_path):
             reader = _read_maf_output(output_path)
             rows = list(reader)
 
@@ -288,7 +285,7 @@ class TestNormalization(unittest.TestCase):
         writer.write(variant, self._zero_counts(), norm_variant=norm_variant)
         writer.close()
 
-        with open(output_path) as f:
+        with open(output_path):
             reader = _read_maf_output(output_path)
             rows = list(reader)
 
@@ -310,7 +307,7 @@ class TestNormalization(unittest.TestCase):
         writer.write(variant, self._zero_counts())
         writer.close()
 
-        with open(output_path) as f:
+        with open(output_path):
             reader = _read_maf_output(output_path)
             rows = list(reader)
 
