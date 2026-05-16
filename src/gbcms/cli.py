@@ -13,6 +13,7 @@ Validation order (enforced for every option):
 import logging
 import os
 import re
+import sys
 from pathlib import Path
 
 import typer
@@ -63,6 +64,18 @@ _COLUMN_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]*$")
 app = typer.Typer(help="gbcms: Get Base Counts Multi-Sample")
 
 
+def _log_command() -> str:
+    """Log the full CLI command for reproducibility and return the command string.
+
+    Logs the reconstructed command at INFO level so users and pipeline logs
+    capture exactly what was invoked. Returns the string for embedding in
+    VCF/MAF provenance headers.
+    """
+    command_line = " ".join(sys.argv)
+    logger.info("Command: %s", command_line)
+    return command_line
+
+
 def _is_compressed_vcf(path: Path) -> bool:
     """Return True if *path* has a compressed-VCF suffix (.vcf.gz or .vcf.bgz).
 
@@ -100,7 +113,7 @@ def dna(
         ..., "--variants", "-v", help="Path to VCF or MAF file containing variants"
     ),
     bam_files: list[Path] | None = typer.Option(
-        None, "--bam", "-b", help="Path to BAM file(s). Can be specified multiple times."
+        None, "--bam", "-b", help="Path to BAM/CRAM file(s). Can be specified multiple times."
     ),
     bam_list: Path | None = typer.Option(
         None, "--bam-list", "-L", help="File containing list of BAM paths (one per line)"
@@ -319,7 +332,8 @@ def dna(
     """
     # ── 1. Logging (must be first so all subsequent checks log correctly) ──────
     setup_logging(verbose=verbose, trace=trace)
-    logger.info("Running gbcms in DNA mode")
+    command_line = _log_command()
+    logger.info("Running gbcms v%s in DNA mode", __version__)
     if rescue_mnp:
         logger.info(
             "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
@@ -455,6 +469,7 @@ def dna(
             quality=quality_config,
             filters=filter_config,
             threads=threads,
+            command_line=command_line,
             alignment=alignment_config,
             show_normalization=show_normalization,
             apply_baq=apply_baq,
@@ -478,7 +493,7 @@ def rna(
         ..., "--variants", "-v", help="Path to VCF or MAF file containing variants"
     ),
     bam_files: list[Path] | None = typer.Option(
-        None, "--bam", "-b", help="Path to BAM file(s). Can be specified multiple times."
+        None, "--bam", "-b", help="Path to BAM/CRAM file(s). Can be specified multiple times."
     ),
     bam_list: Path | None = typer.Option(
         None, "--bam-list", "-L", help="File containing list of BAM paths (one per line)"
@@ -676,7 +691,8 @@ def rna(
     """
     # ── 1. Logging ──
     setup_logging(verbose=verbose, trace=trace)
-    logger.info("Running gbcms in RNA mode")
+    command_line = _log_command()
+    logger.info("Running gbcms v%s in RNA mode", __version__)
     if rescue_mnp:
         logger.info(
             "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
@@ -791,6 +807,7 @@ def rna(
             quality=quality_config,
             filters=filter_config,
             threads=threads,
+            command_line=command_line,
             alignment=alignment_config,
             show_normalization=show_normalization,
             apply_baq=apply_baq,
@@ -912,6 +929,7 @@ def merge(
     from .merge import merge_mafs
 
     setup_logging(verbose=verbose, trace=False)
+    _log_command()
     logger.info("gbcms merge v%s", __version__)
 
     # ── Pre-model: parse type:path pairs ──────────────────────────────────

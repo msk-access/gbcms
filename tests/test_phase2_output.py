@@ -12,7 +12,6 @@ Covers:
 9. Column count delta vs. Phase 0/1 (should be +3)
 """
 
-import csv
 import types
 
 import pytest
@@ -20,6 +19,8 @@ import pytest
 from gbcms.io.output import MafWriter, VcfWriter
 from gbcms.models.core import Variant, VariantType
 from gbcms.pipeline import _zero_counts
+
+from helpers import read_maf_output as _read_maf_output
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -142,8 +143,7 @@ def test_maf_diagnostic_values(tmp_path, mock_variant):
     writer.write(mock_variant, counts)
     writer.close()
 
-    with open(maf_path) as f:
-        row = next(csv.DictReader(f, delimiter="\t"))
+    row = next(_read_maf_output(maf_path))
 
     assert row["any_alt"] == "12", f"Expected any_alt=12, got {row['any_alt']}"
     assert row["partial_alt"] == "3", f"Expected partial_alt=3, got {row['partial_alt']}"

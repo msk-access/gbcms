@@ -45,7 +45,7 @@ flowchart TB
 flowchart LR
     subgraph Input
         VCF["VCF/MAF"]
-        BAM["BAM Files"]
+        BAM["BAM/CRAM Files"]
         FASTA["Reference FASTA"]
     end
 

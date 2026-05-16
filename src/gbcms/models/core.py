@@ -346,6 +346,15 @@ class GbcmsBaseConfig(BaseModel):
     # Performance
     threads: int = Field(default=1, ge=1, description="Number of threads")
 
+    # Provenance — full CLI command for VCF/MAF headers and log reproducibility
+    command_line: str = Field(
+        default="",
+        description=(
+            "Full reconstructed CLI command (sys.argv joined). Embedded in "
+            "VCF ##gbcms_command and MAF #command provenance headers."
+        ),
+    )
+
     # Alignment backend
     alignment: AlignmentConfig = Field(default_factory=AlignmentConfig)
 

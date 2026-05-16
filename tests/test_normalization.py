@@ -10,7 +10,6 @@ They use small synthetic MAF files and a reference FASTA to verify:
 - show_normalization columns in MafWriter output
 """
 
-import csv
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +21,8 @@ from gbcms import _rs as gbcms_rs
 from gbcms.io.output import MafWriter
 from gbcms.models.core import Variant, VariantType
 from gbcms.normalize import normalize_variants
+
+from helpers import read_maf_output as _read_maf_output
 
 
 class TestNormalization(unittest.TestCase):
@@ -251,6 +252,8 @@ class TestNormalization(unittest.TestCase):
             mfsd_pval_nonref_n=_nan,
         )
 
+
+
     def test_show_normalization_columns(self):
         """MafWriter should include norm_* columns when show_normalization=True."""
         output_path = self.base_path / "test_norm.maf"
@@ -264,7 +267,7 @@ class TestNormalization(unittest.TestCase):
         writer.close()
 
         with open(output_path) as f:
-            reader = csv.DictReader(f, delimiter="\t")
+            reader = _read_maf_output(output_path)
             rows = list(reader)
 
         self.assertEqual(len(rows), 1)
@@ -286,7 +289,7 @@ class TestNormalization(unittest.TestCase):
         writer.close()
 
         with open(output_path) as f:
-            reader = csv.DictReader(f, delimiter="\t")
+            reader = _read_maf_output(output_path)
             rows = list(reader)
 
         header = rows[0].keys()
@@ -308,7 +311,7 @@ class TestNormalization(unittest.TestCase):
         writer.close()
 
         with open(output_path) as f:
-            reader = csv.DictReader(f, delimiter="\t")
+            reader = _read_maf_output(output_path)
             rows = list(reader)
 
         header = rows[0].keys()

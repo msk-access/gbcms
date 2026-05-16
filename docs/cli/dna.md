@@ -1,6 +1,6 @@
 # gbcms dna
 
-Count alleles at variant positions across one or more DNA/cfDNA BAM files.
+Count alleles at variant positions across one or more DNA/cfDNA BAM/CRAM files.
 
 !!! info "Migrated from `gbcms run`"
     The deprecated `gbcms run` command was removed in v4.1.0. Use `gbcms dna` instead — all arguments are identical.
@@ -16,10 +16,19 @@ gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
 | Option | Description |
 |:-------|:------------|
 | `--variants`, `-v` | [VCF or MAF](../reference/input-formats.md) file with variant positions (`.vcf`, `.vcf.gz`, `.vcf.bgz`, or `.maf`). Unsupported extensions are rejected immediately. |
-| `--bam`, `-b` | BAM file path (can repeat). Optionally prefix with `name:` for sample naming, e.g. `--bam tumor:tumor.bam`. If no name given, the filename stem is used. |
-| `--bam-list`, `-L` | File containing BAM paths (one per line, optionally `sample_name path`). Alternative to repeated `--bam`. |
-| `--fasta`, `-f` | Reference FASTA file (with .fai index) |
-| `--lenient-bam` | Skip missing `--bam` paths and continue with remaining samples (default: exit immediately on first missing BAM). Note: a missing `--bam-list` file always fails regardless. |
+| `--bam`, `-b` | BAM or CRAM file path (can repeat). Optionally prefix with `name:` for sample naming, e.g. `--bam tumor:tumor.bam`. If no name given, the filename stem is used. |
+| `--bam-list`, `-L` | File containing BAM/CRAM paths (one per line, optionally `sample_name path`). Alternative to repeated `--bam`. |
+| `--fasta`, `-f` | Reference FASTA file (with .fai index). **Required** for all runs; also used for CRAM decoding. |
+| `--lenient-bam` | Skip missing `--bam` paths and continue with remaining samples (default: exit immediately on first missing BAM/CRAM). Note: a missing `--bam-list` file always fails regardless. |
+
+!!! tip "CRAM Support (v5.3.0+)"
+    `--bam` accepts both BAM (`.bam`) and CRAM (`.cram`) files transparently.
+    The `--fasta` reference is automatically used for CRAM decoding at both the Rust
+    engine and Python header-validation layers.  No additional flags are needed.
+
+    Index discovery is automatic: gbcms searches for `.bam.bai` / `.bai` (BAM) or
+    `.cram.crai` / `.crai` (CRAM) next to the alignment file.  You can also provide
+    the index path explicitly via the Nextflow samplesheet `bai` column.
 
 ## Output Options
 

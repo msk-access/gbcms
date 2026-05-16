@@ -47,15 +47,31 @@ pub fn fisher_exact_2x2(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
 
     let n = a + b + c + d;
     if n == 0 {
-        return (1.0, 0.0);
+        return (1.0, f64::NAN);
+    }
+
+    // Guard: strand bias is undefined/underpowered with ≤1 observation in
+    // either row. For the primary use-case (strand bias), row 2 = ALT counts.
+    // With 0–1 ALT reads there is no statistical power to detect asymmetry;
+    // the Hypergeometric distribution becomes degenerate (K ≈ N), causing
+    // floating-point underflow that produces p ≈ 0 (see GitHub issue #19).
+    //
+    // Returning NaN for OR signals "undefined" — downstream writers format
+    // NaN as '.' in VCF (spec-compliant missing value).
+    let row2_total = c + d;
+    if row2_total <= 1 {
+        return (1.0, f64::NAN);
     }
 
     // Calculate Odds Ratio: (a*d) / (b*c)
-    // Add small epsilon to avoid division by zero if needed, but standard is 0/Inf
+    // When either cell in the denominator is zero, the OR is mathematically
+    // undefined (0/0 or x/0). We return NaN rather than Infinity because:
+    //   1. VCF Float fields do not support 'inf' (spec violation)
+    //   2. NaN → '.' in output (standard missing value sentinel)
     let numerator = (a as f64) * (d as f64);
     let denominator = (b as f64) * (c as f64);
     let odds_ratio = if denominator == 0.0 {
-        if numerator == 0.0 { 0.0 } else { f64::INFINITY }
+        f64::NAN
     } else {
         numerator / denominator
     };
@@ -222,7 +238,42 @@ mod tests {
     fn test_fisher_empty_table() {
         let (p, or) = fisher_exact_2x2(0, 0, 0, 0);
         assert_eq!(p, 1.0);
-        assert_eq!(or, 0.0);
+        assert!(or.is_nan(), "Empty table OR should be NaN, got {}", or);
+    }
+
+    #[test]
+    fn test_fisher_single_alt_read_runx1() {
+        // Regression: RUNX1 duplex BAM variant with 1 ALT read (GitHub #19).
+        // Previously returned (p≈0.0, OR=inf) due to degenerate Hypergeometric.
+        // With ≤1 ALT read, strand bias is undefined — must return (1.0, NaN).
+        let (p, or) = fisher_exact_2x2(1852, 1484, 0, 1);
+        assert_eq!(p, 1.0, "1 ALT read should give p=1.0, got {}", p);
+        assert!(or.is_nan(), "1 ALT read should give OR=NaN, got {}", or);
+    }
+
+    #[test]
+    fn test_fisher_zero_alt_reads() {
+        // No ALT reads at all — strand bias is undefined.
+        let (p, or) = fisher_exact_2x2(100, 100, 0, 0);
+        assert_eq!(p, 1.0, "0 ALT reads should give p=1.0, got {}", p);
+        assert!(or.is_nan(), "0 ALT reads should give OR=NaN, got {}", or);
+    }
+
+    #[test]
+    fn test_fisher_single_alt_one_sided() {
+        // 1 ALT read on forward only — still ≤1 total ALT, so underpowered.
+        let (p, or) = fisher_exact_2x2(50, 50, 1, 0);
+        assert_eq!(p, 1.0, "1 ALT read (one-sided) should give p=1.0, got {}", p);
+        assert!(or.is_nan(), "1 ALT read (one-sided) should give OR=NaN, got {}", or);
+    }
+
+    #[test]
+    fn test_fisher_two_alt_reads_computes_normally() {
+        // Boundary: exactly 2 ALT reads — should compute normally (not early return).
+        // With 2 ALT reads (1 fwd, 1 rev), balanced → p should be high (no bias).
+        let (p, or) = fisher_exact_2x2(50, 50, 1, 1);
+        assert!(p > 0.5, "2 balanced ALT reads should have p > 0.5, got {}", p);
+        assert!(!or.is_nan(), "2 ALT reads should produce a real OR, got NaN");
     }
 
     #[test]

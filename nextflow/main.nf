@@ -87,29 +87,44 @@ workflow {
                 meta.suffix = params.suffix
             }
             
-            def bam = file(row.bam, checkIfExists: true)
+            def alignment = file(row.bam, checkIfExists: true)
             
-            // Handle BAI: if provided use it, otherwise auto-discover with both naming conventions
-            def bai
+            // Handle index: if provided use it, otherwise auto-discover.
+            // Supports both BAM (.bai) and CRAM (.crai) index conventions.
+            def idx
             if (row.bai) {
-                bai = file(row.bai, checkIfExists: true)
+                idx = file(row.bai, checkIfExists: true)
+            } else if (row.bam.endsWith('.cram')) {
+                // CRAM index conventions: .cram.crai and .crai
+                def crai_path1 = "${row.bam}.crai"
+                def crai_path2 = row.bam.replaceAll(/\.cram$/, '.crai')
+                def crai1 = file(crai_path1)
+                def crai2 = file(crai_path2)
+                
+                if (crai1.exists()) {
+                    idx = crai1
+                } else if (crai2.exists()) {
+                    idx = crai2
+                } else {
+                    error "CRAI index not found for ${row.bam}. Searched: ${crai_path1}, ${crai_path2}"
+                }
             } else {
-                // Try both common BAI naming conventions: .bam.bai and .bai
+                // BAM index conventions: .bam.bai and .bai
                 def bai_path1 = "${row.bam}.bai"
                 def bai_path2 = row.bam.replaceAll(/\.bam$/, '.bai')
                 def bai1 = file(bai_path1)
                 def bai2 = file(bai_path2)
                 
                 if (bai1.exists()) {
-                    bai = bai1
+                    idx = bai1
                 } else if (bai2.exists()) {
-                    bai = bai2
+                    idx = bai2
                 } else {
                     error "BAI index not found for ${row.bam}. Searched: ${bai_path1}, ${bai_path2}"
                 }
             }
             
-            return [ meta, bam, bai ]
+            return [ meta, alignment, idx ]
         }
         .set { ch_samplesheet }
 

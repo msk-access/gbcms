@@ -1,4 +1,4 @@
-//! Counting engine: BAM read classification → allele counts.
+//! Counting engine: BAM/CRAM read classification → allele counts.
 //!
 //! Entry point: `count_bam_binned()` groups variants into genomic bins,
 //! issues one `bam.fetch()` per bin, and classifies each read against all
@@ -269,7 +269,7 @@ impl AlignmentBackend {
 /// // pipeline.py can switch to the binned codepath.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false, reference_fasta=None))]
 pub fn count_bam(
     py: Python<'_>,
     bam_path: String,
@@ -294,6 +294,7 @@ pub fn count_bam(
     hmm_gap_extend_repeat: f64,
     mode: &str,
     enforce_strandedness: bool,
+    reference_fasta: Option<&str>,
 ) -> PyResult<Vec<BaseCounts>> {
     // Parse alignment backend from string
     let backend = match alignment_backend {
@@ -306,6 +307,9 @@ pub fn count_bam(
         },
         _ => AlignmentBackend::SmithWaterman,
     };
+
+    // Store FASTA path for CRAM reference decoding (safe no-op for BAM files)
+    let fasta_for_cram: Option<String> = reference_fasta.map(|p| p.to_string());
 
     // We cannot share a single IndexedReader across threads because it's not Sync.
     // Instead, we use rayon's map_init to initialize a reader for each thread.
@@ -337,11 +341,19 @@ pub fn count_bam(
             paired
                 .par_iter()
                 .map_init(
-                    || {
-                        // Initialize thread-local BAM reader
-                        bam::IndexedReader::from_path(&bam_path).map_err(|e| {
-                            anyhow::anyhow!("Failed to open BAM: {}", e)
-                        })
+                    || -> Result<bam::IndexedReader, anyhow::Error> {
+                        // Initialize thread-local BAM/CRAM reader
+                        let mut reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
+                            anyhow::anyhow!("Failed to open BAM/CRAM: {}", e)
+                        })?;
+                        // CRAM files require a reference FASTA for decoding.
+                        // set_reference() is a safe no-op for BAM files.
+                        if let Some(ref fasta) = fasta_for_cram {
+                            reader.set_reference(fasta).map_err(|e| {
+                                anyhow::anyhow!("Failed to set CRAM reference: {}", e)
+                            })?;
+                        }
+                        Ok(reader)
                     },
                     |bam_result, (variant, decomp_opt, siblings)| {
                         // Get the reader or return error if initialization failed
@@ -561,10 +573,18 @@ pub fn count_bam_binned(
         );
     }
 
-    // Build genomic bins using a temporary BAM reader for header access
-    let header_reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to open BAM: {}", e))
+    // Build genomic bins using a temporary BAM/CRAM reader for header access
+    let mut header_reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
+        pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to open BAM/CRAM: {}", e))
     })?;
+    // Set CRAM reference for header decoding (safe no-op for BAM)
+    if let Some(ref fasta) = fasta_path_owned {
+        header_reader.set_reference(fasta).map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                format!("Failed to set CRAM reference: {}", e)
+            )
+        })?;
+    }
     let bins = build_genomic_bins(&variants, header_reader.header(), BIN_WINDOW);
 
     // Pre-pad sibling_variants
@@ -601,9 +621,19 @@ pub fn count_bam_binned(
             bins.par_iter()
                 .map_init(
                     || {
-                        let bam_reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
-                            anyhow::anyhow!("Failed to open BAM: {}", e)
-                        });
+                        let bam_reader = (|| -> Result<bam::IndexedReader, anyhow::Error> {
+                            let mut reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
+                                anyhow::anyhow!("Failed to open BAM/CRAM: {}", e)
+                            })?;
+                            // CRAM files require a reference FASTA for decoding.
+                            // set_reference() is a safe no-op for BAM files.
+                            if let Some(ref fasta) = fasta_path_owned {
+                                reader.set_reference(fasta).map_err(|e| {
+                                    anyhow::anyhow!("Failed to set CRAM reference: {}", e)
+                                })?;
+                            }
+                            Ok(reader)
+                        })();
                         // Thread-local FASTA reader for splice motif classification
                         // (only opened when FASTA path is provided; None in DNA mode)
                         let fasta_reader: Option<bio::io::fasta::IndexedReader<std::fs::File>> =

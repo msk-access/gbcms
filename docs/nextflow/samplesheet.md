@@ -16,21 +16,34 @@ sample3,/path/to/sample3.bam,/path/to/sample3.bam.bai
 | Column | Required | Description |
 |:-------|:---------|:------------|
 | `sample` | Yes | Sample identifier (used in output filenames) |
-| `bam` | Yes | Path to BAM file |
-| `bai` | No | Path to BAM index (auto-discovers `.bam.bai` or `.bai`) |
+| `bam` | Yes | Path to BAM or CRAM file |
+| `bai` | No | Path to index file. Auto-discovers `.bam.bai`/`.bai` for BAM or `.cram.crai`/`.crai` for CRAM. |
 | `suffix` | No | Per-sample output suffix |
 | `bam_type` | No | BAM type label for [multi-BAM merging](#multi-bam-type-merging) (e.g., `duplex`, `simplex`) |
 | `tsb` | No | Tumor_Sample_Barcode pattern(s) for [MAF filtering](#multi-sample-maf-filtering) |
 
-## BAI Auto-Discovery
+## Index Auto-Discovery
 
-If `bai` column is empty, the pipeline checks for:
+If the `bai` column is empty, the pipeline auto-discovers the index based on the alignment file extension:
+
+**BAM files** (`.bam`):
 
 1. `<bam>.bai` (e.g., `sample.bam.bai`)
 2. `<bam_without_extension>.bai` (e.g., `sample.bai`)
 
+**CRAM files** (`.cram`, v5.3.0+):
+
+1. `<cram>.crai` (e.g., `sample.cram.crai`)
+2. `<cram_without_extension>.crai` (e.g., `sample.crai`)
+
 !!! tip
-    Leave the `bai` column empty to use auto-discovery.
+    Leave the `bai` column empty to use auto-discovery. You can also provide an
+    explicit index path of any naming convention.
+
+!!! info "CRAM Support (v5.3.0+)"
+    The `bam` column accepts both BAM and CRAM file paths.  The `--fasta` reference
+    is automatically threaded to the Rust engine and Python layers for CRAM decoding.
+    No additional configuration is needed.
 
 ## Per-Sample Suffix
 

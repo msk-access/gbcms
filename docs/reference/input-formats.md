@@ -106,11 +106,16 @@ gbcms automatically **left-aligns** indels and complex variants during the prepa
 samtools faidx reference.fa
 ```
 
-## BAM Requirements
+## BAM/CRAM Requirements
 
-- Must have corresponding `.bai` index
+- Must have corresponding index (`.bam.bai` or `.bai` for BAM; `.cram.crai` or `.crai` for CRAM)
 - Coordinate-sorted
 - Chromosome names must match reference
+
+!!! info "CRAM Support (v5.3.0+)"
+    Both `--bam` and `--bam-list` accept CRAM files transparently.
+    The `--fasta` reference is automatically used for CRAM decoding.
+    Index discovery is automatic — see [Samplesheet](../nextflow/samplesheet.md#index-auto-discovery).
 
 ## Related
 
