@@ -2121,13 +2121,13 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
         </script>
         </head><body><div><h1 id="gbcms">gbcms<a class="headerlink" href="#index-gbcms" title="Permanent link">¶</a></h1>
 <blockquote>
-<p><strong>Get Base Counts Multi-Sample</strong> — High-performance variant counting from <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> files</p>
+<p><strong>Get Base Counts Multi-Sample</strong> — High-performance variant counting from <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM files</p>
 </blockquote>
 <p><a href="https://pypi.org/project/gbcms/"><img alt="Version" src="https://img.shields.io/pypi/v/gbcms"></a>
 <a href="https://pypi.org/project/gbcms/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/gbcms"></a>
 <a href="https://github.com/msk-access/gbcms/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/msk-access/gbcms"></a></p>
 <h2 id="index-what-it-does">What It Does<a class="headerlink" href="#index-what-it-does" title="Permanent link">¶</a></h2>
-<p><abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> extracts <strong>allele counts</strong> and <strong>variant metrics</strong> at specified positions in <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> files:</p>
+<p><abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> extracts <strong>allele counts</strong> and <strong>variant metrics</strong> at specified positions in <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM files:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -2154,7 +2154,7 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
     VCF["📄 VCF/MAF\nVariant positions"]:1
     Engine["⚡ gbcms\nPython + Rust"]:1
     Counts["📊 Allele Counts\nDP · RD · AD · VAF"]:1
-    BAM["🗂️ BAM Files\n(1 to N samples)"]:1
+    BAM["🗂️ BAM/CRAM Files\n(1 to N samples)"]:1
     space:1
     Metrics["🧬 Fragment Counts\nStrand bias · mFSD"]:1
 
@@ -2915,11 +2915,11 @@ provides these dependencies.</p>
 <tbody>
 <tr>
 <td style="text-align: left;"><a href="#cli-dna"><strong>dna</strong></a></td>
-<td style="text-align: left;">Count alleles in DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> files</td>
+<td style="text-align: left;">Count alleles in DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM files</td>
 </tr>
 <tr>
 <td style="text-align: left;"><a href="#cli-rna"><strong>rna</strong></a></td>
-<td style="text-align: left;">Count alleles in RNA-seq BAMs with transcriptome-aware filtering</td>
+<td style="text-align: left;">Count alleles in RNA-seq <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM files with transcriptome-aware filtering</td>
 </tr>
 <tr>
 <td style="text-align: left;"><a href="#cli-merge"><strong>merge</strong></a></td>
@@ -2968,7 +2968,7 @@ provides these dependencies.</p>
         })
         </script>
         </head><body><div><h1 id="gbcms-dna">gbcms dna<a class="headerlink" href="#cli-dna-gbcms-dna" title="Permanent link">¶</a></h1>
-<p>Count alleles at variant positions across one or more DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> files.</p>
+<p>Count alleles at variant positions across one or more DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM files.</p>
 <div class="admonition info">
 <p class="admonition-title">Migrated from <code>gbcms run</code></p>
 <p>The deprecated <code>gbcms run</code> command was removed in v4.1.0. Use <code>gbcms dna</code> instead — all arguments are identical.</p>
@@ -2991,22 +2991,31 @@ provides these dependencies.</p>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--bam</code>, <code>-b</code></td>
-<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file path (can repeat). Optionally prefix with <code>name:</code> for sample naming, e.g. <code>--bam tumor:tumor.bam</code>. If no name given, the filename stem is used.</td>
+<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> or CRAM file path (can repeat). Optionally prefix with <code>name:</code> for sample naming, e.g. <code>--bam tumor:tumor.bam</code>. If no name given, the filename stem is used.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--bam-list</code>, <code>-L</code></td>
-<td style="text-align: left;">File containing <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> paths (one per line, optionally <code>sample_name path</code>). Alternative to repeated <code>--bam</code>.</td>
+<td style="text-align: left;">File containing <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM paths (one per line, optionally <code>sample_name path</code>). Alternative to repeated <code>--bam</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--fasta</code>, <code>-f</code></td>
-<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> file (with .fai index)</td>
+<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> file (with .fai index). <strong>Required</strong> for all runs; also used for CRAM decoding.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--lenient-bam</code></td>
-<td style="text-align: left;">Skip missing <code>--bam</code> paths and continue with remaining samples (default: exit immediately on first missing <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>). Note: a missing <code>--bam-list</code> file always fails regardless.</td>
+<td style="text-align: left;">Skip missing <code>--bam</code> paths and continue with remaining samples (default: exit immediately on first missing <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM). Note: a missing <code>--bam-list</code> file always fails regardless.</td>
 </tr>
 </tbody>
 </table>
+<div class="admonition tip">
+<p class="admonition-title">CRAM Support (v5.3.0+)</p>
+<p><code>--bam</code> accepts both <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> (<code>.bam</code>) and CRAM (<code>.cram</code>) files transparently.
+The <code>--fasta</code> reference is automatically used for CRAM decoding at both the Rust
+engine and Python header-validation layers.  No additional flags are needed.</p>
+<p>Index discovery is automatic: gbcms searches for <code>.bam.bai</code> / <code>.bai</code> (<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>) or
+<code>.cram.crai</code> / <code>.crai</code> (CRAM) next to the alignment file.  You can also provide
+the index path explicitly via the Nextflow samplesheet <code>bai</code> column.</p>
+</div>
 <h2 id="cli-dna-output-options">Output Options<a class="headerlink" href="#cli-dna-output-options" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -3458,7 +3467,7 @@ for the full design rationale.</p>
         })
         </script>
         </head><body><div><h1 id="gbcms-rna">gbcms rna<a class="headerlink" href="#cli-rna-gbcms-rna" title="Permanent link">¶</a></h1>
-<p>Count alleles in RNA-seq BAMs with transcriptome-aware filtering.</p>
+<p>Count alleles in RNA-seq <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM files with transcriptome-aware filtering.</p>
 <p>RNA mode extends the core DNA counting engine with filters and metrics specific to RNA-seq data: <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>-aware <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> rescue, <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> strandedness filtering, splice junction tracking, A-to-I RNA editing site flagging, GTF-based transcript annotation, and amplicon library support.</p>
 <h2 id="cli-rna-when-to-use">When to Use<a class="headerlink" href="#cli-rna-when-to-use" title="Permanent link">¶</a></h2>
 <table>
@@ -3523,7 +3532,7 @@ for the full design rationale.</p>
     <pre class="mermaid"><code>flowchart LR
     subgraph Inputs ["Inputs"]
         direction TB
-        BAM["BAM Files"]
+        BAM["BAM/CRAM Files"]
         VCF["VCF/MAF"]
         FASTA["Reference"]
         DB["REDIportal DB"]:::optional
@@ -3581,6 +3590,13 @@ Use mouse to pan and zoom
 <p>RNA mode shares all <a href="#cli-dna-required-arguments">required arguments</a>, <a href="#cli-dna-output-options">output options</a>, <a href="#cli-dna-filtering-options">filtering options</a>, <a href="#cli-dna-baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> options</a>, <a href="#cli-dna-umi-options"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> options</a>, <a href="#cli-dna-mnp-rescue-options"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue options</a>, and <a href="#cli-dna-debugging-options">debugging options</a> with DNA mode. See the <a href="#cli-dna"><code>gbcms dna</code> reference</a> for full descriptions.</p>
 </div>
 <div class="admonition tip">
+<p class="admonition-title">Provenance &amp; CRAM Support (v5.3.0+)</p>
+<p>RNA output includes the same provenance metadata as DNA mode — <code>##gbcms_command</code>,
+<code>##reference</code>, <code>##contig</code>, and <code>##FILTER</code> in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> headers; <code>#gbcms</code> and <code>#command</code>
+comment lines in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output.  <code>--bam</code> accepts both <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> and CRAM files
+transparently.  See <a href="#cli-dna-required-arguments">CRAM Support</a> for details.</p>
+</div>
+<div class="admonition tip">
 <p class="admonition-title"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is On by Default in RNA Mode</p>
 <p>Unlike DNA mode, <code>--apply-baq</code> defaults to <strong>on</strong> for RNA. <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> penalizes bases within 5 bp of both indels and splice junctions (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>), serving as a lightweight alternative to GATK SplitNCigarReads. Disable with <code>--no-baq</code> if your upstream workflow already runs SplitNCigarReads or <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>. See <a href="#reference-rna-splice-handling">RNA Splice-Junction Handling</a>.</p>
 </div>
@@ -3598,11 +3614,11 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><code>--bam</code>, <code>-b</code></td>
-<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file(s)</td>
+<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> or CRAM file(s)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--fasta</code>, <code>-f</code></td>
-<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (with .fai index)</td>
+<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (with .fai index). Also used for CRAM decoding.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--output-dir</code>, <code>-o</code></td>
@@ -4363,6 +4379,13 @@ Use mouse to pan and zoom
 </li>
 <li><strong>Write</strong> — Materialized DataFrame written as tab-separated <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></li>
 </ol>
+<div class="admonition info">
+<p class="admonition-title">Provenance Comment Lines (v5.3.0+)</p>
+<p>Starting in v5.3.0, gbcms <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output includes <code>#gbcms</code> and <code>#command</code>
+comment lines before the <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> header. The merge engine handles these
+automatically — Polars <code>scan_csv</code> is configured with <code>comment_prefix="#"</code>,
+which skips all <code>#</code>-prefixed lines. No manual pre-processing is needed.</p>
+</div>
 <hr>
 <h2 id="cli-merge-combined-columns">Combined Columns<a class="headerlink" href="#cli-merge-combined-columns" title="Permanent link">¶</a></h2>
 <p>When both <code>simplex</code> and <code>duplex</code> inputs are present, 20 combined <code>simplex_duplex_*</code>
@@ -4810,12 +4833,12 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;"><code>bam</code></td>
 <td style="text-align: left;">Yes</td>
-<td style="text-align: left;">Path to <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file</td>
+<td style="text-align: left;">Path to <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> or CRAM file</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>bai</code></td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">Path to <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> index (auto-discovers <code>.bam.bai</code> or <code>.bai</code>)</td>
+<td style="text-align: left;">Path to index file. Auto-discovers <code>.bam.bai</code>/<code>.bai</code> for <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> or <code>.cram.crai</code>/<code>.crai</code> for CRAM.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>suffix</code></td>
@@ -4834,15 +4857,28 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
-<h2 id="nextflow-samplesheet-bai-auto-discovery"><abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> Auto-Discovery<a class="headerlink" href="#nextflow-samplesheet-bai-auto-discovery" title="Permanent link">¶</a></h2>
-<p>If <code>bai</code> column is empty, the pipeline checks for:</p>
+<h2 id="nextflow-samplesheet-index-auto-discovery">Index Auto-Discovery<a class="headerlink" href="#nextflow-samplesheet-index-auto-discovery" title="Permanent link">¶</a></h2>
+<p>If the <code>bai</code> column is empty, the pipeline auto-discovers the index based on the alignment file extension:</p>
+<p><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> files</strong> (<code>.bam</code>):</p>
 <ol>
 <li><code>&lt;bam&gt;.bai</code> (e.g., <code>sample.bam.bai</code>)</li>
 <li><code>&lt;bam_without_extension&gt;.bai</code> (e.g., <code>sample.bai</code>)</li>
 </ol>
+<p><strong>CRAM files</strong> (<code>.cram</code>, v5.3.0+):</p>
+<ol>
+<li><code>&lt;cram&gt;.crai</code> (e.g., <code>sample.cram.crai</code>)</li>
+<li><code>&lt;cram_without_extension&gt;.crai</code> (e.g., <code>sample.crai</code>)</li>
+</ol>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Leave the <code>bai</code> column empty to use auto-discovery.</p>
+<p>Leave the <code>bai</code> column empty to use auto-discovery. You can also provide an
+explicit index path of any naming convention.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">CRAM Support (v5.3.0+)</p>
+<p>The <code>bam</code> column accepts both <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> and CRAM file paths.  The <code>--fasta</code> reference
+is automatically threaded to the Rust engine and Python layers for CRAM decoding.
+No additional configuration is needed.</p>
 </div>
 <h2 id="nextflow-samplesheet-per-sample-suffix">Per-Sample Suffix<a class="headerlink" href="#nextflow-samplesheet-per-sample-suffix" title="Permanent link">¶</a></h2>
 <p>For samples with multiple <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> types:</p>
@@ -4939,7 +4975,7 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 </tr>
 <tr>
 <td style="text-align: left;"><code>--fasta</code></td>
-<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (with .fai index)</td>
+<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (with .fai index). Also used for CRAM decoding.</td>
 </tr>
 </tbody>
 </table>
@@ -5552,7 +5588,7 @@ Use mouse to pan and zoom
     <pre class="mermaid"><code>flowchart LR
     subgraph Input
         VCF["VCF/MAF"]
-        BAM["BAM Files"]
+        BAM["BAM/CRAM Files"]
         FASTA["Reference FASTA"]
     end
 
@@ -6439,12 +6475,18 @@ Use mouse to pan and zoom
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-input-formats-__codelineno-3-1"></a><span class="c1"># Create index if missing</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-input-formats-__codelineno-3-2"></a>samtools<span class="w"> </span>faidx<span class="w"> </span>reference.fa
 </code></pre></div>
-<h2 id="reference-input-formats-bam-requirements"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Requirements<a class="headerlink" href="#reference-input-formats-bam-requirements" title="Permanent link">¶</a></h2>
+<h2 id="reference-input-formats-bamcram-requirements"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM Requirements<a class="headerlink" href="#reference-input-formats-bamcram-requirements" title="Permanent link">¶</a></h2>
 <ul>
-<li>Must have corresponding <code>.bai</code> index</li>
+<li>Must have corresponding index (<code>.bam.bai</code> or <code>.bai</code> for <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>; <code>.cram.crai</code> or <code>.crai</code> for CRAM)</li>
 <li>Coordinate-sorted</li>
 <li>Chromosome names must match reference</li>
 </ul>
+<div class="admonition info">
+<p class="admonition-title">CRAM Support (v5.3.0+)</p>
+<p>Both <code>--bam</code> and <code>--bam-list</code> accept CRAM files transparently.
+The <code>--fasta</code> reference is automatically used for CRAM decoding.
+Index discovery is automatic — see <a href="#nextflow-samplesheet-index-auto-discovery">Samplesheet</a>.</p>
+</div>
 <h2 id="reference-input-formats-related">Related<a class="headerlink" href="#reference-input-formats-related" title="Permanent link">¶</a></h2>
 <ul>
 <li><a href="#cli-dna">DNA <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference</a> — Usage examples</li>
@@ -6539,77 +6581,94 @@ Use mouse to pan and zoom
 <p>A standards-compliant VCFv4.2 file with one row per variant per sample.</p>
 <h3 id="reference-output-formats-file-header">File Header<a class="headerlink" href="#reference-output-formats-file-header" title="Permanent link">¶</a></h3>
 <p>The <code>##fileformat</code>, <code>##source</code>, and <code>##INFO</code>/<code>##FORMAT</code> meta-lines are
-written once. RNA-specific meta-lines are only included when running
-<code>gbcms rna</code> — the header is self-describing.</p>
+written once. Provenance metadata (<code>##gbcms_command</code>, <code>##reference</code>,
+<code>##contig</code>, <code>##FILTER</code>) is included when available. RNA-specific
+meta-lines are only included when running <code>gbcms rna</code> — the header is
+self-describing.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="" id="reference-output-formats-__tabbed_1_1" name="reference-output-formats-__tabbed_1" type="radio"><input id="reference-output-formats-__tabbed_1_2" name="reference-output-formats-__tabbed_1" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_1_1">DNA mode</label><label for="reference-output-formats-__tabbed_1_2">RNA mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-output-formats-__codelineno-0-1"></a>##fileformat=VCFv4.2
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-output-formats-__codelineno-0-2"></a>##source=gbcms
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#reference-output-formats-__codelineno-0-3"></a>##INFO=&lt;ID=DP,Number=1,Type=Integer,Description="Total Depth"&gt;
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#reference-output-formats-__codelineno-0-4"></a>##INFO=&lt;ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status"&gt;
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#reference-output-formats-__codelineno-0-5"></a>##INFO=&lt;ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags"&gt;
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#reference-output-formats-__codelineno-0-6"></a>##INFO=&lt;ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail"&gt;
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#reference-output-formats-__codelineno-0-7"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#reference-output-formats-__codelineno-0-8"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-output-formats-__codelineno-0-24"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-output-formats-__codelineno-0-25"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#reference-output-formats-__codelineno-0-26"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#reference-output-formats-__codelineno-0-27"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-output-formats-__codelineno-0-2"></a>##source=gbcms v5.3.0
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#reference-output-formats-__codelineno-0-3"></a>##gbcms_command=gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#reference-output-formats-__codelineno-0-4"></a>##reference=file:///path/to/ref.fa
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#reference-output-formats-__codelineno-0-5"></a>##contig=&lt;ID=chr1,length=248956422&gt;
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#reference-output-formats-__codelineno-0-6"></a>##contig=&lt;ID=chr2,length=242193529&gt;
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#reference-output-formats-__codelineno-0-7"></a>##FILTER=&lt;ID=PASS,Description="All filters passed"&gt;
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#reference-output-formats-__codelineno-0-8"></a>##INFO=&lt;ID=DP,Number=1,Type=Integer,Description="Total Depth"&gt;
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status"&gt;
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags"&gt;
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail"&gt;
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-output-formats-__codelineno-0-24"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-output-formats-__codelineno-0-25"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#reference-output-formats-__codelineno-0-26"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#reference-output-formats-__codelineno-0-27"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#reference-output-formats-__codelineno-0-28"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#reference-output-formats-__codelineno-0-29"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#reference-output-formats-__codelineno-0-30"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#reference-output-formats-__codelineno-0-31"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#reference-output-formats-__codelineno-0-32"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Provenance headers (v5.3.0)</p>
+<p><code>##gbcms_command</code>, <code>##reference</code>, <code>##contig</code>, and <code>##FILTER</code> lines
+are new in v5.3.0. <code>##contig</code> lines are auto-populated from the
+<code>.fai</code> index of the reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> when available.</p>
+</div>
 </div>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-output-formats-__codelineno-1-1"></a>##fileformat=VCFv4.2
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#reference-output-formats-__codelineno-1-2"></a>##source=gbcms
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#reference-output-formats-__codelineno-1-3"></a>##INFO=&lt;ID=DP,...&gt;
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-output-formats-__codelineno-1-4"></a>##INFO=&lt;ID=GS,...&gt;
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-output-formats-__codelineno-1-5"></a>##INFO=&lt;ID=GD,...&gt;
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#reference-output-formats-__codelineno-1-6"></a>##INFO=&lt;ID=GR,...&gt;
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-output-formats-__codelineno-1-7"></a>##INFO=&lt;ID=AAD,...&gt;
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#reference-output-formats-__codelineno-1-8"></a>##INFO=&lt;ID=PAD,...&gt;
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#reference-output-formats-__codelineno-1-9"></a>##INFO=&lt;ID=NAD,...&gt;
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#reference-output-formats-__codelineno-1-10"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#reference-output-formats-__codelineno-1-11"></a>##INFO=&lt;ID=SB_OR,...&gt;
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#reference-output-formats-__codelineno-1-12"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#reference-output-formats-__codelineno-1-13"></a>##INFO=&lt;ID=FSB_OR,...&gt;
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#reference-output-formats-__codelineno-1-14"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#reference-output-formats-__codelineno-1-15"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand"&gt;
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#reference-output-formats-__codelineno-1-16"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#reference-output-formats-__codelineno-1-17"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#reference-output-formats-__codelineno-1-18"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##FORMAT=&lt;ID=GT,...&gt;
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#reference-output-formats-__codelineno-1-20"></a>##FORMAT=&lt;ID=DP,...&gt;
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#reference-output-formats-__codelineno-1-21"></a>##FORMAT=&lt;ID=AD,...&gt;
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#reference-output-formats-__codelineno-1-22"></a>##FORMAT=&lt;ID=ADF,...&gt;
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#reference-output-formats-__codelineno-1-23"></a>##FORMAT=&lt;ID=ADR,...&gt;
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#reference-output-formats-__codelineno-1-24"></a>##FORMAT=&lt;ID=VAF,...&gt;
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#reference-output-formats-__codelineno-1-25"></a>##FORMAT=&lt;ID=FAD,...&gt;
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#reference-output-formats-__codelineno-1-26"></a>##FORMAT=&lt;ID=FADF,...&gt;
-<a id="__codelineno-1-27" name="__codelineno-1-27" href="#reference-output-formats-__codelineno-1-27"></a>##FORMAT=&lt;ID=FADR,...&gt;
-<a id="__codelineno-1-28" name="__codelineno-1-28" href="#reference-output-formats-__codelineno-1-28"></a>##FORMAT=&lt;ID=FAF,...&gt;
-<a id="__codelineno-1-29" name="__codelineno-1-29" href="#reference-output-formats-__codelineno-1-29"></a>##FORMAT=&lt;ID=AAD,...&gt;
-<a id="__codelineno-1-30" name="__codelineno-1-30" href="#reference-output-formats-__codelineno-1-30"></a>##FORMAT=&lt;ID=PAD,...&gt;
-<a id="__codelineno-1-31" name="__codelineno-1-31" href="#reference-output-formats-__codelineno-1-31"></a>##FORMAT=&lt;ID=NAD,...&gt;
-<a id="__codelineno-1-32" name="__codelineno-1-32" href="#reference-output-formats-__codelineno-1-32"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
-<a id="__codelineno-1-33" name="__codelineno-1-33" href="#reference-output-formats-__codelineno-1-33"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth"&gt;
-<a id="__codelineno-1-34" name="__codelineno-1-34" href="#reference-output-formats-__codelineno-1-34"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
-<a id="__codelineno-1-35" name="__codelineno-1-35" href="#reference-output-formats-__codelineno-1-35"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
-<a id="__codelineno-1-36" name="__codelineno-1-36" href="#reference-output-formats-__codelineno-1-36"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#reference-output-formats-__codelineno-1-2"></a>##source=gbcms v5.3.0
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#reference-output-formats-__codelineno-1-3"></a>##gbcms_command=gbcms rna --bam rna_sample.bam --fasta ref.fa
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-output-formats-__codelineno-1-4"></a>##reference=file:///path/to/ref.fa
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-output-formats-__codelineno-1-5"></a>##contig=&lt;ID=chr1,length=248956422&gt;
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#reference-output-formats-__codelineno-1-6"></a>##FILTER=&lt;ID=PASS,Description="All filters passed"&gt;
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-output-formats-__codelineno-1-7"></a>##INFO=&lt;ID=DP,...&gt;
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#reference-output-formats-__codelineno-1-8"></a>##INFO=&lt;ID=GS,...&gt;
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#reference-output-formats-__codelineno-1-9"></a>##INFO=&lt;ID=GD,...&gt;
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#reference-output-formats-__codelineno-1-10"></a>##INFO=&lt;ID=GR,...&gt;
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#reference-output-formats-__codelineno-1-11"></a>##INFO=&lt;ID=AAD,...&gt;
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#reference-output-formats-__codelineno-1-12"></a>##INFO=&lt;ID=PAD,...&gt;
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#reference-output-formats-__codelineno-1-13"></a>##INFO=&lt;ID=NAD,...&gt;
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#reference-output-formats-__codelineno-1-14"></a>##INFO=&lt;ID=SB_PVAL,...&gt;
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#reference-output-formats-__codelineno-1-15"></a>##INFO=&lt;ID=SB_OR,...&gt;
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#reference-output-formats-__codelineno-1-16"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#reference-output-formats-__codelineno-1-17"></a>##INFO=&lt;ID=FSB_OR,...&gt;
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#reference-output-formats-__codelineno-1-18"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand"&gt;
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#reference-output-formats-__codelineno-1-20"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#reference-output-formats-__codelineno-1-21"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#reference-output-formats-__codelineno-1-22"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#reference-output-formats-__codelineno-1-23"></a>##FORMAT=&lt;ID=GT,...&gt;
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#reference-output-formats-__codelineno-1-24"></a>##FORMAT=&lt;ID=DP,...&gt;
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#reference-output-formats-__codelineno-1-25"></a>##FORMAT=&lt;ID=AD,...&gt;
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#reference-output-formats-__codelineno-1-26"></a>##FORMAT=&lt;ID=ADF,...&gt;
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#reference-output-formats-__codelineno-1-27"></a>##FORMAT=&lt;ID=ADR,...&gt;
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#reference-output-formats-__codelineno-1-28"></a>##FORMAT=&lt;ID=VAF,...&gt;
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#reference-output-formats-__codelineno-1-29"></a>##FORMAT=&lt;ID=FAD,...&gt;
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#reference-output-formats-__codelineno-1-30"></a>##FORMAT=&lt;ID=FADF,...&gt;
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#reference-output-formats-__codelineno-1-31"></a>##FORMAT=&lt;ID=FADR,...&gt;
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#reference-output-formats-__codelineno-1-32"></a>##FORMAT=&lt;ID=FAF,...&gt;
+<a id="__codelineno-1-33" name="__codelineno-1-33" href="#reference-output-formats-__codelineno-1-33"></a>##FORMAT=&lt;ID=AAD,...&gt;
+<a id="__codelineno-1-34" name="__codelineno-1-34" href="#reference-output-formats-__codelineno-1-34"></a>##FORMAT=&lt;ID=PAD,...&gt;
+<a id="__codelineno-1-35" name="__codelineno-1-35" href="#reference-output-formats-__codelineno-1-35"></a>##FORMAT=&lt;ID=NAD,...&gt;
+<a id="__codelineno-1-36" name="__codelineno-1-36" href="#reference-output-formats-__codelineno-1-36"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
+<a id="__codelineno-1-37" name="__codelineno-1-37" href="#reference-output-formats-__codelineno-1-37"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth"&gt;
+<a id="__codelineno-1-38" name="__codelineno-1-38" href="#reference-output-formats-__codelineno-1-38"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
+<a id="__codelineno-1-39" name="__codelineno-1-39" href="#reference-output-formats-__codelineno-1-39"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
+<a id="__codelineno-1-40" name="__codelineno-1-40" href="#reference-output-formats-__codelineno-1-40"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 </div>
 </div>
@@ -7071,10 +7130,56 @@ written once. RNA-specific meta-lines are only included when running
 <hr>
 <h2 id="reference-output-formats-maf-output-format-maf"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Output (<code>--format maf</code>)<a class="headerlink" href="#reference-output-formats-maf-output-format-maf" title="Permanent link">¶</a></h2>
 <p>A tab-separated file following GDC <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> conventions. One row per variant per sample.</p>
+<h3 id="reference-output-formats-provenance-comment-lines-v530">Provenance Comment Lines (v5.3.0)<a class="headerlink" href="#reference-output-formats-provenance-comment-lines-v530" title="Permanent link">¶</a></h3>
+<p>Starting in v5.3.0, <strong>both DNA and RNA</strong> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output includes <code>#</code>-prefixed
+comment lines <strong>before</strong> the <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> header row. These lines provide provenance
+metadata for reproducibility:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="" id="reference-output-formats-__tabbed_4_1" name="reference-output-formats-__tabbed_4" type="radio"><input id="reference-output-formats-__tabbed_4_2" name="reference-output-formats-__tabbed_4" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_4_1">DNA mode</label><label for="reference-output-formats-__tabbed_4_2">RNA mode</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-output-formats-__codelineno-3-1"></a>#gbcms v5.3.0
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-output-formats-__codelineno-3-2"></a>#command gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#reference-output-formats-__codelineno-3-3"></a>Hugo_Symbol Chromosome  Start_Position  ...
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#reference-output-formats-__codelineno-4-1"></a>#gbcms v5.3.0
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#reference-output-formats-__codelineno-4-2"></a>#command gbcms rna --bam rna_sample:star.bam --fasta ref.fa --gtf genes.gtf
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#reference-output-formats-__codelineno-4-3"></a>Hugo_Symbol Chromosome  Start_Position  ...
+</code></pre></div>
+</div>
+</div>
+</div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Line</th>
+<th style="text-align: left;">Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>#gbcms vX.Y.Z</code></td>
+<td style="text-align: left;">gbcms version that produced this file</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>#command ...</code></td>
+<td style="text-align: left;">Full <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> command used (only when available)</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Reading <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> files with provenance headers</p>
+<p>When parsing gbcms <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output, skip lines starting with <code>#</code> before
+reading the <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> header. In Python: <code>lines = [l for l in f if not l.startswith('#')]</code>.
+Most R <code>read.table</code>/<code>read_tsv</code> functions handle <code>#</code> comments natively
+via the <code>comment</code> parameter. The <code>gbcms merge</code> command handles these
+comment lines automatically.</p>
+</div>
 <h3 id="reference-output-formats-two-output-paths">Two Output Paths<a class="headerlink" href="#reference-output-formats-two-output-paths" title="Permanent link">¶</a></h3>
 <p>The set of columns in the first row of the header depends on whether the
 <strong>input</strong> was a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> or a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="" id="reference-output-formats-__tabbed_4_1" name="reference-output-formats-__tabbed_4" type="radio"><input id="reference-output-formats-__tabbed_4_2" name="reference-output-formats-__tabbed_4" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_4_1"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></label><label for="reference-output-formats-__tabbed_4_2"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="" id="reference-output-formats-__tabbed_5_1" name="reference-output-formats-__tabbed_5" type="radio"><input id="reference-output-formats-__tabbed_5_2" name="reference-output-formats-__tabbed_5" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_5_1"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></label><label for="reference-output-formats-__tabbed_5_2"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>gbcms generates a GDC-compatible <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> from scratch, since <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> records
@@ -7202,7 +7307,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <hr>
 <h3 id="reference-output-formats-gbcms-count-columns">gbcms Count Columns<a class="headerlink" href="#reference-output-formats-gbcms-count-columns" title="Permanent link">¶</a></h3>
 <p>These columns are <strong>always</strong> appended regardless of input format.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="5:3"><input checked="" id="reference-output-formats-__tabbed_5_1" name="reference-output-formats-__tabbed_5" type="radio"><input id="reference-output-formats-__tabbed_5_2" name="reference-output-formats-__tabbed_5" type="radio"><input id="reference-output-formats-__tabbed_5_3" name="reference-output-formats-__tabbed_5" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_5_1">Default (no prefix)</label><label for="reference-output-formats-__tabbed_5_2">With <code>--column-prefix t_</code></label><label for="reference-output-formats-__tabbed_5_3">With custom prefix</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="6:3"><input checked="" id="reference-output-formats-__tabbed_6_1" name="reference-output-formats-__tabbed_6" type="radio"><input id="reference-output-formats-__tabbed_6_2" name="reference-output-formats-__tabbed_6" type="radio"><input id="reference-output-formats-__tabbed_6_3" name="reference-output-formats-__tabbed_6" type="radio"><div class="tabbed-labels"><label for="reference-output-formats-__tabbed_6_1">Default (no prefix)</label><label for="reference-output-formats-__tabbed_6_2">With <code>--column-prefix t_</code></label><label for="reference-output-formats-__tabbed_6_3">With custom prefix</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <table>
@@ -7389,8 +7494,8 @@ prefixed with <code>t_</code>:</p>
 </div>
 <div class="tabbed-block">
 <p>Any prefix matching <code>[A-Za-z0-9_]</code> is accepted:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-output-formats-__codelineno-3-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--column-prefix<span class="w"> </span>plasma_<span class="w"> </span>...
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-output-formats-__codelineno-3-2"></a><span class="c1"># → plasma_ref_count, plasma_alt_count, plasma_total_count, ...</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#reference-output-formats-__codelineno-5-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--column-prefix<span class="w"> </span>plasma_<span class="w"> </span>...
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#reference-output-formats-__codelineno-5-2"></a><span class="c1"># → plasma_ref_count, plasma_alt_count, plasma_total_count, ...</span>
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -7919,7 +8024,7 @@ the pipeline does not fail.</p>
 </div>
 <hr>
 <h2 id="reference-output-formats-per-sample-file-naming">Per-Sample File Naming<a class="headerlink" href="#reference-output-formats-per-sample-file-naming" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#reference-output-formats-__codelineno-4-1"></a>{--output-dir}/{sample_name}{--suffix}.{vcf|maf}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#reference-output-formats-__codelineno-6-1"></a>{--output-dir}/{sample_name}{--suffix}.{vcf|maf}
 </code></pre></div>
 <table>
 <thead>
@@ -7944,17 +8049,17 @@ the pipeline does not fail.</p>
 </tbody>
 </table>
 <p><strong>Examples:</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#reference-output-formats-__codelineno-5-1"></a>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span>--suffix<span class="w"> </span>.fillout<span class="w"> </span>--format<span class="w"> </span>maf
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#reference-output-formats-__codelineno-5-2"></a><span class="c1"># → tumor.fillout.maf</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#reference-output-formats-__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#reference-output-formats-__codelineno-5-4"></a>--bam<span class="w"> </span>tumor.bam<span class="w"> </span>--format<span class="w"> </span>vcf
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#reference-output-formats-__codelineno-5-5"></a><span class="c1"># → tumor.vcf  (stem = "tumor")</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#reference-output-formats-__codelineno-7-1"></a>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span>--suffix<span class="w"> </span>.fillout<span class="w"> </span>--format<span class="w"> </span>maf
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#reference-output-formats-__codelineno-7-2"></a><span class="c1"># → tumor.fillout.maf</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#reference-output-formats-__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#reference-output-formats-__codelineno-7-4"></a>--bam<span class="w"> </span>tumor.bam<span class="w"> </span>--format<span class="w"> </span>vcf
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#reference-output-formats-__codelineno-7-5"></a><span class="c1"># → tumor.vcf  (stem = "tumor")</span>
 </code></pre></div>
 <details class="note">
 <summary>Companion Parquet file (<code>--mfsd-parquet</code>)</summary>
 <p>When <code>--mfsd-parquet</code> is also set (alongside <code>--mfsd</code>), a second file is
 written alongside the main output:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#reference-output-formats-__codelineno-6-1"></a>{--output-dir}/{sample_name}{--suffix}.fsd.parquet
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#reference-output-formats-__codelineno-8-1"></a>{--output-dir}/{sample_name}{--suffix}.fsd.parquet
 </code></pre></div>
 <p>It contains per-variant raw fragment size arrays (<code>ref_sizes</code>, <code>alt_sizes</code>)
 for downstream <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> visualisations (density plots, empirical CDF comparisons).
@@ -7983,6 +8088,17 @@ Written natively by Rust — no pyarrow dependency required.</p>
 <p>A value is <code>NA</code>/<code>.</code> when the count supporting it is zero (e.g. <code>mfsd_alt_mean</code>
 when no ALT fragments were observed) or when the input variant was rejected
 during preparation (all counts are zero-filled in that case).</p>
+<div class="admonition note">
+<p class="admonition-title">Strand bias with ≤1 ALT read (v5.3.0)</p>
+<p>When a variant has 0 or 1 ALT reads, the Fisher strand bias test lacks
+statistical power. In this case:</p>
+<ul>
+<li><code>SB_OR</code> / <code>FSB_OR</code> → <code>.</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>) or <code>NA</code> (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) — odds ratio is undefined</li>
+<li><code>SB_PVAL</code> / <code>FSB_PVAL</code> → <code>1.0</code> — no evidence of strand bias</li>
+</ul>
+<p>Prior to v5.3.0, these fields could contain <code>inf</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec violation)
+or <code>0.0</code> (incorrect p-value due to floating-point underflow).</p>
+</div>
 <hr>
 <h2 id="reference-output-formats-related">Related<a class="headerlink" href="#reference-output-formats-related" title="Permanent link">¶</a></h2>
 <ul>

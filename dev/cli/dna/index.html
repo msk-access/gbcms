@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -1991,7 +1991,7 @@
 
 
 <div><h1 id="gbcms-dna">gbcms dna<a class="headerlink" href="#gbcms-dna" title="Permanent link">¶</a></h1>
-<p>Count alleles at variant positions across one or more DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> files.</p>
+<p>Count alleles at variant positions across one or more DNA/<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM files.</p>
 <div class="admonition info">
 <p class="admonition-title">Migrated from <code>gbcms run</code></p>
 <p>The deprecated <code>gbcms run</code> command was removed in v4.1.0. Use <code>gbcms dna</code> instead — all arguments are identical.</p>
@@ -2014,22 +2014,31 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>--bam</code>, <code>-b</code></td>
-<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file path (can repeat). Optionally prefix with <code>name:</code> for sample naming, e.g. <code>--bam tumor:tumor.bam</code>. If no name given, the filename stem is used.</td>
+<td style="text-align: left;"><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> or CRAM file path (can repeat). Optionally prefix with <code>name:</code> for sample naming, e.g. <code>--bam tumor:tumor.bam</code>. If no name given, the filename stem is used.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--bam-list</code>, <code>-L</code></td>
-<td style="text-align: left;">File containing <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> paths (one per line, optionally <code>sample_name path</code>). Alternative to repeated <code>--bam</code>.</td>
+<td style="text-align: left;">File containing <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM paths (one per line, optionally <code>sample_name path</code>). Alternative to repeated <code>--bam</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--fasta</code>, <code>-f</code></td>
-<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> file (with .fai index)</td>
+<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> file (with .fai index). <strong>Required</strong> for all runs; also used for CRAM decoding.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--lenient-bam</code></td>
-<td style="text-align: left;">Skip missing <code>--bam</code> paths and continue with remaining samples (default: exit immediately on first missing <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>). Note: a missing <code>--bam-list</code> file always fails regardless.</td>
+<td style="text-align: left;">Skip missing <code>--bam</code> paths and continue with remaining samples (default: exit immediately on first missing <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM). Note: a missing <code>--bam-list</code> file always fails regardless.</td>
 </tr>
 </tbody>
 </table>
+<div class="admonition tip">
+<p class="admonition-title">CRAM Support (v5.3.0+)</p>
+<p><code>--bam</code> accepts both <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> (<code>.bam</code>) and CRAM (<code>.cram</code>) files transparently.
+The <code>--fasta</code> reference is automatically used for CRAM decoding at both the Rust
+engine and Python header-validation layers.  No additional flags are needed.</p>
+<p>Index discovery is automatic: gbcms searches for <code>.bam.bai</code> / <code>.bai</code> (<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>) or
+<code>.cram.crai</code> / <code>.crai</code> (CRAM) next to the alignment file.  You can also provide
+the index path explicitly via the Nextflow samplesheet <code>bai</code> column.</p>
+</div>
 <h2 id="output-options">Output Options<a class="headerlink" href="#output-options" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -2497,7 +2506,7 @@ for the full design rationale.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 11, 2026 19:06:43 UTC"><span class="timeago" datetime="2026-05-11T19:06:43+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 11, 2026 19:06:43 UTC">2026-05-11</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 16, 2026 09:57:31 UTC"><span class="timeago" datetime="2026-05-16T09:57:31+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 16, 2026 09:57:31 UTC">2026-05-16</span>
   </span>
 
     

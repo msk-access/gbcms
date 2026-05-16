@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -802,10 +802,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bai-auto-discovery" class="md-nav__link">
+  <a href="#index-auto-discovery" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BAI Auto-Discovery
+        Index Auto-Discovery
       
     </span>
   </a>
@@ -1775,10 +1775,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bai-auto-discovery" class="md-nav__link">
+  <a href="#index-auto-discovery" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BAI Auto-Discovery
+        Index Auto-Discovery
       
     </span>
   </a>
@@ -1962,12 +1962,12 @@
 <tr>
 <td style="text-align: left;"><code>bam</code></td>
 <td style="text-align: left;">Yes</td>
-<td style="text-align: left;">Path to <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> file</td>
+<td style="text-align: left;">Path to <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> or CRAM file</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>bai</code></td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">Path to <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> index (auto-discovers <code>.bam.bai</code> or <code>.bai</code>)</td>
+<td style="text-align: left;">Path to index file. Auto-discovers <code>.bam.bai</code>/<code>.bai</code> for <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> or <code>.cram.crai</code>/<code>.crai</code> for CRAM.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>suffix</code></td>
@@ -1986,15 +1986,28 @@
 </tr>
 </tbody>
 </table>
-<h2 id="bai-auto-discovery"><abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> Auto-Discovery<a class="headerlink" href="#bai-auto-discovery" title="Permanent link">¶</a></h2>
-<p>If <code>bai</code> column is empty, the pipeline checks for:</p>
+<h2 id="index-auto-discovery">Index Auto-Discovery<a class="headerlink" href="#index-auto-discovery" title="Permanent link">¶</a></h2>
+<p>If the <code>bai</code> column is empty, the pipeline auto-discovers the index based on the alignment file extension:</p>
+<p><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> files</strong> (<code>.bam</code>):</p>
 <ol>
 <li><code>&lt;bam&gt;.bai</code> (e.g., <code>sample.bam.bai</code>)</li>
 <li><code>&lt;bam_without_extension&gt;.bai</code> (e.g., <code>sample.bai</code>)</li>
 </ol>
+<p><strong>CRAM files</strong> (<code>.cram</code>, v5.3.0+):</p>
+<ol>
+<li><code>&lt;cram&gt;.crai</code> (e.g., <code>sample.cram.crai</code>)</li>
+<li><code>&lt;cram_without_extension&gt;.crai</code> (e.g., <code>sample.crai</code>)</li>
+</ol>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Leave the <code>bai</code> column empty to use auto-discovery.</p>
+<p>Leave the <code>bai</code> column empty to use auto-discovery. You can also provide an
+explicit index path of any naming convention.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">CRAM Support (v5.3.0+)</p>
+<p>The <code>bam</code> column accepts both <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> and CRAM file paths.  The <code>--fasta</code> reference
+is automatically threaded to the Rust engine and Python layers for CRAM decoding.
+No additional configuration is needed.</p>
 </div>
 <h2 id="per-sample-suffix">Per-Sample Suffix<a class="headerlink" href="#per-sample-suffix" title="Permanent link">¶</a></h2>
 <p>For samples with multiple <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> types:</p>
@@ -2087,7 +2100,7 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 15, 2026 21:53:28 UTC"><span class="timeago" datetime="2026-05-15T21:53:28+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 15, 2026 21:53:28 UTC">2026-05-15</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 16, 2026 09:57:31 UTC"><span class="timeago" datetime="2026-05-16T09:57:31+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 16, 2026 09:57:31 UTC">2026-05-16</span>
   </span>
 
     
