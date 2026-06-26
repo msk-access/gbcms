@@ -1,3 +1,6 @@
+# Claude Code local (machine-specific permissions; not shared)
+.claude/settings.local.json
+
 # Python
 __pycache__/
 *.py[cod]
