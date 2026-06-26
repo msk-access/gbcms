@@ -59,8 +59,14 @@ Project skills live in `.agents/skills/` (cross-tool / Antigravity-native; mirro
 `.claude/skills/` for Claude Code). Each is `<name>/SKILL.md` with `name` + `description`
 frontmatter. Reach for them by outcome.
 
+## Safety (enforced by hooks, not prose)
+Determinism floor: `.claude/hooks/` (block-rm-rf, block-push-main, injection-guard,
+block-env-edits) + `.githooks/` (pre-commit lint/data-file guard, pre-push gitleaks
+secret scan + main block). Intent: `.agents/rules/security.md`. Enable git hooks once
+per clone: `git config core.hooksPath .githooks`. Install gitleaks for the secret scan.
+
 ## Pointers
-- Deep rules: `.agents/rules/{architecture,code-quality,git-conventions}.md`
+- Deep rules: `.agents/rules/{architecture,code-quality,git-conventions,security}.md`
 - Skills: `.agents/skills/` · Harness plan & philosophy: `docs/harness/00-plan.md`
 - Where we left off: `CONTINUITY.md` · Durable facts: `.agents/memory/MEMORY.md`
 - Open work: `CODE_REVIEW_IMPLEMENTATION_PLAN.md` (45 tickets, milestones M1–M6)

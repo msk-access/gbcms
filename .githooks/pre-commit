@@ -15,8 +15,10 @@ if printf '%s\n' "$staged" | grep -Eq '\.(parquet|bam|bai|cram|crai|tsv|csv|maf|
   exit 1
 fi
 
-# 2) Fast Python lint on staged .py files (ruff + black --check). Skip if none.
-py="$(printf '%s\n' "$staged" | grep -E '\.py$' || true)"
+# 2) Fast Python lint on staged source/test .py files (ruff + black --check).
+# Scoped to src/ and tests/ — the lint gate is for the codebase, not harness
+# scripts under .claude/ or .githooks/. Skip if none.
+py="$(printf '%s\n' "$staged" | grep -E '^(src|tests)/.*\.py$' || true)"
 if [ -n "$py" ]; then
   if command -v ruff >/dev/null 2>&1; then
     echo "$py" | xargs ruff check || { echo "pre-commit BLOCKED: ruff. Fix, then re-stage." >&2; exit 1; }
