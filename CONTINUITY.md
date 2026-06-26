@@ -6,9 +6,9 @@
 _Last updated: 2026-06-26_
 
 ## Now
-Setting up the Claude **harness** for gbcms, following the Claudelicious pattern
-("The Harness Is the Moat"). Working on branch **`feat/claude-harness`**.
-All changes are **uncommitted** pending review of the full diff.
+Cross-tool **harness** for gbcms is built and committed on **`feat/claude-harness`**.
+**PR #21 → `develop` is open** (https://github.com/msk-access/gbcms/pull/21),
+awaiting review. Following the Claudelicious pattern ("The Harness Is the Moat").
 
 ## Goal
 Stand up the 6-piece harness spine (rules, skills, hooks, memory, continuity,
@@ -28,10 +28,10 @@ learning loop) in the Claude Code-native layout. Plan: `docs/harness/00-plan.md`
   - **Continuity:** this file. **Learning loop:** convention in `AGENTS.md`.
 
 ## Next
-1. Review the full `feat/claude-harness` diff; commit (conventional, Git Flow).
+1. Get PR #21 reviewed and merged into `develop`.
 2. Enable the git hook on other clones: `git config core.hooksPath .githooks`.
 3. Verify the harness in a fresh session (success criteria in `docs/harness/00-plan.md`),
-   ideally in both Claude Code and Antigravity.
+   ideally in both Claude Code and Antigravity (symlink traversal + memory recall).
 4. Then resume the engineering backlog: `CODE_REVIEW_IMPLEMENTATION_PLAN.md`
    (45 tickets, milestones M1–M6; start M1 — count-correctness: CR-1, CR-3, CR-2, CR-4).
 
