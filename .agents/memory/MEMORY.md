@@ -14,3 +14,6 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Engine should be output-aware](engine-output-aware.md) — plumb intent across FFI vs compute-then-discard.
 - [Tolerant large-deletion match is deliberate](tolerant-deletion-deliberate.md) — CR-4; don't regress the sensitivity fix.
 - [Nextflow defaults diverge from CLI](nextflow-cli-default-divergence.md) — keep nextflow.config in sync with CLI defaults.
+
+## Tooling / build
+- [pyproject is the dep source of truth](deps-pyproject-source-of-truth.md) — CI/Docker bypass lockfiles; declare every directly-imported package.
