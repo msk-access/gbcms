@@ -1,3 +1,8 @@
+---
+name: mnp-rescue
+description: Reference for gbcms MNP rescue and diagnostic flags — the --rescue-mnp-threshold boundary semantics and the strongly-typed gbcms_diagnostic / gbcms_rescue Rust fields. Use when touching the MNP rescue pass, diagnostic-flag computation, or their tests/stubs.
+---
+
 # MNP Rescue & Diagnostic Flags
 
 ## MNP Rescue Threshold
@@ -18,7 +23,8 @@ For `threshold=0.0`: ratio is always >0 for valid MNPs, so no MNPs are eligible.
 
 ## Diagnostic Flags
 
-`gbcms_diagnostic` and `gbcms_rescue` are **strongly-typed Rust fields** on `PreparedVariant`, not dynamic Python attributes.
+`gbcms_diagnostic` and `gbcms_rescue` are **strongly-typed Rust fields** on
+`PreparedVariant`, not dynamic Python attributes.
 
 Format: semicolon-separated key=value strings:
 ```

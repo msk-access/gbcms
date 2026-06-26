@@ -21,6 +21,10 @@ classifiers = [
 dependencies = [
     "pysam>=0.21.0",
     "typer>=0.9.0",
+    # click is the engine under typer; the CLI tests import it directly
+    # (typer.main.get_command returns a click.Group). Pin it explicitly so the
+    # built wheel carries it and CI's lock-bypassing wheel install resolves it.
+    "click>=8.0",
     "rich>=13.0.0",
     "pydantic>=2.0.0",
     "polars>=1.0.0",
