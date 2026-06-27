@@ -91,6 +91,7 @@ def _classify_origin(
     hugo: str,
     sub_nuc_enrichment: float,
     ks_qval: float,
+    ks_valid: bool,
     alt_count: int,
     min_alt: int,
 ) -> tuple[str, str]:
@@ -98,10 +99,19 @@ def _classify_origin(
 
     Thresholds on the BH-FDR-corrected KS q-value (``mfsd_qval_alt_ref``, HI-11),
     not the raw p-value, so multiplicity across the sample's variants is accounted
-    for. Returns (signal_label, explanation).
+    for. A variant whose KS test did not actually run — a REF/ALT fragment class
+    below MIN_FOR_KS, so ``mfsd_ks_valid`` is False and the q-value is a 1.0
+    placeholder — is INSUFFICIENT rather than classified on that placeholder (ME-9).
+    Returns (signal_label, explanation).
     """
     if alt_count < min_alt:
         return "INSUFFICIENT", f"ALT fragment count ({alt_count}) below threshold ({min_alt})."
+    if not ks_valid:
+        return "INSUFFICIENT", (
+            "Fragment-size KS test could not run (a REF or ALT fragment class has "
+            "fewer than 5 fragments), so there is no size-distribution evidence for "
+            "a TUMOR-LIKE or CH-LIKE call."
+        )
 
     is_ch_gene = hugo.upper() in CH_GENES if hugo else False
     enriched = not math.isnan(sub_nuc_enrichment) and sub_nuc_enrichment > 1.3
@@ -267,6 +277,10 @@ def generate_mfsd_report(
         # HI-11: classification uses the BH-FDR-corrected q-value; the raw p-value
         # is still shown on the stat card.
         ks_qval = _safe_float(maf_row.get("mfsd_qval_alt_ref", "nan"))
+        # ME-9: only classify on the KS test when it actually ran (both fragment
+        # classes >= MIN_FOR_KS). mfsd_ks_valid is the authoritative signal; an
+        # invalid test leaves q as a 1.0 placeholder, which must NOT drive a call.
+        ks_valid = maf_row.get("mfsd_ks_valid", "").strip().lower() == "true"
         alt_mean = _safe_float(maf_row.get("mfsd_alt_mean", "nan"))
         ref_mean = _safe_float(maf_row.get("mfsd_ref_mean", "nan"))
         delta = _safe_float(maf_row.get("mfsd_delta_alt_ref", "nan"))
@@ -278,7 +292,7 @@ def generate_mfsd_report(
         ref_count = len(ref_sizes)
 
         signal, explanation = _classify_origin(
-            hugo, sub_nuc_enrichment, ks_qval, alt_count, min_alt
+            hugo, sub_nuc_enrichment, ks_qval, ks_valid, alt_count, min_alt
         )
 
         variants.append(

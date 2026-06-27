@@ -220,3 +220,16 @@ class TestTooltips:
         html = multi_report.read_text()
         assert "@media print" in html
         assert ".has-tooltip::after" in html
+
+
+class TestClassifyOrigin:
+    """ME-9: TUMOR-LIKE/CH-LIKE require a valid KS test."""
+
+    def test_invalid_ks_is_insufficient(self) -> None:
+        """No valid KS test (ks_valid=False) → INSUFFICIENT, not a guessed label —
+        even a CH gene with low enrichment that would otherwise read CH-LIKE."""
+        from gbcms.report.mfsd_report import _classify_origin
+
+        signal, reason = _classify_origin("DNMT3A", 1.1, 1.0, False, 10, 3)
+        assert signal == "INSUFFICIENT"
+        assert "KS test could not run" in reason
