@@ -42,32 +42,33 @@ pub fn is_valid_rna_alignment(record: &Record, min_mapq: u8) -> bool {
         return true;
     }
 
-    // NH:i:1 rescue: uniquely mapped reads with low MAPQ
-    // This handles STAR's behavior of assigning low MAPQ to reads
-    // at novel splice junctions despite unique mapping.
-    match record.aux(b"NH") {
-        Ok(rust_htslib::bam::record::Aux::U8(nh)) => {
-            if nh == 1 {
-                trace!(
-                    "NH:i:1 rescue: MAPQ={} read rescued (uniquely mapped)",
-                    mapq
-                );
-                return true;
-            }
-        }
-        Ok(rust_htslib::bam::record::Aux::I32(nh)) => {
-            if nh == 1 {
-                trace!(
-                    "NH:i:1 rescue: MAPQ={} read rescued (uniquely mapped, i32)",
-                    mapq
-                );
-                return true;
-            }
-        }
-        _ => {}
+    // Rescue uniquely-mapped reads (NH == 1) that fall below the MAPQ floor:
+    // STAR/HISAT2 assign low MAPQ to reads at novel splice junctions even when
+    // they map to exactly one locus. The NH tag's integer width varies by writer
+    // (U8/U16/U32/I8/I16/I32), so accept any integer encoding rather than only a
+    // couple of widths — otherwise valid unique mappers are silently dropped.
+    if nh_tag_value(record) == Some(1) {
+        trace!("uniquely-mapped read (NH=1) rescued below MAPQ floor (MAPQ={})", mapq);
+        return true;
     }
 
     false
+}
+
+/// Read the `NH` (number-of-reported-alignments) tag as an integer, regardless of
+/// the width the aligner encoded it with. Returns `None` when the tag is absent or
+/// is not an integer type.
+fn nh_tag_value(record: &Record) -> Option<i64> {
+    use rust_htslib::bam::record::Aux;
+    match record.aux(b"NH") {
+        Ok(Aux::U8(v)) => Some(i64::from(v)),
+        Ok(Aux::U16(v)) => Some(i64::from(v)),
+        Ok(Aux::U32(v)) => Some(i64::from(v)),
+        Ok(Aux::I8(v)) => Some(i64::from(v)),
+        Ok(Aux::I16(v)) => Some(i64::from(v)),
+        Ok(Aux::I32(v)) => Some(i64::from(v)),
+        _ => None,
+    }
 }
 
 
@@ -433,6 +434,25 @@ mod tests {
         record.set_mapq(0);
         // NH:i:2 → multi-mapped, NOT rescued
         record.push_aux(b"NH", rust_htslib::bam::record::Aux::U8(2)).unwrap();
+        assert!(!is_valid_rna_alignment(&record, 1));
+    }
+
+    #[test]
+    fn test_rna_alignment_nh1_rescue_across_aux_widths() {
+        use rust_htslib::bam::record::Aux;
+        // Aligners encode NH with varying integer widths; NH==1 must rescue in all.
+        for nh in [Aux::U16(1), Aux::U32(1), Aux::I8(1), Aux::I16(1), Aux::I32(1)] {
+            let cigar = CigarString(vec![Cigar::Match(8)]);
+            let mut record = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
+            record.set_mapq(0);
+            record.push_aux(b"NH", nh).unwrap();
+            assert!(is_valid_rna_alignment(&record, 1));
+        }
+        // A wider-typed multi-mapper (NH=2) still must not rescue.
+        let cigar = CigarString(vec![Cigar::Match(8)]);
+        let mut record = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
+        record.set_mapq(0);
+        record.push_aux(b"NH", Aux::U16(2)).unwrap();
         assert!(!is_valid_rna_alignment(&record, 1));
     }
 

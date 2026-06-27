@@ -157,7 +157,12 @@ pub fn calc_llr_with_params(lengths: &[f64], params: &LlrModelParams) -> f64 {
 /// - A deletion makes TLEN *longer* than the physical DNA fragment
 /// - An insertion makes TLEN *shorter* than the physical DNA fragment
 ///
-/// **Formula:** `physical_size = |TLEN| - sum(D_ops) + sum(I_ops)`
+/// **Formula:** `physical_size = |TLEN| - sum(D_ops) - sum(N_ops) + sum(I_ops)`
+///
+/// `N` (RefSkip) ops are introns in spliced RNA reads: TLEN spans the genomic
+/// distance *including* the intron, but the physical (mature-mRNA) fragment does
+/// not, so introns are discounted like deletions. DNA reads carry no `N` ops, so
+/// the term is zero there and the cfDNA correction is unchanged.
 ///
 /// Validated on 6 real MSK-ACCESS duplex BAMs (EGFR 15bp del, MET 35bp del,
 /// ERBB2 12bp ins, KIT 6bp ins, KRAS G12D SNP, TP53 DNP). All corrections
@@ -182,30 +187,32 @@ pub fn calc_physical_insert_size(record: &Record) -> i32 {
     let abs_tlen = raw_tlen.unsigned_abs() as i32;
     let mut del_bp: i32 = 0;
     let mut ins_bp: i32 = 0;
+    let mut skip_bp: i32 = 0;
 
     for op in record.cigar().iter() {
         match op {
             Cigar::Del(n) => del_bp += *n as i32,
             Cigar::Ins(n) => ins_bp += *n as i32,
+            Cigar::RefSkip(n) => skip_bp += *n as i32,
             _ => {}
         }
     }
 
-    let physical = abs_tlen - del_bp + ins_bp;
+    let physical = abs_tlen - del_bp - skip_bp + ins_bp;
 
     // Guard: pathological CIGAR where correction overshoots (should never happen
     // with well-formed BAMs, but avoid returning nonsensical negative sizes)
     if physical <= 0 {
         trace!(
-            "calc_physical_insert_size: pathological correction — TLEN={} D={} I={} → {} (clamped to |TLEN|)",
-            raw_tlen, del_bp, ins_bp, physical
+            "calc_physical_insert_size: pathological correction — TLEN={} D={} N={} I={} → {} (clamped to |TLEN|)",
+            raw_tlen, del_bp, skip_bp, ins_bp, physical
         );
         return abs_tlen; // Fall back to raw |TLEN| rather than a nonsensical value
     }
 
     trace!(
-        "calc_physical_insert_size: TLEN={} D={} I={} → physical={}",
-        raw_tlen, del_bp, ins_bp, physical
+        "calc_physical_insert_size: TLEN={} D={} N={} I={} → physical={}",
+        raw_tlen, del_bp, skip_bp, ins_bp, physical
     );
 
     physical
@@ -531,6 +538,29 @@ mod tests {
         let rec = mock_record(&cigar, 140);
         assert_eq!(calc_physical_insert_size(&rec), 152,
             "12bp insertion should add 12 to TLEN");
+    }
+
+    #[test]
+    fn test_physical_size_spliced_read_discounts_intron() {
+        // Spliced RNA read 50M2000N50M, TLEN spans the intron (100 + 2000 = 2100)
+        // → physical mature-mRNA fragment = 2100 - 2000 = 100.
+        let cigar = CigarString(vec![Cigar::Match(50), Cigar::RefSkip(2000), Cigar::Match(50)]);
+        let rec = mock_record(&cigar, 2100);
+        assert_eq!(calc_physical_insert_size(&rec), 100,
+            "2000bp intron (N) should be discounted, not inflate the fragment size");
+    }
+
+    #[test]
+    fn test_physical_size_spliced_with_indels() {
+        // 40M500N5D40M3I, intron + 5bp del + 3bp ins; TLEN=588
+        // → 588 - 500 (N) - 5 (D) + 3 (I) = 86.
+        let cigar = CigarString(vec![
+            Cigar::Match(40), Cigar::RefSkip(500), Cigar::Del(5),
+            Cigar::Match(40), Cigar::Ins(3),
+        ]);
+        let rec = mock_record(&cigar, 588);
+        assert_eq!(calc_physical_insert_size(&rec), 86,
+            "intron, deletion and insertion corrections combine");
     }
 
     #[test]
