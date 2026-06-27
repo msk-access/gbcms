@@ -230,6 +230,18 @@ class TestClassifyOrigin:
         even a CH gene with low enrichment that would otherwise read CH-LIKE."""
         from gbcms.report.mfsd_report import _classify_origin
 
-        signal, reason = _classify_origin("DNMT3A", 1.1, 1.0, False, 10, 3)
+        nan = float("nan")
+        signal, reason = _classify_origin("DNMT3A", 1.1, nan, nan, 1.0, False, 10, 3)
         assert signal == "INSUFFICIENT"
         assert "KS test could not run" in reason
+
+    def test_max_enriched_when_ref_has_no_short_fragments(self) -> None:
+        """ME-10: ALT has sub-nucleosomal fragments but REF has none → the ratio is
+        undefined (NaN), yet it is a maximal ctDNA-like signal, so a non-CH gene with
+        a significant valid KS reads TUMOR-LIKE rather than being lost as AMBIGUOUS."""
+        from gbcms.report.mfsd_report import _classify_origin
+
+        nan = float("nan")
+        # enrichment=NaN, ref_short=0.0, alt_short=0.4, valid significant KS.
+        signal, _ = _classify_origin("NOTACHGENE", nan, 0.0, 0.4, 0.01, True, 20, 3)
+        assert signal == "TUMOR-LIKE"

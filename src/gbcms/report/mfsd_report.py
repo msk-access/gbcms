@@ -90,6 +90,8 @@ TOOLTIPS: dict[str, str] = {
 def _classify_origin(
     hugo: str,
     sub_nuc_enrichment: float,
+    sub_nuc_ref: float,
+    sub_nuc_alt: float,
     ks_qval: float,
     ks_valid: bool,
     alt_count: int,
@@ -114,15 +116,28 @@ def _classify_origin(
         )
 
     is_ch_gene = hugo.upper() in CH_GENES if hugo else False
-    enriched = not math.isnan(sub_nuc_enrichment) and sub_nuc_enrichment > 1.3
+    # ME-10: enrichment is NaN when a sub-nucleosomal fraction is zero (the
+    # ALT/REF <150bp ratio is undefined). Disambiguate "ALT has short fragments
+    # but REF has none" — a clear, maximal ctDNA-like signal that would otherwise
+    # be lost as AMBIGUOUS — from genuinely undefined (no short fragments either
+    # side). low_enrich requires a defined ratio, so a NaN enrichment is never CH-LIKE.
+    enrichment_nan = math.isnan(sub_nuc_enrichment)
+    alt_short = not math.isnan(sub_nuc_alt) and sub_nuc_alt > 0.0
+    ref_short = not math.isnan(sub_nuc_ref) and sub_nuc_ref > 0.0
+    max_enriched = enrichment_nan and alt_short and not ref_short
+    enriched = (not enrichment_nan and sub_nuc_enrichment > 1.3) or max_enriched
     sig_ks = not math.isnan(ks_qval) and ks_qval < 0.05
-    low_enrich = not math.isnan(sub_nuc_enrichment) and sub_nuc_enrichment < 1.2
+    low_enrich = not enrichment_nan and sub_nuc_enrichment < 1.2
     nonsig_ks = math.isnan(ks_qval) or ks_qval > 0.05
 
     if enriched and sig_ks and not is_ch_gene:
+        enrich_str = (
+            "ALT enriched for sub-nucleosomal fragments while REF has none"
+            if max_enriched
+            else f"sub-nucleosomal enrichment={sub_nuc_enrichment:.2f} (>1.3)"
+        )
         return "TUMOR-LIKE", (
-            f"Sub-nucleosomal enrichment={sub_nuc_enrichment:.2f} (>1.3), "
-            f"KS q={ks_qval:.2e} (<0.05, FDR-corrected), non-CH gene."
+            f"{enrich_str}, KS q={ks_qval:.2e} (<0.05, FDR-corrected), non-CH gene."
         )
     if is_ch_gene and low_enrich and nonsig_ks:
         return "CH-LIKE", (
@@ -292,7 +307,14 @@ def generate_mfsd_report(
         ref_count = len(ref_sizes)
 
         signal, explanation = _classify_origin(
-            hugo, sub_nuc_enrichment, ks_qval, ks_valid, alt_count, min_alt
+            hugo,
+            sub_nuc_enrichment,
+            sub_nuc_ref,
+            sub_nuc_alt,
+            ks_qval,
+            ks_valid,
+            alt_count,
+            min_alt,
         )
 
         variants.append(
@@ -344,15 +366,15 @@ def generate_mfsd_report(
 
 
 def _fmt_val(v: float, precision: int = 2) -> str:
-    """Format float for display, handling NaN."""
-    if math.isnan(v):
+    """Format float for display, handling NaN/Inf (ME-11)."""
+    if math.isnan(v) or math.isinf(v):
         return "N/A"
     return f"{v:.{precision}f}"
 
 
 def _fmt_pval(v: float) -> str:
-    """Format p-value for display."""
-    if math.isnan(v):
+    """Format p-value for display, handling NaN/Inf (ME-11)."""
+    if math.isnan(v) or math.isinf(v):
         return "N/A"
     if v < 0.001:
         return f"{v:.2e}"
