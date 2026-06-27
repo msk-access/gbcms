@@ -49,9 +49,12 @@ Fix order: ruff → black → mypy → clippy. Conventional commits + Git Flow
 
 ## Learning loop (when I correct you)
 Do both, in the same turn:
-1. **Write it down** — add/refresh a fact in `.agents/memory/` (index: `.agents/memory/MEMORY.md`)
-   so the correction survives to next session.
-2. **Fix at the source** — name the exact `file:line` and make the edit, so the
+1. **Write it down** — durable note → `.agents/memory/` (index `MEMORY.md`); the
+   work-order → `.agents/learnings/LEARNINGS.md` with ONE root cause
+   (rule-body / rule-trigger / rule-permission / environment) and a promotion
+   target (exact file + change). External-only failures → `ERRORS.md`; vetoed
+   ideas → `REJECTED.md` (grep it before re-proposing a dead end).
+2. **Fix at the source** — name the exact `file:line` and make the edit now, so the
    mistake can't recur from stale guidance.
 
 ## Skills
