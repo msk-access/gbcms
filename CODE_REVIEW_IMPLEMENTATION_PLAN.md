@@ -66,6 +66,7 @@ Each ticket has a stable ID (`CR-*`, `HI-*`, `ME-*`, `LO-*`). IDs are referenced
 | LO-13 | LOW | Report | KDE bandwidth clamp (5.0 bp) arbitrary/undocumented |
 | LO-14 | LOW | Perf | `threads` not clamped to `available_parallelism()` |
 | LO-15 | LOW | Alignment | `usable_count >= 3` magic number duplicated in 3 places |
+| DX-1 | LOW | Maintainability | Code comments & log strings cite ephemeral ticket labels (`CR-1`/`HI-11`/`ME-8`/`P4c`); strip them and state the reason instead |
 
 ---
 
@@ -544,6 +545,33 @@ Apply identically to the strict path at `:1488`.
 | **M3 — RNA mode correctness** | HI-7, HI-8, HI-9, ME-6, ME-7, LO-9, LO-10, LO-11, LO-12 | Make RNA features actually work |
 | **M4 — Alignment robustness** | HI-3, HI-4, HI-5, ME-4, ME-5, LO-15 | Backend parity & numerics |
 | **M5 — Performance/IO** | PF-1, PF-2, PF-3, PF-4, ME-13, LO-3, LO-14 | Throughput on deep panels |
-| **M6 — Hygiene & contracts** | HI-1, ME-1, ME-2, ME-12, LO-1, LO-2, LO-4, LO-5, LO-6, LO-7, LO-8, LO-13 | Exit codes, output parity, docs |
+| **M6 — Hygiene & contracts** | HI-1, ME-1, ME-2, ME-12, LO-1, LO-2, LO-4, LO-5, LO-6, LO-7, LO-8, LO-13, DX-1 | Exit codes, output parity, docs |
 
 Recommended order: **M1 → M2 → M3** are correctness; do them first and in that order. **M4** can parallelize with M2/M3. **M5** is independent (pure perf). **M6** is continuous cleanup.
+
+---
+
+# DX — Developer experience / maintainability
+
+## DX-1 — Code comments and logs cite ephemeral ticket labels
+
+**Problem.** Comments and log strings across the codebase carry ticket/milestone
+labels — pre-existing `P4c` markers in the RNA/ASJD engine paths, and `CR-*`/`HI-*`/
+`ME-*` labels added during the M1–M2 remediation. A label like `// ME-8: padding fix`
+or `debug!("P4c BH-FDR: …")` is meaningless to a contributor with no plan/PR context;
+it documents *which ticket touched the line*, not *what the code does or why*.
+
+**Fix.** Sweep code comments and log strings; replace each label with the underlying
+reason (e.g. `// ME-8: padding fix` → `// exclude no-test variants; they inflate the
+FDR family`). Ticket context stays in the commit message (`git blame`). Scope: source
+only — this plan and other design docs are exactly where labels belong, so leave them.
+Start points: `rust/src/counting/engine.rs` (`P4a`/`P4b`/`P4c`, `CR-1`, `HI-11`),
+`rust/src/counting/{mfsd,variant_checks,wfa_router}.rs`, `src/gbcms/io/output.py`,
+`src/gbcms/report/mfsd_report.py`, the `.pyi` stubs. `grep -rnE '(CR|HI|ME|LO|PF)-[0-9]|P4[abc]'`
+over `src/` and `rust/src/` enumerates the sites.
+
+**Prevention (done).** Promoted to a standing rule — `.agents/rules/code-quality.md`
+§"Comment & Log Hygiene" — so new code doesn't reintroduce labels. Logged as
+LRN-20260627-001.
+
+**Severity:** LOW (no behavior change). **Milestone:** M6.
