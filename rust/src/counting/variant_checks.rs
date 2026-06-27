@@ -1410,6 +1410,64 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     ClassifyResult::neither(ClassifyPhase::Structural) // Read does not cover the variant region
 }
 
+/// Verify that the reference bases at an observed deletion position match the
+/// variant's expected deleted bases over `compare_len` positions.
+///
+/// Used by `check_deletion`'s Safeguard 3 for exact-length matches AND (CR-4) for
+/// tolerant (different-length) matches over the *shared* span. Comparing the
+/// reference at the observed breakpoint against `expected_del_seq` rejects an
+/// unrelated SV that merely shares ≥50% length overlap with the target deletion,
+/// while still accepting the same deletion reported with a slightly different
+/// breakpoint length (its overlapping prefix still matches). Both operands are
+/// reference-derived, so a true match is exact. Returns `true` only on a reliable,
+/// zero-mismatch concordance; a `None` ref_context or out-of-bounds offset returns
+/// `false` (the caller routes those to the Phase 3 haplotype fallback).
+fn verify_deleted_bases(
+    variant: &Variant,
+    del_ref_pos: i64,
+    expected_del_seq: &[u8],
+    compare_len: usize,
+) -> bool {
+    let ctx = match &variant.ref_context {
+        Some(c) => c.as_bytes(),
+        None => {
+            warn!(
+                "check_deletion: ref_context is None at {}:{} — cannot validate deleted bases",
+                variant.chrom,
+                variant.pos + 1,
+            );
+            return false;
+        }
+    };
+    let ctx_offset_i64 = del_ref_pos - variant.ref_context_start;
+    if ctx_offset_i64 < 0 {
+        trace!(
+            "verify_deleted_bases: negative ref_context offset ({}), rejecting",
+            ctx_offset_i64
+        );
+        return false;
+    }
+    let ctx_offset = ctx_offset_i64 as usize;
+    if compare_len == 0
+        || compare_len > expected_del_seq.len()
+        || ctx_offset + compare_len > ctx.len()
+    {
+        trace!(
+            "verify_deleted_bases: out of bounds (offset={} len={} ctx={} exp={}), rejecting",
+            ctx_offset,
+            compare_len,
+            ctx.len(),
+            expected_del_seq.len(),
+        );
+        return false;
+    }
+    let ref_at = &ctx[ctx_offset..ctx_offset + compare_len];
+    let ref_quals = vec![u8::MAX; compare_len];
+    let (mismatches, reliable) =
+        masked_single_compare(ref_at, &ref_quals, &expected_del_seq[..compare_len], 0);
+    reliable > 0 && mismatches == 0
+}
+
 /// Check if a read supports a deletion variant.
 ///
 /// Returns (is_ref, is_alt, base_qual) where base_qual is the quality of the
@@ -1517,24 +1575,42 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                                     min_del as f64 / max_del as f64;
 
                                 if expected_del_len >= 50 && reciprocal_overlap >= 0.5 {
-                                    // Large deletion with significant overlap → ALT
-                                    let arp = anchor_read_pos.unwrap_or(0);
-                                    let qual = if arp < quals.len() {
-                                        quals[arp]
-                                    } else {
-                                        0
-                                    };
+                                    // CR-4: a ≥50% length overlap alone is not enough —
+                                    // verify the OVERLAPPING deleted bases match
+                                    // expected_del_seq, so an unrelated SV at the anchor
+                                    // is not accepted. The D begins at anchor_pos + 1.
+                                    let compare_len = found_del_len.min(expected_del_len);
+                                    if verify_deleted_bases(
+                                        variant,
+                                        anchor_pos + 1,
+                                        expected_del_seq,
+                                        compare_len,
+                                    ) {
+                                        let arp = anchor_read_pos.unwrap_or(0);
+                                        let qual = if arp < quals.len() { quals[arp] } else { 0 };
+                                        trace!(
+                                            "check_deletion: tolerant match D({}) ≈ D({}) at pos {} \
+                                             (reciprocal_overlap={:.2}, seq-verified over {}bp, \
+                                             anchor_qual={}) (structural)",
+                                            found_del_len,
+                                            expected_del_len,
+                                            anchor_pos,
+                                            reciprocal_overlap,
+                                            compare_len,
+                                            qual,
+                                        );
+                                        return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural); // ALT — tolerant, seq-verified
+                                    }
+                                    // Overlap met but the deleted bases don't match the
+                                    // target deletion → likely a different SV. Fall
+                                    // through to check_complex for haplotype arbitration.
                                     trace!(
-                                        "check_deletion: tolerant match D({}) ≈ D({}) \
-                                         at pos {} (reciprocal_overlap={:.2}, \
-                                         threshold=0.50, anchor_qual={}) (structural)",
+                                        "check_deletion: tolerant structural D({}) at anchor {} REJECTED \
+                                         — overlapping deleted bases mismatch expected over {}bp → check_complex",
                                         found_del_len,
-                                        expected_del_len,
                                         anchor_pos,
-                                        reciprocal_overlap,
-                                        qual
+                                        compare_len,
                                     );
-                                    return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural); // ALT — tolerant match
                                 }
 
                                 // Small deletion or low overlap: fall back to
@@ -1624,48 +1700,15 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
 
                         if length_ok {
                             // Safeguard 3: verify the deleted reference bases match
-                            // (only for exact-length matches; skip for tolerant
-                            // matches where lengths differ)
-                            let del_ok = if del_len_usize != expected_del_len {
-                                true // tolerant match — length differs, skip seq check
-                            } else {
-                                match &variant.ref_context {
-                                    Some(ctx) => {
-                                        let ctx_bytes = ctx.as_bytes();
-                                        let ctx_offset_i64 =
-                                            del_ref_pos - variant.ref_context_start;
-                                        if ctx_offset_i64 < 0 {
-                                            trace!(
-                                                "ref_context offset negative ({}), rejecting shifted deletion",
-                                                ctx_offset_i64
-                                            );
-                                            false
-                                        } else {
-                                            let ctx_offset = ctx_offset_i64 as usize;
-                                            if ctx_offset + del_len_usize <= ctx_bytes.len() {
-                                                let ref_at_shift = &ctx_bytes
-                                                    [ctx_offset..ctx_offset + del_len_usize];
-                                                let ref_quals = vec![u8::MAX; del_len_usize];
-                                                let (mismatches, reliable) = masked_single_compare(
-                                                    ref_at_shift, &ref_quals, expected_del_seq, 0
-                                                );
-                                                reliable > 0 && mismatches == 0
-                                            } else {
-                                                trace!(
-                                                    "ref_context offset {} out of bounds (len={}), rejecting",
-                                                    ctx_offset, ctx_bytes.len()
-                                                );
-                                                false
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        warn!("ref_context is None for variant at {}:{} — S3 cannot validate shifted deletion",
-                                              variant.chrom, variant.pos + 1);
-                                        false
-                                    },
-                                }
-                            };
+                            // expected_del_seq. Exact-length matches compare the full
+                            // span; CR-4: tolerant (different-length) matches compare
+                            // the OVERLAPPING span instead of skipping verification, so
+                            // an unrelated SV sharing only ≥50% length overlap is not
+                            // accepted as ALT. A genuinely shifted/different deletion
+                            // fails here and is routed to the Phase 3 fallback below.
+                            let compare_len = del_len_usize.min(expected_del_len);
+                            let del_ok =
+                                verify_deleted_bases(variant, del_ref_pos, expected_del_seq, compare_len);
 
                             if del_ok {
                                 // Safeguard 2: track closest match
@@ -1833,4 +1876,65 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
         return ClassifyResult::is_ref(anchor_qual, ClassifyPhase::Structural);
     }
     ClassifyResult::neither(ClassifyPhase::Structural) // Read does not cover the variant region
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A deletion Variant carrying a ref_context window for the seq-check tests.
+    fn deletion_with_context(ref_context: &str, ref_context_start: i64, ref_allele: &str) -> Variant {
+        Variant {
+            chrom: "1".to_string(),
+            pos: ref_context_start,
+            ref_allele: ref_allele.to_string(),
+            alt_allele: ref_allele.get(..1).unwrap_or("N").to_string(),
+            variant_type: "DELETION".to_string(),
+            ref_context: Some(ref_context.to_string()),
+            ref_context_start,
+            repeat_span: 0,
+            gene_strand: None,
+        }
+    }
+
+    // ── CR-4: verify_deleted_bases — partial seq-check for tolerant deletions ──
+    // ref_context "NNNCGTACGTCCCC" at genomic 100 → pos 103 = "CGTACGT...".
+
+    #[test]
+    fn test_verify_deleted_bases_exact_match() {
+        let v = deletion_with_context("NNNCGTACGTCCCC", 100, "ACGTACGT");
+        assert!(verify_deleted_bases(&v, 103, b"CGTACGT", 7));
+    }
+
+    #[test]
+    fn test_verify_deleted_bases_tolerant_same_event_matches() {
+        // Same start, observed deletion longer than expected → compare the SHARED
+        // prefix only; the same biological event still verifies (sensitivity kept).
+        let v = deletion_with_context("NNNCGTACGTCCCC", 100, "ACGTACGT");
+        assert!(verify_deleted_bases(&v, 103, b"CGTACGT", 7)); // shared span = 7
+    }
+
+    #[test]
+    fn test_verify_deleted_bases_shifted_different_sv_rejected() {
+        // CR-4: a deletion at a SHIFTED position (105) whose reference bases differ
+        // from the target's expected_del_seq is rejected — a different SV that
+        // merely shares length overlap must not be counted as ALT.
+        let v = deletion_with_context("NNNCGTACGTCCCC", 100, "ACGTACGT");
+        // ref at 105 = "TACGTCC" != expected "CGTACGT"
+        assert!(!verify_deleted_bases(&v, 105, b"CGTACGT", 7));
+    }
+
+    #[test]
+    fn test_verify_deleted_bases_none_context_rejects() {
+        let mut v = deletion_with_context("NNNCGTACGTCCCC", 100, "ACGTACGT");
+        v.ref_context = None;
+        assert!(!verify_deleted_bases(&v, 103, b"CGTACGT", 7));
+    }
+
+    #[test]
+    fn test_verify_deleted_bases_out_of_bounds_rejects() {
+        let v = deletion_with_context("NNNCGT", 100, "ACGT");
+        assert!(!verify_deleted_bases(&v, 103, b"CGTACGT", 7)); // past ref_context end
+        assert!(!verify_deleted_bases(&v, 50, b"CGT", 3)); // negative offset
+    }
 }
