@@ -1048,6 +1048,23 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
+    // CR-3: VCF/MAF left-anchored invariant — REF and ALT share a leading anchor
+    // base, so both are non-empty for a well-formed insertion. Defend it: an empty
+    // ALT/REF (malformed or non-left-anchored record) would underflow `len() - 1`
+    // and panic the `[1..]` / `[0]` slices below, surfacing as an opaque PyErr.
+    // debug! not warn!: this runs per-read, so a single malformed variant would
+    // otherwise log once per overlapping read. Loud once-per-variant surfacing
+    // belongs at prep time (tracked follow-up); here we just avoid the panic.
+    if variant.alt_allele.is_empty() || variant.ref_allele.is_empty() {
+        debug!(
+            "check_insertion: empty REF/ALT at {}:{} (ref={:?} alt={:?}) — classifying neither",
+            variant.chrom,
+            variant.pos + 1,
+            variant.ref_allele,
+            variant.alt_allele,
+        );
+        return ClassifyResult::neither(ClassifyPhase::Structural);
+    }
     let anchor_pos = variant.pos;
     let expected_ins_len = variant.alt_allele.len() - 1; // VCF ALT includes anchor
     let expected_ins_seq = &variant.alt_allele.as_bytes()[1..]; // ALT without anchor
@@ -1424,6 +1441,20 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
+    // CR-3: left-anchored invariant — an empty REF/ALT (malformed or
+    // non-left-anchored record) would underflow `len() - 1` and panic the
+    // `[1..]` slice below. Defend it and classify as neither. debug! not warn!:
+    // runs per-read; loud once-per-variant surfacing belongs at prep (follow-up).
+    if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
+        debug!(
+            "check_deletion: empty REF/ALT at {}:{} (ref={:?} alt={:?}) — classifying neither",
+            variant.chrom,
+            variant.pos + 1,
+            variant.ref_allele,
+            variant.alt_allele,
+        );
+        return ClassifyResult::neither(ClassifyPhase::Structural);
+    }
     let anchor_pos = variant.pos;
     let expected_del_len = variant.ref_allele.len() - 1; // REF without anchor
     // The expected deleted bases (REF without the anchor base)
