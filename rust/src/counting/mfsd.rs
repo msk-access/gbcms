@@ -103,17 +103,8 @@ pub fn calc_fraction_in_range(v: &[f64], lo: f64, hi: f64) -> f64 {
     count as f64 / v.len() as f64
 }
 
-/// Gaussian probability density function (unnormalised for LLR use).
-///
-/// # Arguments
-/// * `x` – Fragment size (bp)
-/// * `mu` – Distribution mean (bp)
-/// * `sigma` – Distribution standard deviation (bp)
-#[inline]
-fn gaussian_pdf(x: f64, mu: f64, sigma: f64) -> f64 {
-    let z = (x - mu) / sigma;
-    (-0.5 * z * z).exp() / (sigma * std::f64::consts::TAU.sqrt())
-}
+// (gaussian_pdf removed in CR-5 — the LLR now uses the closed-form Gaussian
+// log-ratio directly, so the density function and its underflow are gone.)
 
 /// Log-Likelihood Ratio for a fragment size slice vs. the human cfDNA model.
 ///
@@ -140,17 +131,21 @@ pub fn calc_llr_with_params(lengths: &[f64], params: &LlrModelParams) -> f64 {
     if lengths.is_empty() {
         return 0.0;
     }
-    lengths.iter().map(|&x| {
-        let p_tumor   = gaussian_pdf(x, params.tumor_mu,   params.tumor_sigma);
-        let p_healthy = gaussian_pdf(x, params.healthy_mu, params.healthy_sigma);
-        // Guard: clamp denominator to avoid log(0) for extreme sizes
-        let ratio = if p_healthy < f64::EPSILON {
-            f64::INFINITY
-        } else {
-            p_tumor / p_healthy
-        };
-        ratio.ln()
-    }).sum()
+    lengths
+        .iter()
+        .map(|&x| {
+            // Closed-form Gaussian log-ratio: ln(P_tumor(x)) − ln(P_healthy(x)).
+            // CR-5: this is finite for every finite x. The previous code formed the
+            // pdf ratio p_tumor/p_healthy and took its log, which underflowed to
+            // ±∞ in the tails (p_healthy < f64::EPSILON → +∞; a symmetric p_tumor
+            // underflow → ln(0) = −∞), so a single tail fragment pinned the whole
+            // sum to ±Infinity. The 0.5·ln(2π) normalisers cancel in the ratio,
+            // leaving 0.5·(z_h² − z_t²) + ln(σ_h/σ_t).
+            let z_t = (x - params.tumor_mu) / params.tumor_sigma;
+            let z_h = (x - params.healthy_mu) / params.healthy_sigma;
+            0.5 * (z_h * z_h - z_t * z_t) + (params.healthy_sigma / params.tumor_sigma).ln()
+        })
+        .sum()
 }
 
 // ── Physical Fragment Sizing ─────────────────────────────────────────────────
@@ -267,17 +262,76 @@ pub fn ks_test(a: &[f64], b: &[f64]) -> (f64, f64) {
         d = d.max((cdf_a - cdf_b).abs());
     }
 
-    let p = ks_p_value(d, n, m);
+    let p = ks_p_value(d, a_sorted.len(), b_sorted.len());
     (d, p)
 }
 
-/// Approximate p-value for a KS D-statistic using the Kolmogorov distribution.
+/// Two-sample KS p-value: P(D ≥ d) under the null.
 ///
-/// Uses the series approximation: Q_KS(λ) = 2 Σ (-1)^(k-1) exp(-2k²λ²)
-/// where λ = D * sqrt(n*m / (n+m)).
+/// CR-5: exact for small `n·m` (the low-input cfDNA regime, where the asymptotic
+/// Kolmogorov approximation over/under-covers because D is highly discrete), and
+/// the asymptotic series for large `n·m` where it is accurate and the exact O(n·m)
+/// lattice DP would be wasteful. The 10_000 threshold matches SciPy's `ks_2samp`.
+fn ks_p_value(d: f64, n: usize, m: usize) -> f64 {
+    if (n as u64) * (m as u64) <= 10_000 {
+        ks_p_value_exact(d, n, m)
+    } else {
+        ks_p_value_asymptotic(d, n as f64, m as f64)
+    }
+}
+
+/// Exact two-sample KS p-value via the lattice-path count (Hodges 1957).
 ///
-/// The series converges rapidly; we truncate at 100 terms (negligible error).
-fn ks_p_value(d: f64, n: f64, m: f64) -> f64 {
+/// Counts monotone merge-paths from (0,0) to (n,m) whose CDF deviation stays
+/// strictly below the observed D, then `p = 1 − within / C(n+m, n)`. Exact at any
+/// N, including the small n (5–20) typical of cfDNA ALT fragments. The deviation
+/// is compared in integers scaled by n·m (`|i·m − j·n| < d·n·m`) to avoid float
+/// drift; a tiny epsilon makes a deviation exactly equal to D count as *reaching*
+/// it, matching `P(D ≥ d_obs)`.
+fn ks_p_value_exact(d: f64, n: usize, m: usize) -> f64 {
+    if d <= 0.0 {
+        return 1.0;
+    }
+    let band = d * n as f64 * m as f64 - 1e-9;
+    let ni = n as i64;
+    let mi = m as i64;
+
+    // i = 0 edge: reachable along the top while inside the band.
+    let mut prev = vec![0f64; m + 1];
+    for (j, slot) in prev.iter_mut().enumerate() {
+        if (j as i64 * ni) as f64 >= band {
+            break; // outside band → rest of the edge is unreachable inside-band
+        }
+        *slot = 1.0;
+    }
+
+    for i in 1..=n {
+        let mut cur = vec![0f64; m + 1];
+        cur[0] = if ((i as i64 * mi) as f64) < band { prev[0] } else { 0.0 };
+        for j in 1..=m {
+            let dev = (i as i64 * mi - j as i64 * ni).abs() as f64;
+            cur[j] = if dev < band { cur[j - 1] + prev[j] } else { 0.0 };
+        }
+        prev = cur;
+    }
+
+    (1.0 - prev[m] / binomial(n + m, n)).clamp(0.0, 1.0)
+}
+
+/// C(n, k) as f64. Exact for the n+m ≤ ~140 range reached under the exact-KS
+/// threshold; the multiplicative form keeps intermediate values bounded.
+fn binomial(n: usize, k: usize) -> f64 {
+    let k = k.min(n - k);
+    let mut result = 1.0;
+    for i in 0..k {
+        result = result * (n - i) as f64 / (i + 1) as f64;
+    }
+    result
+}
+
+/// Asymptotic KS p-value via the Kolmogorov series Q_KS(λ) = 2 Σ (−1)^(k−1) e^(−2k²λ²),
+/// λ = D·√(n·m/(n+m)). Accurate for large n·m; used only above the exact threshold.
+fn ks_p_value_asymptotic(d: f64, n: f64, m: f64) -> f64 {
     let lambda = d * (n * m / (n + m)).sqrt();
     if lambda < f64::EPSILON {
         return 1.0;
@@ -285,10 +339,10 @@ fn ks_p_value(d: f64, n: f64, m: f64) -> f64 {
     let mut sum = 0.0;
     for k in 1..=100i64 {
         let term = (-2.0 * (k as f64 * lambda).powi(2)).exp();
-        let signed = if k % 2 == 0 { -1.0 } else { 1.0 } * term;
-        sum += signed;
-        // Early convergence: term negligible
-        if term < 1e-12 { break; }
+        sum += if k % 2 == 0 { -term } else { term };
+        if term < 1e-12 {
+            break;
+        }
     }
     (2.0 * sum).clamp(0.0, 1.0)
 }
@@ -366,6 +420,45 @@ mod tests {
         let (d, p) = ks_test(&a, &b);
         assert!((d - 1.0).abs() < 1e-10, "D should be ~1.0 for non-overlapping distributions, got {d}");
         assert!(p < 0.05, "p should be < 0.05 for well-separated distributions, got {p}");
+    }
+
+    // ─── CR-5: LLR finiteness + exact KS ──────────────────────────────────────
+
+    #[test]
+    fn test_llr_finite_in_tails() {
+        // Extreme fragment sizes used to underflow the pdf ratio to ±∞ and pin the
+        // whole sum to ±Infinity. The closed-form log-ratio is always finite.
+        let llr = calc_llr(&[10.0, 300.0, 600.0, 1000.0]);
+        assert!(llr.is_finite(), "LLR must be finite for tail fragments, got {llr}");
+    }
+
+    // Reference values: SciPy ks_2samp(method='exact'). Baked in as literals so the
+    // test has no scipy dependency (the n=5 disjoint case is also self-evident: 2/C(10,5)).
+    #[test]
+    fn test_ks_exact_disjoint_n5() {
+        let a = vec![100.0, 110.0, 120.0, 130.0, 140.0];
+        let b = vec![160.0, 170.0, 180.0, 190.0, 200.0];
+        let (d, p) = ks_test(&a, &b);
+        assert!((d - 1.0).abs() < 1e-9, "D={d}");
+        assert!((p - 2.0 / 252.0).abs() < 1e-6, "exact p={p}, want {}", 2.0 / 252.0);
+    }
+
+    #[test]
+    fn test_ks_exact_overlap_n5() {
+        let a = vec![100.0, 105.0, 110.0, 115.0, 120.0];
+        let b = vec![112.0, 118.0, 122.0, 128.0, 132.0];
+        let (d, p) = ks_test(&a, &b);
+        assert!((d - 0.6).abs() < 1e-9, "D={d}");
+        assert!((p - 0.357143).abs() < 1e-5, "exact p={p}, want 0.357143");
+    }
+
+    #[test]
+    fn test_ks_exact_n8() {
+        let a = vec![140.0, 145.0, 150.0, 155.0, 160.0, 165.0, 170.0, 175.0];
+        let b = vec![150.0, 152.0, 154.0, 156.0, 158.0, 160.0, 162.0, 164.0];
+        let (d, p) = ks_test(&a, &b);
+        assert!((d - 0.375).abs() < 1e-9, "D={d}");
+        assert!((p - 0.660140).abs() < 1e-5, "exact p={p}, want 0.660140");
     }
 
     // ─── calc_physical_insert_size ────────────────────────────────────────────
