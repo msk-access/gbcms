@@ -314,6 +314,13 @@ Enabled with `--mfsd`. All 34 columns (and their VCF INFO equivalents) are absen
 Each pair yields: `delta` (mean difference in bp), `ks` (KS D-statistic), `pval` (KS p-value).
 Values are `NA` when either class has fewer than 5 fragments (`mfsd_ks_valid = False`).
 
+> The `pval` is the **exact** two-sample KS p-value for small samples (the
+> low-input cfDNA regime), falling back to the asymptotic Kolmogorov series only
+> for large fragment counts. The exact value matters because at small N the KS
+> statistic is highly discrete — the asymptotic approximation mis-estimates the
+> p-value, and below a handful of fragments the test has essentially no power
+> (e.g. n=m=3 cannot reach p < 0.05 even when fully separated).
+
 | Pairs |
 |:------|
 | ALT vs REF: `mfsd_delta_alt_ref`, `mfsd_ks_alt_ref`, `mfsd_pval_alt_ref` |
