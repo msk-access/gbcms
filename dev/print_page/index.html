@@ -11595,6 +11595,14 @@ Use mouse to pan and zoom
 <h4 id="reference-counting-metrics-pairwise-ks-statistics-6-pairs-3-values-18-columns">Pairwise KS Statistics (6 pairs × 3 values = 18 columns)<a class="headerlink" href="#reference-counting-metrics-pairwise-ks-statistics-6-pairs-3-values-18-columns" title="Permanent link">¶</a></h4>
 <p>Each pair yields: <code>delta</code> (mean difference in bp), <code>ks</code> (KS D-statistic), <code>pval</code> (KS p-value).
 Values are <code>NA</code> when either class has fewer than 5 fragments (<code>mfsd_ks_valid = False</code>).</p>
+<blockquote>
+<p>The <code>pval</code> is the <strong>exact</strong> two-sample KS p-value for small samples (the
+low-input <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> regime), falling back to the asymptotic Kolmogorov series only
+for large fragment counts. The exact value matters because at small N the KS
+statistic is highly discrete — the asymptotic approximation mis-estimates the
+p-value, and below a handful of fragments the test has essentially no power
+(e.g. n=m=3 cannot reach p &lt; 0.05 even when fully separated).</p>
+</blockquote>
 <table>
 <thead>
 <tr>
