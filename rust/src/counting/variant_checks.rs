@@ -86,7 +86,7 @@ fn pangenomic_classify(
     // Step 2: WFA fast-path triage (edit distance).
     // Clear-cut reads classified without PairHMM.
     let med_qual = median_qual(sub_quals, min_baseq);
-    if let Some(result) = wfa_fast_path(sub_seq, &matrix, med_qual) {
+    if let Some(result) = wfa_fast_path(sub_seq, sub_quals, min_baseq, &matrix, med_qual) {
         trace!(
             "pangenomic_classify: WFA resolved → is_ref={} is_alt={} qual={} at {}:{}",
             result.is_ref, result.is_alt, result.qual,
