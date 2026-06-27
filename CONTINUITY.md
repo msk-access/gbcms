@@ -8,28 +8,42 @@ _Last updated: 2026-06-27_
 ## Now
 Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)
 ticket by ticket, one PR each, with review-before/after discipline and real-data
-validation on MSK slice + ctDNA-duplex BAMs.
+validation on MSK cfDNA-duplex (b37) and STAR/FORTE RNA (GRCh38) samples.
 
-**M1 (count-correctness) — COMPLETE & merged:**
-CR-1 (#25 bin anchor coverage), CR-3 (#26 empty-allele guards), CR-2 (#27 WFA BQ
-gate), CR-4 (#28 tolerant-deletion partial seq-check). Plus #29 Docker CI
-resilience. All independently cross-checked with pysam (ALT 571/571 exact).
+**M1 (count correctness) — COMPLETE & merged:** CR-1, CR-3, CR-2, CR-4 (+#29 Docker
+CI). pysam-cross-checked (ALT 571/571 exact).
 
-**M2 (statistical integrity) — in progress:**
-CR-5 (closed-form LLR, removes ±∞; exact small-N KS, Rust-only, no scipy) on
-branch `feature/cr-5-mfsd-llr-ks`. Real-data: 0 non-finite LLR, all KS p in [0,1].
+**M2 (statistical integrity) — COMPLETE & merged:** CR-5 (closed-form LLR, exact
+small-N KS, no scipy), HI-10, HI-11 (BH-FDR `mfsd_qval_alt_ref`), ME-8 (ASJD BH
+padding), ME-9 (classify only on a valid KS test; `MIN_FOR_KS` stays 5), ME-10 (NaN
+enrichment disambiguation), ME-11 (isinf guard).
+
+**M3 (RNA correctness) — COMPLETE & merged (#34, #35, #36):** LO-12 (NH integer
+widths), HI-8 (intron-discounted fragment size), LO-9 (GTF diagnostics), ME-6
+(`normalize_contig` M/MT), HI-7 (populate `gene_strand` — the keystone), LO-10
+(unstranded→None), HI-9 (strand-aware splice motifs), ME-7 (dUTP-folded
+STRAND_DISCORDANT), LO-11 (base-aware editing). Validated end-to-end on a real
+reverse-stranded RNA sample; dUTP sense/antisense split matched samtools 2/2.
+
+**M4 (alignment robustness) — in progress:** LO-15 (shared `MIN_USABLE_BASES` across
+SW/PairHMM/WFA + a WFA usable-base gate) on `feature/m4-usable-bases-const` —
+byte-identical counts on 610 real cfDNA variants (pure refactor + defensive gate).
 
 ## Next
-1. Open/merge the CR-5 PR.
-2. Continue M2: HI-10 (report mislabels the fragment-size LLR as the PairHMM LLR),
-   HI-11 (no FDR on the 6 KS p-values), ME-8 (ASJD BH padding), ME-9 (MIN_FOR_KS
-   vs report min_alt), ME-10 (sub_nuc NaN), ME-11 (report isinf guard).
-3. Then M3 (RNA): HI-7 gene_strand, HI-8 splice fragment size, HI-9 motif strand, …
+1. Open/merge the LO-15 PR.
+2. M4 Bundle A (one PR, PairHMM numerics, real-data validated): HI-4 (clamp
+   `p_correct`/`p_error` — Q0 currently gives `ln(0)→NaN→` silent neither), HI-5 (N
+   emission truly LLR-neutral near indels), ME-5 (`prob_emit_y` justified/symmetric).
+   HI-5 ⇄ ME-5 are co-decided.
+3. HI-3 (WFA off-target: global→semiglobal + length-aware threshold) — needs DNA data;
+   sequence after Bundle A since its fix is "defer to the now-hardened PairHMM".
+4. ME-4 (haplotype-parity collision short-circuit) + LO-5 (hashing-misnomer doc).
 
 ## Open follow-ups (tracked, not lost)
 - BAM-level binned↔legacy parity CI gate, incl. large deletions (the gap that hid CR-1).
 - Prep-time empty-allele validation (loud, once-per-variant) — complements CR-3.
-- HI-3: WFA off-target global-edit-distance + fixed threshold.
+- DX-1: sweep remaining ticket labels (`P4a`/`P4b`/`D7`/…) from source comments/logs
+  (being cleared opportunistically as lines are touched).
 - LO-2: feature-gate the legacy per-variant traversal (keep as parity oracle, exclude
   from the shipped wheel) — **revisit after this plan**, per maintainer.
 
@@ -41,3 +55,6 @@ branch `feature/cr-5-mfsd-llr-ks`. Real-data: 0 non-finite LLR, all KS p in [0,1
   oracle**; production uses `count_bam_binned` only.
 - Tests kept minimal/high-signal (each is a maintenance contract); fixes that reduce
   duplication are preferred over adding code.
+- Source comments/logs explain what/why/how — **never** ticket labels (`CR-`/`HI-`/
+  `ME-`/`P4c`/…); that context lives in the commit message. Rule in
+  `.agents/rules/code-quality.md`; existing labels swept under DX-1.

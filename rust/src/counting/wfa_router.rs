@@ -23,7 +23,7 @@ use log::{debug, trace};
 use wfa2lib_rs::aligner::EditAligner;
 use wfa2lib_rs::penalties::WavefrontPenalties;
 
-use super::utils::{ClassifyResult, ClassifyPhase};
+use super::utils::{ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
 
 /// Score threshold above which both alleles are considered off-target.
@@ -77,7 +77,19 @@ pub fn wfa_fast_path(
         return None;
     }
 
-    // CR-2: mask sub-min_baseq bases to N for the definitive-call triage. A missing
+    // Share the usable-base gate with the SW/PairHMM backends (the "one quality
+    // contract"): too few high-BQ bases means there is not enough signal for a
+    // definitive call, so defer to the equally-gated fallback rather than risk a
+    // call driven by one or two bases. In practice a definitive call already
+    // requires an all-high-BQ exact match, so this only guards pathological
+    // short/over-masked reads — but it keeps every backend's floor identical.
+    let usable_count = read_quals.iter().filter(|&&q| q >= min_baseq).count();
+    if usable_count < MIN_USABLE_BASES {
+        trace!("wfa_fast_path: only {} usable bases — deferring to fallback", usable_count);
+        return None;
+    }
+
+    // Mask sub-min_baseq bases to N for the definitive-call triage. A missing
     // qual (length mismatch) is treated as BQ 0 → masked, which is conservative.
     let masked: Vec<u8> = read_seq
         .iter()
@@ -198,6 +210,22 @@ mod tests {
         ];
         let result = wfa_fast_path(read, &hq(read.len()), MINQ, &matrix, 30);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_insufficient_usable_bases_defers() {
+        // The read perfectly matches REF, but only 2 bases clear min_baseq, so the
+        // shared usable-base gate defers to the fallback instead of calling REF.
+        let read = b"AACGT";
+        let matrix = vec![
+            b"AACGT".to_vec(), // H0: REF — would be a perfect match
+            b"AATGT".to_vec(), // H1: ALT
+        ];
+        let quals = vec![30u8, 30, 5, 5, 5]; // only 2 usable (< MIN_USABLE_BASES)
+        assert!(
+            wfa_fast_path(read, &quals, MINQ, &matrix, 30).is_none(),
+            "fewer than MIN_USABLE_BASES usable bases must defer to the fallback",
+        );
     }
 
     #[test]

@@ -13,7 +13,7 @@ use bio::alignment::pairwise::Aligner;
 use log::{debug, trace};
 
 use crate::types::Variant;
-use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase};
+use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
 /// Extract contiguous **raw** read bases spanning a genomic window `[win_start, win_end)`.
 ///
@@ -239,7 +239,7 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
     // Skip if too few usable bases.
     let read_len = read_seq.len();
     let usable_count = read_quals.iter().filter(|&&q| q >= min_baseq).count();
-    if usable_count < 3 {
+    if usable_count < MIN_USABLE_BASES {
         trace!("classify_by_alignment: only {} usable bases — skipping", usable_count);
         return ClassifyResult::neither(ClassifyPhase::Alignment);
     }

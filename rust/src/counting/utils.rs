@@ -11,6 +11,14 @@ use crate::types::Variant;
 // Re-export shared BAM utilities so existing `super::utils::*` imports work.
 pub use crate::shared::bam_utils::{find_read_pos, median_qual};
 
+/// Minimum number of usable (base-quality ≥ `min_baseq`) read bases required to
+/// attempt allele classification. Below this, there is too little high-quality
+/// signal to discriminate REF from ALT, so every backend returns "neither" rather
+/// than risk a call driven by one or two bases. Shared by the Smith-Waterman,
+/// PairHMM, and WFA fast-path classifiers so the usable-base gate is identical
+/// across alignment backends (the "one quality contract" invariant).
+pub const MIN_USABLE_BASES: usize = 3;
+
 
 /// Which classification phase resolved a read's allele assignment.
 ///
