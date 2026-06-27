@@ -518,17 +518,19 @@ pub fn count_bam_binned(
         _ => AlignmentBackend::SmithWaterman,
     };
 
-    // ── D7: Load RNA editing site database (if provided) ──
+    // ── Load RNA editing site database (if provided) ──
     // Loaded ONCE at init, then shared across all bins/threads via Arc.
-    // DB-only strategy: flag = True only when site is in REDIportal.
-    // No DB = no editing flags (no pattern-matching guessing).
-    let editing_sites: Option<HashSet<(String, i64)>> = match rna_editing_db {
+    // DB-only strategy: flag = True only when the variant matches a REDIportal edit.
+    // No DB = no editing flags (no pattern-matching guessing). Each entry carries the
+    // catalogued (chrom, 0-based pos, ref base, edited base) so the flag can require
+    // the variant's substitution to match, not merely its position.
+    let editing_sites: Option<HashSet<(String, i64, u8, u8)>> = match rna_editing_db {
         Some(path) => {
             let sites = rna::build_rna_editing_set(path)
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
                     format!("Failed to load RNA editing DB: {}", e)
                 ))?;
-            info!("D7: Loaded {} RNA editing sites from {}", sites.len(), path);
+            info!("Loaded {} RNA editing sites from {}", sites.len(), path);
             Some(sites)
         }
         None => None,
@@ -885,7 +887,7 @@ fn count_bin_shared(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
-    editing_sites: &Option<HashSet<(String, i64)>>,
+    editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
     amplicon_mode: bool,
@@ -1085,7 +1087,7 @@ fn count_variant_from_cache(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
-    editing_sites: &Option<HashSet<(String, i64)>>,
+    editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     amplicon_mode: bool,
 ) -> Result<BaseCounts> {
@@ -1440,12 +1442,24 @@ fn count_variant_from_cache(
     // (e.g. every A→G SNP being flagged as a potential editing site).
     if mode == "rna" {
         counts.rna_editing_site_overlap = editing_sites.as_ref().is_some_and(|sites| {
-            let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
-            let found = sites.contains(&(chrom, variant.pos));
+            // Flag only when the variant's substitution matches the catalogued edit
+            // (genomic-forward Ref>Ed, e.g. A>G on '+' or T>C on '-'). Position alone
+            // would over-flag unrelated substitutions sitting on an editing coordinate.
+            let found = variant.ref_allele.len() == 1
+                && variant.alt_allele.len() == 1
+                && {
+                    let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
+                    sites.contains(&(
+                        chrom,
+                        variant.pos,
+                        variant.ref_allele.as_bytes()[0].to_ascii_uppercase(),
+                        variant.alt_allele.as_bytes()[0].to_ascii_uppercase(),
+                    ))
+                };
             if found {
                 trace!(
-                    "D7: editing site flagged at {}:{}",
-                    variant.chrom, variant.pos + 1,
+                    "editing site match at {}:{} {}>{}",
+                    variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
                 );
             }
             found
@@ -2505,22 +2519,29 @@ impl AsjdResult {
 ///
 /// In stranded (dUTP) RNA-seq libraries, reads spanning a real splice junction
 /// should originate from a single transcript strand. If the dominant ALT junction
-/// has substantial support from **both** strands (minority strand fraction ≥ 30%),
-/// it indicates the junction may be an alignment artifact (e.g., DNA contamination
-/// or mismapping) rather than a genuine RNA splice event.
+/// has substantial support from **both transcript strands** (minority fraction
+/// ≥ 30%), it indicates the junction may be an alignment artifact (e.g., DNA
+/// contamination or mismapping) rather than a genuine RNA splice event.
+///
+/// Reads are binned by their dUTP-folded *transcript* strand
+/// ([`super::rna::read_transcript_strand`]), not raw genomic orientation —
+/// otherwise the two mates of a normal FR pair land on opposite genomic strands
+/// and a genuine junction looks fully mixed, firing the flag spuriously.
 ///
 /// The `STRAND_DISCORDANT` diagnostic flag fires when:
-/// `min(forward, reverse) / (forward + reverse) >= 0.30`
+/// `min(plus, minus) / (plus + minus) >= 0.30`
 #[derive(Default, Debug)]
 struct JunctionStrandCounts {
-    forward: u32,
-    reverse: u32,
+    /// Reads whose transcript strand resolves to '+'.
+    plus: u32,
+    /// Reads whose transcript strand resolves to '-'.
+    minus: u32,
 }
 
 impl JunctionStrandCounts {
-    /// Total read count across both strands.
+    /// Total read count across both transcript strands.
     fn total(&self) -> u32 {
-        self.forward + self.reverse
+        self.plus + self.minus
     }
 
     /// Minority strand fraction: 0.0 = perfectly stranded, 0.5 = fully mixed.
@@ -2529,7 +2550,7 @@ impl JunctionStrandCounts {
         if total == 0 {
             return 0.0;
         }
-        let minority = std::cmp::min(self.forward, self.reverse);
+        let minority = std::cmp::min(self.plus, self.minus);
         minority as f64 / total as f64
     }
 }
@@ -2549,20 +2570,26 @@ impl JunctionStrandCounts {
 /// | AT    | AC       | AT-AC  | U12         |
 /// | other | other    | OTHER  | Non-canonical |
 ///
-/// Returns `"UNKNOWN"` if FASTA reader is unavailable or fetch fails.
+/// On the minus strand the donor/acceptor roles swap and each dinucleotide is
+/// reverse-complemented, so a canonical minus-strand intron (genomic `CT..AC`) is
+/// recognized rather than misread as `OTHER`. With strand unknown a canonical motif
+/// in either orientation is accepted rather than guessing non-canonical.
+/// Returns `"UNKNOWN"` if the FASTA reader is unavailable or a fetch fails.
 fn classify_splice_motif(
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
     chrom: &str,
     junction_start: i64,
     junction_end: i64,
+    gene_strand: Option<char>,
 ) -> String {
     let reader = match fasta_reader.as_mut() {
         Some(r) => r,
         None => return "UNKNOWN".to_string(),
     };
 
-    // Fetch donor dinucleotide (2bp at intron start)
-    let donor = match crate::normalize::fasta::fetch_region(
+    // Fetch the two genomic dinucleotides bracketing the intron (forward strand):
+    // `left` at the intron start, `right` at the intron end.
+    let left = match crate::normalize::fasta::fetch_region(
         reader, chrom, junction_start as u64, (junction_start + 2) as u64,
     ) {
         Ok(bases) if bases.len() == 2 => {
@@ -2570,9 +2597,7 @@ fn classify_splice_motif(
         }
         _ => return "UNKNOWN".to_string(),
     };
-
-    // Fetch acceptor dinucleotide (2bp at intron end - 2)
-    let acceptor = match crate::normalize::fasta::fetch_region(
+    let right = match crate::normalize::fasta::fetch_region(
         reader, chrom, (junction_end - 2) as u64, junction_end as u64,
     ) {
         Ok(bases) if bases.len() == 2 => {
@@ -2581,13 +2606,45 @@ fn classify_splice_motif(
         _ => return "UNKNOWN".to_string(),
     };
 
-    // Classify the motif
-    match (donor, acceptor) {
-        ([b'G', b'T'], [b'A', b'G']) => "GT-AG".to_string(),
-        ([b'G', b'C'], [b'A', b'G']) => "GC-AG".to_string(),
-        ([b'A', b'T'], [b'A', b'C']) => "AT-AC".to_string(),
-        _ => "OTHER".to_string(),
+    // Orient donor/acceptor by gene strand. On '+', donor = left, acceptor = right.
+    // On '-', the intron reads in reverse: donor = revcomp(right), acceptor =
+    // revcomp(left). With strand unknown, accept a canonical motif in either reading.
+    match gene_strand {
+        Some('-') => motif_label(revcomp2(right), revcomp2(left)),
+        Some('+') => motif_label(left, right),
+        _ => canonical_motif(left, right)
+            .or_else(|| canonical_motif(revcomp2(right), revcomp2(left)))
+            .unwrap_or("OTHER")
+            .to_string(),
     }
+}
+
+/// Reverse-complement a 2-base motif (donor/acceptor dinucleotide).
+fn revcomp2(d: [u8; 2]) -> [u8; 2] {
+    let complement = |b: u8| match b {
+        b'A' => b'T',
+        b'T' => b'A',
+        b'C' => b'G',
+        b'G' => b'C',
+        other => other,
+    };
+    [complement(d[1]), complement(d[0])]
+}
+
+/// Canonical spliceosomal motif name for a donor/acceptor pair, or `None` if
+/// non-canonical (GT-AG = U2 major, GC-AG = U2 minor, AT-AC = U12).
+fn canonical_motif(donor: [u8; 2], acceptor: [u8; 2]) -> Option<&'static str> {
+    match (donor, acceptor) {
+        ([b'G', b'T'], [b'A', b'G']) => Some("GT-AG"),
+        ([b'G', b'C'], [b'A', b'G']) => Some("GC-AG"),
+        ([b'A', b'T'], [b'A', b'C']) => Some("AT-AC"),
+        _ => None,
+    }
+}
+
+/// Canonical motif name, or `"OTHER"` when non-canonical.
+fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
+    canonical_motif(donor, acceptor).unwrap_or("OTHER").to_string()
 }
 
 ///
@@ -2641,10 +2698,10 @@ fn detect_asjd(
     let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
     let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
 
-    // Step 1: Partition reads into REF/ALT and collect junctions with strand info
-    // Tracks forward/reverse read counts per junction for STRAND_DISCORDANT detection.
-    // In dUTP libraries, real splice junctions should be supported by reads from a
-    // single strand; mixed-strand evidence suggests alignment artifacts.
+    // Step 1: Partition reads into REF/ALT and collect junctions with strand info.
+    // Tracks per-junction transcript-strand counts for STRAND_DISCORDANT detection:
+    // a genuine splice junction is supported from a single transcript strand, so
+    // mixed-strand evidence suggests an alignment artifact.
     let mut ref_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
     let mut alt_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
     let mut n_ref_total: u32 = 0;
@@ -2688,21 +2745,22 @@ fn detect_asjd(
             continue;
         }
 
-        // Read strand (BAM FLAG bit 0x10)
-        let is_reverse = record.is_reverse();
+        // dUTP-folded transcript strand, so both mates of a normal FR pair agree
+        // rather than splitting a genuine junction across both genomic strands.
+        let tx_minus = super::rna::read_transcript_strand(record) == '-';
 
-        // Partition by allele classification, tracking strand per junction
+        // Partition by allele classification, tracking transcript strand per junction
         if result.is_ref {
             n_ref_total += 1;
             for j in &junctions {
                 let entry = ref_junction_counts.entry(*j).or_default();
-                if is_reverse { entry.reverse += 1; } else { entry.forward += 1; }
+                if tx_minus { entry.minus += 1; } else { entry.plus += 1; }
             }
         } else if result.is_alt {
             n_alt_total += 1;
             for j in &junctions {
                 let entry = alt_junction_counts.entry(*j).or_default();
-                if is_reverse { entry.reverse += 1; } else { entry.forward += 1; }
+                if tx_minus { entry.minus += 1; } else { entry.plus += 1; }
             }
         }
     }
@@ -2787,8 +2845,12 @@ fn detect_asjd(
     //   Donor:   2bp at junction_start (intron start)
     //   Acceptor: 2bp at junction_end - 2 (intron end)
     // Canonical motifs: GT-AG (U2), GC-AG (U2 minor), AT-AC (U12)
-    let ref_motif = classify_splice_motif(fasta_reader, chrom, ref_dom_junc.0, ref_dom_junc.1);
-    let alt_motif = classify_splice_motif(fasta_reader, chrom, alt_dom_junc.0, alt_dom_junc.1);
+    let ref_motif = classify_splice_motif(
+        fasta_reader, chrom, ref_dom_junc.0, ref_dom_junc.1, variant.gene_strand,
+    );
+    let alt_motif = classify_splice_motif(
+        fasta_reader, chrom, alt_dom_junc.0, alt_dom_junc.1, variant.gene_strand,
+    );
 
     // NON_CANONICAL_MOTIF diagnostic flag
     if !same_junction && alt_motif == "OTHER" {
@@ -2803,20 +2865,20 @@ fn detect_asjd(
     if !same_junction && n_alt_junc >= 5 && alt_minority_frac >= 0.30 {
         diag_flags.push("STRAND_DISCORDANT");
         debug!(
-            "P4c STRAND_DISCORDANT: {}:{} alt_junc={}-{} fwd={} rev={} minority_frac={:.2}",
+            "STRAND_DISCORDANT: {}:{} alt_junc={}-{} tx+={} tx-={} minority_frac={:.2}",
             variant.chrom, variant.pos + 1,
             alt_dom_junc.0, alt_dom_junc.1,
-            alt_dom_strand_info.forward, alt_dom_strand_info.reverse,
+            alt_dom_strand_info.plus, alt_dom_strand_info.minus,
             alt_minority_frac,
         );
     }
 
     trace!(
-        "P4c ASJD: {}:{} flag={} pval={:.4e} ref={}({}) alt={}({}) ref_n={}/{} alt_n={}/{} alt_strand={}F/{}R",
+        "ASJD: {}:{} flag={} pval={:.4e} ref={}({}) alt={}({}) ref_n={}/{} alt_n={}/{} alt_strand={}tx+/{}tx-",
         variant.chrom, variant.pos + 1, flag, pval,
         ref_junction_str, ref_motif, alt_junction_str, alt_motif,
         n_ref_junc, n_ref_total, n_alt_junc, n_alt_total,
-        alt_dom_strand_info.forward, alt_dom_strand_info.reverse,
+        alt_dom_strand_info.plus, alt_dom_strand_info.minus,
     );
 
     AsjdResult {
@@ -2843,6 +2905,27 @@ mod tests {
     use super::*;
     use rust_htslib::bam::record::CigarString;
     use std::ffi::CString;
+
+    #[test]
+    fn test_splice_motif_orientation_by_strand() {
+        // A canonical GT-AG intron on the MINUS strand appears on the forward genome
+        // as left=CT (revcomp of acceptor AG) and right=AC (revcomp of donor GT).
+        let left_minus = [b'C', b'T'];
+        let right_minus = [b'A', b'C'];
+        // Read forward (plus orientation) it is non-canonical...
+        assert_eq!(motif_label(left_minus, right_minus), "OTHER");
+        // ...but minus orientation (revcomp + donor/acceptor swap) recovers GT-AG.
+        assert_eq!(motif_label(revcomp2(right_minus), revcomp2(left_minus)), "GT-AG");
+
+        // Plus-strand canonical intron: left=GT donor, right=AG acceptor.
+        assert_eq!(motif_label([b'G', b'T'], [b'A', b'G']), "GT-AG");
+
+        // Building-block sanity.
+        assert_eq!(revcomp2([b'A', b'C']), [b'G', b'T']);
+        assert_eq!(revcomp2([b'C', b'T']), [b'A', b'G']);
+        assert_eq!(canonical_motif([b'A', b'T'], [b'A', b'C']), Some("AT-AC"));
+        assert_eq!(canonical_motif([b'C', b'C'], [b'G', b'G']), None);
+    }
 
     /// Build a synthetic BAM record for testing.
     ///

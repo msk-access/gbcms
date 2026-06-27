@@ -94,34 +94,30 @@ fn nh_tag_value(record: &Record) -> Option<i64> {
 ///
 /// `true` if the read is on the sense strand (or gene_strand is None).
 pub fn is_sense_strand(record: &Record, gene_strand: Option<char>) -> bool {
-    let gs = match gene_strand {
-        Some(s) => s,
-        None => return true, // No strand info — pass all reads
-    };
+    match gene_strand {
+        // No strand info — strandedness cannot be enforced, so pass all reads.
+        None => true,
+        Some(gs) => read_transcript_strand(record) == gs,
+    }
+}
 
-    // Determine the transcript strand of this read.
-    // dUTP protocol: R1 is antisense, R2 is sense.
-    // For single-end: the read is antisense.
-    let is_reverse = record.is_reverse();
-    let is_read2 = record.is_last_in_template();
-
-    // The "read strand" in genomic coordinates:
-    //  - Forward read (non-reversed) = '+' genomic strand
-    //  - Reverse read (reversed)     = '-' genomic strand
-    let read_genomic_strand = if is_reverse { '-' } else { '+' };
-
-    // Infer the transcript strand this read originated from:
-    // - R2 (sense): read_genomic_strand == transcript strand
-    // - R1 (antisense) or single-end: read_genomic_strand is OPPOSITE to transcript strand
-    let transcript_strand = if is_read2 {
-        // R2 is sense: same as genomic strand
-        read_genomic_strand
+/// Infer the transcript strand a read originated from, under the dUTP protocol.
+///
+/// dUTP stranded libraries make R2 sense and R1 (or single-end) antisense, so the
+/// transcript strand is the read's genomic strand for R2 and the opposite for R1.
+/// Returned in genomic terms (`'+'`/`'-'`) for direct comparison against a gene
+/// strand. Shared by [`is_sense_strand`] and ASJD strand-discordance detection, so
+/// both fold read orientation the same way (a normal FR pair's two mates resolve to
+/// the *same* transcript strand rather than looking bi-stranded).
+pub fn read_transcript_strand(record: &Record) -> char {
+    let read_genomic_strand = if record.is_reverse() { '-' } else { '+' };
+    if record.is_last_in_template() {
+        read_genomic_strand // R2 is sense — same as the genomic strand
+    } else if read_genomic_strand == '+' {
+        '-' // R1/single-end is antisense — flip
     } else {
-        // R1/single-end is antisense: flip
-        if read_genomic_strand == '+' { '-' } else { '+' }
-    };
-
-    transcript_strand == gs
+        '+'
+    }
 }
 
 
@@ -206,7 +202,7 @@ pub fn extract_splice_junctions(record: &Record) -> Vec<(i64, i64)> {
 ///
 /// Loads ~15.7M sites in ~3-5 seconds (plain) or ~5-8 seconds (gzipped).
 /// Memory: ~80 bytes per site ≈ 1.2 GB.
-pub fn build_rna_editing_set(db_path: &str) -> anyhow::Result<HashSet<(String, i64)>> {
+pub fn build_rna_editing_set(db_path: &str) -> anyhow::Result<HashSet<(String, i64, u8, u8)>> {
     let file = std::fs::File::open(db_path)
         .map_err(|e| anyhow::anyhow!("Failed to open RNA editing DB '{}': {}", db_path, e))?;
 
@@ -237,21 +233,37 @@ pub fn build_rna_editing_set(db_path: &str) -> anyhow::Result<HashSet<(String, i
             continue;
         }
 
-        // Only split enough columns to reach Position (col 2)
-        let fields: Vec<&str> = line.splitn(4, '\t').collect();
-        if fields.len() < 3 {
+        // Split enough columns to reach Ed (col 4): Accession, Region, Position, Ref, Ed.
+        let fields: Vec<&str> = line.splitn(6, '\t').collect();
+        if fields.len() < 5 {
             skipped += 1;
             continue;
         }
 
-        // Col 1 = Region (chrom), Col 2 = Position (1-based)
+        // Col 1 = Region (chrom), 2 = Position (1-based), 3 = Ref, 4 = Ed.
         let chrom = crate::shared::contig::normalize_contig(fields[1]);
-        if let Ok(pos_1based) = fields[2].parse::<i64>() {
-            // Convert 1-based REDIportal → 0-based BAM coordinates
-            sites.insert((chrom, pos_1based - 1));
-        } else {
+        let pos_1based = match fields[2].parse::<i64>() {
+            Ok(p) => p,
+            Err(_) => {
+                skipped += 1;
+                continue;
+            }
+        };
+        // Ref/Ed must be single bases to verify a SNV's substitution; skip otherwise.
+        let (ref_b, ed_b) = (fields[3].as_bytes(), fields[4].as_bytes());
+        if ref_b.len() != 1 || ed_b.len() != 1 {
             skipped += 1;
+            continue;
         }
+        // Convert 1-based REDIportal → 0-based BAM coordinates; store the
+        // genomic-forward edit so the flag can require the variant's substitution
+        // (Ref>Ed) to match, not merely its position.
+        sites.insert((
+            chrom,
+            pos_1based - 1,
+            ref_b[0].to_ascii_uppercase(),
+            ed_b[0].to_ascii_uppercase(),
+        ));
     }
 
     if skipped > 0 {
@@ -454,6 +466,26 @@ mod tests {
         record.set_mapq(0);
         record.push_aux(b"NH", Aux::U16(2)).unwrap();
         assert!(!is_valid_rna_alignment(&record, 1));
+    }
+
+    #[test]
+    fn test_editing_set_carries_edit_bases() {
+        use std::io::Write;
+        let path = std::env::temp_dir().join("gbcms_lo11_redi.txt");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "Accession\tRegion\tPosition\tRef\tEd\tStrand").unwrap();
+            writeln!(f, "EDH0001\t7\t100\tA\tG\t+").unwrap(); // + strand A>G
+            writeln!(f, "EDH0002\t12\t200\tT\tC\t-").unwrap(); // - strand T>C (forward genome)
+        }
+        let sites = build_rna_editing_set(path.to_str().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        // 1-based REDIportal → 0-based internal coordinates (pos - 1).
+        assert!(sites.contains(&("7".to_string(), 99, b'A', b'G')), "A>G + site present");
+        assert!(sites.contains(&("12".to_string(), 199, b'T', b'C')), "T>C - site present");
+        // A different substitution at the same coordinate is NOT catalogued.
+        assert!(!sites.contains(&("7".to_string(), 99, b'A', b'T')), "A>T must not match");
     }
 
     // ── is_sense_strand tests ──
