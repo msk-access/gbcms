@@ -716,20 +716,28 @@ pub fn count_bam_binned(
             // ── P4c: BH-FDR correction for ASJD p-values ──
             // Requires all p-values simultaneously, so must run after all bins
             // are processed. Only runs in RNA mode with annotation present.
-            // In DNA mode, asjd_pval defaults to 0.0 (Default trait), which
-            // would falsely trigger the `p < 1.0` guard — the mode check
-            // prevents this unnecessary O(n log n) sort.
+            // ME-8: correct ONLY over variants with a real ASJD test (junction
+            // reads present). Non-junction variants keep the default asjd_pval and
+            // would pad the family — inflating n and distorting the FDR — the same
+            // bug fixed for mFSD in HI-11. Filtering on junction-read presence
+            // also subsumes the old `p < 1.0` data guard.
             if mode == "rna" {
-                let pvals: Vec<f64> = all_counts.iter().map(|c| c.asjd_pval).collect();
-                let has_asjd_data = pvals.iter().any(|&p| p < 1.0);
-                if has_asjd_data {
+                let asjd_valid: Vec<usize> = all_counts
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| c.asjd_n_alt_junc + c.asjd_n_ref_junc > 0)
+                    .map(|(i, _)| i)
+                    .collect();
+                if !asjd_valid.is_empty() {
+                    let pvals: Vec<f64> =
+                        asjd_valid.iter().map(|&i| all_counts[i].asjd_pval).collect();
                     let qvals = crate::shared::stats::benjamini_hochberg(&pvals);
-                    for (i, q) in qvals.into_iter().enumerate() {
+                    for (&i, q) in asjd_valid.iter().zip(qvals) {
                         all_counts[i].asjd_qval = q;
                     }
                     debug!(
-                        "P4c BH-FDR: corrected {} ASJD p-values",
-                        pvals.len(),
+                        "P4c BH-FDR: corrected {} ASJD p-values (over real tests)",
+                        asjd_valid.len(),
                     );
                 }
             }
