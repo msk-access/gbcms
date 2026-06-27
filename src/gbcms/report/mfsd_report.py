@@ -43,8 +43,10 @@ TOOLTIPS: dict[str, str] = {
         "differences between the two distributions."
     ),
     "LLR": (
-        "Log-likelihood ratio from PairHMM alignment. Positive values indicate "
-        "confident ALT-supporting fragment evidence. Higher = stronger signal."
+        "Fragment-size log-likelihood ratio comparing a tumor-derived vs healthy "
+        "cfDNA fragment-size model, summed over fragments. Positive = shorter, "
+        "tumor-like fragments; negative = longer, healthy-like. (This is the "
+        "fragment-size LLR, not the PairHMM read-classification LLR.)"
     ),
     "Sub-nuc enrich.": (
         "Sub-nucleosomal enrichment: ratio of ALT fragments <150 bp to REF "
@@ -730,7 +732,7 @@ body {{ font-family: 'Inter', sans-serif; background: var(--bg-page); color: var
       <li><strong>REF n / ALT n:</strong> Fragment count classified as reference or alternate allele.</li>
       <li><strong>Δ(ALT−REF):</strong> Difference in mean fragment size (bp). Negative = ALT shorter.</li>
       <li><strong>KS p:</strong> Kolmogorov-Smirnov test p-value comparing ALT vs REF size distributions.</li>
-      <li><strong>LLR:</strong> Log-likelihood ratio (positive = tumor-like fragment profile).</li>
+      <li><strong>LLR:</strong> Fragment-size log-likelihood ratio (positive = shorter, tumor-like fragments).</li>
       <li><strong>Sub-nuc enrich.:</strong> ALT(&lt;150bp fraction) / REF(&lt;150bp fraction).</li>
       <li><strong>Density overlay:</strong> Gaussian KDE (Silverman bandwidth) normalized to unit area, plotted on the right y-axis. Enables direct shape comparison between REF and ALT regardless of fragment count differences.</li>
     </ul>
