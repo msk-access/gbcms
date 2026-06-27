@@ -94,34 +94,30 @@ fn nh_tag_value(record: &Record) -> Option<i64> {
 ///
 /// `true` if the read is on the sense strand (or gene_strand is None).
 pub fn is_sense_strand(record: &Record, gene_strand: Option<char>) -> bool {
-    let gs = match gene_strand {
-        Some(s) => s,
-        None => return true, // No strand info — pass all reads
-    };
+    match gene_strand {
+        // No strand info — strandedness cannot be enforced, so pass all reads.
+        None => true,
+        Some(gs) => read_transcript_strand(record) == gs,
+    }
+}
 
-    // Determine the transcript strand of this read.
-    // dUTP protocol: R1 is antisense, R2 is sense.
-    // For single-end: the read is antisense.
-    let is_reverse = record.is_reverse();
-    let is_read2 = record.is_last_in_template();
-
-    // The "read strand" in genomic coordinates:
-    //  - Forward read (non-reversed) = '+' genomic strand
-    //  - Reverse read (reversed)     = '-' genomic strand
-    let read_genomic_strand = if is_reverse { '-' } else { '+' };
-
-    // Infer the transcript strand this read originated from:
-    // - R2 (sense): read_genomic_strand == transcript strand
-    // - R1 (antisense) or single-end: read_genomic_strand is OPPOSITE to transcript strand
-    let transcript_strand = if is_read2 {
-        // R2 is sense: same as genomic strand
-        read_genomic_strand
+/// Infer the transcript strand a read originated from, under the dUTP protocol.
+///
+/// dUTP stranded libraries make R2 sense and R1 (or single-end) antisense, so the
+/// transcript strand is the read's genomic strand for R2 and the opposite for R1.
+/// Returned in genomic terms (`'+'`/`'-'`) for direct comparison against a gene
+/// strand. Shared by [`is_sense_strand`] and ASJD strand-discordance detection, so
+/// both fold read orientation the same way (a normal FR pair's two mates resolve to
+/// the *same* transcript strand rather than looking bi-stranded).
+pub fn read_transcript_strand(record: &Record) -> char {
+    let read_genomic_strand = if record.is_reverse() { '-' } else { '+' };
+    if record.is_last_in_template() {
+        read_genomic_strand // R2 is sense — same as the genomic strand
+    } else if read_genomic_strand == '+' {
+        '-' // R1/single-end is antisense — flip
     } else {
-        // R1/single-end is antisense: flip
-        if read_genomic_strand == '+' { '-' } else { '+' }
-    };
-
-    transcript_strand == gs
+        '+'
+    }
 }
 
 
