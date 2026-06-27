@@ -90,32 +90,34 @@ TOOLTIPS: dict[str, str] = {
 def _classify_origin(
     hugo: str,
     sub_nuc_enrichment: float,
-    ks_pval: float,
+    ks_qval: float,
     alt_count: int,
     min_alt: int,
 ) -> tuple[str, str]:
     """Classify variant as TUMOR-LIKE, CH-LIKE, AMBIGUOUS, or INSUFFICIENT.
 
-    Returns (signal_label, explanation).
+    Thresholds on the BH-FDR-corrected KS q-value (``mfsd_qval_alt_ref``, HI-11),
+    not the raw p-value, so multiplicity across the sample's variants is accounted
+    for. Returns (signal_label, explanation).
     """
     if alt_count < min_alt:
         return "INSUFFICIENT", f"ALT fragment count ({alt_count}) below threshold ({min_alt})."
 
     is_ch_gene = hugo.upper() in CH_GENES if hugo else False
     enriched = not math.isnan(sub_nuc_enrichment) and sub_nuc_enrichment > 1.3
-    sig_ks = not math.isnan(ks_pval) and ks_pval < 0.05
+    sig_ks = not math.isnan(ks_qval) and ks_qval < 0.05
     low_enrich = not math.isnan(sub_nuc_enrichment) and sub_nuc_enrichment < 1.2
-    nonsig_ks = math.isnan(ks_pval) or ks_pval > 0.05
+    nonsig_ks = math.isnan(ks_qval) or ks_qval > 0.05
 
     if enriched and sig_ks and not is_ch_gene:
         return "TUMOR-LIKE", (
             f"Sub-nucleosomal enrichment={sub_nuc_enrichment:.2f} (>1.3), "
-            f"KS p={ks_pval:.2e} (<0.05), non-CH gene."
+            f"KS q={ks_qval:.2e} (<0.05, FDR-corrected), non-CH gene."
         )
     if is_ch_gene and low_enrich and nonsig_ks:
         return "CH-LIKE", (
             f"Known CH gene ({hugo}), enrichment={sub_nuc_enrichment:.2f} (<1.2), "
-            f"KS p={'NA' if math.isnan(ks_pval) else f'{ks_pval:.2e}'} (>0.05)."
+            f"KS q={'NA' if math.isnan(ks_qval) else f'{ks_qval:.2e}'} (>0.05, FDR-corrected)."
         )
     return "AMBIGUOUS", "Mixed signals — does not clearly fit TUMOR-LIKE or CH-LIKE criteria."
 
@@ -262,6 +264,9 @@ def generate_mfsd_report(
         # Get mFSD stats from MAF
         sub_nuc_enrichment = _safe_float(maf_row.get("mfsd_sub_nuc_enrichment", "nan"))
         ks_pval = _safe_float(maf_row.get("mfsd_pval_alt_ref", "nan"))
+        # HI-11: classification uses the BH-FDR-corrected q-value; the raw p-value
+        # is still shown on the stat card.
+        ks_qval = _safe_float(maf_row.get("mfsd_qval_alt_ref", "nan"))
         alt_mean = _safe_float(maf_row.get("mfsd_alt_mean", "nan"))
         ref_mean = _safe_float(maf_row.get("mfsd_ref_mean", "nan"))
         delta = _safe_float(maf_row.get("mfsd_delta_alt_ref", "nan"))
@@ -273,7 +278,7 @@ def generate_mfsd_report(
         ref_count = len(ref_sizes)
 
         signal, explanation = _classify_origin(
-            hugo, sub_nuc_enrichment, ks_pval, alt_count, min_alt
+            hugo, sub_nuc_enrichment, ks_qval, alt_count, min_alt
         )
 
         variants.append(

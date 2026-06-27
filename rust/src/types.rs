@@ -176,6 +176,13 @@ pub struct BaseCounts {
     /// ALT vs REF: KS p-value
     #[pyo3(get)]
     pub mfsd_pval_alt_ref: f64,
+    /// ALT vs REF: Benjamini-Hochberg FDR q-value for `mfsd_pval_alt_ref`,
+    /// corrected across all variants with a valid alt-vs-REF KS test in the
+    /// sample (HI-11). The report classifies TUMOR-LIKE/CH-LIKE on this q-value,
+    /// not the raw p-value. NaN when the KS test was invalid (too few fragments);
+    /// equals the p-value until the post-counting BH pass runs.
+    #[pyo3(get)]
+    pub mfsd_qval_alt_ref: f64,
 
     /// ALT vs NonREF: mean(ALT) − mean(NonREF)
     #[pyo3(get)]

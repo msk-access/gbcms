@@ -72,6 +72,7 @@ class _MockCounts:
         self.mfsd_delta_alt_ref = -28.0
         self.mfsd_ks_alt_ref = 0.45
         self.mfsd_pval_alt_ref = 0.12
+        self.mfsd_qval_alt_ref = 0.30  # HI-11: BH-FDR q-value (>= p)
         self.mfsd_delta_alt_nonref = _nan
         self.mfsd_ks_alt_nonref = _nan
         self.mfsd_pval_alt_nonref = _nan
@@ -126,25 +127,26 @@ def test_maf_writer_no_mfsd_columns_by_default(tmp_path: Path):
 
 
 def test_maf_writer_mfsd_columns_when_enabled(tmp_path: Path):
-    """With mfsd=True, exactly 40 mFSD columns should appear in the MAF header.
+    """With mfsd=True, exactly 41 mFSD columns should appear in the MAF header.
 
     Breakdown:
     - 4 raw counts (ref/alt/nonref/n)
     - 2 LLR (alt, ref)
     - 4 mean sizes (ref/alt/nonref/n)
     - 18 pairwise KS (6 pairs x 3: delta, D-stat, p-value)
+    - 1 FDR q-value (alt_ref, HI-11)
     - 6 derived metrics (error_rate, n_rate, size_ratio, quality_score,
       alt_confidence, ks_valid)
     - 5 nucleosomal fractions (sub_nuc_ref/alt/enrichment, mono_nuc_ref/alt)
     - 1 CH gene flag (ch_flag)
-    Total = 40
+    Total = 41
     """
     writer = MafWriter(tmp_path / "out.maf", mfsd=True)
     cols = writer._gbcms_column_names()
     mfsd_cols = [c for c in cols if c.startswith("mfsd_")]
     assert (
-        len(mfsd_cols) == 40
-    ), f"Expected 40 mFSD columns with mfsd=True, got {len(mfsd_cols)}: {mfsd_cols}"
+        len(mfsd_cols) == 41  # HI-11 added mfsd_qval_alt_ref
+    ), f"Expected 41 mFSD columns with mfsd=True, got {len(mfsd_cols)}: {mfsd_cols}"
     writer.close()
 
 
@@ -176,7 +178,9 @@ def test_vcf_writer_mfsd_info_when_enabled(tmp_path: Path):
     writer.close()
     content = path.read_text()
     mfsd_lines = [line_ for line_ in content.splitlines() if "##INFO=<ID=MFSD_" in line_]
-    assert len(mfsd_lines) == 7, f"Expected 7 MFSD INFO header lines, got {len(mfsd_lines)}"
+    assert (
+        len(mfsd_lines) == 8
+    ), f"Expected 8 MFSD INFO header lines, got {len(mfsd_lines)}"  # HI-11 added MFSD_QVAL_ALT_REF
 
 
 # ---------------------------------------------------------------------------
