@@ -160,10 +160,26 @@ pub fn parse_gtf(
     }
 
     if exons.is_empty() {
-        warn!(
-            "GTF parser: no exon records found for variant chromosomes {:?} in {}",
-            variant_chroms, gtf_path,
-        );
+        // Annotation is inert either way (splice distance, per-transcript counts and
+        // strand all become no-ops), so make the *reason* loud and actionable. An
+        // exon record that reached the chromosome filter either loaded or bumped
+        // `skipped_chrom`; so `skipped_chrom > 0` means exons existed but matched no
+        // variant chromosome (a naming mismatch), whereas `== 0` means the file had
+        // no `exon` feature records at all (likely the wrong file or feature column).
+        if skipped_chrom > 0 {
+            warn!(
+                "GTF parser: exon records exist but none on the variant chromosomes {:?} in {} \
+                 ({} exon rows skipped by the chromosome filter) — likely a contig-naming \
+                 mismatch (e.g. chr1 vs 1, chrM vs MT). RNA annotation will be inert.",
+                variant_chroms, gtf_path, skipped_chrom,
+            );
+        } else {
+            warn!(
+                "GTF parser: no 'exon' feature records found in {} ({} lines read, {} non-exon, \
+                 {} parse errors) — wrong file or feature column? RNA annotation will be inert.",
+                gtf_path, total_lines, skipped_non_exon, skipped_parse,
+            );
+        }
     }
 
     info!(
