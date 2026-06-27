@@ -36,6 +36,14 @@ ENV BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/llvm-14/lib/clang/14.0.6/include"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+# Cargo network resilience for CI: crates.io downloads intermittently fail with
+# "[16] Error in the HTTP2 framing layer" (cargo's HTTP/2 multiplexing on a flaky
+# connection). Force HTTP/1.1, retry, and fetch the git dependency (wfa2lib-rs)
+# via the system git CLI rather than cargo's builtin fetcher.
+ENV CARGO_NET_RETRY=10 \
+    CARGO_HTTP_MULTIPLEXING=false \
+    CARGO_NET_GIT_FETCH_WITH_CLI=true
+
 # Install maturin with patchelf support
 RUN pip install --no-cache-dir "maturin[patchelf]"
 
