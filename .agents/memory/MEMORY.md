@@ -18,6 +18,9 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 ## Tooling / build
 - [pyproject is the dep source of truth](deps-pyproject-source-of-truth.md) — CI/Docker bypass lockfiles; declare every directly-imported package.
 
+## Validation / testing
+- [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.
+
 ## User (private, local-only — not committed)
 - `user-*.md` memories (e.g. who the operator is, personal defaults) live in this
   recall dir but are gitignored, never published. See `.gitignore`.
