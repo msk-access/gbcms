@@ -518,17 +518,19 @@ pub fn count_bam_binned(
         _ => AlignmentBackend::SmithWaterman,
     };
 
-    // ── D7: Load RNA editing site database (if provided) ──
+    // ── Load RNA editing site database (if provided) ──
     // Loaded ONCE at init, then shared across all bins/threads via Arc.
-    // DB-only strategy: flag = True only when site is in REDIportal.
-    // No DB = no editing flags (no pattern-matching guessing).
-    let editing_sites: Option<HashSet<(String, i64)>> = match rna_editing_db {
+    // DB-only strategy: flag = True only when the variant matches a REDIportal edit.
+    // No DB = no editing flags (no pattern-matching guessing). Each entry carries the
+    // catalogued (chrom, 0-based pos, ref base, edited base) so the flag can require
+    // the variant's substitution to match, not merely its position.
+    let editing_sites: Option<HashSet<(String, i64, u8, u8)>> = match rna_editing_db {
         Some(path) => {
             let sites = rna::build_rna_editing_set(path)
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
                     format!("Failed to load RNA editing DB: {}", e)
                 ))?;
-            info!("D7: Loaded {} RNA editing sites from {}", sites.len(), path);
+            info!("Loaded {} RNA editing sites from {}", sites.len(), path);
             Some(sites)
         }
         None => None,
@@ -885,7 +887,7 @@ fn count_bin_shared(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
-    editing_sites: &Option<HashSet<(String, i64)>>,
+    editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
     amplicon_mode: bool,
@@ -1085,7 +1087,7 @@ fn count_variant_from_cache(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
-    editing_sites: &Option<HashSet<(String, i64)>>,
+    editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     amplicon_mode: bool,
 ) -> Result<BaseCounts> {
@@ -1440,12 +1442,24 @@ fn count_variant_from_cache(
     // (e.g. every A→G SNP being flagged as a potential editing site).
     if mode == "rna" {
         counts.rna_editing_site_overlap = editing_sites.as_ref().is_some_and(|sites| {
-            let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
-            let found = sites.contains(&(chrom, variant.pos));
+            // Flag only when the variant's substitution matches the catalogued edit
+            // (genomic-forward Ref>Ed, e.g. A>G on '+' or T>C on '-'). Position alone
+            // would over-flag unrelated substitutions sitting on an editing coordinate.
+            let found = variant.ref_allele.len() == 1
+                && variant.alt_allele.len() == 1
+                && {
+                    let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
+                    sites.contains(&(
+                        chrom,
+                        variant.pos,
+                        variant.ref_allele.as_bytes()[0].to_ascii_uppercase(),
+                        variant.alt_allele.as_bytes()[0].to_ascii_uppercase(),
+                    ))
+                };
             if found {
                 trace!(
-                    "D7: editing site flagged at {}:{}",
-                    variant.chrom, variant.pos + 1,
+                    "editing site match at {}:{} {}>{}",
+                    variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
                 );
             }
             found
