@@ -11,7 +11,9 @@
 //! | Ensembl v75+ | `1`, `X`, `MT` | `gene_id "ENSG00000141510"` |
 //! | GENCODE v19+ | `chr1`, `chrX`, `chrM` | `gene_id "ENSG00000141510.11"` |
 //!
-//! Chromosome normalization: `chr` prefix is stripped via `trim_start_matches("chr")`
+//! Chromosome normalization: names are canonicalized via
+//! `shared::contig::normalize_contig` (strips `chr`, folds `M`/`MT` aliases), so
+//! `chr1`/`1` and `chrM`/`MT` reconcile across BAM, GTF, variants and editing DBs.
 //! for consistent matching with BAM contigs (same approach as `rna.rs::build_rna_editing_set`).
 
 use std::collections::{HashMap, HashSet};
@@ -95,11 +97,8 @@ pub fn parse_gtf(
             continue;
         }
 
-        // Normalize chromosome: strip "chr" prefix
-        let chrom = record
-            .reference_sequence_name()
-            .trim_start_matches("chr")
-            .to_string();
+        // Canonicalize the chromosome so chr1/1 and chrM/MT reconcile across sources.
+        let chrom = crate::shared::contig::normalize_contig(record.reference_sequence_name());
 
         // Variant-guided filter: skip chromosomes without variants
         if !variant_chroms.contains(&chrom) {
@@ -113,10 +112,14 @@ pub fn parse_gtf(
         let start = start_1based - 1; // 0-based inclusive
         let end = end_1based; // 0-based exclusive (GTF end is 1-based inclusive)
 
-        // Parse strand via noodles (returns Option<Strand>)
+        // Parse strand via noodles. Keep unstranded ('.') distinct from '+' so it
+        // propagates downstream as "no strand" (gene_strand = None, no enforcement)
+        // rather than a false plus-strand call that would mis-orient strandedness
+        // and splice-motif checks.
         let strand = match record.strand() {
+            Some(noodles_gtf::record::Strand::Forward) => '+',
             Some(noodles_gtf::record::Strand::Reverse) => '-',
-            _ => '+', // Forward or unstranded defaults to '+'
+            _ => '.', // unstranded / unknown
         };
 
         // Extract transcript_id and gene_id from noodles-parsed attributes
@@ -187,6 +190,15 @@ pub fn parse_gtf(
         total_lines, exons.len(), skipped_non_exon + skipped_chrom + skipped_parse,
         skipped_non_exon, skipped_chrom, skipped_parse,
     );
+
+    let n_unstranded = exons.iter().filter(|e| e.strand == '.').count();
+    if n_unstranded > 0 {
+        debug!(
+            "GTF parser: {} loaded exon records are unstranded ('.'); variants over \
+             them will not have strandedness enforced or splice motifs oriented",
+            n_unstranded,
+        );
+    }
 
     // ── Build COITrees per chromosome ────────────────────────────────────────
 

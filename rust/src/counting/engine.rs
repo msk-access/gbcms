@@ -478,7 +478,7 @@ pub fn count_bam(
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
-    variants: Vec<Variant>,
+    mut variants: Vec<Variant>,
     decomposed: Vec<Option<Variant>>,
     min_mapq: u8,
     min_baseq: u8,
@@ -542,7 +542,7 @@ pub fn count_bam_binned(
     let annotation: Option<std::sync::Arc<AnnotationIndex>> = match (mode, gtf_path) {
         ("rna", Some(path)) => {
             let variant_chroms: HashSet<String> = variants.iter()
-                .map(|v| v.chrom.trim_start_matches("chr").to_string())
+                .map(|v| crate::shared::contig::normalize_contig(&v.chrom))
                 .collect();
             let annot = crate::annotation::parse_gtf(path, &variant_chroms)
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
@@ -560,6 +560,28 @@ pub fn count_bam_binned(
         }
         _ => None,  // DNA mode: no annotation, no log noise
     };
+
+    // Resolve each variant's gene strand from the annotation, so RNA strandedness
+    // enforcement and sense/antisense partitioning have a strand to act on. The
+    // engine reads `variant.gene_strand` per read; without this it stays None,
+    // every read is treated as sense, and `enforce_strandedness` is a silent no-op.
+    // Only fill when absent, so a strand supplied upstream is never overwritten.
+    if let Some(ref annot) = annotation {
+        let mut resolved = 0usize;
+        for v in variants.iter_mut() {
+            if v.gene_strand.is_none() {
+                let key = crate::shared::contig::normalize_contig(&v.chrom);
+                if let Some(strand) = annot.strand_at(&key, v.pos) {
+                    v.gene_strand = Some(strand);
+                    resolved += 1;
+                }
+            }
+        }
+        debug!(
+            "Resolved gene strand from the annotation for {}/{} variants",
+            resolved, variants.len(),
+        );
+    }
 
     // Store FASTA path for thread-local readers (used by ASJD motif classification)
     let fasta_path_owned: Option<String> = reference_fasta.map(|p| p.to_string());
@@ -1418,8 +1440,8 @@ fn count_variant_from_cache(
     // (e.g. every A→G SNP being flagged as a potential editing site).
     if mode == "rna" {
         counts.rna_editing_site_overlap = editing_sites.as_ref().is_some_and(|sites| {
-            let chrom = variant.chrom.trim_start_matches("chr");
-            let found = sites.contains(&(chrom.to_string(), variant.pos));
+            let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
+            let found = sites.contains(&(chrom, variant.pos));
             if found {
                 trace!(
                     "D7: editing site flagged at {}:{}",
@@ -2270,8 +2292,8 @@ fn count_per_transcript(
     amplicon_mode: bool,
 ) -> (String, String) {
     // Step 1: Find overlapping transcripts
-    let chrom = variant.chrom.trim_start_matches("chr");
-    let transcript_ids = annotation.overlapping_transcripts(chrom, variant.pos);
+    let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
+    let transcript_ids = annotation.overlapping_transcripts(&chrom, variant.pos);
 
     if transcript_ids.is_empty() {
         return (String::new(), String::new());
@@ -2602,7 +2624,10 @@ fn detect_asjd(
     enforce_strandedness: bool,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
 ) -> AsjdResult {
-    let chrom = variant.chrom.trim_start_matches("chr");
+    // Bind the normalized key, then borrow it as &str so the junction/motif lookups
+    // below are unchanged.
+    let chrom_key = crate::shared::contig::normalize_contig(&variant.chrom);
+    let chrom = chrom_key.as_str();
     let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
     let v_start = (variant.pos - window_pad).max(0);
     let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
