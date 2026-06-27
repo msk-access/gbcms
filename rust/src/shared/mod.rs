@@ -11,9 +11,11 @@
 //! - [`bam_utils`] — BAM utility functions (quality helpers, position lookup)
 //! - [`filters`] — Configurable BAM read filters (duplicate, secondary, MAPQ)
 //! - [`baq`] — Base Alignment Quality heuristic (Li 2011)
+//! - [`contig`] — Cross-source chromosome-name normalization
 
 pub mod fragment;
 pub mod stats;
 pub mod bam_utils;
 pub mod filters;
 pub mod baq;
+pub mod contig;

@@ -218,6 +218,40 @@ impl AnnotationIndex {
         transcript_ids
     }
 
+    /// Resolve the gene strand at a position from the exons overlapping it.
+    ///
+    /// Returns `Some('+')`/`Some('-')` when every stranded exon overlapping the
+    /// position agrees. Returns `None` when the position is unannotated, overlaps
+    /// only unstranded (`.`) exons, or overlaps exons on *both* strands (ambiguous,
+    /// e.g. opposite-strand genes) — callers treat `None` as "do not enforce
+    /// strandedness here" rather than guessing a direction.
+    pub fn strand_at(&self, chrom: &str, pos: i64) -> Option<char> {
+        let chrom_id = *self.chrom_map.get(chrom)?;
+        let tree = self.exon_trees.get(&chrom_id)?;
+
+        let pos_i32 = pos as i32;
+        let mut seen_plus = false;
+        let mut seen_minus = false;
+
+        tree.query(pos_i32, pos_i32 + 1, |node| {
+            // Metadata is an index into `self.exons` (see `overlapping_transcripts`).
+            use std::borrow::Borrow;
+            #[allow(noop_method_call)]
+            let idx: &usize = node.metadata.borrow();
+            match self.exons[*idx].strand {
+                '+' => seen_plus = true,
+                '-' => seen_minus = true,
+                _ => {} // unstranded ('.') contributes no vote
+            }
+        });
+
+        match (seen_plus, seen_minus) {
+            (true, false) => Some('+'),
+            (false, true) => Some('-'),
+            _ => None, // unannotated, unstranded-only, or conflicting → no enforcement
+        }
+    }
+
     /// Get intron boundaries for a specific transcript.
     ///
     /// Returns `None` if the transcript ID is not in the index (should not
@@ -368,6 +402,39 @@ mod tests {
         chrom_map.insert("1".to_string(), 0u32);
 
         AnnotationIndex::new(exon_trees, exons, splice_sites, transcript_introns, chrom_map)
+    }
+
+    // ── strand_at tests ──
+
+    #[test]
+    fn test_strand_at_resolves_and_disambiguates() {
+        // chrom "1": a + exon [100,200), a - exon [500,600), an unstranded exon
+        // [2000,2100), and an overlapping +/- pair [1000,1100)/[1050,1150) for the
+        // ambiguous case.
+        let exons = vec![
+            ExonRecord { transcript_id: "tp".into(), gene_id: "gp".into(), chrom_id: 0, start: 100, end: 200, strand: '+' },
+            ExonRecord { transcript_id: "tm".into(), gene_id: "gm".into(), chrom_id: 0, start: 500, end: 600, strand: '-' },
+            ExonRecord { transcript_id: "ta".into(), gene_id: "ga".into(), chrom_id: 0, start: 1000, end: 1100, strand: '+' },
+            ExonRecord { transcript_id: "tb".into(), gene_id: "gb".into(), chrom_id: 0, start: 1050, end: 1150, strand: '-' },
+            ExonRecord { transcript_id: "tu".into(), gene_id: "gu".into(), chrom_id: 0, start: 2000, end: 2100, strand: '.' },
+        ];
+        let nodes: Vec<IntervalNode<usize, u32>> = exons
+            .iter()
+            .enumerate()
+            .map(|(i, e)| IntervalNode::new(e.start, e.end, i))
+            .collect();
+        let mut exon_trees = HashMap::new();
+        exon_trees.insert(0u32, COITree::new(&nodes));
+        let mut chrom_map = HashMap::new();
+        chrom_map.insert("1".to_string(), 0u32);
+        let idx = AnnotationIndex::new(exon_trees, exons, HashMap::new(), HashMap::new(), chrom_map);
+
+        assert_eq!(idx.strand_at("1", 150), Some('+'), "inside + exon");
+        assert_eq!(idx.strand_at("1", 550), Some('-'), "inside - exon");
+        assert_eq!(idx.strand_at("1", 1075), None, "overlapping opposite strands → ambiguous");
+        assert_eq!(idx.strand_at("1", 2050), None, "unstranded exon → no enforcement");
+        assert_eq!(idx.strand_at("1", 300), None, "intergenic gap → no annotation");
+        assert_eq!(idx.strand_at("9", 150), None, "unknown chromosome");
     }
 
     // ── nearest_splice_distance tests ──

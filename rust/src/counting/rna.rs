@@ -245,7 +245,7 @@ pub fn build_rna_editing_set(db_path: &str) -> anyhow::Result<HashSet<(String, i
         }
 
         // Col 1 = Region (chrom), Col 2 = Position (1-based)
-        let chrom = fields[1].trim_start_matches("chr").to_string();
+        let chrom = crate::shared::contig::normalize_contig(fields[1]);
         if let Ok(pos_1based) = fields[2].parse::<i64>() {
             // Convert 1-based REDIportal → 0-based BAM coordinates
             sites.insert((chrom, pos_1based - 1));
