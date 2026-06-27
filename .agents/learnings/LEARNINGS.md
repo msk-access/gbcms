@@ -17,6 +17,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20260627-001] rule-body | code comments & logs must explain behavior, not cite ticket labels
+- **Status:** resolved (rule promoted); cleanup of existing labels tracked as plan DX-1
+- **Cause:** rule-body
+- **Summary:** I annotated code comments and `debug!`/`warn!` strings with ticket
+  labels (`CR-1`, `HI-11`, `ME-8`) — and the pre-existing code already did this with
+  `P4c`. A reader with no plan/PR context can't decode those labels, so the comment
+  explains nothing about the actual behavior. The code-quality rule said "add a why
+  comment" but never said the why must be the *reason*, not the ticket that prompted it.
+- **Promotion target:** `.agents/rules/code-quality.md` — `DONE:` added a "Comment &
+  Log Hygiene" section: no ticket/milestone labels in code or logs; a why-comment
+  states the reason (`✗ // ME-8: padding fix` → `✓ // exclude no-test variants; they
+  inflate the FDR family`). Existing labels swept under plan ticket DX-1.
+- **Related:** [[no-ticket-labels-in-code]] memory; sibling to the "update commenting"
+  QC checklist item already in that rule file.
+
 ## [LRN-20260626-001] rule-body | a guard hook must scope its target to the command segment, not the whole command string
 - **Status:** resolved
 - **Cause:** rule-body
