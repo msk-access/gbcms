@@ -716,22 +716,57 @@ pub fn count_bam_binned(
             // ── P4c: BH-FDR correction for ASJD p-values ──
             // Requires all p-values simultaneously, so must run after all bins
             // are processed. Only runs in RNA mode with annotation present.
-            // In DNA mode, asjd_pval defaults to 0.0 (Default trait), which
-            // would falsely trigger the `p < 1.0` guard — the mode check
-            // prevents this unnecessary O(n log n) sort.
+            // ME-8: correct ONLY over variants with a real ASJD test (junction
+            // reads present). Non-junction variants keep the default asjd_pval and
+            // would pad the family — inflating n and distorting the FDR — the same
+            // bug fixed for mFSD in HI-11. Filtering on junction-read presence
+            // also subsumes the old `p < 1.0` data guard.
             if mode == "rna" {
-                let pvals: Vec<f64> = all_counts.iter().map(|c| c.asjd_pval).collect();
-                let has_asjd_data = pvals.iter().any(|&p| p < 1.0);
-                if has_asjd_data {
+                let asjd_valid: Vec<usize> = all_counts
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| c.asjd_n_alt_junc + c.asjd_n_ref_junc > 0)
+                    .map(|(i, _)| i)
+                    .collect();
+                if !asjd_valid.is_empty() {
+                    let pvals: Vec<f64> =
+                        asjd_valid.iter().map(|&i| all_counts[i].asjd_pval).collect();
                     let qvals = crate::shared::stats::benjamini_hochberg(&pvals);
-                    for (i, q) in qvals.into_iter().enumerate() {
+                    for (&i, q) in asjd_valid.iter().zip(qvals) {
                         all_counts[i].asjd_qval = q;
                     }
                     debug!(
-                        "P4c BH-FDR: corrected {} ASJD p-values",
-                        pvals.len(),
+                        "P4c BH-FDR: corrected {} ASJD p-values (over real tests)",
+                        asjd_valid.len(),
                     );
                 }
+            }
+
+            // ── HI-11: BH-FDR correction for the mFSD alt-vs-REF KS p-values ──
+            // This p-value drives the report's TUMOR-LIKE/CH-LIKE call, so correct
+            // it for multiplicity across the sample. BH runs ONLY over variants whose
+            // KS test actually RAN — a variant with too few fragments returns
+            // (D = NaN, p = 1.0) from ks_test, so the *D-statistic* (not the p-value)
+            // marks a real test. Filtering on the D-stat avoids padding the family
+            // with no-test variants (which would inflate n and over-correct — the
+            // ME-8 bug); a genuine D=0 test legitimately keeps its p=1.0.
+            let mfsd_valid: Vec<usize> = all_counts
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| !c.mfsd_ks_alt_ref.is_nan())
+                .map(|(i, _)| i)
+                .collect();
+            if !mfsd_valid.is_empty() {
+                let pvals: Vec<f64> =
+                    mfsd_valid.iter().map(|&i| all_counts[i].mfsd_pval_alt_ref).collect();
+                let qvals = crate::shared::stats::benjamini_hochberg(&pvals);
+                for (&i, q) in mfsd_valid.iter().zip(qvals) {
+                    all_counts[i].mfsd_qval_alt_ref = q;
+                }
+                debug!(
+                    "HI-11 BH-FDR: corrected {} mFSD alt-vs-REF p-values",
+                    mfsd_valid.len(),
+                );
             }
 
             Ok(all_counts)
@@ -1492,6 +1527,7 @@ fn count_variant_from_cache(
     };
 
     (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
+    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // HI-11: placeholder; BH-corrected post-counting
     (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
     (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
     (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);
@@ -1997,6 +2033,7 @@ fn count_single_variant(
     };
 
     (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
+    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // HI-11: placeholder; BH-corrected post-counting
     (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
     (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
     (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);

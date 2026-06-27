@@ -70,6 +70,7 @@ class BaseCounts:
     mfsd_delta_alt_ref: float
     mfsd_ks_alt_ref: float
     mfsd_pval_alt_ref: float
+    mfsd_qval_alt_ref: float
     mfsd_delta_alt_nonref: float
     mfsd_ks_alt_nonref: float
     mfsd_pval_alt_nonref: float
