@@ -136,6 +136,17 @@ fn build_genomic_bins(
             .then(variants[a].pos.cmp(&variants[b].pos))
     });
 
+    // A variant's reads can extend to `pos + ref_allele.len()` — the right
+    // breakpoint of a deletion. The bin's fetch end must cover that for EVERY
+    // variant in the bin, including the anchor; half a window of slack matches
+    // the per-variant extension below. (CR-1: seeding the end at only
+    // `bin_start + window` under-fetched a bin anchored by a deletion whose ref
+    // span exceeds the window, dropping its right-breakpoint reads and diverging
+    // from the legacy per-variant path.)
+    let span_end = |idx: usize| -> i64 {
+        variants[idx].pos + variants[idx].ref_allele.len() as i64 + window / 2
+    };
+
     let mut bins: Vec<GenomicBin> = Vec::new();
     let mut i = 0;
 
@@ -153,7 +164,8 @@ fn build_genomic_bins(
         };
 
         let bin_start = variants[first_idx].pos;
-        let mut bin_end = bin_start + window;
+        // Cover at least one window, but also the anchor variant's full ref span.
+        let mut bin_end = (bin_start + window).max(span_end(first_idx));
         let mut indices = vec![first_idx];
         let mut max_repeat_span: i64 = variants[first_idx].repeat_span as i64;
 
@@ -178,9 +190,8 @@ fn build_genomic_bins(
             }
             indices.push(jdx);
             max_repeat_span = max_repeat_span.max(variants[jdx].repeat_span as i64);
-            // Extend bin end to cover this variant's ref span
-            let var_end = variants[jdx].pos + variants[jdx].ref_allele.len() as i64;
-            bin_end = bin_end.max(var_end + window / 2);
+            // Extend bin end to cover this variant's full ref span (CR-1).
+            bin_end = bin_end.max(span_end(jdx));
             j += 1;
         }
 
@@ -2806,6 +2817,58 @@ mod tests {
             repeat_span: 0,
             gene_strand: None,
         }
+    }
+
+    /// Build a minimal single-contig HeaderView for binning tests.
+    fn build_header_with_contig(name: &str, len: i64) -> bam::HeaderView {
+        let mut header = bam::Header::new();
+        let mut sq = bam::header::HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", name);
+        sq.push_tag(b"LN", len);
+        header.push_record(&sq);
+        bam::HeaderView::from_header(&header)
+    }
+
+    // ── CR-1: bin fetch-end must cover the anchor variant's full ref span ──
+
+    #[test]
+    fn test_bin_covers_anchor_deletion_ref_span() {
+        // A bin anchored by a deletion whose ref span exceeds the window must
+        // still fetch the deletion's right breakpoint. Before the anchor-aware
+        // seed, bin.end stopped at bin_start + window and dropped those reads,
+        // undercounting AD/ADF and diverging from the legacy per-variant path.
+        let header = build_header_with_contig("1", 1_000_000);
+        let window = 10_000_i64;
+
+        // Anchor is a 12kb deletion (ref span > window); a SNP sits within it.
+        let big_ref = "A".repeat(12_000);
+        let variants = vec![
+            build_variant(1_000, &big_ref, "A"),
+            build_variant(2_000, "C", "T"),
+        ];
+
+        let bins = build_genomic_bins(&variants, &header, window);
+        assert_eq!(bins.len(), 1, "both variants belong in one bin");
+        let bin = &bins[0];
+
+        // End-coverage invariant for EVERY variant, anchor included.
+        for (k, v) in variants.iter().enumerate() {
+            let ref_end = v.pos + v.ref_allele.len() as i64; // exclusive ref end
+            assert!(
+                bin.end >= ref_end,
+                "bin.end ({}) must cover variant {} ref end ({})",
+                bin.end,
+                k,
+                ref_end,
+            );
+            assert!(bin.start <= v.pos, "bin.start must cover variant {} pos", k);
+        }
+        // The anchor deletion's right breakpoint is at 1000 + 12000 = 13000.
+        assert!(
+            bin.end >= 13_000,
+            "anchor deletion right breakpoint (13000) must be fetched, got bin.end={}",
+            bin.end,
+        );
     }
 
     // ── Phase 0 N-base defense tests ──
