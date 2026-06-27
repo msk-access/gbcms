@@ -24,7 +24,7 @@ use bio::stats::pairhmm::{
 use bio::stats::{LogProb, Prob};
 use log::{debug, trace};
 
-use super::utils::{median_qual, ClassifyResult, ClassifyPhase};
+use super::utils::{median_qual, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
 #[cfg(test)]
 use crate::types::Variant;
@@ -338,7 +338,7 @@ pub fn classify_by_pairhmm(
 
     // Skip if too few usable bases
     let usable_count = read_quals.iter().filter(|&&q| q >= min_baseq).count();
-    if usable_count < 3 {
+    if usable_count < MIN_USABLE_BASES {
         trace!("classify_by_pairhmm: only {} usable bases — skipping", usable_count);
         return ClassifyResult::neither(ClassifyPhase::Alignment);
     }
@@ -452,7 +452,7 @@ pub fn classify_by_marginalized_pairhmm(
 
     // Skip if too few usable bases
     let usable_count = adjusted_quals.iter().filter(|&&q| q >= min_baseq).count();
-    if usable_count < 3 {
+    if usable_count < MIN_USABLE_BASES {
         trace!("classify_by_marginalized_pairhmm: only {} usable bases — skipping", usable_count);
         return ClassifyResult::neither(ClassifyPhase::Alignment);
     }
