@@ -536,8 +536,12 @@ class MafWriter(OutputWriter):
                 mfsd_alt_confidence = "LOW"
             else:
                 mfsd_alt_confidence = "NONE"
-            # KS test validity: both ALT and REF need >= 5 fragments
-            mfsd_ks_valid = counts.mfsd_alt_count >= 5 and counts.mfsd_ref_count >= 5
+            # KS test validity: the Rust D-statistic (mfsd_ks_alt_ref) is NaN exactly
+            # when a fragment class fell below MIN_FOR_KS (ks_test returns NaN), so
+            # derive validity from it rather than re-hardcoding the threshold here. A
+            # literal `>= 5` would silently drift from Rust's MIN_FOR_KS if that changed,
+            # re-opening the bug where insufficient KS tests are reported as valid.
+            mfsd_ks_valid = not math.isnan(counts.mfsd_ks_alt_ref)
 
             result.update(
                 {
