@@ -10,7 +10,8 @@
 //! 1. Compute edit distance of read vs each haplotype in the matrix
 //! 2. Find best REF-class score (H0, H2, H4, ...) and best ALT-class score (H1, H3, H5, ...)
 //! 3. If one is 0 and the other > 0 → definitive classification
-//! 4. If both > OFF_TARGET_THRESHOLD → off-target read, classify as NEITHER
+//! 4. If the read diverges from both classes *beyond the unavoidable length difference*
+//!    by more than OFF_TARGET_THRESHOLD → off-target read, classify as NEITHER
 //! 5. Otherwise → ambiguous, return None for PairHMM fallback
 //!
 //! ## Performance
@@ -26,9 +27,13 @@ use wfa2lib_rs::penalties::WavefrontPenalties;
 use super::utils::{ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
 
-/// Score threshold above which both alleles are considered off-target.
-/// If the best edit distance to both REF-class and ALT-class haplotypes
-/// exceeds this, the read is too divergent to classify reliably.
+/// Excess-divergence threshold above which both alleles are considered off-target.
+/// The excess is the edit distance minus the unavoidable `|len(read) − len(hap)|`
+/// (since edit distance ≥ length difference). If the read diverges from both the
+/// REF-class and ALT-class haplotypes by more than this *beyond* their length gap,
+/// it is too divergent to classify reliably. Thresholding the excess (rather than the
+/// raw distance) is what stops a long-deletion read — whose window length differs
+/// greatly from the haplotypes — from being falsely flagged off-target.
 const OFF_TARGET_THRESHOLD: i32 = 20;
 
 
@@ -40,7 +45,7 @@ const OFF_TARGET_THRESHOLD: i32 = 20;
 ///
 /// Returns `Some(ClassifyResult)` for definitive calls:
 ///   - Perfect match (score=0) to one class, >0 to other → REF or ALT
-///   - Both >OFF_TARGET_THRESHOLD → NEITHER (off-target)
+///   - Excess divergence to both classes > OFF_TARGET_THRESHOLD → NEITHER (off-target)
 ///
 /// Returns `None` for ambiguous reads that need PairHMM:
 ///   - Tied scores between REF and ALT classes
@@ -109,10 +114,17 @@ pub fn wfa_fast_path(
 
     let mut aligner = EditAligner::new(WavefrontPenalties::new_edit());
 
-    // Best edit distance per class, on the RAW read (off-target decision) and the
-    // BQ-MASKED read (definitive calls). Even indices = REF-class, odd = ALT-class.
-    let (mut best_ref_raw, mut best_alt_raw) = (i32::MAX, i32::MAX);
+    // Per class: best edit distance on the BQ-MASKED read (definitive calls), and the
+    // best *excess* divergence on the RAW read (off-target decision). Even indices =
+    // REF-class, odd = ALT-class.
     let (mut best_ref_masked, mut best_alt_masked) = (i32::MAX, i32::MAX);
+    // Off-target excess = end2end distance minus the unavoidable |len(read) − len(hap)|
+    // (edit distance is always ≥ the length difference). Thresholding the excess — the
+    // divergence *beyond* what the length gap forces — keeps a large-deletion read,
+    // whose window is much longer/shorter than the short ALT / long REF haplotype, from
+    // being misrouted to NEITHER purely because of that length gap. For equal-length
+    // haplotypes (e.g. SNPs) excess == distance, so SNP behavior is unchanged.
+    let (mut best_ref_excess, mut best_alt_excess) = (i32::MAX, i32::MAX);
 
     for (i, haplotype) in matrix.iter().enumerate() {
         let raw = aligner.align_end2end(read_seq, haplotype);
@@ -121,37 +133,40 @@ pub fn wfa_fast_path(
         } else {
             raw
         };
+        let len_diff = (read_seq.len() as i32 - haplotype.len() as i32).abs();
+        let excess = raw - len_diff; // ≥ 0: edit distance is ≥ the length difference
 
         trace!(
-            "wfa_fast_path: hap[{}] ({}) raw={} masked={}",
-            i, if i % 2 == 0 { "REF" } else { "ALT" }, raw, msk,
+            "wfa_fast_path: hap[{}] ({}) raw={} masked={} len_diff={} excess={}",
+            i, if i % 2 == 0 { "REF" } else { "ALT" }, raw, msk, len_diff, excess,
         );
 
         if i % 2 == 0 {
-            best_ref_raw = best_ref_raw.min(raw);
             best_ref_masked = best_ref_masked.min(msk);
+            best_ref_excess = best_ref_excess.min(excess);
         } else {
-            best_alt_raw = best_alt_raw.min(raw);
             best_alt_masked = best_alt_masked.min(msk);
+            best_alt_excess = best_alt_excess.min(excess);
         }
     }
 
     debug!(
-        "wfa_fast_path: raw(ref={} alt={}) masked(ref={} alt={}) read_len={}",
-        best_ref_raw, best_alt_raw, best_ref_masked, best_alt_masked, read_seq.len(),
+        "wfa_fast_path: excess(ref={} alt={}) masked(ref={} alt={}) read_len={}",
+        best_ref_excess, best_alt_excess, best_ref_masked, best_alt_masked, read_seq.len(),
     );
 
-    // Definitive calls require an exact match on the BQ-MASKED read (CR-2): the
-    // discriminating base must be high-BQ, else masking breaks the exact match.
+    // Definitive calls require an exact match on the BQ-MASKED read: the discriminating
+    // base must be high-BQ, else masking breaks the exact match.
     if best_ref_masked == 0 && best_alt_masked > 0 {
         Some(ClassifyResult::is_ref(med_qual, ClassifyPhase::Alignment))
     } else if best_alt_masked == 0 && best_ref_masked > 0 {
         Some(ClassifyResult::is_alt(med_qual, ClassifyPhase::Alignment))
-    } else if best_ref_raw > OFF_TARGET_THRESHOLD && best_alt_raw > OFF_TARGET_THRESHOLD {
-        // Off-target uses the RAW read — divergence is BQ-independent.
+    } else if best_ref_excess > OFF_TARGET_THRESHOLD && best_alt_excess > OFF_TARGET_THRESHOLD {
+        // Off-target on the RAW read's excess divergence (length gap removed,
+        // BQ-independent): the read diverges from BOTH classes beyond that gap.
         debug!(
-            "wfa_fast_path: off-target (raw ref={} alt={} > threshold={})",
-            best_ref_raw, best_alt_raw, OFF_TARGET_THRESHOLD,
+            "wfa_fast_path: off-target (excess ref={} alt={} > threshold={})",
+            best_ref_excess, best_alt_excess, OFF_TARGET_THRESHOLD,
         );
         Some(ClassifyResult::neither(ClassifyPhase::Alignment))
     } else {
@@ -225,6 +240,25 @@ mod tests {
         assert!(
             wfa_fast_path(read, &quals, MINQ, &matrix, 30).is_none(),
             "fewer than MIN_USABLE_BASES usable bases must defer to the fallback",
+        );
+    }
+
+    #[test]
+    fn test_large_deletion_read_not_off_target() {
+        // Large-deletion locus: the ALT haplotype (deletion) is much shorter than the
+        // REF haplotype. A read matching the ALT but longer than that short ALT
+        // haplotype used to be misrouted to NEITHER, because the RAW edit distance to
+        // BOTH classes exceeded the threshold purely from the length gap. The excess
+        // check (distance − |Δlen|) must instead defer it to the PairHMM fallback.
+        let alt = vec![b'A'; 16]; // H1: ALT (deletion)
+        let mut refh = vec![b'A'; 16];
+        refh.extend(vec![b'G'; 30]); // H0: REF (+30bp deleted in ALT)
+        let matrix = vec![refh, alt];
+        let read = vec![b'A'; 40]; // ALT-like, but 40bp vs 46/16 haplotypes
+        // alt excess == 0 (pure length gap) → not off-target → None (escalate).
+        assert!(
+            wfa_fast_path(&read, &hq(read.len()), MINQ, &matrix, 30).is_none(),
+            "a length-mismatched ALT read must not be misrouted to off-target NEITHER",
         );
     }
 
