@@ -1211,6 +1211,17 @@ fn count_variant_from_cache(
         if r_start >= v_end || r_end <= v_start {
             continue; // Read doesn't overlap variant fetch window
         }
+
+        // Supplementary/secondary alignments are not first-class fragment
+        // observations: they share a QNAME with their primary, so counting them at
+        // read level double-counts DP/RD/AD at the anchor. Skip them regardless of
+        // the user filter flags (which only govern whether such records reach the
+        // cache at all). Fragment-level counts already collapse them via the QNAME
+        // hash, and the legacy count_single_variant path applies the same skip so
+        // binned and legacy stay in parity.
+        if record.is_supplementary() || record.is_secondary() {
+            continue;
+        }
         reads_considered += 1;
 
         // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
@@ -1733,6 +1744,14 @@ fn count_single_variant(
 
         // Universal flag filters (delegated to shared::filters::ReadFilter).
         if !read_filter.passes(&record, &mut filter_counts) {
+            continue;
+        }
+
+        // Supplementary/secondary alignments are not first-class fragment
+        // observations (shared QNAME → would double-count read-level DP/RD/AD). Skip
+        // them regardless of the user filter flags, mirroring count_variant_from_cache
+        // so the binned and legacy paths stay in parity.
+        if record.is_supplementary() || record.is_secondary() {
             continue;
         }
 

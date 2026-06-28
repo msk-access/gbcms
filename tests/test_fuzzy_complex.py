@@ -385,3 +385,37 @@ class TestBinnedParity:
         bam = _build_bam(tmp_path, reads)
         counts = _count_one_both(bam, INSLIKE_VARIANT)
         assert counts.rd == 1
+
+
+# COMPLEX variant whose ALT is the REF plus a trailing insertion at the exclusive
+# REF end: REF=AT @100-101, ALT=ATG (the G is inserted at ref_pos 102 == end_pos).
+TRAILING_INS_VARIANT = Variant(
+    chrom="chr1",
+    pos=100,
+    ref_allele="AT",
+    alt_allele="ATG",
+    variant_type="COMPLEX",
+)
+
+
+class TestTrailingInsertion:
+    """A trailing insertion at the exclusive REF end is ALT evidence — the
+    reconstruction must include it (the Ins branch is deliberately inclusive of
+    end_pos). Guards against re-introducing the `<= end_pos` → `< end_pos` "fix",
+    which would reconstruct only the REF span and misclassify these reads as REF."""
+
+    def test_trailing_insertion_is_alt(self, tmp_path):
+        # Read matches AT then inserts G at end_pos: cigar 6M1I4M → recon 'ATG' == ALT.
+        reads = [_make_read("r1", "AAAAATGAAAA", 96, ((0, 6), (1, 1), (0, 4)))]
+        bam = _build_bam(tmp_path, reads)
+        counts = _count_one(bam, TRAILING_INS_VARIANT)
+        assert counts.ad == 1, f"trailing-insertion read should be ALT, got ad={counts.ad}"
+        assert counts.rd == 0
+
+    def test_no_trailing_insertion_is_ref(self, tmp_path):
+        # Same variant, plain read (no insertion) → recon 'AT' == REF.
+        reads = [_make_read("r1", "AAAAATAAAA", 96, ((0, 10),))]
+        bam = _build_bam(tmp_path, reads)
+        counts = _count_one(bam, TRAILING_INS_VARIANT)
+        assert counts.rd == 1, f"no-insertion read should be REF, got rd={counts.rd}"
+        assert counts.ad == 0

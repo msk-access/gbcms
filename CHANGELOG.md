@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🔄 Changed
+
+- **Supplementary/secondary alignments no longer count toward read-level depth.**
+  They share a QNAME with their primary, so counting them at read level
+  double-counts DP/RD/AD at the anchor. They are now skipped unconditionally in
+  both the binned and legacy counting paths, independent of `--no-filter-secondary`
+  / `--no-filter-supplementary` (those flags now only govern whether such records
+  enter the read cache, not whether they are counted). Affects only the
+  non-default flag combination; default behavior is unchanged.
+
+### 🐛 Fixed
+
+- **Read-level supplementary/secondary double-count** under `--no-filter-secondary`
+  / `--no-filter-supplementary` (see Changed above).
+- **`check_complex` trailing-insertion handling clarified and guarded.** The Phase-1
+  reconstruction deliberately includes an insertion at the exclusive REF end (a
+  trailing insertion that belongs to the ALT, e.g. REF=`AB`, ALT=`ABC`); documented
+  the rationale and added regression tests so the boundary condition isn't "fixed"
+  into a misclassification.
+
 ## [5.3.0] - 2026-05-16
 
 ### ✨ Added
