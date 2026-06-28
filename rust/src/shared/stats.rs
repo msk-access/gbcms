@@ -185,7 +185,6 @@ pub fn fisher_exact_2x2_py(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
 /// // Matches R: p.adjust(c(0.01, 0.04, 0.03, 0.10, 0.50), method="BH")
 /// // → [0.05, 0.0667, 0.05, 0.125, 0.50]
 /// ```
-#[allow(dead_code)] // P4c: called by engine.rs count_bam_binned() once wired
 pub fn benjamini_hochberg(pvalues: &[f64]) -> Vec<f64> {
     let n = pvalues.len();
     if n == 0 {
