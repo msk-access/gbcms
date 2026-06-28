@@ -585,6 +585,16 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
             }
             Cigar::Ins(len) => {
                 let len_usize = *len as usize;
+                // Inclusive of end_pos (deliberately, unlike the Match/SoftClip
+                // branches): an insertion at the exclusive REF end is a *trailing
+                // insertion* that belongs to the ALT haplotype (e.g. REF=AB, ALT=ABC).
+                // Capturing it lets the reconstruction reach alt_len and match the
+                // ALT; excluding it would reconstruct only the REF span and
+                // misclassify such reads as REF. A read whose reconstruction equals
+                // the ALT genuinely IS ALT evidence — Phase 2 still requires the
+                // inserted bases to match the ALT exactly, so this cannot manufacture
+                // a false ALT. (Soft-clips differ: clipped bases are unaligned and
+                // uncertain, so that branch stays exclusive.)
                 if ref_pos >= start_pos && ref_pos <= end_pos {
                     for i in 0..len_usize {
                         let p = read_pos + i;

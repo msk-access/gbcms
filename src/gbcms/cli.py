@@ -234,8 +234,14 @@ def dna(
     ),
     # Read filters
     filter_duplicates: bool = typer.Option(True, help="Filter duplicate reads"),
-    filter_secondary: bool = typer.Option(True, help="Filter secondary alignments"),
-    filter_supplementary: bool = typer.Option(True, help="Filter supplementary alignments"),
+    filter_secondary: bool = typer.Option(
+        True,
+        help="Exclude secondary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+    ),
+    filter_supplementary: bool = typer.Option(
+        True,
+        help="Exclude supplementary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+    ),
     filter_qc_failed: bool = typer.Option(True, help="Filter reads failing QC"),
     filter_improper_pair: bool = typer.Option(False, help="Filter improperly paired reads"),
     filter_indel: bool = typer.Option(False, help="Filter reads containing indels"),
@@ -593,8 +599,14 @@ def rna(
     ),
     # Read filters (shared)
     filter_duplicates: bool = typer.Option(True, help="Filter duplicate reads"),
-    filter_secondary: bool = typer.Option(True, help="Filter secondary alignments"),
-    filter_supplementary: bool = typer.Option(True, help="Filter supplementary alignments"),
+    filter_secondary: bool = typer.Option(
+        True,
+        help="Exclude secondary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+    ),
+    filter_supplementary: bool = typer.Option(
+        True,
+        help="Exclude supplementary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+    ),
     filter_qc_failed: bool = typer.Option(True, help="Filter reads failing QC"),
     filter_improper_pair: bool = typer.Option(False, help="Filter improperly paired reads"),
     filter_indel: bool = typer.Option(False, help="Filter reads containing indels"),
