@@ -7336,7 +7336,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>gbcms_diagnostic</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Examples: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE</code>.</td>
+<td style="text-align: left;">Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT</code>, <code>MNP_DISC_RATIO(n/m)</code>, <code>MNP_RESCUE_ELIGIBLE</code>, <code>HIGH_N_FRACTION(f)</code>, and <code>NON_DISCRIMINATING_LOCUS</code> — the last (<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed <code>ref_count</code>/<code>alt_count</code> at a covered locus rather than leaving it silent. Examples: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_rescue</code></td>
