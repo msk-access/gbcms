@@ -260,3 +260,13 @@ def test_partial_alt_indel_nonzero():
     _make_pipeline()._compute_diagnostics([pv], [counts])
     assert "PARTIAL_DOMINANT" in pv.gbcms_diagnostic
     assert "ZERO_ALT" in pv.gbcms_diagnostic
+
+
+def test_non_discriminating_locus_flag():
+    """NON_DISCRIMINATING_LOCUS fires when the Rust counts flag it — a sibling combo
+    reconstructs REF, so REF/ALT are indistinguishable and reads tie to NEITHER."""
+    pv = _mock_prepared_variant()
+    counts = _mock_counts(ad=0, any_alt=0)
+    counts.non_discriminating_locus = True
+    _make_pipeline()._compute_diagnostics([pv], [counts])
+    assert "NON_DISCRIMINATING_LOCUS" in pv.gbcms_diagnostic

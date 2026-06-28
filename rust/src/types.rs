@@ -407,6 +407,14 @@ pub struct BaseCounts {
     /// Semicolon-separated diagnostic flags (e.g., "LOW_ALT_JUNC;NOVEL_ALT_JUNC").
     #[pyo3(get)]
     pub asjd_diagnostic: String,
+
+    /// True when the pangenomic haplotype matrix has a REF-class haplotype byte-
+    /// identical to an ALT-class one (a sibling combination reconstructs the
+    /// reference). REF and ALT are then sequence-indistinguishable, so reads tie to
+    /// NEITHER — surfaced as the `NON_DISCRIMINATING_LOCUS` diagnostic so the zeroed
+    /// RD/AD is explained rather than silent. PairHMM backend only.
+    #[pyo3(get)]
+    pub non_discriminating_locus: bool,
 }
 
 #[pymethods]
