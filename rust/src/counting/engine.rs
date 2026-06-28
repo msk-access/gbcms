@@ -139,7 +139,7 @@ fn build_genomic_bins(
     // A variant's reads can extend to `pos + ref_allele.len()` — the right
     // breakpoint of a deletion. The bin's fetch end must cover that for EVERY
     // variant in the bin, including the anchor; half a window of slack matches
-    // the per-variant extension below. (CR-1: seeding the end at only
+    // the per-variant extension below. (Seeding the end at only
     // `bin_start + window` under-fetched a bin anchored by a deletion whose ref
     // span exceeds the window, dropping its right-breakpoint reads and diverging
     // from the legacy per-variant path.)
@@ -190,7 +190,7 @@ fn build_genomic_bins(
             }
             indices.push(jdx);
             max_repeat_span = max_repeat_span.max(variants[jdx].repeat_span as i64);
-            // Extend bin end to cover this variant's full ref span (CR-1).
+            // Extend bin end to cover this variant's full ref span.
             bin_end = bin_end.max(span_end(jdx));
             j += 1;
         }
@@ -538,7 +538,7 @@ pub fn count_bam_binned(
     // Wrap in Arc for thread-safe sharing across rayon workers
     let editing_sites = std::sync::Arc::new(editing_sites);
 
-    // ── P4a: Build GTF annotation index (if GTF provided, RNA mode only) ──
+    // ── Build GTF annotation index (if GTF provided, RNA mode only) ──
     // Loaded ONCE at init, then shared across all bins/threads via Arc.
     // Only builds for chromosomes that have variants (variant-guided streaming).
     let annotation: Option<std::sync::Arc<AnnotationIndex>> = match (mode, gtf_path) {
@@ -551,13 +551,13 @@ pub fn count_bam_binned(
                     format!("Failed to load GTF annotation: {}", e)
                 ))?;
             info!(
-                "P4a: Built annotation index from {} — {} exons, {} transcripts, {} chromosomes",
+                "GTF annotation: built index from {} — {} exons, {} transcripts, {} chromosomes",
                 path, annot.n_exons(), annot.n_transcripts(), annot.n_chromosomes(),
             );
             Some(std::sync::Arc::new(annot))
         }
         ("rna", None) => {
-            debug!("P4a: No GTF provided, annotation features disabled");
+            debug!("GTF annotation: no GTF provided, annotation features disabled");
             None
         }
         _ => None,  // DNA mode: no annotation, no log noise
@@ -737,14 +737,14 @@ pub fn count_bam_binned(
                 all_counts[vi] = counts;
             }
 
-            // ── P4c: BH-FDR correction for ASJD p-values ──
+            // ── BH-FDR correction for ASJD p-values ──
             // Requires all p-values simultaneously, so must run after all bins
             // are processed. Only runs in RNA mode with annotation present.
-            // ME-8: correct ONLY over variants with a real ASJD test (junction
+            // Correct ONLY over variants with a real ASJD test (junction
             // reads present). Non-junction variants keep the default asjd_pval and
             // would pad the family — inflating n and distorting the FDR — the same
-            // bug fixed for mFSD in HI-11. Filtering on junction-read presence
-            // also subsumes the old `p < 1.0` data guard.
+            // bug fixed for the mFSD alt-vs-REF correction. Filtering on junction-read
+            // presence also subsumes the old `p < 1.0` data guard.
             if mode == "rna" {
                 let asjd_valid: Vec<usize> = all_counts
                     .iter()
@@ -760,20 +760,20 @@ pub fn count_bam_binned(
                         all_counts[i].asjd_qval = q;
                     }
                     debug!(
-                        "P4c BH-FDR: corrected {} ASJD p-values (over real tests)",
+                        "ASJD BH-FDR: corrected {} ASJD p-values (over real tests)",
                         asjd_valid.len(),
                     );
                 }
             }
 
-            // ── HI-11: BH-FDR correction for the mFSD alt-vs-REF KS p-values ──
+            // ── BH-FDR correction for the mFSD alt-vs-REF KS p-values ──
             // This p-value drives the report's TUMOR-LIKE/CH-LIKE call, so correct
             // it for multiplicity across the sample. BH runs ONLY over variants whose
             // KS test actually RAN — a variant with too few fragments returns
             // (D = NaN, p = 1.0) from ks_test, so the *D-statistic* (not the p-value)
             // marks a real test. Filtering on the D-stat avoids padding the family
-            // with no-test variants (which would inflate n and over-correct — the
-            // ME-8 bug); a genuine D=0 test legitimately keeps its p=1.0.
+            // with no-test variants (which would inflate n and over-correct);
+            // a genuine D=0 test legitimately keeps its p=1.0.
             let mfsd_valid: Vec<usize> = all_counts
                 .iter()
                 .enumerate()
@@ -788,7 +788,7 @@ pub fn count_bam_binned(
                     all_counts[i].mfsd_qval_alt_ref = q;
                 }
                 debug!(
-                    "HI-11 BH-FDR: corrected {} mFSD alt-vs-REF p-values",
+                    "mFSD BH-FDR: corrected {} mFSD alt-vs-REF p-values",
                     mfsd_valid.len(),
                 );
             }
@@ -1033,7 +1033,7 @@ fn count_bin_shared(
             }
         }
 
-        // ── P4b: Per-transcript counting (RNA + GTF only) ──
+        // ── Per-transcript counting (RNA + GTF only) ──
         // For each overlapping transcript, count reads whose splice junctions
         // are compatible with that transcript's intron structure. Reuses the
         // same read cache — no additional BAM I/O.
@@ -1047,7 +1047,7 @@ fn count_bin_shared(
             final_counts.transcript_read_counts = read_cts;
             final_counts.transcript_fragment_counts = frag_cts;
 
-            // ── P4c: Allele-Specific Junction Divergence (ASJD) ──
+            // ── Allele-Specific Junction Divergence (ASJD) ──
             // Compare splice junction usage between REF and ALT reads.
             // asjd_qval initialized to asjd_pval; corrected post-counting
             // via benjamini_hochberg() in count_bam_binned().
@@ -1115,7 +1115,7 @@ fn count_variant_from_cache(
 
     let mut counts = BaseCounts::default();
 
-    // ── P4a: Compute exon boundary distance (GTF-informed) ──
+    // ── Compute exon boundary distance (GTF-informed) ──
     // Set once per variant, not per read. Used for BAQ suppression
     // and as an output column. None when no GTF is provided.
     let exon_boundary_dist: Option<i32> = annotation.as_ref().map(|annot| {
@@ -1252,7 +1252,7 @@ fn count_variant_from_cache(
         // When BAQ is enabled, bases near indels and splice junctions
         // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
         // on for RNA (no upstream BQ recalibration).
-        // ── P4a: GTF-informed BAQ suppression ──
+        // ── GTF-informed BAQ suppression ──
         // At annotated splice boundaries (within 5bp), BAQ downgrade
         // would incorrectly penalize reads that legitimately span the
         // exon junction. Suppress BAQ when exon_boundary_dist <= 5.
@@ -1467,7 +1467,7 @@ fn count_variant_from_cache(
     counts.alt_dist_end_median = compute_median_u32(&mut alt_dists);
     counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
 
-    // ── D7: RNA EDITING SITE FLAG (DB-only) ────────────────────────────
+    // ── RNA editing site flag (DB-only) ────────────────────────────
     // Flag is True ONLY when a REDIportal database is provided AND this
     // variant's position is found in the database. No DB = no flagging.
     // This avoids false positives from pattern-matching-only heuristics
@@ -1595,7 +1595,7 @@ fn count_variant_from_cache(
     };
 
     (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
-    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // HI-11: placeholder; BH-corrected post-counting
+    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // placeholder; BH-corrected post-counting
     (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
     (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
     (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);
@@ -1988,7 +1988,7 @@ fn count_single_variant(
     counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
 
     // ── RNA EDITING SITE FLAG (legacy path) ──
-    // D7 DB-only editing flagging is only available via count_bam_binned.
+    // RNA editing DB-only flagging is only available via count_bam_binned.
     // Legacy path does not receive the editing_sites HashSet, so
     // rna_editing_site_overlap stays false (no pattern-matching guessing).
 
@@ -2109,7 +2109,7 @@ fn count_single_variant(
     };
 
     (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
-    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // HI-11: placeholder; BH-corrected post-counting
+    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // placeholder; BH-corrected post-counting
     (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
     (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
     (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);
@@ -2300,7 +2300,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
 
 
 // ══════════════════════════════════════════════════════════════════════════════
-// P4b: PER-TRANSCRIPT COUNTING
+// PER-TRANSCRIPT COUNTING
 // ══════════════════════════════════════════════════════════════════════════════
 
 /// Per-transcript read and fragment counts for a single variant.
@@ -2354,7 +2354,7 @@ fn count_per_transcript(
     }
 
     trace!(
-        "P4b: {} overlapping transcripts at {}:{} ({})",
+        "per-transcript: {} overlapping transcripts at {}:{} ({})",
         transcript_ids.len(), variant.chrom, variant.pos + 1,
         transcript_ids.join(", "),
     );
@@ -2382,7 +2382,7 @@ fn count_per_transcript(
                 // Should not happen if overlapping_transcripts returned this ID,
                 // but guard against index inconsistency.
                 debug!(
-                    "P4b: transcript {} has no intron data, skipping",
+                    "per-transcript: transcript {} has no intron data, skipping",
                     tx_id,
                 );
                 continue;
@@ -2417,7 +2417,7 @@ fn count_per_transcript(
                 continue;
             }
 
-            // ── P4b: Splice-junction compatibility check
+            // ── Splice-junction compatibility check
             let observed_junctions = super::rna::extract_splice_junctions(record);
             if !annotation.is_read_compatible(&observed_junctions, tx_introns, 5) {
                 continue; // Incompatible junctions → skip for this transcript
@@ -2498,7 +2498,7 @@ fn count_per_transcript(
         frag_entries.push(format!("{}:{},{},{}", tx_id, tx_adf, tx_rdf, tx_dpf));
 
         trace!(
-            "P4b: {} → read AD={} RD={} DP={}, frag ADF={} RDF={} DPF={}",
+            "per-transcript: {} → read AD={} RD={} DP={}, frag ADF={} RDF={} DPF={}",
             tx_id, tx_ad, tx_rd, tx_dp, tx_adf, tx_rdf, tx_dpf,
         );
     }
@@ -2512,7 +2512,7 @@ fn count_per_transcript(
 
 
 // ══════════════════════════════════════════════════════════════════════════════
-// P4c: ALLELE-SPECIFIC JUNCTION DIVERGENCE (ASJD)
+// ALLELE-SPECIFIC JUNCTION DIVERGENCE (ASJD)
 // ══════════════════════════════════════════════════════════════════════════════
 
 /// Result of ASJD detection for a single variant.
@@ -3014,7 +3014,7 @@ mod tests {
         bam::HeaderView::from_header(&header)
     }
 
-    // ── CR-1: bin fetch-end must cover the anchor variant's full ref span ──
+    // ── bin fetch-end must cover the anchor variant's full ref span ──
 
     #[test]
     fn test_bin_covers_anchor_deletion_ref_span() {

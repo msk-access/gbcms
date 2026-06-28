@@ -1058,7 +1058,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
-    // CR-3: VCF/MAF left-anchored invariant — REF and ALT share a leading anchor
+    // VCF/MAF left-anchored invariant — REF and ALT share a leading anchor
     // base, so both are non-empty for a well-formed insertion. Defend it: an empty
     // ALT/REF (malformed or non-left-anchored record) would underflow `len() - 1`
     // and panic the `[1..]` / `[0]` slices below, surfacing as an opaque PyErr.
@@ -1423,7 +1423,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
 /// Verify that the reference bases at an observed deletion position match the
 /// variant's expected deleted bases over `compare_len` positions.
 ///
-/// Used by `check_deletion`'s Safeguard 3 for exact-length matches AND (CR-4) for
+/// Used by `check_deletion`'s Safeguard 3 for exact-length matches AND for
 /// tolerant (different-length) matches over the *shared* span. Comparing the
 /// reference at the observed breakpoint against `expected_del_seq` rejects an
 /// unrelated SV that merely shares ≥50% length overlap with the target deletion,
@@ -1509,7 +1509,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
-    // CR-3: left-anchored invariant — an empty REF/ALT (malformed or
+    // Left-anchored invariant — an empty REF/ALT (malformed or
     // non-left-anchored record) would underflow `len() - 1` and panic the
     // `[1..]` slice below. Defend it and classify as neither. debug! not warn!:
     // runs per-read; loud once-per-variant surfacing belongs at prep (follow-up).
@@ -1585,7 +1585,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                                     min_del as f64 / max_del as f64;
 
                                 if expected_del_len >= 50 && reciprocal_overlap >= 0.5 {
-                                    // CR-4: a ≥50% length overlap alone is not enough —
+                                    // A ≥50% length overlap alone is not enough —
                                     // verify the OVERLAPPING deleted bases match
                                     // expected_del_seq, so an unrelated SV at the anchor
                                     // is not accepted. The D begins at anchor_pos + 1.
@@ -1711,7 +1711,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                         if length_ok {
                             // Safeguard 3: verify the deleted reference bases match
                             // expected_del_seq. Exact-length matches compare the full
-                            // span; CR-4: tolerant (different-length) matches compare
+                            // span; tolerant (different-length) matches compare
                             // the OVERLAPPING span instead of skipping verification, so
                             // an unrelated SV sharing only ≥50% length overlap is not
                             // accepted as ALT. A genuinely shifted/different deletion
@@ -1907,7 +1907,7 @@ mod tests {
         }
     }
 
-    // ── CR-4: verify_deleted_bases — partial seq-check for tolerant deletions ──
+    // ── verify_deleted_bases — partial seq-check for tolerant deletions ──
     // ref_context "NNNCGTACGTCCCC" at genomic 100 → pos 103 = "CGTACGT...".
 
     #[test]
@@ -1926,7 +1926,7 @@ mod tests {
 
     #[test]
     fn test_verify_deleted_bases_shifted_different_sv_rejected() {
-        // CR-4: a deletion at a SHIFTED position (105) whose reference bases differ
+        // A deletion at a SHIFTED position (105) whose reference bases differ
         // from the target's expected_del_seq is rejected — a different SV that
         // merely shares length overlap must not be counted as ALT.
         let v = deletion_with_context("NNNCGTACGTCCCC", 100, "ACGTACGT");

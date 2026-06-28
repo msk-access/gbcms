@@ -149,8 +149,8 @@ pub fn has_splice_junction(record: &Record) -> bool {
 /// - Match: [350, 400)
 ///
 /// Used by:
-/// - **P4b**: Splice-junction compatibility check per transcript.
-/// - **P4c**: ASJD — comparing junction distributions between REF/ALT reads.
+/// - **Per-transcript counting**: splice-junction compatibility check per transcript.
+/// - **ASJD**: comparing junction distributions between REF/ALT reads.
 pub fn extract_splice_junctions(record: &Record) -> Vec<(i64, i64)> {
     let mut junctions = Vec::new();
     let mut ref_pos = record.pos(); // 0-based start position

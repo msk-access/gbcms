@@ -51,7 +51,7 @@ const OFF_TARGET_THRESHOLD: i32 = 20;
 ///   - Tied scores between REF and ALT classes
 ///   - Small non-zero scores where BQ-aware classification matters
 ///
-/// ## Base-quality gate (CR-2)
+/// ## Base-quality gate
 ///
 /// A *definitive* REF/ALT call requires an exact (edit-distance 0) match on the
 /// **BQ-masked** read: sub-`min_baseq` bases are masked to `N` first, so the
@@ -285,7 +285,7 @@ mod tests {
         assert!(r.is_ref);
     }
 
-    // ── CR-2: base-quality gate on the discriminating base ──
+    // ── base-quality gate on the discriminating base ──
 
     #[test]
     fn test_low_bq_discriminating_base_defers_to_pairhmm() {

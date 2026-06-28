@@ -178,7 +178,7 @@ pub struct BaseCounts {
     pub mfsd_pval_alt_ref: f64,
     /// ALT vs REF: Benjamini-Hochberg FDR q-value for `mfsd_pval_alt_ref`,
     /// corrected across all variants with a valid alt-vs-REF KS test in the
-    /// sample (HI-11). The report classifies TUMOR-LIKE/CH-LIKE on this q-value,
+    /// sample. The report classifies TUMOR-LIKE/CH-LIKE on this q-value,
     /// not the raw p-value. NaN when the KS test was invalid (too few fragments);
     /// equals the p-value until the post-counting BH pass runs.
     #[pyo3(get)]
@@ -343,7 +343,7 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub exon_boundary_dist: Option<i32>,
 
-    // ── P4b: Per-transcript counts (empty when no GTF or no overlap) ─────
+    // ── Per-transcript counts (empty when no GTF or no overlap) ─────
     /// Per-transcript read-level counts (TXRC in VCF).
     /// Format: "ENST...:AD,RD,DP;ENST...:AD,RD,DP"
     /// Empty string when no GTF, no overlapping transcripts, or DNA mode.
@@ -356,7 +356,7 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub transcript_fragment_counts: String,
 
-    // ── P4c: Allele-Specific Junction Divergence (ASJD) ──────────────────
+    // ── Allele-Specific Junction Divergence (ASJD) ──────────────────
     // All fields default to false/0.0/"" via #[derive(Default)], producing
     // clean output when no GTF is provided or in DNA mode.
 

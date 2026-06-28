@@ -341,7 +341,7 @@ class MafWriter(OutputWriter):
                     "exon_boundary_dist",
                     "transcript_read_counts",
                     "transcript_fragment_counts",
-                    # P4c: ASJD columns
+                    # ASJD columns
                     "asjd_flag",
                     "asjd_pval",
                     "asjd_qval",
@@ -485,7 +485,7 @@ class MafWriter(OutputWriter):
                         ),
                         "transcript_read_counts": counts.transcript_read_counts,
                         "transcript_fragment_counts": counts.transcript_fragment_counts,
-                        # P4c: ASJD
+                        # ASJD
                         "asjd_flag": str(counts.asjd_flag),
                         "asjd_pval": f"{counts.asjd_pval:.4e}" if counts.asjd_pval < 1.0 else "",
                         "asjd_qval": f"{counts.asjd_qval:.4e}" if counts.asjd_qval < 1.0 else "",
@@ -825,7 +825,7 @@ class VcfWriter(OutputWriter):
                         '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) to nearest annotated exon boundary. Missing (.) when no GTF provided.">',
                         '##INFO=<ID=TXRC,Number=1,Type=String,Description="Per-transcript read counts. Format: ENST:AD,RD,DP|ENST:AD,RD,DP. Empty when no GTF or no overlap.">',
                         '##INFO=<ID=TXFC,Number=1,Type=String,Description="Per-transcript fragment counts. Format: ENST:ADF,RDF,DPF|ENST:ADF,RDF,DPF. Empty when no GTF or no overlap.">',
-                        # P4c: ASJD INFO headers
+                        # ASJD INFO headers
                         '##INFO=<ID=ASJD,Number=0,Type=Flag,Description="Allele-specific junction divergence detected (Fisher p<0.05)">',
                         '##INFO=<ID=ASJDP,Number=1,Type=Float,Description="ASJD raw Fisher exact p-value">',
                         '##INFO=<ID=ASJDQ,Number=1,Type=Float,Description="ASJD BH-corrected q-value">',
@@ -962,7 +962,7 @@ class VcfWriter(OutputWriter):
                 txfc = counts.transcript_fragment_counts
                 info_parts.append(f"TXRC={txrc.replace(';', '|') if txrc else '.'}")
                 info_parts.append(f"TXFC={txfc.replace(';', '|') if txfc else '.'}")
-                # P4c: ASJD VCF INFO values
+                # ASJD VCF INFO values
                 if counts.asjd_flag:
                     info_parts.append("ASJD")
                 if counts.asjd_pval < 1.0:

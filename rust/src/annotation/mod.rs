@@ -3,11 +3,11 @@
 //! Provides [`AnnotationIndex`] — a thread-safe, read-only index of exon boundaries
 //! built from a GTF file. Used by:
 //!
-//! - **P4a** (`counting/engine.rs`): Splice mask — suppress BAQ penalties near known
+//! - **Splice mask** (`counting/engine.rs`): suppress BAQ penalties near known
 //!   exon boundaries, even at low coverage where consensus splicing fails.
-//! - **P4b** (`counting/engine.rs`): Per-transcript counting — filter reads by
+//! - **Per-transcript counting** (`counting/engine.rs`): filter reads by
 //!   splice-junction compatibility per transcript.
-//! - **P4c** (`counting/engine.rs`): ASJD detection — compare junction usage between
+//! - **ASJD detection** (`counting/engine.rs`): compare junction usage between
 //!   REF- and ALT-classified reads.
 //!
 //! # Architecture
@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use coitrees::{COITree, IntervalTree};
 use log::{debug, trace};
 
-// Re-export the GTF parser for use by engine.rs (wired in P4a integration step)
+// Re-export the GTF parser for use by engine.rs (wired in the splice-annotation integration step)
 #[allow(unused_imports)]
 pub(crate) use gtf::parse_gtf;
 
@@ -59,7 +59,7 @@ pub struct ExonRecord {
 }
 
 /// Intron structure for a single transcript, derived from sorted exons.
-/// Used by P4b (per-transcript counting) and P4c (ASJD detection).
+/// Used by per-transcript counting and ASJD detection.
 #[derive(Clone, Debug)]
 pub struct TranscriptIntrons {
     /// Transcript ID.
@@ -91,7 +91,7 @@ pub struct AnnotationIndex {
     splice_sites: HashMap<u32, Vec<i32>>,
 
     /// Transcript ID → intron boundaries.
-    /// Used by P4b (per-transcript compatibility) and P4c (ASJD).
+    /// Used by per-transcript compatibility and ASJD.
     transcript_introns: HashMap<String, TranscriptIntrons>,
 
     /// Chromosome name → numeric ID mapping (e.g., "1" → 0, "X" → 22).
@@ -126,7 +126,7 @@ impl AnnotationIndex {
         }
     }
 
-    // ─── P4a: Splice Mask ────────────────────────────────────────────────────
+    // ─── Splice Mask ─────────────────────────────────────────────────────────
 
     /// Distance (bp) from `pos` to the nearest known exon boundary on `chrom`.
     ///
@@ -180,7 +180,7 @@ impl AnnotationIndex {
         }
     }
 
-    // ─── P4b: Per-Transcript Counting ────────────────────────────────────────
+    // ─── Per-Transcript Counting ─────────────────────────────────────────────
 
     /// Get transcript IDs whose exons overlap the given position.
     ///
@@ -294,7 +294,7 @@ impl AnnotationIndex {
         })
     }
 
-    // ─── P4c: ASJD Helpers ───────────────────────────────────────────────────
+    // ─── ASJD Helpers ────────────────────────────────────────────────────────
 
     /// Check if an observed junction matches any annotated intron on the chromosome.
     ///
