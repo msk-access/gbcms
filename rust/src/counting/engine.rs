@@ -36,7 +36,7 @@ use crate::types::{BaseCounts, Variant};
 use rayon::prelude::*;
 
 use anyhow::{Context, Result};
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use bio::alignment::pairwise::Aligner;
 
 use super::fragment::{FragmentEvidence, hash_qname, hash_molecule};
@@ -1011,6 +1011,27 @@ fn count_bin_shared(
         } else {
             counts_orig
         };
+
+        // ── Non-discriminating-locus detection (PairHMM backend) ──
+        // When a sibling combination reconstructs the reference haplotype, REF and
+        // ALT are sequence-indistinguishable and every read ties to NEITHER. Detect it
+        // once per variant (the matrix is read-independent) and flag it, so the zeroed
+        // RD/AD is explained by NON_DISCRIMINATING_LOCUS rather than left silent.
+        if matches!(backend, AlignmentBackend::PairHMM { .. }) {
+            if let Some(matrix) =
+                crate::counting::pangenome::build_haplotype_matrix(variant, siblings)
+            {
+                if crate::counting::pangenome::has_ref_alt_collision(&matrix) {
+                    final_counts.non_discriminating_locus = true;
+                    warn!(
+                        "non-discriminating locus at {}:{}: a sibling combination reconstructs \
+                         the reference haplotype — REF and ALT are sequence-indistinguishable, \
+                         reads tie to NEITHER",
+                        variant.chrom, variant.pos + 1,
+                    );
+                }
+            }
+        }
 
         // ── P4b: Per-transcript counting (RNA + GTF only) ──
         // For each overlapping transcript, count reads whose splice junctions

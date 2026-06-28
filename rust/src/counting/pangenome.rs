@@ -350,10 +350,52 @@ pub fn build_haplotype_matrix(
     Some(matrix)
 }
 
+/// Detect a non-discriminating locus: a REF-class haplotype (even index) that is
+/// byte-identical to an ALT-class one (odd index). This arises when the test ALT,
+/// combined with a sibling germline combination, reconstructs a reference sequence
+/// (e.g. a homopolymer deletion cancelled by a nearby insertion of the same base).
+/// When it occurs no read can tell REF from ALT — every read aligns equally to both
+/// classes, the LLR is 0, and the locus would otherwise return all-NEITHER with no
+/// signal. Callers surface this as a `NON_DISCRIMINATING_LOCUS` diagnostic.
+pub fn has_ref_alt_collision(matrix: &[Vec<u8>]) -> bool {
+    let ref_haps: std::collections::HashSet<&Vec<u8>> = matrix.iter().step_by(2).collect();
+    matrix.iter().skip(1).step_by(2).any(|h| ref_haps.contains(h))
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_has_ref_alt_collision_homopolymer_cancel() {
+        // 5-A homopolymer TG[AAAAA]GT (positions 102..=106), context starts at 100.
+        // Test variant: delete one A (102 "AA">"A"). Sibling: insert one A (105 "A">"AA").
+        // The deletion and insertion cancel, so test-ALT + sibling reconstructs REF:
+        //   H0 (REF) = TGAAAAAGT, H3 (ALT = test del + sib ins) = TGAAAAAGT == H0.
+        let ctx = "TGAAAAAGT";
+        let test = make_variant(102, "AA", "A", ctx, 100);
+        let sib = make_variant(105, "A", "AA", ctx, 100);
+        let matrix = build_haplotype_matrix(&test, &[sib]).unwrap();
+        assert!(
+            has_ref_alt_collision(&matrix),
+            "test-ALT + sibling reconstructs a REF-class haplotype — collision expected",
+        );
+    }
+
+    #[test]
+    fn test_no_collision_for_distinct_alleles() {
+        // A normal multi-allelic locus where the two ALTs are distinct from REF and
+        // from each other: no REF-class haplotype equals an ALT-class one.
+        let ctx = "TGCATGCAT";
+        let test = make_variant(102, "C", "G", ctx, 100); // SNP C>G
+        let sib = make_variant(105, "G", "T", ctx, 100); // sibling SNP G>T
+        let matrix = build_haplotype_matrix(&test, &[sib]).unwrap();
+        assert!(
+            !has_ref_alt_collision(&matrix),
+            "distinct alleles must not collide",
+        );
+    }
 
     fn make_variant(pos: i64, ref_a: &str, alt_a: &str, ctx: &str, ctx_start: i64) -> Variant {
         Variant {

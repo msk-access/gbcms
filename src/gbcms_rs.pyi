@@ -132,6 +132,9 @@ class BaseCounts:
     asjd_n_ref_total: int
     asjd_n_alt_total: int
     asjd_diagnostic: str
+    # NON_DISCRIMINATING_LOCUS marker: a sibling combo reconstructs REF, so REF/ALT
+    # are sequence-indistinguishable (PairHMM backend) and reads tie to NEITHER.
+    non_discriminating_locus: bool
     # Copy-on-write method for MNP rescue pass (BaseCounts is frozen from Python)
     def with_ad(self, new_ad: int) -> BaseCounts:
         """Return a copy with `ad` replaced by `new_ad`."""

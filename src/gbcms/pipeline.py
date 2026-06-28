@@ -529,6 +529,9 @@ class Pipeline:
                 always emitted showing discriminating position ratio.
             MNP_RESCUE_ELIGIBLE: disc/len ≤ rescue_mnp_threshold.
             HIGH_N_FRACTION(f): n_count / dp > 0.05 (duplex masking hotspot).
+            NON_DISCRIMINATING_LOCUS: a sibling combination reconstructs the
+                reference haplotype, so REF and ALT are sequence-indistinguishable
+                and reads tie to NEITHER (explains a zeroed RD/AD at a covered locus).
         """
         flag_counts: dict[str, int] = {}
 
@@ -566,6 +569,12 @@ class Pipeline:
             if counts.dp > 0 and counts.n_count / counts.dp > 0.05:
                 frac = counts.n_count / counts.dp
                 flags.append(f"HIGH_N_FRACTION({frac:.2f})")
+
+            # NON_DISCRIMINATING_LOCUS: a sibling combination reconstructs the
+            # reference haplotype, so REF and ALT are sequence-indistinguishable and
+            # reads tie to NEITHER — surfaces an otherwise-silent zeroed RD/AD.
+            if getattr(counts, "non_discriminating_locus", False):
+                flags.append("NON_DISCRIMINATING_LOCUS")
 
             # Populate the diagnostic field
             diagnostic = ";".join(flags)
