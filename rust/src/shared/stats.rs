@@ -9,8 +9,8 @@
 //!
 //! Used by:
 //! - `counting/engine.rs` — Fisher strand bias per variant
-//! - `counting/engine.rs` — ASJD junction comparison (P4c)
-//! - `counting/engine.rs` — BH correction across variants (P4c)
+//! - `counting/engine.rs` — ASJD junction comparison
+//! - `counting/engine.rs` — BH correction across variants (ASJD)
 //! - `merge.py` — combined strand bias on merged simplex+duplex counts
 
 use pyo3::prelude::*;
@@ -32,7 +32,7 @@ use statrs::distribution::{Discrete, Hypergeometric};
 ///      [alt_fwd, alt_rev]]
 /// ```
 ///
-/// **ASJD usage** (P4c):
+/// **ASJD usage**:
 /// ```text
 ///     [[ref_junction_A, ref_junction_B],
 ///      [alt_junction_A, alt_junction_B]]

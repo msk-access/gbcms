@@ -103,7 +103,7 @@ pub fn calc_fraction_in_range(v: &[f64], lo: f64, hi: f64) -> f64 {
     count as f64 / v.len() as f64
 }
 
-// (gaussian_pdf removed in CR-5 — the LLR now uses the closed-form Gaussian
+// (gaussian_pdf removed — the LLR now uses the closed-form Gaussian
 // log-ratio directly, so the density function and its underflow are gone.)
 
 /// Log-Likelihood Ratio for a fragment size slice vs. the human cfDNA model.
@@ -135,7 +135,7 @@ pub fn calc_llr_with_params(lengths: &[f64], params: &LlrModelParams) -> f64 {
         .iter()
         .map(|&x| {
             // Closed-form Gaussian log-ratio: ln(P_tumor(x)) − ln(P_healthy(x)).
-            // CR-5: this is finite for every finite x. The previous code formed the
+            // This is finite for every finite x. The previous code formed the
             // pdf ratio p_tumor/p_healthy and took its log, which underflowed to
             // ±∞ in the tails (p_healthy < f64::EPSILON → +∞; a symmetric p_tumor
             // underflow → ln(0) = −∞), so a single tail fragment pinned the whole
@@ -275,7 +275,7 @@ pub fn ks_test(a: &[f64], b: &[f64]) -> (f64, f64) {
 
 /// Two-sample KS p-value: P(D ≥ d) under the null.
 ///
-/// CR-5: exact for small `n·m` (the low-input cfDNA regime, where the asymptotic
+/// Exact for small `n·m` (the low-input cfDNA regime, where the asymptotic
 /// Kolmogorov approximation over/under-covers because D is highly discrete), and
 /// the asymptotic series for large `n·m` where it is accurate and the exact O(n·m)
 /// lattice DP would be wasteful. The 10_000 threshold matches SciPy's `ks_2samp`.
@@ -429,7 +429,7 @@ mod tests {
         assert!(p < 0.05, "p should be < 0.05 for well-separated distributions, got {p}");
     }
 
-    // ─── CR-5: LLR finiteness + exact KS ──────────────────────────────────────
+    // ─── LLR finiteness + exact KS ────────────────────────────────────────────
 
     #[test]
     fn test_llr_finite_in_tails() {

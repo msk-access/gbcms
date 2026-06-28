@@ -99,11 +99,11 @@ def _classify_origin(
 ) -> tuple[str, str]:
     """Classify variant as TUMOR-LIKE, CH-LIKE, AMBIGUOUS, or INSUFFICIENT.
 
-    Thresholds on the BH-FDR-corrected KS q-value (``mfsd_qval_alt_ref``, HI-11),
+    Thresholds on the BH-FDR-corrected KS q-value (``mfsd_qval_alt_ref``),
     not the raw p-value, so multiplicity across the sample's variants is accounted
     for. A variant whose KS test did not actually run — a REF/ALT fragment class
     below MIN_FOR_KS, so ``mfsd_ks_valid`` is False and the q-value is a 1.0
-    placeholder — is INSUFFICIENT rather than classified on that placeholder (ME-9).
+    placeholder — is INSUFFICIENT rather than classified on that placeholder.
     Returns (signal_label, explanation).
     """
     if alt_count < min_alt:
@@ -116,7 +116,7 @@ def _classify_origin(
         )
 
     is_ch_gene = hugo.upper() in CH_GENES if hugo else False
-    # ME-10: enrichment is NaN when a sub-nucleosomal fraction is zero (the
+    # Enrichment is NaN when a sub-nucleosomal fraction is zero (the
     # ALT/REF <150bp ratio is undefined). Disambiguate "ALT has short fragments
     # but REF has none" — a clear, maximal ctDNA-like signal that would otherwise
     # be lost as AMBIGUOUS — from genuinely undefined (no short fragments either
@@ -289,10 +289,10 @@ def generate_mfsd_report(
         # Get mFSD stats from MAF
         sub_nuc_enrichment = _safe_float(maf_row.get("mfsd_sub_nuc_enrichment", "nan"))
         ks_pval = _safe_float(maf_row.get("mfsd_pval_alt_ref", "nan"))
-        # HI-11: classification uses the BH-FDR-corrected q-value; the raw p-value
+        # Classification uses the BH-FDR-corrected q-value; the raw p-value
         # is still shown on the stat card.
         ks_qval = _safe_float(maf_row.get("mfsd_qval_alt_ref", "nan"))
-        # ME-9: only classify on the KS test when it actually ran (both fragment
+        # Only classify on the KS test when it actually ran (both fragment
         # classes >= MIN_FOR_KS). mfsd_ks_valid is the authoritative signal; an
         # invalid test leaves q as a 1.0 placeholder, which must NOT drive a call.
         ks_valid = maf_row.get("mfsd_ks_valid", "").strip().lower() == "true"
@@ -366,14 +366,14 @@ def generate_mfsd_report(
 
 
 def _fmt_val(v: float, precision: int = 2) -> str:
-    """Format float for display, handling NaN/Inf (ME-11)."""
+    """Format float for display, handling NaN/Inf."""
     if math.isnan(v) or math.isinf(v):
         return "N/A"
     return f"{v:.{precision}f}"
 
 
 def _fmt_pval(v: float) -> str:
-    """Format p-value for display, handling NaN/Inf (ME-11)."""
+    """Format p-value for display, handling NaN/Inf."""
     if math.isnan(v) or math.isinf(v):
         return "N/A"
     if v < 0.001:
