@@ -551,6 +551,58 @@ Recommended order: **M1 → M2 → M3** are correctness; do them first and in th
 
 ---
 
+# Accepted deviations (as-built through M1–M4)
+
+The shipped M1–M4 work departs from the plan's letter in three places. Each is a
+deliberate, documented choice: the safety-critical intent of every ticket is met,
+and what remains deferred is a refinement that changes neither the counts nor the
+clinical labels. Recorded here so the plan reflects what actually shipped.
+
+## CR-5 — mean LLR per fragment (deferred refinement)
+**Done.** The two critical defects are fixed. The LLR is computed in closed-form
+log-space (`mfsd.rs:130-146`: `0.5·(z_h²−z_t²) + ln(σ_h/σ_t)`), finite for all finite
+inputs — a single tail fragment can no longer pin it to ±∞. Small-N KS uses the exact
+two-sample null (`mfsd.rs:278-325`, Hodges lattice-path) below a size threshold, with
+the asymptotic series only where it is accurate.
+**Deferred.** Plan item 2 — *reporting the mean LLR per fragment* rather than the raw
+sum (`calc_llr` still sums, `mfsd.rs:111-119`). This is a cross-variant comparability
+nicety, not a correctness issue: the sign of the statistic and the per-variant label
+are unaffected.
+**Promotion target.** If adopted, divide by `lengths.len()` in `calc_llr_with_params`
+and re-baseline golden LLR magnitudes (it shifts displayed values — coordinate with
+report consumers).
+
+## ME-7 — QNAME dedup of junction reads (deferred refinement)
+**Done.** The substantive bug — FR mates splitting a genuine junction across both
+genomic strands and producing a false `STRAND_DISCORDANT` — is fixed. Junction reads
+are folded to inferred transcript strand before tallying (`engine.rs:2790`, via
+`read_transcript_strand`), so both mates of a normal pair now agree on strand.
+**Deferred.** Deduping the junction tally by QNAME, so a fragment whose two mates both
+span a junction is counted once rather than twice. This does **not** affect the
+discordance call: `minority_frac = min(plus,minus)/total` is invariant under symmetric
+mate-doubling. It only marginally inflates the `n_*_junc` totals feeding the `LOW_*_JUNC`
+thresholds and the ASJD BH family. Overlapping-mate junction reads are uncommon; the
+effect is second-order.
+**Promotion target.** Track per-junction contributing QNAMEs in the Step-1 loop
+(`engine.rs:2750-2806`) and count each once. Validate on real RNA (FORTE), where
+mate-overlap at junctions actually occurs.
+
+## ME-9 — raise MIN_FOR_KS / report min_alt (now largely moot)
+**Done.** The safety goal — never classifying a variant on a KS test that did not run —
+is met. `_classify_origin` returns `INSUFFICIENT` when `ks_valid` is false
+(`mfsd_report.py:111-112`), and the BH family excludes NaN-D variants (HI-11 / ME-8).
+**Deferred (and largely moot).** Raising `MIN_FOR_KS` from 5 to ≥8 and forcing
+`min_alt ≥ MIN_FOR_KS`. The original concern was that the *asymptotic* KS has no
+resolution at n=5; CR-5's exact small-N KS removes it — at n=5 the p-value is now the
+exact null, not an out-of-range approximation. With exact KS plus the `ks_valid`
+INSUFFICIENT gate, the floor of 5 is defensible and report `min_alt=3` only governs
+what is *displayed* (always gated to INSUFFICIENT when the test could not run).
+**Promotion target.** If a power analysis later justifies a higher floor, bump
+`MIN_FOR_KS` (`mfsd.rs:33`) and match the report `min_alt` default; document the
+minimum detectable D at the chosen n.
+
+---
+
 # DX — Developer experience / maintainability
 
 ## DX-1 — Code comments and logs cite ephemeral ticket labels
@@ -575,3 +627,7 @@ over `src/` and `rust/src/` enumerates the sites.
 LRN-20260627-001.
 
 **Severity:** LOW (no behavior change). **Milestone:** M6.
+
+**Status: Resolved** (PR #43). Source comments and logs swept across the 10 flagged
+files; `grep -rnE '(CR|HI|ME|LO|PF)-[0-9]|P4[abc]'` over `src/` and `rust/src/` returns
+zero. Design docs (this plan included) intentionally retain labels.
