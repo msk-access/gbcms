@@ -2623,6 +2623,52 @@ impl JunctionStrandCounts {
     }
 }
 
+/// Per-fragment junction-strand tally for ASJD.
+///
+/// A fragment (identified by its QNAME hash) votes once toward `n_total` and once per
+/// junction it spans, regardless of how many of its mates cross. Counting both mates
+/// of an overlapping pair would inflate junction totals (~1.38x on real RNA) and fire
+/// spurious `STRAND_DISCORDANT` at low depth. Mates always fold to the same transcript
+/// strand (verified 0/319k disagreements on real RNA), so the first vote per
+/// (fragment, junction) wins unambiguously.
+#[derive(Default)]
+struct JunctionTally {
+    /// Per-junction transcript-strand counts, deduped to one vote per fragment.
+    counts: HashMap<(i64, i64), JunctionStrandCounts>,
+    /// Distinct fragments contributing at least one junction-spanning read.
+    n_total: u32,
+    frag_seen: std::collections::HashSet<u64>,
+    junc_seen: std::collections::HashSet<(i64, i64, u64)>,
+    /// Mates skipped because their fragment already voted at that junction (monitoring).
+    collapsed: u32,
+}
+
+impl JunctionTally {
+    /// Record one junction-spanning read of a fragment.
+    ///
+    /// - `qhash`: fragment identity (QNAME hash).
+    /// - `junctions`: the junctions this read spans.
+    /// - `tx_minus`: folded transcript strand (`true` = '-'; unstranded reads pass
+    ///   `false` so they count toward totals without skewing the strand split).
+    fn add(&mut self, qhash: u64, junctions: &[(i64, i64)], tx_minus: bool) {
+        if self.frag_seen.insert(qhash) {
+            self.n_total += 1;
+        }
+        for &j in junctions {
+            if self.junc_seen.insert((j.0, j.1, qhash)) {
+                let entry = self.counts.entry(j).or_default();
+                if tx_minus {
+                    entry.minus += 1;
+                } else {
+                    entry.plus += 1;
+                }
+            } else {
+                self.collapsed += 1;
+            }
+        }
+    }
+}
+
 /// Detect allele-specific junction divergence at a variant site.
 /// Classify the splice motif at a junction by reading donor/acceptor dinucleotides
 /// from the reference FASTA.
@@ -2771,10 +2817,14 @@ fn detect_asjd(
     // Tracks per-junction transcript-strand counts for STRAND_DISCORDANT detection:
     // a genuine splice junction is supported from a single transcript strand, so
     // mixed-strand evidence suggests an alignment artifact.
-    let mut ref_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
-    let mut alt_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
-    let mut n_ref_total: u32 = 0;
-    let mut n_alt_total: u32 = 0;
+    // ASJD junction evidence is counted per FRAGMENT, not per mate. On real RNA, 35.6%
+    // of fragment×junction incidences have both mates spanning the same junction;
+    // counting both inflates junction totals ~1.38x on average and fires spurious
+    // STRAND_DISCORDANT at low depth. `JunctionTally` dedups each fragment to one vote
+    // per allele-total and per junction (mates always fold to the same transcript
+    // strand — verified 0/319k disagreements on real RNA — so first-seen wins).
+    let mut ref_tally = JunctionTally::default();
+    let mut alt_tally = JunctionTally::default();
 
     for record in read_cache {
         let r_start = record.pos();
@@ -2822,20 +2872,27 @@ fn detect_asjd(
         // inert and the STRAND_DISCORDANT emission is gated off.
         let tx_minus = super::rna::read_transcript_strand(record, strandedness) == Some('-');
 
-        // Partition by allele classification, tracking transcript strand per junction
+        // Dedup by fragment (QNAME hash): vote once per allele-total and per junction.
+        let qh = crate::shared::fragment::hash_qname(record.qname());
         if result.is_ref {
-            n_ref_total += 1;
-            for j in &junctions {
-                let entry = ref_junction_counts.entry(*j).or_default();
-                if tx_minus { entry.minus += 1; } else { entry.plus += 1; }
-            }
+            ref_tally.add(qh, &junctions, tx_minus);
         } else if result.is_alt {
-            n_alt_total += 1;
-            for j in &junctions {
-                let entry = alt_junction_counts.entry(*j).or_default();
-                if tx_minus { entry.minus += 1; } else { entry.plus += 1; }
-            }
+            alt_tally.add(qh, &junctions, tx_minus);
         }
+    }
+
+    // Unpack the deduped tallies into the names the rest of the routine reads.
+    let n_ref_total = ref_tally.n_total;
+    let n_alt_total = alt_tally.n_total;
+    let collapsed_mates = ref_tally.collapsed + alt_tally.collapsed;
+    let ref_junction_counts = ref_tally.counts;
+    let alt_junction_counts = alt_tally.counts;
+
+    if collapsed_mates > 0 {
+        debug!(
+            "ASJD QNAME-dedup at {}:{}: collapsed {} duplicate junction-spanning mates",
+            variant.chrom, variant.pos + 1, collapsed_mates,
+        );
     }
 
     // Step 2: Check minimum evidence thresholds
@@ -3092,6 +3149,45 @@ mod tests {
             "anchor deletion right breakpoint (13000) must be fetched, got bin.end={}",
             bin.end,
         );
+    }
+
+    // ── ASJD per-fragment junction dedup ──
+
+    #[test]
+    fn test_junction_tally_dedup_removes_spurious_discordance() {
+        // A junction supported by 3 single-mate '+' fragments and 1 fragment whose
+        // BOTH mates span it on '-' (the overlapping-mate case, common on real RNA).
+        let mut t = JunctionTally::default();
+        let j = (100i64, 200i64);
+        t.add(1, &[j], false); // frag 1, '+'
+        t.add(2, &[j], false); // frag 2, '+'
+        t.add(3, &[j], false); // frag 3, '+'
+        t.add(4, &[j], true); // frag 4, '-' (mate A)
+        t.add(4, &[j], true); // frag 4, '-' (mate B) → must collapse
+
+        let c = &t.counts[&j];
+        assert_eq!((c.plus, c.minus), (3, 1), "fragment 4 votes once, not twice");
+        assert_eq!(t.n_total, 4, "four distinct fragments");
+        assert_eq!(t.collapsed, 1, "frag 4's second mate collapsed");
+        // Deduped minority fraction 1/4 = 0.25 is below the 0.30 STRAND_DISCORDANT
+        // threshold; the raw per-mate count (+3/-2 = 0.40) would have fired it.
+        assert!(
+            c.minority_strand_fraction() < 0.30,
+            "deduped fraction must clear the discordance threshold"
+        );
+    }
+
+    #[test]
+    fn test_junction_tally_fragment_spans_two_junctions() {
+        // One fragment spanning two distinct junctions votes once per junction and
+        // counts once toward the allele total (no collapse — different junctions).
+        let mut t = JunctionTally::default();
+        let (j1, j2) = ((100i64, 200i64), (300i64, 400i64));
+        t.add(1, &[j1, j2], false);
+        assert_eq!(t.n_total, 1, "one fragment");
+        assert_eq!(t.counts[&j1].plus, 1);
+        assert_eq!(t.counts[&j2].plus, 1);
+        assert_eq!(t.collapsed, 0, "distinct junctions are not collapses");
     }
 
     // ── Phase 0 N-base defense tests ──

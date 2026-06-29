@@ -572,20 +572,27 @@ are unaffected.
 and re-baseline golden LLR magnitudes (it shifts displayed values — coordinate with
 report consumers).
 
-## ME-7 — QNAME dedup of junction reads (descoped)
-**Done.** The substantive bug — FR mates splitting a genuine junction across both
-genomic strands and producing a false `STRAND_DISCORDANT` — is fixed. Junction reads
-are folded to inferred transcript strand before tallying (`read_transcript_strand`),
-so both mates of a normal pair now agree on strand (and the fold is now selectable via
-`--strandedness`).
-**Descoped.** Deduping the junction tally by QNAME was measured on the real
-reverse-stranded FORTE BAM (3.6M reads, 117,862 junctions). Mate-overlap at junctions
-is in fact common — 35.6% of fragment×junction incidences (the earlier "uncommon"
-guess was wrong) — but the effect on the `STRAND_DISCORDANT` call is negligible: 18 of
-58,240 junctions with ≥5 reads flip (0.031%), all at low counts (5–13) and all in the
-*corrective* direction (dedup only ever removes a spurious flag). A ~0.03% precision
-tidy-up on one diagnostic flag is not worth the RNA-mode change + validation surface;
-scoped out by the maintainer. See `.agents/learnings/REJECTED.md` (REJ-20260629-001).
+## ME-7 — QNAME dedup of junction reads (implemented)
+**Done.** Both halves shipped.
+1. *Transcript-strand fold* — FR mates splitting a genuine junction across both genomic
+   strands (the false `STRAND_DISCORDANT` bug) is fixed by folding to inferred
+   transcript strand before tallying (`read_transcript_strand`), now selectable via
+   `--strandedness`.
+2. *Per-fragment dedup* — ASJD junction evidence is now counted once per fragment, not
+   per mate (`JunctionTally` in `detect_asjd`). This was driven by measuring the real
+   reverse-stranded FORTE BAM (3.6M reads, 117,862 junctions):
+   - Mate-overlap at junctions is **common, not rare**: 35.6% of fragment×junction
+     incidences (the earlier "uncommon" guess was wrong). Mechanism: a molecule's R1
+     and R2 overlap on a short cDNA insert and both carry the same `N` op for a shared
+     (often large) intron — not a UMI/PCR duplicate (UMI dedup leaves 0 flagged dups,
+     2 records/QNAME). It inflates junction totals ~1.38× genome-wide.
+   - Mates always fold to the same transcript strand (0/319k disagreements), so the
+     dedup is unambiguous (first-seen wins).
+   - Per-variant impact is small (each variant's ASJD window sees few reads): 18 of
+     58,240 junctions flip `STRAND_DISCORDANT` (0.031%), all low-count and all
+     corrective. The fix is principled (per-fragment matches the rest of the engine)
+     rather than high-magnitude.
+   Probes: `scratchpad/me7_junction_dedup_validation.py`, `…dedup_design_probe.py`.
 
 ## ME-9 — raise MIN_FOR_KS / report min_alt (now largely moot)
 **Done.** The safety goal — never classifying a variant on a KS test that did not run —

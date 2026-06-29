@@ -505,10 +505,10 @@ These columns are **always** appended regardless of input format.
 | `asjd_alt_motif` | String | Splice motif at ALT junction (same categories) |
 | `asjd_ref_known` | Boolean | `True` if the REF dominant junction matches a GTF-annotated intron |
 | `asjd_alt_known` | Boolean | `True` if the ALT dominant junction matches a GTF-annotated intron |
-| `asjd_n_ref_junc` | Integer | REF reads on the dominant junction |
-| `asjd_n_alt_junc` | Integer | ALT reads on the dominant junction |
-| `asjd_n_ref_total` | Integer | Total REF reads with any splice junction |
-| `asjd_n_alt_total` | Integer | Total ALT reads with any splice junction |
+| `asjd_n_ref_junc` | Integer | REF fragments on the dominant junction (deduped per QNAME) |
+| `asjd_n_alt_junc` | Integer | ALT fragments on the dominant junction (deduped per QNAME) |
+| `asjd_n_ref_total` | Integer | Total REF fragments with any splice junction (deduped per QNAME) |
+| `asjd_n_alt_total` | Integer | Total ALT fragments with any splice junction (deduped per QNAME) |
 | `asjd_diagnostic` | String | Semicolon-separated QC flags (see [Diagnostic Flags](#asjd-diagnostic-flags)) |
 
 ##### ASJD Diagnostic Flags

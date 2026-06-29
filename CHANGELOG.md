@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔄 Changed
 
+- **ASJD junction evidence is now counted per fragment, not per mate.** A molecule
+  whose R1 and R2 overlap on a short cDNA insert can have both mates carry the same
+  splice junction (the genomic insert looks large only because it spans the intron) —
+  on real reverse-stranded RNA this is 35.6% of fragment×junction incidences and is
+  *not* a UMI/PCR duplicate. Counting both mates inflated the per-junction strand
+  tally ~1.38× and could fire spurious `STRAND_DISCORDANT` at low depth. `detect_asjd`
+  now dedups each fragment (by QNAME) to one vote per allele-total and per junction,
+  matching the per-fragment treatment the rest of the engine already uses. Mates always
+  fold to the same transcript strand (verified 0/319k disagreements), so the dedup is
+  unambiguous. This shifts `asjd_n_*_junc` / `asjd_n_*_total` and a small number of
+  low-count `STRAND_DISCORDANT` flags (18/58,240 junctions genome-wide on the test
+  sample), always in the corrective direction.
 - **Empty-allele variants are now rejected at prep time.** A structurally empty REF
   or ALT (`""`) is malformed input — the internal representation is VCF-style
   (anchor-based), and MAF dash alleles arrive as the literal `-`, never empty. Such
