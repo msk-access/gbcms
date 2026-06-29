@@ -752,16 +752,17 @@ pub fn count_bam_binned(
                     .filter(|(_, c)| c.asjd_n_alt_junc + c.asjd_n_ref_junc > 0)
                     .map(|(i, _)| i)
                     .collect();
-                if !asjd_valid.is_empty() {
-                    let pvals: Vec<f64> =
-                        asjd_valid.iter().map(|&i| all_counts[i].asjd_pval).collect();
-                    let qvals = crate::shared::stats::benjamini_hochberg(&pvals);
-                    for (&i, q) in asjd_valid.iter().zip(qvals) {
-                        all_counts[i].asjd_qval = q;
-                    }
+                let corrected = crate::shared::stats::benjamini_hochberg_family(
+                    |i| all_counts[i].asjd_pval,
+                    &asjd_valid,
+                );
+                for (i, q) in &corrected {
+                    all_counts[*i].asjd_qval = *q;
+                }
+                if !corrected.is_empty() {
                     debug!(
                         "ASJD BH-FDR: corrected {} ASJD p-values (over real tests)",
-                        asjd_valid.len(),
+                        corrected.len(),
                     );
                 }
             }
@@ -780,16 +781,17 @@ pub fn count_bam_binned(
                 .filter(|(_, c)| !c.mfsd_ks_alt_ref.is_nan())
                 .map(|(i, _)| i)
                 .collect();
-            if !mfsd_valid.is_empty() {
-                let pvals: Vec<f64> =
-                    mfsd_valid.iter().map(|&i| all_counts[i].mfsd_pval_alt_ref).collect();
-                let qvals = crate::shared::stats::benjamini_hochberg(&pvals);
-                for (&i, q) in mfsd_valid.iter().zip(qvals) {
-                    all_counts[i].mfsd_qval_alt_ref = q;
-                }
+            let corrected = crate::shared::stats::benjamini_hochberg_family(
+                |i| all_counts[i].mfsd_pval_alt_ref,
+                &mfsd_valid,
+            );
+            for (i, q) in &corrected {
+                all_counts[*i].mfsd_qval_alt_ref = *q;
+            }
+            if !corrected.is_empty() {
                 debug!(
                     "mFSD BH-FDR: corrected {} mFSD alt-vs-REF p-values",
-                    mfsd_valid.len(),
+                    corrected.len(),
                 );
             }
 
