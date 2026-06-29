@@ -572,20 +572,20 @@ are unaffected.
 and re-baseline golden LLR magnitudes (it shifts displayed values — coordinate with
 report consumers).
 
-## ME-7 — QNAME dedup of junction reads (deferred refinement)
+## ME-7 — QNAME dedup of junction reads (descoped)
 **Done.** The substantive bug — FR mates splitting a genuine junction across both
 genomic strands and producing a false `STRAND_DISCORDANT` — is fixed. Junction reads
-are folded to inferred transcript strand before tallying (`engine.rs:2790`, via
-`read_transcript_strand`), so both mates of a normal pair now agree on strand.
-**Deferred.** Deduping the junction tally by QNAME, so a fragment whose two mates both
-span a junction is counted once rather than twice. This does **not** affect the
-discordance call: `minority_frac = min(plus,minus)/total` is invariant under symmetric
-mate-doubling. It only marginally inflates the `n_*_junc` totals feeding the `LOW_*_JUNC`
-thresholds and the ASJD BH family. Overlapping-mate junction reads are uncommon; the
-effect is second-order.
-**Promotion target.** Track per-junction contributing QNAMEs in the Step-1 loop
-(`engine.rs:2750-2806`) and count each once. Validate on real RNA (FORTE), where
-mate-overlap at junctions actually occurs.
+are folded to inferred transcript strand before tallying (`read_transcript_strand`),
+so both mates of a normal pair now agree on strand (and the fold is now selectable via
+`--strandedness`).
+**Descoped.** Deduping the junction tally by QNAME was measured on the real
+reverse-stranded FORTE BAM (3.6M reads, 117,862 junctions). Mate-overlap at junctions
+is in fact common — 35.6% of fragment×junction incidences (the earlier "uncommon"
+guess was wrong) — but the effect on the `STRAND_DISCORDANT` call is negligible: 18 of
+58,240 junctions with ≥5 reads flip (0.031%), all at low counts (5–13) and all in the
+*corrective* direction (dedup only ever removes a spurious flag). A ~0.03% precision
+tidy-up on one diagnostic flag is not worth the RNA-mode change + validation surface;
+scoped out by the maintainer. See `.agents/learnings/REJECTED.md` (REJ-20260629-001).
 
 ## ME-9 — raise MIN_FOR_KS / report min_alt (now largely moot)
 **Done.** The safety goal — never classifying a variant on a KS test that did not run —

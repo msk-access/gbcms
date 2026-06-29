@@ -21,6 +21,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 
 ## Validation / testing
 - [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.
+- [Siblings break binned↔legacy parity](siblings-break-binned-legacy-parity.md) — never pass sibling_variants to count_both; parity only holds without siblings.
 
 ## User (private, local-only — not committed)
 - `user-*.md` memories (e.g. who the operator is, personal defaults) live in this
