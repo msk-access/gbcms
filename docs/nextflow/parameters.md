@@ -70,7 +70,8 @@ These parameters are only used when `--mode rna` is specified.
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--rna_editing_db` | `''` | Path to [REDIportal](http://srv00.recas.ba.infn.it/atlas/index.html) editing database file (e.g., `TABLE1_hg38_v3.txt`). Flags ALT sites that overlap known A→I RNA editing positions. |
-| `--enforce_strandedness` | `true` | Enforce dUTP strand-specific library prep. Disable with `false` for unstranded RNA-seq libraries (`--no-strandedness` equivalent). |
+| `--enforce_strandedness` | `true` | Enforce strand-specific library prep. Disable with `false` for unstranded RNA-seq libraries (`--no-strandedness` equivalent). |
+| `--strandedness` | `'reverse'` | RNA library strand protocol: `'reverse'` (dUTP/fr-firststrand, featureCounts `-s 2` — the FORTE default), `'forward'` (fr-secondstrand, `-s 1`), or `'unstranded'` (`-s 0`). Sets the read→transcript-strand fold used by `--enforce_strandedness` and ASJD strand-discordance; `'unstranded'` disables both. |
 
 !!! tip "RNA mode defaults"
     RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.

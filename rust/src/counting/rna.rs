@@ -72,51 +72,92 @@ fn nh_tag_value(record: &Record) -> Option<i64> {
 }
 
 
-/// Check if a read is on the sense strand relative to the gene.
+/// RNA library strand protocol — controls how a read's genomic orientation folds to
+/// the transcript strand it originated from. Mirrors featureCounts `-s`:
 ///
-/// In dUTP stranded RNA-seq libraries:
-/// - R1 (first in pair) maps to the **antisense** strand
-/// - R2 (second in pair) maps to the **sense** strand
+/// | Variant      | featureCounts | Convention            | Sense mate |
+/// |--------------|---------------|-----------------------|------------|
+/// | `Reverse`    | `-s 2`        | dUTP / fr-firststrand  | R2        |
+/// | `Forward`    | `-s 1`        | fr-secondstrand        | R1        |
+/// | `Unstranded` | `-s 0`        | none                   | —         |
 ///
-/// For single-end reads, the read maps to the **antisense** strand.
+/// `Reverse` is the default — it is the FORTE RNA pipeline default and what every
+/// prior gbcms RNA run assumed (the direction was previously hardcoded). For
+/// `Unstranded` there is no transcript strand, so both strandedness enforcement and
+/// ASJD strand-discordance are disabled.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Strandedness {
+    /// dUTP / fr-firststrand (featureCounts `-s 2`): R2 is sense.
+    Reverse,
+    /// fr-secondstrand (featureCounts `-s 1`): R1 is sense.
+    Forward,
+    /// Unstranded (featureCounts `-s 0`): no transcript strand.
+    Unstranded,
+}
+
+impl Strandedness {
+    /// Parse the FFI protocol token. Returns `Err` for an unrecognized value rather
+    /// than silently defaulting, so a typo (`--strandedness reverze`) fails loudly at
+    /// the boundary instead of mis-orienting every downstream strand call.
+    pub fn from_protocol(token: &str) -> Result<Self, String> {
+        match token {
+            "reverse" => Ok(Self::Reverse),
+            "forward" => Ok(Self::Forward),
+            "unstranded" => Ok(Self::Unstranded),
+            other => Err(format!(
+                "invalid strandedness '{}' (expected 'reverse', 'forward', or 'unstranded')",
+                other
+            )),
+        }
+    }
+}
+
+/// Check if a read is on the sense strand relative to the gene, under the library's
+/// strand protocol.
 ///
-/// The "sense" strand of a read is determined by combining the read's
-/// orientation (forward/reverse) with its pair status (R1/R2) and
-/// comparing against the gene's annotated strand.
+/// The read's transcript strand (see [`read_transcript_strand`]) is compared against
+/// the gene's annotated strand. Returns `true` (pass) whenever strand cannot be
+/// enforced — the gene strand is unknown, or the library is `Unstranded` — so
+/// enforcement degrades to a no-op rather than silently dropping every read.
 ///
 /// ## Parameters
 ///
 /// - `record`: BAM record to evaluate
-/// - `gene_strand`: annotated gene strand ('+' or '-'). If `None`,
-///   all reads pass (no strandedness enforcement possible).
-///
-/// ## Returns
-///
-/// `true` if the read is on the sense strand (or gene_strand is None).
-pub fn is_sense_strand(record: &Record, gene_strand: Option<char>) -> bool {
-    match gene_strand {
-        // No strand info — strandedness cannot be enforced, so pass all reads.
-        None => true,
-        Some(gs) => read_transcript_strand(record) == gs,
+/// - `gene_strand`: annotated gene strand ('+' or '-'); `None` ⇒ pass all
+/// - `strandedness`: the library strand protocol
+pub fn is_sense_strand(
+    record: &Record,
+    gene_strand: Option<char>,
+    strandedness: Strandedness,
+) -> bool {
+    match (gene_strand, read_transcript_strand(record, strandedness)) {
+        (None, _) => true,                 // gene strand unknown — cannot enforce
+        (_, None) => true,                 // unstranded library — no transcript strand
+        (Some(gs), Some(ts)) => ts == gs,
     }
 }
 
-/// Infer the transcript strand a read originated from, under the dUTP protocol.
+/// Infer the transcript strand a read originated from, given the library protocol.
 ///
-/// dUTP stranded libraries make R2 sense and R1 (or single-end) antisense, so the
-/// transcript strand is the read's genomic strand for R2 and the opposite for R1.
 /// Returned in genomic terms (`'+'`/`'-'`) for direct comparison against a gene
-/// strand. Shared by [`is_sense_strand`] and ASJD strand-discordance detection, so
-/// both fold read orientation the same way (a normal FR pair's two mates resolve to
-/// the *same* transcript strand rather than looking bi-stranded).
-pub fn read_transcript_strand(record: &Record) -> char {
-    let read_genomic_strand = if record.is_reverse() { '-' } else { '+' };
-    if record.is_last_in_template() {
-        read_genomic_strand // R2 is sense — same as the genomic strand
-    } else if read_genomic_strand == '+' {
-        '-' // R1/single-end is antisense — flip
-    } else {
-        '+'
+/// strand, or `None` for an `Unstranded` library (no transcript strand exists). Both
+/// mates of a normal FR pair resolve to the *same* transcript strand, so a genuine
+/// junction is not spuriously split across strands. Shared by [`is_sense_strand`] and
+/// the ASJD strand-discordance detector so both fold orientation identically.
+///
+/// Folding (mirrors featureCounts `-s`):
+/// - `Reverse` (dUTP, `-s 2`): R2 = genomic strand (sense); R1/single-end = flipped.
+/// - `Forward` (`-s 1`): R1/single-end = genomic strand (sense); R2 = flipped.
+/// - `Unstranded` (`-s 0`): `None`.
+pub fn read_transcript_strand(record: &Record, strandedness: Strandedness) -> Option<char> {
+    let genomic = if record.is_reverse() { '-' } else { '+' };
+    let flipped = if genomic == '+' { '-' } else { '+' };
+    // is_last_in_template() is R2; first-in-pair and single-end both read as R1.
+    let is_r2 = record.is_last_in_template();
+    match strandedness {
+        Strandedness::Unstranded => None,
+        Strandedness::Reverse => Some(if is_r2 { genomic } else { flipped }),
+        Strandedness::Forward => Some(if is_r2 { flipped } else { genomic }),
     }
 }
 
@@ -494,7 +535,7 @@ mod tests {
     fn test_sense_strand_no_gene_strand_passes() {
         let cigar = CigarString(vec![Cigar::Match(8)]);
         let record = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
-        assert!(is_sense_strand(&record, None));
+        assert!(is_sense_strand(&record, None, Strandedness::Reverse));
     }
 
     #[test]
@@ -505,7 +546,7 @@ mod tests {
         // Set as R2
         record.set_last_in_template();
         // Forward read (not reversed) → '+'
-        assert!(is_sense_strand(&record, Some('+')));
+        assert!(is_sense_strand(&record, Some('+'), Strandedness::Reverse));
     }
 
     #[test]
@@ -515,7 +556,7 @@ mod tests {
         let mut record = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
         record.set_first_in_template();
         record.set_reverse();
-        assert!(is_sense_strand(&record, Some('+')));
+        assert!(is_sense_strand(&record, Some('+'), Strandedness::Reverse));
     }
 
     #[test]
@@ -525,7 +566,87 @@ mod tests {
         let mut record = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
         record.set_first_in_template();
         // Forward (not reverse) → transcript strand = '-' (antisense flip)
-        assert!(!is_sense_strand(&record, Some('+')));
+        assert!(!is_sense_strand(&record, Some('+'), Strandedness::Reverse));
+    }
+
+    // ── Strandedness: protocol folds ──
+
+    #[test]
+    fn test_strandedness_from_protocol() {
+        assert_eq!(Strandedness::from_protocol("reverse"), Ok(Strandedness::Reverse));
+        assert_eq!(Strandedness::from_protocol("forward"), Ok(Strandedness::Forward));
+        assert_eq!(
+            Strandedness::from_protocol("unstranded"),
+            Ok(Strandedness::Unstranded)
+        );
+        // Unknown token is a loud error, never a silent default.
+        assert!(Strandedness::from_protocol("reverze").is_err());
+    }
+
+    #[test]
+    fn test_transcript_strand_reverse_protocol() {
+        // dUTP / reverse: R2 = genomic strand (sense); R1 = flipped.
+        let cigar = CigarString(vec![Cigar::Match(8)]);
+        let mut r2_fwd = build_record(b"ACGTACGT", &[30u8; 8], cigar.clone(), 100);
+        r2_fwd.set_last_in_template();
+        assert_eq!(read_transcript_strand(&r2_fwd, Strandedness::Reverse), Some('+'));
+
+        let mut r2_rev = build_record(b"ACGTACGT", &[30u8; 8], cigar.clone(), 100);
+        r2_rev.set_last_in_template();
+        r2_rev.set_reverse();
+        assert_eq!(read_transcript_strand(&r2_rev, Strandedness::Reverse), Some('-'));
+
+        let mut r1_fwd = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
+        r1_fwd.set_first_in_template();
+        assert_eq!(read_transcript_strand(&r1_fwd, Strandedness::Reverse), Some('-'));
+    }
+
+    #[test]
+    fn test_transcript_strand_forward_inverts_reverse() {
+        // Forward (fr-secondstrand) is the mirror of reverse: R1 = sense, R2 = flipped.
+        let cigar = CigarString(vec![Cigar::Match(8)]);
+        let mut r1_fwd = build_record(b"ACGTACGT", &[30u8; 8], cigar.clone(), 100);
+        r1_fwd.set_first_in_template();
+        assert_eq!(read_transcript_strand(&r1_fwd, Strandedness::Forward), Some('+'));
+
+        let mut r2_fwd = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
+        r2_fwd.set_last_in_template();
+        assert_eq!(read_transcript_strand(&r2_fwd, Strandedness::Forward), Some('-'));
+
+        // The same read folds to opposite transcript strands under the two protocols.
+        assert_ne!(
+            read_transcript_strand(&r1_fwd, Strandedness::Forward),
+            read_transcript_strand(&r1_fwd, Strandedness::Reverse),
+        );
+    }
+
+    #[test]
+    fn test_transcript_strand_unstranded_is_none() {
+        let cigar = CigarString(vec![Cigar::Match(8)]);
+        let mut r2 = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
+        r2.set_last_in_template();
+        assert_eq!(read_transcript_strand(&r2, Strandedness::Unstranded), None);
+    }
+
+    #[test]
+    fn test_is_sense_strand_forward_protocol() {
+        // Under forward, an R1 forward read is sense ('+') → matches gene '+', not '-'.
+        let cigar = CigarString(vec![Cigar::Match(8)]);
+        let mut r1_fwd = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
+        r1_fwd.set_first_in_template();
+        assert!(is_sense_strand(&r1_fwd, Some('+'), Strandedness::Forward));
+        assert!(!is_sense_strand(&r1_fwd, Some('-'), Strandedness::Forward));
+    }
+
+    #[test]
+    fn test_is_sense_strand_unstranded_passes_all() {
+        // Unstranded: no transcript strand to enforce against → always pass, even
+        // against a definite gene strand (a no-op, not a silent drop of every read).
+        let cigar = CigarString(vec![Cigar::Match(8)]);
+        let mut r1_fwd = build_record(b"ACGTACGT", &[30u8; 8], cigar, 100);
+        r1_fwd.set_first_in_template();
+        assert!(is_sense_strand(&r1_fwd, Some('+'), Strandedness::Unstranded));
+        assert!(is_sense_strand(&r1_fwd, Some('-'), Strandedness::Unstranded));
     }
 
     // ── has_splice_junction tests ──

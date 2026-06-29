@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **`--strandedness` for RNA mode (`reverse` | `forward` | `unstranded`).** The
+  read→transcript-strand fold was previously hardcoded to dUTP/reverse
+  (fr-firststrand, featureCounts `-s 2`); it is now selectable to support forward
+  (fr-secondstrand, `-s 1`) and unstranded (`-s 0`) libraries. The fold drives both
+  `--enforce-strandedness` filtering and ASJD strand-discordance detection;
+  `unstranded` disables both (as do amplicon libraries). Default is `reverse`,
+  preserving prior behavior and matching the FORTE pipeline default. Unknown values
+  are rejected loudly at both the model and FFI layers. Validated on a real
+  reverse-stranded RNA sample: `reverse + forward = unstranded` read counts exactly
+  (100% strand partition) at ACTB and GAPDH.
+
 ### 🔄 Changed
 
 - **Empty-allele variants are now rejected at prep time.** A structurally empty REF

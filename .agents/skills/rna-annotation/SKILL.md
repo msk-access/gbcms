@@ -34,6 +34,11 @@ Built once in `count_bam_binned()`, shared via `Arc` across rayon workers.
 ### Gotchas (verify before trusting RNA outputs)
 - `gene_strand` must be populated from the GTF or `is_sense_strand` returns true
   for all reads → `antisense_depth` stays 0 and `enforce_strandedness` is a no-op.
+- Library strand protocol is selectable via `--strandedness` (`reverse` default /
+  `forward` / `unstranded`); the read→transcript fold lives in
+  `rna.rs::read_transcript_strand(record, Strandedness)`. `reverse` = dUTP/`-s 2`
+  (FORTE default). Wrong protocol → every junction looks strand-discordant. Confirm
+  with RSeQC `infer_experiment` or the upstream `featureCounts -s` flag.
 - The splice-motif classifier must account for minus-strand genes (revcomp), else
   canonical junctions read as OTHER / NON_CANONICAL.
 - Contig naming: `chr`-strip alone does not reconcile `MT` vs `chrM`.

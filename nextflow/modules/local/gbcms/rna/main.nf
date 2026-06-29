@@ -72,6 +72,9 @@ process GBCMS_RNA {
     // CLI default for RNA is --enforce-strandedness (true), so pass --no-strandedness only if disabled
     def strandedness_arg = params.enforce_strandedness ? "" : "--no-strandedness"
 
+    // RNA library strand protocol — only emit when it differs from the CLI default ('reverse')
+    def strand_protocol_arg = params.strandedness != 'reverse' ? "--strandedness ${params.strandedness}" : ""
+
     // BAQ: CLI default for RNA is --apply-baq (on). Pass --no-baq only if user explicitly disables.
     def baq_arg = params.apply_baq == false ? "--no-baq" : ""
 
@@ -101,6 +104,7 @@ process GBCMS_RNA {
         ${editing_db_arg} \\
         ${gtf_arg} \\
         ${strandedness_arg} \\
+        ${strand_protocol_arg} \\
         ${library_type_arg} \\
         ${args}
 

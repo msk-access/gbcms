@@ -11,9 +11,10 @@ RNA mode extends the core DNA counting engine with filters and metrics specific 
 |:---------|:--------|
 | cfDNA (ACCESS, IMPACT) | `gbcms dna` |
 | WGS / WES / Panel | `gbcms dna` |
-| STAR + dUTP RNA-seq | `gbcms rna` |
+| STAR + dUTP (reverse) RNA-seq | `gbcms rna` |
 | STAR + dUTP + GTF annotation | `gbcms rna --gtf genes.gtf` |
-| Unstranded RNA-seq | `gbcms rna --no-strandedness` |
+| Forward-stranded (fr-secondstrand) RNA-seq | `gbcms rna --strandedness forward` |
+| Unstranded RNA-seq | `gbcms rna --strandedness unstranded` |
 | Amplicon RNA libraries | `gbcms rna --library-type amplicon` |
 
 ## Synopsis
@@ -129,6 +130,31 @@ These options are **only available** on `gbcms rna`, not on `gbcms dna`.
     # GENCODE
     wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencode.v46.annotation.gtf.gz
     ```
+
+### Strandedness Protocol
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--strandedness` | `reverse` | RNA library strand protocol: `reverse`, `forward`, or `unstranded` |
+
+Controls how a read's genomic orientation folds to the **transcript strand** it
+originated from. This fold drives both `--enforce-strandedness` filtering and ASJD
+strand-discordance detection.
+
+| Value | featureCounts | Convention | Sense mate |
+|:------|:--------------|:-----------|:-----------|
+| `reverse` (default) | `-s 2` | dUTP / fr-firststrand | R2 |
+| `forward` | `-s 1` | fr-secondstrand | R1 |
+| `unstranded` | `-s 0` | none | — |
+
+!!! info "Picking the right value"
+    `reverse` is the default — it matches the **FORTE** pipeline default and dUTP
+    library preps. If unsure, run RSeQC `infer_experiment.py` (a ~90%+ majority for
+    `1+-,1-+,2++,2--` means `reverse`; `1++,1--,2+-,2-+` means `forward`) or check the
+    `featureCounts -s` flag your upstream pipeline used. `unstranded` disables strand
+    filtering and strand-discordance entirely (and is implied by `--library-type
+    amplicon`). An unknown value is rejected with an error rather than silently
+    defaulting.
 
 ### Library Type (v5.0.0)
 
