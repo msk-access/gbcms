@@ -184,6 +184,7 @@ def count_bam(
     hmm_gap_extend_repeat: float = 0.5,
     mode: str = "dna",
     enforce_strandedness: bool = False,
+    strandedness: str = "reverse",
 ) -> list[BaseCounts]: ...
 def count_bam_binned(
     bam_path: str,
@@ -210,6 +211,7 @@ def count_bam_binned(
     umi_tag: str | None = None,
     mode: str = "dna",
     enforce_strandedness: bool = False,
+    strandedness: str = "reverse",
     rna_editing_db: str | None = None,
     gtf_path: str | None = None,
     reference_fasta: str | None = None,

@@ -46,6 +46,20 @@ def test_rna_has_strandedness_field():
     assert GbcmsRnaConfig.model_fields["enforce_strandedness"].default is True
 
 
+def test_rna_strandedness_protocol_field_and_validation():
+    """GbcmsRnaConfig.strandedness defaults to 'reverse' (the FORTE/dUTP default) and
+    accepts only the three protocols, normalizing case/whitespace — an unknown value is
+    rejected loudly rather than silently defaulting."""
+    assert "strandedness" in GbcmsRnaConfig.model_fields
+    assert GbcmsRnaConfig.model_fields["strandedness"].default == "reverse"
+
+    assert GbcmsRnaConfig.validate_strandedness("Reverse") == "reverse"
+    assert GbcmsRnaConfig.validate_strandedness(" forward ") == "forward"
+    assert GbcmsRnaConfig.validate_strandedness("unstranded") == "unstranded"
+    with pytest.raises(ValueError, match="Invalid strandedness"):
+        GbcmsRnaConfig.validate_strandedness("sideways")
+
+
 def test_rna_has_editing_db_field():
     """GbcmsRnaConfig has rna_editing_db (default None)."""
     assert "rna_editing_db" in GbcmsRnaConfig.model_fields

@@ -280,7 +280,7 @@ impl AlignmentBackend {
 /// // pipeline.py can switch to the binned codepath.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false, reference_fasta=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false, strandedness="reverse", reference_fasta=None))]
 pub fn count_bam(
     py: Python<'_>,
     bam_path: String,
@@ -305,6 +305,7 @@ pub fn count_bam(
     hmm_gap_extend_repeat: f64,
     mode: &str,
     enforce_strandedness: bool,
+    strandedness: &str,
     reference_fasta: Option<&str>,
 ) -> PyResult<Vec<BaseCounts>> {
     // Parse alignment backend from string
@@ -318,6 +319,10 @@ pub fn count_bam(
         },
         _ => AlignmentBackend::SmithWaterman,
     };
+
+    // Parse the RNA library strand protocol (loud error on an unknown token).
+    let strandedness = rna::Strandedness::from_protocol(strandedness)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Store FASTA path for CRAM reference decoding (safe no-op for BAM files)
     let fasta_for_cram: Option<String> = reference_fasta.map(|p| p.to_string());
@@ -391,6 +396,7 @@ pub fn count_bam(
                             None,   // umi_tag: legacy codepath
                             mode,
                             enforce_strandedness,
+                            strandedness,
                         )?;
 
                         // Dual-count: if a decomposed variant exists, count it too
@@ -414,6 +420,7 @@ pub fn count_bam(
                                 None,   // umi_tag: legacy codepath
                                 mode,
                                 enforce_strandedness,
+                                strandedness,
                             )?;
 
                             if counts_decomp.ad > counts_orig.ad {
@@ -474,7 +481,7 @@ pub fn count_bam(
 /// // parity testing until the 22-BAM regression confirms identical counts.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture"))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture"))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -501,6 +508,7 @@ pub fn count_bam_binned(
     umi_tag: Option<&str>,
     mode: &str,
     enforce_strandedness: bool,
+    strandedness: &str,
     rna_editing_db: Option<&str>,
     gtf_path: Option<&str>,
     reference_fasta: Option<&str>,
@@ -592,14 +600,27 @@ pub fn count_bam_binned(
     // In amplicon mode, R1/R2 hash to separate "fragments" (no consensus).
     let amplicon_mode = library_type == "amplicon";
 
+    // Parse the RNA library strand protocol (loud error on an unknown token). Amplicon
+    // libraries are not stranded, so force Unstranded there — reads must not be folded
+    // under a protocol that doesn't apply (matches the CLI auto-disabling
+    // --enforce-strandedness for amplicon).
+    let strandedness = rna::Strandedness::from_protocol(strandedness)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    let strandedness = if amplicon_mode {
+        rna::Strandedness::Unstranded
+    } else {
+        strandedness
+    };
+
     if mode == "rna" {
         info!(
             "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, \
-             rna_editing_db={}, gtf={}, library_type={}",
+             rna_editing_db={}, gtf={}, library_type={}, strandedness={:?}",
             variants.len(), apply_baq, umi_tag, alignment_backend,
             rna_editing_db.unwrap_or("none"),
             gtf_path.unwrap_or("none"),
             library_type,
+            strandedness,
         );
     } else {
         info!(
@@ -713,6 +734,7 @@ pub fn count_bam_binned(
                             umi_tag_owned,
                             mode,
                             enforce_strandedness,
+                            strandedness,
                             &editing_sites,
                             &annotation,
                             fasta_reader,
@@ -889,6 +911,7 @@ fn count_bin_shared(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
+    strandedness: rna::Strandedness,
     editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
@@ -986,7 +1009,7 @@ fn count_bin_shared(
             min_mapq, min_baseq,
             filter_improper_pair, filter_indel,
             fragment_qual_threshold, backend,
-            apply_baq, umi_tag, mode, enforce_strandedness,
+            apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
             editing_sites, annotation, amplicon_mode,
         )?;
 
@@ -998,7 +1021,7 @@ fn count_bin_shared(
                 min_mapq, min_baseq,
                 filter_improper_pair, filter_indel,
                 fragment_qual_threshold, backend,
-                apply_baq, umi_tag, mode, enforce_strandedness,
+                apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
                 editing_sites, annotation, amplicon_mode,
             )?;
 
@@ -1043,7 +1066,7 @@ fn count_bin_shared(
             let (read_cts, frag_cts) = count_per_transcript(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
-                backend, apply_baq, umi_tag, enforce_strandedness,
+                backend, apply_baq, umi_tag, enforce_strandedness, strandedness,
                 amplicon_mode,
             );
             final_counts.transcript_read_counts = read_cts;
@@ -1055,7 +1078,7 @@ fn count_bin_shared(
             // via benjamini_hochberg() in count_bam_binned().
             let asjd = detect_asjd(
                 &read_cache, variant, siblings, annot,
-                min_mapq, min_baseq, backend, apply_baq, enforce_strandedness,
+                min_mapq, min_baseq, backend, apply_baq, enforce_strandedness, strandedness,
                 fasta_reader,
             );
             final_counts.asjd_flag = asjd.flag;
@@ -1110,6 +1133,7 @@ fn count_variant_from_cache(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
+    strandedness: rna::Strandedness,
     editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     amplicon_mode: bool,
@@ -1227,7 +1251,7 @@ fn count_variant_from_cache(
         reads_considered += 1;
 
         // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
-        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand) {
+        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness) {
             continue;
         }
 
@@ -1455,7 +1479,7 @@ fn count_variant_from_cache(
         // ── RNA SENSE/ANTISENSE DEPTH: track strand-specific depth.
         // Uses the same dUTP logic as is_sense_strand to classify reads.
         if mode == "rna" {
-            if rna::is_sense_strand(record, variant.gene_strand) {
+            if rna::is_sense_strand(record, variant.gene_strand, strandedness) {
                 counts.sense_depth += 1;
                 if is_alt { counts.sense_strand_alt_count += 1; }
             } else {
@@ -1675,6 +1699,7 @@ fn count_single_variant(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
+    strandedness: rna::Strandedness,
 ) -> Result<BaseCounts> {
     let tid = bam.header().tid(variant.chrom.as_bytes()).ok_or_else(|| {
         anyhow::anyhow!("Chromosome not found in BAM: {}", variant.chrom)
@@ -1780,7 +1805,7 @@ fn count_single_variant(
         // ── RNA STRANDEDNESS FILTER: In RNA mode with strandedness enforced,
         // reject reads on the wrong strand relative to the gene annotation.
         // This prevents antisense artifacts from inflating variant counts.
-        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(&record, variant.gene_strand) {
+        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(&record, variant.gene_strand, strandedness) {
             continue;
         }
 
@@ -1971,7 +1996,7 @@ fn count_single_variant(
         // ── RNA SENSE/ANTISENSE DEPTH: track strand-specific depth.
         // Uses the same dUTP logic as is_sense_strand to classify reads.
         if mode == "rna" {
-            if rna::is_sense_strand(&record, variant.gene_strand) {
+            if rna::is_sense_strand(&record, variant.gene_strand, strandedness) {
                 counts.sense_depth += 1;
                 if is_alt {
                     counts.sense_strand_alt_count += 1;
@@ -2345,6 +2370,7 @@ fn count_per_transcript(
     apply_baq: bool,
     umi_tag: Option<[u8; 2]>,
     enforce_strandedness: bool,
+    strandedness: rna::Strandedness,
     amplicon_mode: bool,
 ) -> (String, String) {
     // Step 1: Find overlapping transcripts
@@ -2415,7 +2441,7 @@ fn count_per_transcript(
             }
 
             // ── Strandedness filter
-            if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand) {
+            if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand, strandedness) {
                 continue;
             }
 
@@ -2721,6 +2747,7 @@ fn detect_asjd(
     backend: &AlignmentBackend,
     apply_baq: bool,
     enforce_strandedness: bool,
+    strandedness: rna::Strandedness,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
 ) -> AsjdResult {
     // Bind the normalized key, then borrow it as &str so the junction/motif lookups
@@ -2760,7 +2787,7 @@ fn detect_asjd(
         if record.mapq() < min_mapq && !super::rna::is_valid_rna_alignment(record, min_mapq) {
             continue;
         }
-        if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand) {
+        if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand, strandedness) {
             continue;
         }
 
@@ -2787,9 +2814,13 @@ fn detect_asjd(
             continue;
         }
 
-        // dUTP-folded transcript strand, so both mates of a normal FR pair agree
-        // rather than splitting a genuine junction across both genomic strands.
-        let tx_minus = super::rna::read_transcript_strand(record) == '-';
+        // Transcript-strand-folded under the library protocol, so both mates of a
+        // normal FR pair agree rather than splitting a genuine junction across both
+        // genomic strands. For an unstranded library there is no transcript strand
+        // (None) — such reads fall to `plus` so they still count toward the junction
+        // total, while the strand split (used only for discordance below) is left
+        // inert and the STRAND_DISCORDANT emission is gated off.
+        let tx_minus = super::rna::read_transcript_strand(record, strandedness) == Some('-');
 
         // Partition by allele classification, tracking transcript strand per junction
         if result.is_ref {
@@ -2899,12 +2930,17 @@ fn detect_asjd(
         diag_flags.push("NON_CANONICAL_MOTIF");
     }
 
-    // Step 5c: Strand discordance detection on the dominant ALT junction
-    // In dUTP libraries, reads from a genuine splice event should be predominantly
-    // on one strand. A minority strand fraction ≥ 30% (with ≥5 total reads to avoid
-    // noise at low depth) indicates the junction may be an alignment artifact.
+    // Step 5c: Strand discordance detection on the dominant ALT junction.
+    // In a stranded library, reads from a genuine splice event should be predominantly
+    // on one transcript strand. A minority strand fraction ≥ 30% (with ≥5 total reads
+    // to avoid noise at low depth) indicates the junction may be an alignment artifact.
+    // Undefined for an unstranded library (no transcript strand), so gate it off there.
     let alt_minority_frac = alt_dom_strand_info.minority_strand_fraction();
-    if !same_junction && n_alt_junc >= 5 && alt_minority_frac >= 0.30 {
+    if strandedness != rna::Strandedness::Unstranded
+        && !same_junction
+        && n_alt_junc >= 5
+        && alt_minority_frac >= 0.30
+    {
         diag_flags.push("STRAND_DISCORDANT");
         debug!(
             "STRAND_DISCORDANT: {}:{} alt_junc={}-{} tx+={} tx-={} minority_frac={:.2}",

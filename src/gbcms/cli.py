@@ -544,8 +544,18 @@ def rna(
         True,
         "--enforce-strandedness/--no-strandedness",
         help=(
-            "Filter reads by dUTP strand orientation relative to gene strand. "
-            "Disable for unstranded RNA-seq libraries."
+            "Filter reads by strand orientation relative to gene strand. "
+            "Disable for unstranded RNA-seq libraries (or pass --strandedness unstranded)."
+        ),
+    ),
+    strandedness: str = typer.Option(
+        "reverse",
+        "--strandedness",
+        help=(
+            "RNA library strand protocol: 'reverse' (default; dUTP/fr-firststrand, "
+            "featureCounts -s 2 — the FORTE default), 'forward' (fr-secondstrand, -s 1), "
+            "or 'unstranded' (-s 0). Sets the read->transcript-strand fold used by both "
+            "--enforce-strandedness and ASJD strand-discordance. 'unstranded' disables both."
         ),
     ),
     rna_editing_db: Path | None = typer.Option(
@@ -751,21 +761,36 @@ def rna(
 
     logger.info("Found %d BAM file(s) to process", len(bams_dict))
 
-    # P5: Amplicon mode auto-disables strandedness (amplicon libraries are not stranded)
-    if library_type == "amplicon" and enforce_strandedness:
+    # Normalize the strand protocol (the model validates the value; we normalize here
+    # for the interaction checks below).
+    strandedness = strandedness.lower().strip()
+
+    # Amplicon libraries are not stranded — treat them as unstranded so reads are not
+    # folded under a protocol that does not apply.
+    if library_type == "amplicon" and strandedness != "unstranded":
+        logger.info(
+            "--library-type=amplicon: forcing --strandedness=unstranded "
+            "(amplicon libraries are not strand-specific)"
+        )
+        strandedness = "unstranded"
+
+    # An unstranded protocol has no transcript strand, so strand enforcement is a no-op
+    # — disable it explicitly rather than letting it silently pass every read.
+    if strandedness == "unstranded" and enforce_strandedness:
         enforce_strandedness = False
         logger.info(
-            "--library-type=amplicon: auto-disabled --enforce-strandedness "
-            "(amplicon libraries are not strand-specific)"
+            "--strandedness=unstranded: auto-disabled --enforce-strandedness "
+            "(no transcript strand to filter against)"
         )
 
     logger.info(
         "Config: min_mapq=%d, apply_baq=%s, alignment_backend=%s, "
-        "enforce_strandedness=%s, library_type=%s, umi_tag=%s",
+        "enforce_strandedness=%s, strandedness=%s, library_type=%s, umi_tag=%s",
         min_mapq,
         apply_baq,
         alignment_backend.value,
         enforce_strandedness,
+        strandedness,
         library_type,
         umi_tag or "none",
     )
@@ -825,6 +850,7 @@ def rna(
             apply_baq=apply_baq,
             umi_tag=umi_tag,
             enforce_strandedness=enforce_strandedness,
+            strandedness=strandedness,
             rna_editing_db=rna_editing_db,
             gtf=gtf,
             library_type=library_type,
