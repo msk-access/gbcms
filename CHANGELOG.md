@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔄 Changed
 
+- **Empty-allele variants are now rejected at prep time.** A structurally empty REF
+  or ALT (`""`) is malformed input — the internal representation is VCF-style
+  (anchor-based), and MAF dash alleles arrive as the literal `-`, never empty. Such
+  variants previously fell through to counting and silently produced zero counts;
+  they are now rejected during `prepare_variants` with a `FAIL_EMPTY_ALLELE` status
+  and a warning, so they are surfaced in the output rather than quietly dropped to
+  all-zero. Legitimate MAF `-` alleles are unaffected.
 - **Supplementary/secondary alignments no longer count toward read-level depth.**
   They share a QNAME with their primary, so counting them at read level
   double-counts DP/RD/AD at the anchor. They are now skipped unconditionally in

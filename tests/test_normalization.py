@@ -76,6 +76,20 @@ class TestNormalization(unittest.TestCase):
         pv = prepared[0]
         self.assertNotEqual(pv.gbcms_status, "PASS")
 
+    def test_empty_allele_rejected(self):
+        """A structurally empty REF or ALT is malformed input (MAF dash alleles must
+        be '-', never ''). It must be rejected loudly with FAIL_EMPTY_ALLELE at prep
+        time, not passed to counting where it would silently yield zero counts."""
+        variants = [
+            gbcms_rs.Variant("chr1", 0, "", "T", "INSERTION"),  # empty REF
+            gbcms_rs.Variant("chr1", 0, "A", "", "DELETION"),  # empty ALT
+        ]
+        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
+        self.assertEqual(len(prepared), 2)
+        for pv in prepared:
+            self.assertEqual(pv.gbcms_status, "FAIL_EMPTY_ALLELE")
+            self.assertFalse(pv.gbcms_status.startswith("PASS"))
+
     def test_maf_insertion_anchor_resolution(self):
         """MAF insertion (ref='-') should get anchor base prepended."""
         # MAF: chr1:5, ref='-', alt='G' (insert G after pos 4 in 0-based)
