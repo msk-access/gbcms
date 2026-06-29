@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-06-27_
+_Last updated: 2026-06-29_
 
 ## Now
 Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)
@@ -25,27 +25,35 @@ widths), HI-8 (intron-discounted fragment size), LO-9 (GTF diagnostics), ME-6
 STRAND_DISCORDANT), LO-11 (base-aware editing). Validated end-to-end on a real
 reverse-stranded RNA sample; dUTP sense/antisense split matched samtools 2/2.
 
-**M4 (alignment robustness) — in progress:** LO-15 (shared `MIN_USABLE_BASES` across
-SW/PairHMM/WFA + a WFA usable-base gate) on `feature/m4-usable-bases-const` —
-byte-identical counts on 610 real cfDNA variants (pure refactor + defensive gate).
+**M4 (alignment robustness) — COMPLETE & merged:** LO-15 (shared `MIN_USABLE_BASES`),
+HI-3 (WFA off-target global edit distance + length-aware threshold), HI-4/HI-5/ME-5
+(PairHMM numerics), ME-4 (haplotype-parity collision: `warn!` + `NON_DISCRIMINATING_LOCUS`
+flag, #40). Defensive — byte-identical counts on real cfDNA.
+
+**M1–M4 audit + follow-ups — COMPLETE & merged/open:** cross-checked the plan against
+the code (4-agent sweep). Closed the real gaps — HI-2 + HI-6 (#41), MIN_FOR_KS coupling
++ dead tooling (#42), DX-1 label sweep (#43). Pre-M5 cleanup this session: test/doc
+gaps + BH-family DRY (#44), prep-time empty-allele rejection (#45), large-deletion
+binned↔legacy parity gate (#46), and the as-built plan-deviation notes (this change).
 
 ## Next
-1. Open/merge the LO-15 PR.
-2. M4 Bundle A (one PR, PairHMM numerics, real-data validated): HI-4 (clamp
-   `p_correct`/`p_error` — Q0 currently gives `ln(0)→NaN→` silent neither), HI-5 (N
-   emission truly LLR-neutral near indels), ME-5 (`prob_emit_y` justified/symmetric).
-   HI-5 ⇄ ME-5 are co-decided.
-3. HI-3 (WFA off-target: global→semiglobal + length-aware threshold) — needs DNA data;
-   sequence after Bundle A since its fix is "defer to the now-hardened PairHMM".
-4. ME-4 (haplotype-parity collision short-circuit) + LO-5 (hashing-misnomer doc).
+Everything before M5 is done (M1–M4 + all audit follow-ups). Remaining plan work:
+1. **M5 — Performance/IO** (PF-1–4, ME-13, LO-3, LO-14): throughput on deep panels.
+   The first item with *observable* user impact; independent of correctness work.
+2. **M6 — Hygiene & contracts** (HI-1, ME-1/2/12, LO-1/4–8/13): exit codes, output
+   parity, docs. Continuous cleanup; DX-1 already landed.
+3. **LO-2** (deferred, see below): feature-gate the legacy traversal — revisit when
+   the M5/M6 work settles, per maintainer.
 
 ## Open follow-ups (tracked, not lost)
-- BAM-level binned↔legacy parity CI gate, incl. large deletions (the gap that hid CR-1).
-- Prep-time empty-allele validation (loud, once-per-variant) — complements CR-3.
-- DX-1: sweep remaining ticket labels (`P4a`/`P4b`/`D7`/…) from source comments/logs
-  (being cleared opportunistically as lines are touched).
+- ✅ BAM-level binned↔legacy parity gate, incl. large deletions — **done (#46)**.
+- ✅ Prep-time empty-allele validation (loud, once-per-variant) — **done (#45)**.
+- ✅ DX-1 source label sweep — **done (#43)**; standing rule prevents reintroduction.
 - LO-2: feature-gate the legacy per-variant traversal (keep as parity oracle, exclude
   from the shipped wheel) — **revisit after this plan**, per maintainer.
+- Accepted plan deviations (CR-5 mean-LLR, ME-7 QNAME-dedup, ME-9 thresholds) are
+  documented in `CODE_REVIEW_IMPLEMENTATION_PLAN.md` § "Accepted deviations" with
+  promotion targets — pick up only if a consumer needs them.
 
 ## Key decisions
 - Stats stay in **Rust** (KS/LLR/Fisher in `mfsd.rs`/`shared/stats.rs`); **no scipy**
