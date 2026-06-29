@@ -243,6 +243,36 @@ fn prepare_single_variant(
     let original_ref = variant.ref_allele.clone();
     let original_alt = variant.alt_allele.clone();
 
+    // Step 0: reject structurally empty alleles up front. The internal representation
+    // is VCF-style (anchor-based) — a true indel keeps its anchor base, and MAF dash
+    // alleles arrive as the literal "-" (resolved in Step 1), never "". An empty REF or
+    // ALT is therefore always malformed input: counting it would lean on the engine's
+    // defensive empty-allele guards and silently yield zero counts. Reject it loudly
+    // here with a FAIL status (mirrors the ALT-contains-N gate below) so the variant is
+    // surfaced, not quietly dropped to all-zero.
+    if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
+        warn!(
+            "Empty allele at {}:{} {:?}>{:?} — rejecting (malformed indel; MAF dash alleles must be '-', not '')",
+            variant.chrom,
+            variant.pos + 1,
+            variant.ref_allele,
+            variant.alt_allele,
+        );
+        return Ok(PreparedVariant {
+            variant: variant.clone(),
+            gbcms_status: "FAIL_EMPTY_ALLELE".to_string(),
+            gbcms_diagnostic: String::new(),
+            gbcms_rescue: String::new(),
+            was_anchor_resolved: false,
+            was_left_aligned: false,
+            original_pos,
+            original_ref,
+            original_alt,
+            decomposed_variant: None,
+            multi_allelic_group: None,
+        });
+    }
+
     // Step 1: MAF anchor resolution (only for dash-allele variants)
     // Non-dash MAF variants with different-length alleles (e.g., GG>A) already have
     // complete alleles and don't need an anchor base prepended.
