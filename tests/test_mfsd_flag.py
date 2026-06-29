@@ -122,7 +122,7 @@ def test_maf_writer_no_mfsd_columns_by_default(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 2: mfsd=True — 31 mFSD columns present in MAF header
+# Test 2: mfsd=True — 41 mFSD columns present in MAF header
 # ---------------------------------------------------------------------------
 
 
@@ -166,12 +166,12 @@ def test_vcf_writer_no_mfsd_info_by_default(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 4: VcfWriter — 7 MFSD INFO lines when mfsd=True
+# Test 4: VcfWriter — 8 MFSD INFO lines when mfsd=True
 # ---------------------------------------------------------------------------
 
 
 def test_vcf_writer_mfsd_info_when_enabled(tmp_path: Path):
-    """With mfsd=True, VCF header should contain exactly 7 ##INFO=<ID=MFSD_...> lines."""
+    """With mfsd=True, VCF header should contain exactly 8 ##INFO=<ID=MFSD_...> lines."""
     path = tmp_path / "out.vcf"
     writer = VcfWriter(path, sample_name="TUMOR", mfsd=True)
     writer._write_header()

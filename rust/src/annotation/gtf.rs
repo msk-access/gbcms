@@ -394,4 +394,62 @@ mod tests {
 
         std::fs::remove_file(&gtf_path).ok();
     }
+
+    #[test]
+    fn test_parse_gtf_unstranded_strand() {
+        // A GTF '.' strand must parse to an unstranded exon, so strand_at returns
+        // None (no enforcement) rather than being coerced to '+'. The strand_at(None)
+        // contract itself is covered in mod.rs; this guards the parser's strand
+        // mapping end-to-end.
+        use std::io::Write;
+        let dir = std::env::temp_dir();
+        let gtf_path = dir.join("test_unstranded.gtf");
+        let mut f = std::fs::File::create(&gtf_path).unwrap();
+        writeln!(f, "1\tensembl\texon\t101\t200\t.\t+\t.\tgene_id \"GP\"; transcript_id \"TP\";")
+            .unwrap();
+        writeln!(f, "1\tensembl\texon\t301\t400\t.\t.\t.\tgene_id \"GU\"; transcript_id \"TU\";")
+            .unwrap();
+
+        let mut variant_chroms = HashSet::new();
+        variant_chroms.insert("1".to_string());
+        let idx = parse_gtf(gtf_path.to_str().unwrap(), &variant_chroms).unwrap();
+
+        assert_eq!(idx.n_exons(), 2);
+        assert_eq!(idx.strand_at("1", 150), Some('+'), "stranded exon keeps '+'");
+        assert_eq!(idx.strand_at("1", 350), None, "unstranded '.' exon → no enforcement");
+
+        std::fs::remove_file(&gtf_path).ok();
+    }
+
+    #[test]
+    fn test_parse_gtf_empty_index_no_panic() {
+        // An empty index must be returned (Ok, not an error/panic) for both
+        // distinguished causes — (a) exons exist but none on a variant chromosome
+        // (contig-naming mismatch), and (b) the file carries no exon rows at all.
+        use std::io::Write;
+        let dir = std::env::temp_dir();
+
+        // (a) naming mismatch: exon on "1", but the variant set asks for "7".
+        let p1 = dir.join("test_empty_mismatch.gtf");
+        let mut f1 = std::fs::File::create(&p1).unwrap();
+        writeln!(f1, "1\tensembl\texon\t101\t200\t.\t+\t.\tgene_id \"G\"; transcript_id \"T\";")
+            .unwrap();
+        let mut chroms_a = HashSet::new();
+        chroms_a.insert("7".to_string());
+        let idx_a = parse_gtf(p1.to_str().unwrap(), &chroms_a).unwrap();
+        assert_eq!(idx_a.n_exons(), 0, "no exon on the requested chromosome → empty");
+        assert_eq!(idx_a.strand_at("7", 150), None);
+
+        // (b) no exon rows at all (only a non-exon 'gene' feature).
+        let p2 = dir.join("test_empty_noexon.gtf");
+        let mut f2 = std::fs::File::create(&p2).unwrap();
+        writeln!(f2, "1\tensembl\tgene\t101\t200\t.\t+\t.\tgene_id \"G\";").unwrap();
+        let mut chroms_b = HashSet::new();
+        chroms_b.insert("1".to_string());
+        let idx_b = parse_gtf(p2.to_str().unwrap(), &chroms_b).unwrap();
+        assert_eq!(idx_b.n_exons(), 0, "file has no exon rows → empty");
+
+        std::fs::remove_file(&p1).ok();
+        std::fs::remove_file(&p2).ok();
+    }
 }

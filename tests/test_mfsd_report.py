@@ -245,3 +245,29 @@ class TestClassifyOrigin:
         # enrichment=NaN, ref_short=0.0, alt_short=0.4, valid significant KS.
         signal, _ = _classify_origin("NOTACHGENE", nan, 0.0, 0.4, 0.01, True, 20, 3)
         assert signal == "TUMOR-LIKE"
+
+
+class TestDisplayFormatters:
+    """Report formatters must render non-finite values as 'N/A', never as a
+    misleading 'inf'/'nan' string. A size ratio with a zero denominator can be
+    +/-Inf, so the guard covers Inf as well as NaN."""
+
+    def test_fmt_val_handles_nonfinite(self) -> None:
+        from gbcms.report.mfsd_report import _fmt_val
+
+        assert _fmt_val(float("nan")) == "N/A"
+        assert _fmt_val(float("inf")) == "N/A"
+        assert _fmt_val(float("-inf")) == "N/A"
+        # Finite values still format with the requested precision.
+        assert _fmt_val(1.23456) == "1.23"
+        assert _fmt_val(1.23456, precision=3) == "1.235"
+
+    def test_fmt_pval_handles_nonfinite(self) -> None:
+        from gbcms.report.mfsd_report import _fmt_pval
+
+        assert _fmt_pval(float("nan")) == "N/A"
+        assert _fmt_pval(float("inf")) == "N/A"
+        assert _fmt_pval(float("-inf")) == "N/A"
+        # Small p-values use scientific notation; ordinary ones fixed-point.
+        assert _fmt_pval(0.0001) == "1.00e-04"
+        assert _fmt_pval(0.0500) == "0.0500"

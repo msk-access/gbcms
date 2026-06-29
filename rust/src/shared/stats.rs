@@ -213,6 +213,41 @@ pub fn benjamini_hochberg(pvalues: &[f64]) -> Vec<f64> {
     qvalues
 }
 
+/// Benjamini-Hochberg FDR over a *sub-family* selected by index.
+///
+/// Corrects only the p-values at `valid_indices`, so the family size `n` equals
+/// `valid_indices.len()` — not the length of the full result vector. Each corrected
+/// entry is returned as `(index, q-value)`, ready to scatter back into the caller's
+/// per-variant records.
+///
+/// This is the multiplicity guard for the mFSD and ASJD q-values: variants with no
+/// real test (too few fragments → placeholder p = 1.0, or no junction reads) are
+/// excluded by the caller's predicate and never enter the family, so they cannot
+/// pad `n` and over-correct the variants that *were* tested. `pvalue_at(i)` reads the
+/// raw p-value for index `i` from the caller's records without allocating a full
+/// p-value vector.
+///
+/// # Example
+///
+/// ```
+/// # use _rs::shared::stats::benjamini_hochberg_family;
+/// // Indices 1 and 3 are no-test padding; only 0, 2, 4 form the family (n = 3).
+/// let pvals = [0.01, 1.0, 0.04, 1.0, 0.50];
+/// let corrected = benjamini_hochberg_family(|i| pvals[i], &[0, 2, 4]);
+/// assert_eq!(corrected.len(), 3);
+/// ```
+pub fn benjamini_hochberg_family(
+    pvalue_at: impl Fn(usize) -> f64,
+    valid_indices: &[usize],
+) -> Vec<(usize, f64)> {
+    let sub: Vec<f64> = valid_indices.iter().map(|&i| pvalue_at(i)).collect();
+    benjamini_hochberg(&sub)
+        .into_iter()
+        .zip(valid_indices.iter().copied())
+        .map(|(q, i)| (i, q))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,5 +390,36 @@ mod tests {
                 qvals[i - 1]
             );
         }
+    }
+
+    #[test]
+    fn test_bh_family_excludes_padding() {
+        // Indices 1 and 3 are "no-test" padding (placeholder p = 1.0). Only the
+        // genuine tests (indices 0, 2, 4) may form the family, so n = 3 — the
+        // padding must NOT inflate it to 5.
+        let pvals = [0.01, 1.0, 0.04, 1.0, 0.50];
+        let valid = [0usize, 2, 4];
+        let corrected = benjamini_hochberg_family(|i| pvals[i], &valid);
+
+        // q-values must match BH over ONLY the 3 real p-values (n = 3),
+        // not BH over all 5.
+        let expected = benjamini_hochberg(&[0.01, 0.04, 0.50]);
+        let inflated = benjamini_hochberg(&pvals);
+        assert_eq!(corrected.len(), 3);
+        for ((idx, q), (&vidx, &eq)) in corrected.iter().zip(valid.iter().zip(expected.iter())) {
+            assert_eq!(*idx, vidx);
+            assert!((q - eq).abs() < 1e-12, "index {idx}: {q} vs n=3 BH {eq}");
+            // And strictly tighter than the padded n=5 correction would give.
+            assert!(*q <= inflated[vidx] + 1e-12);
+        }
+        // The padding indices never appear in the corrected output.
+        assert!(corrected.iter().all(|(i, _)| *i != 1 && *i != 3));
+    }
+
+    #[test]
+    fn test_bh_family_empty_is_noop() {
+        // No valid tests → nothing to correct, no panic.
+        let corrected = benjamini_hochberg_family(|_| 0.5, &[]);
+        assert!(corrected.is_empty());
     }
 }
