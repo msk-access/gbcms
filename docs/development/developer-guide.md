@@ -127,9 +127,19 @@ maturin develop
 # Release (optimized)
 maturin develop --release
 
-# Build wheel
+# Build wheel (dev/test — includes the legacy count_bam parity oracle)
 maturin build --release --out dist
+
+# Build the SHIPPED wheel (drops the test-only count_bam parity oracle)
+maturin build --release --no-default-features --out dist
 ```
+
+!!! note "`legacy-parity` feature"
+    `maturin develop` and `cargo test` include the per-variant `count_bam` (the
+    binned↔legacy parity oracle) via the default `legacy-parity` Cargo feature. Release
+    wheels build `--no-default-features` to omit it — production only uses
+    `count_bam_binned`. Changing the counting core means mirroring it in *both* paths;
+    see `.agents/rules/architecture.md` §"Legacy count_bam parity oracle".
 
 ---
 
