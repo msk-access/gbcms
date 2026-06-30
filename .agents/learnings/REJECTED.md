@@ -10,23 +10,6 @@ Newest at the top.
 
 ---
 
-## [REJ-20260629-001] ME-7: QNAME-dedup the ASJD junction-strand tally
-- **Target:** `rust/src/counting/engine.rs` (`detect_asjd` Step-1 tally, ~2750-2806)
-- **Proposed:** dedupe the per-junction strand tally by QNAME so a fragment whose two
-  mates both span the same junction counts once, not twice.
-- **Reason vetoed:** measured the real impact on the reverse-stranded FORTE BAM (3.6M
-  reads, 117,862 junctions; `scratchpad/me7_junction_dedup_validation.py`).
-  Mate-overlap at junctions is common (35.6% of fragment×junction incidences), but the
-  effect on the `STRAND_DISCORDANT` call is negligible: **18 of 58,240** junctions with
-  ≥5 reads flip (0.031%), all at low counts (total 5–13) and all in the *corrective*
-  direction (dedup only removes a spurious flag). The substantive ME-7 bug — FR mates
-  splitting a junction across both genomic strands — is already fixed by the
-  transcript-strand fold (`read_transcript_strand`). The dedup is a ~0.03% precision
-  tidy-up on one diagnostic flag, not worth the RNA-mode change + validation surface.
-  Scoped out by the maintainer. (The fold itself was instead generalized into the
-  dynamic `--strandedness` feature.)
-- **Date:** 2026-06-29
-
 ## [REJ-20260627-001] HI-5: strip N bases from the read before the PairHMM (to make N "LLR-neutral near indels")
 - **Target:** `rust/src/counting/pairhmm.rs` (`classify_by_marginalized_pairhmm` / `BQEmission`)
 - **Proposed:** the M4 scope suggested removing N positions from the read (or otherwise

@@ -505,22 +505,24 @@ These columns are **always** appended regardless of input format.
 | `asjd_alt_motif` | String | Splice motif at ALT junction (same categories) |
 | `asjd_ref_known` | Boolean | `True` if the REF dominant junction matches a GTF-annotated intron |
 | `asjd_alt_known` | Boolean | `True` if the ALT dominant junction matches a GTF-annotated intron |
-| `asjd_n_ref_junc` | Integer | REF reads on the dominant junction |
-| `asjd_n_alt_junc` | Integer | ALT reads on the dominant junction |
-| `asjd_n_ref_total` | Integer | Total REF reads with any splice junction |
-| `asjd_n_alt_total` | Integer | Total ALT reads with any splice junction |
+| `asjd_n_ref_junc` | Integer | REF fragments on the dominant junction (deduped per QNAME) |
+| `asjd_n_alt_junc` | Integer | ALT fragments on the dominant junction (deduped per QNAME) |
+| `asjd_n_ref_total` | Integer | Total REF fragments with any splice junction (deduped per QNAME) |
+| `asjd_n_alt_total` | Integer | Total ALT fragments with any splice junction (deduped per QNAME) |
 | `asjd_diagnostic` | String | Semicolon-separated QC flags (see [Diagnostic Flags](#asjd-diagnostic-flags)) |
 
 ##### ASJD Diagnostic Flags
 
+All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one vote).
+
 | Flag | Condition | Meaning |
 |:-----|:----------|:--------|
-| `LOW_ALT_JUNC` | `asjd_n_alt_junc < 5` | Insufficient ALT junction evidence |
-| `LOW_REF_JUNC` | `asjd_n_ref_junc < 10` | Insufficient REF baseline |
-| `NOVEL_ALT_JUNC` | `asjd_alt_known == false` | ALT uses unannotated junction |
-| `NON_CANONICAL_MOTIF` | ALT motif not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
-| `STRAND_DISCORDANT` | ALT junction minority strand ≥ 30% | dUTP artifact |
-| `MULTI_JUNCTION` | ALT reads use > 2 junctions | Complex splicing event |
+| `LOW_ALT_JUNC` | `asjd_n_alt_total < 5` | Insufficient ALT junction evidence |
+| `LOW_REF_JUNC` | `asjd_n_ref_total < 10` | Insufficient REF baseline |
+| `NOVEL_ALT_JUNC` | ALT dominant junction differs from REF and is unannotated | ALT uses an unannotated junction |
+| `NON_CANONICAL_MOTIF` | ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
+| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. Disabled for `--strandedness unstranded` (no transcript strand). |
+| `MULTI_JUNCTION` | ALT fragments use > 2 distinct junctions | Complex splicing event |
 
 ---
 
