@@ -577,6 +577,16 @@ def rna(
             "splice junctions. Only chromosomes with variants are loaded."
         ),
     ),
+    gtf_cache_dir: Path | None = typer.Option(
+        None,
+        "--gtf-cache-dir",
+        help=(
+            "Directory for caching the parsed GTF index. On first use the parsed "
+            "annotation is written here; later runs over the same GTF and variant "
+            "set reuse it, skipping the multi-second GTF text parse. Point every "
+            "sample in a cohort at one shared directory to parse the GTF only once."
+        ),
+    ),
     # P5: Library type flag
     library_type: str = typer.Option(
         "capture",
@@ -863,6 +873,7 @@ def rna(
             strandedness=strandedness,
             rna_editing_db=rna_editing_db,
             gtf=gtf,
+            gtf_cache_dir=gtf_cache_dir,
             library_type=library_type,
             rescue_mnp=rescue_mnp,
             rescue_mnp_threshold=rescue_mnp_threshold,
@@ -874,6 +885,81 @@ def rna(
     except Exception as e:
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
+
+
+@app.command("build-gtf-cache")
+def build_gtf_cache(
+    gtf: Path = typer.Option(
+        ...,
+        "--gtf",
+        "-g",
+        exists=True,
+        help="Path to the GTF annotation file (Ensembl/GENCODE).",
+    ),
+    variants: Path = typer.Option(
+        ...,
+        "--variants",
+        "-v",
+        exists=True,
+        help=(
+            "Variant file (VCF/MAF) for the cohort. Only its chromosome set is used. "
+            "It MUST be the same variant file the per-sample 'gbcms rna' runs use, so "
+            "the cache key lines up and those runs reuse this entry."
+        ),
+    ),
+    gtf_cache_dir: Path = typer.Option(
+        ...,
+        "--gtf-cache-dir",
+        help=(
+            "Shared directory to write the cache into (created if missing). Point every "
+            "per-sample 'gbcms rna --gtf-cache-dir' at this same directory."
+        ),
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
+):
+    """
+    Pre-build the GTF index cache so a cohort parses the GTF only once.
+
+    Parses the GTF for the chromosomes covered by --variants and writes the
+    serialized index into --gtf-cache-dir. Run this ONCE before fanning out the
+    per-sample 'gbcms rna' jobs (all pointed at the same --gtf-cache-dir): each then
+    loads the prebuilt index in ~0.05s instead of re-parsing the GTF (~9s).
+
+    Why a separate step: when many samples launch concurrently they all cold-miss
+    and each re-parses the GTF, so the cache alone saves nothing until a later wave.
+    Building it up front lets every sample start warm.
+    """
+    from gbcms import _rs
+    from gbcms.pipeline import read_variant_file
+
+    setup_logging(verbose=verbose, trace=False)
+
+    # Extension pre-check (mirrors the dna/rna/normalize commands).
+    if (
+        not _is_compressed_vcf(variants)
+        and variants.suffix.lower() not in _VALID_VARIANT_EXTENSIONS
+    ):
+        logger.error(
+            "Unsupported variant file extension '%s'. Expected .vcf, .vcf.gz, .vcf.bgz, or .maf.",
+            variants.suffix,
+        )
+        raise typer.Exit(code=1)
+
+    chroms = [v.chrom for v in read_variant_file(variants)]
+    if not chroms:
+        logger.error("No variants found in %s — nothing to scope the GTF cache to.", variants)
+        raise typer.Exit(code=1)
+
+    logger.info("Building GTF index cache for %d variants -> %s", len(chroms), gtf_cache_dir)
+    n_exons = _rs.build_gtf_cache(str(gtf), chroms, str(gtf_cache_dir))
+    logger.info(
+        "GTF index cache ready in %s (%d exons across %d chromosomes). Per-sample runs "
+        "using --gtf-cache-dir %s will now skip the GTF parse.",
+        gtf_cache_dir,
+        n_exons,
+        len(set(chroms)),
+        gtf_cache_dir,
+    )
 
 
 @app.command()

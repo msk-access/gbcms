@@ -22,8 +22,8 @@ use std::io::BufRead;
 use log::{debug, info, warn};
 use noodles_gtf as gtf;
 
+use super::cache::{GtfIndexBundle, CACHE_FORMAT_VERSION};
 use super::{AnnotationIndex, ExonRecord, TranscriptIntrons};
-use coitrees::{COITree, IntervalNode, IntervalTree};
 
 /// Parse a GTF file and build an [`AnnotationIndex`].
 ///
@@ -44,6 +44,18 @@ pub fn parse_gtf(
     gtf_path: &str,
     variant_chroms: &HashSet<String>,
 ) -> anyhow::Result<AnnotationIndex> {
+    Ok(parse_gtf_to_bundle(gtf_path, variant_chroms)?.into_index())
+}
+
+/// Parse a GTF into the serializable [`GtfIndexBundle`] — the M5a cache payload:
+/// everything an [`AnnotationIndex`] needs *except* the COITrees, which are rebuilt
+/// from the exon records by [`GtfIndexBundle::into_index`]. Splitting the parse out
+/// here lets the cache layer persist/restore the bundle without touching the
+/// arch-specific trees. This is the function that does the ~8.7s text parse.
+pub(crate) fn parse_gtf_to_bundle(
+    gtf_path: &str,
+    variant_chroms: &HashSet<String>,
+) -> anyhow::Result<GtfIndexBundle> {
     info!("Loading GTF annotation from: {}", gtf_path);
     debug!(
         "Variant-guided filter: loading {} chromosomes: {:?}",
@@ -200,21 +212,8 @@ pub fn parse_gtf(
         );
     }
 
-    // ── Build COITrees per chromosome ────────────────────────────────────────
-
-    let mut tree_nodes: HashMap<u32, Vec<IntervalNode<usize, u32>>> = HashMap::new();
-
-    for (i, exon) in exons.iter().enumerate() {
-        tree_nodes
-            .entry(exon.chrom_id)
-            .or_default()
-            .push(IntervalNode::new(exon.start, exon.end, i));
-    }
-
-    let exon_trees: HashMap<u32, COITree<usize, u32>> = tree_nodes
-        .into_iter()
-        .map(|(chrom_id, nodes)| (chrom_id, COITree::new(&nodes)))
-        .collect();
+    // (COITrees are not built here — they are rebuilt from `exons` by
+    // GtfIndexBundle::into_index, so the cache stores only the portable intermediate.)
 
     // ── Build sorted splice_sites per chromosome ─────────────────────────────
 
@@ -275,13 +274,13 @@ pub fn parse_gtf(
         transcript_introns.len(),
     );
 
-    Ok(AnnotationIndex::new(
-        exon_trees,
+    Ok(GtfIndexBundle {
+        format_version: CACHE_FORMAT_VERSION,
         exons,
         splice_sites,
         transcript_introns,
         chrom_map,
-    ))
+    })
 }
 
 // ─── GENCODE Version Stripping ───────────────────────────────────────────────

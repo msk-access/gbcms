@@ -76,6 +76,42 @@ These parameters are only used when `--mode rna` is specified.
 !!! tip "RNA mode defaults"
     RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
 
+## GTF Index Caching (RNA)
+
+Parsing a full Ensembl GTF takes ~9s. Across a cohort that cost is otherwise paid once **per sample**. gbcms can cache the parsed index so the GTF is parsed **once for the whole cohort** — the per-sample annotation load drops from ~9s to ~0.05s.
+
+| Parameter | Default | Description |
+|:----------|:--------|:------------|
+| `--gtf_cache_dir` | `''` | Shared directory for the serialized GTF index. Per-sample `GBCMS_RNA` tasks reuse it. Must be on storage all tasks can read. |
+
+**Why a pre-warm step is required.** Nextflow launches up to `queueSize` tasks at once. If the cache does not yet exist, every concurrently-launched sample cold-misses and re-parses the GTF — so the cache saves nothing until a later wave, and nothing at all if the cohort is smaller than `queueSize`. Build the cache **once, upstream** of the fan-out so every sample starts warm:
+
+```groovy
+process BUILD_GTF_CACHE {
+    container "ghcr.io/msk-access/gbcms:5.3.0"
+
+    input:
+    tuple path(gtf), path(variants)
+
+    output:
+    path "gtf_cache", emit: cache_dir
+
+    script:
+    """
+    mkdir -p gtf_cache
+    gbcms build-gtf-cache --gtf ${gtf} --variants ${variants} --gtf-cache-dir gtf_cache
+    """
+}
+
+workflow {
+    BUILD_GTF_CACHE(ch_gtf.combine(ch_cohort_variants))
+    // Every GBCMS_RNA task takes the prebuilt cache dir as input, so it starts warm.
+    GBCMS_RNA(ch_samples, ch_fasta, BUILD_GTF_CACHE.out.cache_dir)
+}
+```
+
+The `--variants` given to `build-gtf-cache` **must be the same variant file** the per-sample runs use: the cache is keyed on the variant chromosome set, so a mismatch simply falls back to a normal parse (no error, no benefit). Caching is best-effort throughout — a missing, corrupt, stale-version, or unwritable cache always falls back to a fresh parse and never affects counts.
+
 ## Alignment Backend (Advanced)
 
 | Parameter | Default | Description |

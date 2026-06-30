@@ -45,3 +45,11 @@ flate2 = "1"
 coitrees = "0.4"
 # noodles-gtf: pure-Rust GTF parser. No cmake dependency.
 noodles-gtf = "0.37"
+# ── M5a: GTF AnnotationIndex disk cache ────────────────────────────────────
+# Serialize the *parsed intermediate* (exon records, splice sites, introns,
+# chrom map) so repeated runs over the same GTF skip the ~8.7s text parse of a
+# full Ensembl annotation. The arch-specific COITrees are NOT cached — they are
+# rebuilt from the cached exon records on load (cheap). serde provides the
+# derives; bincode is the compact binary codec.
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.3"

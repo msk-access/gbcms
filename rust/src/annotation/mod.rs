@@ -26,23 +26,29 @@
 //! rayon workers — the same pattern used for `editing_sites`.
 
 
+mod cache;
 mod gtf;
 
 use std::collections::HashMap;
 
 #[allow(unused_imports)] // IntervalTree needed for COITree::query trait
-use coitrees::{COITree, IntervalTree};
+use coitrees::{COITree, IntervalNode, IntervalTree};
 use log::{debug, trace};
+use serde::{Deserialize, Serialize};
 
 // Re-export the GTF parser for use by engine.rs (wired in the splice-annotation integration step)
 #[allow(unused_imports)]
 pub(crate) use gtf::parse_gtf;
+// M5a: cache-backed parse — deserializes the parsed intermediate when a fresh
+// cache exists, else parses + writes it. Falls back to a plain parse on any cache error.
+pub(crate) use cache::parse_gtf_cached;
 
 // ─── Data Structures ─────────────────────────────────────────────────────────
 
 /// Metadata for a single exon, stored in a flat Vec and referenced by COITree
-/// node metadata (index into this Vec).
-#[derive(Clone, Debug)]
+/// node metadata (index into this Vec). Serializable so the M5a GTF cache can
+/// persist the parsed intermediate (the COITrees are rebuilt from these on load).
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExonRecord {
     /// Ensembl/GENCODE transcript ID (e.g., "ENST00000269305").
     pub transcript_id: String,
@@ -60,7 +66,7 @@ pub struct ExonRecord {
 
 /// Intron structure for a single transcript, derived from sorted exons.
 /// Used by per-transcript counting and ASJD detection.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TranscriptIntrons {
     /// Transcript ID.
     pub transcript_id: String,
@@ -97,6 +103,27 @@ pub struct AnnotationIndex {
     /// Chromosome name → numeric ID mapping (e.g., "1" → 0, "X" → 22).
     /// Normalized: no "chr" prefix.
     chrom_map: HashMap<String, u32>,
+}
+
+/// Rebuild the per-chromosome exon interval trees from the flat exon list.
+///
+/// Shared by `parse_gtf` (fresh parse) and the M5a cache-load path, so a cached
+/// `AnnotationIndex` is equivalent to a freshly parsed one: the COITree metadata is
+/// the index into `exons`, and identical exon ordering in gives identical query
+/// results out. Cheap relative to the GTF text parse — the trees are built from
+/// already-parsed intervals, so this is the part we *don't* bother caching.
+pub(crate) fn build_exon_trees(exons: &[ExonRecord]) -> HashMap<u32, COITree<usize, u32>> {
+    let mut tree_nodes: HashMap<u32, Vec<IntervalNode<usize, u32>>> = HashMap::new();
+    for (i, exon) in exons.iter().enumerate() {
+        tree_nodes
+            .entry(exon.chrom_id)
+            .or_default()
+            .push(IntervalNode::new(exon.start, exon.end, i));
+    }
+    tree_nodes
+        .into_iter()
+        .map(|(chrom_id, nodes)| (chrom_id, COITree::new(&nodes)))
+        .collect()
 }
 
 impl AnnotationIndex {

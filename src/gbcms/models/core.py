@@ -498,6 +498,17 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         ),
     )
 
+    gtf_cache_dir: Path | None = Field(
+        default=None,
+        description=(
+            "Directory for caching the parsed GTF index (M5a). When set, the parsed "
+            "annotation intermediate is persisted here and reused across runs over "
+            "the same GTF and variant set, skipping the GTF text parse. Intended as "
+            "a directory shared across a Nextflow cohort so the GTF is parsed once. "
+            "Caching is best-effort: any cache error falls back to a normal parse."
+        ),
+    )
+
     # P5: Library type flag — controls fragment consensus behavior
     library_type: str = Field(
         default="capture",

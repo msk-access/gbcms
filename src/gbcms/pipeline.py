@@ -136,6 +136,34 @@ def _zero_counts():
     )
 
 
+def read_variant_file(path: Path) -> list[Variant]:
+    """Read raw variants from a ``.vcf``/``.vcf.gz``/``.vcf.bgz``/``.maf`` file.
+
+    Format is selected by extension. This is the pre-normalization read, so no
+    reference is required. Shared by the Pipeline (``_load_variants``) and the
+    ``build-gtf-cache`` command, which only needs the variant chromosomes.
+    """
+    reader: VariantReader
+    name_lower = path.name.lower()
+    if (
+        path.suffix.lower() == ".vcf"
+        or name_lower.endswith(".vcf.gz")
+        or name_lower.endswith(".vcf.bgz")
+    ):
+        reader = VcfReader(path)
+    elif path.suffix.lower() == ".maf":
+        reader = MafReader(path)
+    else:
+        raise ValueError(
+            f"Unsupported variant file format: '{path.suffix}'. "
+            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf."
+        )
+    variants = list(reader)
+    if hasattr(reader, "close"):
+        reader.close()
+    return variants
+
+
 class Pipeline:
     """Main pipeline for processing BAM files and counting bases at variant positions."""
 
@@ -461,6 +489,11 @@ class Pipeline:
                     if getattr(self.config, "gtf", None)
                     else None
                 ),
+                gtf_cache_dir=(
+                    str(self.config.gtf_cache_dir)  # type: ignore[attr-defined]
+                    if getattr(self.config, "gtf_cache_dir", None)
+                    else None
+                ),
                 reference_fasta=str(self.config.reference_fasta),
                 library_type=getattr(self.config, "library_type", "capture"),
             )
@@ -742,6 +775,11 @@ class Pipeline:
                 if getattr(self.config, "gtf", None)
                 else None
             ),
+            gtf_cache_dir=(
+                str(self.config.gtf_cache_dir)  # type: ignore[attr-defined]
+                if getattr(self.config, "gtf_cache_dir", None)
+                else None
+            ),
             reference_fasta=str(self.config.reference_fasta),
             library_type=getattr(self.config, "library_type", "capture"),
         )
@@ -822,39 +860,14 @@ class Pipeline:
         )
 
     def _load_variants(self) -> list[Variant]:
-        """Load variants based on file extension."""
-        path = self.config.variant_file
-        reader: VariantReader
+        """Load variants based on file extension.
 
-        # Note: The CLI pre-checks the extension at parse time (before Pydantic), so
-        # reaching this branch with an unsupported extension means Pipeline was called
-        # programmatically rather than via the CLI.  We raise ValueError here as a
-        # defensive backstop.
-        #
-        # Accepted compressed formats:
-        #   .vcf.gz  — gzip/bgzip (standard tabix format)
-        #   .vcf.bgz — explicit bgzip extension used by some pipelines
-        # Both are block-gzip compatible and handled identically by pysam.
-        name_lower = path.name.lower()
-        if (
-            path.suffix.lower() == ".vcf"
-            or name_lower.endswith(".vcf.gz")
-            or name_lower.endswith(".vcf.bgz")
-        ):
-            reader = VcfReader(path)
-        elif path.suffix.lower() == ".maf":
-            reader = MafReader(path)
-        else:
-            raise ValueError(
-                f"Unsupported variant file format: '{path.suffix}'. "
-                "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf."
-            )
-
-        variants = list(reader)
-        if hasattr(reader, "close"):
-            reader.close()
-
-        return variants
+        Delegates to the module-level :func:`read_variant_file`. The CLI pre-checks
+        the extension at parse time (before Pydantic); an unsupported extension here
+        means Pipeline was called programmatically — :func:`read_variant_file` raises
+        ValueError as a defensive backstop.
+        """
+        return read_variant_file(self.config.variant_file)
 
     def _validate_bam_header(self, bam_path: Path, variants: list[Variant]) -> bool:
         """Check if BAM/CRAM header contains chromosomes from variants.
