@@ -450,6 +450,7 @@ class Pipeline:
                 mode=self.config.mode,
                 enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
                 strandedness=getattr(self.config, "strandedness", "reverse"),
+                mfsd=self.config.output.mfsd,
                 rna_editing_db=(
                     str(self.config.rna_editing_db)  # type: ignore[attr-defined]
                     if getattr(self.config, "rna_editing_db", None)
@@ -730,6 +731,7 @@ class Pipeline:
             mode=self.config.mode,
             enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
             strandedness=getattr(self.config, "strandedness", "reverse"),
+            mfsd=self.config.output.mfsd,
             rna_editing_db=(
                 str(self.config.rna_editing_db)  # type: ignore[attr-defined]
                 if getattr(self.config, "rna_editing_db", None)
