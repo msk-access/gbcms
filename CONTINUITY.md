@@ -47,10 +47,15 @@ tickets PF-1–4, ME-13, LO-3, LO-14).
 
 ## Next
 M1–M4 + all pre-M5 cleanup are done. Remaining plan work:
-1. **M5 — Performance/IO** (PF-1–4, ME-13, LO-3, LO-14): throughput on deep panels —
-   the first work with *observable* user impact. Scoped: recommended PR order is
-   thread-budget (LO-14+PF-3) → pool reuse (PF-4) → mFSD gating (PF-1) → bin sort
-   (PF-2 sort-only) → fetch-range tightening (ME-13+LO-3, parity-sensitive, last).
+1. **M5 — Performance/IO — RE-SCOPED on real-data measurement** (see plan §"M5 —
+   empirical scoping"). Counting is already ~84% parallel-efficient (cfDNA) and the
+   cohort runs as N concurrent 4-core processes via Nextflow (not core gbcms), so
+   most scoped tickets are low-ROI. **Do:** LO-14 (recast as a hard `--threads`
+   budget so gbcms is a good citizen under fan-out) + PF-1 (per-process *memory* ×N)
+   + **M5a (serialize/cache the AnnotationIndex — kills the ~8s GTF re-parse ×N, the
+   biggest cohort cost)**. **Drop:** ME-13 (0% measured), PF-3 (oversubscription
+   liability), PF-4 (moot at 1 sample/process). **Document:** LO-3. **PF-2:** niche.
+   New investigation **M5b:** deep-bin fetch reduction (parity-sensitive).
 2. **M6 — Hygiene & contracts** (HI-1, ME-1/2/12, LO-1/4–8/13): exit codes, output
    parity, docs. Continuous cleanup; DX-1 already landed.
 

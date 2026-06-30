@@ -543,6 +543,55 @@ parity oracle is codified in CI (the parity gate, formerly an open follow-up).
 3. **One quality contract across alignment backends.** CR-2, HI-4, HI-5, LO-15 all stem from the fast path and fallback not sharing base-quality semantics. Centralize the BQ gate and apply it uniformly to WFA/SW/PairHMM.
 4. **Statistical re-baseline.** CR-5, HI-10, HI-11, ME-8, ME-9 change reported p-values/LLRs/labels. Plan a single coordinated re-baseline of golden mFSD/ASJD outputs and notify report consumers.
 
+# M5 — empirical scoping (measured on real data, 2026-06-30)
+
+Before committing M5 effort, the tickets were measured on representative MSK data — a
+deep duplex cfDNA panel (608 variants, ~16M reads, b37) and a real RNA-seq sample
+(GRCh38 + Ensembl GTF) — at 1–8 threads, with temporary per-bin `fetch_ms`/`classify_ms`
+instrumentation in `count_bin_shared`. **The measurements substantially re-prioritize
+the milestone, mostly downward.**
+
+### Single-sample findings
+- **cfDNA counting is fetch-bound (89% fetch / 11% classify)** but already
+  **~84% parallel-efficient** with **no long-pole** (busiest of 201 bins = 3% of
+  bin-work; top-5 = 13%). Deep bins read 150k+ reads each. t=1 → t=8 scales 3.65×.
+- **Per-variant classification is ~0.5ms** (5× more variants over the same regions added
+  +1.3s); 94% SNVs, so alignment-backend cost is negligible.
+- **RNA counting bin-work is trivial (~40ms total)**; the RNA run is dominated by the
+  **~8s GTF parse**. Its one deep bin is *classify/ASJD*-bound, not fetch-bound.
+
+### The multi-sample reframing (load-bearing)
+**Core gbcms processes ONE sample per invocation; Nextflow provides multi-sample
+parallelism** (`GBCMS_DNA|GBCMS_RNA` = 4 cores/sample, up to 100 concurrent jobs, GTF
+passed per task). So the cohort runs as N concurrent 4-core processes. This changes the
+verdict:
+- The GTF is **re-parsed every sample** → N × ~8s of identical work at cohort scale.
+- Per-process **memory** (mFSD arrays) and **thread count** multiply by the concurrent
+  process count — the node, not the single run, is the constraint.
+
+### Revised per-ticket verdict
+| Ticket | Measured verdict |
+|--------|------------------|
+| **PF-3** htslib decode threads | **Drop / liability.** Fetch is 89% of cfDNA counting but already parallelized across 201 bins (84% eff.) — no idle cores. Under N concurrent 4-core processes, decode threads oversubscribe the node. Only helps few-deep-bin (bins < cores) single runs. |
+| **PF-2** sort long-pole | **Marginal.** cfDNA has no long-pole; RNA skew is extreme but trivial in absolute time. |
+| **PF-4** pool reuse | **Moot.** 1 sample/process; only the MNP-rescue 2nd call benefits. |
+| **PF-1** mFSD gate | **Keep — for memory, not CPU.** <1% wall, but per-process RSS × N concurrent processes is the real win (raises node concurrency). Also the "output-aware" enabler. |
+| **LO-14** thread clamp | **Top priority — recast as a budget contract:** rayon workers + any decode threads ≤ `--threads`, so gbcms never oversubscribes under fan-out. |
+| **ME-13** overlap re-fetch | **Drop.** 0.00% re-fetch measured (adjacent bins never overlap); highest parity risk. |
+| **LO-3** bin-span cap | **Document, don't cap.** Chaining is bounded (max 2.5× window); a cap risks re-breaking CR-1. |
+
+### New items the data surfaced (bigger levers than most of M5)
+- **M5a — Serialize/cache the `AnnotationIndex`.** Parse the GTF once → write a binary
+  index → each process loads it fast. Saves ~8s × N at cohort scale — the single largest
+  real cost in RNA runs, and entirely outside the original ticket list.
+- **M5b — Deep-bin fetch reduction (investigate).** Deep cfDNA bins read 150k+ reads to
+  count a handful of variants; the one-fetch-per-bin design is the cost. Narrowing it is
+  the only cfDNA lever, but it is parity-sensitive — scope carefully behind the parity gate.
+
+**Bottom line:** M5-as-scoped optimizes within-sample counting that is already efficient
+and is not the cohort bottleneck. Prioritize **LO-14 (budget) + PF-1 (memory) + M5a (GTF
+cache)**; drop **ME-13, PF-3, PF-4**; document **LO-3**; treat **PF-2** as a niche flag.
+
 # Suggested milestones
 
 | Milestone | Tickets | Theme |
@@ -551,7 +600,7 @@ parity oracle is codified in CI (the parity gate, formerly an open follow-up).
 | **M2 — Statistical integrity** | CR-5, HI-10, HI-11, ME-8, ME-9, ME-10, ME-11 | Trustworthy clinical labels |
 | **M3 — RNA mode correctness** | HI-7, HI-8, HI-9, ME-6, ME-7, LO-9, LO-10, LO-11, LO-12 | Make RNA features actually work |
 | **M4 — Alignment robustness** | HI-3, HI-4, HI-5, ME-4, ME-5, LO-15 | Backend parity & numerics |
-| **M5 — Performance/IO** | PF-1, PF-2, PF-3, PF-4, ME-13, LO-3, LO-14 | Throughput on deep panels |
+| **M5 — Performance/IO** | LO-14 + PF-1 + M5a (GTF cache); drop ME-13/PF-3/PF-4; doc LO-3; PF-2 niche | **Re-scoped on real-data measurement** — see "M5 — empirical scoping" above |
 | **M6 — Hygiene & contracts** | HI-1, ME-1, ME-2, ME-12, LO-1, LO-2, LO-4, LO-5, LO-6, LO-7, LO-8, LO-13, DX-1 | Exit codes, output parity, docs |
 
 Recommended order: **M1 → M2 → M3** are correctness; do them first and in that order. **M4** can parallelize with M2/M3. **M5** is independent (pure perf). **M6** is continuous cleanup.
