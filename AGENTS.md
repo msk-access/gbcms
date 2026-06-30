@@ -16,9 +16,15 @@ native Parquet, Rayon per-bin parallelism. Full module map: `.agents/rules/archi
 
 ## Load-bearing invariants (don't break these)
 
-1. **Binned ↔ legacy parity.** `count_bam_binned` must produce identical counts to
-   legacy `count_bam`. Any binning change needs a parity test incl. large deletions
-   and complex DelIns. (Bin fetch-end must cover the *anchor* variant's full ref span.)
+1. **Binned ↔ legacy parity.** `count_bam_binned` (production) must produce identical
+   counts to legacy `count_bam` (the per-variant **parity oracle**, feature-gated
+   `legacy-parity`, default-on; absent from the shipped wheel). **Any change to read
+   classification / filtering / fragment consensus / fetch-window logic in the binned
+   path must be mirrored in the legacy `count_single_variant`, or the parity tests
+   fail** — that mirror is the cost of keeping the oracle. RNA/mFSD/ASJD/strandedness
+   features are exempt (binned-only; not in `PARITY_FIELDS`), and parity holds only
+   *without* `sibling_variants`. Full contract: `.agents/rules/architecture.md`
+   §"Legacy count_bam parity oracle".
 2. **One quality contract across alignment backends.** SW, PairHMM, and the WFA
    fast-path must apply the *same* base-quality gate. The fast path must not make a
    definitive REF/ALT call on bases the fallback would reject.

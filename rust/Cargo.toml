@@ -8,6 +8,15 @@ edition = "2021"
 name = "_rs"
 crate-type = ["cdylib"]
 
+[features]
+# `legacy-parity` exports the per-variant `count_bam` (the binned↔legacy parity
+# oracle). On by default so dev/test builds keep it; release wheels build with
+# `--no-default-features` to exclude it from the shipped surface (see Dockerfile,
+# release.yml). Gated symbols: counting::count_bam, count_single_variant + their
+# re-export (counting/mod.rs) and registration (lib.rs).
+default = ["legacy-parity"]
+legacy-parity = []
+
 [dependencies]
 pyo3 = { version = "0.27.1", features = ["extension-module"] }
 rust-htslib = "0.51.0"

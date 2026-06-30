@@ -488,6 +488,13 @@ Apply identically to the strict path at `:1488`.
 ## LO-2 — Legacy `count_bam` (one fetch per variant) still exported
 `lib.rs:15` exports `count_bam`; pipeline only calls `count_bam_binned`. It fetches per variant (`engine.rs:1574`) — the O(seeks) pattern binning replaced — and doubles maintenance for parity. **Fix:** gate behind a `test-only` feature or remove after parity sign-off; keep one as the parity oracle in tests. **Effort:** S.
 
+**Status: Resolved.** Gated behind the default `legacy-parity` Cargo feature
+(`rust/Cargo.toml`): `count_bam` + `count_single_variant` + their re-export/registration
+are `#[cfg(feature = "legacy-parity")]`. Dev/test builds keep it (default on) so the
+binned↔legacy parity tests still run; release wheels build `--no-default-features`
+(Dockerfile, release.yml) to exclude it from the shipped surface. Safe now that the
+parity oracle is codified in CI (the parity gate, formerly an open follow-up).
+
 ## LO-3 — Bin span can chain well past 10 kb
 `engine.rs:167,183` — repeated `var_end + window/2` extension can grow a bin far beyond 10 kb until the 200-variant cap trips. Over-inclusion (correctness-safe) inflating per-bin fetch/compute. **Fix:** cap `bin_end` growth or document 10 kb as a soft floor. (Interacts with CR-1 and ME-13.) **Effort:** S.
 

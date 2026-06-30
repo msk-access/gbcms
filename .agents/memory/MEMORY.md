@@ -18,6 +18,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 
 ## Tooling / build
 - [pyproject is the dep source of truth](deps-pyproject-source-of-truth.md) — CI/Docker bypass lockfiles; declare every directly-imported package.
+- [Legacy count_bam parity oracle](legacy-parity-oracle.md) — feature-gated (`legacy-parity`, default on); shipped wheel omits it; mirror binned-path changes in both or parity breaks.
 
 ## Validation / testing
 - [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.

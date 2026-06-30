@@ -84,6 +84,51 @@ gbcms/
 10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends).
 11. **Diagnostic flags**: `gbcms_diagnostic` and `gbcms_rescue` are strongly-typed Rust fields, not dynamic attributes.
 
+## Legacy `count_bam` parity oracle (`legacy-parity` feature)
+
+**What it is.** `count_bam` (in `engine.rs`, with its helper `count_single_variant`)
+is a *second, independent* implementation of the counting logic that fetches reads
+**per variant**. Production never calls it — the pipeline only uses `count_bam_binned`
+(one `bam.fetch()` per ~10kb bin). `count_bam` exists **solely as the parity oracle**:
+the tests cross-check that the optimized binned path produces identical counts to the
+straightforward per-variant path.
+
+**Build matrix.** Gated behind the default `legacy-parity` Cargo feature
+(`rust/Cargo.toml`) — present in dev/test builds, absent from the shipped wheel:
+
+| Build | Command | `count_bam` present? |
+|-------|---------|----------------------|
+| dev / local | `maturin develop` (default feature) | ✅ yes |
+| `cargo test` | default feature | ✅ yes |
+| CI test (`test.yml`) | `maturin build --release` (default) | ✅ yes |
+| **shipped wheel** (Dockerfile, `release.yml`) | `maturin build --release --no-default-features` | ❌ no |
+
+So the parity tests run against a build that has it; production ships without it. If
+you build `--no-default-features` locally, `gbcms._rs.count_bam` is missing and the
+parity tests fail — that's expected.
+
+**Maintenance contract — read before changing the counting core.** The binned↔legacy
+parity tests (`count_both` in `tests/helpers.py`; `test_filters.py`,
+`test_parity_large_deletion.py`, `test_multi_allelic.py`, …) assert the two paths
+return identical `PARITY_FIELDS`. Therefore:
+
+- **If you change read classification, filtering, fragment consensus, or fetch-window
+  logic in the binned path** (`count_bin_shared` / `count_variant_from_cache`), you
+  **must mirror the same change in `count_single_variant`**, or the parity tests fail.
+  The duplication is deliberate — two independent implementations are what make the
+  cross-check meaningful.
+- **Exempt:** RNA-only / mFSD / ASJD / strandedness features live only in the binned
+  path and are *not* in `PARITY_FIELDS`; do **not** add them to `count_single_variant`.
+- **Parity holds only without `sibling_variants`** — pangenomic sibling disambiguation
+  is binned-only and intentionally diverges from legacy. Never pass siblings to
+  `count_both`. (See the `siblings-break-binned-legacy-parity` memory.)
+
+**When to remove it.** `count_bam` + `count_single_variant` can be deleted once the
+binned path is trusted enough that the cross-check is no longer needed ("remove after
+parity sign-off"). Until then, keep it gated and in sync. If a change is genuinely
+impractical to mirror, remove `count_bam` and its parity tests *with maintainer
+sign-off* — never let the two paths silently diverge.
+
 ## Type Stub Synchronization
 
 - `src/gbcms/_rs.pyi` is **authoritative** — edit here first

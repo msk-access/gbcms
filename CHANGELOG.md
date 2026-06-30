@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 📦 Packaging
+
+- **The shipped wheel no longer exports the legacy `count_bam` parity oracle.** The
+  per-variant `count_bam` (the binned↔legacy parity oracle) is now behind a default
+  `legacy-parity` Cargo feature; release builds use `--no-default-features` to omit it.
+  Production always used `count_bam_binned`, so this only trims a test-only symbol from
+  the wheel. Dev/test builds keep it (default on) so the parity suite still runs.
+
 ### ✨ Added
 
 - **`--strandedness` for RNA mode (`reverse` | `forward` | `unstranded`).** The
