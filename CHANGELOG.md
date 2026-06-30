@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔄 Changed
+
+- **`--threads` is now a hard, validated thread budget.** It is the *total* worker
+  budget for one gbcms process (multi-sample parallelism is Nextflow's job — N
+  concurrent processes, each pinned to `task.cpus`). `--threads 0` is now rejected
+  loudly instead of silently becoming rayon's all-cores default (which would
+  oversubscribe a small SLURM allocation); all rayon pools are sized through
+  `resolve_thread_budget`, and the resolved budget is logged. Counts are unaffected.
+
 ### 📦 Packaging
 
 - **The shipped wheel no longer exports the legacy `count_bam` parity oracle.** The

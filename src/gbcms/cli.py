@@ -277,7 +277,12 @@ def dna(
     ),
     # Performance
     threads: int = typer.Option(
-        1, "--threads", "-t", help="Number of threads for parallel processing"
+        1,
+        "--threads",
+        "-t",
+        min=1,
+        help="Total worker-thread budget for this sample. gbcms keeps all parallelism "
+        "within this budget (Nextflow passes the task's allocated cores).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
     trace: bool = typer.Option(
@@ -652,7 +657,12 @@ def rna(
     ),
     # Performance
     threads: int = typer.Option(
-        1, "--threads", "-t", help="Number of threads for parallel processing"
+        1,
+        "--threads",
+        "-t",
+        min=1,
+        help="Total worker-thread budget for this sample. gbcms keeps all parallelism "
+        "within this budget (Nextflow passes the task's allocated cores).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
     trace: bool = typer.Option(
@@ -875,7 +885,9 @@ def normalize(
     output: Path = typer.Option(
         ..., "--output", "-o", help="Output file path (TSV with normalization results)"
     ),
-    threads: int = typer.Option(1, "--threads", "-t", help="Number of threads"),
+    threads: int = typer.Option(
+        1, "--threads", "-t", min=1, help="Total worker-thread budget for this run."
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
     trace: bool = typer.Option(
         False,
