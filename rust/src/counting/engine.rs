@@ -333,7 +333,9 @@ pub fn count_bam(
     // This is efficient because map_init reuses the thread-local state (the reader)
     // for multiple items processed by that thread.
 
-    // Configure thread pool
+    // Configure thread pool — honor the total `--threads` budget (see
+    // shared::resolve_thread_budget); guards the num_threads(0)=all-cores foot-gun.
+    let threads = crate::shared::resolve_thread_budget(threads);
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build()
@@ -616,17 +618,18 @@ pub fn count_bam_binned(
     if mode == "rna" {
         info!(
             "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, \
-             rna_editing_db={}, gtf={}, library_type={}, strandedness={:?}",
+             rna_editing_db={}, gtf={}, library_type={}, strandedness={:?}, threads={}",
             variants.len(), apply_baq, umi_tag, alignment_backend,
             rna_editing_db.unwrap_or("none"),
             gtf_path.unwrap_or("none"),
             library_type,
             strandedness,
+            threads,
         );
     } else {
         info!(
-            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}",
-            variants.len(), apply_baq, umi_tag, alignment_backend,
+            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, threads={}",
+            variants.len(), apply_baq, umi_tag, alignment_backend, threads,
         );
     }
 
@@ -660,7 +663,9 @@ pub fn count_bam_binned(
         }
     });
 
-    // Configure thread pool
+    // Configure thread pool. `--threads` is the TOTAL budget for this process; all
+    // bin-level parallelism stays within it (see shared::resolve_thread_budget).
+    let threads = crate::shared::resolve_thread_budget(threads);
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build()

@@ -73,6 +73,7 @@ gbcms/
 ## Key Design Decisions
 
 1. **Rust for counting**: rust-htslib for BAM; Rayon for per-**bin** parallelism (`par_iter()` over ~10kb genomic bins).
+   - **`--threads` is the TOTAL thread budget per process.** Multi-sample parallelism is Nextflow's job (gbcms runs as N concurrent processes, each pinned to `task.cpus`), so every parallel section must stay within `--threads` — all rayon pools are sized from `shared::resolve_thread_budget(threads)` (which also guards `num_threads(0)`=all-cores), and any future htslib decode threads must **subdivide** this budget, never add to it. No `par_iter` may run on rayon's global pool.
 2. **0-based internal coordinates**: 1-based in VCF/MAF externally; converted at boundary.
 3. **mFSD is opt-in** (`--mfsd`): Writers gate 34 MAF cols and 7 VCF INFO fields behind `self.mfsd`. When off, columns are **absent** (not NA-filled).
 4. **Rust-native Parquet** (`--mfsd-parquet`): `write_fsd_parquet()` via `arrow`/`parquet` crates with ZSTD(1). No `pyarrow`.

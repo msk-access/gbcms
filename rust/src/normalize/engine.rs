@@ -58,7 +58,9 @@ pub fn prepare_variants(
         threads,
     );
 
-    // Build rayon thread pool (same pattern as count_bam)
+    // Build rayon thread pool (same pattern as count_bam). `--threads` is the total
+    // budget for this process (see shared::resolve_thread_budget).
+    let threads = crate::shared::resolve_thread_budget(threads);
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build()
