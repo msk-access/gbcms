@@ -31,6 +31,11 @@ Built once in `count_bam_binned()`, shared via `Arc` across rayon workers.
 - `asjd_n_ref_total` / `asjd_n_alt_total`
 - `asjd_diagnostic`: semicolon-separated diagnostic string
 
+Junction counts are **per fragment** (`JunctionTally` in `detect_asjd` dedups a
+molecule's R1+R2 by QNAME hash to one vote) — required so the strand-discordance and
+Fisher tests see independent observations, not mates. `LOW_*_JUNC` gate on
+`asjd_n_*_total`; `STRAND_DISCORDANT`/Fisher gate on `asjd_n_*_junc`.
+
 ### Gotchas (verify before trusting RNA outputs)
 - `gene_strand` must be populated from the GTF or `is_sense_strand` returns true
   for all reads → `antisense_depth` stays 0 and `enforce_strandedness` is a no-op.

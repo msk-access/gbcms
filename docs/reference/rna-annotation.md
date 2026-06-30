@@ -150,6 +150,9 @@ For each variant:
 2. Each observed junction `(chrom, start, end)` is looked up in the GTF splice mask.
 3. Junctions present in the annotation are **annotated**; absent ones are **novel**.
 4. Counts are stratified by allele (REF vs ALT) for differential analysis.
+5. Counts are deduped **per fragment** (by QNAME): a molecule whose R1 and R2 both
+   span the same junction votes once, so the junction totals and the strand-discordance
+   test reflect independent fragments, not mates.
 
 ### Output Columns (14)
 
@@ -157,16 +160,17 @@ See [Output Formats → ASJD](output-formats.md#aberrant-splice-junction-detecti
 
 ### Diagnostic Flags
 
-The `asjd_diagnostic` column provides semicolon-separated QC flags:
+The `asjd_diagnostic` column provides semicolon-separated QC flags. All junction
+counts are **per fragment** (a molecule's R1 and R2 are deduped to one vote):
 
 | Flag | Condition | Meaning |
 |:-----|:----------|:--------|
-| `LOW_ALT_JUNC` | `asjd_n_alt_junc < 5` | Insufficient ALT junction evidence |
-| `LOW_REF_JUNC` | `asjd_n_ref_junc < 10` | Insufficient REF baseline |
-| `NOVEL_ALT_JUNC` | `asjd_alt_known == false` | ALT uses unannotated junction |
-| `NON_CANONICAL_MOTIF` | ALT motif not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
-| `STRAND_DISCORDANT` | ALT junction minority strand ≥ 30% | dUTP artifact |
-| `MULTI_JUNCTION` | ALT reads use > 2 junctions | Complex splicing event |
+| `LOW_ALT_JUNC` | `asjd_n_alt_total < 5` | Insufficient ALT junction evidence |
+| `LOW_REF_JUNC` | `asjd_n_ref_total < 10` | Insufficient REF baseline |
+| `NOVEL_ALT_JUNC` | ALT dominant junction differs from REF and is unannotated | ALT uses an unannotated junction |
+| `NON_CANONICAL_MOTIF` | ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
+| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. Disabled for `--strandedness unstranded`. |
+| `MULTI_JUNCTION` | ALT fragments use > 2 distinct junctions | Complex splicing event |
 
 ---
 
