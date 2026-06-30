@@ -13067,9 +13067,20 @@ Use mouse to pan and zoom
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#development-developer-guide-__codelineno-4-4"></a><span class="c1"># Release (optimized)</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#development-developer-guide-__codelineno-4-5"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#development-developer-guide-__codelineno-4-6"></a>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#development-developer-guide-__codelineno-4-7"></a><span class="c1"># Build wheel</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#development-developer-guide-__codelineno-4-7"></a><span class="c1"># Build wheel (dev/test — includes the legacy count_bam parity oracle)</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#development-developer-guide-__codelineno-4-8"></a>maturin<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--out<span class="w"> </span>dist
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#development-developer-guide-__codelineno-4-9"></a>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#development-developer-guide-__codelineno-4-10"></a><span class="c1"># Build the SHIPPED wheel (drops the test-only count_bam parity oracle)</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#development-developer-guide-__codelineno-4-11"></a>maturin<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--no-default-features<span class="w"> </span>--out<span class="w"> </span>dist
 </code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>legacy-parity</code> feature</p>
+<p><code>maturin develop</code> and <code>cargo test</code> include the per-variant <code>count_bam</code> (the
+binned↔legacy parity oracle) via the default <code>legacy-parity</code> Cargo feature. Release
+wheels build <code>--no-default-features</code> to omit it — production only uses
+<code>count_bam_binned</code>. Changing the counting core means mirroring it in <em>both</em> paths;
+see <code>.agents/rules/architecture.md</code> §"Legacy count_bam parity oracle".</p>
+</div>
 <hr>
 <h2 id="development-developer-guide-regression-testing">Regression Testing<a class="headerlink" href="#development-developer-guide-regression-testing" title="Permanent link">¶</a></h2>
 <h3 id="development-developer-guide-python-integration-tests-pytest">Python Integration Tests (pytest)<a class="headerlink" href="#development-developer-guide-python-integration-tests-pytest" title="Permanent link">¶</a></h3>
@@ -14347,6 +14358,14 @@ commit history and makes the back-merge conflict-free.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-packaging">📦 Packaging<a class="headerlink" href="#development-changelog-packaging" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The shipped wheel no longer exports the legacy <code>count_bam</code> parity oracle.</strong> The
+  per-variant <code>count_bam</code> (the binned↔legacy parity oracle) is now behind a default
+  <code>legacy-parity</code> Cargo feature; release builds use <code>--no-default-features</code> to omit it.
+  Production always used <code>count_bam_binned</code>, so this only trims a test-only symbol from
+  the wheel. Dev/test builds keep it (default on) so the parity suite still runs.</li>
+</ul>
 <h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--strandedness</code> for RNA mode (<code>reverse</code> | <code>forward</code> | <code>unstranded</code>).</strong> The

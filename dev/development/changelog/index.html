@@ -708,6 +708,14 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="packaging">📦 Packaging<a class="headerlink" href="#packaging" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>The shipped wheel no longer exports the legacy <code>count_bam</code> parity oracle.</strong> The
+  per-variant <code>count_bam</code> (the binned↔legacy parity oracle) is now behind a default
+  <code>legacy-parity</code> Cargo feature; release builds use <code>--no-default-features</code> to omit it.
+  Production always used <code>count_bam_binned</code>, so this only trims a test-only symbol from
+  the wheel. Dev/test builds keep it (default on) so the parity suite still runs.</li>
+</ul>
 <h3 id="added">✨ Added<a class="headerlink" href="#added" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--strandedness</code> for RNA mode (<code>reverse</code> | <code>forward</code> | <code>unstranded</code>).</strong> The
