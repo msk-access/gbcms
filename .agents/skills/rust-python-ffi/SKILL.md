@@ -12,6 +12,13 @@ maturin develop           # dev build (fast, unoptimized)
 maturin develop --release # release build (use before integration tests)
 ```
 
+**`legacy-parity` feature (default on).** The per-variant `count_bam` parity oracle
+is gated behind the default `legacy-parity` Cargo feature, so dev/test builds (above)
+include it and the binned↔legacy parity tests work. Shipped wheels build with
+`--no-default-features` (Dockerfile, release.yml) to omit it — production never calls
+`count_bam`. If you `maturin build --no-default-features` locally, `gbcms._rs.count_bam`
+will be absent and the parity tests will fail (expected).
+
 ## PyO3 Bindings
 
 - Rust structs with `#[pyclass]` expose fields via `#[pyo3(get)]` or `#[pyo3(get, set)]`

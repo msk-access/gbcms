@@ -278,6 +278,7 @@ impl AlignmentBackend {
 /// // for parity testing. Both codepaths must produce identical BaseCounts for the
 /// // same inputs. Once parity is confirmed across the 22-BAM regression suite,
 /// // pipeline.py can switch to the binned codepath.
+#[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
 #[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false, strandedness="reverse", reference_fasta=None))]
@@ -1680,6 +1681,7 @@ fn count_variant_from_cache(
 // NOTE: Consensus splicing (D6) is NOT applied in this legacy path because
 // it requires buffered reads (two-pass). D6 is only available via
 // count_bam_binned which has the D10 read cache.
+#[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 fn count_single_variant(
     bam: &mut bam::IndexedReader,

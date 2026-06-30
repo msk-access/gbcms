@@ -54,7 +54,9 @@ COPY src/ src/
 
 # Build unified wheel with maturin (includes both Python and Rust)
 # Don't use --manifest-path; it's in pyproject.toml and ensures correct wheel name
-RUN maturin build --release --out /app/dist
+# --no-default-features drops the `legacy-parity` feature so the shipped wheel does not
+# export the per-variant `count_bam` parity oracle (test-only). See rust/Cargo.toml.
+RUN maturin build --release --no-default-features --out /app/dist
 
 # Stage 2: Runtime (slim image)
 FROM python:3.11-slim-bookworm
