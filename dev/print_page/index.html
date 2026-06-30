@@ -7730,22 +7730,22 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>asjd_n_ref_junc</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">REF reads on the dominant junction</td>
+<td style="text-align: left;">REF fragments on the dominant junction (deduped per QNAME)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>asjd_n_alt_junc</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">ALT reads on the dominant junction</td>
+<td style="text-align: left;">ALT fragments on the dominant junction (deduped per QNAME)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>asjd_n_ref_total</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Total REF reads with any splice junction</td>
+<td style="text-align: left;">Total REF fragments with any splice junction (deduped per QNAME)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>asjd_n_alt_total</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Total ALT reads with any splice junction</td>
+<td style="text-align: left;">Total ALT fragments with any splice junction (deduped per QNAME)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>asjd_diagnostic</code></td>
@@ -7755,6 +7755,7 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 </tbody>
 </table>
 <h5 id="reference-output-formats-asjd-diagnostic-flags">ASJD Diagnostic Flags<a class="headerlink" href="#reference-output-formats-asjd-diagnostic-flags" title="Permanent link">¶</a></h5>
+<p>All counts below are <strong>per fragment</strong> (a molecule's R1 and R2 are deduped to one vote).</p>
 <table>
 <thead>
 <tr>
@@ -7766,32 +7767,32 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tbody>
 <tr>
 <td style="text-align: left;"><code>LOW_ALT_JUNC</code></td>
-<td style="text-align: left;"><code>asjd_n_alt_junc &lt; 5</code></td>
+<td style="text-align: left;"><code>asjd_n_alt_total &lt; 5</code></td>
 <td style="text-align: left;">Insufficient ALT junction evidence</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>LOW_REF_JUNC</code></td>
-<td style="text-align: left;"><code>asjd_n_ref_junc &lt; 10</code></td>
+<td style="text-align: left;"><code>asjd_n_ref_total &lt; 10</code></td>
 <td style="text-align: left;">Insufficient REF baseline</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>NOVEL_ALT_JUNC</code></td>
-<td style="text-align: left;"><code>asjd_alt_known == false</code></td>
-<td style="text-align: left;">ALT uses unannotated junction</td>
+<td style="text-align: left;">ALT dominant junction differs from REF and is unannotated</td>
+<td style="text-align: left;">ALT uses an unannotated junction</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>NON_CANONICAL_MOTIF</code></td>
-<td style="text-align: left;">ALT motif not GT-AG/GC-AG/AT-AC</td>
+<td style="text-align: left;">ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC</td>
 <td style="text-align: left;">Likely mapping artifact</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
-<td style="text-align: left;">ALT junction minority strand ≥ 30%</td>
-<td style="text-align: left;"><abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> artifact</td>
+<td style="text-align: left;">ALT junction differs from REF, <code>asjd_n_alt_junc ≥ 5</code>, and minority transcript-strand fraction ≥ 0.30</td>
+<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. Disabled for <code>--strandedness unstranded</code> (no transcript strand).</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
-<td style="text-align: left;">ALT reads use &gt; 2 junctions</td>
+<td style="text-align: left;">ALT fragments use &gt; 2 distinct junctions</td>
 <td style="text-align: left;">Complex splicing event</td>
 </tr>
 </tbody>
@@ -9568,11 +9569,15 @@ Use mouse to pan and zoom
 <li>Each observed junction <code>(chrom, start, end)</code> is looked up in the GTF splice mask.</li>
 <li>Junctions present in the annotation are <strong>annotated</strong>; absent ones are <strong>novel</strong>.</li>
 <li>Counts are stratified by allele (REF vs ALT) for differential analysis.</li>
+<li>Counts are deduped <strong>per fragment</strong> (by QNAME): a molecule whose R1 and R2 both
+   span the same junction votes once, so the junction totals and the strand-discordance
+   test reflect independent fragments, not mates.</li>
 </ol>
 <h3 id="reference-rna-annotation-output-columns-14">Output Columns (14)<a class="headerlink" href="#reference-rna-annotation-output-columns-14" title="Permanent link">¶</a></h3>
 <p>See <a href="#reference-output-formats-aberrant-splice-junction-detection-asjd">Output Formats → ASJD</a> for the complete column reference.</p>
 <h3 id="reference-rna-annotation-diagnostic-flags">Diagnostic Flags<a class="headerlink" href="#reference-rna-annotation-diagnostic-flags" title="Permanent link">¶</a></h3>
-<p>The <code>asjd_diagnostic</code> column provides semicolon-separated QC flags:</p>
+<p>The <code>asjd_diagnostic</code> column provides semicolon-separated QC flags. All junction
+counts are <strong>per fragment</strong> (a molecule's R1 and R2 are deduped to one vote):</p>
 <table>
 <thead>
 <tr>
@@ -9584,32 +9589,32 @@ Use mouse to pan and zoom
 <tbody>
 <tr>
 <td style="text-align: left;"><code>LOW_ALT_JUNC</code></td>
-<td style="text-align: left;"><code>asjd_n_alt_junc &lt; 5</code></td>
+<td style="text-align: left;"><code>asjd_n_alt_total &lt; 5</code></td>
 <td style="text-align: left;">Insufficient ALT junction evidence</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>LOW_REF_JUNC</code></td>
-<td style="text-align: left;"><code>asjd_n_ref_junc &lt; 10</code></td>
+<td style="text-align: left;"><code>asjd_n_ref_total &lt; 10</code></td>
 <td style="text-align: left;">Insufficient REF baseline</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>NOVEL_ALT_JUNC</code></td>
-<td style="text-align: left;"><code>asjd_alt_known == false</code></td>
-<td style="text-align: left;">ALT uses unannotated junction</td>
+<td style="text-align: left;">ALT dominant junction differs from REF and is unannotated</td>
+<td style="text-align: left;">ALT uses an unannotated junction</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>NON_CANONICAL_MOTIF</code></td>
-<td style="text-align: left;">ALT motif not GT-AG/GC-AG/AT-AC</td>
+<td style="text-align: left;">ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC</td>
 <td style="text-align: left;">Likely mapping artifact</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
-<td style="text-align: left;">ALT junction minority strand ≥ 30%</td>
-<td style="text-align: left;"><abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> artifact</td>
+<td style="text-align: left;">ALT junction differs from REF, <code>asjd_n_alt_junc ≥ 5</code>, and minority transcript-strand fraction ≥ 0.30</td>
+<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. Disabled for <code>--strandedness unstranded</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
-<td style="text-align: left;">ALT reads use &gt; 2 junctions</td>
+<td style="text-align: left;">ALT fragments use &gt; 2 distinct junctions</td>
 <td style="text-align: left;">Complex splicing event</td>
 </tr>
 </tbody>
@@ -14357,6 +14362,18 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="development-changelog-changed">🔄 Changed<a class="headerlink" href="#development-changelog-changed" title="Permanent link">¶</a></h3>
 <ul>
+<li><strong>ASJD junction evidence is now counted per fragment, not per mate.</strong> A molecule
+  whose R1 and R2 overlap on a short cDNA insert can have both mates carry the same
+  splice junction (the genomic insert looks large only because it spans the intron) —
+  on real reverse-stranded RNA this is 35.6% of fragment×junction incidences and is
+  <em>not</em> a <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>/PCR duplicate. Counting both mates inflated the per-junction strand
+  tally ~1.38× and could fire spurious <code>STRAND_DISCORDANT</code> at low depth. <code>detect_asjd</code>
+  now dedups each fragment (by QNAME) to one vote per allele-total and per junction,
+  matching the per-fragment treatment the rest of the engine already uses. Mates always
+  fold to the same transcript strand (verified 0/319k disagreements), so the dedup is
+  unambiguous. This shifts <code>asjd_n_*_junc</code> / <code>asjd_n_*_total</code> and a small number of
+  low-count <code>STRAND_DISCORDANT</code> flags (18/58,240 junctions genome-wide on the test
+  sample), always in the corrective direction.</li>
 <li><strong>Empty-allele variants are now rejected at prep time.</strong> A structurally empty REF
   or ALT (<code>""</code>) is malformed input — the internal representation is <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style
   (anchor-based), and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> dash alleles arrive as the literal <code>-</code>, never empty. Such

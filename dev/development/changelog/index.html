@@ -723,6 +723,18 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="changed">🔄 Changed<a class="headerlink" href="#changed" title="Permanent link">¶</a></h3>
 <ul>
+<li><strong>ASJD junction evidence is now counted per fragment, not per mate.</strong> A molecule
+  whose R1 and R2 overlap on a short cDNA insert can have both mates carry the same
+  splice junction (the genomic insert looks large only because it spans the intron) —
+  on real reverse-stranded RNA this is 35.6% of fragment×junction incidences and is
+  <em>not</em> a <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>/PCR duplicate. Counting both mates inflated the per-junction strand
+  tally ~1.38× and could fire spurious <code>STRAND_DISCORDANT</code> at low depth. <code>detect_asjd</code>
+  now dedups each fragment (by QNAME) to one vote per allele-total and per junction,
+  matching the per-fragment treatment the rest of the engine already uses. Mates always
+  fold to the same transcript strand (verified 0/319k disagreements), so the dedup is
+  unambiguous. This shifts <code>asjd_n_*_junc</code> / <code>asjd_n_*_total</code> and a small number of
+  low-count <code>STRAND_DISCORDANT</code> flags (18/58,240 junctions genome-wide on the test
+  sample), always in the corrective direction.</li>
 <li><strong>Empty-allele variants are now rejected at prep time.</strong> A structurally empty REF
   or ALT (<code>""</code>) is malformed input — the internal representation is <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style
   (anchor-based), and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> dash alleles arrive as the literal <code>-</code>, never empty. Such
