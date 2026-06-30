@@ -212,6 +212,7 @@ def count_bam_binned(
     mode: str = "dna",
     enforce_strandedness: bool = False,
     strandedness: str = "reverse",
+    mfsd: bool = False,
     rna_editing_db: str | None = None,
     gtf_path: str | None = None,
     reference_fasta: str | None = None,

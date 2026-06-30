@@ -484,7 +484,7 @@ pub fn count_bam(
 /// // parity testing until the 22-BAM regression confirms identical counts.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture"))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture"))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -512,6 +512,7 @@ pub fn count_bam_binned(
     mode: &str,
     enforce_strandedness: bool,
     strandedness: &str,
+    mfsd: bool,
     rna_editing_db: Option<&str>,
     gtf_path: Option<&str>,
     reference_fasta: Option<&str>,
@@ -628,8 +629,8 @@ pub fn count_bam_binned(
         );
     } else {
         info!(
-            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, threads={}",
-            variants.len(), apply_baq, umi_tag, alignment_backend, threads,
+            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, mfsd={}, threads={}",
+            variants.len(), apply_baq, umi_tag, alignment_backend, mfsd, threads,
         );
     }
 
@@ -741,6 +742,7 @@ pub fn count_bam_binned(
                             mode,
                             enforce_strandedness,
                             strandedness,
+                            mfsd,
                             &editing_sites,
                             &annotation,
                             fasta_reader,
@@ -803,10 +805,15 @@ pub fn count_bam_binned(
             // marks a real test. Filtering on the D-stat avoids padding the family
             // with no-test variants (which would inflate n and over-correct);
             // a genuine D=0 test legitimately keeps its p=1.0.
+            //
+            // PF-1: when `--mfsd` is off, mFSD was never computed so the KS fields sit at
+            // their BaseCounts default (0.0, not NaN). The `mfsd &&` guard keeps the family
+            // empty in that case — otherwise every variant would be treated as a real test
+            // and BH-corrected over default p-values.
             let mfsd_valid: Vec<usize> = all_counts
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| !c.mfsd_ks_alt_ref.is_nan())
+                .filter(|(_, c)| mfsd && !c.mfsd_ks_alt_ref.is_nan())
                 .map(|(i, _)| i)
                 .collect();
             let corrected = crate::shared::stats::benjamini_hochberg_family(
@@ -918,6 +925,7 @@ fn count_bin_shared(
     mode: &str,
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
+    mfsd: bool,
     editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
@@ -1015,7 +1023,7 @@ fn count_bin_shared(
             min_mapq, min_baseq,
             filter_improper_pair, filter_indel,
             fragment_qual_threshold, backend,
-            apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
+            apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
             editing_sites, annotation, amplicon_mode,
         )?;
 
@@ -1027,7 +1035,7 @@ fn count_bin_shared(
                 min_mapq, min_baseq,
                 filter_improper_pair, filter_indel,
                 fragment_qual_threshold, backend,
-                apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
+                apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
                 editing_sites, annotation, amplicon_mode,
             )?;
 
@@ -1110,6 +1118,81 @@ fn count_bin_shared(
 }
 
 
+/// Compute the mFSD fragment-size statistics for one variant and store them on
+/// `counts`: the four class counts, means, alt/ref LLR, the six pairwise KS triads
+/// (delta/D/p), the sub-/mono-nucleosomal fractions, and the raw size arrays for
+/// `--mfsd-parquet`. Consumes the size vectors. Shared by the binned and legacy paths;
+/// the binned path calls it only when mFSD output is requested (the engine is
+/// output-aware — see the `mfsd` gate in `count_variant_from_cache`).
+fn compute_mfsd_stats(
+    counts: &mut BaseCounts,
+    ref_sizes: Vec<f64>,
+    alt_sizes: Vec<f64>,
+    nonref_sizes: Vec<f64>,
+    n_sizes: Vec<f64>,
+    variant: &Variant,
+) {
+    counts.mfsd_ref_count    = ref_sizes.len()    as u32;
+    counts.mfsd_alt_count    = alt_sizes.len()    as u32;
+    counts.mfsd_nonref_count = nonref_sizes.len() as u32;
+    counts.mfsd_n_count      = n_sizes.len()      as u32;
+
+    counts.mfsd_ref_mean    = mfsd::calc_mean(&ref_sizes);
+    counts.mfsd_alt_mean    = mfsd::calc_mean(&alt_sizes);
+    counts.mfsd_nonref_mean = mfsd::calc_mean(&nonref_sizes);
+    counts.mfsd_n_mean      = mfsd::calc_mean(&n_sizes);
+
+    counts.mfsd_alt_llr = mfsd::calc_llr(&alt_sizes);
+    counts.mfsd_ref_llr = mfsd::calc_llr(&ref_sizes);
+
+    // KS helper: pairwise delta + D-statistic + p-value.
+    // delta = mean(a) - mean(b); ks_test returns (NaN, 1.0) when either class < MIN_FOR_KS.
+    let ks_pair = |a: &[f64], b: &[f64]| -> (f64, f64, f64) {
+        let (d, p) = mfsd::ks_test(a, b);
+        let delta = if a.is_empty() || b.is_empty() {
+            f64::NAN
+        } else {
+            mfsd::calc_mean(a) - mfsd::calc_mean(b)
+        };
+        (delta, d, p)
+    };
+
+    (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
+    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // placeholder; BH-corrected post-counting
+    (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
+    (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
+    (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);
+    (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
+    (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
+
+    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator. Mono-nucleosomal
+    // (150–200bp): dominant cfDNA peak. Computed before the size arrays are consumed.
+    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
+        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
+    } else {
+        f64::NAN
+    };
+    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
+    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
+
+    // Raw size arrays for --mfsd-parquet export (held on BaseCounts across all variants).
+    counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
+    counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
+
+    debug!(
+        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
+        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+        counts.mfsd_ref_count, counts.mfsd_alt_count,
+        counts.mfsd_nonref_count, counts.mfsd_n_count,
+        counts.mfsd_delta_alt_ref,
+        counts.mfsd_ks_alt_ref,
+        counts.mfsd_pval_alt_ref,
+        counts.mfsd_alt_llr,
+    );
+}
+
 /// Classify and count reads from a pre-fetched cache for a single variant.
 ///
 /// This is the Phase 1 workhorse of D10. It performs the same logic as
@@ -1140,6 +1223,7 @@ fn count_variant_from_cache(
     mode: &str,
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
+    mfsd: bool,
     editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     amplicon_mode: bool,
@@ -1545,10 +1629,16 @@ fn count_variant_from_cache(
     // (50–1000 bp) with a known TLEN are added. GC correction is not applied —
     // GC bias affects count depth, not fragment length, so these raw sizes are
     // already unbiased samples of the true size distribution.
-    let mut ref_sizes:    Vec<f64> = Vec::with_capacity(fragments.len());
-    let mut alt_sizes:    Vec<f64> = Vec::with_capacity(fragments.len());
-    let mut nonref_sizes: Vec<f64> = Vec::with_capacity(fragments.len());
-    let mut n_sizes:      Vec<f64> = Vec::with_capacity(fragments.len());
+    //
+    // PF-1: mFSD is output-aware. When `--mfsd` is off the size vectors are never
+    // reserved or filled and the stats block below is skipped — sparing the per-variant
+    // `counts.ref_sizes`/`alt_sizes` arrays that are otherwise held on every BaseCounts
+    // for the whole run (the dominant mFSD memory cost under Nextflow fan-out).
+    let mfsd_cap = if mfsd { fragments.len() } else { 0 };
+    let mut ref_sizes:    Vec<f64> = Vec::with_capacity(mfsd_cap);
+    let mut alt_sizes:    Vec<f64> = Vec::with_capacity(mfsd_cap);
+    let mut nonref_sizes: Vec<f64> = Vec::with_capacity(mfsd_cap);
+    let mut n_sizes:      Vec<f64> = Vec::with_capacity(mfsd_cap);
 
     for evidence in fragments.values() {
         let (frag_ref, frag_alt) = evidence.resolve(qual_diff_threshold);
@@ -1573,9 +1663,10 @@ fn count_variant_from_cache(
             }
         }
 
-        // mFSD: classify fragment into size class vectors
+        // mFSD: classify fragment into size class vectors (only when --mfsd is on;
+        // PF-1 output-aware gate — leaves the size vectors empty otherwise)
         if let Some(sz) = evidence.insert_size {
-            if (50..=1000).contains(&sz) {
+            if mfsd && (50..=1000).contains(&sz) {
                 let sz_f = sz as f64;
                 if frag_ref {
                     ref_sizes.push(sz_f);
@@ -1602,65 +1693,12 @@ fn count_variant_from_cache(
     counts.fsb_pval = fsb_pval;
     counts.fsb_or = fsb_or;
 
-    // ── mFSD Statistics
-    counts.mfsd_ref_count    = ref_sizes.len()    as u32;
-    counts.mfsd_alt_count    = alt_sizes.len()    as u32;
-    counts.mfsd_nonref_count = nonref_sizes.len() as u32;
-    counts.mfsd_n_count      = n_sizes.len()      as u32;
-
-    counts.mfsd_ref_mean    = mfsd::calc_mean(&ref_sizes);
-    counts.mfsd_alt_mean    = mfsd::calc_mean(&alt_sizes);
-    counts.mfsd_nonref_mean = mfsd::calc_mean(&nonref_sizes);
-    counts.mfsd_n_mean      = mfsd::calc_mean(&n_sizes);
-
-    counts.mfsd_alt_llr = mfsd::calc_llr(&alt_sizes);
-    counts.mfsd_ref_llr = mfsd::calc_llr(&ref_sizes);
-
-    let ks_pair = |a: &[f64], b: &[f64]| -> (f64, f64, f64) {
-        let (d, p) = mfsd::ks_test(a, b);
-        let delta = if a.is_empty() || b.is_empty() {
-            f64::NAN
-        } else {
-            mfsd::calc_mean(a) - mfsd::calc_mean(b)
-        };
-        (delta, d, p)
-    };
-
-    (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
-    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // placeholder; BH-corrected post-counting
-    (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
-    (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
-    (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);
-    (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
-    (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
-
-    // ── mFSD: Sub-nucleosomal / mono-nucleosomal fractions ──────────────────
-    // Computed before ref_sizes/alt_sizes are consumed by into_iter().
-    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator.
-    // Mono-nucleosomal (150–200bp): dominant cfDNA peak.
-    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
-    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
-    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
-        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
-    } else {
-        f64::NAN
-    };
-    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
-    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
-
-    counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
-    counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
-
-    debug!(
-        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
-        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-        counts.mfsd_ref_count, counts.mfsd_alt_count,
-        counts.mfsd_nonref_count, counts.mfsd_n_count,
-        counts.mfsd_delta_alt_ref,
-        counts.mfsd_ks_alt_ref,
-        counts.mfsd_pval_alt_ref,
-        counts.mfsd_alt_llr,
-    );
+    // ── mFSD Statistics — only when requested (PF-1 output-aware gate). When off,
+    // the size vectors are empty and all mFSD fields stay at their BaseCounts default;
+    // the writers omit the mFSD columns and the post-counting BH-FDR pass skips them.
+    if mfsd {
+        compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
+    }
 
     // Log per-phase classification breakdown + reads considered
     debug!(
@@ -2112,72 +2150,10 @@ fn count_single_variant(
     counts.fsb_or = fsb_or;
 
     // ── mFSD Statistics ──────────────────────────────────────────────────────
-    // All distributional tests (KS, LLR, delta) use raw unweighted size arrays.
-    // Counts populated here match mfsd_*_count fields on BaseCounts.
-
-    counts.mfsd_ref_count    = ref_sizes.len()    as u32;
-    counts.mfsd_alt_count    = alt_sizes.len()    as u32;
-    counts.mfsd_nonref_count = nonref_sizes.len() as u32;
-    counts.mfsd_n_count      = n_sizes.len()      as u32;
-
-    // Means (0.0 for empty — callers should gate on mfsd_*_count)
-    counts.mfsd_ref_mean    = mfsd::calc_mean(&ref_sizes);
-    counts.mfsd_alt_mean    = mfsd::calc_mean(&alt_sizes);
-    counts.mfsd_nonref_mean = mfsd::calc_mean(&nonref_sizes);
-    counts.mfsd_n_mean      = mfsd::calc_mean(&n_sizes);
-
-    // LLR: sum(log P_tumor / P_healthy) per fragment; positive = tumor-like
-    counts.mfsd_alt_llr = mfsd::calc_llr(&alt_sizes);
-    counts.mfsd_ref_llr = mfsd::calc_llr(&ref_sizes);
-
-    // KS helper closure: pairwise delta + D-statistic + p-value
-    // delta = mean(a) - mean(b);  (NaN, 1.0) when either class < MIN_FOR_KS
-    let ks_pair = |a: &[f64], b: &[f64]| -> (f64, f64, f64) {
-        let (d, p) = mfsd::ks_test(a, b);
-        let delta = if a.is_empty() || b.is_empty() {
-            f64::NAN
-        } else {
-            mfsd::calc_mean(a) - mfsd::calc_mean(b)
-        };
-        (delta, d, p)
-    };
-
-    (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
-    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // placeholder; BH-corrected post-counting
-    (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
-    (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
-    (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);
-    (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
-    (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
-
-    // ── mFSD: Sub-nucleosomal / mono-nucleosomal fractions ──────────────────
-    // Computed before ref_sizes/alt_sizes are consumed by into_iter().
-    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator.
-    // Mono-nucleosomal (150–200bp): dominant cfDNA peak.
-    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
-    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
-    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
-        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
-    } else {
-        f64::NAN
-    };
-    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
-    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
-
-    // Store raw size arrays for --mfsd-parquet export
-    counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
-    counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
-
-    debug!(
-        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
-        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-        counts.mfsd_ref_count, counts.mfsd_alt_count,
-        counts.mfsd_nonref_count, counts.mfsd_n_count,
-        counts.mfsd_delta_alt_ref,
-        counts.mfsd_ks_alt_ref,
-        counts.mfsd_pval_alt_ref,
-        counts.mfsd_alt_llr,
-    );
+    // The legacy per-variant path is the parity oracle (test-only) and always computes
+    // mFSD; only the binned production path gates it on `mfsd`. Shares the same helper
+    // as the binned path so the two can never drift.
+    compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
 
     // Log per-phase classification breakdown
     debug!(

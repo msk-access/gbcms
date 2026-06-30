@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Production always used `count_bam_binned`, so this only trims a test-only symbol from
   the wheel. Dev/test builds keep it (default on) so the parity suite still runs.
 
+### ⚡ Performance
+
+- **mFSD is now computed only when requested (`--mfsd`/`--mfsd-parquet`/`--mfsd-report`).**
+  Previously the engine always built the per-fragment size arrays and ran the full
+  KS/LLR/delta statistics for every variant, then discarded them unless an mFSD output
+  was selected. The binned production path now gates this work on the `mfsd` flag
+  (plumbed from `OutputConfig.mfsd`), so the default `--dna` run no longer holds the
+  per-variant `ref_sizes`/`alt_sizes` arrays across the whole sample — the dominant mFSD
+  memory cost, and the one that multiplies under Nextflow fan-out (N concurrent
+  processes). The size-array statistics are also factored into a single shared
+  `compute_mfsd_stats` helper used by both the binned and legacy paths. **Counts are
+  unaffected:** validated on 3,040 real cfDNA variants — all 246 non-mFSD columns are
+  byte-identical with mFSD on vs off, and the 41 mFSD columns appear only when enabled.
+
 ### ✨ Added
 
 - **`--strandedness` for RNA mode (`reverse` | `forward` | `unstranded`).** The
