@@ -119,9 +119,8 @@ Changes to the counting engine (`rust/src/counting/` — especially `engine.rs` 
    cd rust && cargo clippy --all-targets -- -D warnings && cargo test && cd ..
    ```
    The load-bearing invariants (binned↔legacy parity, one base-quality gate across
-   alignment backends, the 4 counting-test invariants) are in
-   [`.agents/rules/architecture.md`](.agents/rules/architecture.md) — read them before
-   touching the engine.
+   alignment backends, the 4 counting-test invariants) are in `.agents/rules/architecture.md`
+   (in the repo root) — read them before touching the engine.
 
 4. **Commit your changes**
    ```bash
