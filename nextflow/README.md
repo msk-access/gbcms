@@ -93,7 +93,8 @@ nextflow run nextflow/main.nf \
 | `--column_prefix` | Prefix for gbcms count columns in MAF output | `''` (empty) |
 | `--preserve_barcode` | Keep original Tumor_Sample_Barcode from input MAF | `false` |
 | `--show_normalization` | Add `norm_*` columns showing left-aligned coordinates | `false` |
-| `--min_mapq` | Minimum mapping quality | `20` |
+| `--min_mapq` | Minimum mapping quality (DNA) | `20` |
+| `--rna_min_mapq` | Minimum mapping quality (RNA) — `1` matches the CLI and keeps STAR multi-mapper primaries (MAPQ 3/1); raise to 20 for unique-only | `1` |
 | `--min_baseq` | Minimum base quality | `20` |
 | `--fragment_qual_threshold` | Quality margin for fragment consensus | `10` |
 | `--context_padding` | Minimum flanking bases for alignment | `5` |

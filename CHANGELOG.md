@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `gbcms_status` column (and zero counts), so the reasons are in the output file, not only
   the log. (Partial rejections already did this; this closes the all-rejected gap.)
 
+- **Nextflow RNA runs no longer silently drop STAR multi-mapper reads.** The pipeline used a
+  single global `min_mapq = 20` for both modes, so RNA counting ran at MAPQ 20 instead of the
+  `gbcms rna` CLI default of **1** — silently dropping STAR's 2–4-locus multi-mapper primaries
+  (which STAR encodes as MAPQ 3/1, vs 255 for uniquely-mapped reads). On a real FORTE RNA
+  sample that was ~16% of reads genome-wide (chr7) and up to ~6% of depth at an individual
+  locus. A new `rna_min_mapq` param (default **1**) now drives the RNA module; DNA keeps
+  `min_mapq = 20`. Set `--rna_min_mapq 20` to restore unique-only RNA counting.
+
 ### 🔄 Changed
 
 - **Fragment-count consensus is labeled accurately (ME-12).** The stale "Majority Rule"

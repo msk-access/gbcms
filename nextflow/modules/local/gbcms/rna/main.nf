@@ -100,7 +100,7 @@ process GBCMS_RNA {
         ${backend_arg} \\
         ${hmm_args} \\
         --threads ${task.cpus} \\
-        --min-mapq ${params.min_mapq} \\
+        --min-mapq ${params.rna_min_mapq} \\
         --min-baseq ${params.min_baseq} \\
         --fragment-qual-threshold ${params.fragment_qual_threshold} \\
         --context-padding ${params.context_padding} \\
