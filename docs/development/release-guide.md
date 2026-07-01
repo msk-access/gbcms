@@ -147,7 +147,7 @@ After PR approval:
     Always use a **regular merge commit** for release PRs. Squash merging
     rewrites all commits into a single new SHA, which breaks shared ancestry
     between `main` and `develop`. This causes merge conflicts on every
-    changed file during the Step 9 back-merge. Regular merge preserves
+    changed file during the Step 10 back-merge. Regular merge preserves
     commit history and makes the back-merge conflict-free.
 
 ### 8. CI Release Pipeline
@@ -159,7 +159,27 @@ The tag triggers `.github/workflows/release.yml`:
 3. **Build Docker image** → push to `ghcr.io/msk-access/gbcms:X.Y.Z`
 4. **Deploy docs** → GitHub Pages (versioned via `mike` as `X.Y.Z` / `stable`)
 
-### 9. Merge main back to develop
+### 9. Create the GitHub Release
+
+!!! danger "The workflow does NOT create the GitHub Release"
+    `release.yml` only publishes to PyPI / Docker / docs. The **Releases page** entry
+    (with notes and the **Latest** badge) is a *separate* object you must create by hand,
+    or the Releases page will keep showing the *previous* version even though the new tag
+    exists and the packages published.
+
+Create it from the CHANGELOG section on the (already-pushed) bare tag and mark it latest:
+
+```bash
+# Extract the [X.Y.Z] section from CHANGELOG.md into notes.md, then:
+gh release create X.Y.Z \
+  --title "X.Y.Z — <short summary>" \
+  --notes-file notes.md \
+  --latest --verify-tag
+```
+
+Verify with `gh release list` — the new version should show **Latest**.
+
+### 10. Merge main back to develop
 
 ```bash
 git checkout develop
@@ -168,7 +188,7 @@ git merge main
 git push origin develop
 ```
 
-### 10. Cleanup
+### 11. Cleanup
 
 ```bash
 # Delete local release branch
