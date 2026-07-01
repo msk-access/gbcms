@@ -469,6 +469,34 @@ pub fn count_bam(
 }
 
 
+/// Pre-build the GTF annotation cache without counting — the Nextflow pre-warm step.
+///
+/// Parses `gtf_path` for the chromosomes covered by `variants` and writes the
+/// serialized intermediate into `cache_dir`. Running this once before a cohort
+/// fans out means every per-sample `count_bam_binned` that follows hits a warm
+/// cache (~0.05s load) instead of each re-parsing the GTF (~8.7s). The chromosome
+/// set is derived **identically** to `count_bam_binned` (`normalize_contig` over the
+/// variant chroms) so the cache key matches and the per-sample runs reuse this entry.
+/// Takes the raw chrom strings (the caller already has them from the variant file);
+/// `normalize_contig` is applied here, exactly as `count_bam_binned` does internally.
+/// Returns the exon count of the built index for a confirming log line.
+#[pyfunction]
+pub fn build_gtf_cache(
+    gtf_path: &str,
+    variant_chroms: Vec<String>,
+    cache_dir: &str,
+) -> PyResult<usize> {
+    let chroms: HashSet<String> = variant_chroms
+        .iter()
+        .map(|c| crate::shared::contig::normalize_contig(c))
+        .collect();
+    let annot = crate::annotation::parse_gtf_cached(gtf_path, &chroms, cache_dir)
+        .map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to build GTF cache: {}", e))
+        })?;
+    Ok(annot.n_exons())
+}
+
 /// Bin-centric parallel BAM counting with BAQ and UMI support.
 ///
 /// Groups variants into ~10kb genomic bins, fetches reads once per bin,
@@ -484,7 +512,7 @@ pub fn count_bam(
 /// // parity testing until the 22-BAM regression confirms identical counts.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture"))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -515,6 +543,7 @@ pub fn count_bam_binned(
     mfsd: bool,
     rna_editing_db: Option<&str>,
     gtf_path: Option<&str>,
+    gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
 ) -> PyResult<Vec<BaseCounts>> {
@@ -558,10 +587,15 @@ pub fn count_bam_binned(
             let variant_chroms: HashSet<String> = variants.iter()
                 .map(|v| crate::shared::contig::normalize_contig(&v.chrom))
                 .collect();
-            let annot = crate::annotation::parse_gtf(path, &variant_chroms)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
-                    format!("Failed to load GTF annotation: {}", e)
-                ))?;
+            // M5a: when a cache dir is supplied, reuse a serialized parse if one
+            // exists (skips the ~8.7s GTF text parse); otherwise parse + populate it.
+            let annot = match gtf_cache_dir {
+                Some(dir) => crate::annotation::parse_gtf_cached(path, &variant_chroms, dir),
+                None => crate::annotation::parse_gtf(path, &variant_chroms),
+            }
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
+                format!("Failed to load GTF annotation: {}", e)
+            ))?;
             info!(
                 "GTF annotation: built index from {} — {} exons, {} transcripts, {} chromosomes",
                 path, annot.n_exons(), annot.n_transcripts(), annot.n_chromosomes(),

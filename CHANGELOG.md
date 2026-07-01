@@ -38,7 +38,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unaffected:** validated on 3,040 real cfDNA variants — all 246 non-mFSD columns are
   byte-identical with mFSD on vs off, and the 41 mFSD columns appear only when enabled.
 
+- **GTF annotation can be cached on disk (`--gtf-cache-dir`).** Parsing a full Ensembl
+  GTF takes ~9s, and under a Nextflow cohort that cost was paid once *per sample*. When
+  `--gtf-cache-dir` is set, the parsed intermediate (exon records, splice sites, introns,
+  chrom map) is serialized once and reused on later runs over the same GTF + variant set,
+  dropping the annotation load from ~9s to **~0.05s** (validated on the full GRCh38.111
+  GTF; cold-vs-warm output byte-identical across 47 variants and all annotation columns).
+  The architecture-specific interval trees are *not* cached — they are rebuilt from the
+  cached records on load, so a cache file is portable across x86/ARM. Caching is
+  best-effort: a missing/corrupt/stale-version/unwritable cache logs and falls back to a
+  normal parse, never affecting correctness.
+
 ### ✨ Added
+
+- **`gbcms build-gtf-cache` — pre-warm the GTF index cache for a cohort.** A dedicated
+  command (`--gtf --variants --gtf-cache-dir`, no BAM) that parses the GTF once and writes
+  the cache, so a fan-out of per-sample `gbcms rna --gtf-cache-dir <same-dir>` jobs all
+  start warm. This is what makes the cache pay off under concurrency: without a pre-warm
+  step, samples launched together all cold-miss and each re-parses the GTF. Run it as a
+  single Nextflow process upstream of the per-sample fan-out so the whole cohort parses
+  the GTF exactly once. See `docs/nextflow/parameters.md`.
 
 - **`--strandedness` for RNA mode (`reverse` | `forward` | `unstranded`).** The
   read→transcript-strand fold was previously hardcoded to dUTP/reverse

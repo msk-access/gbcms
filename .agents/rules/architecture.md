@@ -82,7 +82,7 @@ gbcms/
 7. **Windowed indel detection**: ±5bp scan expanding to `max(5, repeat_span + 2)`.
 8. **Dual alignment backends**: SW (default) or PairHMM (`--alignment-backend hmm`).
 9. **Genomic binning**: ~10kb bins, one `bam.fetch()` per bin, max 200 variants/bin.
-10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends).
+10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The tree *layout* is arch-specific, so the **GTF disk cache (`--gtf-cache-dir`, M5a) never serializes the trees** — it persists only the parsed intermediate (`GtfIndexBundle`: exon records, splice sites, introns, chrom map; `bincode`, version-tagged) and rebuilds the trees via `build_exon_trees` on load. Caching is best-effort (missing/corrupt/stale/unwritable → log + plain parse); keyed on GTF identity + variant chroms. Concurrent cohorts must pre-warm via `gbcms build-gtf-cache` (else the first wave all cold-miss); the per-sample `count_bam_binned` runs then load in ~0.05s instead of re-parsing (~9s).
 11. **Diagnostic flags**: `gbcms_diagnostic` and `gbcms_rescue` are strongly-typed Rust fields, not dynamic attributes.
 
 ## Legacy `count_bam` parity oracle (`legacy-parity` feature)

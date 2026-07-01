@@ -76,6 +76,20 @@ These parameters are only used when `--mode rna` is specified.
 !!! tip "RNA mode defaults"
     RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
 
+## GTF Index Caching (RNA)
+
+Parsing a full Ensembl GTF takes ~9s. Across a cohort that cost is otherwise paid once **per sample**. The pipeline caches the parsed index so the GTF is parsed **once for the whole cohort** — the per-sample annotation load drops from ~9s to ~0.05s.
+
+| Parameter | Default | Description |
+|:----------|:--------|:------------|
+| `--gtf_cache` | `true` | When `--gtf` is set, pre-build the GTF index once per cohort so per-sample tasks skip the parse. Set `false` to disable (each sample re-parses). |
+
+**This is automatic — no extra wiring needed.** When `--mode rna` is run with a `--gtf` (and `--gtf_cache` is left `true`), the pipeline runs a single `GBCMS_BUILD_GTF_CACHE` process up front, using the cohort's `--gtf` and `--variants`. Every per-sample `GBCMS_RNA` task then receives the prebuilt cache directory (via the Nextflow DAG, so it is guaranteed ready first) and loads the index in ~0.05s instead of re-parsing.
+
+**Why the up-front build matters.** Nextflow launches up to `queueSize` tasks at once. If the cache did not already exist, every concurrently-launched sample would cold-miss and re-parse the GTF — so a plain cache saves nothing until a later wave, and nothing at all for a cohort smaller than `queueSize`. Building it once before the fan-out lets every sample start warm.
+
+The pre-build uses the cohort `--variants` file. With `--filter_by_sample`, each sample's variants are a per-sample subset; if a subset's chromosome set differs from the cohort's, that sample simply falls back to a normal parse (the cache is keyed on the variant chromosome set). Caching is best-effort throughout — a missing, corrupt, stale-version, or unwritable cache always falls back to a fresh parse and never affects counts.
+
 ## Alignment Backend (Advanced)
 
 | Parameter | Default | Description |
