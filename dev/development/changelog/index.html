@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -708,14 +708,43 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed">🐛 Fixed<a class="headerlink" href="#fixed" title="Permanent link">¶</a></h3>
+<ul>
+<li>
+<p><strong>A run now exits non-zero when a sample fails (HI-1).</strong> <code>Pipeline.run()</code> catches
+  per-sample errors and returns normally, so <code>gbcms dna</code>/<code>rna</code> previously exited <code>0</code> even
+  when every <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> failed (e.g. a Rust panic surfaced as <code>PyErr</code>) — masking systematic
+  failure as success under Nextflow. The <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> now exits <strong>code 1</strong> when any sample actually
+  fails (all-failed or partial). An <strong>empty variant set is not a failure</strong>: a sample that
+  legitimately has no variants called still exits <code>0</code>, so per-sample workflows don't fail on
+  it. Successful runs are unchanged (exit 0).</p>
+</li>
+<li>
+<p><strong>Rejected variants keep their reason in the output.</strong> When <em>every</em> variant is rejected
+  during preparation (e.g. a contig mismatch → <code>FAIL_FETCH_FAILED</code>), the run no longer
+  short-circuits with no output — it now writes each variant with its <code>FAIL_*</code> reason in the
+  <code>gbcms_status</code> column (and zero counts), so the reasons are in the output file, not only
+  the log. (Partial rejections already did this; this closes the all-rejected gap.)</p>
+</li>
+</ul>
 <h3 id="changed">🔄 Changed<a class="headerlink" href="#changed" title="Permanent link">¶</a></h3>
 <ul>
-<li><strong><code>--threads</code> is now a hard, validated thread budget.</strong> It is the <em>total</em> worker
+<li>
+<p><strong>Per-transcript count columns now use <code>|</code> between transcripts, not <code>;</code> (ME-2).</strong>
+<code>transcript_read_counts</code> / <code>transcript_fragment_counts</code> (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) and <code>TXRC</code> / <code>TXFC</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)
+  separate transcripts with <code>|</code> — e.g. <code>ENST…:AD,RD,DP|ENST…:AD,RD,DP</code>. <code>;</code> is the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO
+  field separator, so the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> path already converted to <code>|</code> while <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> emitted raw <code>;</code>; the
+  engine now emits <code>|</code> directly so all three (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, the documented header) agree.
+  <strong>Consumers that split the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column on <code>;</code> must switch to <code>|</code>.</strong></p>
+</li>
+<li>
+<p><strong><code>--threads</code> is now a hard, validated thread budget.</strong> It is the <em>total</em> worker
   budget for one gbcms process (multi-sample parallelism is Nextflow's job — N
   concurrent processes, each pinned to <code>task.cpus</code>). <code>--threads 0</code> is now rejected
   loudly instead of silently becoming rayon's all-cores default (which would
   oversubscribe a small SLURM allocation); all rayon pools are sized through
-  <code>resolve_thread_budget</code>, and the resolved budget is logged. Counts are unaffected.</li>
+  <code>resolve_thread_budget</code>, and the resolved budget is logged. Counts are unaffected.</p>
+</li>
 </ul>
 <h3 id="packaging">📦 Packaging<a class="headerlink" href="#packaging" title="Permanent link">¶</a></h3>
 <ul>
@@ -806,7 +835,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   enter the read cache, not whether they are counted). Affects only the
   non-default flag combination; default behavior is unchanged.</li>
 </ul>
-<h3 id="fixed">🐛 Fixed<a class="headerlink" href="#fixed" title="Permanent link">¶</a></h3>
+<h3 id="fixed_1">🐛 Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Read-level supplementary/secondary double-count</strong> under <code>--no-filter-secondary</code>
   / <code>--no-filter-supplementary</code> (see Changed above).</li>
@@ -870,7 +899,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>merge_legacy_naming</code> in <code>nextflow.config</code>.</li>
 <li><strong>Polars dependency</strong>: <code>polars&gt;=1.0.0</code> added as a core dependency.</li>
 </ul>
-<h3 id="fixed_1">🔧 Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">¶</a></h3>
+<h3 id="fixed_2">🔧 Fixed<a class="headerlink" href="#fixed_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment consensus: INDEL structural evidence priority</strong> — When R1 and R2
   of a duplex fragment disagree on an insertion or deletion, the read with direct
@@ -935,7 +964,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   after <code>GR</code> (before strand bias fields), matching the diagnostic proximity
   principle.</li>
 </ul>
-<h3 id="fixed_2">🔧 Fixed<a class="headerlink" href="#fixed_2" title="Permanent link">¶</a></h3>
+<h3 id="fixed_3">🔧 Fixed<a class="headerlink" href="#fixed_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Wrong-length insertion Phase 3 fallback</strong> (PAX5-class discordance fix):
   <code>check_insertion</code> now routes wrong-length insertions at the strict anchor
@@ -1011,7 +1040,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow <code>library_type</code> parameter</strong>: Registered in <code>nextflow.config</code> and
   threaded through <code>rna/main.nf</code> for amplicon mode support in pipeline runs.</li>
 </ul>
-<h3 id="fixed_3">🔧 Fixed<a class="headerlink" href="#fixed_3" title="Permanent link">¶</a></h3>
+<h3 id="fixed_4">🔧 Fixed<a class="headerlink" href="#fixed_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>lib.rs</code> dead-code comment</strong>: Updated annotation type comment to reflect
   that annotation types are now fully wired (previously noted as unused).</li>
@@ -1100,7 +1129,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Diagnostic flag summary logging</strong>: <code>info</code>-level log of diagnostic flag
   distribution per sample (e.g., <code>ZERO_ALT=12, PARTIAL_DOMINANT=3</code>).</li>
 </ul>
-<h3 id="fixed_4">🔧 Fixed<a class="headerlink" href="#fixed_4" title="Permanent link">¶</a></h3>
+<h3 id="fixed_5">🔧 Fixed<a class="headerlink" href="#fixed_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>partial_alt</code> description</strong>: Documentation corrected to reflect that
   <code>partial_alt</code> is now populated for all variant types, not just <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex.</li>
@@ -1193,7 +1222,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Extended trace fields</strong>: IO diagnostics (<code>rchar</code>, <code>wchar</code>, <code>syscr</code>, <code>syscw</code>,
   <code>read_bytes</code>, <code>write_bytes</code>) added to execution trace.</li>
 </ul>
-<h3 id="fixed_5">🔧 Fixed<a class="headerlink" href="#fixed_5" title="Permanent link">¶</a></h3>
+<h3 id="fixed_6">🔧 Fixed<a class="headerlink" href="#fixed_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dual-axis gridline artifact</strong>: Fixed Plotly <code>yaxis2</code> overlay creating a
   duplicate x-axis line in <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> histograms by standardizing <code>mirror: false</code>,
@@ -1310,7 +1339,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   failures matrix, invariant table, updated test counts.</li>
 </ul>
 <h2 id="401-2026-03-24">[4.0.1] - 2026-03-24<a class="headerlink" href="#401-2026-03-24" title="Permanent link">¶</a></h2>
-<h3 id="fixed_6">🔧 Fixed<a class="headerlink" href="#fixed_6" title="Permanent link">¶</a></h3>
+<h3 id="fixed_7">🔧 Fixed<a class="headerlink" href="#fixed_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>was_normalized</code> flag accuracy</strong>: Split into granular <code>was_anchor_resolved</code>
   and <code>was_left_aligned</code> flags with backward-compatible <code>was_normalized</code> getter.
@@ -1371,7 +1400,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   column-level schema reference for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output under all mode/flag
   combinations (DNA vs RNA, with <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, with normalization columns).</li>
 </ul>
-<h3 id="fixed_7">🔧 Fixed<a class="headerlink" href="#fixed_7" title="Permanent link">¶</a></h3>
+<h3 id="fixed_8">🔧 Fixed<a class="headerlink" href="#fixed_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Complex indel classification</strong> (<code>fix: correctly classify complex indels</code>):
   Fixes for Phase 3 dispatch cases 2, 3, and 4 — previously misclassified
@@ -1454,7 +1483,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>py-gbcms</code> deprecation stub</strong>: <code>compat/py-gbcms/</code> shim published to PyPI
   as <code>py-gbcms==3.0.0</code> for backwards compatibility during migration.</li>
 </ul>
-<h3 id="fixed_8">🔧 Fixed<a class="headerlink" href="#fixed_8" title="Permanent link">¶</a></h3>
+<h3 id="fixed_9">🔧 Fixed<a class="headerlink" href="#fixed_9" title="Permanent link">¶</a></h3>
 <ul>
 <li>Parquet output compression switched from SNAPPY to ZSTD(1).</li>
 <li>Resolved <code>mypy</code> <code>AlignedSegment.cigar</code> attribute errors in test suite.</li>
@@ -1478,7 +1507,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Per-phase ClassifyResult counters</strong>: Diagnostic counters track how many reads are resolved in each classification phase (Phase 1/2/2.5/3)</li>
 <li><strong><code>--trace</code> flag</strong>: Two-tier Rust logging — <code>--verbose</code> for debug, <code>--trace</code> for per-read classification diagnostics via pyo3-log</li>
 </ul>
-<h3 id="fixed_9">🔧 Fixed<a class="headerlink" href="#fixed_9" title="Permanent link">¶</a></h3>
+<h3 id="fixed_10">🔧 Fixed<a class="headerlink" href="#fixed_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2/2.5 overcounting</strong>: Complex variants with <code>REF &gt;&gt; ALT</code> now skip Phase 2 Case B and Phase 2.5 when <code>ref_len &gt; 2 × alt_len</code> — short ALT trivially matches, edit distance is biased toward shorter allele</li>
 <li><strong>Phase 3 bypass for pure DEL/INS</strong>: Removed <code>is_worth_realignment</code> prefilter — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> structure is ground truth for pure deletions/insertions, prefilter was overcounting</li>
@@ -1516,7 +1545,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
 </ul>
-<h3 id="fixed_10">🔧 Fixed<a class="headerlink" href="#fixed_10" title="Permanent link">¶</a></h3>
+<h3 id="fixed_11">🔧 Fixed<a class="headerlink" href="#fixed_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Allele-based dispatch</strong> (<code>check_allele_with_qual</code>): Routes by <code>ref_len × alt_len</code> instead of unreliable <code>variant_type</code> string labels. <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (1×1), insertion (1×N), deletion (N×1), <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (N×N equal), complex (N×M unequal) — eliminates misrouting when callers emit inconsistent type annotations</li>
 <li><strong><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> semiglobal argument order</strong>: Fixed <code>ref_hap</code>/<code>alt_hap</code> argument swap in semiglobal alignment that was scoring reads against the wrong haplotype</li>
@@ -1534,7 +1563,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Tests</strong>: Updated <code>test_fuzzy_complex::TestLengthMismatch</code> expectation to reflect Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback behavior</li>
 </ul>
 <h2 id="261-2026-02-19">[2.6.1] - 2026-02-19<a class="headerlink" href="#261-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="fixed_11">🔧 Fixed<a class="headerlink" href="#fixed_11" title="Permanent link">¶</a></h3>
+<h3 id="fixed_12">🔧 Fixed<a class="headerlink" href="#fixed_12" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
@@ -1561,7 +1590,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Docs restructure</strong>: Split monolithic <code>variant-counting.md</code> into 4 focused pages: Variant Normalization, Allele Classification, Counting Metrics, Read Filters</li>
 <li><strong><abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> install docs</strong>: Micromamba-based source install with Python 3.13</li>
 </ul>
-<h3 id="fixed_12">🔧 Fixed<a class="headerlink" href="#fixed_12" title="Permanent link">¶</a></h3>
+<h3 id="fixed_13">🔧 Fixed<a class="headerlink" href="#fixed_13" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Interior REF guard</strong> for large deletions (&gt;50bp): Reads falling entirely within a deleted region are now correctly classified as REF instead of ALT by Smith-Waterman</li>
 <li><strong>Windowed reciprocal overlap</strong>: Improved shifted indel detection using bidirectional overlap scoring</li>
@@ -1587,7 +1616,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Nextflow <code>--filter_by_sample</code> parameter</strong> and samplesheet <code>tsb</code> column for multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows</li>
 <li><strong>Nextflow documentation</strong>: Samplesheet <code>tsb</code> column guide, <code>--filter_by_sample</code> parameter reference, multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> filtering examples</li>
 </ul>
-<h3 id="fixed_13">🔧 Fixed<a class="headerlink" href="#fixed_13" title="Permanent link">¶</a></h3>
+<h3 id="fixed_14">🔧 Fixed<a class="headerlink" href="#fixed_14" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment quality extraction</strong> (critical): All variant-type handlers (<code>check_insertion</code>, <code>check_deletion</code>, <code>check_mnp</code>, <code>check_complex</code>) now return actual <code>base_qual</code> from <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk instead of 0 — fixes systematic ALT undercount for indels in fragment-level consensus</li>
 <li><strong>FILTER_MAF heredoc conflict</strong>: Restructured script from Python shebang to <code>python3 &lt;&lt; 'PYEOF'</code> pattern, resolving <code>SyntaxError</code> from bash syntax in Python context</li>
@@ -1620,7 +1649,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>--version</code> flag</strong>: Added to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>gbcms --version</code>)</li>
 <li><strong>Deploy-Docs Workflow</strong>: Replaced <code>mkdocs gh-deploy</code> with <code>mike</code> for multi-version documentation; deploys <code>stable</code> (tagged version) from main and <code>dev</code> from develop branch; added <code>extra.version.provider: mike</code> to <code>mkdocs.yml</code> with version switcher widget</li>
 </ul>
-<h3 id="fixed_14">🔧 Fixed<a class="headerlink" href="#fixed_14" title="Permanent link">¶</a></h3>
+<h3 id="fixed_15">🔧 Fixed<a class="headerlink" href="#fixed_15" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment double-counting bug</strong>: R1+R2 pairs previously counted as two independent observations; now collapsed via quality-weighted consensus</li>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Input Hardening</strong>: Graceful handling of missing/malformed fields with warnings instead of crashes</li>
@@ -1653,7 +1682,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>GitHub Actions</strong>: Consolidated deploy-docs workflows, added caching and PR validation</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Wheels</strong>: Migrated from <code>manylinux_2_28</code> to <code>manylinux_2_34</code> (AlmaLinux 9 with OpenSSL 3.0+)</li>
 </ul>
-<h3 id="fixed_15">🔧 Fixed<a class="headerlink" href="#fixed_15" title="Permanent link">¶</a></h3>
+<h3 id="fixed_16">🔧 Fixed<a class="headerlink" href="#fixed_16" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow</strong>: Empty <code>--suffix</code> argument no longer causes failures</li>
 <li><strong>Admonitions</strong>: Converted GitHub-style alerts to MkDocs syntax</li>
@@ -1682,7 +1711,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Updated MkDocs with mermaid2 plugin and snippet includes</li>
 </ul>
 <h2 id="212-2025-11-25">[2.1.2] - 2025-11-25<a class="headerlink" href="#212-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="fixed_16">🔧 Fixed<a class="headerlink" href="#fixed_16" title="Permanent link">¶</a></h3>
+<h3 id="fixed_17">🔧 Fixed<a class="headerlink" href="#fixed_17" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Fixed source distribution size issue by correctly excluding large files (tests, docs, etc.) via <code>pyproject.toml</code> configuration.</li>
 </ul>
@@ -1691,7 +1720,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <p class="admonition-title">Yanked Release</p>
 <p>This release was yanked from PyPI due to a source distribution size limit error. Use 2.1.2 instead.</p>
 </div>
-<h3 id="fixed_17">🔧 Fixed<a class="headerlink" href="#fixed_17" title="Permanent link">¶</a></h3>
+<h3 id="fixed_18">🔧 Fixed<a class="headerlink" href="#fixed_18" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Added MANIFEST.in (failed to work with Hatchling) to reduce source distribution size</li>
 <li><strong>Documentation</strong>: Added comprehensive Installation guide</li>
@@ -1812,7 +1841,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Unused Dependencies</strong>: Removed <code>cyvcf2</code> and <code>numba</code> (no longer needed)</li>
 <li><strong>Pre-commit Hooks</strong>: Removed in favor of explicit linting in <abbr title="Continuous Integration - Automated build and test system">CI</abbr></li>
 </ul>
-<h3 id="fixed_18">🐛 Fixed<a class="headerlink" href="#fixed_18" title="Permanent link">¶</a></h3>
+<h3 id="fixed_19">🐛 Fixed<a class="headerlink" href="#fixed_19" title="Permanent link">¶</a></h3>
 <ul>
 <li>Correct handling of complex variants (MNPs, DelIns)</li>
 <li>Proper strand assignment for fragment counting</li>
