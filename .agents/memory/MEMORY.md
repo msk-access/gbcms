@@ -18,7 +18,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 
 ## Tooling / build
 - [pyproject is the dep source of truth](deps-pyproject-source-of-truth.md) — CI/Docker bypass lockfiles; declare every directly-imported package.
-- [Black version skew (venv vs CI)](black-version-skew-venv-vs-ci.md) — lint with mambaforge black 26.5.1 (=CI), not the venv's stale 25.9.0; they disagree and fake "drift".
+- [Lint-tool version skew (local vs CI)](black-version-skew-venv-vs-ci.md) — local black (venv 25.9) and clippy (rustc 1.91) lag CI (black 26.5, stable 1.96); run CI's versions before trusting a clean/drift result.
 - [Legacy count_bam parity oracle](legacy-parity-oracle.md) — feature-gated (`legacy-parity`, default on); shipped wheel omits it; mirror binned-path changes in both or parity breaks.
 
 ## Validation / testing

@@ -1,21 +1,30 @@
 ---
 name: black-version-skew-venv-vs-ci
-description: Lint-gate with mambaforge black 26.5.1 (matches CI), not the venv's stale 25.9.0 — they disagree and cause false "drift".
+description: Lint tools are stale locally vs CI (black AND clippy) — run CI's versions or you get false "clean" / phantom "drift".
 metadata:
   type: feedback
 ---
 
-The repo `.venv` ships a **stale compiled `black` 25.9.0** (`.venv/bin/black`) and has
-**no pip** (uv-style minimal venv), so `pip install` silently targets mambaforge instead.
-CI installs **black 26.5.1** (`pyproject` dev pin `black>=25.9.0` → newest). 25.9.0 and
-26.5.1 format differently — notably the multiline `plotly_calls.append(f"""...""")`
-calls in `src/gbcms/report/mfsd_report.py`: 25.9.0 wants them rewrapped, 26.5.1 (and CI)
-consider the original clean.
+Local lint tools here lag CI, so a locally-clean run can still fail CI (and vice-versa).
+Two confirmed cases:
 
-**Why:** trusting the venv's `black` once produced a phantom "drift" in `mfsd_report.py`
-and a near-miss "fix" that would have *broken* CI lint (CI's 26.5.1 wants the original).
+**black** — the repo `.venv` ships a **stale compiled `black` 25.9.0** (`.venv/bin/black`)
+with **no pip** (uv-style venv), so `pip install` silently targets mambaforge. CI installs
+**black 26.5.1** (`pyproject` dev pin `black>=25.9.0` → newest). They disagree on the
+multiline `plotly_calls.append(f"""...""")` in `mfsd_report.py`: 25.9.0 wants a rewrap,
+26.5.1 (CI) considers the original clean → trusting the venv black once produced a phantom
+"drift" and a near-miss "fix" that would have *broken* CI.
 
-**How to apply:** for the black step of the lint gate, run the CI-matching binary
-explicitly — `/Users/shahr2/mambaforge/bin/black --check src/ tests/` (26.5.1) — not the
-activated-venv `black`. Confirm a file is *actually* drifted under 26.5.x before
-reformatting it. `ruff`/`mypy`/the Rust gate are unaffected. See [[harness-stay-small]].
+**clippy** — local `rustup` stable lagged (rustc 1.91 / clippy 0.1.91) while CI's
+`dtolnay/rust-toolchain@stable` was 1.96. The newer clippy flags lints the old one misses
+(e.g. `clippy::unnecessary_sort_by` at `rna.rs:402`), so a locally-clean `cargo clippy`
+failed CI once `-D warnings` was enabled.
+
+**Why:** CI is the source of truth; a stale local toolchain gives false confidence.
+
+**How to apply:** before trusting a lint gate, run the **CI-matching** version:
+- black → `/Users/shahr2/mambaforge/bin/black --check src/ tests/` (26.5.x), not `.venv/bin/black`.
+- clippy/cargo test → `rustup update stable` first, then `rustup run stable cargo clippy
+  --all-targets -- -D warnings` (both feature configs) and `cargo test`.
+`ruff`/`mypy` have not shown skew. See [[harness-stay-small]]. CI now runs `cargo test` +
+clippy itself (both feature configs), so regressions surface there too.

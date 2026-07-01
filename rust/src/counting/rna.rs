@@ -399,7 +399,7 @@ pub fn apply_consensus_splicing(
 
     // Sort by start position (descending) so we can remove from right to left
     // without invalidating earlier indices
-    consensus_introns.sort_by(|a, b| b.0.cmp(&a.0));
+    consensus_introns.sort_by_key(|b| std::cmp::Reverse(b.0));
 
     let mut result = ref_ctx.to_vec();
     for (intron_start, intron_end) in &consensus_introns {
