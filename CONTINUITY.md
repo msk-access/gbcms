@@ -40,19 +40,27 @@ as-built plan-deviation notes (#47).
 (reverse/forward/unstranded, #48) and per-fragment ASJD junction dedup (#50) — both
 data-driven from the real FORTE BAM. ME-7 is now *implemented*, not a deviation.
 
-**LO-2 (this change):** the legacy `count_bam` parity oracle is feature-gated
-(`legacy-parity`, default on) out of the shipped wheel. **M1–M4 ledger is now clean;
-M5 is next** (scoped — see the M5 scoping notes in session history / the plan's M5
-tickets PF-1–4, ME-13, LO-3, LO-14).
+**LO-2:** the legacy `count_bam` parity oracle is feature-gated (`legacy-parity`, default
+on) out of the shipped wheel.
+
+**M5 — mostly shipped, re-scoped on real-data measurement.** The tickets were measured on
+a real deep cfDNA panel + RNA sample (counting is already ~84% parallel-efficient; the
+cohort runs as N concurrent 4-core Nextflow processes, so the *node* — memory, GTF
+re-parse ×N — is the constraint, not the single run). The three items with real cohort ROI
+are merged: **LO-14** (hard `--threads` budget, #53), **PF-1** (output-aware mFSD gating
+for per-process memory, #54), and **M5a** (GTF index cache + `build-gtf-cache` pre-warm +
+automatic Nextflow wiring; ~9s → ~0.05s per sample, #55). The rest were **dropped as
+low-ROI/liabilities**: ME-13 (0% re-fetch measured), PF-3 (decode threads oversubscribe
+under fan-out), PF-4 (moot at 1 sample/process). See the plan's §"M5 — empirical scoping".
 
 ## Next
-M1–M4 + all pre-M5 cleanup are done. Remaining plan work:
-1. **M5 — Performance/IO** (PF-1–4, ME-13, LO-3, LO-14): throughput on deep panels —
-   the first work with *observable* user impact. Scoped: recommended PR order is
-   thread-budget (LO-14+PF-3) → pool reuse (PF-4) → mFSD gating (PF-1) → bin sort
-   (PF-2 sort-only) → fetch-range tightening (ME-13+LO-3, parity-sensitive, last).
-2. **M6 — Hygiene & contracts** (HI-1, ME-1/2/12, LO-1/4–8/13): exit codes, output
-   parity, docs. Continuous cleanup; DX-1 already landed.
+M1–M4 and the load-bearing M5 items (LO-14 / PF-1 / M5a) are done. Remaining, smallest-first:
+1. **M5 leftovers (optional):** **PF-2** (bin cost-sort — niche; cfDNA has no long-pole),
+   **LO-3** (document the bin-span soft floor, don't cap), and **M5b** (deep-bin fetch
+   reduction — the only remaining cfDNA lever, parity-sensitive; not started).
+2. **M6 — Hygiene & contracts** (HI-1 exit codes, ME-1/2/12 output parity, LO-1/4–8/13
+   docs/stubs/numerics): the next substantive milestone. Continuous cleanup; DX-1 + LO-2
+   already landed.
 
 ## Open follow-ups (tracked, not lost)
 - ✅ BAM-level binned↔legacy parity gate, incl. large deletions — **done (#46)**.
