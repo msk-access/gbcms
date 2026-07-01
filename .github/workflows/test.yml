@@ -122,8 +122,10 @@ jobs:
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
 
-      - name: Install Rust toolchain
+      - name: Install Rust toolchain (with clippy)
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Install dependencies
         run: |
@@ -148,6 +150,57 @@ jobs:
       - name: Run mypy
         run: |
           mypy src/
+
+      # Rust lint gate. Clippy is check-only (no final link), so it runs cleanly on
+      # Linux. Both feature configs are linted: default (dev/test, `legacy-parity` on)
+      # and the shipped-wheel config (`--no-default-features`). Warnings fail the build.
+      - name: Run clippy (default features)
+        run: |
+          cd rust && cargo clippy --all-targets -- -D warnings
+      - name: Run clippy (no-default-features — shipped-wheel config)
+        run: |
+          cd rust && cargo clippy --lib --no-default-features -- -D warnings
+
+  rust-test:
+    name: Rust unit tests (cargo test)
+    # Runs on macOS deliberately: this pyo3 `extension-module` crate links `cargo test`
+    # binaries the way the shipped extension does, and on Linux the test binary can't
+    # resolve the Python symbols (no libpython host at link time), so the ~210 Rust
+    # `#[cfg(test)]` unit tests run here. The ARM runner also exercises the Neon COITree
+    # backend the GTF cache rebuilds. (Linux compilation is covered by the maturin builds
+    # in the `test`/`docker-test` jobs; the binned↔legacy *parity* assertions are
+    # Python-level — helpers.count_both — and already run under pytest in the `test` job.)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install htslib (rust-htslib build dependency)
+        run: |
+          brew install htslib autoconf automake
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      # The ~210 Rust unit tests (mFSD stats, GTF-cache roundtrip, thread-budget guard,
+      # alignment/CIGAR, WFA, contig normalization, …) — logic not reached through the
+      # Python FFI tests. Default features keep `legacy-parity` ON so the `count_bam`
+      # path also compiles under test. This is the gate that was missing.
+      - name: Cargo test (default features — Rust unit tests)
+        run: |
+          cd rust && cargo test
+
+      # The shipped wheel builds `--no-default-features` (no `count_bam`); confirm that
+      # configuration compiles and its tests pass too.
+      - name: Cargo test (no-default-features — shipped-wheel config)
+        run: |
+          cd rust && cargo test --lib --no-default-features
 
   docker-test:
     runs-on: ubuntu-latest
