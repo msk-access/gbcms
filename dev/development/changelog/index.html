@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -708,6 +708,15 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed">🔄 Changed<a class="headerlink" href="#changed" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>--threads</code> is now a hard, validated thread budget.</strong> It is the <em>total</em> worker
+  budget for one gbcms process (multi-sample parallelism is Nextflow's job — N
+  concurrent processes, each pinned to <code>task.cpus</code>). <code>--threads 0</code> is now rejected
+  loudly instead of silently becoming rayon's all-cores default (which would
+  oversubscribe a small SLURM allocation); all rayon pools are sized through
+  <code>resolve_thread_budget</code>, and the resolved budget is logged. Counts are unaffected.</li>
+</ul>
 <h3 id="packaging">📦 Packaging<a class="headerlink" href="#packaging" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>The shipped wheel no longer exports the legacy <code>count_bam</code> parity oracle.</strong> The
@@ -716,9 +725,47 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   Production always used <code>count_bam_binned</code>, so this only trims a test-only symbol from
   the wheel. Dev/test builds keep it (default on) so the parity suite still runs.</li>
 </ul>
+<h3 id="performance">⚡ Performance<a class="headerlink" href="#performance" title="Permanent link">¶</a></h3>
+<ul>
+<li>
+<p><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> is now computed only when requested (<code>--mfsd</code>/<code>--mfsd-parquet</code>/<code>--mfsd-report</code>).</strong>
+  Previously the engine always built the per-fragment size arrays and ran the full
+  KS/<abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>/delta statistics for every variant, then discarded them unless an <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> output
+  was selected. The binned production path now gates this work on the <code>mfsd</code> flag
+  (plumbed from <code>OutputConfig.mfsd</code>), so the default <code>--dna</code> run no longer holds the
+  per-variant <code>ref_sizes</code>/<code>alt_sizes</code> arrays across the whole sample — the dominant <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>
+  memory cost, and the one that multiplies under Nextflow fan-out (N concurrent
+  processes). The size-array statistics are also factored into a single shared
+  <code>compute_mfsd_stats</code> helper used by both the binned and legacy paths. <strong>Counts are
+  unaffected:</strong> validated on 3,040 real <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> variants — all 246 non-<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns are
+  byte-identical with <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> on vs off, and the 41 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns appear only when enabled.</p>
+</li>
+<li>
+<p><strong>GTF annotation can be cached on disk (<code>--gtf-cache-dir</code>).</strong> Parsing a full Ensembl
+  GTF takes ~9s, and under a Nextflow cohort that cost was paid once <em>per sample</em>. When
+  <code>--gtf-cache-dir</code> is set, the parsed intermediate (exon records, splice sites, introns,
+  chrom map) is serialized once and reused on later runs over the same GTF + variant set,
+  dropping the annotation load from ~9s to <strong>~0.05s</strong> (validated on the full GRCh38.111
+  GTF; cold-vs-warm output byte-identical across 47 variants and all annotation columns).
+  The architecture-specific interval trees are <em>not</em> cached — they are rebuilt from the
+  cached records on load, so a cache file is portable across x86/ARM. Caching is
+  best-effort: a missing/corrupt/stale-version/unwritable cache logs and falls back to a
+  normal parse, never affecting correctness.</p>
+</li>
+</ul>
 <h3 id="added">✨ Added<a class="headerlink" href="#added" title="Permanent link">¶</a></h3>
 <ul>
-<li><strong><code>--strandedness</code> for RNA mode (<code>reverse</code> | <code>forward</code> | <code>unstranded</code>).</strong> The
+<li>
+<p><strong><code>gbcms build-gtf-cache</code> — pre-warm the GTF index cache for a cohort.</strong> A dedicated
+  command (<code>--gtf --variants --gtf-cache-dir</code>, no <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>) that parses the GTF once and writes
+  the cache, so a fan-out of per-sample <code>gbcms rna --gtf-cache-dir &lt;same-dir&gt;</code> jobs all
+  start warm. This is what makes the cache pay off under concurrency: without a pre-warm
+  step, samples launched together all cold-miss and each re-parses the GTF. Run it as a
+  single Nextflow process upstream of the per-sample fan-out so the whole cohort parses
+  the GTF exactly once. See <code>docs/nextflow/parameters.md</code>.</p>
+</li>
+<li>
+<p><strong><code>--strandedness</code> for RNA mode (<code>reverse</code> | <code>forward</code> | <code>unstranded</code>).</strong> The
   read→transcript-strand fold was previously hardcoded to <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>/reverse
   (fr-firststrand, featureCounts <code>-s 2</code>); it is now selectable to support forward
   (fr-secondstrand, <code>-s 1</code>) and unstranded (<code>-s 0</code>) libraries. The fold drives both
@@ -727,9 +774,10 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   preserving prior behavior and matching the FORTE pipeline default. Unknown values
   are rejected loudly at both the model and FFI layers. Validated on a real
   reverse-stranded RNA sample: <code>reverse + forward = unstranded</code> read counts exactly
-  (100% strand partition) at ACTB and GAPDH.</li>
+  (100% strand partition) at ACTB and GAPDH.</p>
+</li>
 </ul>
-<h3 id="changed">🔄 Changed<a class="headerlink" href="#changed" title="Permanent link">¶</a></h3>
+<h3 id="changed_1">🔄 Changed<a class="headerlink" href="#changed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>ASJD junction evidence is now counted per fragment, not per mate.</strong> A molecule
   whose R1 and R2 overlap on a short cDNA insert can have both mates carry the same
@@ -775,7 +823,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>CRAM Index Auto-Discovery</strong>: The Nextflow pipeline automatically discovers <code>.crai</code> or <code>.cram.crai</code> indexes in the same directory as the CRAM files.</li>
 <li><strong>Reference Binding</strong>: Rust engine's <code>IndexedReader</code> correctly initializes CRAM references using the provided <code>--fasta</code>.</li>
 </ul>
-<h3 id="changed_1">🔄 Changed<a class="headerlink" href="#changed_1" title="Permanent link">¶</a></h3>
+<h3 id="changed_2">🔄 Changed<a class="headerlink" href="#changed_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Provenance Comment Lines</strong>: Output <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> files now include <code>#gbcms vX.Y.Z</code> and <code>#command ...</code> provenance lines before the header row in both DNA and RNA modes.</li>
 <li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> Header Provenance</strong>: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> headers now include <code>##source</code>, <code>##gbcms_command</code>, <code>##reference</code>, and <code>##contig</code> metadata in both DNA and RNA modes.</li>
@@ -1227,7 +1275,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>ALT-contains-N rejection</strong>: Variants where the ALT allele contains N are
   rejected with <code>FAIL_ALT_CONTAINS_N</code> validation status and <code>warn!</code>-level log.</li>
 </ul>
-<h4 id="changed_2">🔄 Changed<a class="headerlink" href="#changed_2" title="Permanent link">¶</a></h4>
+<h4 id="changed_3">🔄 Changed<a class="headerlink" href="#changed_3" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality strategy</strong>: Replaced all-or-nothing <code>min(BQ across block)</code> gate
   with <strong>masked per-position evaluation</strong> — each discriminating position (REF ≠ ALT)
@@ -1283,7 +1331,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   power-set sibling combinatorics for true multi-haplotype evaluation.
   Only affects <code>--alignment-backend hmm</code>.</li>
 </ul>
-<h3 id="changed_3">🔄 Changed<a class="headerlink" href="#changed_3" title="Permanent link">¶</a></h3>
+<h3 id="changed_4">🔄 Changed<a class="headerlink" href="#changed_4" title="Permanent link">¶</a></h3>
 <ul>
 <li>Normalization logging now shows granular breakdown:
   <code>"X normalized (Y anchor-resolved, Z left-aligned)"</code> in both Rust engine
@@ -1521,7 +1569,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style conversion</strong>: Corrected complex variant handling in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→internal coordinate conversion</li>
 <li><strong>Lint</strong>: Fixed ruff I001/E402/B905 and black formatting in <code>pipeline.py</code></li>
 </ul>
-<h3 id="changed_4">🔄 Changed<a class="headerlink" href="#changed_4" title="Permanent link">¶</a></h3>
+<h3 id="changed_5">🔄 Changed<a class="headerlink" href="#changed_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dead code removed</strong>: <code>GenomicInterval</code> class, <code>Variant.interval</code> property, <code>fragment_counting</code> config field</li>
 <li><strong><code>fetch_single_base()</code> refactored</strong>: Delegates to <code>fetch_region()</code>, removing 33 lines of duplicated chr-prefix retry logic</li>
@@ -1547,7 +1595,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>splitCsv</code> quote handling</strong>: Added <code>quote:'"'</code> parameter for correct RFC 4180 parsing of comma-separated TSB values within quoted CSV fields</li>
 <li><strong>mypy <code>no-redef</code> error</strong>: Removed redundant type annotation in <code>output.py</code> else branch</li>
 </ul>
-<h3 id="changed_5">🔄 Changed<a class="headerlink" href="#changed_5" title="Permanent link">¶</a></h3>
+<h3 id="changed_6">🔄 Changed<a class="headerlink" href="#changed_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output column prefix default</strong>: Changed from <code>t_</code> to empty string (no prefix). Use <code>--column-prefix t_</code> for legacy <code>t_ref_count</code> / <code>t_alt_count</code> style columns ⚠️</li>
 <li><strong><code>MafWriter</code> refactored</strong>: <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> path preserves all original columns verbatim; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> path builds row from GDC fieldnames with <code>CoordinateKernel</code> coordinate conversion</li>
@@ -1566,7 +1614,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Normalization Docs</strong>: Added indel normalization and coordinate handling to <code>docs/reference/input-formats.md</code></li>
 <li><strong>47 Tests</strong>: Up from 16 — added <code>test_shifted_indels.py</code> (15), <code>test_fuzzy_complex.py</code> (14), <code>test_fragment_consensus.py</code> (4)</li>
 </ul>
-<h3 id="changed_6">🔄 Changed<a class="headerlink" href="#changed_6" title="Permanent link">¶</a></h3>
+<h3 id="changed_7">🔄 Changed<a class="headerlink" href="#changed_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--min-baseq</code> default</strong>: <code>0</code> → <code>20</code> (Phred Q20) — activates quality masking by default for improved accuracy on low-coverage samples ⚠️</li>
 <li><strong><code>--version</code> flag</strong>: Added to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>gbcms --version</code>)</li>
@@ -1597,7 +1645,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Performance Benchmarks</strong>: <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> duplex sample metrics in documentation</li>
 <li><strong>RHEL 8 Installation Guide</strong>: Conda-based source installation for legacy Linux</li>
 </ul>
-<h3 id="changed_7">🔄 Changed<a class="headerlink" href="#changed_7" title="Permanent link">¶</a></h3>
+<h3 id="changed_8">🔄 Changed<a class="headerlink" href="#changed_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dockerfile</strong>: Added <code>procps</code>, <code>bash</code>, OCI labels, <code>maturin[patchelf]</code>, selective COPY</li>
 <li><strong>Nextflow Config</strong>: <code>--platform linux/amd64</code>, shell config, local profile, observability (trace/report/timeline/dag)</li>
@@ -1619,7 +1667,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Mermaid Diagrams</strong>: Architecture documentation with interactive flowcharts</li>
 <li><strong>Release Guide</strong>: Comprehensive <code>docs/RELEASE.md</code> with git-flow workflow</li>
 </ul>
-<h3 id="changed_8">🔄 Changed<a class="headerlink" href="#changed_8" title="Permanent link">¶</a></h3>
+<h3 id="changed_9">🔄 Changed<a class="headerlink" href="#changed_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Folder Restructure</strong>: Moved Rust code to <code>rust/</code> (bundled as <code>gbcms._rs</code>)</li>
 <li><strong>Config Hierarchy</strong>: Nested Pydantic models (<code>ReadFilters</code>, <code>QualityThresholds</code>, <code>OutputConfig</code>) for better organization</li>
@@ -1673,7 +1721,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Reorganized documentation structure</strong> with clear <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> vs Nextflow separation</li>
 <li><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Quick Start guide</strong> (<code>docs/quick-start.md</code>)</li>
 </ul>
-<h3 id="changed_9">🔧 Changed<a class="headerlink" href="#changed_9" title="Permanent link">¶</a></h3>
+<h3 id="changed_10">🔧 Changed<a class="headerlink" href="#changed_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Documentation workflow</strong>: docs now live on <code>main</code> branch with automated deployment</li>
 <li><strong>GitBook integration</strong>: configured to read from <code>main</code> branch</li>
@@ -1732,7 +1780,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Comprehensive Tests</strong>: Extended test suite with accuracy and filter validation</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr>/<abbr title="Continuous Deployment - Automated release system">CD</abbr></strong>: GitHub Actions workflows for testing, linting, and releases</li>
 </ul>
-<h3 id="changed_10">🔄 Changed<a class="headerlink" href="#changed_10" title="Permanent link">¶</a></h3>
+<h3 id="changed_11">🔄 Changed<a class="headerlink" href="#changed_11" title="Permanent link">¶</a></h3>
 <h4 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">¶</a></h4>
 <ul>
 <li>Migrated from pure Python to hybrid Python/Rust architecture</li>
@@ -1745,7 +1793,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns</strong>: Standardized column names (<code>t_ref_count_forward</code>, <code>t_alt_count_reverse</code>, etc.)</li>
 <li><strong>Coordinate System</strong>: Internal 0-based indexing with correct conversion for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (1-based) and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output</li>
 </ul>
-<h4 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">¶</a></h4>
+<h4 id="performance_1">Performance<a class="headerlink" href="#performance_1" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Speed</strong>: 20x+ faster than v1.x on typical datasets</li>
 <li><strong>Memory</strong>: Efficient per-thread <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> readers with minimal overhead</li>
