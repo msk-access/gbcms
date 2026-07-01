@@ -74,6 +74,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ Added
 
+- **VCF now emits the mFSD sub-/mono-nucleosomal fields (ME-1).** `MFSD_SUB_NUC_REF_FRAC`,
+  `MFSD_SUB_NUC_ALT_FRAC`, `MFSD_SUB_NUC_ENRICHMENT`, `MFSD_MONO_NUC_REF_FRAC`,
+  `MFSD_MONO_NUC_ALT_FRAC` were computed under `--mfsd` and written to MAF but silently
+  dropped from VCF — they're now in the VCF INFO too (VCF↔MAF parity), taking the VCF mFSD
+  surface to 13 INFO fields. Also corrected long-standing count drift in the docs/CLI help:
+  `--mfsd` adds **41** MAF columns (not 34) and **13** VCF INFO fields (not 7).
+
 - **`gbcms build-gtf-cache` — pre-warm the GTF index cache for a cohort.** A dedicated
   command (`--gtf --variants --gtf-cache-dir`, no BAM) that parses the GTF once and writes
   the cache, so a fan-out of per-sample `gbcms rna --gtf-cache-dir <same-dir>` jobs all

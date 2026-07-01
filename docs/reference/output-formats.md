@@ -212,6 +212,11 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `MFSD_REF_LLR` | Float | Log-likelihood ratio for REF fragments |
     | `MFSD_ALT_COUNT` | Integer | ALT-classified fragments in 50–1000 bp size window |
     | `MFSD_REF_COUNT` | Integer | REF-classified fragments in 50–1000 bp size window |
+    | `MFSD_SUB_NUC_REF_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |
+    | `MFSD_SUB_NUC_ALT_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of ALT fragments |
+    | `MFSD_SUB_NUC_ENRICHMENT` | Float | Sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator |
+    | `MFSD_MONO_NUC_REF_FRAC` | Float | Mono-nucleosomal (150–200 bp) fraction of REF fragments |
+    | `MFSD_MONO_NUC_ALT_FRAC` | Float | Mono-nucleosomal (150–200 bp) fraction of ALT fragments |
 
 === "--gtf only (RNA mode)"
 

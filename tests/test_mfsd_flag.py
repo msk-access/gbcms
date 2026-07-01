@@ -104,6 +104,7 @@ class _MockVariant:
         self.pos = 999  # 0-based
         self.ref = "A"
         self.alt = "T"
+        self.original_id = "."  # VCF ID column
         self.metadata = None  # triggers VCF→MAF path in MafWriter
 
 
@@ -166,21 +167,41 @@ def test_vcf_writer_no_mfsd_info_by_default(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 4: VcfWriter — 8 MFSD INFO lines when mfsd=True
+# Test 4: VcfWriter — 13 MFSD INFO lines when mfsd=True
 # ---------------------------------------------------------------------------
 
 
 def test_vcf_writer_mfsd_info_when_enabled(tmp_path: Path):
-    """With mfsd=True, VCF header should contain exactly 8 ##INFO=<ID=MFSD_...> lines."""
+    """With mfsd=True, VCF header should contain exactly 13 ##INFO=<ID=MFSD_...> lines.
+
+    8 core (delta/KS/pval/qval/alt-llr/ref-llr/alt-count/ref-count; HI-11 added
+    MFSD_QVAL_ALT_REF) + 5 sub/mono-nucleosomal fractions (ME-1, VCF↔MAF parity).
+    """
     path = tmp_path / "out.vcf"
     writer = VcfWriter(path, sample_name="TUMOR", mfsd=True)
     writer._write_header()
     writer.close()
     content = path.read_text()
     mfsd_lines = [line_ for line_ in content.splitlines() if "##INFO=<ID=MFSD_" in line_]
-    assert (
-        len(mfsd_lines) == 8
-    ), f"Expected 8 MFSD INFO header lines, got {len(mfsd_lines)}"  # HI-11 added MFSD_QVAL_ALT_REF
+    assert len(mfsd_lines) == 13, f"Expected 13 MFSD INFO header lines, got {len(mfsd_lines)}"
+
+
+def test_vcf_writer_mfsd_subnuc_values_in_data_row(tmp_path: Path):
+    """ME-1: the sub/mono-nucleosomal fractions reach the VCF data-row INFO (not just the
+    header), matching the MAF columns — VCF↔MAF parity."""
+    from gbcms.io.output import _fmt_vcf
+
+    path = tmp_path / "out.vcf"
+    writer = VcfWriter(path, sample_name="TUMOR", mfsd=True)
+    writer.write(_MockVariant(), _MockCounts(mfsd=True))
+    writer.close()
+
+    info = [ln for ln in path.read_text().splitlines() if not ln.startswith("#")][0].split("\t")[7]
+    assert f"MFSD_SUB_NUC_REF_FRAC={_fmt_vcf(0.15)}" in info, info
+    assert f"MFSD_SUB_NUC_ALT_FRAC={_fmt_vcf(0.25)}" in info, info
+    assert f"MFSD_SUB_NUC_ENRICHMENT={_fmt_vcf(1.67)}" in info, info
+    assert f"MFSD_MONO_NUC_REF_FRAC={_fmt_vcf(0.60)}" in info, info
+    assert f"MFSD_MONO_NUC_ALT_FRAC={_fmt_vcf(0.45)}" in info, info
 
 
 # ---------------------------------------------------------------------------
