@@ -186,6 +186,25 @@ def _make_rna_counts() -> types.SimpleNamespace:
         sense_strand_alt_count=4,
         rna_editing_site_overlap=False,
         splice_spanning_count=2,
+        # GTF/ASJD fields (only reached on the has_gtf output path). The per-transcript
+        # counts use '|' between transcripts, as the engine now emits (ME-2).
+        exon_boundary_dist=None,
+        transcript_read_counts="ENSTA:1,2,3|ENSTB:4,5,6",
+        transcript_fragment_counts="ENSTA:0,1,1|ENSTB:2,3,3",
+        asjd_flag=False,
+        asjd_pval=1.0,
+        asjd_qval=1.0,
+        asjd_ref_junction="",
+        asjd_alt_junction="",
+        asjd_ref_motif="",
+        asjd_alt_motif="",
+        asjd_ref_known=0,
+        asjd_alt_known=0,
+        asjd_n_ref_junc=0,
+        asjd_n_alt_junc=0,
+        asjd_n_ref_total=0,
+        asjd_n_alt_total=0,
+        asjd_diagnostic="",
     )
 
 
@@ -218,6 +237,38 @@ def test_rna_vcf_data_row_has_rna_info_values(tmp_path, rna_variant):
     assert "ANT=3" in info_field, f"ANT=3 not found in INFO: {info_field}"
     assert "ASEN=4" in info_field, f"ASEN=4 not found in INFO: {info_field}"
     assert "SPL=2" in info_field, f"SPL=2 not found in INFO: {info_field}"
+
+
+def test_transcript_counts_use_pipe_delimiter_in_vcf(tmp_path, rna_variant):
+    """ME-2: per-transcript counts are '|'-separated, not ';'. ';' is the VCF INFO field
+    separator, so a ';'-joined value corrupts parsing — the VCF writer must carry the
+    engine's '|' verbatim and never re-introduce ';' in TXRC/TXFC. (MAF writes the same
+    value through unchanged, output.py.)"""
+    counts = _make_rna_counts()
+    vcf_path = tmp_path / "tx.vcf"
+    vw = VcfWriter(vcf_path, sample_name="TUMOR", mode="rna", has_gtf=True)
+    vw.write(rna_variant, counts)
+    vw.close()
+
+    info = [ln for ln in vcf_path.read_text().splitlines() if not ln.startswith("#")][0].split(
+        "\t"
+    )[7]
+    assert "TXRC=ENSTA:1,2,3|ENSTB:4,5,6" in info, info
+    assert "TXFC=ENSTA:0,1,1|ENSTB:2,3,3" in info, info
+
+
+def test_transcript_counts_use_pipe_delimiter_in_maf(tmp_path, rna_variant):
+    """ME-2 for MAF (MSK's primary format): the per-transcript count columns separate
+    transcripts with '|', matching the VCF output and the documented header."""
+    counts = _make_rna_counts()
+    maf_path = tmp_path / "tx.maf"
+    mw = MafWriter(maf_path, mode="rna", has_gtf=True)
+    mw.write(rna_variant, counts, sample_name="TUMOR")
+    mw.close()
+
+    row = next(_read_maf_output(maf_path))  # DictReader, skips '#' provenance lines
+    assert row["transcript_read_counts"] == "ENSTA:1,2,3|ENSTB:4,5,6"
+    assert row["transcript_fragment_counts"] == "ENSTA:0,1,1|ENSTB:2,3,3"
 
 
 def test_rna_vcf_editing_flag_present_when_overlap(tmp_path, rna_variant):

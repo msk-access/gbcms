@@ -463,6 +463,14 @@ adding decode threads on top of the rayon budget. See §"M5 — empirical scopin
 **Locations:** computed `engine.rs:1494-1502`, MAF `output.py:583-587`, VCF block `output.py:916-925` (omits them). **Fix:** either add `MFSD_SUB_NUC_*`/`MFSD_MONO_NUC_*` INFO fields to `_write_header`/`write`, or skip computing them when output is VCF (couple with PF-1's gate). Decide intended VCF surface. **Effort:** S.
 
 ## ME-2 — Transcript-count delimiter `;` vs documented `|`
+**Status: Done (2026-07-01).** Standardized on `|` (the VCF-INFO-safe choice — `;` is the
+VCF INFO separator, which is why the writer had to repair `;`→`|` for VCF only, leaving MAF
+inconsistent). The engine now joins transcripts with `|` (`engine.rs`), so MAF, VCF, and the
+documented `ENST:AD,RD,DP|…` header all agree; the redundant Python `;`→`|` repair for
+TXRC/TXFC was dropped. Other `;`-joined fields (gbcms_status, diagnostics) are unchanged.
+Docs updated (rna-annotation.md, output-formats.md MAF section, the Rust doc-comment). Test:
+`tests/test_rna_output.py::test_transcript_counts_use_pipe_delimiter_in_vcf`.
+
 **Locations:** join `engine.rs:2385`; header says `|` `output.py:819`; VCF repairs `:955`; MAF writes raw `;` `:485`. **Fix:** join with `|` in Rust and drop the Python `replace`, or standardize on `;` and fix the header. One delimiter. **Effort:** XS.
 
 ## ME-3 — Soft-clip boundary differs between `check_complex` Phase 1 and `extract_raw_read_window`

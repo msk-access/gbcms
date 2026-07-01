@@ -118,8 +118,8 @@ overlaps multiple transcripts with different exon structures.
 
 | Column | Format | Example |
 |:-------|:-------|:--------|
-| `transcript_read_counts` | `ENST:AD,RD,DP;...` | `ENST00000269305:11,140,162;ENST00000445888:7,95,108` |
-| `transcript_fragment_counts` | `ENST:ADF,RDF,DPF;...` | `ENST00000269305:6,72,83;ENST00000445888:4,48,55` |
+| `transcript_read_counts` | `ENST:AD,RD,DP\|...` | `ENST00000269305:11,140,162\|ENST00000445888:7,95,108` |
+| `transcript_fragment_counts` | `ENST:ADF,RDF,DPF\|...` | `ENST00000269305:6,72,83\|ENST00000445888:4,48,55` |
 
 !!! note "Invariant"
     For each transcript: `fragment_count ≤ read_count` (fragments are

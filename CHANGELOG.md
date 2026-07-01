@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔄 Changed
 
+- **Per-transcript count columns now use `|` between transcripts, not `;` (ME-2).**
+  `transcript_read_counts` / `transcript_fragment_counts` (MAF) and `TXRC` / `TXFC` (VCF)
+  separate transcripts with `|` — e.g. `ENST…:AD,RD,DP|ENST…:AD,RD,DP`. `;` is the VCF INFO
+  field separator, so the VCF path already converted to `|` while MAF emitted raw `;`; the
+  engine now emits `|` directly so all three (MAF, VCF, the documented header) agree.
+  **Consumers that split the MAF column on `;` must switch to `|`.**
+
 - **`--threads` is now a hard, validated thread budget.** It is the *total* worker
   budget for one gbcms process (multi-sample parallelism is Nextflow's job — N
   concurrent processes, each pinned to `task.cpus`). `--threads 0` is now rejected
