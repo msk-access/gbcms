@@ -12,8 +12,8 @@ mFSD (modified Fragment Size Distribution) analysis is **opt-in** via `--mfsd`.
 ## Column Gating
 
 - Without `--mfsd`: 145 MAF columns (0 `mfsd_*`)
-- With `--mfsd`: 179 MAF columns (+34 `mfsd_*`)
-- VCF INFO: exactly 7 `MFSD_*` fields added only when `--mfsd` is set
+- With `--mfsd`: 186 MAF columns (+41 `mfsd_*`)
+- VCF INFO: exactly 13 `MFSD_*` fields added only when `--mfsd` is set
 - Columns are **absent** when off, not NA-filled
 
 ## Parquet Output
@@ -22,7 +22,8 @@ mFSD (modified Fragment Size Distribution) analysis is **opt-in** via `--mfsd`.
 - Written by `write_fsd_parquet()` in Rust via `arrow`/`parquet` crates
 - ZSTD(1) compression: `parquet = { default-features = false, features = ["arrow", "zstd"] }`
 - `ref_sizes`/`alt_sizes` are Rust-internal — no `#[pyo3(get)]`
-- Called from `pipeline.py` after `count_bam()`, not inside the counting engine
+- Called from `pipeline.py` after `count_bam_binned()`, not inside the counting engine
+  (`count_bam` is the feature-gated legacy parity oracle, not the production path)
 
 ## Statistics (watch-outs)
 

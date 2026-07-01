@@ -64,6 +64,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   oversubscribe a small SLURM allocation); all rayon pools are sized through
   `resolve_thread_budget`, and the resolved budget is logged. Counts are unaffected.
 
+### 📖 Documentation
+
+- **Repo-wide documentation accuracy sweep.** A four-way audit against the current code
+  corrected the docs where they had drifted: the mFSD schema (now **41 MAF columns / 13 VCF
+  `MFSD_*` INFO fields**, up from a stale 34/7, with the q-value + nucleosomal-fraction +
+  CH-flag columns added); the mono-nucleosomal range (150–200 bp); `gbcms_status` values (the
+  real `FAIL_*` prefixes + the two missing statuses); crashing examples (`normalize` uses
+  `--output <file.tsv>`, not `--output-dir`; corrected RNA MAF column names in the quickstart);
+  the Nextflow README defaults (on-by-default filters, `pairhmm` backend, Nextflow ≥22.10.1) and
+  its missing param surface (`--strandedness`, `--gtf`, `--library_type`, `--mfsd*`, `--merge_*`);
+  and previously-undocumented features (`build-gtf-cache` / `--gtf-cache-dir`, exit-code
+  semantics, the `--threads` hard budget, and contig auto-reconciliation). Also fixed the
+  `--rna-editing-db` CLI help (it loads a REDIportal **TABLE1**, not a VCF) and several
+  developer-doc references to files/paths that had moved.
+
 ### 🧹 Internal
 
 - **Single type stub for the Rust extension (LO-1).** Removed the orphan

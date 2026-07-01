@@ -154,7 +154,7 @@ and CLI validation:
 ```bash
 pytest -v                                    # Full suite
 pytest tests/test_shifted_indels.py -v      # Windowed + shifted indel-specific
-pytest tests/test_variant_checks.py -v      # Core allele-classification
+pytest tests/test_accuracy.py -v            # Core allele-classification
 ```
 
 ### Rust Unit Tests (cargo test)

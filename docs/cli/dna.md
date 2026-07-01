@@ -42,7 +42,7 @@ gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
 | `--show-normalization` | `false` | Append `norm_*` columns showing left-aligned coordinates |
 | `--context-padding` | `5` | Minimum flanking bases for haplotype construction. Range **1–50**, enforced at parse time. Auto-increased in repeat regions when `--adaptive-context` is enabled. |
 | `--adaptive-context` | `true` | Dynamically increase context padding in [tandem repeat regions](../reference/variant-normalization.md#adaptive-context-padding) |
-| `--threads` | `1` | Number of threads |
+| `--threads` | `1` | Total worker-thread budget for this run (minimum 1; `0` is rejected). All parallelism — read classification and any decode threads — stays within this budget, so gbcms never oversubscribes a small allocation. Multi-sample parallelism is the orchestrator's job (e.g. N concurrent Nextflow processes, each pinned to `task.cpus`), not this flag's. |
 
 ## mFSD Options
 

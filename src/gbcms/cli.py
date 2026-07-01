@@ -603,7 +603,7 @@ def rna(
     rna_editing_db: Path | None = typer.Option(
         None,
         "--rna-editing-db",
-        help="Path to REDIportal VCF of known A-to-I RNA editing sites.",
+        help="Path to REDIportal TABLE1 file (tab-delimited) of known A-to-I RNA editing sites.",
     ),
     gtf: Path | None = typer.Option(
         None,
