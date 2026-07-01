@@ -664,10 +664,14 @@ live in the linked ticket sections above; this is the index.
 - *(Already done in M6: LO-2 feature-gate, DX-1 label sweep.)*
 
 ### Test / CI gaps (surfaced by the 2026-06-30 coverage review; fold into M6)
-- **⚠ CI runs only `pytest` — no `cargo test`, no `cargo clippy`, no parity execution.** The
-  205+ Rust tests and the **binned↔legacy parity oracle never run in CI**, so a parity/engine
-  regression would ship undetected. **Highest-value fix:** add `cargo test` (default features
-  *and* `--no-default-features`) + `cargo clippy -D warnings` to `.github/workflows/test.yml`.
+- **⚠ CI ran no `cargo test` and no `cargo clippy`.** The ~210 Rust `#[cfg(test)]` unit tests
+  (mFSD math, GTF-cache roundtrip, thread-budget guard, alignment/CIGAR, WFA, contig
+  normalization) and clippy never ran in CI, so a Rust-logic regression could ship green. Note
+  the binned↔legacy **parity** assertions are *Python-level* (`helpers.count_both`) and **do**
+  already run under pytest against the default-features wheel — the gap was the Rust side.
+  **Fixed by #58:** a `rust-test` job (`cargo test`, default *and* `--no-default-features`, on
+  macOS since the pyo3 `extension-module` crate can't link a test binary on Linux) + `cargo
+  clippy -D warnings` (both feature configs) added to the `lint` job.
 - **CRAM** counting has zero tests (only BAM fixtures).
 - **HI-1** needs a test that an all-samples-fail run returns non-zero (couples with the fix).
 - **`--threads N`** has a reject-`0` test but no positive cap-enforcement test.
