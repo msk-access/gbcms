@@ -3664,7 +3664,7 @@ transparently.  See <a href="#cli-dna-required-arguments">CRAM Support</a> for d
 <p>When a GTF file is provided, gbcms builds a <code>COITree</code>-based annotation index and adds:</p>
 <ul>
 <li><strong><code>exon_boundary_dist</code></strong> — Signed distance to the nearest exon boundary (positive = exonic, negative = intronic)</li>
-<li><strong>Per-transcript read/fragment counts</strong> — Semicolon-separated <code>GENE:TX:READ_COUNT</code> and <code>GENE:TX:FRAG_COUNT</code> strings</li>
+<li><strong>Per-transcript read/fragment counts</strong> — <code>|</code>-separated <code>GENE:TX:READ_COUNT</code> and <code>GENE:TX:FRAG_COUNT</code> strings</li>
 <li><strong>ASJD detection</strong> — 14 columns for Aberrant Splice Junction Detection, comparing read splice junctions against annotated transcript splice sites</li>
 </ul>
 <p>See <a href="#reference-rna-annotation">RNA Annotation</a> for full details.</p>
@@ -4722,7 +4722,11 @@ left-alignment — but <strong>without</strong> performing any <abbr title="Bina
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_status</code></td>
-<td style="text-align: left;"><code>PASS</code>, <code>PASS;WARN_HOMOPOLYMER_DECOMP</code>, <code>REF_MISMATCH</code>, or <code>FETCH_FAILED</code></td>
+<td style="text-align: left;">Verdict: <code>PASS</code> or <code>FAIL</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_status_reason</code></td>
+<td style="text-align: left;"><code>\|</code>-separated reason tags, empty for a clean PASS (e.g. <code>WARN_REF_CORRECTED</code>, <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>was_anchor_resolved</code></td>
@@ -6593,7 +6597,7 @@ Use mouse to pan and zoom
   naming convention compatible with your variant file. (The <code>chr</code>-prefix and <code>M</code>/<code>MT</code>
   differences between the <strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> and the variants are auto-reconciled — see below — but the
   reference anchor is fetched by name, so a variant whose contig is absent from the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> is
-  rejected with <code>FAIL_FETCH_FAILED</code>.)</li>
+  rejected with verdict <code>FAIL</code> and reason <code>FETCH_FAILED</code>.)</li>
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-input-formats-__codelineno-3-1"></a><span class="c1"># Create index if missing</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-input-formats-__codelineno-3-2"></a>samtools<span class="w"> </span>faidx<span class="w"> </span>reference.fa
@@ -6722,30 +6726,31 @@ self-describing.</p>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#reference-output-formats-__codelineno-0-6"></a>##contig=&lt;ID=chr2,length=242193529&gt;
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#reference-output-formats-__codelineno-0-7"></a>##FILTER=&lt;ID=PASS,Description="All filters passed"&gt;
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#reference-output-formats-__codelineno-0-8"></a>##INFO=&lt;ID=DP,Number=1,Type=Integer,Description="Total Depth"&gt;
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status"&gt;
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags"&gt;
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail"&gt;
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-output-formats-__codelineno-0-24"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-output-formats-__codelineno-0-25"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#reference-output-formats-__codelineno-0-26"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#reference-output-formats-__codelineno-0-27"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#reference-output-formats-__codelineno-0-28"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
-<a id="__codelineno-0-29" name="__codelineno-0-29" href="#reference-output-formats-__codelineno-0-29"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#reference-output-formats-__codelineno-0-30"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
-<a id="__codelineno-0-31" name="__codelineno-0-31" href="#reference-output-formats-__codelineno-0-31"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
-<a id="__codelineno-0-32" name="__codelineno-0-32" href="#reference-output-formats-__codelineno-0-32"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#reference-output-formats-__codelineno-0-9"></a>##INFO=&lt;ID=GS,Number=1,Type=String,Description="gbcms verdict: PASS or FAIL"&gt;
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#reference-output-formats-__codelineno-0-10"></a>##INFO=&lt;ID=GSR,Number=1,Type=String,Description="gbcms status reason tags, |-separated (. when none)"&gt;
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#reference-output-formats-__codelineno-0-11"></a>##INFO=&lt;ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags"&gt;
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#reference-output-formats-__codelineno-0-12"></a>##INFO=&lt;ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail"&gt;
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#reference-output-formats-__codelineno-0-13"></a>##INFO=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)"&gt;
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#reference-output-formats-__codelineno-0-14"></a>##INFO=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT Depth"&gt;
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#reference-output-formats-__codelineno-0-15"></a>##INFO=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base Depth (duplex masking QC)"&gt;
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#reference-output-formats-__codelineno-0-16"></a>##INFO=&lt;ID=SB_PVAL,Number=1,Type=Float,Description="Fisher strand bias p-value"&gt;
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#reference-output-formats-__codelineno-0-17"></a>##INFO=&lt;ID=SB_OR,Number=1,Type=Float,Description="Fisher strand bias odds ratio"&gt;
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#reference-output-formats-__codelineno-0-18"></a>##INFO=&lt;ID=FSB_PVAL,Number=1,Type=Float,Description="Fisher fragment strand bias p-value"&gt;
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#reference-output-formats-__codelineno-0-19"></a>##INFO=&lt;ID=FSB_OR,Number=1,Type=Float,Description="Fisher fragment strand bias odds ratio"&gt;
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#reference-output-formats-__codelineno-0-20"></a>##FORMAT=&lt;ID=GT,Number=1,Type=String,Description="Genotype"&gt;
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#reference-output-formats-__codelineno-0-21"></a>##FORMAT=&lt;ID=DP,Number=1,Type=Integer,Description="Total read depth"&gt;
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#reference-output-formats-__codelineno-0-22"></a>##FORMAT=&lt;ID=AD,Number=R,Type=Integer,Description="Allelic depths (ref,alt)"&gt;
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#reference-output-formats-__codelineno-0-23"></a>##FORMAT=&lt;ID=ADF,Number=R,Type=Integer,Description="Allelic depths on forward strand (ref_fwd,alt_fwd)"&gt;
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#reference-output-formats-__codelineno-0-24"></a>##FORMAT=&lt;ID=ADR,Number=R,Type=Integer,Description="Allelic depths on reverse strand (ref_rev,alt_rev)"&gt;
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#reference-output-formats-__codelineno-0-25"></a>##FORMAT=&lt;ID=VAF,Number=1,Type=Float,Description="Variant allele fraction (read level)"&gt;
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#reference-output-formats-__codelineno-0-26"></a>##FORMAT=&lt;ID=FAD,Number=R,Type=Integer,Description="Fragment allelic depths (ref_frag,alt_frag)"&gt;
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#reference-output-formats-__codelineno-0-27"></a>##FORMAT=&lt;ID=FADF,Number=R,Type=Integer,Description="Fragment depths on forward strand"&gt;
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#reference-output-formats-__codelineno-0-28"></a>##FORMAT=&lt;ID=FADR,Number=R,Type=Integer,Description="Fragment depths on reverse strand"&gt;
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#reference-output-formats-__codelineno-0-29"></a>##FORMAT=&lt;ID=FAF,Number=1,Type=Float,Description="Variant allele fraction (fragment level)"&gt;
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#reference-output-formats-__codelineno-0-30"></a>##FORMAT=&lt;ID=AAD,Number=1,Type=Integer,Description="Any ALT depth (alt + partial_alt)"&gt;
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#reference-output-formats-__codelineno-0-31"></a>##FORMAT=&lt;ID=PAD,Number=1,Type=Integer,Description="Partial ALT depth"&gt;
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#reference-output-formats-__codelineno-0-32"></a>##FORMAT=&lt;ID=NAD,Number=1,Type=Integer,Description="N-base depth"&gt;
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#reference-output-formats-__codelineno-0-33"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Provenance headers (v5.3.0)</p>
@@ -7473,7 +7478,12 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>gbcms_status</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Normalization/counting status. Semicolon-separated multi-value. First token is always <code>PASS</code> or <code>FAIL_*</code>. Examples: <code>PASS</code>, <code>PASS;WARN_REF_CORRECTED</code>, <code>FAIL_REF_MISMATCH</code>.</td>
+<td style="text-align: left;">Verdict: exactly <code>PASS</code> or <code>FAIL</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_status_reason</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Reason tag(s), <code>\|</code>-separated; empty for a clean PASS. PASS reasons: <code>WARN_REF_CORRECTED</code>, <code>WARN_HOMOPOLYMER_DECOMP</code>, <code>MULTI_ALLELIC</code>. FAIL reasons: <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>EMPTY_ALLELE</code>, <code>ALT_CONTAINS_N</code>. Reasons stack, e.g. <code>WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP</code>. Identical string in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GSR</code> INFO.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_diagnostic</code></td>
@@ -8387,8 +8397,9 @@ Use mouse to pan and zoom
 <p>Only for <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input (<code>is_maf=true</code>) when REF or ALT is <code>-</code>, or when REF and ALT have different lengths (complex indels). <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input skips this step entirely.</p>
 </div>
 <div class="admonition warning">
-<p class="admonition-title">FAIL_FETCH_FAILED</p>
-<p>If the anchor base cannot be fetched (e.g., chromosome not in <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), the variant's <code>gbcms_status</code> is set to <code>FAIL_FETCH_FAILED</code> and it is excluded from counting.</p>
+<p class="admonition-title">FETCH_FAILED</p>
+<p>If the anchor base cannot be fetched (e.g., chromosome not in <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), the variant's
+<code>gbcms_status</code> is set to <code>FAIL</code> with reason <code>FETCH_FAILED</code>, and it is excluded from counting.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-step-2-ref-validation">Step 2: REF Validation<a class="headerlink" href="#reference-variant-normalization-step-2-ref-validation" title="Permanent link">¶</a></h2>
@@ -8419,8 +8430,8 @@ Use mouse to pan and zoom
     Exact --&gt;|"Yes"| Pass(["✅ PASS"]):::pass
     Exact --&gt;|"No"| Sim["Compute similarity\n(matching bases / max length)"]
     Sim --&gt; Thresh{"≥ 90%?"}
-    Thresh --&gt;|"Yes"| Corrected(["⚠️ PASS;WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
-    Thresh --&gt;|"No"| Fail(["❌ FAIL_REF_MISMATCH\n→ excluded from counting"]):::fail
+    Thresh --&gt;|"Yes"| Corrected(["⚠️ PASS + WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
+    Thresh --&gt;|"No"| Fail(["❌ FAIL + REF_MISMATCH\n→ excluded from counting"]):::fail
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
@@ -8430,10 +8441,10 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
-<p>When a variant receives <code>PASS;WARN_REF_CORRECTED</code>, the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s REF allele is <strong>replaced with the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> sequence</strong> for all downstream steps (left-alignment, haplotype construction). The original <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF is preserved in <code>original_ref</code> for auditing.</p>
+<p>When a variant gets a <code>WARN_REF_CORRECTED</code> reason (verdict stays <code>PASS</code>), the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s REF allele is <strong>replaced with the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> sequence</strong> for all downstream steps (left-alignment, haplotype construction). The original <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF is preserved in <code>original_ref</code> for auditing.</p>
 <div class="admonition example">
 <p class="admonition-title">Real-World Example: EGFR Exon 19 Deletion</p>
-<p>A 27bp complex EGFR deletion had 26/27 bases matching the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (96%), with only the last base differing due to a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact. Without tolerance, this variant was silently rejected with zero counts. With tolerant validation, it receives <code>PASS;WARN_REF_CORRECTED</code> and produces valid counts.</p>
+<p>A 27bp complex EGFR deletion had 26/27 bases matching the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (96%), with only the last base differing due to a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact. Without tolerance, this variant was silently rejected with zero counts. With tolerant validation, it passes with a <code>WARN_REF_CORRECTED</code> reason and produces valid counts.</p>
 </div>
 <div class="admonition important">
 <p class="admonition-title">Common Causes of REF_MISMATCH</p>
@@ -8726,7 +8737,7 @@ Use mouse to pan and zoom
     CountDecomp --&gt; Compare
     Compare{"corrected AD &gt; original AD?"}
 
-    Compare --&gt;|"Yes"| UseDecomp["Return corrected counts"] --&gt; FlagWarn["gbcms_status =\nPASS;WARN_HOMOPOLYMER_DECOMP"]:::warn
+    Compare --&gt;|"Yes"| UseDecomp["Return corrected counts"] --&gt; FlagWarn["reason +=\nWARN_HOMOPOLYMER_DECOMP"]:::warn
     Compare --&gt;|"No"| UseOrig["Return original counts"] --&gt; FlagPass["gbcms_status = PASS"]:::pass
 
     classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
@@ -8744,15 +8755,20 @@ Use mouse to pan and zoom
 <p class="admonition-title">Real-World: SOX2</p>
 <p><strong>SOX2</strong> at chr17:181430901: <code>CCCCCC→T</code> (6bp→1bp, net −5bp).
 Original count: <strong>alt=3</strong>. Corrected <code>CCCCCC→CCCCT</code> count: <strong>alt=79</strong>.
-Corrected wins → <code>gbcms_status = PASS;WARN_HOMOPOLYMER_DECOMP</code>.</p>
+Corrected wins → <code>gbcms_status = PASS</code>, <code>gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP</code>.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-validation-status-reference">Validation Status Reference<a class="headerlink" href="#reference-variant-normalization-validation-status-reference" title="Permanent link">¶</a></h2>
-<p>Every <code>PreparedVariant</code> carries a <code>gbcms_status</code> string:</p>
+<p>Status is carried in <strong>two</strong> fields: a verdict, <code>gbcms_status</code> (exactly <code>PASS</code> or
+<code>FAIL</code>), and a <code>|</code>-separated reason list, <code>gbcms_status_reason</code> (empty for a clean
+PASS). Both appear in the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (two columns) and the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO (<code>GS</code> = verdict,
+<code>GSR</code> = reasons). <code>|</code> is used (never <code>;</code>/<code>,</code>, which are <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-unsafe), so the reason
+string is byte-identical in the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> and the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>.</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Status</th>
+<th style="text-align: left;"><code>gbcms_status</code></th>
+<th style="text-align: left;"><code>gbcms_status_reason</code></th>
 <th style="text-align: left;">Meaning</th>
 <th style="text-align: center;">Counted?</th>
 </tr>
@@ -8760,49 +8776,61 @@ Corrected wins → <code>gbcms_status = PASS;WARN_HOMOPOLYMER_DECOMP</code>.</p>
 <tbody>
 <tr>
 <td style="text-align: left;"><code>PASS</code></td>
+<td style="text-align: left;"><em>(empty)</em></td>
 <td style="text-align: left;">REF matches <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> exactly</td>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>PASS;WARN_REF_CORRECTED</code></td>
+<td style="text-align: left;"><code>PASS</code></td>
+<td style="text-align: left;"><code>WARN_REF_CORRECTED</code></td>
 <td style="text-align: left;">REF ≥90% match; corrected to <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF</td>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>PASS;WARN_HOMOPOLYMER_DECOMP</code></td>
-<td style="text-align: left;">Passed, but corrected allele was used (see above)</td>
+<td style="text-align: left;"><code>PASS</code></td>
+<td style="text-align: left;"><code>WARN_HOMOPOLYMER_DECOMP</code></td>
+<td style="text-align: left;">Passed, but the corrected/decomposed allele was used</td>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>PASS;MULTI_ALLELIC</code></td>
-<td style="text-align: left;">Passed, variant overlaps another variant at the same locus (sibling ALT exclusion active)</td>
+<td style="text-align: left;"><code>PASS</code></td>
+<td style="text-align: left;"><code>MULTI_ALLELIC</code></td>
+<td style="text-align: left;">Passed; overlaps a sibling variant at the same locus (sibling-ALT exclusion active)</td>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>FAIL_REF_MISMATCH</code></td>
+<td style="text-align: left;"><code>FAIL</code></td>
+<td style="text-align: left;"><code>REF_MISMATCH</code></td>
 <td style="text-align: left;">REF allele &lt;90% match against reference genome</td>
 <td style="text-align: center;">❌</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>FAIL_FETCH_FAILED</code></td>
-<td style="text-align: left;">Could not fetch reference region</td>
+<td style="text-align: left;"><code>FAIL</code></td>
+<td style="text-align: left;"><code>FETCH_FAILED</code></td>
+<td style="text-align: left;">Could not fetch the reference region</td>
 <td style="text-align: center;">❌</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>FAIL_EMPTY_ALLELE</code></td>
-<td style="text-align: left;">REF or ALT allele is empty (malformed / non-left-anchored indel)</td>
+<td style="text-align: left;"><code>FAIL</code></td>
+<td style="text-align: left;"><code>EMPTY_ALLELE</code></td>
+<td style="text-align: left;">Empty REF or ALT (malformed / non-left-anchored indel)</td>
 <td style="text-align: center;">❌</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>FAIL_ALT_CONTAINS_N</code></td>
+<td style="text-align: left;"><code>FAIL</code></td>
+<td style="text-align: left;"><code>ALT_CONTAINS_N</code></td>
 <td style="text-align: left;">ALT allele contains an <code>N</code> base</td>
 <td style="text-align: center;">❌</td>
 </tr>
 </tbody>
 </table>
+<p>Reasons <strong>stack</strong>: a PASS variant can carry <code>WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP</code>.</p>
 <div class="admonition note">
 <p class="admonition-title">Filtering Behavior</p>
-<p>The pipeline filters on <code>gbcms_status.startswith("PASS")</code>, so all <code>PASS</code> and <code>PASS;WARN_*</code> variants proceed to counting. The <code>FAIL_*</code> variants are excluded from counting but are still <strong>written to the output</strong> with their <code>FAIL_*</code> status in the <code>gbcms_status</code> column (and zero counts), so the rejection reason is in the output file, not only the log.</p>
+<p>The pipeline filters on <code>gbcms_status == "PASS"</code>, so every PASS variant — with or
+without warning reasons — proceeds to counting. <code>FAIL</code> variants are excluded from
+counting but still <strong>written to the output</strong> with their <code>FAIL</code> verdict and reason
+(and zero counts), so the rejection reason is in the output file, not only the log.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-limitations">Limitations<a class="headerlink" href="#reference-variant-normalization-limitations" title="Permanent link">¶</a></h2>
@@ -11056,7 +11084,7 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <h2 id="reference-allele-classification-multi-allelic-behavior">Multi-Allelic Behavior<a class="headerlink" href="#reference-allele-classification-multi-allelic-behavior" title="Permanent link">¶</a></h2>
 <p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
 <h3 id="reference-allele-classification-phase-1-annotation">Phase 1: Annotation<a class="headerlink" href="#reference-allele-classification-phase-1-annotation" title="Permanent link">¶</a></h3>
-<p>During normalization, <code>assign_multi_allelic_groups()</code> identifies overlapping variants using a <strong>sweep-line algorithm</strong> over sorted <code>(chrom, pos)</code> coordinates. Variants whose REF spans intersect receive a shared <code>multi_allelic_group</code> ID, and their <code>gbcms_status</code> is appended with <code>;MULTI_ALLELIC</code> (e.g., <code>PASS;MULTI_ALLELIC</code>).</p>
+<p>During normalization, <code>assign_multi_allelic_groups()</code> identifies overlapping variants using a <strong>sweep-line algorithm</strong> over sorted <code>(chrom, pos)</code> coordinates. Variants whose REF spans intersect receive a shared <code>multi_allelic_group</code> ID, and <code>MULTI_ALLELIC</code> is appended to their <code>gbcms_status_reason</code> (the verdict stays <code>PASS</code>).</p>
 <h3 id="reference-allele-classification-phase-2-sibling-alt-exclusion">Phase 2: Sibling ALT Exclusion<a class="headerlink" href="#reference-allele-classification-phase-2-sibling-alt-exclusion" title="Permanent link">¶</a></h3>
 <p>During counting, reads classified as <strong>REF</strong> for a variant are additionally checked against all <strong>sibling variants</strong> in the same group. For each sibling, the full <code>check_allele_with_qual()</code> pipeline (including <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> reconstruction and <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment) determines if the read actually carries the sibling's ALT allele. If so, the read is <strong>excluded from REF</strong> for the current variant.</p>
 <div class="admonition important">
@@ -13012,35 +13040,44 @@ spanning a small repeat motif (e.g., dinucleotide repeat <code>ACAC</code>).</p>
 </tbody>
 </table>
 <h2 id="reference-glossary-validation-status">Validation Status<a class="headerlink" href="#reference-glossary-validation-status" title="Permanent link">¶</a></h2>
+<p>Status is two fields: <code>gbcms_status</code> (verdict <code>PASS</code>/<code>FAIL</code>) and <code>gbcms_status_reason</code>
+(<code>|</code>-separated reason tags, empty for a clean PASS).</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Status</th>
+<th style="text-align: left;"><code>gbcms_status</code></th>
+<th style="text-align: left;"><code>gbcms_status_reason</code></th>
 <th style="text-align: left;">Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td style="text-align: left;"><strong>PASS</strong></td>
+<td style="text-align: left;"><em>(empty)</em></td>
 <td style="text-align: left;">Variant validated against reference, ready for counting</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>PASS;WARN_REF_CORRECTED</strong></td>
+<td style="text-align: left;"><strong>PASS</strong></td>
+<td style="text-align: left;"><strong>WARN_REF_CORRECTED</strong></td>
 <td style="text-align: left;">REF allele ≥90% match; corrected to <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>PASS;WARN_HOMOPOLYMER_DECOMP</strong></td>
+<td style="text-align: left;"><strong>PASS</strong></td>
+<td style="text-align: left;"><strong>WARN_HOMOPOLYMER_DECOMP</strong></td>
 <td style="text-align: left;">Variant spans a homopolymer; dual-counted with corrected allele (corrected won)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>PASS;MULTI_ALLELIC</strong></td>
+<td style="text-align: left;"><strong>PASS</strong></td>
+<td style="text-align: left;"><strong>MULTI_ALLELIC</strong></td>
 <td style="text-align: left;">Variant overlaps another variant at the same locus; sibling ALT exclusion active</td>
 </tr>
 <tr>
+<td style="text-align: left;"><strong>FAIL</strong></td>
 <td style="text-align: left;"><strong>REF_MISMATCH</strong></td>
 <td style="text-align: left;">REF allele does not match the reference genome at the stated position</td>
 </tr>
 <tr>
+<td style="text-align: left;"><strong>FAIL</strong></td>
 <td style="text-align: left;"><strong>FETCH_FAILED</strong></td>
 <td style="text-align: left;">Could not fetch the reference region (chromosome not found, etc.)</td>
 </tr>
@@ -14057,7 +14094,7 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;">ALT = "N" in input <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></td>
-<td style="text-align: left;"><code>FAIL_ALT_CONTAINS_N</code></td>
+<td style="text-align: left;"><code>FAIL</code> + reason <code>ALT_CONTAINS_N</code></td>
 <td style="text-align: left;">—</td>
 <td style="text-align: left;">—</td>
 <td style="text-align: left;"><code>warn</code> (validation)</td>
@@ -14617,6 +14654,21 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="development-changelog-changed">🔄 Changed<a class="headerlink" href="#development-changelog-changed" title="Permanent link">¶</a></h3>
 <ul>
+<li>
+<p><strong><code>gbcms_status</code> is split into a verdict + a reason field (breaking output change).</strong>
+  The status is now two fields with a consistent grammar in both formats: a verdict
+  (<code>gbcms_status</code> = exactly <code>PASS</code> or <code>FAIL</code>) and a <code>|</code>-separated reason list
+  (<code>gbcms_status_reason</code>, empty for a clean PASS). <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> gains the <code>gbcms_status_reason</code>
+  column; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> gains a <code>GSR</code> INFO key. Reason tags dropped their verdict prefix
+  (<code>FAIL_REF_MISMATCH</code> → verdict <code>FAIL</code> + reason <code>REF_MISMATCH</code>; <code>PASS;WARN_REF_CORRECTED</code>
+  → verdict <code>PASS</code> + reason <code>WARN_REF_CORRECTED</code>). Reasons now <strong>stack</strong> with <code>|</code>
+  (<code>WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP</code>), which also fixes a bug where a
+  REF-correction warning was silently dropped on the success path and where
+  <code>WARN_HOMOPOLYMER_DECOMP</code> overwrote any existing reason. <code>|</code> is used (never <code>;</code>/<code>,</code>,
+  both <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-INFO-unsafe), so the reason string is byte-identical in the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column and the
+  <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GSR</code> — no format-specific conversion. <strong>Consumers filtering on <code>FAIL_FETCH_FAILED</code>
+  etc. must switch to <code>gbcms_status == "FAIL"</code> + a <code>gbcms_status_reason</code> check.</strong></p>
+</li>
 <li>
 <p><strong>Fragment-count consensus is labeled accurately (ME-12).</strong> The stale "Majority Rule"
   comment on the <code>BaseCounts</code> fragment fields (<code>DPF</code>/<code>RDF</code>/<code>ADF</code>) is replaced with
@@ -16077,10 +16129,10 @@ chromosome naming is consistent across <abbr title="Variant Call Format - Standa
 auto-reconciled — you do <strong>not</strong> need to pre-harmonize them. A contig that has no match
 in the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is skipped with a one-time <code>WARN</code> (not a silent zero-count). The <strong>reference
 <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></strong>, however, is fetched by the variant's contig name, so the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> must contain that
-contig — otherwise the variant is rejected with <code>FAIL_FETCH_FAILED</code>.</p>
+contig — otherwise the variant is rejected with verdict <code>FAIL</code>, reason <code>FETCH_FAILED</code>.</p>
 </details>
 <details class="question">
-<summary><code>FAIL_FETCH_FAILED</code> in <code>gbcms_status</code> for all variants on a chromosome</summary>
+<summary><code>FETCH_FAILED</code> reason (verdict <code>FAIL</code>) for all variants on a chromosome</summary>
 <p>This means the <strong>reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></strong> anchor could not be fetched for that contig. Because
 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>↔variant contig naming is auto-reconciled, this is now almost always a <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> problem,
 not a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> one. Check:
@@ -16223,21 +16275,21 @@ gbcms requires ≥90% base match to auto-correct; below that, the variant is exc
 - Trailing-base error in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation (fixed by tolerant validation if ≥90% match)</p>
 <p>Diagnose with:
 </p><div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#resources-troubleshooting-__codelineno-13-1"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output<span class="w"> </span>/tmp/norm/normalized.tsv
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#resources-troubleshooting-__codelineno-13-2"></a>grep<span class="w"> </span><span class="s2">"FAIL_REF_MISMATCH"</span><span class="w"> </span>/tmp/norm/normalized.tsv<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5<span class="w">   </span><span class="c1"># gbcms_status column</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#resources-troubleshooting-__codelineno-13-2"></a>grep<span class="w"> </span><span class="s2">"REF_MISMATCH"</span><span class="w"> </span>/tmp/norm/normalized.tsv<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5<span class="w">   </span><span class="c1"># matches the gbcms_status_reason column</span>
 </code></pre></div>
 </details>
 <details class="question">
-<summary><code>PASS;WARN_REF_CORRECTED</code> — is this a problem?</summary>
+<summary><code>WARN_REF_CORRECTED</code> reason (verdict <code>PASS</code>) — is this a problem?</summary>
 <p>The REF allele was ≥90% match — corrected to <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> sequence and counting proceeded normally.
 The original <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF is preserved in the <code>original_ref</code> column (when <code>--show-normalization</code> is set).</p>
 <p>This is <strong>not</strong> a problem in most cases. Common benign cause: 27bp EGFR exon 19 deletion
 with 26/27 bases correct and 1 trailing base that's a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact.</p>
 <p>If you want to audit all corrected variants:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#resources-troubleshooting-__codelineno-14-1"></a>grep<span class="w"> </span><span class="s2">"PASS;WARN_REF_CORRECTED"</span><span class="w"> </span>output.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#resources-troubleshooting-__codelineno-14-1"></a>grep<span class="w"> </span><span class="s2">"WARN_REF_CORRECTED"</span><span class="w"> </span>output.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="w">   </span><span class="c1"># matches the gbcms_status_reason column</span>
 </code></pre></div>
 </details>
 <details class="question">
-<summary><code>PASS;WARN_HOMOPOLYMER_DECOMP</code> — what changed?</summary>
+<summary><code>WARN_HOMOPOLYMER_DECOMP</code> reason (verdict <code>PASS</code>) — what changed?</summary>
 <p>The variant overlapped a homopolymer, and the corrected allele (e.g., <code>CCCCCC→CCCCT</code> instead
 of <code>CCCCCC→T</code>) got more ALT support. The corrected allele counts were used.
 <code>used_decomposed = True</code> in the output.</p>

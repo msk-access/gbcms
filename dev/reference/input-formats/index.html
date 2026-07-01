@@ -1112,7 +1112,7 @@ Use mouse to pan and zoom
   naming convention compatible with your variant file. (The <code>chr</code>-prefix and <code>M</code>/<code>MT</code>
   differences between the <strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> and the variants are auto-reconciled — see below — but the
   reference anchor is fetched by name, so a variant whose contig is absent from the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> is
-  rejected with <code>FAIL_FETCH_FAILED</code>.)</li>
+  rejected with verdict <code>FAIL</code> and reason <code>FETCH_FAILED</code>.)</li>
 </ul>
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a><span class="c1"># Create index if missing</span>
 <a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a>samtools<span class="w"> </span>faidx<span class="w"> </span>reference.fa

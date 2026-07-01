@@ -1982,10 +1982,10 @@ chromosome naming is consistent across <abbr title="Variant Call Format - Standa
 auto-reconciled — you do <strong>not</strong> need to pre-harmonize them. A contig that has no match
 in the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is skipped with a one-time <code>WARN</code> (not a silent zero-count). The <strong>reference
 <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></strong>, however, is fetched by the variant's contig name, so the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> must contain that
-contig — otherwise the variant is rejected with <code>FAIL_FETCH_FAILED</code>.</p>
+contig — otherwise the variant is rejected with verdict <code>FAIL</code>, reason <code>FETCH_FAILED</code>.</p>
 </details>
 <details class="question">
-<summary><code>FAIL_FETCH_FAILED</code> in <code>gbcms_status</code> for all variants on a chromosome</summary>
+<summary><code>FETCH_FAILED</code> reason (verdict <code>FAIL</code>) for all variants on a chromosome</summary>
 <p>This means the <strong>reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></strong> anchor could not be fetched for that contig. Because
 <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>↔variant contig naming is auto-reconciled, this is now almost always a <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> problem,
 not a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> one. Check:
@@ -2128,21 +2128,21 @@ gbcms requires ≥90% base match to auto-correct; below that, the variant is exc
 - Trailing-base error in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation (fixed by tolerant validation if ≥90% match)</p>
 <p>Diagnose with:
 </p><div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output<span class="w"> </span>/tmp/norm/normalized.tsv
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>grep<span class="w"> </span><span class="s2">"FAIL_REF_MISMATCH"</span><span class="w"> </span>/tmp/norm/normalized.tsv<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5<span class="w">   </span><span class="c1"># gbcms_status column</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>grep<span class="w"> </span><span class="s2">"REF_MISMATCH"</span><span class="w"> </span>/tmp/norm/normalized.tsv<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5<span class="w">   </span><span class="c1"># matches the gbcms_status_reason column</span>
 </code></pre></div>
 </details>
 <details class="question">
-<summary><code>PASS;WARN_REF_CORRECTED</code> — is this a problem?</summary>
+<summary><code>WARN_REF_CORRECTED</code> reason (verdict <code>PASS</code>) — is this a problem?</summary>
 <p>The REF allele was ≥90% match — corrected to <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> sequence and counting proceeded normally.
 The original <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF is preserved in the <code>original_ref</code> column (when <code>--show-normalization</code> is set).</p>
 <p>This is <strong>not</strong> a problem in most cases. Common benign cause: 27bp EGFR exon 19 deletion
 with 26/27 bases correct and 1 trailing base that's a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact.</p>
 <p>If you want to audit all corrected variants:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>grep<span class="w"> </span><span class="s2">"PASS;WARN_REF_CORRECTED"</span><span class="w"> </span>output.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>grep<span class="w"> </span><span class="s2">"WARN_REF_CORRECTED"</span><span class="w"> </span>output.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="w">   </span><span class="c1"># matches the gbcms_status_reason column</span>
 </code></pre></div>
 </details>
 <details class="question">
-<summary><code>PASS;WARN_HOMOPOLYMER_DECOMP</code> — what changed?</summary>
+<summary><code>WARN_HOMOPOLYMER_DECOMP</code> reason (verdict <code>PASS</code>) — what changed?</summary>
 <p>The variant overlapped a homopolymer, and the corrected allele (e.g., <code>CCCCCC→CCCCT</code> instead
 of <code>CCCCCC→T</code>) got more ALT support. The corrected allele counts were used.
 <code>used_decomposed = True</code> in the output.</p>

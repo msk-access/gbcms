@@ -1335,7 +1335,7 @@ transparently.  See <a href="../dna/#required-arguments">CRAM Support</a> for de
 <p>When a GTF file is provided, gbcms builds a <code>COITree</code>-based annotation index and adds:</p>
 <ul>
 <li><strong><code>exon_boundary_dist</code></strong> — Signed distance to the nearest exon boundary (positive = exonic, negative = intronic)</li>
-<li><strong>Per-transcript read/fragment counts</strong> — Semicolon-separated <code>GENE:TX:READ_COUNT</code> and <code>GENE:TX:FRAG_COUNT</code> strings</li>
+<li><strong>Per-transcript read/fragment counts</strong> — <code>|</code>-separated <code>GENE:TX:READ_COUNT</code> and <code>GENE:TX:FRAG_COUNT</code> strings</li>
 <li><strong>ASJD detection</strong> — 14 columns for Aberrant Splice Junction Detection, comparing read splice junctions against annotated transcript splice sites</li>
 </ul>
 <p>See <a href="../../reference/rna-annotation/">RNA Annotation</a> for full details.</p>

@@ -1967,7 +1967,11 @@ left-alignment — but <strong>without</strong> performing any <abbr title="Bina
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_status</code></td>
-<td style="text-align: left;"><code>PASS</code>, <code>PASS;WARN_HOMOPOLYMER_DECOMP</code>, <code>REF_MISMATCH</code>, or <code>FETCH_FAILED</code></td>
+<td style="text-align: left;">Verdict: <code>PASS</code> or <code>FAIL</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gbcms_status_reason</code></td>
+<td style="text-align: left;"><code>\|</code>-separated reason tags, empty for a clean PASS (e.g. <code>WARN_REF_CORRECTED</code>, <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>was_anchor_resolved</code></td>

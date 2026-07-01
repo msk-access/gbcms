@@ -2085,35 +2085,44 @@
 </tbody>
 </table>
 <h2 id="validation-status">Validation Status<a class="headerlink" href="#validation-status" title="Permanent link">¶</a></h2>
+<p>Status is two fields: <code>gbcms_status</code> (verdict <code>PASS</code>/<code>FAIL</code>) and <code>gbcms_status_reason</code>
+(<code>|</code>-separated reason tags, empty for a clean PASS).</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Status</th>
+<th style="text-align: left;"><code>gbcms_status</code></th>
+<th style="text-align: left;"><code>gbcms_status_reason</code></th>
 <th style="text-align: left;">Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td style="text-align: left;"><strong>PASS</strong></td>
+<td style="text-align: left;"><em>(empty)</em></td>
 <td style="text-align: left;">Variant validated against reference, ready for counting</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>PASS;WARN_REF_CORRECTED</strong></td>
+<td style="text-align: left;"><strong>PASS</strong></td>
+<td style="text-align: left;"><strong>WARN_REF_CORRECTED</strong></td>
 <td style="text-align: left;">REF allele ≥90% match; corrected to <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>PASS;WARN_HOMOPOLYMER_DECOMP</strong></td>
+<td style="text-align: left;"><strong>PASS</strong></td>
+<td style="text-align: left;"><strong>WARN_HOMOPOLYMER_DECOMP</strong></td>
 <td style="text-align: left;">Variant spans a homopolymer; dual-counted with corrected allele (corrected won)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>PASS;MULTI_ALLELIC</strong></td>
+<td style="text-align: left;"><strong>PASS</strong></td>
+<td style="text-align: left;"><strong>MULTI_ALLELIC</strong></td>
 <td style="text-align: left;">Variant overlaps another variant at the same locus; sibling ALT exclusion active</td>
 </tr>
 <tr>
+<td style="text-align: left;"><strong>FAIL</strong></td>
 <td style="text-align: left;"><strong>REF_MISMATCH</strong></td>
 <td style="text-align: left;">REF allele does not match the reference genome at the stated position</td>
 </tr>
 <tr>
+<td style="text-align: left;"><strong>FAIL</strong></td>
 <td style="text-align: left;"><strong>FETCH_FAILED</strong></td>
 <td style="text-align: left;">Could not fetch the reference region (chromosome not found, etc.)</td>
 </tr>

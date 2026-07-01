@@ -2051,6 +2051,21 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h3 id="changed">🔄 Changed<a class="headerlink" href="#changed" title="Permanent link">¶</a></h3>
 <ul>
 <li>
+<p><strong><code>gbcms_status</code> is split into a verdict + a reason field (breaking output change).</strong>
+  The status is now two fields with a consistent grammar in both formats: a verdict
+  (<code>gbcms_status</code> = exactly <code>PASS</code> or <code>FAIL</code>) and a <code>|</code>-separated reason list
+  (<code>gbcms_status_reason</code>, empty for a clean PASS). <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> gains the <code>gbcms_status_reason</code>
+  column; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> gains a <code>GSR</code> INFO key. Reason tags dropped their verdict prefix
+  (<code>FAIL_REF_MISMATCH</code> → verdict <code>FAIL</code> + reason <code>REF_MISMATCH</code>; <code>PASS;WARN_REF_CORRECTED</code>
+  → verdict <code>PASS</code> + reason <code>WARN_REF_CORRECTED</code>). Reasons now <strong>stack</strong> with <code>|</code>
+  (<code>WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP</code>), which also fixes a bug where a
+  REF-correction warning was silently dropped on the success path and where
+  <code>WARN_HOMOPOLYMER_DECOMP</code> overwrote any existing reason. <code>|</code> is used (never <code>;</code>/<code>,</code>,
+  both <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-INFO-unsafe), so the reason string is byte-identical in the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column and the
+  <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GSR</code> — no format-specific conversion. <strong>Consumers filtering on <code>FAIL_FETCH_FAILED</code>
+  etc. must switch to <code>gbcms_status == "FAIL"</code> + a <code>gbcms_status_reason</code> check.</strong></p>
+</li>
+<li>
 <p><strong>Fragment-count consensus is labeled accurately (ME-12).</strong> The stale "Majority Rule"
   comment on the <code>BaseCounts</code> fragment fields (<code>DPF</code>/<code>RDF</code>/<code>ADF</code>) is replaced with
   "quality-weighted consensus with an INDEL structural-priority override and a discard
