@@ -549,6 +549,18 @@ the alleles.
 ## LO-1 — Duplicated `.pyi` stubs; `count_bam` stub missing params
 `src/gbcms/_rs.pyi` and `src/gbcms_rs.pyi` are byte-duplicates kept in sync by hand; both `count_bam` stubs omit `reference_fasta`/sibling params present in the real signature (`engine.rs:272`). **Fix:** generate one stub, symlink/re-export the other; regenerate from the actual `#[pyo3(signature)]`. **Effort:** XS.
 
+**Status: Resolved (2026-07-01).** The premise was even stronger than reported: the two
+files had already **drifted** (`src/gbcms_rs.pyi` was 435 B smaller — missing the ME-1
+nucleosomal fields *and* `fisher_exact_2x2` entirely), and the top-level `gbcms_rs` module
+they'd stub **isn't importable** — the extension is `gbcms._rs` (`pyproject module-name`,
+`Cargo lib name = "_rs"`), and every consumer does `from gbcms import _rs` (tests alias it
+`as gbcms_rs`, but `import gbcms_rs` fails). So `src/gbcms_rs.pyi` stubbed a non-existent
+module and shipped nowhere (PEP 561 uses the co-located `src/gbcms/_rs.pyi` + `py.typed`).
+**Done:** deleted the orphan `src/gbcms_rs.pyi`; added the missing `reference_fasta=None`
+to the `count_bam` stub in `src/gbcms/_rs.pyi` (the `sibling_variants` param was already
+present); updated the "dual stub, keep synced" guidance (invariant #5, `architecture.md`,
+`rust-python-ffi`/`add-feature` skills) to the single-stub reality.
+
 ## LO-2 — Legacy `count_bam` (one fetch per variant) still exported
 `lib.rs:15` exports `count_bam`; pipeline only calls `count_bam_binned`. It fetches per variant (`engine.rs:1574`) — the O(seeks) pattern binning replaced — and doubles maintenance for parity. **Fix:** gate behind a `test-only` feature or remove after parity sign-off; keep one as the parity oracle in tests. **Effort:** S.
 
@@ -578,6 +590,27 @@ parity oracle is codified in CI (the parity gate, formerly an open follow-up).
 
 ## LO-8 — Deletion left-anchor invariant undocumented
 `variant_checks.rs:1427-1430` — anchor logic assumes `variant.pos` is the left-anchor base (never inside the deletion). Load-bearing and undocumented; a non-left-anchored deletion breaks it. **Fix:** document the invariant and assert it (ties to CR-3's guard). **Effort:** XS.
+
+**Status: LO-4/5/6/7/8/13 resolved as a documentation sweep (2026-07-01).** Re-reading the
+current code showed several were already addressed since the 2026-06-26 review:
+- **LO-4** (u64 hash, no stored key): the collision note already existed on `hash_qname`;
+  extended it with the "revisit only if per-locus counts grow orders of magnitude → store
+  QNAME" guidance. Note-only, no code change (as the review advised).
+- **LO-5** ("orientation-aware hashing" misnomer): already gone — `hash_qname`/`hash_molecule`
+  hash QNAME(+UMI) only, and `FragmentEvidence`'s doc correctly describes per-allele
+  orientation tracking (not in the key). No change needed.
+- **LO-6** (FSB strand from best-quality read): the equal-BQ tie is in fact deterministic
+  per coordinate-sorted BAM (strict `>` keeps the first-observed mate). Documented the
+  tie-break in `observe()`; an R1-preferring change was considered and rejected (would
+  perturb FSB p-values with no diagnostic benefit).
+- **LO-7** (`median_qual` upper median on even counts): documented as deliberate — this
+  median feeds classification thresholds, so exact-averaging could flip borderline calls and
+  break binned↔legacy parity. Doc-only, no behavior change.
+- **LO-8** (deletion left-anchor invariant): CR-3's empty-allele guard already sits here;
+  strengthened the comment to state explicitly that `variant.pos` is the anchor base *before*
+  the deletion (never inside the deleted span), guaranteed by prep-time left-alignment.
+- **LO-13** (KDE bandwidth 5.0 bp clamp): the clamp already had a code comment + DEBUG log;
+  documented the rationale in the `_compute_kde` docstring and flagged it visualization-only.
 
 ## LO-9 — Empty/exon-less GTF degrades silently
 `gtf.rs:162-167` — parser ingests only `exon` records; a GTF with genes/transcripts but no/malformed exons yields an empty `AnnotationIndex` with only a warn. Can't distinguish "no exons" from "wrong build." **Fix:** track and report counts of `gene`/`transcript`/`exon` lines seen; optionally hard-error on RNA-mode-with-GTF-but-zero-exons behind a flag. **Effort:** S.

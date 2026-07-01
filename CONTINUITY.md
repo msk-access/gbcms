@@ -54,15 +54,22 @@ low-ROI/liabilities**: ME-13 (0% re-fetch measured), PF-3 (decode threads oversu
 under fan-out), PF-4 (moot at 1 sample/process). See the plan's §"M5 — empirical scoping".
 
 ## Next
-M1–M4 and the load-bearing M5 items (LO-14 / PF-1 / M5a) are done. Remaining, smallest-first:
-1. **M5 leftovers (optional):** **PF-2** (bin cost-sort — niche; cfDNA has no long-pole),
-   **LO-3** (document the bin-span soft floor, don't cap), and **M5b** (deep-bin fetch
-   reduction — the only remaining cfDNA lever, parity-sensitive; not started).
-2. **M6 — Hygiene & contracts** — started. **HI-1 done** (a run now exits non-zero when
-   samples fail — no more masking failure as success under Nextflow). Also **CI now runs
-   `cargo test` + clippy** (both feature configs; the Rust suite/parity oracle finally gate
-   CI). Remaining: ME-1/2/12 (output parity), LO-1/4–8/13 (docs/stubs/numerics); DX-1 + LO-2
-   already landed. Continuous cleanup.
+**M6 (Hygiene & contracts) — COMPLETE.** All M6 tickets landed: HI-1 (exit non-zero on
+sample failure; empty variant set still exits 0), ME-1 (sub/mono-nuc reach VCF), ME-2
+(`|` transcript delimiter), ME-12 (fragment-consensus relabel; #64), LO-1 (single `_rs`
+stub + `count_bam` signature; #65), LO-2 + DX-1 (earlier), and the LO-4/5/6/7/8/13
+documentation sweep (#65). CI now runs `cargo test` + clippy (both feature configs).
+Out of band this session: contig-mismatch reconcile + warn (silent zero-count bug, #63)
+and a synthetic DNA→MAF end-to-end test (#62).
+
+**All six milestones (M1–M6) are now complete and merged**, except the explicitly
+optional/deferred M5 leftovers below.
+
+Remaining (all optional):
+1. **M5 leftovers:** **PF-2** (bin cost-sort — niche; cfDNA has no long-pole),
+   **LO-3** (document the bin-span soft floor, don't cap — doc only), and **M5b** (deep-bin
+   fetch reduction — the only remaining cfDNA lever, parity-sensitive; not started).
+2. **RNA LO polish not in M6 scope:** LO-9/10/11/12 landed in M3; no open RNA LO items.
 
 ## Open follow-ups (tracked, not lost)
 - ✅ BAM-level binned↔legacy parity gate, incl. large deletions — **done (#46)**.

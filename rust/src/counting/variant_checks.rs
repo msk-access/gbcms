@@ -1509,10 +1509,15 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
-    // Left-anchored invariant — an empty REF/ALT (malformed or
-    // non-left-anchored record) would underflow `len() - 1` and panic the
-    // `[1..]` slice below. Defend it and classify as neither. debug! not warn!:
-    // runs per-read; loud once-per-variant surfacing belongs at prep (follow-up).
+    // Left-anchored invariant (LO-8): `variant.pos` MUST be the retained
+    // reference anchor base immediately *before* the deletion — never a
+    // coordinate inside the deleted span. The `[1..]` slices below take the
+    // deleted bases as `ref_allele[1..]` (VCF/MAF deletions carry the anchor as
+    // ref_allele[0]); prep-time left-alignment/normalization guarantees this
+    // shape. An empty REF/ALT (malformed or non-left-anchored record) would
+    // underflow `len() - 1` and panic the `[1..]` slice below. Defend it and
+    // classify as neither. debug! not warn!: runs per-read; loud
+    // once-per-variant surfacing belongs at prep (follow-up).
     if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
         debug!(
             "check_deletion: empty REF/ALT at {}:{} (ref={:?} alt={:?}) — classifying neither",

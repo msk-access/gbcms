@@ -56,6 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   oversubscribe a small SLURM allocation); all rayon pools are sized through
   `resolve_thread_budget`, and the resolved budget is logged. Counts are unaffected.
 
+### 🧹 Internal
+
+- **Single type stub for the Rust extension (LO-1).** Removed the orphan
+  `src/gbcms_rs.pyi`, which stubbed a top-level `gbcms_rs` module that isn't importable
+  (the extension is `gbcms._rs`) and had already drifted from the real one (missing the
+  nucleosomal fields and `fisher_exact_2x2`). The co-located `src/gbcms/_rs.pyi` (shipped
+  via `py.typed`) is now the single source of truth, and its `count_bam` stub gained the
+  missing `reference_fasta` parameter so it matches the real `#[pyo3(signature)]`.
+
 ### 📦 Packaging
 
 - **The shipped wheel no longer exports the legacy `count_bam` parity oracle.** The

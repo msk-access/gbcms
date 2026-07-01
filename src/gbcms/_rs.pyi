@@ -184,6 +184,7 @@ def count_bam(
     mode: str = "dna",
     enforce_strandedness: bool = False,
     strandedness: str = "reverse",
+    reference_fasta: str | None = None,
 ) -> list[BaseCounts]: ...
 def count_bam_binned(
     bam_path: str,
