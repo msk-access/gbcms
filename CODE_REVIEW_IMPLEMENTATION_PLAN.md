@@ -638,6 +638,51 @@ Recommended order: **M1 → M2 → M3** are correctness; do them first and in th
 
 ---
 
+# Deferred ledger — one-stop index (as of 2026-06-30)
+
+Everything consciously **not done yet**, in one place so nothing is silently lost. Details
+live in the linked ticket sections above; this is the index.
+
+### Dropped after real-data measurement (revive only with new evidence)
+- **ME-13** overlap re-fetch — 0.00% re-fetch measured; highest parity risk in M5.
+- **PF-3** htslib decode threads — oversubscribes the node under Nextflow fan-out.
+- **PF-4** rayon pool reuse — moot at 1 sample/process.
+
+### Deferred / optional (M5)
+- **PF-2** bin cost-sort — niche (no cfDNA long-pole); cheap if a skewed workload appears.
+- **LO-3** bin-span cap — **document only**, never cap (a cap risks re-breaking CR-1).
+- **M5b** deep-bin fetch reduction — *not started*; the only remaining cfDNA lever, parity-sensitive.
+
+### Accepted deviations — correctness shipped, refinement deferred (see §"Accepted deviations")
+- **CR-5** — report **mean** LLR per fragment vs raw sum (display nicety; sign/labels unaffected).
+- **ME-9** — raise `MIN_FOR_KS` 5→≥8 (largely moot after CR-5's exact small-N KS).
+
+### M6 backlog — deferred to the next milestone
+- **HIGH:** **HI-1** exit-code propagation (all-samples-fail still returns 0).
+- **MED:** ME-1 (sub/mono-nuc computed but dropped from VCF), ME-2 (`;` vs documented `|` delimiter), ME-12 ("majority rule" is structural-ALT-wins — relabel).
+- **LOW:** LO-1 (dedupe `.pyi` stubs), LO-4, LO-5, LO-6, LO-7, LO-8, LO-13 (docs / minor numerics).
+- *(Already done in M6: LO-2 feature-gate, DX-1 label sweep.)*
+
+### Test / CI gaps (surfaced by the 2026-06-30 coverage review; fold into M6)
+- **⚠ CI ran no `cargo test` and no `cargo clippy`.** The ~210 Rust `#[cfg(test)]` unit tests
+  (mFSD math, GTF-cache roundtrip, thread-budget guard, alignment/CIGAR, WFA, contig
+  normalization) and clippy never ran in CI, so a Rust-logic regression could ship green. Note
+  the binned↔legacy **parity** assertions are *Python-level* (`helpers.count_both`) and **do**
+  already run under pytest against the default-features wheel — the gap was the Rust side.
+  **Fixed by #58:** a `rust-test` job (`cargo test`, default *and* `--no-default-features`, on
+  macOS since the pyo3 `extension-module` crate can't link a test binary on Linux) + `cargo
+  clippy -D warnings` (both feature configs) added to the `lint` job.
+- **CRAM** counting has zero tests (only BAM fixtures).
+- **HI-1** needs a test that an all-samples-fail run returns non-zero (couples with the fix).
+- **`--threads N`** has a reject-`0` test but no positive cap-enforcement test.
+- Real-cohort integration (mFSD / strandedness / ASJD / GTF cache) is validated only
+  out-of-repo on MSK data; no in-repo cohort fixture.
+
+### Known issue — not yet a ticket
+- **DNA-mode Rust INFO logs not always captured to stderr** (pyo3-log routing). Cosmetic; M6 hygiene.
+
+---
+
 # Accepted deviations (as-built through M1–M4)
 
 The shipped M1–M4 work departs from the plan's letter in three places. Each is a
