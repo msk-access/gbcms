@@ -74,11 +74,18 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     head -20 variants.maf | cut -f5   # Chromosome column
     ```
 
-    Common mismatch: `chr1` vs `1`. The FASTA and variant file must match.
+    `chr1` vs `1` and `M`/`MT` differences between the **BAM** and the variant file are
+    auto-reconciled — you do **not** need to pre-harmonize them. A contig that has no match
+    in the BAM is skipped with a one-time `WARN` (not a silent zero-count). The **reference
+    FASTA**, however, is fetched by the variant's contig name, so the FASTA must contain that
+    contig — otherwise the variant is rejected with `FAIL_FETCH_FAILED`.
 
-??? question "`FETCH_FAILED` in `gbcms_status` for all variants on a chromosome"
+??? question "`FAIL_FETCH_FAILED` in `gbcms_status` for all variants on a chromosome"
 
-    See chromosome mismatch above. Also check:
+    This means the **reference FASTA** anchor could not be fetched for that contig. Because
+    BAM↔variant contig naming is auto-reconciled, this is now almost always a FASTA problem,
+    not a BAM one. Check:
+    - The contig exists in the FASTA under the variant's name (`grep "^>" reference.fa`)
     - FASTA `.fai` index is present (`samtools faidx reference.fa`)
     - No truncated / corrupted FASTA
 
@@ -107,7 +114,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
        the CIGAR `D` position may be several bases right of the anchor.
        Run normalization to see the left-aligned coordinates:
        ```bash
-       gbcms normalize --variants variants.maf --fasta ref.fa --output-dir /tmp/norm/
+       gbcms normalize --variants variants.maf --fasta ref.fa --output /tmp/norm/normalized.tsv
        # Check norm_pos vs original Start_Position
        ```
 
@@ -207,8 +214,8 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     Diagnose with:
     ```bash
-    gbcms normalize --variants variants.maf --fasta ref.fa --output-dir /tmp/norm/
-    grep "REF_MISMATCH" /tmp/norm/normalized.maf | head -5
+    gbcms normalize --variants variants.maf --fasta ref.fa --output /tmp/norm/normalized.tsv
+    grep "FAIL_REF_MISMATCH" /tmp/norm/normalized.tsv | head -5   # gbcms_status column
     ```
 
 ??? question "`PASS;WARN_REF_CORRECTED` — is this a problem?"
@@ -261,7 +268,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     - Add strand annotation to the MAF (from gene model GFF/GTF)
     - Use `--no-strandedness` to count all reads regardless of strand
 
-??? question "RNA editing flag (`rna_editing_site_overlap`) is always False"
+??? question "RNA editing flag (`rna_editing_site`) is always False"
 
     Ensure `--rna-editing-db` points to a valid REDIportal TABLE1 file:
     ```bash
@@ -297,6 +304,18 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     ```bash
     sudo usermod -aG docker $USER && newgrp docker
     ```
+
+??? question "When does `gbcms` exit non-zero? (orchestration / Nextflow)"
+
+    `gbcms` exits **1 if any sample fails** (a BAM raises during counting — e.g. a missing
+    index or a Rust panic surfaced as an error), whether all samples failed or only some.
+    Successful runs exit **0**.
+
+    An **empty or fully-rejected variant set is not a failure**: a sample that legitimately
+    has no variants called (or whose variants are all rejected at prep) still exits **0**, and
+    the rejected variants are written to the output with their `FAIL_*` `gbcms_status`. This
+    lets a per-sample workflow keep going instead of failing the whole cohort on a sample that
+    genuinely has nothing to count.
 
 ---
 

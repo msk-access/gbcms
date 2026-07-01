@@ -14,7 +14,7 @@
 - 📊 **Orientation-Aware**: Forward and reverse strand analysis with fragment counting
 - 📏 **mFSD (Mutant Fragment Size Distribution)**: Per-allele cfDNA fragment size profiling with KS test and log-likelihood ratio
 - 🔬 **Statistical Analysis**: Fisher's exact test for strand bias (read-level and fragment-level)
-- 📁 **Flexible I/O**: VCF and MAF input/output formats
+- 📁 **Flexible I/O**: BAM and CRAM input; VCF and MAF variant input/output formats
 - 🎯 **Quality Filters**: 8 configurable read and quality filtering options with heuristic BAQ
 - 🧬 **RNA Mode**: Transcriptome-aware counting with strandedness, splice detection, and A-to-I editing
 - 🔗 **UMI Support**: Molecule-level deduplication with UMI-aware fragment grouping
@@ -136,7 +136,7 @@ gbcms rna \
 gbcms normalize \
     --variants variants.vcf \
     --fasta hg19.fa \
-    --output-dir results/
+    --output results/normalized.tsv
 ```
 
 ### CLI: Multiple Samples (Sequential)

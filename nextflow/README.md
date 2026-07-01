@@ -4,7 +4,7 @@ This directory contains a Nextflow workflow for running `gbcms` on multiple samp
 
 ## Prerequisites
 
-1. [Nextflow](https://www.nextflow.io/docs/latest/getstarted.html) (>=21.10.3)
+1. [Nextflow](https://www.nextflow.io/docs/latest/getstarted.html) (>=22.10.1)
 2. [Docker](https://docs.docker.com/engine/installation/) or [Singularity](https://www.sylabs.io/guides/3.0/user-guide/)
 
 ## Quick Start
@@ -99,23 +99,39 @@ nextflow run nextflow/main.nf \
 | `--context_padding` | Minimum flanking bases for alignment | `5` |
 | `--adaptive_context` | Auto-increase context in tandem repeats | `true` |
 | `--umi_tag` | UMI BAM tag for deduplication (e.g., `XM`, `RX`) | `''` (disabled) |
-| `--apply_baq` | Apply BAQ recalibration (DNA only) | `false` |
+| `--apply_baq` | Apply BAQ recalibration (config default off; the RNA CLI enables it by default) | `false` |
 | `--filter_duplicates` | Filter duplicate reads | `true` |
-| `--filter_secondary` | Filter secondary alignments | `false` |
-| `--filter_supplementary` | Filter supplementary alignments | `false` |
-| `--filter_qc_failed` | Filter QC failed reads | `false` |
+| `--filter_secondary` | Filter secondary alignments | `true` |
+| `--filter_supplementary` | Filter supplementary alignments | `true` |
+| `--filter_qc_failed` | Filter QC failed reads | `true` |
 | `--filter_improper_pair` | Filter improperly paired reads | `false` |
 | `--filter_indel` | Filter reads with indels | `false` |
 | `--filter_by_sample` | Filter multi-sample MAF by Tumor_Sample_Barcode | `false` |
-| `--alignment_backend` | Phase 3 alignment: `hmm` (PairHMM, default) or `sw` (Smith-Waterman) | `hmm` |
+| `--alignment_backend` | Phase 3 alignment: `pairhmm` (default), `sw` (Smith-Waterman), or `hmm` (alias for `pairhmm`) | `pairhmm` |
 
 ### RNA-Specific
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--rna_editing_db` | Path to REDIportal editing database (TABLE1_hg38_v3.txt) | `''` (disabled) |
-| `--enforce_strandedness` | Enforce dUTP strandedness for A→I editing detection | `false` |
+| `--rna_editing_db` | Path to REDIportal editing database (TABLE1, tab-delimited) | `''` (disabled) |
+| `--strandedness` | Library protocol: `reverse` (dUTP/`-s2`), `forward` (`-s1`), or `unstranded` (`-s0`) | `reverse` |
+| `--enforce_strandedness` | Filter reads to the transcript's sense strand (requires `--gtf` for `gene_strand`). `--strandedness unstranded` disables it. | `true` |
+| `--library_type` | `capture` (default) or `amplicon`. Amplicon treats R1/R2 as independent observations (no fragment consensus) and disables strandedness. | `capture` |
+| `--gtf` | GTF for exon-boundary / per-transcript / ASJD annotation and `gene_strand` back-fill | `''` (disabled) |
+| `--gtf_cache` | Pre-build the GTF index once per cohort (when `--gtf` is set) so per-sample tasks skip the ~9s parse | `true` |
 
-See [Full Parameter Reference](docs/nextflow/parameters.md) for all options including PairHMM tuning parameters.
+### Feature Columns & Merge
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--mfsd` | Emit the 41 mFSD MAF columns / 13 VCF `MFSD_*` INFO fields (fragment-size distribution) | `false` |
+| `--mfsd_parquet` | Also write the mFSD size arrays to Parquet (requires `--mfsd`) | `false` |
+| `--mfsd_report` | Generate the HTML mFSD report | `false` |
+| `--rescue_mnp` | Enable the MNP-rescue second pass | `false` |
+| `--rescue_mnp_threshold` | Discordance threshold for MNP rescue | `1.0` |
+| `--merge_counts` | Enable the `MERGE_COUNTS` process (multi-BAM merge; needs `bam_type` in the samplesheet) | `false` |
+| `--merge_add_combined` | Compute `simplex_duplex_*` combined columns during merge | `true` |
+| `--merge_legacy_naming` | Use `t_{metric}_{type}` naming (genotype_variants compat) | `false` |
+
+See [Full Parameter Reference](../docs/nextflow/parameters.md) for all options including PairHMM tuning parameters.
 
 ### Resource Limits
 | Parameter | Description | Default |
@@ -149,8 +165,10 @@ slurm {
 ## Output
 
 Results are published to `${params.outdir}/gbcms/`:
-- VCF files: `<sample>.gbcms.vcf`
-- MAF files: `<sample>.gbcms.maf`
+- VCF files: `<sample>.vcf`
+- MAF files: `<sample>.maf`
+
+(Output filenames use the sample id as the prefix; set `--suffix` to add an infix.)
 
 Pipeline info and logs are in `${params.outdir}/pipeline_info/`.
 
@@ -160,6 +178,8 @@ Pipeline info and logs are in `${params.outdir}/pipeline_info/`.
 |--------|-------------|
 | `GBCMS_DNA` | DNA allele counting via `gbcms dna` |
 | `GBCMS_RNA` | RNA allele counting via `gbcms rna` |
+| `GBCMS_BUILD_GTF_CACHE` | Pre-build the shared GTF index once per cohort via `gbcms build-gtf-cache` (RNA + `--gtf`) |
 | `GBCMS_NORMALIZE` | Variant normalization via `gbcms normalize` |
+| `MERGE_COUNTS` | Merge per-BAM counts into simplex/duplex combined columns (`--merge_counts`) |
 | `FILTER_MAF` | Pre-filter multi-sample MAF by sample |
 | `PIPELINE_SUMMARY` | Aggregate filtering statistics |

@@ -8,5 +8,6 @@
 
 ## Claude-only notes
 - Skills load from `.claude/skills/` (a symlink to `.agents/skills/`).
-- Hooks: `.claude/settings.json` (time injection + `guard-destructive.sh`).
+- Hooks: `.claude/settings.json` wires the `.claude/hooks/` guards (`block-rm-rf.py`,
+  `block-push-main.py`, `block-env-edits.py`, `injection-guard.py`) plus time injection.
 - Memory auto-recall reads `.agents/memory/` (symlinked from the Claude project memory dir).

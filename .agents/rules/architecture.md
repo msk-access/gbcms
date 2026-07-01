@@ -40,7 +40,8 @@ gbcms/
 │       │   └── fragment.rs      # Re-export shim for shared::fragment
 │       ├── annotation/          # v5.0.0: GTF-informed annotation
 │       │   ├── mod.rs           # AnnotationIndex (COITree, splice sites, transcript introns)
-│       │   └── gtf.rs           # GTF parser (variant-guided streaming)
+│       │   ├── gtf.rs           # GTF parser (variant-guided streaming)
+│       │   └── cache.rs         # GTF disk cache (GtfIndexBundle, bincode) — M5a
 │       ├── shared/
 │       │   ├── fragment.rs      # FragmentEvidence, QNAME/UMI hashing
 │       │   ├── stats.rs         # Fisher's exact test, strand bias
@@ -74,7 +75,7 @@ gbcms/
 1. **Rust for counting**: rust-htslib for BAM; Rayon for per-**bin** parallelism (`par_iter()` over ~10kb genomic bins).
    - **`--threads` is the TOTAL thread budget per process.** Multi-sample parallelism is Nextflow's job (gbcms runs as N concurrent processes, each pinned to `task.cpus`), so every parallel section must stay within `--threads` — all rayon pools are sized from `shared::resolve_thread_budget(threads)` (which also guards `num_threads(0)`=all-cores), and any future htslib decode threads must **subdivide** this budget, never add to it. No `par_iter` may run on rayon's global pool.
 2. **0-based internal coordinates**: 1-based in VCF/MAF externally; converted at boundary.
-3. **mFSD is opt-in** (`--mfsd`) — gated at *both* layers (output-aware engine, invariant #3). Writers gate 34 MAF cols / 7 VCF INFO fields behind `self.mfsd` (absent when off, not NA-filled); the **binned engine also gates the compute** — `mfsd` is plumbed `OutputConfig.mfsd → count_bam_binned → count_variant_from_cache`, and when off the per-fragment size arrays, the `compute_mfsd_stats` stats, and the post-counting mFSD BH-FDR pass are all skipped (no compute-then-discard, no held `ref_sizes`/`alt_sizes`). The legacy parity oracle always computes mFSD (mFSD ∉ `PARITY_FIELDS`, so this never breaks parity); both paths share `compute_mfsd_stats`.
+3. **mFSD is opt-in** (`--mfsd`) — gated at *both* layers (output-aware engine, invariant #3). Writers gate 41 MAF cols / 13 VCF INFO fields behind `self.mfsd` (absent when off, not NA-filled); the **binned engine also gates the compute** — `mfsd` is plumbed `OutputConfig.mfsd → count_bam_binned → count_variant_from_cache`, and when off the per-fragment size arrays, the `compute_mfsd_stats` stats, and the post-counting mFSD BH-FDR pass are all skipped (no compute-then-discard, no held `ref_sizes`/`alt_sizes`). The legacy parity oracle always computes mFSD (mFSD ∉ `PARITY_FIELDS`, so this never breaks parity); both paths share `compute_mfsd_stats`.
 4. **Rust-native Parquet** (`--mfsd-parquet`): `write_fsd_parquet()` via `arrow`/`parquet` crates with ZSTD(1). No `pyarrow`.
 5. **4-layer CLI validation**: Parse-time (Typer) → Pre-model (cli.py) → Model-time (Pydantic) → No silent skips.
 6. **Fragment counting always on**: Quality-weighted consensus; discards counted in DPF not RDF/ADF.

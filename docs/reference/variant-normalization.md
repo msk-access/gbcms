@@ -41,8 +41,8 @@ MAF files represent indels using `-` dashes. gbcms converts them to VCF-style **
 !!! note "When Is This Step Triggered?"
     Only for MAF input (`is_maf=true`) when REF or ALT is `-`, or when REF and ALT have different lengths (complex indels). VCF input skips this step entirely.
 
-!!! warning "FETCH_FAILED"
-    If the anchor base cannot be fetched (e.g., chromosome not in FASTA), the variant's `gbcms_status` is set to `FETCH_FAILED` and it is excluded from counting.
+!!! warning "FAIL_FETCH_FAILED"
+    If the anchor base cannot be fetched (e.g., chromosome not in FASTA), the variant's `gbcms_status` is set to `FAIL_FETCH_FAILED` and it is excluded from counting.
 
 ---
 
@@ -57,7 +57,7 @@ flowchart TD
     Exact -->|"No"| Sim["Compute similarity\n(matching bases / max length)"]
     Sim --> Thresh{"≥ 90%?"}
     Thresh -->|"Yes"| Corrected(["⚠️ PASS;WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
-    Thresh -->|"No"| Fail(["❌ REF_MISMATCH\n→ excluded from counting"]):::fail
+    Thresh -->|"No"| Fail(["❌ FAIL_REF_MISMATCH\n→ excluded from counting"]):::fail
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
@@ -253,11 +253,13 @@ Every `PreparedVariant` carries a `gbcms_status` string:
 | `PASS;WARN_REF_CORRECTED` | REF ≥90% match; corrected to FASTA REF | ✅ |
 | `PASS;WARN_HOMOPOLYMER_DECOMP` | Passed, but corrected allele was used (see above) | ✅ |
 | `PASS;MULTI_ALLELIC` | Passed, variant overlaps another variant at the same locus (sibling ALT exclusion active) | ✅ |
-| `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
-| `FETCH_FAILED` | Could not fetch reference region | ❌ |
+| `FAIL_REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
+| `FAIL_FETCH_FAILED` | Could not fetch reference region | ❌ |
+| `FAIL_EMPTY_ALLELE` | REF or ALT allele is empty (malformed / non-left-anchored indel) | ❌ |
+| `FAIL_ALT_CONTAINS_N` | ALT allele contains an `N` base | ❌ |
 
 !!! note "Filtering Behavior"
-    The pipeline filters on `gbcms_status.startswith("PASS")`, so all `PASS` and `PASS_WARN_*` variants proceed to counting. `REF_MISMATCH` and `FETCH_FAILED` variants are logged as rejected.
+    The pipeline filters on `gbcms_status.startswith("PASS")`, so all `PASS` and `PASS;WARN_*` variants proceed to counting. The `FAIL_*` variants are excluded from counting but are still **written to the output** with their `FAIL_*` status in the `gbcms_status` column (and zero counts), so the rejection reason is in the output file, not only the log.
 
 ---
 

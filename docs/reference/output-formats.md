@@ -543,7 +543,7 @@ All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one
 
 ??? note "mFSD MAF Columns (`--mfsd` only)"
 
-    34 columns are appended when `--mfsd` is set. They are completely absent
+    41 columns are appended when `--mfsd` is set. They are completely absent
     without the flag (not NA-filled):
 
     | Column | Type | Description |
@@ -561,6 +561,7 @@ All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one
     | `mfsd_delta_alt_ref` | Float | mean(ALT) − mean(REF) delta (bp) |
     | `mfsd_ks_alt_ref` | Float | KS D-stat (ALT vs REF) |
     | `mfsd_pval_alt_ref` | Float | KS p-value (ALT vs REF) |
+    | `mfsd_qval_alt_ref` | Float | Benjamini-Hochberg FDR q-value for the ALT-vs-REF KS p-value (sample-wide correction) |
     | `mfsd_delta_alt_nonref` | Float | mean(ALT) − mean(non-REF) delta |
     | `mfsd_ks_alt_nonref` | Float | KS D-stat (ALT vs non-REF) |
     | `mfsd_pval_alt_nonref` | Float | KS p-value |
@@ -582,6 +583,12 @@ All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one
     | `mfsd_quality_score` | Float | 1 − error_rate − n_rate |
     | `mfsd_alt_confidence` | String | `HIGH` (≥5 ALT fragments), `LOW` (1–4), or `NONE` |
     | `mfsd_ks_valid` | Boolean | `True` when both ALT and REF have ≥5 fragments for reliable KS test |
+    | `mfsd_sub_nuc_ref_frac` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |
+    | `mfsd_sub_nuc_alt_frac` | Float | Sub-nucleosomal (<150 bp) fraction of ALT fragments |
+    | `mfsd_sub_nuc_enrichment` | Float | Sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator |
+    | `mfsd_mono_nuc_ref_frac` | Float | Mono-nucleosomal (150–200 bp) fraction of REF fragments |
+    | `mfsd_mono_nuc_alt_frac` | Float | Mono-nucleosomal (150–200 bp) fraction of ALT fragments |
+    | `mfsd_ch_flag` | Boolean | `True` when the variant falls in a clonal-hematopoiesis (CH) gene |
 
 ??? note "Normalization MAF Columns (`--show-normalization` only)"
 
