@@ -2768,7 +2768,7 @@ provides these dependencies.</p>
 <a id="__codelineno-8-15" name="__codelineno-8-15" href="#getting-started-quickstart-__codelineno-8-15"></a><span class="w">    </span>--mfsd-parquet
 </code></pre></div>
 <p><strong>Output:</strong>
-- <code>genotyped/TumorSample.genotyped.maf</code> — allele counts + 34 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns
+- <code>genotyped/TumorSample.genotyped.maf</code> — allele counts + 41 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns
 - <code>genotyped/TumorSample.genotyped.fsd.parquet</code> — raw fragment size arrays</p>
 </div>
 <div class="tabbed-block">
@@ -3090,7 +3090,7 @@ short-fragment enrichment associated with tumor-derived <abbr title="Cell-free D
 <tr>
 <td style="text-align: left;"><code>--mfsd</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Enable <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> analysis. Adds 34 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns (KS test, <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>, mean sizes, pairwise comparisons, derived metrics) to <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output and 7 <code>MFSD_*</code> INFO fields to <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>.</td>
+<td style="text-align: left;">Enable <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> analysis. Adds 41 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns (KS test, <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr>, mean sizes, pairwise comparisons, derived metrics) to <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output and 13 <code>MFSD_*</code> INFO fields to <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--mfsd-parquet</code></td>
@@ -3120,7 +3120,7 @@ short-fragment enrichment associated with tumor-derived <abbr title="Cell-free D
 </p><div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#cli-dna-__codelineno-1-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--mfsd-report<span class="w"> </span>--format<span class="w"> </span>maf<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#cli-dna-__codelineno-1-2"></a><span class="w">    </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>tumor:tumor.bam<span class="w"> </span>--fasta<span class="w"> </span>hg19.fa<span class="w"> </span>-o<span class="w"> </span>./results
 </code></pre></div>
-This produces <code>&lt;sample&gt;.maf</code> (with 34 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns), <code>&lt;sample&gt;.fsd.parquet</code>
+This produces <code>&lt;sample&gt;.maf</code> (with 41 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns), <code>&lt;sample&gt;.fsd.parquet</code>
 (raw fragment sizes), and <code>&lt;sample&gt;.mfsd_report.html</code> (interactive visualization).
 Using <code>--mfsd-report</code> auto-enables <code>--mfsd</code> and <code>--mfsd-parquet</code>.
 </div>
@@ -3445,7 +3445,7 @@ for the full design rationale.</p>
 <ul>
 <li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr></strong> output: <code>##INFO</code> fields, <code>##FORMAT</code> fields, and annotated examples</li>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></strong> output: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> vs <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column sets, <code>Tumor_Sample_Barcode</code> behaviour, and column prefix options</li>
-<li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns</strong> (with <code>--mfsd</code>): all 34 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> fields</li>
+<li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns</strong> (with <code>--mfsd</code>): all 41 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> fields</li>
 <li><strong>Normalization columns</strong> (with <code>--show-normalization</code>)</li>
 </ul>
 <h2 id="cli-dna-related">Related<a class="headerlink" href="#cli-dna-related" title="Permanent link">¶</a></h2>
@@ -5110,7 +5110,7 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <tr>
 <td style="text-align: left;"><code>--mfsd</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Enable <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> analysis — adds 34 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns to <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> and 7 <code>MFSD_*</code> INFO fields to <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>. See <a href="#reference-counting-metrics-mfsd"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> metrics</a>.</td>
+<td style="text-align: left;">Enable <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> analysis — adds 41 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns to <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> and 13 <code>MFSD_*</code> INFO fields to <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>. See <a href="#reference-counting-metrics-mfsd"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> metrics</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--mfsd_parquet</code></td>
@@ -6975,6 +6975,31 @@ are new in v5.3.0. <code>##contig</code> lines are auto-populated from the
 <td style="text-align: left;"><code>MFSD_REF_COUNT</code></td>
 <td style="text-align: left;">Integer</td>
 <td style="text-align: left;">REF-classified fragments in 50–1000 bp size window</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_SUB_NUC_REF_FRAC</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Sub-nucleosomal (&lt;150 bp) fraction of REF fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_SUB_NUC_ALT_FRAC</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Sub-nucleosomal (&lt;150 bp) fraction of ALT fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_SUB_NUC_ENRICHMENT</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Sub-nucleosomal enrichment (ALT frac / REF frac); <abbr title="Circulating tumor DNA - Tumor-derived cfDNA fragments">ctDNA</abbr> indicator</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_MONO_NUC_REF_FRAC</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mono-nucleosomal (150–200 bp) fraction of REF fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_MONO_NUC_ALT_FRAC</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mono-nucleosomal (150–200 bp) fraction of ALT fragments</td>
 </tr>
 </tbody>
 </table>
@@ -11806,6 +11831,31 @@ p-value, and below a handful of fragments the test has essentially no power
 <td style="text-align: left;">Integer</td>
 <td style="text-align: left;">REF-classified fragment count</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_SUB_NUC_REF_FRAC</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Sub-nucleosomal (&lt;150 bp) fraction of REF fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_SUB_NUC_ALT_FRAC</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Sub-nucleosomal (&lt;150 bp) fraction of ALT fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_SUB_NUC_ENRICHMENT</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Sub-nucleosomal enrichment (ALT frac / REF frac); <abbr title="Circulating tumor DNA - Tumor-derived cfDNA fragments">ctDNA</abbr> indicator</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_MONO_NUC_REF_FRAC</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mono-nucleosomal (150–200 bp) fraction of REF fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_MONO_NUC_ALT_FRAC</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mono-nucleosomal (150–200 bp) fraction of ALT fragments</td>
+</tr>
 </tbody>
 </table>
 <h3 id="reference-counting-metrics-parquet-output-mfsd-parquet">Parquet Output (--mfsd-parquet)<a class="headerlink" href="#reference-counting-metrics-parquet-output-mfsd-parquet" title="Permanent link">¶</a></h3>
@@ -12077,7 +12127,7 @@ p-value, and below a handful of fragments the test has essentially no power
 <p></p><div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-mfsd-report-__codelineno-0-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--mfsd<span class="w"> </span>--mfsd-parquet<span class="w"> </span>--mfsd-report<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-mfsd-report-__codelineno-0-2"></a><span class="w">  </span>-v<span class="w"> </span>variants.maf<span class="w"> </span>-b<span class="w"> </span>sample.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>output/
 </code></pre></div>
-This produces three outputs: a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 34 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns, a <code>.fsd.parquet</code> with raw fragment arrays, and a <code>.mfsd_report.html</code> for interactive visualization.
+This produces three outputs: a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 41 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns, a <code>.fsd.parquet</code> with raw fragment arrays, and a <code>.mfsd_report.html</code> for interactive visualization.
 </div>
 <hr>
 <h2 id="reference-mfsd-report-cli-options"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Options<a class="headerlink" href="#reference-mfsd-report-cli-options" title="Permanent link">¶</a></h2>
@@ -12301,7 +12351,7 @@ Use mouse to pan and zoom
 <p>To export: use your browser's <strong>Print → Save as PDF</strong> function.</p>
 <hr>
 <h2 id="reference-mfsd-report-mfsd-output-columns"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Output Columns<a class="headerlink" href="#reference-mfsd-report-mfsd-output-columns" title="Permanent link">¶</a></h2>
-<p>For the complete reference of all 34 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns and 7 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields added by <code>--mfsd</code>, see <a href="#reference-counting-metrics-mfsd">Counting &amp; Metrics → <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a>.</p>
+<p>For the complete reference of all 41 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns and 13 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields added by <code>--mfsd</code>, see <a href="#reference-counting-metrics-mfsd">Counting &amp; Metrics → <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a>.</p>
 <h3 id="reference-mfsd-report-additional-columns-physical-sizing">Additional Columns (Physical Sizing)<a class="headerlink" href="#reference-mfsd-report-additional-columns-physical-sizing" title="Permanent link">¶</a></h3>
 <p>These columns are added by the physical sizing engine (new in v4.1):</p>
 <table>
@@ -14455,6 +14505,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
 <ul>
+<li>
+<p><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> now emits the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> sub-/mono-nucleosomal fields (ME-1).</strong> <code>MFSD_SUB_NUC_REF_FRAC</code>,
+  <code>MFSD_SUB_NUC_ALT_FRAC</code>, <code>MFSD_SUB_NUC_ENRICHMENT</code>, <code>MFSD_MONO_NUC_REF_FRAC</code>,
+  <code>MFSD_MONO_NUC_ALT_FRAC</code> were computed under <code>--mfsd</code> and written to <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> but silently
+  dropped from <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> — they're now in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO too (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>↔<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> parity), taking the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>
+  surface to 13 INFO fields. Also corrected long-standing count drift in the docs/<abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> help:
+  <code>--mfsd</code> adds <strong>41</strong> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns (not 34) and <strong>13</strong> <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields (not 7).</p>
+</li>
 <li>
 <p><strong><code>gbcms build-gtf-cache</code> — pre-warm the GTF index cache for a cohort.</strong> A dedicated
   command (<code>--gtf --variants --gtf-cache-dir</code>, no <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>) that parses the GTF once and writes
