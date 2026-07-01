@@ -108,6 +108,23 @@ struct GenomicBin {
     variant_indices: Vec<usize>,
 }
 
+/// Resolve a variant chromosome name to a BAM target id, tolerating contig-naming
+/// differences between the variant source and the BAM (e.g. `chr1` vs `1`, `chrM` vs
+/// `MT`) via `normalize_contig`. The exact name is tried first so the common (matching)
+/// case stays O(1); the normalized scan of the header only runs on a miss. Returns
+/// `None` only when no BAM contig matches even after normalization — i.e. the variant's
+/// chromosome genuinely isn't in the BAM (a real mismatch worth surfacing, not silencing).
+fn resolve_tid(bam_header: &bam::HeaderView, chrom: &str) -> Option<u32> {
+    if let Some(t) = bam_header.tid(chrom.as_bytes()) {
+        return Some(t);
+    }
+    let norm = crate::shared::contig::normalize_contig(chrom);
+    (0..bam_header.target_count()).find(|&tid| {
+        crate::shared::contig::normalize_contig(&String::from_utf8_lossy(bam_header.tid2name(tid)))
+            == norm
+    })
+}
+
 /// Build genomic bins from a list of variants.
 ///
 /// Variants are grouped by chromosome and position into `BIN_WINDOW`-sized
@@ -153,12 +170,21 @@ fn build_genomic_bins(
     while i < sorted_indices.len() {
         let first_idx = sorted_indices[i];
         let chrom = &variants[first_idx].chrom;
-        let tid = match bam_header.tid(chrom.as_bytes()) {
+        let tid = match resolve_tid(bam_header, chrom) {
             Some(t) => t,
             None => {
-                // Skip variants on chromosomes not in BAM
-                debug!("Skipping variant on chromosome not in BAM: {}", chrom);
-                i += 1;
+                // Genuinely absent from the BAM (even after contig-name normalization):
+                // warn ONCE per chromosome (variants are chrom-sorted) so a naming
+                // mismatch surfaces instead of silently producing zero counts.
+                warn!(
+                    "Variant chromosome '{}' not found in the BAM header (checked with \
+                     contig-name normalization); its variants will get zero counts. Likely a \
+                     contig-naming mismatch between the variant file and the BAM.",
+                    chrom
+                );
+                while i < sorted_indices.len() && &variants[sorted_indices[i]].chrom == chrom {
+                    i += 1;
+                }
                 continue;
             }
         };
@@ -1783,7 +1809,10 @@ fn count_single_variant(
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
 ) -> Result<BaseCounts> {
-    let tid = bam.header().tid(variant.chrom.as_bytes()).ok_or_else(|| {
+    // Reconcile contig naming (chr1 vs 1, chrM vs MT) the same way the binned path does,
+    // so both codepaths resolve the same reads. The legacy oracle errors on a genuine
+    // miss (loud, and it is test-only).
+    let tid = resolve_tid(bam.header(), &variant.chrom).ok_or_else(|| {
         anyhow::anyhow!("Chromosome not found in BAM: {}", variant.chrom)
     })?;
 
@@ -3133,6 +3162,24 @@ mod tests {
         sq.push_tag(b"LN", len);
         header.push_record(&sq);
         bam::HeaderView::from_header(&header)
+    }
+
+    // ── contig-naming reconciliation (chr1 vs 1) ──
+
+    #[test]
+    fn test_resolve_tid_reconciles_contig_naming() {
+        // BAM uses UCSC "chr1"; a variant may arrive as "1" (or vice-versa). resolve_tid
+        // must reconcile both so reads are found — the fix for the silent zero-count when
+        // naming differs — and return None only for a genuine miss (which then warns).
+        let ucsc = build_header_with_contig("chr1", 1_000);
+        assert_eq!(resolve_tid(&ucsc, "chr1"), Some(0)); // exact
+        assert_eq!(resolve_tid(&ucsc, "1"), Some(0)); // "1" reconciled to "chr1"
+        assert_eq!(resolve_tid(&ucsc, "chr2"), None); // genuine miss
+
+        let b37 = build_header_with_contig("1", 1_000);
+        assert_eq!(resolve_tid(&b37, "1"), Some(0)); // exact
+        assert_eq!(resolve_tid(&b37, "chr1"), Some(0)); // "chr1" reconciled to "1"
+        assert_eq!(resolve_tid(&b37, "chrX"), None); // genuine miss
     }
 
     // ── bin fetch-end must cover the anchor variant's full ref span ──
