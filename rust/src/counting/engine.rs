@@ -274,10 +274,13 @@ impl AlignmentBackend {
 /// allele and once with the corrected allele. The result with the higher
 /// `ad` (alt_count) is returned, with `used_decomposed` set accordingly.
 ///
-/// // INTENTIONAL: This per-variant codepath is retained alongside count_bam_binned()
-/// // for parity testing. Both codepaths must produce identical BaseCounts for the
-/// // same inputs. Once parity is confirmed across the 22-BAM regression suite,
-/// // pipeline.py can switch to the binned codepath.
+/// // INTENTIONAL: `count_bam` is the per-variant **parity oracle**, retained behind the
+/// // `legacy-parity` feature (default-on; the shipped wheel omits it). Production always
+/// // uses `count_bam_binned`; this path exists only so the parity suite can confirm both
+/// // produce identical BaseCounts on the same inputs. It covers **core counting only** —
+/// // RNA / mFSD / ASJD / GTF / strandedness are binned-only and intentionally absent here
+/// // (mFSD ∉ PARITY_FIELDS). Any change to read classification / filtering / fragment
+/// // consensus / fetch-window in the binned path must be mirrored here, or parity fails.
 #[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
@@ -2944,7 +2947,7 @@ fn detect_asjd(
         .iter()
         .max_by_key(|(_, sc)| sc.total())
         .map(|(j, sc)| (*j, sc))
-        .unwrap();
+        .unwrap(); // safe: checked non-empty above
     let n_alt_junc = alt_dom_strand_info.total();
 
     // Check for multi-junction in ALT reads
