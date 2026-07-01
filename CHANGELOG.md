@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-07-01
+
+> [!WARNING]
+> **Breaking output changes — downstream parsers of gbcms output must review before upgrading.**
+> This major release changes several output behaviours:
+> - **`gbcms_status` is now two fields** — a verdict (`gbcms_status` = `PASS`/`FAIL`) and a
+>   `|`-separated `gbcms_status_reason`. VCF gains a `GSR` INFO key. Filters on
+>   `FAIL_FETCH_FAILED` etc. must switch to `gbcms_status == "FAIL"` + a reason check.
+> - **Per-transcript count columns use `|` between transcripts, not `;`** (RNA + `--gtf`).
+> - **Supplementary/secondary alignments no longer count toward read-level depth** — `DP`
+>   may drop for BAMs with those alignments and the corresponding filters disabled.
+> - **Empty-allele variants are rejected at prep time** (verdict `FAIL`, reason `EMPTY_ALLELE`).
+> - **Nextflow RNA now defaults `min_mapq=1`** (via `rna_min_mapq`) instead of inheriting the
+>   DNA `20`, matching the `gbcms rna` CLI — RNA depths increase vs. the 5.x pipeline.
+> - **`--mfsd` MAF/VCF schema grew** to 41 MAF columns / 13 VCF `MFSD_*` INFO fields
+>   (gated behind `--mfsd`, absent otherwise).
+
 ### 🐛 Fixed
 
 - **Contig-naming mismatches no longer silently produce zero counts.** When the BAM's

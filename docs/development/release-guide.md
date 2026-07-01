@@ -50,13 +50,21 @@ gitGraph LR:
    commit id: "bump versions (5 files)"
    commit id: "update CHANGELOG.md"
    checkout main
-   merge release/X.Y.Z id: "PR merged" tag: "vX.Y.Z"
+   merge release/X.Y.Z id: "PR merged" tag: "X.Y.Z"
    checkout develop
    merge release/X.Y.Z id: "back-merge"
 ```
 
+!!! danger "Tags are bare `X.Y.Z` — NO `v` prefix"
+    The `Release` workflow (`.github/workflows/release.yml`) triggers on the tag pattern
+    `[0-9]+.[0-9]+.[0-9]+`. A `v`-prefixed tag (`v6.0.0`) **does not match** and will
+    **silently fail to publish** — no PyPI, no Docker/GHCR, no docs deploy. Every existing
+    release tag is bare (`5.3.0`, `5.2.0`, …); keep it that way. The `v` you see in
+    `nextflow/main.nf`'s banner (`gbcms v6.0.0 — …`) is display text only, not the tag.
+
 !!! info "Tag triggers CI"
-    Pushing the tag `vX.Y.Z` automatically triggers the CI pipeline which publishes to **PyPI**, **Docker/GHCR**, and deploys **gh-pages** docs.
+    Pushing the bare tag `X.Y.Z` automatically triggers the CI pipeline which publishes to
+    **PyPI**, **Docker/GHCR**, and deploys **gh-pages** docs.
 
 ---
 
