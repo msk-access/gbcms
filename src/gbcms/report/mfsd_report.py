@@ -170,6 +170,13 @@ def _compute_kde(
     Returns (x_values, density_values) suitable for a Plotly scatter trace.
     Returns empty lists if fewer than 2 data points.
 
+    Bandwidth floor (LO-13): Silverman's rule collapses toward 0 for a
+    near-zero-variance size class (e.g. all fragments the same length), which
+    would render a spike indistinguishable from a point mass. We clamp the
+    bandwidth to a 5.0 bp floor in that degenerate case so the density stays
+    visible and smooth. This is a visualization-only floor — it affects the
+    plotted KDE curve, never any count or statistic — and is logged at DEBUG.
+
     Args:
         sizes: Raw fragment sizes (integers).
         grid_start: Left edge of the evaluation grid (bp).

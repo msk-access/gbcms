@@ -55,6 +55,13 @@ pub fn find_read_pos(record: &Record, target_pos: i64) -> Option<usize> {
 /// contribution to fragment consensus.
 ///
 /// Returns 0 if no qualifying bases.
+///
+/// Even-count convention (LO-7): returns the *upper* of the two middle values
+/// (`filtered[len / 2]`), a slight upward bias, rather than averaging them. This
+/// is deliberate — `med_qual` feeds classification thresholds in `variant_checks`,
+/// `alignment`, and `pairhmm`, so switching to an exact average could flip
+/// borderline REF/ALT calls and perturb binned↔legacy parity for no diagnostic
+/// gain. Kept as-is intentionally.
 #[inline]
 pub fn median_qual(quals: &[u8], min_baseq: u8) -> u8 {
     let mut filtered: Vec<u8> = quals.iter()
