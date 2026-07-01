@@ -14385,7 +14385,7 @@ Use mouse to pan and zoom
    commit id: "bump versions (5 files)"
    commit id: "update CHANGELOG.md"
    checkout main
-   merge release/X.Y.Z id: "PR merged" tag: "vX.Y.Z"
+   merge release/X.Y.Z id: "PR merged" tag: "X.Y.Z"
    checkout develop
    merge release/X.Y.Z id: "back-merge"
 </code></pre> 
@@ -14393,9 +14393,18 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
+<div class="admonition danger">
+<p class="admonition-title">Tags are bare <code>X.Y.Z</code> — NO <code>v</code> prefix</p>
+<p>The <code>Release</code> workflow (<code>.github/workflows/release.yml</code>) triggers on the tag pattern
+<code>[0-9]+.[0-9]+.[0-9]+</code>. A <code>v</code>-prefixed tag (<code>v6.0.0</code>) <strong>does not match</strong> and will
+<strong>silently fail to publish</strong> — no PyPI, no Docker/GHCR, no docs deploy. Every existing
+release tag is bare (<code>5.3.0</code>, <code>5.2.0</code>, …); keep it that way. The <code>v</code> you see in
+<code>nextflow/main.nf</code>'s banner (<code>gbcms v6.0.0 — …</code>) is display text only, not the tag.</p>
+</div>
 <div class="admonition info">
 <p class="admonition-title">Tag triggers <abbr title="Continuous Integration - Automated build and test system">CI</abbr></p>
-<p>Pushing the tag <code>vX.Y.Z</code> automatically triggers the <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pipeline which publishes to <strong>PyPI</strong>, <strong>Docker/GHCR</strong>, and deploys <strong>gh-pages</strong> docs.</p>
+<p>Pushing the bare tag <code>X.Y.Z</code> automatically triggers the <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pipeline which publishes to
+<strong>PyPI</strong>, <strong>Docker/GHCR</strong>, and deploys <strong>gh-pages</strong> docs.</p>
 </div>
 <hr>
 <h2 id="development-release-guide-step-by-step-instructions">Step-by-Step Instructions<a class="headerlink" href="#development-release-guide-step-by-step-instructions" title="Permanent link">¶</a></h2>
@@ -14614,6 +14623,23 @@ commit history and makes the back-merge conflict-free.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h2 id="development-changelog-600-2026-07-01">[6.0.0] - 2026-07-01<a class="headerlink" href="#development-changelog-600-2026-07-01" title="Permanent link">¶</a></h2>
+<blockquote>
+<p>[!WARNING]
+<strong>Breaking output changes — downstream parsers of gbcms output must review before upgrading.</strong>
+This major release changes several output behaviours:
+- <strong><code>gbcms_status</code> is now two fields</strong> — a verdict (<code>gbcms_status</code> = <code>PASS</code>/<code>FAIL</code>) and a
+  <code>|</code>-separated <code>gbcms_status_reason</code>. <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> gains a <code>GSR</code> INFO key. Filters on
+  <code>FAIL_FETCH_FAILED</code> etc. must switch to <code>gbcms_status == "FAIL"</code> + a reason check.
+- <strong>Per-transcript count columns use <code>|</code> between transcripts, not <code>;</code></strong> (RNA + <code>--gtf</code>).
+- <strong>Supplementary/secondary alignments no longer count toward read-level depth</strong> — <code>DP</code>
+  may drop for BAMs with those alignments and the corresponding filters disabled.
+- <strong>Empty-allele variants are rejected at prep time</strong> (verdict <code>FAIL</code>, reason <code>EMPTY_ALLELE</code>).
+- <strong>Nextflow RNA now defaults <code>min_mapq=1</code></strong> (via <code>rna_min_mapq</code>) instead of inheriting the
+  DNA <code>20</code>, matching the <code>gbcms rna</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> — RNA depths increase vs. the 5.x pipeline.
+- <strong><code>--mfsd</code> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> schema grew</strong> to 41 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns / 13 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>MFSD_*</code> INFO fields
+  (gated behind <code>--mfsd</code>, absent otherwise).</p>
+</blockquote>
 <h3 id="development-changelog-fixed">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
 <ul>
 <li>
