@@ -88,7 +88,9 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub ad_rev: u32,
 
-    // Fragment counts (Majority Rule)
+    // Fragment counts: per-fragment allele resolved by quality-weighted
+    // consensus with an INDEL structural-priority override and a discard band
+    // for within-threshold ties (see shared::fragment::FragmentEvidence::resolve).
     #[pyo3(get)]
     pub dpf: u32,
     #[pyo3(get)]

@@ -10,6 +10,26 @@ Newest at the top.
 
 ---
 
+## [REJ-20260701-001] Gate structural-ALT INDEL win on the REF mate's base quality (ME-12b)
+- **Target:** `rust/src/shared/fragment.rs` — `FragmentEvidence::resolve` (~:206)
+- **Proposed:** before a structural ALT (matching CIGAR I/D op) wins a fragment,
+  require it not be contradicted by a high-BQ REF on the other mate — i.e. compare
+  the structural ALT against the REF mate's base quality.
+- **Reason vetoed:** for INDELs, the REF mate reports **anchor** base quality (the
+  base before the ins/del), which measures "how confident is the anchor base call,"
+  **not** "how confident is the INDEL detection." The two are orthogonal, so gating
+  the structural ALT on that BQ compares a semantically meaningless quantity. The
+  CIGAR I/D op is the only signal that discriminates the alleles. The unconditional
+  structural-priority rule was validated on a DNMT3A duplex dataset (all 7 conflict
+  fragments were genuine D-op evidence, MAPQ=60, correct length). Adding the gate
+  would discard true-positive INDEL fragments. Phase-3 (complex / wrong-length)
+  classifications are `is_structural=false` and already fall through to
+  quality-weighted arbitration, so the concern doesn't apply there either.
+- **Note:** ME-12 part (a) — relabeling the stale "Majority Rule" comment — WAS done.
+- **Date:** 2026-07-01
+
+---
+
 ## [REJ-20260627-001] HI-5: strip N bases from the read before the PairHMM (to make N "LLR-neutral near indels")
 - **Target:** `rust/src/counting/pairhmm.rs` (`classify_by_marginalized_pairhmm` / `BQEmission`)
 - **Proposed:** the M4 scope suggested removing N positions from the read (or otherwise

@@ -512,6 +512,21 @@ Docs updated (rna-annotation.md, output-formats.md MAF section, the Rust doc-com
 ## ME-12 — "Majority rule" is structural-ALT-wins consensus
 **Locations:** `shared/fragment.rs:194-222`. When R1/R2 disagree: structural ALT (indel CIGAR) wins unconditionally (`:206`), else higher-BQ wins past threshold, else discard (in DPF, not RDF/ADF). A single mate with a spurious indel CIGAR op overrides a high-BQ REF mate. **Fix:** (a) relabel docs/`BaseCounts` comments from "Majority Rule" to "quality-weighted consensus with discard band"; (b) optionally require the structural ALT not be contradicted by a high-BQ REF on the other mate before it wins. **Effort:** S (docs) / M (logic change + fixtures).
 
+**Status: Resolved — (a) done, (b) rejected (2026-07-01).**
+(a) The only stale "Majority Rule" label was `rust/src/types.rs:91` (the DPF/RDF/ADF
+field comment); relabeled to "quality-weighted consensus with an INDEL structural-priority
+override and a discard band," pointing at `FragmentEvidence::resolve`. The docs comparison
+tables (`counting-metrics.md:439`, `architecture.md:437`) already read "quality-weighted
+consensus with INDEL structural priority" for gbcms; their "majority-rule" text describes
+the *legacy* GetBaseCountsMultiSample column and is left as-is. `resolve()`'s own docstring
+already documented the real algorithm.
+(b) **Rejected** (see `REJECTED.md` REJ-20260701-001). Structural ALT winning
+unconditionally is a deliberate, DNMT3A-duplex-validated decision: for INDELs, the REF
+mate's anchor BQ measures anchor-base confidence, *not* INDEL-detection confidence, so
+gating the structural ALT on the REF mate's BQ would compare a meaningless quantity and
+regress true-positive INDEL calls. The CIGAR I/D op is the only signal that discriminates
+the alleles.
+
 ## PF-2 — One rayon task per bin, no depth cap → long-pole tail
 **Status: Deferred — niche (M5 empirical scoping, 2026-06-30).** cfDNA has no long-pole (busiest of ~201 bins = 3% of bin-work, top-5 = 13%); RNA skew is extreme but trivial in absolute time (~40ms of bin-work total). The cost-sort is a cheap future win, not a milestone driver.
 
