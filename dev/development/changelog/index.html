@@ -711,6 +711,16 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h3 id="fixed">🐛 Fixed<a class="headerlink" href="#fixed" title="Permanent link">¶</a></h3>
 <ul>
 <li>
+<p><strong>Contig-naming mismatches no longer silently produce zero counts.</strong> When the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>'s
+  contigs were named differently from the variants (UCSC <code>chr1</code> vs Ensembl/b37 <code>1</code>), the
+  binning step found no matching contig, built 0 bins, and returned zero counts for every
+  variant while the run still exited 0 — a systematic failure masked as success. <code>resolve_tid</code>
+  now reconciles the naming via <code>normalize_contig</code> (so <code>chr1</code>↔<code>1</code>, <code>chrM</code>↔<code>MT</code> match), and a
+  genuinely-absent chromosome now logs a loud <code>WARN</code> (once per chromosome) instead of being
+  skipped silently. (MSK ACCESS runs were unaffected — BAMs and MAFs both use b37 naming.)
+  Surfaced by the new end-to-end <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> test.</p>
+</li>
+<li>
 <p><strong>A run now exits non-zero when a sample fails (HI-1).</strong> <code>Pipeline.run()</code> catches
   per-sample errors and returns normally, so <code>gbcms dna</code>/<code>rna</code> previously exited <code>0</code> even
   when every <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> failed (e.g. a Rust panic surfaced as <code>PyErr</code>) — masking systematic
@@ -726,9 +736,27 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>gbcms_status</code> column (and zero counts), so the reasons are in the output file, not only
   the log. (Partial rejections already did this; this closes the all-rejected gap.)</p>
 </li>
+<li>
+<p><strong>Nextflow RNA runs no longer silently drop <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> multi-mapper reads.</strong> The pipeline used a
+  single global <code>min_mapq = 20</code> for both modes, so RNA counting ran at <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20 instead of the
+  <code>gbcms rna</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> default of <strong>1</strong> — silently dropping <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>'s 2–4-locus multi-mapper primaries
+  (which <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> encodes as <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 3/1, vs 255 for uniquely-mapped reads). On a real FORTE RNA
+  sample that was ~16% of reads genome-wide (chr7) and up to ~6% of depth at an individual
+  locus. A new <code>rna_min_mapq</code> param (default <strong>1</strong>) now drives the RNA module; DNA keeps
+  <code>min_mapq = 20</code>. Set <code>--rna_min_mapq 20</code> to restore unique-only RNA counting.</p>
+</li>
 </ul>
 <h3 id="changed">🔄 Changed<a class="headerlink" href="#changed" title="Permanent link">¶</a></h3>
 <ul>
+<li>
+<p><strong>Fragment-count consensus is labeled accurately (ME-12).</strong> The stale "Majority Rule"
+  comment on the <code>BaseCounts</code> fragment fields (<code>DPF</code>/<code>RDF</code>/<code>ADF</code>) is replaced with
+  "quality-weighted consensus with an INDEL structural-priority override and a discard
+  band," pointing at <code>FragmentEvidence::resolve</code> — which is what the code has always done.
+  No behavior change. The alternative of gating a structural-ALT INDEL win on the REF mate's
+  base quality was considered and rejected (anchor BQ is orthogonal to INDEL-detection
+  confidence; see <code>REJECTED.md</code>).</p>
+</li>
 <li>
 <p><strong>Per-transcript count columns now use <code>|</code> between transcripts, not <code>;</code> (ME-2).</strong>
 <code>transcript_read_counts</code> / <code>transcript_fragment_counts</code> (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) and <code>TXRC</code> / <code>TXFC</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)
@@ -745,6 +773,15 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   oversubscribe a small SLURM allocation); all rayon pools are sized through
   <code>resolve_thread_budget</code>, and the resolved budget is logged. Counts are unaffected.</p>
 </li>
+</ul>
+<h3 id="internal">🧹 Internal<a class="headerlink" href="#internal" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Single type stub for the Rust extension (LO-1).</strong> Removed the orphan
+  <code>src/gbcms_rs.pyi</code>, which stubbed a top-level <code>gbcms_rs</code> module that isn't importable
+  (the extension is <code>gbcms._rs</code>) and had already drifted from the real one (missing the
+  nucleosomal fields and <code>fisher_exact_2x2</code>). The co-located <code>src/gbcms/_rs.pyi</code> (shipped
+  via <code>py.typed</code>) is now the single source of truth, and its <code>count_bam</code> stub gained the
+  missing <code>reference_fasta</code> parameter so it matches the real <code>#[pyo3(signature)]</code>.</li>
 </ul>
 <h3 id="packaging">📦 Packaging<a class="headerlink" href="#packaging" title="Permanent link">¶</a></h3>
 <ul>
