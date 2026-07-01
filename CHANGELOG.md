@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `gbcms_status` column (and zero counts), so the reasons are in the output file, not only
   the log. (Partial rejections already did this; this closes the all-rejected gap.)
 
+- **Nextflow RNA runs no longer silently drop STAR multi-mapper reads.** The pipeline used a
+  single global `min_mapq = 20` for both modes, so RNA counting ran at MAPQ 20 instead of the
+  `gbcms rna` CLI default of **1** — silently dropping STAR's 2–4-locus multi-mapper primaries
+  (which STAR encodes as MAPQ 3/1, vs 255 for uniquely-mapped reads). On a real FORTE RNA
+  sample that was ~16% of reads genome-wide (chr7) and up to ~6% of depth at an individual
+  locus. A new `rna_min_mapq` param (default **1**) now drives the RNA module; DNA keeps
+  `min_mapq = 20`. Set `--rna_min_mapq 20` to restore unique-only RNA counting.
+
 ### 🔄 Changed
 
 - **`gbcms_status` is split into a verdict + a reason field (breaking output change).**
@@ -69,6 +77,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loudly instead of silently becoming rayon's all-cores default (which would
   oversubscribe a small SLURM allocation); all rayon pools are sized through
   `resolve_thread_budget`, and the resolved budget is logged. Counts are unaffected.
+
+### 📖 Documentation
+
+- **Repo-wide documentation accuracy sweep.** A four-way audit against the current code
+  corrected the docs where they had drifted: the mFSD schema (now **41 MAF columns / 13 VCF
+  `MFSD_*` INFO fields**, up from a stale 34/7, with the q-value + nucleosomal-fraction +
+  CH-flag columns added); the mono-nucleosomal range (150–200 bp); `gbcms_status` values (the
+  real `FAIL_*` prefixes + the two missing statuses); crashing examples (`normalize` uses
+  `--output <file.tsv>`, not `--output-dir`; corrected RNA MAF column names in the quickstart);
+  the Nextflow README defaults (on-by-default filters, `pairhmm` backend, Nextflow ≥22.10.1) and
+  its missing param surface (`--strandedness`, `--gtf`, `--library_type`, `--mfsd*`, `--merge_*`);
+  and previously-undocumented features (`build-gtf-cache` / `--gtf-cache-dir`, exit-code
+  semantics, the `--threads` hard budget, and contig auto-reconciliation). Also fixed the
+  `--rna-editing-db` CLI help (it loads a REDIportal **TABLE1**, not a VCF) and several
+  developer-doc references to files/paths that had moved.
 
 ### 🧹 Internal
 

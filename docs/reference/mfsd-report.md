@@ -160,7 +160,7 @@ These columns are added by the physical sizing engine (new in v4.1):
 | `mfsd_sub_nuc_ref_frac` | Fraction of REF fragments that are sub-nucleosomal (< 150 bp) |
 | `mfsd_sub_nuc_alt_frac` | Fraction of ALT fragments that are sub-nucleosomal |
 | `mfsd_sub_nuc_enrichment` | Ratio of ALT to REF sub-nucleosomal fractions |
-| `mfsd_mono_nuc_ref_frac` | Fraction of REF fragments in the mono-nucleosomal range (150–250 bp) |
+| `mfsd_mono_nuc_ref_frac` | Fraction of REF fragments in the mono-nucleosomal range (150–200 bp) |
 | `mfsd_mono_nuc_alt_frac` | Fraction of ALT fragments in the mono-nucleosomal range |
 | `mfsd_ch_flag` | Boolean flag indicating CH-like fragment size profile |
 

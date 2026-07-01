@@ -10,6 +10,7 @@ The `gbcms` command-line interface provides two primary commands for variant cou
 | [**rna**](rna.md) | Count alleles in RNA-seq BAM/CRAM files with transcriptome-aware filtering |
 | [**merge**](merge.md) | Merge per-BAM-type MAFs into a single type-prefixed output |
 | [**normalize**](normalize.md) | Standalone variant normalization (no counting) |
+| **build-gtf-cache** | Pre-build the shared GTF index once for a cohort so per-sample RNA runs reuse it (`gbcms build-gtf-cache --gtf <file> --variants <vcf/maf> --cache-dir <dir>`; see [rna](rna.md)) |
 
 ## Quick Example
 

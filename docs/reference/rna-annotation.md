@@ -7,6 +7,23 @@ GTF-based transcript annotation for RNA-seq variant counting (v5.0.0).
     is provided via `--gtf` on the `gbcms rna` command. Without `--gtf`, RNA mode
     operates identically to v4.2.0 — no annotation columns are added.
 
+With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
+`transcript_read_counts` + `transcript_fragment_counts` (2), and the 14 ASJD fields
+(7 metrics × 2 alleles).
+
+!!! important "`gene_strand` is the keystone"
+    Parsing the GTF also back-fills each variant's **`gene_strand`** (the transcript's
+    `+`/`-` strand). This is what makes strand-aware features work: without it,
+    `--enforce_strandedness` and the ASJD strand-discordance test are silent no-ops
+    (every read reads as sense, so `antisense_depth` stays 0). Strand-specific counting
+    therefore requires `--gtf`, not just `--strandedness`.
+
+!!! tip "Cohort runs: pre-build the GTF cache"
+    The GTF is parsed per sample. For a cohort, run `gbcms build-gtf-cache` once and
+    point every sample at the same `--gtf-cache-dir` so each per-sample run reuses the
+    prebuilt index (~9s parse → ~0.05s load). The Nextflow pipeline wires this up
+    automatically via the `GBCMS_BUILD_GTF_CACHE` process (`--gtf_cache`, default on).
+
 ---
 
 ## GTF Requirements
@@ -154,8 +171,10 @@ For each variant:
    span the same junction votes once, so the junction totals and the strand-discordance
    test reflect independent fragments, not mates.
 
-### Output Columns (14)
+### Output Columns (14 ASJD)
 
+The 14 ASJD fields are part of the 17 columns GTF mode adds (alongside
+`exon_boundary_dist` and the two per-transcript count columns).
 See [Output Formats → ASJD](output-formats.md#aberrant-splice-junction-detection-asjd) for the complete column reference.
 
 ### Diagnostic Flags

@@ -43,6 +43,6 @@ let exon = &self.exons[*idx];
 ## Environment Variables
 
 ```bash
-GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms run ...
+GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms dna ...
 OPENSSL_NO_VENDOR=1  # required for Linux CI builds
 ```

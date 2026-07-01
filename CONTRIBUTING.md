@@ -86,10 +86,15 @@ docker build -t gbcms:latest .
 
 ### Counting Engine Changes
 
-Changes to `rust/src/counting.rs` require additional verification:
+Changes to the counting engine (`rust/src/counting/` — especially `engine.rs` and
+`variant_checks.rs`) require additional verification:
 
 - **Unit tests**: `cargo test` must pass (all existing tests + new tests for the change)
-- **22-BAM regression**: Run the regression suite and verify no unintended count shifts
+- **BAM-slice regression**: Run the BAM-slice regression suite and verify no unintended
+  count shifts (see the developer guide for the current slice set)
+- **Binned↔legacy parity**: any change to read classification / filtering / fragment
+  consensus / fetch-window logic must be mirrored in the legacy `count_single_variant`,
+  or the parity tests fail (see `.agents/rules/architecture.md`)
 - **Variant-type coverage**: If modifying a specific variant type (SNP/MNP/Indel/Complex),
   ensure the regression MAF includes representative variants of that type
 - **MnpResult paths**: Any changes to MNP handling must test all 5 `MnpResult` variants:
@@ -107,11 +112,15 @@ Changes to `rust/src/counting.rs` require additional verification:
    - Add tests for new functionality
    - Update documentation as needed
 
-3. **Run tests and linters**
+3. **Run tests and linters** — the Python *and* Rust gates (`make test`/`make lint` cover
+   Python only; the Rust lint/tests must be run separately, or you'll ship un-linted Rust):
    ```bash
-   make test
-   make lint
+   make test && make lint                                   # Python: pytest + ruff/black/mypy
+   cd rust && cargo clippy --all-targets -- -D warnings && cargo test && cd ..
    ```
+   The load-bearing invariants (binned↔legacy parity, one base-quality gate across
+   alignment backends, the 4 counting-test invariants) are in `.agents/rules/architecture.md`
+   (in the repo root) — read them before touching the engine.
 
 4. **Commit your changes**
    ```bash

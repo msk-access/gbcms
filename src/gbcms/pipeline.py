@@ -339,10 +339,10 @@ class Pipeline:
             )
 
         if not rs_variants:
-            # Every variant was rejected during preparation (e.g. a contig mismatch →
-            # FAIL_FETCH_FAILED, or FAIL_EMPTY_ALLELE). This is NOT an empty variant file
-            # (that returns earlier, before any variant exists) — the variants are real,
-            # so we still fall through and write them per sample with their FAIL_* reason
+            # Every variant was rejected during preparation (verdict FAIL, e.g. a contig
+            # mismatch → reason FETCH_FAILED, or EMPTY_ALLELE). This is NOT an empty variant
+            # file (that returns earlier, before any variant exists) — the variants are real,
+            # so we still fall through and write them per sample with their FAIL verdict + reason
             # in the `gbcms_status` column and zero counts, rather than silently emitting
             # no output. The run is not a failure (no sample raised); it exits 0.
             logger.warning(

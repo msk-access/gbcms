@@ -67,9 +67,10 @@ def test_dna_exits_zero_on_empty_variant_file(tmp_path, sample_bam, sample_fasta
 
 
 def test_dna_all_rejected_writes_reasons_to_output(tmp_path, sample_bam, sample_fasta):
-    """When every variant is rejected in prep (here: a contig the reference lacks →
-    FAIL_FETCH_FAILED), the run still exits 0 AND writes each variant with its reason in
-    the `gbcms_status` column — so failure reasons live in the OUTPUT, not just the log."""
+    """When every variant is rejected in prep (here: a contig the reference lacks → verdict
+    FAIL, reason FETCH_FAILED), the run still exits 0 AND writes each variant with its verdict
+    in `gbcms_status` and reason in `gbcms_status_reason` — so failure reasons live in the
+    OUTPUT, not just the log."""
     vcf = tmp_path / "absent_contig.vcf"
     vcf.write_text(
         "##fileformat=VCFv4.2\n##contig=<ID=chr_absent>\n"

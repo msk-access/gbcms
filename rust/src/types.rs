@@ -347,13 +347,13 @@ pub struct BaseCounts {
 
     // ── Per-transcript counts (empty when no GTF or no overlap) ─────
     /// Per-transcript read-level counts (TXRC in VCF).
-    /// Format: "ENST...:AD,RD,DP;ENST...:AD,RD,DP"
+    /// Format: "ENST...:AD,RD,DP|ENST...:AD,RD,DP"
     /// Empty string when no GTF, no overlapping transcripts, or DNA mode.
     #[pyo3(get)]
     pub transcript_read_counts: String,
 
     /// Per-transcript fragment-level counts (TXFC in VCF).
-    /// Format: "ENST...:ADF,RDF,DPF;ENST...:ADF,RDF,DPF"
+    /// Format: "ENST...:ADF,RDF,DPF|ENST...:ADF,RDF,DPF"
     /// Empty string when no GTF, no overlapping transcripts, or DNA mode.
     #[pyo3(get)]
     pub transcript_fragment_counts: String,

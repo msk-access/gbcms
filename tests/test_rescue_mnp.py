@@ -216,7 +216,7 @@ def test_rescue_candidate_identification():
 
     candidates = []
     for i, (p, c) in enumerate(zip(prepared, full_counts, strict=True)):
-        if not p.gbcms_status.startswith("PASS"):
+        if p.gbcms_status != "PASS":
             continue
         if c.ad != 0:
             continue

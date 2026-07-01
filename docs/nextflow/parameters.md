@@ -40,7 +40,8 @@ Complete reference for all pipeline parameters.
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
-| `--min_mapq` | `20` | Minimum mapping quality |
+| `--min_mapq` | `20` | Minimum mapping quality for **DNA** counting |
+| `--rna_min_mapq` | `1` | Minimum mapping quality for **RNA** counting. Defaults to `1` to match the `gbcms rna` CLI: STAR gives uniquely-mapped reads MAPQ 255 but 2–4-locus multi-mappers MAPQ 3/1, so a DNA-style floor of 20 silently drops those primaries (~16% of reads genome-wide on a FORTE sample; up to ~6% of depth at an individual locus). Raise it to 20 for unique-only RNA counting. |
 | `--min_baseq` | `20` | Minimum base quality |
 | `--fragment_qual_threshold` | `10` | Quality margin for [fragment consensus](../reference/counting-metrics.md#fragment-counting) — when R1/R2 disagree on a non-INDEL variant, the higher-quality allele wins only if the difference exceeds this. INDEL conflicts with structural CIGAR evidence bypass this threshold. |
 | `--context_padding` | `5` | Minimum flanking bases for [Phase 3 alignment](../reference/allele-classification.md#phase-3-alignment-fallback) (auto-increased in repeats) |
@@ -72,6 +73,7 @@ These parameters are only used when `--mode rna` is specified.
 | `--rna_editing_db` | `''` | Path to [REDIportal](http://srv00.recas.ba.infn.it/atlas/index.html) editing database file (e.g., `TABLE1_hg38_v3.txt`). Flags ALT sites that overlap known A→I RNA editing positions. |
 | `--enforce_strandedness` | `true` | Enforce strand-specific library prep. Disable with `false` for unstranded RNA-seq libraries (`--no-strandedness` equivalent). |
 | `--strandedness` | `'reverse'` | RNA library strand protocol: `'reverse'` (dUTP/fr-firststrand, featureCounts `-s 2` — the FORTE default), `'forward'` (fr-secondstrand, `-s 1`), or `'unstranded'` (`-s 0`). Sets the read→transcript-strand fold used by `--enforce_strandedness` and ASJD strand-discordance; `'unstranded'` disables both. |
+| `--library_type` | `'capture'` | `'capture'` (default) or `'amplicon'`. Amplicon mode treats R1 and R2 as **independent observations** (no fragment-level consensus) and auto-disables strandedness — use it for amplicon/primer-based RNA panels where mates aren't independent fragments. |
 
 !!! tip "RNA mode defaults"
     RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
