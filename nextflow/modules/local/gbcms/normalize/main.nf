@@ -15,7 +15,7 @@ process GBCMS_NORMALIZE {
 
     publishDir "${params.outdir}/gbcms", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:5.3.0"
+    container "ghcr.io/msk-access/gbcms:6.0.0"
 
     input:
     path variants

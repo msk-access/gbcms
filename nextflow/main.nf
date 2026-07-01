@@ -51,7 +51,7 @@ workflow {
 
     log.info """
     ============================================================
-      gbcms v5.3.0 — Nextflow Pipeline
+      gbcms v6.0.0 — Nextflow Pipeline
       Mode:     ${params.mode.toUpperCase()}
       Variants: ${params.variants}
       Output:   ${params.outdir}
