@@ -21,10 +21,11 @@ if (!(params.mode in ['dna', 'rna'])) {
 ========================================================================================
 */
 
-include { GBCMS_DNA_WF }     from './workflows/dna'
-include { GBCMS_RNA_WF }     from './workflows/rna'
-include { FILTER_MAF }       from './modules/local/gbcms/filter_maf/main'
-include { PIPELINE_SUMMARY } from './modules/local/gbcms/pipeline_summary/main'
+include { GBCMS_DNA_WF }          from './workflows/dna'
+include { GBCMS_RNA_WF }          from './workflows/rna'
+include { GBCMS_BUILD_GTF_CACHE } from './modules/local/gbcms/build_gtf_cache/main'
+include { FILTER_MAF }            from './modules/local/gbcms/filter_maf/main'
+include { PIPELINE_SUMMARY }      from './modules/local/gbcms/pipeline_summary/main'
 
 // Helper: Check if a MAF file has at least one data row (not just header/comments)
 def hasData = { file ->
@@ -50,7 +51,7 @@ workflow {
 
     log.info """
     ============================================================
-      gbcms v5.3.0 — Nextflow Pipeline
+      gbcms v6.0.0 — Nextflow Pipeline
       Mode:     ${params.mode.toUpperCase()}
       Variants: ${params.variants}
       Output:   ${params.outdir}
@@ -192,9 +193,22 @@ workflow {
     // STEP 3: Run the appropriate workflow based on mode
     //
     if (params.mode == 'rna') {
+        // M5a: pre-warm the GTF index cache ONCE for the cohort (shared --gtf +
+        // --variants), then broadcast the prebuilt cache dir to every per-sample
+        // GBCMS_RNA task so none of them re-parse the GTF (~9s each). Without this
+        // up-front build, concurrently-launched samples all cold-miss. Disabled (no
+        // GTF, or --gtf_cache false) => [] => the per-sample runs parse as before.
+        if (params.gtf && params.gtf_cache) {
+            GBCMS_BUILD_GTF_CACHE( [ file(params.gtf), ch_variants_file ] )
+            ch_gtf_cache = GBCMS_BUILD_GTF_CACHE.out.cache_dir.first()
+        } else {
+            ch_gtf_cache = Channel.value([])
+        }
+
         GBCMS_RNA_WF (
             ch_ready,
-            ch_fasta_tuple
+            ch_fasta_tuple,
+            ch_gtf_cache
         )
     } else {
         GBCMS_DNA_WF (

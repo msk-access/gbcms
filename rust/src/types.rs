@@ -88,7 +88,9 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub ad_rev: u32,
 
-    // Fragment counts (Majority Rule)
+    // Fragment counts: per-fragment allele resolved by quality-weighted
+    // consensus with an INDEL structural-priority override and a discard band
+    // for within-threshold ties (see shared::fragment::FragmentEvidence::resolve).
     #[pyo3(get)]
     pub dpf: u32,
     #[pyo3(get)]
@@ -176,6 +178,13 @@ pub struct BaseCounts {
     /// ALT vs REF: KS p-value
     #[pyo3(get)]
     pub mfsd_pval_alt_ref: f64,
+    /// ALT vs REF: Benjamini-Hochberg FDR q-value for `mfsd_pval_alt_ref`,
+    /// corrected across all variants with a valid alt-vs-REF KS test in the
+    /// sample. The report classifies TUMOR-LIKE/CH-LIKE on this q-value,
+    /// not the raw p-value. NaN when the KS test was invalid (too few fragments);
+    /// equals the p-value until the post-counting BH pass runs.
+    #[pyo3(get)]
+    pub mfsd_qval_alt_ref: f64,
 
     /// ALT vs NonREF: mean(ALT) − mean(NonREF)
     #[pyo3(get)]
@@ -336,20 +345,20 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub exon_boundary_dist: Option<i32>,
 
-    // ── P4b: Per-transcript counts (empty when no GTF or no overlap) ─────
+    // ── Per-transcript counts (empty when no GTF or no overlap) ─────
     /// Per-transcript read-level counts (TXRC in VCF).
-    /// Format: "ENST...:AD,RD,DP;ENST...:AD,RD,DP"
+    /// Format: "ENST...:AD,RD,DP|ENST...:AD,RD,DP"
     /// Empty string when no GTF, no overlapping transcripts, or DNA mode.
     #[pyo3(get)]
     pub transcript_read_counts: String,
 
     /// Per-transcript fragment-level counts (TXFC in VCF).
-    /// Format: "ENST...:ADF,RDF,DPF;ENST...:ADF,RDF,DPF"
+    /// Format: "ENST...:ADF,RDF,DPF|ENST...:ADF,RDF,DPF"
     /// Empty string when no GTF, no overlapping transcripts, or DNA mode.
     #[pyo3(get)]
     pub transcript_fragment_counts: String,
 
-    // ── P4c: Allele-Specific Junction Divergence (ASJD) ──────────────────
+    // ── Allele-Specific Junction Divergence (ASJD) ──────────────────
     // All fields default to false/0.0/"" via #[derive(Default)], producing
     // clean output when no GTF is provided or in DNA mode.
 
@@ -400,6 +409,14 @@ pub struct BaseCounts {
     /// Semicolon-separated diagnostic flags (e.g., "LOW_ALT_JUNC;NOVEL_ALT_JUNC").
     #[pyo3(get)]
     pub asjd_diagnostic: String,
+
+    /// True when the pangenomic haplotype matrix has a REF-class haplotype byte-
+    /// identical to an ALT-class one (a sibling combination reconstructs the
+    /// reference). REF and ALT are then sequence-indistinguishable, so reads tie to
+    /// NEITHER — surfaced as the `NON_DISCRIMINATING_LOCUS` diagnostic so the zeroed
+    /// RD/AD is explained rather than silent. PairHMM backend only.
+    #[pyo3(get)]
+    pub non_discriminating_locus: bool,
 }
 
 #[pymethods]

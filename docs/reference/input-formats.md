@@ -99,7 +99,11 @@ gbcms automatically **left-aligns** indels and complex variants during the prepa
 ## Reference FASTA
 
 - Must have corresponding `.fai` index
-- Chromosome names must match VCF/MAF
+- The reference is looked up by the variant's chromosome name, so the FASTA should use a
+  naming convention compatible with your variant file. (The `chr`-prefix and `M`/`MT`
+  differences between the **BAM** and the variants are auto-reconciled — see below — but the
+  reference anchor is fetched by name, so a variant whose contig is absent from the FASTA is
+  rejected with verdict `FAIL` and reason `FETCH_FAILED`.)
 
 ```bash
 # Create index if missing
@@ -110,7 +114,10 @@ samtools faidx reference.fa
 
 - Must have corresponding index (`.bam.bai` or `.bai` for BAM; `.cram.crai` or `.crai` for CRAM)
 - Coordinate-sorted
-- Chromosome names must match reference
+- Chromosome naming is auto-reconciled: `chr`-prefix differences (`chr1` ↔ `1`) and
+  mitochondrial aliases (`M` / `chrM` / `chrMT` / `MT`) between the BAM and the variant file
+  are normalized automatically. Only a contig with **no** match in the BAM is skipped — and
+  gbcms logs a one-time `WARN` for it, rather than silently returning zero counts.
 
 !!! info "CRAM Support (v5.3.0+)"
     Both `--bam` and `--bam-list` accept CRAM files transparently.

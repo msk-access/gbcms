@@ -8,7 +8,7 @@ Tests that:
 4. Invalid backend name is rejected with clear error
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -97,7 +97,7 @@ def _base_args(vcf, bam, fasta, output_dir):
 def test_cli_default_backend(mock_pipeline_cls, tmp_path):
     """Default invocation uses PairHMM backend."""
     vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     result = runner.invoke(app, _base_args(vcf, bam, fasta, output_dir))
     assert result.exit_code == 0
@@ -113,7 +113,7 @@ def test_cli_default_backend(mock_pipeline_cls, tmp_path):
 def test_cli_hmm_backend(mock_pipeline_cls, tmp_path):
     """--alignment-backend hmm propagates to config."""
     vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     args = _base_args(vcf, bam, fasta, output_dir) + ["--alignment-backend", "hmm"]
     result = runner.invoke(app, args)
@@ -127,7 +127,7 @@ def test_cli_hmm_backend(mock_pipeline_cls, tmp_path):
 def test_cli_custom_hmm_params(mock_pipeline_cls, tmp_path):
     """Custom PairHMM parameters propagate through CLI to config."""
     vcf, bam, fasta, output_dir = _make_test_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     args = _base_args(vcf, bam, fasta, output_dir) + [
         "--alignment-backend",

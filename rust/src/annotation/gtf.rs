@@ -11,7 +11,9 @@
 //! | Ensembl v75+ | `1`, `X`, `MT` | `gene_id "ENSG00000141510"` |
 //! | GENCODE v19+ | `chr1`, `chrX`, `chrM` | `gene_id "ENSG00000141510.11"` |
 //!
-//! Chromosome normalization: `chr` prefix is stripped via `trim_start_matches("chr")`
+//! Chromosome normalization: names are canonicalized via
+//! `shared::contig::normalize_contig` (strips `chr`, folds `M`/`MT` aliases), so
+//! `chr1`/`1` and `chrM`/`MT` reconcile across BAM, GTF, variants and editing DBs.
 //! for consistent matching with BAM contigs (same approach as `rna.rs::build_rna_editing_set`).
 
 use std::collections::{HashMap, HashSet};
@@ -20,8 +22,8 @@ use std::io::BufRead;
 use log::{debug, info, warn};
 use noodles_gtf as gtf;
 
+use super::cache::{GtfIndexBundle, CACHE_FORMAT_VERSION};
 use super::{AnnotationIndex, ExonRecord, TranscriptIntrons};
-use coitrees::{COITree, IntervalNode, IntervalTree};
 
 /// Parse a GTF file and build an [`AnnotationIndex`].
 ///
@@ -42,6 +44,18 @@ pub fn parse_gtf(
     gtf_path: &str,
     variant_chroms: &HashSet<String>,
 ) -> anyhow::Result<AnnotationIndex> {
+    Ok(parse_gtf_to_bundle(gtf_path, variant_chroms)?.into_index())
+}
+
+/// Parse a GTF into the serializable [`GtfIndexBundle`] — the M5a cache payload:
+/// everything an [`AnnotationIndex`] needs *except* the COITrees, which are rebuilt
+/// from the exon records by [`GtfIndexBundle::into_index`]. Splitting the parse out
+/// here lets the cache layer persist/restore the bundle without touching the
+/// arch-specific trees. This is the function that does the ~8.7s text parse.
+pub(crate) fn parse_gtf_to_bundle(
+    gtf_path: &str,
+    variant_chroms: &HashSet<String>,
+) -> anyhow::Result<GtfIndexBundle> {
     info!("Loading GTF annotation from: {}", gtf_path);
     debug!(
         "Variant-guided filter: loading {} chromosomes: {:?}",
@@ -95,11 +109,8 @@ pub fn parse_gtf(
             continue;
         }
 
-        // Normalize chromosome: strip "chr" prefix
-        let chrom = record
-            .reference_sequence_name()
-            .trim_start_matches("chr")
-            .to_string();
+        // Canonicalize the chromosome so chr1/1 and chrM/MT reconcile across sources.
+        let chrom = crate::shared::contig::normalize_contig(record.reference_sequence_name());
 
         // Variant-guided filter: skip chromosomes without variants
         if !variant_chroms.contains(&chrom) {
@@ -113,10 +124,14 @@ pub fn parse_gtf(
         let start = start_1based - 1; // 0-based inclusive
         let end = end_1based; // 0-based exclusive (GTF end is 1-based inclusive)
 
-        // Parse strand via noodles (returns Option<Strand>)
+        // Parse strand via noodles. Keep unstranded ('.') distinct from '+' so it
+        // propagates downstream as "no strand" (gene_strand = None, no enforcement)
+        // rather than a false plus-strand call that would mis-orient strandedness
+        // and splice-motif checks.
         let strand = match record.strand() {
+            Some(noodles_gtf::record::Strand::Forward) => '+',
             Some(noodles_gtf::record::Strand::Reverse) => '-',
-            _ => '+', // Forward or unstranded defaults to '+'
+            _ => '.', // unstranded / unknown
         };
 
         // Extract transcript_id and gene_id from noodles-parsed attributes
@@ -160,10 +175,26 @@ pub fn parse_gtf(
     }
 
     if exons.is_empty() {
-        warn!(
-            "GTF parser: no exon records found for variant chromosomes {:?} in {}",
-            variant_chroms, gtf_path,
-        );
+        // Annotation is inert either way (splice distance, per-transcript counts and
+        // strand all become no-ops), so make the *reason* loud and actionable. An
+        // exon record that reached the chromosome filter either loaded or bumped
+        // `skipped_chrom`; so `skipped_chrom > 0` means exons existed but matched no
+        // variant chromosome (a naming mismatch), whereas `== 0` means the file had
+        // no `exon` feature records at all (likely the wrong file or feature column).
+        if skipped_chrom > 0 {
+            warn!(
+                "GTF parser: exon records exist but none on the variant chromosomes {:?} in {} \
+                 ({} exon rows skipped by the chromosome filter) — likely a contig-naming \
+                 mismatch (e.g. chr1 vs 1, chrM vs MT). RNA annotation will be inert.",
+                variant_chroms, gtf_path, skipped_chrom,
+            );
+        } else {
+            warn!(
+                "GTF parser: no 'exon' feature records found in {} ({} lines read, {} non-exon, \
+                 {} parse errors) — wrong file or feature column? RNA annotation will be inert.",
+                gtf_path, total_lines, skipped_non_exon, skipped_parse,
+            );
+        }
     }
 
     info!(
@@ -172,21 +203,17 @@ pub fn parse_gtf(
         skipped_non_exon, skipped_chrom, skipped_parse,
     );
 
-    // ── Build COITrees per chromosome ────────────────────────────────────────
-
-    let mut tree_nodes: HashMap<u32, Vec<IntervalNode<usize, u32>>> = HashMap::new();
-
-    for (i, exon) in exons.iter().enumerate() {
-        tree_nodes
-            .entry(exon.chrom_id)
-            .or_default()
-            .push(IntervalNode::new(exon.start, exon.end, i));
+    let n_unstranded = exons.iter().filter(|e| e.strand == '.').count();
+    if n_unstranded > 0 {
+        debug!(
+            "GTF parser: {} loaded exon records are unstranded ('.'); variants over \
+             them will not have strandedness enforced or splice motifs oriented",
+            n_unstranded,
+        );
     }
 
-    let exon_trees: HashMap<u32, COITree<usize, u32>> = tree_nodes
-        .into_iter()
-        .map(|(chrom_id, nodes)| (chrom_id, COITree::new(&nodes)))
-        .collect();
+    // (COITrees are not built here — they are rebuilt from `exons` by
+    // GtfIndexBundle::into_index, so the cache stores only the portable intermediate.)
 
     // ── Build sorted splice_sites per chromosome ─────────────────────────────
 
@@ -247,13 +274,13 @@ pub fn parse_gtf(
         transcript_introns.len(),
     );
 
-    Ok(AnnotationIndex::new(
-        exon_trees,
+    Ok(GtfIndexBundle {
+        format_version: CACHE_FORMAT_VERSION,
         exons,
         splice_sites,
         transcript_introns,
         chrom_map,
-    ))
+    })
 }
 
 // ─── GENCODE Version Stripping ───────────────────────────────────────────────
@@ -365,5 +392,63 @@ mod tests {
         assert_eq!(txs, vec!["ENST001"]);
 
         std::fs::remove_file(&gtf_path).ok();
+    }
+
+    #[test]
+    fn test_parse_gtf_unstranded_strand() {
+        // A GTF '.' strand must parse to an unstranded exon, so strand_at returns
+        // None (no enforcement) rather than being coerced to '+'. The strand_at(None)
+        // contract itself is covered in mod.rs; this guards the parser's strand
+        // mapping end-to-end.
+        use std::io::Write;
+        let dir = std::env::temp_dir();
+        let gtf_path = dir.join("test_unstranded.gtf");
+        let mut f = std::fs::File::create(&gtf_path).unwrap();
+        writeln!(f, "1\tensembl\texon\t101\t200\t.\t+\t.\tgene_id \"GP\"; transcript_id \"TP\";")
+            .unwrap();
+        writeln!(f, "1\tensembl\texon\t301\t400\t.\t.\t.\tgene_id \"GU\"; transcript_id \"TU\";")
+            .unwrap();
+
+        let mut variant_chroms = HashSet::new();
+        variant_chroms.insert("1".to_string());
+        let idx = parse_gtf(gtf_path.to_str().unwrap(), &variant_chroms).unwrap();
+
+        assert_eq!(idx.n_exons(), 2);
+        assert_eq!(idx.strand_at("1", 150), Some('+'), "stranded exon keeps '+'");
+        assert_eq!(idx.strand_at("1", 350), None, "unstranded '.' exon → no enforcement");
+
+        std::fs::remove_file(&gtf_path).ok();
+    }
+
+    #[test]
+    fn test_parse_gtf_empty_index_no_panic() {
+        // An empty index must be returned (Ok, not an error/panic) for both
+        // distinguished causes — (a) exons exist but none on a variant chromosome
+        // (contig-naming mismatch), and (b) the file carries no exon rows at all.
+        use std::io::Write;
+        let dir = std::env::temp_dir();
+
+        // (a) naming mismatch: exon on "1", but the variant set asks for "7".
+        let p1 = dir.join("test_empty_mismatch.gtf");
+        let mut f1 = std::fs::File::create(&p1).unwrap();
+        writeln!(f1, "1\tensembl\texon\t101\t200\t.\t+\t.\tgene_id \"G\"; transcript_id \"T\";")
+            .unwrap();
+        let mut chroms_a = HashSet::new();
+        chroms_a.insert("7".to_string());
+        let idx_a = parse_gtf(p1.to_str().unwrap(), &chroms_a).unwrap();
+        assert_eq!(idx_a.n_exons(), 0, "no exon on the requested chromosome → empty");
+        assert_eq!(idx_a.strand_at("7", 150), None);
+
+        // (b) no exon rows at all (only a non-exon 'gene' feature).
+        let p2 = dir.join("test_empty_noexon.gtf");
+        let mut f2 = std::fs::File::create(&p2).unwrap();
+        writeln!(f2, "1\tensembl\tgene\t101\t200\t.\t+\t.\tgene_id \"G\";").unwrap();
+        let mut chroms_b = HashSet::new();
+        chroms_b.insert("1".to_string());
+        let idx_b = parse_gtf(p2.to_str().unwrap(), &chroms_b).unwrap();
+        assert_eq!(idx_b.n_exons(), 0, "file has no exon rows → empty");
+
+        std::fs::remove_file(&p1).ok();
+        std::fs::remove_file(&p2).ok();
     }
 }

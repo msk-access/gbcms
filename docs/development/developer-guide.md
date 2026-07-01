@@ -127,9 +127,19 @@ maturin develop
 # Release (optimized)
 maturin develop --release
 
-# Build wheel
+# Build wheel (dev/test — includes the legacy count_bam parity oracle)
 maturin build --release --out dist
+
+# Build the SHIPPED wheel (drops the test-only count_bam parity oracle)
+maturin build --release --no-default-features --out dist
 ```
+
+!!! note "`legacy-parity` feature"
+    `maturin develop` and `cargo test` include the per-variant `count_bam` (the
+    binned↔legacy parity oracle) via the default `legacy-parity` Cargo feature. Release
+    wheels build `--no-default-features` to omit it — production only uses
+    `count_bam_binned`. Changing the counting core means mirroring it in *both* paths;
+    see `.agents/rules/architecture.md` §"Legacy count_bam parity oracle".
 
 ---
 
@@ -144,7 +154,7 @@ and CLI validation:
 ```bash
 pytest -v                                    # Full suite
 pytest tests/test_shifted_indels.py -v      # Windowed + shifted indel-specific
-pytest tests/test_variant_checks.py -v      # Core allele-classification
+pytest tests/test_accuracy.py -v            # Core allele-classification
 ```
 
 ### Rust Unit Tests (cargo test)

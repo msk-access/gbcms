@@ -7,6 +7,23 @@ GTF-based transcript annotation for RNA-seq variant counting (v5.0.0).
     is provided via `--gtf` on the `gbcms rna` command. Without `--gtf`, RNA mode
     operates identically to v4.2.0 — no annotation columns are added.
 
+With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
+`transcript_read_counts` + `transcript_fragment_counts` (2), and the 14 ASJD fields
+(7 metrics × 2 alleles).
+
+!!! important "`gene_strand` is the keystone"
+    Parsing the GTF also back-fills each variant's **`gene_strand`** (the transcript's
+    `+`/`-` strand). This is what makes strand-aware features work: without it,
+    `--enforce_strandedness` and the ASJD strand-discordance test are silent no-ops
+    (every read reads as sense, so `antisense_depth` stays 0). Strand-specific counting
+    therefore requires `--gtf`, not just `--strandedness`.
+
+!!! tip "Cohort runs: pre-build the GTF cache"
+    The GTF is parsed per sample. For a cohort, run `gbcms build-gtf-cache` once and
+    point every sample at the same `--gtf-cache-dir` so each per-sample run reuses the
+    prebuilt index (~9s parse → ~0.05s load). The Nextflow pipeline wires this up
+    automatically via the `GBCMS_BUILD_GTF_CACHE` process (`--gtf_cache`, default on).
+
 ---
 
 ## GTF Requirements
@@ -118,8 +135,8 @@ overlaps multiple transcripts with different exon structures.
 
 | Column | Format | Example |
 |:-------|:-------|:--------|
-| `transcript_read_counts` | `ENST:AD,RD,DP;...` | `ENST00000269305:11,140,162;ENST00000445888:7,95,108` |
-| `transcript_fragment_counts` | `ENST:ADF,RDF,DPF;...` | `ENST00000269305:6,72,83;ENST00000445888:4,48,55` |
+| `transcript_read_counts` | `ENST:AD,RD,DP\|...` | `ENST00000269305:11,140,162\|ENST00000445888:7,95,108` |
+| `transcript_fragment_counts` | `ENST:ADF,RDF,DPF\|...` | `ENST00000269305:6,72,83\|ENST00000445888:4,48,55` |
 
 !!! note "Invariant"
     For each transcript: `fragment_count ≤ read_count` (fragments are
@@ -150,23 +167,29 @@ For each variant:
 2. Each observed junction `(chrom, start, end)` is looked up in the GTF splice mask.
 3. Junctions present in the annotation are **annotated**; absent ones are **novel**.
 4. Counts are stratified by allele (REF vs ALT) for differential analysis.
+5. Counts are deduped **per fragment** (by QNAME): a molecule whose R1 and R2 both
+   span the same junction votes once, so the junction totals and the strand-discordance
+   test reflect independent fragments, not mates.
 
-### Output Columns (14)
+### Output Columns (14 ASJD)
 
+The 14 ASJD fields are part of the 17 columns GTF mode adds (alongside
+`exon_boundary_dist` and the two per-transcript count columns).
 See [Output Formats → ASJD](output-formats.md#aberrant-splice-junction-detection-asjd) for the complete column reference.
 
 ### Diagnostic Flags
 
-The `asjd_diagnostic` column provides semicolon-separated QC flags:
+The `asjd_diagnostic` column provides semicolon-separated QC flags. All junction
+counts are **per fragment** (a molecule's R1 and R2 are deduped to one vote):
 
 | Flag | Condition | Meaning |
 |:-----|:----------|:--------|
-| `LOW_ALT_JUNC` | `asjd_n_alt_junc < 5` | Insufficient ALT junction evidence |
-| `LOW_REF_JUNC` | `asjd_n_ref_junc < 10` | Insufficient REF baseline |
-| `NOVEL_ALT_JUNC` | `asjd_alt_known == false` | ALT uses unannotated junction |
-| `NON_CANONICAL_MOTIF` | ALT motif not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
-| `STRAND_DISCORDANT` | ALT junction minority strand ≥ 30% | dUTP artifact |
-| `MULTI_JUNCTION` | ALT reads use > 2 junctions | Complex splicing event |
+| `LOW_ALT_JUNC` | `asjd_n_alt_total < 5` | Insufficient ALT junction evidence |
+| `LOW_REF_JUNC` | `asjd_n_ref_total < 10` | Insufficient REF baseline |
+| `NOVEL_ALT_JUNC` | ALT dominant junction differs from REF and is unannotated | ALT uses an unannotated junction |
+| `NON_CANONICAL_MOTIF` | ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
+| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. Disabled for `--strandedness unstranded`. |
+| `MULTI_JUNCTION` | ALT fragments use > 2 distinct junctions | Complex splicing event |
 
 ---
 

@@ -87,6 +87,16 @@ def test_dna_rejects_unknown_option():
     assert result.exit_code != 0
 
 
+def test_threads_budget_rejects_zero():
+    """`--threads` is a hard budget (min=1): 0 is rejected loudly, never silently
+    coerced to rayon's all-cores default. Guards oversubscription under Nextflow
+    fan-out (N concurrent processes)."""
+    for cmd in ("dna", "rna"):
+        result = runner.invoke(app, [cmd, "--threads", "0"])
+        assert result.exit_code != 0
+        assert "threads" in result.output.lower()
+
+
 def test_rna_requires_variants():
     """RNA command without --variants should fail."""
     result = runner.invoke(app, ["rna", "--fasta", "/tmp/fake.fa", "--output-dir", "/tmp"])

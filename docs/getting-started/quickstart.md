@@ -143,7 +143,7 @@ Get up and running in minutes. All examples below assume gbcms is [installed](in
     ```
 
     **Output:**
-    - `genotyped/TumorSample.genotyped.maf` — allele counts + 34 mFSD columns
+    - `genotyped/TumorSample.genotyped.maf` — allele counts + 41 mFSD columns
     - `genotyped/TumorSample.genotyped.fsd.parquet` — raw fragment size arrays
 
 === "RNA with Editing DB"
@@ -160,8 +160,8 @@ Get up and running in minutes. All examples below assume gbcms is [installed](in
     ```
 
     **Output:** `results/tumor_rna.maf` — standard counts + 5 RNA columns:
-    `rna_sense_depth`, `rna_antisense_depth`, `rna_sense_strand_alt_count`,
-    `rna_editing_site_overlap`, `rna_splice_spanning_count`
+    `rna_sense_depth`, `rna_antisense_depth`, `rna_alt_sense_count`,
+    `rna_editing_site`, `rna_splice_spanning`
 
 === "Unstranded RNA-seq"
 

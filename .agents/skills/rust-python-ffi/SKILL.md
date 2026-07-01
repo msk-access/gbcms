@@ -1,3 +1,8 @@
+---
+name: rust-python-ffi
+description: Reference for the gbcms Rust/Python (PyO3) boundary — maturin build commands, #[pyo3(get)] ↔ .pyi stub synchronization, BaseCounts copy-on-write, platform-portable COITree (nosimd vs NEON/AVX), and build env vars. Use when editing PyO3 bindings, type stubs, or fixing platform/CI build issues.
+---
+
 # Rust/Python FFI Patterns
 
 ## Building
@@ -7,11 +12,19 @@ maturin develop           # dev build (fast, unoptimized)
 maturin develop --release # release build (use before integration tests)
 ```
 
+**`legacy-parity` feature (default on).** The per-variant `count_bam` parity oracle
+is gated behind the default `legacy-parity` Cargo feature, so dev/test builds (above)
+include it and the binned↔legacy parity tests work. Shipped wheels build with
+`--no-default-features` (Dockerfile, release.yml) to omit it — production never calls
+`count_bam`. If you `maturin build --no-default-features` locally, `gbcms._rs.count_bam`
+will be absent and the parity tests will fail (expected).
+
 ## PyO3 Bindings
 
 - Rust structs with `#[pyclass]` expose fields via `#[pyo3(get)]` or `#[pyo3(get, set)]`
 - Type stubs (`_rs.pyi`) must exactly match `#[pyo3(get)]` fields
 - `BaseCounts` is frozen from Python — mutations use `with_ad()` copy-on-write
+- `src/gbcms/_rs.pyi` is the single stub for `gbcms._rs` — update it when fields/signatures change
 
 ## Platform-Portable Code
 
@@ -30,6 +43,6 @@ let exon = &self.exons[*idx];
 ## Environment Variables
 
 ```bash
-GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms run ...
+GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms dna ...
 OPENSSL_NO_VENDOR=1  # required for Linux CI builds
 ```

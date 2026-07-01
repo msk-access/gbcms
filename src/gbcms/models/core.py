@@ -498,6 +498,17 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         ),
     )
 
+    gtf_cache_dir: Path | None = Field(
+        default=None,
+        description=(
+            "Directory for caching the parsed GTF index (M5a). When set, the parsed "
+            "annotation intermediate is persisted here and reused across runs over "
+            "the same GTF and variant set, skipping the GTF text parse. Intended as "
+            "a directory shared across a Nextflow cohort so the GTF is parsed once. "
+            "Caching is best-effort: any cache error falls back to a normal parse."
+        ),
+    )
+
     # P5: Library type flag — controls fragment consensus behavior
     library_type: str = Field(
         default="capture",
@@ -516,6 +527,29 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         v = v.lower().strip()
         if v not in ("capture", "amplicon"):
             raise ValueError(f"Invalid library_type '{v}'. Must be 'capture' or 'amplicon'.")
+        return v
+
+    # RNA library strand protocol — controls the read→transcript-strand fold
+    strandedness: str = Field(
+        default="reverse",
+        description=(
+            "RNA library strand protocol: 'reverse' (default; dUTP / fr-firststrand, "
+            "featureCounts -s 2 — the FORTE pipeline default), 'forward' "
+            "(fr-secondstrand, -s 1), or 'unstranded' (-s 0). Controls how a read's "
+            "orientation folds to its transcript strand for both strandedness filtering "
+            "and ASJD strand-discordance detection. 'unstranded' disables both."
+        ),
+    )
+
+    @field_validator("strandedness")
+    @classmethod
+    def validate_strandedness(cls, v: str) -> str:
+        """Validate the strand protocol is supported."""
+        v = v.lower().strip()
+        if v not in ("reverse", "forward", "unstranded"):
+            raise ValueError(
+                f"Invalid strandedness '{v}'. Must be 'reverse', 'forward', or 'unstranded'."
+            )
         return v
 
     @field_validator("rna_editing_db")

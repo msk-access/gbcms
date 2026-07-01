@@ -42,7 +42,7 @@ gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
 | `--show-normalization` | `false` | Append `norm_*` columns showing left-aligned coordinates |
 | `--context-padding` | `5` | Minimum flanking bases for haplotype construction. Range **1–50**, enforced at parse time. Auto-increased in repeat regions when `--adaptive-context` is enabled. |
 | `--adaptive-context` | `true` | Dynamically increase context padding in [tandem repeat regions](../reference/variant-normalization.md#adaptive-context-padding) |
-| `--threads` | `1` | Number of threads |
+| `--threads` | `1` | Total worker-thread budget for this run (minimum 1; `0` is rejected). All parallelism — read classification and any decode threads — stays within this budget, so gbcms never oversubscribes a small allocation. Multi-sample parallelism is the orchestrator's job (e.g. N concurrent Nextflow processes, each pinned to `task.cpus`), not this flag's. |
 
 ## mFSD Options
 
@@ -53,7 +53,7 @@ short-fragment enrichment associated with tumor-derived cfDNA
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--mfsd` | `false` | Enable mFSD analysis. Adds 34 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, derived metrics) to MAF output and 7 `MFSD_*` INFO fields to VCF. |
+| `--mfsd` | `false` | Enable mFSD analysis. Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, derived metrics) to MAF output and 13 `MFSD_*` INFO fields to VCF. |
 | `--mfsd-parquet` | `false` | Write a companion `<sample>.fsd.parquet` with per-variant raw fragment size arrays (`ref_sizes`, `alt_sizes`). Enables downstream visualizations. **Requires `--mfsd`**. |
 | `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and Fragment Origin Signal classification. **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). See [mFSD Report](../reference/mfsd-report.md). |
 | `--mfsd-report-min-alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
@@ -65,7 +65,7 @@ short-fragment enrichment associated with tumor-derived cfDNA
     gbcms dna --mfsd-report --format maf \
         --variants variants.maf --bam tumor:tumor.bam --fasta hg19.fa -o ./results
     ```
-    This produces `<sample>.maf` (with 34 mFSD columns), `<sample>.fsd.parquet`
+    This produces `<sample>.maf` (with 41 mFSD columns), `<sample>.fsd.parquet`
     (raw fragment sizes), and `<sample>.mfsd_report.html` (interactive visualization).
     Using `--mfsd-report` auto-enables `--mfsd` and `--mfsd-parquet`.
 
@@ -249,7 +249,7 @@ See [Output Formats](../reference/output-formats.md) for a complete column-level
 
 - **VCF** output: `##INFO` fields, `##FORMAT` fields, and annotated examples
 - **MAF** output: VCF→MAF vs MAF→MAF column sets, `Tumor_Sample_Barcode` behaviour, and column prefix options
-- **mFSD columns** (with `--mfsd`): all 34 mFSD fields
+- **mFSD columns** (with `--mfsd`): all 41 mFSD fields
 - **Normalization columns** (with `--show-normalization`)
 
 ## Related

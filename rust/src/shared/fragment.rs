@@ -85,6 +85,16 @@ impl FragmentEvidence {
     /// recorded for REF or ALT, the orientation of THAT read is stored.
     /// This couples the strand direction to the winning evidence, not just R1.
     ///
+    /// Tie-break (LO-6): the best-quality update uses a strict `>`, so on an
+    /// exact base-quality tie the *first-observed* mate's orientation is kept.
+    /// Reads arrive in coordinate order from a sorted BAM, so this is fully
+    /// deterministic per input — but it follows iteration order, not a fixed
+    /// R1/R2 rule. For a symmetric equal-quality overlap the FSB strand can
+    /// therefore reflect whichever mate the fetch yielded first. This is a
+    /// documented, minor source of FSB noise; an R1-preferring tie-break was
+    /// considered and not adopted (it would perturb FSB p-values with no
+    /// diagnostic benefit).
+    ///
     /// ## mFSD tracking
     /// - `tlen`: CIGAR-corrected physical insert size (`|TLEN| - D + I`).
     ///   Updated via `min()` across both reads to keep the most corrected value.
@@ -241,6 +251,12 @@ impl FragmentEvidence {
 /// Hash a QNAME to u64 for memory-efficient fragment tracking.
 /// Using DefaultHasher for speed — collision probability is negligible
 /// for typical variant-level read counts (~1000 fragments).
+///
+/// Note (LO-4): the fragment map is keyed on this u64 with no stored QNAME, so a
+/// birthday collision would silently merge two fragments. At realistic per-locus
+/// depth the probability is ~5e-10 — not worth the memory of storing keys.
+/// Revisit only if per-locus fragment counts grow orders of magnitude, then
+/// store the QNAME for a collision tiebreak.
 #[inline]
 pub fn hash_qname(qname: &[u8]) -> u64 {
     let mut hasher = DefaultHasher::new();

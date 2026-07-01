@@ -24,7 +24,7 @@ use bio::stats::pairhmm::{
 use bio::stats::{LogProb, Prob};
 use log::{debug, trace};
 
-use super::utils::{median_qual, ClassifyResult, ClassifyPhase};
+use super::utils::{median_qual, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
 #[cfg(test)]
 use crate::types::Variant;
@@ -53,6 +53,20 @@ pub struct BQEmission<'a> {
     pub haplotype: &'a [u8],
 }
 
+/// Lower bound on emission probabilities. Phred Q0 gives `p_error = 1` →
+/// `p_correct = 0` → `ln(0) = -∞`, which propagates `NaN` into the LLR; symmetrically,
+/// at very high Q the mismatch term `p_error / 3 → 0` does the same. Clamping the
+/// error probability into `[EMIT_PROB_EPS, 1 - EMIT_PROB_EPS]` keeps every emitted
+/// probability strictly positive so the log-likelihoods (and their difference) stay
+/// finite. 1e-6 ≈ Phred 60, below the resolution of real base qualities.
+const EMIT_PROB_EPS: f64 = 1e-6;
+
+/// Phred quality → per-base error probability, clamped away from exactly 0 and 1 so
+/// neither `p_error` nor `p_correct = 1 - p_error` can be zero (see [`EMIT_PROB_EPS`]).
+fn phred_error_prob(qual: u8) -> f64 {
+    (10.0_f64.powf(-(qual as f64) / 10.0)).clamp(EMIT_PROB_EPS, 1.0 - EMIT_PROB_EPS)
+}
+
 impl<'a> EmissionParameters for BQEmission<'a> {
     /// Probability of emitting read[i] given haplotype[j].
     ///
@@ -75,8 +89,7 @@ impl<'a> EmissionParameters for BQEmission<'a> {
             return XYEmission::Mismatch(LogProb::from(Prob(0.25)));
         }
 
-        let q = self.read_quals[i] as f64;
-        let p_error = 10.0_f64.powf(-q / 10.0);
+        let p_error = phred_error_prob(self.read_quals[i]);
         let p_correct = 1.0 - p_error;
 
         if read_base.eq_ignore_ascii_case(&self.haplotype[j]) {
@@ -97,15 +110,18 @@ impl<'a> EmissionParameters for BQEmission<'a> {
         if self.read_seq[i] == b'N' || self.read_seq[i] == b'n' {
             return LogProb::from(Prob(0.25));
         }
-        let q = self.read_quals[i] as f64;
-        let p_correct = 1.0 - 10.0_f64.powf(-q / 10.0);
+        let p_correct = 1.0 - phred_error_prob(self.read_quals[i]);
         LogProb::from(Prob(p_correct))
     }
 
-    /// Probability of observing haplotype[j] in a gap context (insertion in read).
-    /// Haplotype bases are reference-quality, so this is a fixed high probability.
+    /// Probability of observing haplotype[j] in a gap context (deletion in read).
+    /// The haplotype is reference-quality, so the base is certain — emit it with
+    /// probability 1 (ln 0), making the gap-y arm's cost the gap-transition
+    /// probabilities alone, symmetrically under the REF and ALT hypotheses. The
+    /// previous 0.999 was an unjustified near-1 constant that added a tiny per-base
+    /// penalty scaling with deletion length, biasing deletion-vs-insertion LLRs.
     fn prob_emit_y(&self, _j: usize) -> LogProb {
-        LogProb::from(Prob(0.999))
+        LogProb::ln_one()
     }
 
     fn len_x(&self) -> usize {
@@ -338,7 +354,7 @@ pub fn classify_by_pairhmm(
 
     // Skip if too few usable bases
     let usable_count = read_quals.iter().filter(|&&q| q >= min_baseq).count();
-    if usable_count < 3 {
+    if usable_count < MIN_USABLE_BASES {
         trace!("classify_by_pairhmm: only {} usable bases — skipping", usable_count);
         return ClassifyResult::neither(ClassifyPhase::Alignment);
     }
@@ -452,7 +468,7 @@ pub fn classify_by_marginalized_pairhmm(
 
     // Skip if too few usable bases
     let usable_count = adjusted_quals.iter().filter(|&&q| q >= min_baseq).count();
-    if usable_count < 3 {
+    if usable_count < MIN_USABLE_BASES {
         trace!("classify_by_marginalized_pairhmm: only {} usable bases — skipping", usable_count);
         return ClassifyResult::neither(ClassifyPhase::Alignment);
     }
@@ -824,6 +840,44 @@ mod tests {
             "N base in gap context should return P=0.25, got log-prob={:.3} (expected {:.3})",
             *lp, *expected_lp
         );
+    }
+
+    /// Helper: marginalized LLR (alt − ref) of a read against a REF/ALT haplotype pair.
+    fn marginalized_llr(read: &[u8], quals: &[u8], ref_hap: &[u8], alt_hap: &[u8]) -> f64 {
+        let gap = ConfigurableGapParams::standard(1e-4, 0.1);
+        let mut hmm = PairHMM::new(&gap);
+        let lr = *hmm.prob_related(
+            &BQEmission { read_seq: read, read_quals: quals, haplotype: ref_hap },
+            &SemiglobalMode, None);
+        let la = *hmm.prob_related(
+            &BQEmission { read_seq: read, read_quals: quals, haplotype: alt_hap },
+            &SemiglobalMode, None);
+        la - lr
+    }
+
+    #[test]
+    fn test_n_base_neutral_at_snp_and_indel() {
+        // An N at a discriminating locus carries no allele evidence, so it must not
+        // drive a confident call. For a SNP the 0.25 emission cancels exactly under
+        // both haplotypes (LLR == 0). For a deletion the marginalized forward sum
+        // leaves only a small residual (~0.4), far below the decision threshold (2.3),
+        // so the read stays ambiguous. NOTE: stripping the N instead would make the
+        // read mimic the deletion haplotype and over-call ALT (LLR ≈ 8.3) — see
+        // REJECTED.md; this test guards against that "fix".
+        let snp = marginalized_llr(b"GGGGNCGGGG", &[35; 10], b"GGGGACGGGG", b"GGGGTCGGGG");
+        assert!(snp.abs() < 1e-9, "N at a SNP locus must be exactly neutral, got {snp}");
+
+        let del = marginalized_llr(b"GGGGNGGGG", &[35; 9], b"GGGGCGGGG", b"GGGGGGGG");
+        assert!(del.abs() < 1.0, "N at a deletion locus must stay near-neutral, got {del}");
+    }
+
+    #[test]
+    fn test_pairhmm_finite_llr_at_q0() {
+        // A Q0 *matching* base gives p_error=1 → p_correct=0 → ln(0)=-∞ without the
+        // clamp, producing a NaN LLR that silently routes the read to "neither".
+        // After clamping, the LLR must stay finite.
+        let q0 = marginalized_llr(b"GGGGAGGGG", &[0u8; 9], b"GGGGAGGGG", b"GGGGTGGGG");
+        assert!(q0.is_finite(), "LLR must be finite even with a Q0 matching base, got {q0}");
     }
 
     #[test]

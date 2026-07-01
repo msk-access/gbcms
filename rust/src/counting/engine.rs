@@ -36,7 +36,7 @@ use crate::types::{BaseCounts, Variant};
 use rayon::prelude::*;
 
 use anyhow::{Context, Result};
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use bio::alignment::pairwise::Aligner;
 
 use super::fragment::{FragmentEvidence, hash_qname, hash_molecule};
@@ -108,6 +108,23 @@ struct GenomicBin {
     variant_indices: Vec<usize>,
 }
 
+/// Resolve a variant chromosome name to a BAM target id, tolerating contig-naming
+/// differences between the variant source and the BAM (e.g. `chr1` vs `1`, `chrM` vs
+/// `MT`) via `normalize_contig`. The exact name is tried first so the common (matching)
+/// case stays O(1); the normalized scan of the header only runs on a miss. Returns
+/// `None` only when no BAM contig matches even after normalization — i.e. the variant's
+/// chromosome genuinely isn't in the BAM (a real mismatch worth surfacing, not silencing).
+fn resolve_tid(bam_header: &bam::HeaderView, chrom: &str) -> Option<u32> {
+    if let Some(t) = bam_header.tid(chrom.as_bytes()) {
+        return Some(t);
+    }
+    let norm = crate::shared::contig::normalize_contig(chrom);
+    (0..bam_header.target_count()).find(|&tid| {
+        crate::shared::contig::normalize_contig(&String::from_utf8_lossy(bam_header.tid2name(tid)))
+            == norm
+    })
+}
+
 /// Build genomic bins from a list of variants.
 ///
 /// Variants are grouped by chromosome and position into `BIN_WINDOW`-sized
@@ -136,24 +153,45 @@ fn build_genomic_bins(
             .then(variants[a].pos.cmp(&variants[b].pos))
     });
 
+    // A variant's reads can extend to `pos + ref_allele.len()` — the right
+    // breakpoint of a deletion. The bin's fetch end must cover that for EVERY
+    // variant in the bin, including the anchor; half a window of slack matches
+    // the per-variant extension below. (Seeding the end at only
+    // `bin_start + window` under-fetched a bin anchored by a deletion whose ref
+    // span exceeds the window, dropping its right-breakpoint reads and diverging
+    // from the legacy per-variant path.)
+    let span_end = |idx: usize| -> i64 {
+        variants[idx].pos + variants[idx].ref_allele.len() as i64 + window / 2
+    };
+
     let mut bins: Vec<GenomicBin> = Vec::new();
     let mut i = 0;
 
     while i < sorted_indices.len() {
         let first_idx = sorted_indices[i];
         let chrom = &variants[first_idx].chrom;
-        let tid = match bam_header.tid(chrom.as_bytes()) {
+        let tid = match resolve_tid(bam_header, chrom) {
             Some(t) => t,
             None => {
-                // Skip variants on chromosomes not in BAM
-                debug!("Skipping variant on chromosome not in BAM: {}", chrom);
-                i += 1;
+                // Genuinely absent from the BAM (even after contig-name normalization):
+                // warn ONCE per chromosome (variants are chrom-sorted) so a naming
+                // mismatch surfaces instead of silently producing zero counts.
+                warn!(
+                    "Variant chromosome '{}' not found in the BAM header (checked with \
+                     contig-name normalization); its variants will get zero counts. Likely a \
+                     contig-naming mismatch between the variant file and the BAM.",
+                    chrom
+                );
+                while i < sorted_indices.len() && &variants[sorted_indices[i]].chrom == chrom {
+                    i += 1;
+                }
                 continue;
             }
         };
 
         let bin_start = variants[first_idx].pos;
-        let mut bin_end = bin_start + window;
+        // Cover at least one window, but also the anchor variant's full ref span.
+        let mut bin_end = (bin_start + window).max(span_end(first_idx));
         let mut indices = vec![first_idx];
         let mut max_repeat_span: i64 = variants[first_idx].repeat_span as i64;
 
@@ -178,9 +216,8 @@ fn build_genomic_bins(
             }
             indices.push(jdx);
             max_repeat_span = max_repeat_span.max(variants[jdx].repeat_span as i64);
-            // Extend bin end to cover this variant's ref span
-            let var_end = variants[jdx].pos + variants[jdx].ref_allele.len() as i64;
-            bin_end = bin_end.max(var_end + window / 2);
+            // Extend bin end to cover this variant's full ref span.
+            bin_end = bin_end.max(span_end(jdx));
             j += 1;
         }
 
@@ -263,13 +300,17 @@ impl AlignmentBackend {
 /// allele and once with the corrected allele. The result with the higher
 /// `ad` (alt_count) is returned, with `used_decomposed` set accordingly.
 ///
-/// // INTENTIONAL: This per-variant codepath is retained alongside count_bam_binned()
-/// // for parity testing. Both codepaths must produce identical BaseCounts for the
-/// // same inputs. Once parity is confirmed across the 22-BAM regression suite,
-/// // pipeline.py can switch to the binned codepath.
+/// // INTENTIONAL: `count_bam` is the per-variant **parity oracle**, retained behind the
+/// // `legacy-parity` feature (default-on; the shipped wheel omits it). Production always
+/// // uses `count_bam_binned`; this path exists only so the parity suite can confirm both
+/// // produce identical BaseCounts on the same inputs. It covers **core counting only** —
+/// // RNA / mFSD / ASJD / GTF / strandedness are binned-only and intentionally absent here
+/// // (mFSD ∉ PARITY_FIELDS). Any change to read classification / filtering / fragment
+/// // consensus / fetch-window in the binned path must be mirrored here, or parity fails.
+#[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false, reference_fasta=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false, strandedness="reverse", reference_fasta=None))]
 pub fn count_bam(
     py: Python<'_>,
     bam_path: String,
@@ -294,6 +335,7 @@ pub fn count_bam(
     hmm_gap_extend_repeat: f64,
     mode: &str,
     enforce_strandedness: bool,
+    strandedness: &str,
     reference_fasta: Option<&str>,
 ) -> PyResult<Vec<BaseCounts>> {
     // Parse alignment backend from string
@@ -308,6 +350,10 @@ pub fn count_bam(
         _ => AlignmentBackend::SmithWaterman,
     };
 
+    // Parse the RNA library strand protocol (loud error on an unknown token).
+    let strandedness = rna::Strandedness::from_protocol(strandedness)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
     // Store FASTA path for CRAM reference decoding (safe no-op for BAM files)
     let fasta_for_cram: Option<String> = reference_fasta.map(|p| p.to_string());
 
@@ -316,7 +362,9 @@ pub fn count_bam(
     // This is efficient because map_init reuses the thread-local state (the reader)
     // for multiple items processed by that thread.
 
-    // Configure thread pool
+    // Configure thread pool — honor the total `--threads` budget (see
+    // shared::resolve_thread_budget); guards the num_threads(0)=all-cores foot-gun.
+    let threads = crate::shared::resolve_thread_budget(threads);
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build()
@@ -380,6 +428,7 @@ pub fn count_bam(
                             None,   // umi_tag: legacy codepath
                             mode,
                             enforce_strandedness,
+                            strandedness,
                         )?;
 
                         // Dual-count: if a decomposed variant exists, count it too
@@ -403,6 +452,7 @@ pub fn count_bam(
                                 None,   // umi_tag: legacy codepath
                                 mode,
                                 enforce_strandedness,
+                                strandedness,
                             )?;
 
                             if counts_decomp.ad > counts_orig.ad {
@@ -448,6 +498,34 @@ pub fn count_bam(
 }
 
 
+/// Pre-build the GTF annotation cache without counting — the Nextflow pre-warm step.
+///
+/// Parses `gtf_path` for the chromosomes covered by `variants` and writes the
+/// serialized intermediate into `cache_dir`. Running this once before a cohort
+/// fans out means every per-sample `count_bam_binned` that follows hits a warm
+/// cache (~0.05s load) instead of each re-parsing the GTF (~8.7s). The chromosome
+/// set is derived **identically** to `count_bam_binned` (`normalize_contig` over the
+/// variant chroms) so the cache key matches and the per-sample runs reuse this entry.
+/// Takes the raw chrom strings (the caller already has them from the variant file);
+/// `normalize_contig` is applied here, exactly as `count_bam_binned` does internally.
+/// Returns the exon count of the built index for a confirming log line.
+#[pyfunction]
+pub fn build_gtf_cache(
+    gtf_path: &str,
+    variant_chroms: Vec<String>,
+    cache_dir: &str,
+) -> PyResult<usize> {
+    let chroms: HashSet<String> = variant_chroms
+        .iter()
+        .map(|c| crate::shared::contig::normalize_contig(c))
+        .collect();
+    let annot = crate::annotation::parse_gtf_cached(gtf_path, &chroms, cache_dir)
+        .map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to build GTF cache: {}", e))
+        })?;
+    Ok(annot.n_exons())
+}
+
 /// Bin-centric parallel BAM counting with BAQ and UMI support.
 ///
 /// Groups variants into ~10kb genomic bins, fetches reads once per bin,
@@ -463,11 +541,11 @@ pub fn count_bam(
 /// // parity testing until the 22-BAM regression confirms identical counts.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture"))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
-    variants: Vec<Variant>,
+    mut variants: Vec<Variant>,
     decomposed: Vec<Option<Variant>>,
     min_mapq: u8,
     min_baseq: u8,
@@ -490,8 +568,11 @@ pub fn count_bam_binned(
     umi_tag: Option<&str>,
     mode: &str,
     enforce_strandedness: bool,
+    strandedness: &str,
+    mfsd: bool,
     rna_editing_db: Option<&str>,
     gtf_path: Option<&str>,
+    gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
 ) -> PyResult<Vec<BaseCounts>> {
@@ -507,17 +588,19 @@ pub fn count_bam_binned(
         _ => AlignmentBackend::SmithWaterman,
     };
 
-    // ── D7: Load RNA editing site database (if provided) ──
+    // ── Load RNA editing site database (if provided) ──
     // Loaded ONCE at init, then shared across all bins/threads via Arc.
-    // DB-only strategy: flag = True only when site is in REDIportal.
-    // No DB = no editing flags (no pattern-matching guessing).
-    let editing_sites: Option<HashSet<(String, i64)>> = match rna_editing_db {
+    // DB-only strategy: flag = True only when the variant matches a REDIportal edit.
+    // No DB = no editing flags (no pattern-matching guessing). Each entry carries the
+    // catalogued (chrom, 0-based pos, ref base, edited base) so the flag can require
+    // the variant's substitution to match, not merely its position.
+    let editing_sites: Option<HashSet<(String, i64, u8, u8)>> = match rna_editing_db {
         Some(path) => {
             let sites = rna::build_rna_editing_set(path)
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
                     format!("Failed to load RNA editing DB: {}", e)
                 ))?;
-            info!("D7: Loaded {} RNA editing sites from {}", sites.len(), path);
+            info!("Loaded {} RNA editing sites from {}", sites.len(), path);
             Some(sites)
         }
         None => None,
@@ -525,30 +608,57 @@ pub fn count_bam_binned(
     // Wrap in Arc for thread-safe sharing across rayon workers
     let editing_sites = std::sync::Arc::new(editing_sites);
 
-    // ── P4a: Build GTF annotation index (if GTF provided, RNA mode only) ──
+    // ── Build GTF annotation index (if GTF provided, RNA mode only) ──
     // Loaded ONCE at init, then shared across all bins/threads via Arc.
     // Only builds for chromosomes that have variants (variant-guided streaming).
     let annotation: Option<std::sync::Arc<AnnotationIndex>> = match (mode, gtf_path) {
         ("rna", Some(path)) => {
             let variant_chroms: HashSet<String> = variants.iter()
-                .map(|v| v.chrom.trim_start_matches("chr").to_string())
+                .map(|v| crate::shared::contig::normalize_contig(&v.chrom))
                 .collect();
-            let annot = crate::annotation::parse_gtf(path, &variant_chroms)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
-                    format!("Failed to load GTF annotation: {}", e)
-                ))?;
+            // M5a: when a cache dir is supplied, reuse a serialized parse if one
+            // exists (skips the ~8.7s GTF text parse); otherwise parse + populate it.
+            let annot = match gtf_cache_dir {
+                Some(dir) => crate::annotation::parse_gtf_cached(path, &variant_chroms, dir),
+                None => crate::annotation::parse_gtf(path, &variant_chroms),
+            }
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
+                format!("Failed to load GTF annotation: {}", e)
+            ))?;
             info!(
-                "P4a: Built annotation index from {} — {} exons, {} transcripts, {} chromosomes",
+                "GTF annotation: built index from {} — {} exons, {} transcripts, {} chromosomes",
                 path, annot.n_exons(), annot.n_transcripts(), annot.n_chromosomes(),
             );
             Some(std::sync::Arc::new(annot))
         }
         ("rna", None) => {
-            debug!("P4a: No GTF provided, annotation features disabled");
+            debug!("GTF annotation: no GTF provided, annotation features disabled");
             None
         }
         _ => None,  // DNA mode: no annotation, no log noise
     };
+
+    // Resolve each variant's gene strand from the annotation, so RNA strandedness
+    // enforcement and sense/antisense partitioning have a strand to act on. The
+    // engine reads `variant.gene_strand` per read; without this it stays None,
+    // every read is treated as sense, and `enforce_strandedness` is a silent no-op.
+    // Only fill when absent, so a strand supplied upstream is never overwritten.
+    if let Some(ref annot) = annotation {
+        let mut resolved = 0usize;
+        for v in variants.iter_mut() {
+            if v.gene_strand.is_none() {
+                let key = crate::shared::contig::normalize_contig(&v.chrom);
+                if let Some(strand) = annot.strand_at(&key, v.pos) {
+                    v.gene_strand = Some(strand);
+                    resolved += 1;
+                }
+            }
+        }
+        debug!(
+            "Resolved gene strand from the annotation for {}/{} variants",
+            resolved, variants.len(),
+        );
+    }
 
     // Store FASTA path for thread-local readers (used by ASJD motif classification)
     let fasta_path_owned: Option<String> = reference_fasta.map(|p| p.to_string());
@@ -557,19 +667,33 @@ pub fn count_bam_binned(
     // In amplicon mode, R1/R2 hash to separate "fragments" (no consensus).
     let amplicon_mode = library_type == "amplicon";
 
+    // Parse the RNA library strand protocol (loud error on an unknown token). Amplicon
+    // libraries are not stranded, so force Unstranded there — reads must not be folded
+    // under a protocol that doesn't apply (matches the CLI auto-disabling
+    // --enforce-strandedness for amplicon).
+    let strandedness = rna::Strandedness::from_protocol(strandedness)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    let strandedness = if amplicon_mode {
+        rna::Strandedness::Unstranded
+    } else {
+        strandedness
+    };
+
     if mode == "rna" {
         info!(
             "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, \
-             rna_editing_db={}, gtf={}, library_type={}",
+             rna_editing_db={}, gtf={}, library_type={}, strandedness={:?}, threads={}",
             variants.len(), apply_baq, umi_tag, alignment_backend,
             rna_editing_db.unwrap_or("none"),
             gtf_path.unwrap_or("none"),
             library_type,
+            strandedness,
+            threads,
         );
     } else {
         info!(
-            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}",
-            variants.len(), apply_baq, umi_tag, alignment_backend,
+            "count_bam_binned: {} variants, apply_baq={}, umi_tag={:?}, backend={:?}, mfsd={}, threads={}",
+            variants.len(), apply_baq, umi_tag, alignment_backend, mfsd, threads,
         );
     }
 
@@ -603,7 +727,9 @@ pub fn count_bam_binned(
         }
     });
 
-    // Configure thread pool
+    // Configure thread pool. `--threads` is the TOTAL budget for this process; all
+    // bin-level parallelism stays within it (see shared::resolve_thread_budget).
+    let threads = crate::shared::resolve_thread_budget(threads);
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build()
@@ -678,6 +804,8 @@ pub fn count_bam_binned(
                             umi_tag_owned,
                             mode,
                             enforce_strandedness,
+                            strandedness,
+                            mfsd,
                             &editing_sites,
                             &annotation,
                             fasta_reader,
@@ -702,25 +830,67 @@ pub fn count_bam_binned(
                 all_counts[vi] = counts;
             }
 
-            // ── P4c: BH-FDR correction for ASJD p-values ──
+            // ── BH-FDR correction for ASJD p-values ──
             // Requires all p-values simultaneously, so must run after all bins
             // are processed. Only runs in RNA mode with annotation present.
-            // In DNA mode, asjd_pval defaults to 0.0 (Default trait), which
-            // would falsely trigger the `p < 1.0` guard — the mode check
-            // prevents this unnecessary O(n log n) sort.
+            // Correct ONLY over variants with a real ASJD test (junction
+            // reads present). Non-junction variants keep the default asjd_pval and
+            // would pad the family — inflating n and distorting the FDR — the same
+            // bug fixed for the mFSD alt-vs-REF correction. Filtering on junction-read
+            // presence also subsumes the old `p < 1.0` data guard.
             if mode == "rna" {
-                let pvals: Vec<f64> = all_counts.iter().map(|c| c.asjd_pval).collect();
-                let has_asjd_data = pvals.iter().any(|&p| p < 1.0);
-                if has_asjd_data {
-                    let qvals = crate::shared::stats::benjamini_hochberg(&pvals);
-                    for (i, q) in qvals.into_iter().enumerate() {
-                        all_counts[i].asjd_qval = q;
-                    }
+                let asjd_valid: Vec<usize> = all_counts
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| c.asjd_n_alt_junc + c.asjd_n_ref_junc > 0)
+                    .map(|(i, _)| i)
+                    .collect();
+                let corrected = crate::shared::stats::benjamini_hochberg_family(
+                    |i| all_counts[i].asjd_pval,
+                    &asjd_valid,
+                );
+                for (i, q) in &corrected {
+                    all_counts[*i].asjd_qval = *q;
+                }
+                if !corrected.is_empty() {
                     debug!(
-                        "P4c BH-FDR: corrected {} ASJD p-values",
-                        pvals.len(),
+                        "ASJD BH-FDR: corrected {} ASJD p-values (over real tests)",
+                        corrected.len(),
                     );
                 }
+            }
+
+            // ── BH-FDR correction for the mFSD alt-vs-REF KS p-values ──
+            // This p-value drives the report's TUMOR-LIKE/CH-LIKE call, so correct
+            // it for multiplicity across the sample. BH runs ONLY over variants whose
+            // KS test actually RAN — a variant with too few fragments returns
+            // (D = NaN, p = 1.0) from ks_test, so the *D-statistic* (not the p-value)
+            // marks a real test. Filtering on the D-stat avoids padding the family
+            // with no-test variants (which would inflate n and over-correct);
+            // a genuine D=0 test legitimately keeps its p=1.0.
+            //
+            // PF-1: when `--mfsd` is off, mFSD was never computed so the KS fields sit at
+            // their BaseCounts default (0.0, not NaN). The `mfsd &&` guard keeps the family
+            // empty in that case — otherwise every variant would be treated as a real test
+            // and BH-corrected over default p-values.
+            let mfsd_valid: Vec<usize> = all_counts
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| mfsd && !c.mfsd_ks_alt_ref.is_nan())
+                .map(|(i, _)| i)
+                .collect();
+            let corrected = crate::shared::stats::benjamini_hochberg_family(
+                |i| all_counts[i].mfsd_pval_alt_ref,
+                &mfsd_valid,
+            );
+            for (i, q) in &corrected {
+                all_counts[*i].mfsd_qval_alt_ref = *q;
+            }
+            if !corrected.is_empty() {
+                debug!(
+                    "mFSD BH-FDR: corrected {} mFSD alt-vs-REF p-values",
+                    corrected.len(),
+                );
             }
 
             Ok(all_counts)
@@ -817,7 +987,9 @@ fn count_bin_shared(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
-    editing_sites: &Option<HashSet<(String, i64)>>,
+    strandedness: rna::Strandedness,
+    mfsd: bool,
+    editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
     amplicon_mode: bool,
@@ -914,7 +1086,7 @@ fn count_bin_shared(
             min_mapq, min_baseq,
             filter_improper_pair, filter_indel,
             fragment_qual_threshold, backend,
-            apply_baq, umi_tag, mode, enforce_strandedness,
+            apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
             editing_sites, annotation, amplicon_mode,
         )?;
 
@@ -926,7 +1098,7 @@ fn count_bin_shared(
                 min_mapq, min_baseq,
                 filter_improper_pair, filter_indel,
                 fragment_qual_threshold, backend,
-                apply_baq, umi_tag, mode, enforce_strandedness,
+                apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
                 editing_sites, annotation, amplicon_mode,
             )?;
 
@@ -942,7 +1114,28 @@ fn count_bin_shared(
             counts_orig
         };
 
-        // ── P4b: Per-transcript counting (RNA + GTF only) ──
+        // ── Non-discriminating-locus detection (PairHMM backend) ──
+        // When a sibling combination reconstructs the reference haplotype, REF and
+        // ALT are sequence-indistinguishable and every read ties to NEITHER. Detect it
+        // once per variant (the matrix is read-independent) and flag it, so the zeroed
+        // RD/AD is explained by NON_DISCRIMINATING_LOCUS rather than left silent.
+        if matches!(backend, AlignmentBackend::PairHMM { .. }) {
+            if let Some(matrix) =
+                crate::counting::pangenome::build_haplotype_matrix(variant, siblings)
+            {
+                if crate::counting::pangenome::has_ref_alt_collision(&matrix) {
+                    final_counts.non_discriminating_locus = true;
+                    warn!(
+                        "non-discriminating locus at {}:{}: a sibling combination reconstructs \
+                         the reference haplotype — REF and ALT are sequence-indistinguishable, \
+                         reads tie to NEITHER",
+                        variant.chrom, variant.pos + 1,
+                    );
+                }
+            }
+        }
+
+        // ── Per-transcript counting (RNA + GTF only) ──
         // For each overlapping transcript, count reads whose splice junctions
         // are compatible with that transcript's intron structure. Reuses the
         // same read cache — no additional BAM I/O.
@@ -950,19 +1143,19 @@ fn count_bin_shared(
             let (read_cts, frag_cts) = count_per_transcript(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
-                backend, apply_baq, umi_tag, enforce_strandedness,
+                backend, apply_baq, umi_tag, enforce_strandedness, strandedness,
                 amplicon_mode,
             );
             final_counts.transcript_read_counts = read_cts;
             final_counts.transcript_fragment_counts = frag_cts;
 
-            // ── P4c: Allele-Specific Junction Divergence (ASJD) ──
+            // ── Allele-Specific Junction Divergence (ASJD) ──
             // Compare splice junction usage between REF and ALT reads.
             // asjd_qval initialized to asjd_pval; corrected post-counting
             // via benjamini_hochberg() in count_bam_binned().
             let asjd = detect_asjd(
                 &read_cache, variant, siblings, annot,
-                min_mapq, min_baseq, backend, apply_baq, enforce_strandedness,
+                min_mapq, min_baseq, backend, apply_baq, enforce_strandedness, strandedness,
                 fasta_reader,
             );
             final_counts.asjd_flag = asjd.flag;
@@ -987,6 +1180,81 @@ fn count_bin_shared(
     Ok(results)
 }
 
+
+/// Compute the mFSD fragment-size statistics for one variant and store them on
+/// `counts`: the four class counts, means, alt/ref LLR, the six pairwise KS triads
+/// (delta/D/p), the sub-/mono-nucleosomal fractions, and the raw size arrays for
+/// `--mfsd-parquet`. Consumes the size vectors. Shared by the binned and legacy paths;
+/// the binned path calls it only when mFSD output is requested (the engine is
+/// output-aware — see the `mfsd` gate in `count_variant_from_cache`).
+fn compute_mfsd_stats(
+    counts: &mut BaseCounts,
+    ref_sizes: Vec<f64>,
+    alt_sizes: Vec<f64>,
+    nonref_sizes: Vec<f64>,
+    n_sizes: Vec<f64>,
+    variant: &Variant,
+) {
+    counts.mfsd_ref_count    = ref_sizes.len()    as u32;
+    counts.mfsd_alt_count    = alt_sizes.len()    as u32;
+    counts.mfsd_nonref_count = nonref_sizes.len() as u32;
+    counts.mfsd_n_count      = n_sizes.len()      as u32;
+
+    counts.mfsd_ref_mean    = mfsd::calc_mean(&ref_sizes);
+    counts.mfsd_alt_mean    = mfsd::calc_mean(&alt_sizes);
+    counts.mfsd_nonref_mean = mfsd::calc_mean(&nonref_sizes);
+    counts.mfsd_n_mean      = mfsd::calc_mean(&n_sizes);
+
+    counts.mfsd_alt_llr = mfsd::calc_llr(&alt_sizes);
+    counts.mfsd_ref_llr = mfsd::calc_llr(&ref_sizes);
+
+    // KS helper: pairwise delta + D-statistic + p-value.
+    // delta = mean(a) - mean(b); ks_test returns (NaN, 1.0) when either class < MIN_FOR_KS.
+    let ks_pair = |a: &[f64], b: &[f64]| -> (f64, f64, f64) {
+        let (d, p) = mfsd::ks_test(a, b);
+        let delta = if a.is_empty() || b.is_empty() {
+            f64::NAN
+        } else {
+            mfsd::calc_mean(a) - mfsd::calc_mean(b)
+        };
+        (delta, d, p)
+    };
+
+    (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
+    counts.mfsd_qval_alt_ref = counts.mfsd_pval_alt_ref; // placeholder; BH-corrected post-counting
+    (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
+    (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
+    (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);
+    (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
+    (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
+
+    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator. Mono-nucleosomal
+    // (150–200bp): dominant cfDNA peak. Computed before the size arrays are consumed.
+    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
+    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
+        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
+    } else {
+        f64::NAN
+    };
+    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
+    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
+
+    // Raw size arrays for --mfsd-parquet export (held on BaseCounts across all variants).
+    counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
+    counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
+
+    debug!(
+        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
+        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+        counts.mfsd_ref_count, counts.mfsd_alt_count,
+        counts.mfsd_nonref_count, counts.mfsd_n_count,
+        counts.mfsd_delta_alt_ref,
+        counts.mfsd_ks_alt_ref,
+        counts.mfsd_pval_alt_ref,
+        counts.mfsd_alt_llr,
+    );
+}
 
 /// Classify and count reads from a pre-fetched cache for a single variant.
 ///
@@ -1017,14 +1285,16 @@ fn count_variant_from_cache(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
-    editing_sites: &Option<HashSet<(String, i64)>>,
+    strandedness: rna::Strandedness,
+    mfsd: bool,
+    editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     amplicon_mode: bool,
 ) -> Result<BaseCounts> {
 
     let mut counts = BaseCounts::default();
 
-    // ── P4a: Compute exon boundary distance (GTF-informed) ──
+    // ── Compute exon boundary distance (GTF-informed) ──
     // Set once per variant, not per read. Used for BAQ suppression
     // and as an output column. None when no GTF is provided.
     let exon_boundary_dist: Option<i32> = annotation.as_ref().map(|annot| {
@@ -1120,10 +1390,21 @@ fn count_variant_from_cache(
         if r_start >= v_end || r_end <= v_start {
             continue; // Read doesn't overlap variant fetch window
         }
+
+        // Supplementary/secondary alignments are not first-class fragment
+        // observations: they share a QNAME with their primary, so counting them at
+        // read level double-counts DP/RD/AD at the anchor. Skip them regardless of
+        // the user filter flags (which only govern whether such records reach the
+        // cache at all). Fragment-level counts already collapse them via the QNAME
+        // hash, and the legacy count_single_variant path applies the same skip so
+        // binned and legacy stay in parity.
+        if record.is_supplementary() || record.is_secondary() {
+            continue;
+        }
         reads_considered += 1;
 
         // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
-        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand) {
+        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness) {
             continue;
         }
 
@@ -1150,7 +1431,7 @@ fn count_variant_from_cache(
         // When BAQ is enabled, bases near indels and splice junctions
         // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
         // on for RNA (no upstream BQ recalibration).
-        // ── P4a: GTF-informed BAQ suppression ──
+        // ── GTF-informed BAQ suppression ──
         // At annotated splice boundaries (within 5bp), BAQ downgrade
         // would incorrectly penalize reads that legitimately span the
         // exon junction. Suppress BAQ when exon_boundary_dist <= 5.
@@ -1351,7 +1632,7 @@ fn count_variant_from_cache(
         // ── RNA SENSE/ANTISENSE DEPTH: track strand-specific depth.
         // Uses the same dUTP logic as is_sense_strand to classify reads.
         if mode == "rna" {
-            if rna::is_sense_strand(record, variant.gene_strand) {
+            if rna::is_sense_strand(record, variant.gene_strand, strandedness) {
                 counts.sense_depth += 1;
                 if is_alt { counts.sense_strand_alt_count += 1; }
             } else {
@@ -1365,19 +1646,31 @@ fn count_variant_from_cache(
     counts.alt_dist_end_median = compute_median_u32(&mut alt_dists);
     counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
 
-    // ── D7: RNA EDITING SITE FLAG (DB-only) ────────────────────────────
+    // ── RNA editing site flag (DB-only) ────────────────────────────
     // Flag is True ONLY when a REDIportal database is provided AND this
     // variant's position is found in the database. No DB = no flagging.
     // This avoids false positives from pattern-matching-only heuristics
     // (e.g. every A→G SNP being flagged as a potential editing site).
     if mode == "rna" {
         counts.rna_editing_site_overlap = editing_sites.as_ref().is_some_and(|sites| {
-            let chrom = variant.chrom.trim_start_matches("chr");
-            let found = sites.contains(&(chrom.to_string(), variant.pos));
+            // Flag only when the variant's substitution matches the catalogued edit
+            // (genomic-forward Ref>Ed, e.g. A>G on '+' or T>C on '-'). Position alone
+            // would over-flag unrelated substitutions sitting on an editing coordinate.
+            let found = variant.ref_allele.len() == 1
+                && variant.alt_allele.len() == 1
+                && {
+                    let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
+                    sites.contains(&(
+                        chrom,
+                        variant.pos,
+                        variant.ref_allele.as_bytes()[0].to_ascii_uppercase(),
+                        variant.alt_allele.as_bytes()[0].to_ascii_uppercase(),
+                    ))
+                };
             if found {
                 trace!(
-                    "D7: editing site flagged at {}:{}",
-                    variant.chrom, variant.pos + 1,
+                    "editing site match at {}:{} {}>{}",
+                    variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
                 );
             }
             found
@@ -1399,10 +1692,16 @@ fn count_variant_from_cache(
     // (50–1000 bp) with a known TLEN are added. GC correction is not applied —
     // GC bias affects count depth, not fragment length, so these raw sizes are
     // already unbiased samples of the true size distribution.
-    let mut ref_sizes:    Vec<f64> = Vec::with_capacity(fragments.len());
-    let mut alt_sizes:    Vec<f64> = Vec::with_capacity(fragments.len());
-    let mut nonref_sizes: Vec<f64> = Vec::with_capacity(fragments.len());
-    let mut n_sizes:      Vec<f64> = Vec::with_capacity(fragments.len());
+    //
+    // PF-1: mFSD is output-aware. When `--mfsd` is off the size vectors are never
+    // reserved or filled and the stats block below is skipped — sparing the per-variant
+    // `counts.ref_sizes`/`alt_sizes` arrays that are otherwise held on every BaseCounts
+    // for the whole run (the dominant mFSD memory cost under Nextflow fan-out).
+    let mfsd_cap = if mfsd { fragments.len() } else { 0 };
+    let mut ref_sizes:    Vec<f64> = Vec::with_capacity(mfsd_cap);
+    let mut alt_sizes:    Vec<f64> = Vec::with_capacity(mfsd_cap);
+    let mut nonref_sizes: Vec<f64> = Vec::with_capacity(mfsd_cap);
+    let mut n_sizes:      Vec<f64> = Vec::with_capacity(mfsd_cap);
 
     for evidence in fragments.values() {
         let (frag_ref, frag_alt) = evidence.resolve(qual_diff_threshold);
@@ -1427,9 +1726,10 @@ fn count_variant_from_cache(
             }
         }
 
-        // mFSD: classify fragment into size class vectors
+        // mFSD: classify fragment into size class vectors (only when --mfsd is on;
+        // PF-1 output-aware gate — leaves the size vectors empty otherwise)
         if let Some(sz) = evidence.insert_size {
-            if (50..=1000).contains(&sz) {
+            if mfsd && (50..=1000).contains(&sz) {
                 let sz_f = sz as f64;
                 if frag_ref {
                     ref_sizes.push(sz_f);
@@ -1456,64 +1756,12 @@ fn count_variant_from_cache(
     counts.fsb_pval = fsb_pval;
     counts.fsb_or = fsb_or;
 
-    // ── mFSD Statistics
-    counts.mfsd_ref_count    = ref_sizes.len()    as u32;
-    counts.mfsd_alt_count    = alt_sizes.len()    as u32;
-    counts.mfsd_nonref_count = nonref_sizes.len() as u32;
-    counts.mfsd_n_count      = n_sizes.len()      as u32;
-
-    counts.mfsd_ref_mean    = mfsd::calc_mean(&ref_sizes);
-    counts.mfsd_alt_mean    = mfsd::calc_mean(&alt_sizes);
-    counts.mfsd_nonref_mean = mfsd::calc_mean(&nonref_sizes);
-    counts.mfsd_n_mean      = mfsd::calc_mean(&n_sizes);
-
-    counts.mfsd_alt_llr = mfsd::calc_llr(&alt_sizes);
-    counts.mfsd_ref_llr = mfsd::calc_llr(&ref_sizes);
-
-    let ks_pair = |a: &[f64], b: &[f64]| -> (f64, f64, f64) {
-        let (d, p) = mfsd::ks_test(a, b);
-        let delta = if a.is_empty() || b.is_empty() {
-            f64::NAN
-        } else {
-            mfsd::calc_mean(a) - mfsd::calc_mean(b)
-        };
-        (delta, d, p)
-    };
-
-    (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
-    (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
-    (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
-    (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);
-    (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
-    (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
-
-    // ── mFSD: Sub-nucleosomal / mono-nucleosomal fractions ──────────────────
-    // Computed before ref_sizes/alt_sizes are consumed by into_iter().
-    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator.
-    // Mono-nucleosomal (150–200bp): dominant cfDNA peak.
-    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
-    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
-    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
-        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
-    } else {
-        f64::NAN
-    };
-    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
-    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
-
-    counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
-    counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
-
-    debug!(
-        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
-        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-        counts.mfsd_ref_count, counts.mfsd_alt_count,
-        counts.mfsd_nonref_count, counts.mfsd_n_count,
-        counts.mfsd_delta_alt_ref,
-        counts.mfsd_ks_alt_ref,
-        counts.mfsd_pval_alt_ref,
-        counts.mfsd_alt_llr,
-    );
+    // ── mFSD Statistics — only when requested (PF-1 output-aware gate). When off,
+    // the size vectors are empty and all mFSD fields stay at their BaseCounts default;
+    // the writers omit the mFSD columns and the post-counting BH-FDR pass skips them.
+    if mfsd {
+        compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
+    }
 
     // Log per-phase classification breakdown + reads considered
     debug!(
@@ -1539,6 +1787,7 @@ fn count_variant_from_cache(
 // NOTE: Consensus splicing (D6) is NOT applied in this legacy path because
 // it requires buffered reads (two-pass). D6 is only available via
 // count_bam_binned which has the D10 read cache.
+#[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 fn count_single_variant(
     bam: &mut bam::IndexedReader,
@@ -1558,8 +1807,12 @@ fn count_single_variant(
     umi_tag: Option<[u8; 2]>,
     mode: &str,
     enforce_strandedness: bool,
+    strandedness: rna::Strandedness,
 ) -> Result<BaseCounts> {
-    let tid = bam.header().tid(variant.chrom.as_bytes()).ok_or_else(|| {
+    // Reconcile contig naming (chr1 vs 1, chrM vs MT) the same way the binned path does,
+    // so both codepaths resolve the same reads. The legacy oracle errors on a genuine
+    // miss (loud, and it is test-only).
+    let tid = resolve_tid(bam.header(), &variant.chrom).ok_or_else(|| {
         anyhow::anyhow!("Chromosome not found in BAM: {}", variant.chrom)
     })?;
 
@@ -1632,6 +1885,14 @@ fn count_single_variant(
             continue;
         }
 
+        // Supplementary/secondary alignments are not first-class fragment
+        // observations (shared QNAME → would double-count read-level DP/RD/AD). Skip
+        // them regardless of the user filter flags, mirroring count_variant_from_cache
+        // so the binned and legacy paths stay in parity.
+        if record.is_supplementary() || record.is_secondary() {
+            continue;
+        }
+
         // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE the MAPQ filter.
         // Mirrors GATK's MappingQualityZero annotation — a high MQ0
         // count is a locus-level red flag for regions with high homology
@@ -1655,7 +1916,7 @@ fn count_single_variant(
         // ── RNA STRANDEDNESS FILTER: In RNA mode with strandedness enforced,
         // reject reads on the wrong strand relative to the gene annotation.
         // This prevents antisense artifacts from inflating variant counts.
-        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(&record, variant.gene_strand) {
+        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(&record, variant.gene_strand, strandedness) {
             continue;
         }
 
@@ -1846,7 +2107,7 @@ fn count_single_variant(
         // ── RNA SENSE/ANTISENSE DEPTH: track strand-specific depth.
         // Uses the same dUTP logic as is_sense_strand to classify reads.
         if mode == "rna" {
-            if rna::is_sense_strand(&record, variant.gene_strand) {
+            if rna::is_sense_strand(&record, variant.gene_strand, strandedness) {
                 counts.sense_depth += 1;
                 if is_alt {
                     counts.sense_strand_alt_count += 1;
@@ -1865,7 +2126,7 @@ fn count_single_variant(
     counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
 
     // ── RNA EDITING SITE FLAG (legacy path) ──
-    // D7 DB-only editing flagging is only available via count_bam_binned.
+    // RNA editing DB-only flagging is only available via count_bam_binned.
     // Legacy path does not receive the editing_sites HashSet, so
     // rna_editing_site_overlap stays false (no pattern-matching guessing).
 
@@ -1955,71 +2216,10 @@ fn count_single_variant(
     counts.fsb_or = fsb_or;
 
     // ── mFSD Statistics ──────────────────────────────────────────────────────
-    // All distributional tests (KS, LLR, delta) use raw unweighted size arrays.
-    // Counts populated here match mfsd_*_count fields on BaseCounts.
-
-    counts.mfsd_ref_count    = ref_sizes.len()    as u32;
-    counts.mfsd_alt_count    = alt_sizes.len()    as u32;
-    counts.mfsd_nonref_count = nonref_sizes.len() as u32;
-    counts.mfsd_n_count      = n_sizes.len()      as u32;
-
-    // Means (0.0 for empty — callers should gate on mfsd_*_count)
-    counts.mfsd_ref_mean    = mfsd::calc_mean(&ref_sizes);
-    counts.mfsd_alt_mean    = mfsd::calc_mean(&alt_sizes);
-    counts.mfsd_nonref_mean = mfsd::calc_mean(&nonref_sizes);
-    counts.mfsd_n_mean      = mfsd::calc_mean(&n_sizes);
-
-    // LLR: sum(log P_tumor / P_healthy) per fragment; positive = tumor-like
-    counts.mfsd_alt_llr = mfsd::calc_llr(&alt_sizes);
-    counts.mfsd_ref_llr = mfsd::calc_llr(&ref_sizes);
-
-    // KS helper closure: pairwise delta + D-statistic + p-value
-    // delta = mean(a) - mean(b);  (NaN, 1.0) when either class < MIN_FOR_KS
-    let ks_pair = |a: &[f64], b: &[f64]| -> (f64, f64, f64) {
-        let (d, p) = mfsd::ks_test(a, b);
-        let delta = if a.is_empty() || b.is_empty() {
-            f64::NAN
-        } else {
-            mfsd::calc_mean(a) - mfsd::calc_mean(b)
-        };
-        (delta, d, p)
-    };
-
-    (counts.mfsd_delta_alt_ref,    counts.mfsd_ks_alt_ref,    counts.mfsd_pval_alt_ref)    = ks_pair(&alt_sizes, &ref_sizes);
-    (counts.mfsd_delta_alt_nonref, counts.mfsd_ks_alt_nonref, counts.mfsd_pval_alt_nonref) = ks_pair(&alt_sizes, &nonref_sizes);
-    (counts.mfsd_delta_ref_nonref, counts.mfsd_ks_ref_nonref, counts.mfsd_pval_ref_nonref) = ks_pair(&ref_sizes, &nonref_sizes);
-    (counts.mfsd_delta_alt_n,      counts.mfsd_ks_alt_n,      counts.mfsd_pval_alt_n)      = ks_pair(&alt_sizes, &n_sizes);
-    (counts.mfsd_delta_ref_n,      counts.mfsd_ks_ref_n,      counts.mfsd_pval_ref_n)      = ks_pair(&ref_sizes, &n_sizes);
-    (counts.mfsd_delta_nonref_n,   counts.mfsd_ks_nonref_n,   counts.mfsd_pval_nonref_n)   = ks_pair(&nonref_sizes, &n_sizes);
-
-    // ── mFSD: Sub-nucleosomal / mono-nucleosomal fractions ──────────────────
-    // Computed before ref_sizes/alt_sizes are consumed by into_iter().
-    // Sub-nucleosomal (<150bp): ctDNA enrichment indicator.
-    // Mono-nucleosomal (150–200bp): dominant cfDNA peak.
-    counts.mfsd_sub_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 0.0, 150.0);
-    counts.mfsd_sub_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 0.0, 150.0);
-    counts.mfsd_sub_nuc_enrichment = if counts.mfsd_sub_nuc_ref_frac > 0.0 {
-        counts.mfsd_sub_nuc_alt_frac / counts.mfsd_sub_nuc_ref_frac
-    } else {
-        f64::NAN
-    };
-    counts.mfsd_mono_nuc_ref_frac = mfsd::calc_fraction_in_range(&ref_sizes, 150.0, 200.0);
-    counts.mfsd_mono_nuc_alt_frac = mfsd::calc_fraction_in_range(&alt_sizes, 150.0, 200.0);
-
-    // Store raw size arrays for --mfsd-parquet export
-    counts.ref_sizes = ref_sizes.into_iter().map(|v| v as u32).collect();
-    counts.alt_sizes = alt_sizes.into_iter().map(|v| v as u32).collect();
-
-    debug!(
-        "mFSD {}:{} {}>{}: ref={} alt={} nonref={} n={} delta={:.1} ks_d={:.3} ks_p={:.3e} alt_llr={:.2} sizing=physical",
-        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-        counts.mfsd_ref_count, counts.mfsd_alt_count,
-        counts.mfsd_nonref_count, counts.mfsd_n_count,
-        counts.mfsd_delta_alt_ref,
-        counts.mfsd_ks_alt_ref,
-        counts.mfsd_pval_alt_ref,
-        counts.mfsd_alt_llr,
-    );
+    // The legacy per-variant path is the parity oracle (test-only) and always computes
+    // mFSD; only the binned production path gates it on `mfsd`. Shares the same helper
+    // as the binned path so the two can never drift.
+    compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
 
     // Log per-phase classification breakdown
     debug!(
@@ -2176,7 +2376,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
 
 
 // ══════════════════════════════════════════════════════════════════════════════
-// P4b: PER-TRANSCRIPT COUNTING
+// PER-TRANSCRIPT COUNTING
 // ══════════════════════════════════════════════════════════════════════════════
 
 /// Per-transcript read and fragment counts for a single variant.
@@ -2196,8 +2396,9 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
 ///
 /// # Format
 ///
-/// Read:     `"ENST...:AD,RD,DP;ENST...:AD,RD,DP"`
-/// Fragment: `"ENST...:ADF,RDF,DPF;ENST...:ADF,RDF,DPF"`
+/// Read:     `"ENST...:AD,RD,DP|ENST...:AD,RD,DP"`
+/// Fragment: `"ENST...:ADF,RDF,DPF|ENST...:ADF,RDF,DPF"`
+/// Transcripts are separated by `|` (VCF-INFO-safe; ME-2); fields within an entry by `:`/`,`.
 ///
 /// # Performance
 ///
@@ -2219,18 +2420,19 @@ fn count_per_transcript(
     apply_baq: bool,
     umi_tag: Option<[u8; 2]>,
     enforce_strandedness: bool,
+    strandedness: rna::Strandedness,
     amplicon_mode: bool,
 ) -> (String, String) {
     // Step 1: Find overlapping transcripts
-    let chrom = variant.chrom.trim_start_matches("chr");
-    let transcript_ids = annotation.overlapping_transcripts(chrom, variant.pos);
+    let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
+    let transcript_ids = annotation.overlapping_transcripts(&chrom, variant.pos);
 
     if transcript_ids.is_empty() {
         return (String::new(), String::new());
     }
 
     trace!(
-        "P4b: {} overlapping transcripts at {}:{} ({})",
+        "per-transcript: {} overlapping transcripts at {}:{} ({})",
         transcript_ids.len(), variant.chrom, variant.pos + 1,
         transcript_ids.join(", "),
     );
@@ -2258,7 +2460,7 @@ fn count_per_transcript(
                 // Should not happen if overlapping_transcripts returned this ID,
                 // but guard against index inconsistency.
                 debug!(
-                    "P4b: transcript {} has no intron data, skipping",
+                    "per-transcript: transcript {} has no intron data, skipping",
                     tx_id,
                 );
                 continue;
@@ -2289,11 +2491,11 @@ fn count_per_transcript(
             }
 
             // ── Strandedness filter
-            if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand) {
+            if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand, strandedness) {
                 continue;
             }
 
-            // ── P4b: Splice-junction compatibility check
+            // ── Splice-junction compatibility check
             let observed_junctions = super::rna::extract_splice_junctions(record);
             if !annotation.is_read_compatible(&observed_junctions, tx_introns, 5) {
                 continue; // Incompatible junctions → skip for this transcript
@@ -2374,7 +2576,7 @@ fn count_per_transcript(
         frag_entries.push(format!("{}:{},{},{}", tx_id, tx_adf, tx_rdf, tx_dpf));
 
         trace!(
-            "P4b: {} → read AD={} RD={} DP={}, frag ADF={} RDF={} DPF={}",
+            "per-transcript: {} → read AD={} RD={} DP={}, frag ADF={} RDF={} DPF={}",
             tx_id, tx_ad, tx_rd, tx_dp, tx_adf, tx_rdf, tx_dpf,
         );
     }
@@ -2383,12 +2585,17 @@ fn count_per_transcript(
         return (String::new(), String::new());
     }
 
-    (read_entries.join(";"), frag_entries.join(";"))
+    // ME-2: separate transcripts with '|' (not ';'). ';' is the VCF INFO field separator,
+    // so a ';'-joined value corrupts VCF INFO parsing — which is why the writer used to
+    // repair ';'→'|' for VCF only, leaving MAF inconsistent. Joining with '|' here makes
+    // MAF, VCF, and the documented `ENST:AD,RD,DP|…` header all agree. (Within an entry,
+    // ':'/',' are the field separators — unaffected.)
+    (read_entries.join("|"), frag_entries.join("|"))
 }
 
 
 // ══════════════════════════════════════════════════════════════════════════════
-// P4c: ALLELE-SPECIFIC JUNCTION DIVERGENCE (ASJD)
+// ALLELE-SPECIFIC JUNCTION DIVERGENCE (ASJD)
 // ══════════════════════════════════════════════════════════════════════════════
 
 /// Result of ASJD detection for a single variant.
@@ -2435,22 +2642,29 @@ impl AsjdResult {
 ///
 /// In stranded (dUTP) RNA-seq libraries, reads spanning a real splice junction
 /// should originate from a single transcript strand. If the dominant ALT junction
-/// has substantial support from **both** strands (minority strand fraction ≥ 30%),
-/// it indicates the junction may be an alignment artifact (e.g., DNA contamination
-/// or mismapping) rather than a genuine RNA splice event.
+/// has substantial support from **both transcript strands** (minority fraction
+/// ≥ 30%), it indicates the junction may be an alignment artifact (e.g., DNA
+/// contamination or mismapping) rather than a genuine RNA splice event.
+///
+/// Reads are binned by their dUTP-folded *transcript* strand
+/// ([`super::rna::read_transcript_strand`]), not raw genomic orientation —
+/// otherwise the two mates of a normal FR pair land on opposite genomic strands
+/// and a genuine junction looks fully mixed, firing the flag spuriously.
 ///
 /// The `STRAND_DISCORDANT` diagnostic flag fires when:
-/// `min(forward, reverse) / (forward + reverse) >= 0.30`
+/// `min(plus, minus) / (plus + minus) >= 0.30`
 #[derive(Default, Debug)]
 struct JunctionStrandCounts {
-    forward: u32,
-    reverse: u32,
+    /// Reads whose transcript strand resolves to '+'.
+    plus: u32,
+    /// Reads whose transcript strand resolves to '-'.
+    minus: u32,
 }
 
 impl JunctionStrandCounts {
-    /// Total read count across both strands.
+    /// Total read count across both transcript strands.
     fn total(&self) -> u32 {
-        self.forward + self.reverse
+        self.plus + self.minus
     }
 
     /// Minority strand fraction: 0.0 = perfectly stranded, 0.5 = fully mixed.
@@ -2459,8 +2673,54 @@ impl JunctionStrandCounts {
         if total == 0 {
             return 0.0;
         }
-        let minority = std::cmp::min(self.forward, self.reverse);
+        let minority = std::cmp::min(self.plus, self.minus);
         minority as f64 / total as f64
+    }
+}
+
+/// Per-fragment junction-strand tally for ASJD.
+///
+/// A fragment (identified by its QNAME hash) votes once toward `n_total` and once per
+/// junction it spans, regardless of how many of its mates cross. Counting both mates
+/// of an overlapping pair would inflate junction totals (~1.38x on real RNA) and fire
+/// spurious `STRAND_DISCORDANT` at low depth. Mates always fold to the same transcript
+/// strand (verified 0/319k disagreements on real RNA), so the first vote per
+/// (fragment, junction) wins unambiguously.
+#[derive(Default)]
+struct JunctionTally {
+    /// Per-junction transcript-strand counts, deduped to one vote per fragment.
+    counts: HashMap<(i64, i64), JunctionStrandCounts>,
+    /// Distinct fragments contributing at least one junction-spanning read.
+    n_total: u32,
+    frag_seen: std::collections::HashSet<u64>,
+    junc_seen: std::collections::HashSet<(i64, i64, u64)>,
+    /// Mates skipped because their fragment already voted at that junction (monitoring).
+    collapsed: u32,
+}
+
+impl JunctionTally {
+    /// Record one junction-spanning read of a fragment.
+    ///
+    /// - `qhash`: fragment identity (QNAME hash).
+    /// - `junctions`: the junctions this read spans.
+    /// - `tx_minus`: folded transcript strand (`true` = '-'; unstranded reads pass
+    ///   `false` so they count toward totals without skewing the strand split).
+    fn add(&mut self, qhash: u64, junctions: &[(i64, i64)], tx_minus: bool) {
+        if self.frag_seen.insert(qhash) {
+            self.n_total += 1;
+        }
+        for &j in junctions {
+            if self.junc_seen.insert((j.0, j.1, qhash)) {
+                let entry = self.counts.entry(j).or_default();
+                if tx_minus {
+                    entry.minus += 1;
+                } else {
+                    entry.plus += 1;
+                }
+            } else {
+                self.collapsed += 1;
+            }
+        }
     }
 }
 
@@ -2479,20 +2739,26 @@ impl JunctionStrandCounts {
 /// | AT    | AC       | AT-AC  | U12         |
 /// | other | other    | OTHER  | Non-canonical |
 ///
-/// Returns `"UNKNOWN"` if FASTA reader is unavailable or fetch fails.
+/// On the minus strand the donor/acceptor roles swap and each dinucleotide is
+/// reverse-complemented, so a canonical minus-strand intron (genomic `CT..AC`) is
+/// recognized rather than misread as `OTHER`. With strand unknown a canonical motif
+/// in either orientation is accepted rather than guessing non-canonical.
+/// Returns `"UNKNOWN"` if the FASTA reader is unavailable or a fetch fails.
 fn classify_splice_motif(
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
     chrom: &str,
     junction_start: i64,
     junction_end: i64,
+    gene_strand: Option<char>,
 ) -> String {
     let reader = match fasta_reader.as_mut() {
         Some(r) => r,
         None => return "UNKNOWN".to_string(),
     };
 
-    // Fetch donor dinucleotide (2bp at intron start)
-    let donor = match crate::normalize::fasta::fetch_region(
+    // Fetch the two genomic dinucleotides bracketing the intron (forward strand):
+    // `left` at the intron start, `right` at the intron end.
+    let left = match crate::normalize::fasta::fetch_region(
         reader, chrom, junction_start as u64, (junction_start + 2) as u64,
     ) {
         Ok(bases) if bases.len() == 2 => {
@@ -2500,9 +2766,7 @@ fn classify_splice_motif(
         }
         _ => return "UNKNOWN".to_string(),
     };
-
-    // Fetch acceptor dinucleotide (2bp at intron end - 2)
-    let acceptor = match crate::normalize::fasta::fetch_region(
+    let right = match crate::normalize::fasta::fetch_region(
         reader, chrom, (junction_end - 2) as u64, junction_end as u64,
     ) {
         Ok(bases) if bases.len() == 2 => {
@@ -2511,13 +2775,45 @@ fn classify_splice_motif(
         _ => return "UNKNOWN".to_string(),
     };
 
-    // Classify the motif
-    match (donor, acceptor) {
-        ([b'G', b'T'], [b'A', b'G']) => "GT-AG".to_string(),
-        ([b'G', b'C'], [b'A', b'G']) => "GC-AG".to_string(),
-        ([b'A', b'T'], [b'A', b'C']) => "AT-AC".to_string(),
-        _ => "OTHER".to_string(),
+    // Orient donor/acceptor by gene strand. On '+', donor = left, acceptor = right.
+    // On '-', the intron reads in reverse: donor = revcomp(right), acceptor =
+    // revcomp(left). With strand unknown, accept a canonical motif in either reading.
+    match gene_strand {
+        Some('-') => motif_label(revcomp2(right), revcomp2(left)),
+        Some('+') => motif_label(left, right),
+        _ => canonical_motif(left, right)
+            .or_else(|| canonical_motif(revcomp2(right), revcomp2(left)))
+            .unwrap_or("OTHER")
+            .to_string(),
     }
+}
+
+/// Reverse-complement a 2-base motif (donor/acceptor dinucleotide).
+fn revcomp2(d: [u8; 2]) -> [u8; 2] {
+    let complement = |b: u8| match b {
+        b'A' => b'T',
+        b'T' => b'A',
+        b'C' => b'G',
+        b'G' => b'C',
+        other => other,
+    };
+    [complement(d[1]), complement(d[0])]
+}
+
+/// Canonical spliceosomal motif name for a donor/acceptor pair, or `None` if
+/// non-canonical (GT-AG = U2 major, GC-AG = U2 minor, AT-AC = U12).
+fn canonical_motif(donor: [u8; 2], acceptor: [u8; 2]) -> Option<&'static str> {
+    match (donor, acceptor) {
+        ([b'G', b'T'], [b'A', b'G']) => Some("GT-AG"),
+        ([b'G', b'C'], [b'A', b'G']) => Some("GC-AG"),
+        ([b'A', b'T'], [b'A', b'C']) => Some("AT-AC"),
+        _ => None,
+    }
+}
+
+/// Canonical motif name, or `"OTHER"` when non-canonical.
+fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
+    canonical_motif(donor, acceptor).unwrap_or("OTHER").to_string()
 }
 
 ///
@@ -2552,9 +2848,13 @@ fn detect_asjd(
     backend: &AlignmentBackend,
     apply_baq: bool,
     enforce_strandedness: bool,
+    strandedness: rna::Strandedness,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
 ) -> AsjdResult {
-    let chrom = variant.chrom.trim_start_matches("chr");
+    // Bind the normalized key, then borrow it as &str so the junction/motif lookups
+    // below are unchanged.
+    let chrom_key = crate::shared::contig::normalize_contig(&variant.chrom);
+    let chrom = chrom_key.as_str();
     let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
     let v_start = (variant.pos - window_pad).max(0);
     let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
@@ -2568,14 +2868,18 @@ fn detect_asjd(
     let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
     let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
 
-    // Step 1: Partition reads into REF/ALT and collect junctions with strand info
-    // Tracks forward/reverse read counts per junction for STRAND_DISCORDANT detection.
-    // In dUTP libraries, real splice junctions should be supported by reads from a
-    // single strand; mixed-strand evidence suggests alignment artifacts.
-    let mut ref_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
-    let mut alt_junction_counts: HashMap<(i64, i64), JunctionStrandCounts> = HashMap::new();
-    let mut n_ref_total: u32 = 0;
-    let mut n_alt_total: u32 = 0;
+    // Step 1: Partition reads into REF/ALT and collect junctions with strand info.
+    // Tracks per-junction transcript-strand counts for STRAND_DISCORDANT detection:
+    // a genuine splice junction is supported from a single transcript strand, so
+    // mixed-strand evidence suggests an alignment artifact.
+    // ASJD junction evidence is counted per FRAGMENT, not per mate. On real RNA, 35.6%
+    // of fragment×junction incidences have both mates spanning the same junction;
+    // counting both inflates junction totals ~1.38x on average and fires spurious
+    // STRAND_DISCORDANT at low depth. `JunctionTally` dedups each fragment to one vote
+    // per allele-total and per junction (mates always fold to the same transcript
+    // strand — verified 0/319k disagreements on real RNA — so first-seen wins).
+    let mut ref_tally = JunctionTally::default();
+    let mut alt_tally = JunctionTally::default();
 
     for record in read_cache {
         let r_start = record.pos();
@@ -2588,7 +2892,7 @@ fn detect_asjd(
         if record.mapq() < min_mapq && !super::rna::is_valid_rna_alignment(record, min_mapq) {
             continue;
         }
-        if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand) {
+        if enforce_strandedness && !super::rna::is_sense_strand(record, variant.gene_strand, strandedness) {
             continue;
         }
 
@@ -2615,23 +2919,35 @@ fn detect_asjd(
             continue;
         }
 
-        // Read strand (BAM FLAG bit 0x10)
-        let is_reverse = record.is_reverse();
+        // Transcript-strand-folded under the library protocol, so both mates of a
+        // normal FR pair agree rather than splitting a genuine junction across both
+        // genomic strands. For an unstranded library there is no transcript strand
+        // (None) — such reads fall to `plus` so they still count toward the junction
+        // total, while the strand split (used only for discordance below) is left
+        // inert and the STRAND_DISCORDANT emission is gated off.
+        let tx_minus = super::rna::read_transcript_strand(record, strandedness) == Some('-');
 
-        // Partition by allele classification, tracking strand per junction
+        // Dedup by fragment (QNAME hash): vote once per allele-total and per junction.
+        let qh = crate::shared::fragment::hash_qname(record.qname());
         if result.is_ref {
-            n_ref_total += 1;
-            for j in &junctions {
-                let entry = ref_junction_counts.entry(*j).or_default();
-                if is_reverse { entry.reverse += 1; } else { entry.forward += 1; }
-            }
+            ref_tally.add(qh, &junctions, tx_minus);
         } else if result.is_alt {
-            n_alt_total += 1;
-            for j in &junctions {
-                let entry = alt_junction_counts.entry(*j).or_default();
-                if is_reverse { entry.reverse += 1; } else { entry.forward += 1; }
-            }
+            alt_tally.add(qh, &junctions, tx_minus);
         }
+    }
+
+    // Unpack the deduped tallies into the names the rest of the routine reads.
+    let n_ref_total = ref_tally.n_total;
+    let n_alt_total = alt_tally.n_total;
+    let collapsed_mates = ref_tally.collapsed + alt_tally.collapsed;
+    let ref_junction_counts = ref_tally.counts;
+    let alt_junction_counts = alt_tally.counts;
+
+    if collapsed_mates > 0 {
+        debug!(
+            "ASJD QNAME-dedup at {}:{}: collapsed {} duplicate junction-spanning mates",
+            variant.chrom, variant.pos + 1, collapsed_mates,
+        );
     }
 
     // Step 2: Check minimum evidence thresholds
@@ -2666,7 +2982,7 @@ fn detect_asjd(
         .iter()
         .max_by_key(|(_, sc)| sc.total())
         .map(|(j, sc)| (*j, sc))
-        .unwrap();
+        .unwrap(); // safe: checked non-empty above
     let n_alt_junc = alt_dom_strand_info.total();
 
     // Check for multi-junction in ALT reads
@@ -2714,36 +3030,45 @@ fn detect_asjd(
     //   Donor:   2bp at junction_start (intron start)
     //   Acceptor: 2bp at junction_end - 2 (intron end)
     // Canonical motifs: GT-AG (U2), GC-AG (U2 minor), AT-AC (U12)
-    let ref_motif = classify_splice_motif(fasta_reader, chrom, ref_dom_junc.0, ref_dom_junc.1);
-    let alt_motif = classify_splice_motif(fasta_reader, chrom, alt_dom_junc.0, alt_dom_junc.1);
+    let ref_motif = classify_splice_motif(
+        fasta_reader, chrom, ref_dom_junc.0, ref_dom_junc.1, variant.gene_strand,
+    );
+    let alt_motif = classify_splice_motif(
+        fasta_reader, chrom, alt_dom_junc.0, alt_dom_junc.1, variant.gene_strand,
+    );
 
     // NON_CANONICAL_MOTIF diagnostic flag
     if !same_junction && alt_motif == "OTHER" {
         diag_flags.push("NON_CANONICAL_MOTIF");
     }
 
-    // Step 5c: Strand discordance detection on the dominant ALT junction
-    // In dUTP libraries, reads from a genuine splice event should be predominantly
-    // on one strand. A minority strand fraction ≥ 30% (with ≥5 total reads to avoid
-    // noise at low depth) indicates the junction may be an alignment artifact.
+    // Step 5c: Strand discordance detection on the dominant ALT junction.
+    // In a stranded library, reads from a genuine splice event should be predominantly
+    // on one transcript strand. A minority strand fraction ≥ 30% (with ≥5 total reads
+    // to avoid noise at low depth) indicates the junction may be an alignment artifact.
+    // Undefined for an unstranded library (no transcript strand), so gate it off there.
     let alt_minority_frac = alt_dom_strand_info.minority_strand_fraction();
-    if !same_junction && n_alt_junc >= 5 && alt_minority_frac >= 0.30 {
+    if strandedness != rna::Strandedness::Unstranded
+        && !same_junction
+        && n_alt_junc >= 5
+        && alt_minority_frac >= 0.30
+    {
         diag_flags.push("STRAND_DISCORDANT");
         debug!(
-            "P4c STRAND_DISCORDANT: {}:{} alt_junc={}-{} fwd={} rev={} minority_frac={:.2}",
+            "STRAND_DISCORDANT: {}:{} alt_junc={}-{} tx+={} tx-={} minority_frac={:.2}",
             variant.chrom, variant.pos + 1,
             alt_dom_junc.0, alt_dom_junc.1,
-            alt_dom_strand_info.forward, alt_dom_strand_info.reverse,
+            alt_dom_strand_info.plus, alt_dom_strand_info.minus,
             alt_minority_frac,
         );
     }
 
     trace!(
-        "P4c ASJD: {}:{} flag={} pval={:.4e} ref={}({}) alt={}({}) ref_n={}/{} alt_n={}/{} alt_strand={}F/{}R",
+        "ASJD: {}:{} flag={} pval={:.4e} ref={}({}) alt={}({}) ref_n={}/{} alt_n={}/{} alt_strand={}tx+/{}tx-",
         variant.chrom, variant.pos + 1, flag, pval,
         ref_junction_str, ref_motif, alt_junction_str, alt_motif,
         n_ref_junc, n_ref_total, n_alt_junc, n_alt_total,
-        alt_dom_strand_info.forward, alt_dom_strand_info.reverse,
+        alt_dom_strand_info.plus, alt_dom_strand_info.minus,
     );
 
     AsjdResult {
@@ -2770,6 +3095,27 @@ mod tests {
     use super::*;
     use rust_htslib::bam::record::CigarString;
     use std::ffi::CString;
+
+    #[test]
+    fn test_splice_motif_orientation_by_strand() {
+        // A canonical GT-AG intron on the MINUS strand appears on the forward genome
+        // as left=CT (revcomp of acceptor AG) and right=AC (revcomp of donor GT).
+        let left_minus = [b'C', b'T'];
+        let right_minus = [b'A', b'C'];
+        // Read forward (plus orientation) it is non-canonical...
+        assert_eq!(motif_label(left_minus, right_minus), "OTHER");
+        // ...but minus orientation (revcomp + donor/acceptor swap) recovers GT-AG.
+        assert_eq!(motif_label(revcomp2(right_minus), revcomp2(left_minus)), "GT-AG");
+
+        // Plus-strand canonical intron: left=GT donor, right=AG acceptor.
+        assert_eq!(motif_label([b'G', b'T'], [b'A', b'G']), "GT-AG");
+
+        // Building-block sanity.
+        assert_eq!(revcomp2([b'A', b'C']), [b'G', b'T']);
+        assert_eq!(revcomp2([b'C', b'T']), [b'A', b'G']);
+        assert_eq!(canonical_motif([b'A', b'T'], [b'A', b'C']), Some("AT-AC"));
+        assert_eq!(canonical_motif([b'C', b'C'], [b'G', b'G']), None);
+    }
 
     /// Build a synthetic BAM record for testing.
     ///
@@ -2806,6 +3152,115 @@ mod tests {
             repeat_span: 0,
             gene_strand: None,
         }
+    }
+
+    /// Build a minimal single-contig HeaderView for binning tests.
+    fn build_header_with_contig(name: &str, len: i64) -> bam::HeaderView {
+        let mut header = bam::Header::new();
+        let mut sq = bam::header::HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", name);
+        sq.push_tag(b"LN", len);
+        header.push_record(&sq);
+        bam::HeaderView::from_header(&header)
+    }
+
+    // ── contig-naming reconciliation (chr1 vs 1) ──
+
+    #[test]
+    fn test_resolve_tid_reconciles_contig_naming() {
+        // BAM uses UCSC "chr1"; a variant may arrive as "1" (or vice-versa). resolve_tid
+        // must reconcile both so reads are found — the fix for the silent zero-count when
+        // naming differs — and return None only for a genuine miss (which then warns).
+        let ucsc = build_header_with_contig("chr1", 1_000);
+        assert_eq!(resolve_tid(&ucsc, "chr1"), Some(0)); // exact
+        assert_eq!(resolve_tid(&ucsc, "1"), Some(0)); // "1" reconciled to "chr1"
+        assert_eq!(resolve_tid(&ucsc, "chr2"), None); // genuine miss
+
+        let b37 = build_header_with_contig("1", 1_000);
+        assert_eq!(resolve_tid(&b37, "1"), Some(0)); // exact
+        assert_eq!(resolve_tid(&b37, "chr1"), Some(0)); // "chr1" reconciled to "1"
+        assert_eq!(resolve_tid(&b37, "chrX"), None); // genuine miss
+    }
+
+    // ── bin fetch-end must cover the anchor variant's full ref span ──
+
+    #[test]
+    fn test_bin_covers_anchor_deletion_ref_span() {
+        // A bin anchored by a deletion whose ref span exceeds the window must
+        // still fetch the deletion's right breakpoint. Before the anchor-aware
+        // seed, bin.end stopped at bin_start + window and dropped those reads,
+        // undercounting AD/ADF and diverging from the legacy per-variant path.
+        let header = build_header_with_contig("1", 1_000_000);
+        let window = 10_000_i64;
+
+        // Anchor is a 12kb deletion (ref span > window); a SNP sits within it.
+        let big_ref = "A".repeat(12_000);
+        let variants = vec![
+            build_variant(1_000, &big_ref, "A"),
+            build_variant(2_000, "C", "T"),
+        ];
+
+        let bins = build_genomic_bins(&variants, &header, window);
+        assert_eq!(bins.len(), 1, "both variants belong in one bin");
+        let bin = &bins[0];
+
+        // End-coverage invariant for EVERY variant, anchor included.
+        for (k, v) in variants.iter().enumerate() {
+            let ref_end = v.pos + v.ref_allele.len() as i64; // exclusive ref end
+            assert!(
+                bin.end >= ref_end,
+                "bin.end ({}) must cover variant {} ref end ({})",
+                bin.end,
+                k,
+                ref_end,
+            );
+            assert!(bin.start <= v.pos, "bin.start must cover variant {} pos", k);
+        }
+        // The anchor deletion's right breakpoint is at 1000 + 12000 = 13000.
+        assert!(
+            bin.end >= 13_000,
+            "anchor deletion right breakpoint (13000) must be fetched, got bin.end={}",
+            bin.end,
+        );
+    }
+
+    // ── ASJD per-fragment junction dedup ──
+
+    #[test]
+    fn test_junction_tally_dedup_removes_spurious_discordance() {
+        // A junction supported by 3 single-mate '+' fragments and 1 fragment whose
+        // BOTH mates span it on '-' (the overlapping-mate case, common on real RNA).
+        let mut t = JunctionTally::default();
+        let j = (100i64, 200i64);
+        t.add(1, &[j], false); // frag 1, '+'
+        t.add(2, &[j], false); // frag 2, '+'
+        t.add(3, &[j], false); // frag 3, '+'
+        t.add(4, &[j], true); // frag 4, '-' (mate A)
+        t.add(4, &[j], true); // frag 4, '-' (mate B) → must collapse
+
+        let c = &t.counts[&j];
+        assert_eq!((c.plus, c.minus), (3, 1), "fragment 4 votes once, not twice");
+        assert_eq!(t.n_total, 4, "four distinct fragments");
+        assert_eq!(t.collapsed, 1, "frag 4's second mate collapsed");
+        // Deduped minority fraction 1/4 = 0.25 is below the 0.30 STRAND_DISCORDANT
+        // threshold; the raw per-mate count (+3/-2 = 0.40) would have fired it.
+        assert!(
+            c.minority_strand_fraction() < 0.30,
+            "deduped fraction must clear the discordance threshold"
+        );
+    }
+
+    #[test]
+    fn test_junction_tally_fragment_spans_two_junctions() {
+        // One fragment spanning two distinct junctions votes once per junction and
+        // counts once toward the allele total (no collapse — different junctions).
+        let mut t = JunctionTally::default();
+        let (j1, j2) = ((100i64, 200i64), (300i64, 400i64));
+        t.add(1, &[j1, j2], false);
+        assert_eq!(t.n_total, 1, "one fragment");
+        assert_eq!(t.counts[&j1].plus, 1);
+        assert_eq!(t.counts[&j2].plus, 1);
+        assert_eq!(t.collapsed, 0, "distinct junctions are not collapses");
     }
 
     // ── Phase 0 N-base defense tests ──

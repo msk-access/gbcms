@@ -29,8 +29,10 @@ pub(crate) mod rna;
 pub(crate) mod parquet_writer;
 
 // Re-export the PyO3 entry points so lib.rs can call counting::count_bam / count_bam_binned
+#[cfg(feature = "legacy-parity")]
 pub use engine::count_bam;
 pub use engine::count_bam_binned;
+pub use engine::build_gtf_cache;
 pub use parquet_writer::write_fsd_parquet;
 
 // Re-export AlignmentBackend for sibling modules (used by pairhmm tests)

@@ -57,14 +57,17 @@ Technical terms used throughout the documentation.
 
 ## Validation Status
 
-| Status | Meaning |
-|:-------|:--------|
-| **PASS** | Variant validated against reference, ready for counting |
-| **PASS;WARN_REF_CORRECTED** | REF allele ≥90% match; corrected to FASTA REF |
-| **PASS;WARN_HOMOPOLYMER_DECOMP** | Variant spans a homopolymer; dual-counted with corrected allele (corrected won) |
-| **PASS;MULTI_ALLELIC** | Variant overlaps another variant at the same locus; sibling ALT exclusion active |
-| **REF_MISMATCH** | REF allele does not match the reference genome at the stated position |
-| **FETCH_FAILED** | Could not fetch the reference region (chromosome not found, etc.) |
+Status is two fields: `gbcms_status` (verdict `PASS`/`FAIL`) and `gbcms_status_reason`
+(`|`-separated reason tags, empty for a clean PASS).
+
+| `gbcms_status` | `gbcms_status_reason` | Meaning |
+|:-------|:--------|:--------|
+| **PASS** | *(empty)* | Variant validated against reference, ready for counting |
+| **PASS** | **WARN_REF_CORRECTED** | REF allele ≥90% match; corrected to FASTA REF |
+| **PASS** | **WARN_HOMOPOLYMER_DECOMP** | Variant spans a homopolymer; dual-counted with corrected allele (corrected won) |
+| **PASS** | **MULTI_ALLELIC** | Variant overlaps another variant at the same locus; sibling ALT exclusion active |
+| **FAIL** | **REF_MISMATCH** | REF allele does not match the reference genome at the stated position |
+| **FAIL** | **FETCH_FAILED** | Could not fetch the reference region (chromosome not found, etc.) |
 
 ## RNA Terms
 

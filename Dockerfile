@@ -36,6 +36,14 @@ ENV BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/llvm-14/lib/clang/14.0.6/include"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+# Cargo network resilience for CI: crates.io downloads intermittently fail with
+# "[16] Error in the HTTP2 framing layer" (cargo's HTTP/2 multiplexing on a flaky
+# connection). Force HTTP/1.1, retry, and fetch the git dependency (wfa2lib-rs)
+# via the system git CLI rather than cargo's builtin fetcher.
+ENV CARGO_NET_RETRY=10 \
+    CARGO_HTTP_MULTIPLEXING=false \
+    CARGO_NET_GIT_FETCH_WITH_CLI=true
+
 # Install maturin with patchelf support
 RUN pip install --no-cache-dir "maturin[patchelf]"
 
@@ -46,7 +54,9 @@ COPY src/ src/
 
 # Build unified wheel with maturin (includes both Python and Rust)
 # Don't use --manifest-path; it's in pyproject.toml and ensures correct wheel name
-RUN maturin build --release --out /app/dist
+# --no-default-features drops the `legacy-parity` feature so the shipped wheel does not
+# export the per-variant `count_bam` parity oracle (test-only). See rust/Cargo.toml.
+RUN maturin build --release --no-default-features --out /app/dist
 
 # Stage 2: Runtime (slim image)
 FROM python:3.11-slim-bookworm

@@ -1,6 +1,6 @@
 [project]
 name = "gbcms"
-version = "5.3.0"
+version = "6.0.0"
 description = "Python implementation of GetBaseCountsMultiSample (gbcms) for calculating base counts in BAM files"
 authors = [
     {name = "MSK-ACCESS", email = "shahr2@mskcc.org"}
@@ -21,6 +21,10 @@ classifiers = [
 dependencies = [
     "pysam>=0.21.0",
     "typer>=0.9.0",
+    # click is the engine under typer; the CLI tests import it directly
+    # (typer.main.get_command returns a click.Group). Pin it explicitly so the
+    # built wheel carries it and CI's lock-bypassing wheel install resolves it.
+    "click>=8.0",
     "rich>=13.0.0",
     "pydantic>=2.0.0",
     "polars>=1.0.0",
@@ -150,5 +154,4 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-benchmark>=5.1.0",
     "ruff>=0.13.3",
-    "scipy-stubs>=1.11.0",
 ]

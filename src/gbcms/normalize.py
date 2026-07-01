@@ -88,6 +88,7 @@ def normalize_variants(
         "norm_alt",
         "variant_type",
         "gbcms_status",
+        "gbcms_status_reason",
         "was_anchor_resolved",
         "was_left_aligned",
         "was_normalized",
@@ -109,6 +110,7 @@ def normalize_variants(
                     "norm_alt": pv.variant.alt_allele,
                     "variant_type": pv.variant.variant_type,
                     "gbcms_status": pv.gbcms_status,
+                    "gbcms_status_reason": pv.gbcms_status_reason,
                     "was_anchor_resolved": pv.was_anchor_resolved,
                     "was_left_aligned": pv.was_left_aligned,
                     "was_normalized": pv.was_normalized,
@@ -116,7 +118,7 @@ def normalize_variants(
             )
 
     # Log summary
-    n_pass = sum(1 for p in prepared if p.gbcms_status.startswith("PASS"))
+    n_pass = sum(1 for p in prepared if p.gbcms_status == "PASS")
     n_anchor = sum(1 for p in prepared if p.was_anchor_resolved)
     n_left = sum(1 for p in prepared if p.was_left_aligned)
     n_norm = sum(1 for p in prepared if p.was_normalized)

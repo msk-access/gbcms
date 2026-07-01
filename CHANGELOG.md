@@ -5,6 +5,220 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [6.0.0] - 2026-07-01
+
+> [!WARNING]
+> **Breaking output changes — downstream parsers of gbcms output must review before upgrading.**
+> This major release changes several output behaviours:
+> - **`gbcms_status` is now two fields** — a verdict (`gbcms_status` = `PASS`/`FAIL`) and a
+>   `|`-separated `gbcms_status_reason`. VCF gains a `GSR` INFO key. Filters on
+>   `FAIL_FETCH_FAILED` etc. must switch to `gbcms_status == "FAIL"` + a reason check.
+> - **Per-transcript count columns use `|` between transcripts, not `;`** (RNA + `--gtf`).
+> - **Supplementary/secondary alignments no longer count toward read-level depth** — `DP`
+>   may drop for BAMs with those alignments and the corresponding filters disabled.
+> - **Empty-allele variants are rejected at prep time** (verdict `FAIL`, reason `EMPTY_ALLELE`).
+> - **Nextflow RNA now defaults `min_mapq=1`** (via `rna_min_mapq`) instead of inheriting the
+>   DNA `20`, matching the `gbcms rna` CLI — RNA depths increase vs. the 5.x pipeline.
+> - **`--mfsd` MAF/VCF schema grew** to 41 MAF columns / 13 VCF `MFSD_*` INFO fields
+>   (gated behind `--mfsd`, absent otherwise).
+
+### 🐛 Fixed
+
+- **Contig-naming mismatches no longer silently produce zero counts.** When the BAM's
+  contigs were named differently from the variants (UCSC `chr1` vs Ensembl/b37 `1`), the
+  binning step found no matching contig, built 0 bins, and returned zero counts for every
+  variant while the run still exited 0 — a systematic failure masked as success. `resolve_tid`
+  now reconciles the naming via `normalize_contig` (so `chr1`↔`1`, `chrM`↔`MT` match), and a
+  genuinely-absent chromosome now logs a loud `WARN` (once per chromosome) instead of being
+  skipped silently. (MSK ACCESS runs were unaffected — BAMs and MAFs both use b37 naming.)
+  Surfaced by the new end-to-end MAF test.
+
+- **A run now exits non-zero when a sample fails (HI-1).** `Pipeline.run()` catches
+  per-sample errors and returns normally, so `gbcms dna`/`rna` previously exited `0` even
+  when every BAM failed (e.g. a Rust panic surfaced as `PyErr`) — masking systematic
+  failure as success under Nextflow. The CLI now exits **code 1** when any sample actually
+  fails (all-failed or partial). An **empty variant set is not a failure**: a sample that
+  legitimately has no variants called still exits `0`, so per-sample workflows don't fail on
+  it. Successful runs are unchanged (exit 0).
+
+- **Rejected variants keep their reason in the output.** When *every* variant is rejected
+  during preparation (e.g. a contig mismatch → `FAIL_FETCH_FAILED`), the run no longer
+  short-circuits with no output — it now writes each variant with its `FAIL_*` reason in the
+  `gbcms_status` column (and zero counts), so the reasons are in the output file, not only
+  the log. (Partial rejections already did this; this closes the all-rejected gap.)
+
+- **Nextflow RNA runs no longer silently drop STAR multi-mapper reads.** The pipeline used a
+  single global `min_mapq = 20` for both modes, so RNA counting ran at MAPQ 20 instead of the
+  `gbcms rna` CLI default of **1** — silently dropping STAR's 2–4-locus multi-mapper primaries
+  (which STAR encodes as MAPQ 3/1, vs 255 for uniquely-mapped reads). On a real FORTE RNA
+  sample that was ~16% of reads genome-wide (chr7) and up to ~6% of depth at an individual
+  locus. A new `rna_min_mapq` param (default **1**) now drives the RNA module; DNA keeps
+  `min_mapq = 20`. Set `--rna_min_mapq 20` to restore unique-only RNA counting.
+
+### 🔄 Changed
+
+- **`gbcms_status` is split into a verdict + a reason field (breaking output change).**
+  The status is now two fields with a consistent grammar in both formats: a verdict
+  (`gbcms_status` = exactly `PASS` or `FAIL`) and a `|`-separated reason list
+  (`gbcms_status_reason`, empty for a clean PASS). MAF gains the `gbcms_status_reason`
+  column; VCF gains a `GSR` INFO key. Reason tags dropped their verdict prefix
+  (`FAIL_REF_MISMATCH` → verdict `FAIL` + reason `REF_MISMATCH`; `PASS;WARN_REF_CORRECTED`
+  → verdict `PASS` + reason `WARN_REF_CORRECTED`). Reasons now **stack** with `|`
+  (`WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP`), which also fixes a bug where a
+  REF-correction warning was silently dropped on the success path and where
+  `WARN_HOMOPOLYMER_DECOMP` overwrote any existing reason. `|` is used (never `;`/`,`,
+  both VCF-INFO-unsafe), so the reason string is byte-identical in the MAF column and the
+  VCF `GSR` — no format-specific conversion. **Consumers filtering on `FAIL_FETCH_FAILED`
+  etc. must switch to `gbcms_status == "FAIL"` + a `gbcms_status_reason` check.**
+
+- **Fragment-count consensus is labeled accurately (ME-12).** The stale "Majority Rule"
+  comment on the `BaseCounts` fragment fields (`DPF`/`RDF`/`ADF`) is replaced with
+  "quality-weighted consensus with an INDEL structural-priority override and a discard
+  band," pointing at `FragmentEvidence::resolve` — which is what the code has always done.
+  No behavior change. The alternative of gating a structural-ALT INDEL win on the REF mate's
+  base quality was considered and rejected (anchor BQ is orthogonal to INDEL-detection
+  confidence; see `REJECTED.md`).
+
+- **Per-transcript count columns now use `|` between transcripts, not `;` (ME-2).**
+  `transcript_read_counts` / `transcript_fragment_counts` (MAF) and `TXRC` / `TXFC` (VCF)
+  separate transcripts with `|` — e.g. `ENST…:AD,RD,DP|ENST…:AD,RD,DP`. `;` is the VCF INFO
+  field separator, so the VCF path already converted to `|` while MAF emitted raw `;`; the
+  engine now emits `|` directly so all three (MAF, VCF, the documented header) agree.
+  **Consumers that split the MAF column on `;` must switch to `|`.**
+
+- **`--threads` is now a hard, validated thread budget.** It is the *total* worker
+  budget for one gbcms process (multi-sample parallelism is Nextflow's job — N
+  concurrent processes, each pinned to `task.cpus`). `--threads 0` is now rejected
+  loudly instead of silently becoming rayon's all-cores default (which would
+  oversubscribe a small SLURM allocation); all rayon pools are sized through
+  `resolve_thread_budget`, and the resolved budget is logged. Counts are unaffected.
+
+### 📖 Documentation
+
+- **Repo-wide documentation accuracy sweep.** A four-way audit against the current code
+  corrected the docs where they had drifted: the mFSD schema (now **41 MAF columns / 13 VCF
+  `MFSD_*` INFO fields**, up from a stale 34/7, with the q-value + nucleosomal-fraction +
+  CH-flag columns added); the mono-nucleosomal range (150–200 bp); `gbcms_status` values (the
+  real `FAIL_*` prefixes + the two missing statuses); crashing examples (`normalize` uses
+  `--output <file.tsv>`, not `--output-dir`; corrected RNA MAF column names in the quickstart);
+  the Nextflow README defaults (on-by-default filters, `pairhmm` backend, Nextflow ≥22.10.1) and
+  its missing param surface (`--strandedness`, `--gtf`, `--library_type`, `--mfsd*`, `--merge_*`);
+  and previously-undocumented features (`build-gtf-cache` / `--gtf-cache-dir`, exit-code
+  semantics, the `--threads` hard budget, and contig auto-reconciliation). Also fixed the
+  `--rna-editing-db` CLI help (it loads a REDIportal **TABLE1**, not a VCF) and several
+  developer-doc references to files/paths that had moved.
+
+### 🧹 Internal
+
+- **Single type stub for the Rust extension (LO-1).** Removed the orphan
+  `src/gbcms_rs.pyi`, which stubbed a top-level `gbcms_rs` module that isn't importable
+  (the extension is `gbcms._rs`) and had already drifted from the real one (missing the
+  nucleosomal fields and `fisher_exact_2x2`). The co-located `src/gbcms/_rs.pyi` (shipped
+  via `py.typed`) is now the single source of truth, and its `count_bam` stub gained the
+  missing `reference_fasta` parameter so it matches the real `#[pyo3(signature)]`.
+
+### 📦 Packaging
+
+- **The shipped wheel no longer exports the legacy `count_bam` parity oracle.** The
+  per-variant `count_bam` (the binned↔legacy parity oracle) is now behind a default
+  `legacy-parity` Cargo feature; release builds use `--no-default-features` to omit it.
+  Production always used `count_bam_binned`, so this only trims a test-only symbol from
+  the wheel. Dev/test builds keep it (default on) so the parity suite still runs.
+
+### ⚡ Performance
+
+- **mFSD is now computed only when requested (`--mfsd`/`--mfsd-parquet`/`--mfsd-report`).**
+  Previously the engine always built the per-fragment size arrays and ran the full
+  KS/LLR/delta statistics for every variant, then discarded them unless an mFSD output
+  was selected. The binned production path now gates this work on the `mfsd` flag
+  (plumbed from `OutputConfig.mfsd`), so the default `--dna` run no longer holds the
+  per-variant `ref_sizes`/`alt_sizes` arrays across the whole sample — the dominant mFSD
+  memory cost, and the one that multiplies under Nextflow fan-out (N concurrent
+  processes). The size-array statistics are also factored into a single shared
+  `compute_mfsd_stats` helper used by both the binned and legacy paths. **Counts are
+  unaffected:** validated on 3,040 real cfDNA variants — all 246 non-mFSD columns are
+  byte-identical with mFSD on vs off, and the 41 mFSD columns appear only when enabled.
+
+- **GTF annotation can be cached on disk (`--gtf-cache-dir`).** Parsing a full Ensembl
+  GTF takes ~9s, and under a Nextflow cohort that cost was paid once *per sample*. When
+  `--gtf-cache-dir` is set, the parsed intermediate (exon records, splice sites, introns,
+  chrom map) is serialized once and reused on later runs over the same GTF + variant set,
+  dropping the annotation load from ~9s to **~0.05s** (validated on the full GRCh38.111
+  GTF; cold-vs-warm output byte-identical across 47 variants and all annotation columns).
+  The architecture-specific interval trees are *not* cached — they are rebuilt from the
+  cached records on load, so a cache file is portable across x86/ARM. Caching is
+  best-effort: a missing/corrupt/stale-version/unwritable cache logs and falls back to a
+  normal parse, never affecting correctness.
+
+### ✨ Added
+
+- **VCF now emits the mFSD sub-/mono-nucleosomal fields (ME-1).** `MFSD_SUB_NUC_REF_FRAC`,
+  `MFSD_SUB_NUC_ALT_FRAC`, `MFSD_SUB_NUC_ENRICHMENT`, `MFSD_MONO_NUC_REF_FRAC`,
+  `MFSD_MONO_NUC_ALT_FRAC` were computed under `--mfsd` and written to MAF but silently
+  dropped from VCF — they're now in the VCF INFO too (VCF↔MAF parity), taking the VCF mFSD
+  surface to 13 INFO fields. Also corrected long-standing count drift in the docs/CLI help:
+  `--mfsd` adds **41** MAF columns (not 34) and **13** VCF INFO fields (not 7).
+
+- **`gbcms build-gtf-cache` — pre-warm the GTF index cache for a cohort.** A dedicated
+  command (`--gtf --variants --gtf-cache-dir`, no BAM) that parses the GTF once and writes
+  the cache, so a fan-out of per-sample `gbcms rna --gtf-cache-dir <same-dir>` jobs all
+  start warm. This is what makes the cache pay off under concurrency: without a pre-warm
+  step, samples launched together all cold-miss and each re-parses the GTF. Run it as a
+  single Nextflow process upstream of the per-sample fan-out so the whole cohort parses
+  the GTF exactly once. See `docs/nextflow/parameters.md`.
+
+- **`--strandedness` for RNA mode (`reverse` | `forward` | `unstranded`).** The
+  read→transcript-strand fold was previously hardcoded to dUTP/reverse
+  (fr-firststrand, featureCounts `-s 2`); it is now selectable to support forward
+  (fr-secondstrand, `-s 1`) and unstranded (`-s 0`) libraries. The fold drives both
+  `--enforce-strandedness` filtering and ASJD strand-discordance detection;
+  `unstranded` disables both (as do amplicon libraries). Default is `reverse`,
+  preserving prior behavior and matching the FORTE pipeline default. Unknown values
+  are rejected loudly at both the model and FFI layers. Validated on a real
+  reverse-stranded RNA sample: `reverse + forward = unstranded` read counts exactly
+  (100% strand partition) at ACTB and GAPDH.
+
+### 🔄 Changed
+
+- **ASJD junction evidence is now counted per fragment, not per mate.** A molecule
+  whose R1 and R2 overlap on a short cDNA insert can have both mates carry the same
+  splice junction (the genomic insert looks large only because it spans the intron) —
+  on real reverse-stranded RNA this is 35.6% of fragment×junction incidences and is
+  *not* a UMI/PCR duplicate. Counting both mates inflated the per-junction strand
+  tally ~1.38× and could fire spurious `STRAND_DISCORDANT` at low depth. `detect_asjd`
+  now dedups each fragment (by QNAME) to one vote per allele-total and per junction,
+  matching the per-fragment treatment the rest of the engine already uses. Mates always
+  fold to the same transcript strand (verified 0/319k disagreements), so the dedup is
+  unambiguous. This shifts `asjd_n_*_junc` / `asjd_n_*_total` and a small number of
+  low-count `STRAND_DISCORDANT` flags (18/58,240 junctions genome-wide on the test
+  sample), always in the corrective direction.
+- **Empty-allele variants are now rejected at prep time.** A structurally empty REF
+  or ALT (`""`) is malformed input — the internal representation is VCF-style
+  (anchor-based), and MAF dash alleles arrive as the literal `-`, never empty. Such
+  variants previously fell through to counting and silently produced zero counts;
+  they are now rejected during `prepare_variants` with a `FAIL_EMPTY_ALLELE` status
+  and a warning, so they are surfaced in the output rather than quietly dropped to
+  all-zero. Legitimate MAF `-` alleles are unaffected.
+- **Supplementary/secondary alignments no longer count toward read-level depth.**
+  They share a QNAME with their primary, so counting them at read level
+  double-counts DP/RD/AD at the anchor. They are now skipped unconditionally in
+  both the binned and legacy counting paths, independent of `--no-filter-secondary`
+  / `--no-filter-supplementary` (those flags now only govern whether such records
+  enter the read cache, not whether they are counted). Affects only the
+  non-default flag combination; default behavior is unchanged.
+
+### 🐛 Fixed
+
+- **Read-level supplementary/secondary double-count** under `--no-filter-secondary`
+  / `--no-filter-supplementary` (see Changed above).
+- **`check_complex` trailing-insertion handling clarified and guarded.** The Phase-1
+  reconstruction deliberately includes an insertion at the exclusive REF end (a
+  trailing insertion that belongs to the ALT, e.g. REF=`AB`, ALT=`ABC`); documented
+  the rationale and added regression tests so the boundary condition isn't "fixed"
+  into a misclassification.
+
 ## [5.3.0] - 2026-05-16
 
 ### ✨ Added

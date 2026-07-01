@@ -1,3 +1,17 @@
+# Claude Code local (machine-specific permissions; not shared)
+.claude/settings.local.json
+
+# User-tier memory is personal and never published. It lives in the recall dir
+# (.agents/memory/, via symlink) so the agent surfaces it, but is not committed
+# to this shared repo. feedback/project/reference memories ARE committed.
+.agents/memory/user-*.md
+
+# Dependency lock: pyproject.toml is the single source of truth. Nothing in CI,
+# Docker, or Nextflow consumes uv.lock (all build the wheel and resolve fresh),
+# so a committed lock only drifts and gives false reproducibility. Regenerate
+# locally with `uv lock` if needed; do not commit it.
+uv.lock
+
 # Python
 __pycache__/
 *.py[cod]

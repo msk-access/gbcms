@@ -1,12 +1,21 @@
 [package]
 name = "gbcms_rs"
-version = "5.3.0"
+version = "6.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 name = "_rs"
 crate-type = ["cdylib"]
+
+[features]
+# `legacy-parity` exports the per-variant `count_bam` (the binned↔legacy parity
+# oracle). On by default so dev/test builds keep it; release wheels build with
+# `--no-default-features` to exclude it from the shipped surface (see Dockerfile,
+# release.yml). Gated symbols: counting::count_bam, count_single_variant + their
+# re-export (counting/mod.rs) and registration (lib.rs).
+default = ["legacy-parity"]
+legacy-parity = []
 
 [dependencies]
 pyo3 = { version = "0.27.1", features = ["extension-module"] }
@@ -36,3 +45,11 @@ flate2 = "1"
 coitrees = "0.4"
 # noodles-gtf: pure-Rust GTF parser. No cmake dependency.
 noodles-gtf = "0.37"
+# ── M5a: GTF AnnotationIndex disk cache ────────────────────────────────────
+# Serialize the *parsed intermediate* (exon records, splice sites, introns,
+# chrom map) so repeated runs over the same GTF skip the ~8.7s text parse of a
+# full Ensembl annotation. The arch-specific COITrees are NOT cached — they are
+# rebuilt from the cached exon records on load (cheap). serde provides the
+# derives; bincode is the compact binary codec.
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.3"

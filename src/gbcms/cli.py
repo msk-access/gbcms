@@ -87,6 +87,40 @@ def _is_compressed_vcf(path: Path) -> bool:
     return any(name_lower.endswith(suffix) for suffix in _COMPRESSED_VCF_SUFFIXES)
 
 
+def _exit_on_sample_failure(result: dict) -> None:
+    """Propagate per-sample *failures* to the process exit code (HI-1).
+
+    ``Pipeline.run()`` catches per-sample errors, records them in ``failed_samples``,
+    and returns normally, so a run where a BAM failed (e.g. a Rust panic surfaced as
+    ``PyErr``) would otherwise exit ``0`` and read as success to an orchestrator like
+    Nextflow. This exits **non-zero** only when a sample actually failed.
+
+    An **empty variant set is NOT a failure**: a sample can legitimately have no variants
+    called, and per-sample workflows must not fail that task. Those runs process zero
+    samples but record no ``failed_samples`` (the pipeline logs "No variants found …"),
+    and they exit ``0`` here.
+
+    Must be called **outside** the command's ``try/except Exception`` block: ``typer.Exit``
+    subclasses ``RuntimeError``, so raising it inside that block would be swallowed and
+    re-logged as a generic "Pipeline failed".
+    """
+    failed = result.get("failed_samples", [])
+    if not failed:
+        # Full success, OR a legitimately empty/rejected variant set — both exit 0.
+        return
+
+    processed = int(result.get("samples_processed", 0))
+    if processed > 0:
+        logger.error(
+            "%d of %d sample(s) failed — exiting with code 1.",
+            len(failed),
+            processed + len(failed),
+        )
+    else:
+        logger.error("All %d sample(s) failed — exiting with code 1.", len(failed))
+    raise typer.Exit(code=1)
+
+
 def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
@@ -153,8 +187,8 @@ def dna(
         "--mfsd",
         help=(
             "Enable Mutant Fragment Size Distribution (mFSD) analysis. "
-            "Adds 34 mFSD columns (KS test, LLR, mean sizes, pairwise "
-            "comparisons, derived metrics) to MAF output and 7 MFSD INFO "
+            "Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise "
+            "comparisons, derived metrics) to MAF output and 13 MFSD INFO "
             "fields to VCF. See docs/reference/counting-metrics.md#mfsd."
         ),
     ),
@@ -234,8 +268,14 @@ def dna(
     ),
     # Read filters
     filter_duplicates: bool = typer.Option(True, help="Filter duplicate reads"),
-    filter_secondary: bool = typer.Option(True, help="Filter secondary alignments"),
-    filter_supplementary: bool = typer.Option(True, help="Filter supplementary alignments"),
+    filter_secondary: bool = typer.Option(
+        True,
+        help="Exclude secondary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+    ),
+    filter_supplementary: bool = typer.Option(
+        True,
+        help="Exclude supplementary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+    ),
     filter_qc_failed: bool = typer.Option(True, help="Filter reads failing QC"),
     filter_improper_pair: bool = typer.Option(False, help="Filter improperly paired reads"),
     filter_indel: bool = typer.Option(False, help="Filter reads containing indels"),
@@ -271,7 +311,12 @@ def dna(
     ),
     # Performance
     threads: int = typer.Option(
-        1, "--threads", "-t", help="Number of threads for parallel processing"
+        1,
+        "--threads",
+        "-t",
+        min=1,
+        help="Total worker-thread budget for this sample. gbcms keeps all parallelism "
+        "within this budget (Nextflow passes the task's allocated cores).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
     trace: bool = typer.Option(
@@ -478,12 +523,15 @@ def dna(
             rescue_mnp_threshold=rescue_mnp_threshold,
         )
 
-        pipeline = Pipeline(config)
-        pipeline.run()
+        result = Pipeline(config).run()
 
     except Exception as e:
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
+
+    # HI-1: exit non-zero if any sample failed (or none were processed). Outside the
+    # try so typer.Exit isn't caught by `except Exception` above.
+    _exit_on_sample_failure(result)
 
 
 @app.command()
@@ -538,14 +586,24 @@ def rna(
         True,
         "--enforce-strandedness/--no-strandedness",
         help=(
-            "Filter reads by dUTP strand orientation relative to gene strand. "
-            "Disable for unstranded RNA-seq libraries."
+            "Filter reads by strand orientation relative to gene strand. "
+            "Disable for unstranded RNA-seq libraries (or pass --strandedness unstranded)."
+        ),
+    ),
+    strandedness: str = typer.Option(
+        "reverse",
+        "--strandedness",
+        help=(
+            "RNA library strand protocol: 'reverse' (default; dUTP/fr-firststrand, "
+            "featureCounts -s 2 — the FORTE default), 'forward' (fr-secondstrand, -s 1), "
+            "or 'unstranded' (-s 0). Sets the read->transcript-strand fold used by both "
+            "--enforce-strandedness and ASJD strand-discordance. 'unstranded' disables both."
         ),
     ),
     rna_editing_db: Path | None = typer.Option(
         None,
         "--rna-editing-db",
-        help="Path to REDIportal VCF of known A-to-I RNA editing sites.",
+        help="Path to REDIportal TABLE1 file (tab-delimited) of known A-to-I RNA editing sites.",
     ),
     gtf: Path | None = typer.Option(
         None,
@@ -554,6 +612,16 @@ def rna(
             "Path to GTF annotation file (Ensembl/GENCODE). Enables exon "
             "boundary distance calculation and BAQ suppression at annotated "
             "splice junctions. Only chromosomes with variants are loaded."
+        ),
+    ),
+    gtf_cache_dir: Path | None = typer.Option(
+        None,
+        "--gtf-cache-dir",
+        help=(
+            "Directory for caching the parsed GTF index. On first use the parsed "
+            "annotation is written here; later runs over the same GTF and variant "
+            "set reuse it, skipping the multi-second GTF text parse. Point every "
+            "sample in a cohort at one shared directory to parse the GTF only once."
         ),
     ),
     # P5: Library type flag
@@ -593,8 +661,14 @@ def rna(
     ),
     # Read filters (shared)
     filter_duplicates: bool = typer.Option(True, help="Filter duplicate reads"),
-    filter_secondary: bool = typer.Option(True, help="Filter secondary alignments"),
-    filter_supplementary: bool = typer.Option(True, help="Filter supplementary alignments"),
+    filter_secondary: bool = typer.Option(
+        True,
+        help="Exclude secondary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+    ),
+    filter_supplementary: bool = typer.Option(
+        True,
+        help="Exclude supplementary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+    ),
     filter_qc_failed: bool = typer.Option(True, help="Filter reads failing QC"),
     filter_improper_pair: bool = typer.Option(False, help="Filter improperly paired reads"),
     filter_indel: bool = typer.Option(False, help="Filter reads containing indels"),
@@ -630,7 +704,12 @@ def rna(
     ),
     # Performance
     threads: int = typer.Option(
-        1, "--threads", "-t", help="Number of threads for parallel processing"
+        1,
+        "--threads",
+        "-t",
+        min=1,
+        help="Total worker-thread budget for this sample. gbcms keeps all parallelism "
+        "within this budget (Nextflow passes the task's allocated cores).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
     trace: bool = typer.Option(
@@ -739,21 +818,36 @@ def rna(
 
     logger.info("Found %d BAM file(s) to process", len(bams_dict))
 
-    # P5: Amplicon mode auto-disables strandedness (amplicon libraries are not stranded)
-    if library_type == "amplicon" and enforce_strandedness:
+    # Normalize the strand protocol (the model validates the value; we normalize here
+    # for the interaction checks below).
+    strandedness = strandedness.lower().strip()
+
+    # Amplicon libraries are not stranded — treat them as unstranded so reads are not
+    # folded under a protocol that does not apply.
+    if library_type == "amplicon" and strandedness != "unstranded":
+        logger.info(
+            "--library-type=amplicon: forcing --strandedness=unstranded "
+            "(amplicon libraries are not strand-specific)"
+        )
+        strandedness = "unstranded"
+
+    # An unstranded protocol has no transcript strand, so strand enforcement is a no-op
+    # — disable it explicitly rather than letting it silently pass every read.
+    if strandedness == "unstranded" and enforce_strandedness:
         enforce_strandedness = False
         logger.info(
-            "--library-type=amplicon: auto-disabled --enforce-strandedness "
-            "(amplicon libraries are not strand-specific)"
+            "--strandedness=unstranded: auto-disabled --enforce-strandedness "
+            "(no transcript strand to filter against)"
         )
 
     logger.info(
         "Config: min_mapq=%d, apply_baq=%s, alignment_backend=%s, "
-        "enforce_strandedness=%s, library_type=%s, umi_tag=%s",
+        "enforce_strandedness=%s, strandedness=%s, library_type=%s, umi_tag=%s",
         min_mapq,
         apply_baq,
         alignment_backend.value,
         enforce_strandedness,
+        strandedness,
         library_type,
         umi_tag or "none",
     )
@@ -813,19 +907,99 @@ def rna(
             apply_baq=apply_baq,
             umi_tag=umi_tag,
             enforce_strandedness=enforce_strandedness,
+            strandedness=strandedness,
             rna_editing_db=rna_editing_db,
             gtf=gtf,
+            gtf_cache_dir=gtf_cache_dir,
             library_type=library_type,
             rescue_mnp=rescue_mnp,
             rescue_mnp_threshold=rescue_mnp_threshold,
         )
 
-        pipeline = Pipeline(config)
-        pipeline.run()
+        result = Pipeline(config).run()
 
     except Exception as e:
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
+
+    # HI-1: exit non-zero if any sample failed (or none were processed). Outside the
+    # try so typer.Exit isn't caught by `except Exception` above.
+    _exit_on_sample_failure(result)
+
+
+@app.command("build-gtf-cache")
+def build_gtf_cache(
+    gtf: Path = typer.Option(
+        ...,
+        "--gtf",
+        "-g",
+        exists=True,
+        help="Path to the GTF annotation file (Ensembl/GENCODE).",
+    ),
+    variants: Path = typer.Option(
+        ...,
+        "--variants",
+        "-v",
+        exists=True,
+        help=(
+            "Variant file (VCF/MAF) for the cohort. Only its chromosome set is used. "
+            "It MUST be the same variant file the per-sample 'gbcms rna' runs use, so "
+            "the cache key lines up and those runs reuse this entry."
+        ),
+    ),
+    gtf_cache_dir: Path = typer.Option(
+        ...,
+        "--gtf-cache-dir",
+        help=(
+            "Shared directory to write the cache into (created if missing). Point every "
+            "per-sample 'gbcms rna --gtf-cache-dir' at this same directory."
+        ),
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
+):
+    """
+    Pre-build the GTF index cache so a cohort parses the GTF only once.
+
+    Parses the GTF for the chromosomes covered by --variants and writes the
+    serialized index into --gtf-cache-dir. Run this ONCE before fanning out the
+    per-sample 'gbcms rna' jobs (all pointed at the same --gtf-cache-dir): each then
+    loads the prebuilt index in ~0.05s instead of re-parsing the GTF (~9s).
+
+    Why a separate step: when many samples launch concurrently they all cold-miss
+    and each re-parses the GTF, so the cache alone saves nothing until a later wave.
+    Building it up front lets every sample start warm.
+    """
+    from gbcms import _rs
+    from gbcms.pipeline import read_variant_file
+
+    setup_logging(verbose=verbose, trace=False)
+
+    # Extension pre-check (mirrors the dna/rna/normalize commands).
+    if (
+        not _is_compressed_vcf(variants)
+        and variants.suffix.lower() not in _VALID_VARIANT_EXTENSIONS
+    ):
+        logger.error(
+            "Unsupported variant file extension '%s'. Expected .vcf, .vcf.gz, .vcf.bgz, or .maf.",
+            variants.suffix,
+        )
+        raise typer.Exit(code=1)
+
+    chroms = [v.chrom for v in read_variant_file(variants)]
+    if not chroms:
+        logger.error("No variants found in %s — nothing to scope the GTF cache to.", variants)
+        raise typer.Exit(code=1)
+
+    logger.info("Building GTF index cache for %d variants -> %s", len(chroms), gtf_cache_dir)
+    n_exons = _rs.build_gtf_cache(str(gtf), chroms, str(gtf_cache_dir))
+    logger.info(
+        "GTF index cache ready in %s (%d exons across %d chromosomes). Per-sample runs "
+        "using --gtf-cache-dir %s will now skip the GTF parse.",
+        gtf_cache_dir,
+        n_exons,
+        len(set(chroms)),
+        gtf_cache_dir,
+    )
 
 
 @app.command()
@@ -837,7 +1011,9 @@ def normalize(
     output: Path = typer.Option(
         ..., "--output", "-o", help="Output file path (TSV with normalization results)"
     ),
-    threads: int = typer.Option(1, "--threads", "-t", help="Number of threads"),
+    threads: int = typer.Option(
+        1, "--threads", "-t", min=1, help="Total worker-thread budget for this run."
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
     trace: bool = typer.Option(
         False,

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Tool-agnostic commit guard for gbcms. Runs regardless of which agent (Claude,
+# Antigravity, Cursor, Codex) or human drives the commit. Enable once per clone:
+#   git config core.hooksPath .githooks
+# Heavy checks (mypy, cargo test) stay in the qa-check skill / CI; this hook is fast.
+set -euo pipefail
+
+staged="$(git diff --cached --name-only --diff-filter=ACM)"
+[ -z "$staged" ] && exit 0
+
+# 1) Refuse to commit data/artifact files.
+if printf '%s\n' "$staged" | grep -Eq '\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat)$'; then
+  echo "pre-commit BLOCKED: data/artifact file staged. Unstage it (see .gitignore)." >&2
+  printf '%s\n' "$staged" | grep -E '\.(parquet|bam|bai|cram|crai|tsv|csv|maf|dat)$' >&2
+  exit 1
+fi
+
+# 2) Fast Python lint on staged source/test .py files (ruff + black --check).
+# Scoped to src/ and tests/ — the lint gate is for the codebase, not harness
+# scripts under .claude/ or .githooks/. Skip if none.
+py="$(printf '%s\n' "$staged" | grep -E '^(src|tests)/.*\.py$' || true)"
+if [ -n "$py" ]; then
+  if command -v ruff >/dev/null 2>&1; then
+    echo "$py" | xargs ruff check || { echo "pre-commit BLOCKED: ruff. Fix, then re-stage." >&2; exit 1; }
+  fi
+  if command -v black >/dev/null 2>&1; then
+    echo "$py" | xargs black --check || { echo "pre-commit BLOCKED: black. Run 'black' then re-stage." >&2; exit 1; }
+  fi
+fi
+
+exit 0

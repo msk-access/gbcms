@@ -19,7 +19,7 @@
 */
 
 process FILTER_MAF {
-    tag "$meta.id"
+    tag "${meta.id}${meta.suffix ?: ''}"
     label 'process_low'
 
     input:
@@ -35,7 +35,9 @@ process FILTER_MAF {
 
     script:
     // Use explicit TSB mapping if provided, otherwise fall back to meta.id
+    def suffix = meta.suffix ?: ''
     def sample_id = meta.id
+    def output_id = "${meta.id}${suffix}"
     def tsb_patterns = meta.tsb ?: ''
     """
     python3 << 'PYEOF'
@@ -69,7 +71,7 @@ seen_tsbs = set()
 seen_rows = set()  # Dedup key: (Chrom, Start, Ref, Alt, TSB)
 
 # ── Filter ───────────────────────────────────────────────────────────
-with open("${maf}") as infile, open(f"{sample_id}.filtered.maf", "w") as outfile:
+with open("${maf}") as infile, open(f"${output_id}.filtered.maf", "w") as outfile:
     header_written = False
     tsb_col = None
     chrom_col = start_col = ref_col = alt_col = None
@@ -125,7 +127,7 @@ status = "processed" if matched > 0 else "skipped"
 matched_tsb_list = sorted(t for t in seen_tsbs if match(t)) if matched > 0 else []
 
 # Write stats TSV for pipeline summary collection
-with open(f"{sample_id}.filter_stats.tsv", "w") as sf:
+with open(f"${output_id}.filter_stats.tsv", "w") as sf:
     sf.write(
         "sample\\tstatus\\tvariants_matched\\tvariants_total"
         "\\tduplicates_removed\\tmatched_tsbs\\tmode\\n"
@@ -157,11 +159,11 @@ PYEOF
     """
 
     stub:
-    def sample_id = meta.id
+    def output_id = "${meta.id}${meta.suffix ?: ''}"
     """
-    echo -e "Hugo_Symbol\\tChromosome\\tStart_Position\\tTumor_Sample_Barcode" > ${sample_id}.filtered.maf
-    echo -e "sample\\tstatus\\tvariants_matched\\tvariants_total\\tduplicates_removed\\tmatched_tsbs\\tmode" > ${sample_id}.filter_stats.tsv
-    echo -e "${sample_id}\\tskipped\\t0\\t0\\t0\\t\\texact" >> ${sample_id}.filter_stats.tsv
+    echo -e "Hugo_Symbol\\tChromosome\\tStart_Position\\tTumor_Sample_Barcode" > ${output_id}.filtered.maf
+    echo -e "sample\\tstatus\\tvariants_matched\\tvariants_total\\tduplicates_removed\\tmatched_tsbs\\tmode" > ${output_id}.filter_stats.tsv
+    echo -e "${output_id}\\tskipped\\t0\\t0\\t0\\t\\texact" >> ${output_id}.filter_stats.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

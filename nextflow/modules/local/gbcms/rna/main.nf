@@ -4,11 +4,12 @@ process GBCMS_RNA {
 
     publishDir "${params.outdir}/gbcms", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:5.3.0"
+    container "ghcr.io/msk-access/gbcms:6.0.0"
 
     input:
     tuple val(meta), path(bam), path(bai), path(variants)
     tuple path(fasta), path(fai)
+    path gtf_cache  // prebuilt GTF index cache dir (or [] when caching is off)
 
     output:
     tuple val(meta), path("*.{vcf,maf}"),  emit: counts
@@ -65,12 +66,20 @@ process GBCMS_RNA {
     // RNA-specific: GTF annotation for splice-site-aware counting
     def gtf_arg = params.gtf ? "--gtf ${params.gtf}" : ""
 
+    // M5a: reuse the cohort's prebuilt GTF index cache (a staged dir from
+    // GBCMS_BUILD_GTF_CACHE), skipping the per-sample GTF parse. Empty ([]) when
+    // caching is disabled or no GTF is given.
+    def gtf_cache_arg = gtf_cache ? "--gtf-cache-dir ${gtf_cache}" : ""
+
     // P5: RNA library type — 'capture' (default) or 'amplicon'
     def library_type_arg = params.library_type != 'capture' ? "--library-type ${params.library_type}" : ""
 
     // RNA-specific: dUTP strandedness enforcement
     // CLI default for RNA is --enforce-strandedness (true), so pass --no-strandedness only if disabled
     def strandedness_arg = params.enforce_strandedness ? "" : "--no-strandedness"
+
+    // RNA library strand protocol — only emit when it differs from the CLI default ('reverse')
+    def strand_protocol_arg = params.strandedness != 'reverse' ? "--strandedness ${params.strandedness}" : ""
 
     // BAQ: CLI default for RNA is --apply-baq (on). Pass --no-baq only if user explicitly disables.
     def baq_arg = params.apply_baq == false ? "--no-baq" : ""
@@ -91,7 +100,7 @@ process GBCMS_RNA {
         ${backend_arg} \\
         ${hmm_args} \\
         --threads ${task.cpus} \\
-        --min-mapq ${params.min_mapq} \\
+        --min-mapq ${params.rna_min_mapq} \\
         --min-baseq ${params.min_baseq} \\
         --fragment-qual-threshold ${params.fragment_qual_threshold} \\
         --context-padding ${params.context_padding} \\
@@ -100,7 +109,9 @@ process GBCMS_RNA {
         ${baq_arg} \\
         ${editing_db_arg} \\
         ${gtf_arg} \\
+        ${gtf_cache_arg} \\
         ${strandedness_arg} \\
+        ${strand_protocol_arg} \\
         ${library_type_arg} \\
         ${args}
 

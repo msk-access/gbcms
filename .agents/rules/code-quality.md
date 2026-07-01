@@ -76,6 +76,20 @@ Fix in this order: ruff → black → mypy → clippy.
 - [ ] Missing files logged with path context
 - [ ] Errors include context (file path, sample name, variant position)
 
+## Comment & Log Hygiene
+
+Comments and log strings (`debug!`/`warn!`/`info!`, Python `logging`) are read by
+someone with **no plan or PR context**. State what the code does, why, and how —
+never cite ticket/milestone labels (`CR-1`, `HI-11`, `ME-8`, `P4c`, `M2`, …) in
+code or logs. Those are ephemeral and meaningless to a future reader; the ticket
+context belongs in the commit message and is recoverable via `git blame`. (This
+applies to source only — plan/design docs are exactly where labels belong.)
+
+- [ ] No ticket/milestone labels in comments or log strings
+- [ ] A "why" comment states the reason, not the ticket that prompted it
+  - ✗ `// ME-8: padding fix` → ✓ `// exclude no-test variants; they inflate the FDR family`
+- [ ] Log messages are self-describing — a grep for the message explains the event
+
 ## Test Invariants (Assert in Every Counting Test)
 
 ```python

@@ -220,3 +220,54 @@ class TestTooltips:
         html = multi_report.read_text()
         assert "@media print" in html
         assert ".has-tooltip::after" in html
+
+
+class TestClassifyOrigin:
+    """ME-9: TUMOR-LIKE/CH-LIKE require a valid KS test."""
+
+    def test_invalid_ks_is_insufficient(self) -> None:
+        """No valid KS test (ks_valid=False) → INSUFFICIENT, not a guessed label —
+        even a CH gene with low enrichment that would otherwise read CH-LIKE."""
+        from gbcms.report.mfsd_report import _classify_origin
+
+        nan = float("nan")
+        signal, reason = _classify_origin("DNMT3A", 1.1, nan, nan, 1.0, False, 10, 3)
+        assert signal == "INSUFFICIENT"
+        assert "KS test could not run" in reason
+
+    def test_max_enriched_when_ref_has_no_short_fragments(self) -> None:
+        """ME-10: ALT has sub-nucleosomal fragments but REF has none → the ratio is
+        undefined (NaN), yet it is a maximal ctDNA-like signal, so a non-CH gene with
+        a significant valid KS reads TUMOR-LIKE rather than being lost as AMBIGUOUS."""
+        from gbcms.report.mfsd_report import _classify_origin
+
+        nan = float("nan")
+        # enrichment=NaN, ref_short=0.0, alt_short=0.4, valid significant KS.
+        signal, _ = _classify_origin("NOTACHGENE", nan, 0.0, 0.4, 0.01, True, 20, 3)
+        assert signal == "TUMOR-LIKE"
+
+
+class TestDisplayFormatters:
+    """Report formatters must render non-finite values as 'N/A', never as a
+    misleading 'inf'/'nan' string. A size ratio with a zero denominator can be
+    +/-Inf, so the guard covers Inf as well as NaN."""
+
+    def test_fmt_val_handles_nonfinite(self) -> None:
+        from gbcms.report.mfsd_report import _fmt_val
+
+        assert _fmt_val(float("nan")) == "N/A"
+        assert _fmt_val(float("inf")) == "N/A"
+        assert _fmt_val(float("-inf")) == "N/A"
+        # Finite values still format with the requested precision.
+        assert _fmt_val(1.23456) == "1.23"
+        assert _fmt_val(1.23456, precision=3) == "1.235"
+
+    def test_fmt_pval_handles_nonfinite(self) -> None:
+        from gbcms.report.mfsd_report import _fmt_pval
+
+        assert _fmt_pval(float("nan")) == "N/A"
+        assert _fmt_pval(float("inf")) == "N/A"
+        assert _fmt_pval(float("-inf")) == "N/A"
+        # Small p-values use scientific notation; ordinary ones fixed-point.
+        assert _fmt_pval(0.0001) == "1.00e-04"
+        assert _fmt_pval(0.0500) == "0.0500"

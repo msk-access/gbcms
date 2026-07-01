@@ -76,6 +76,20 @@ class TestNormalization(unittest.TestCase):
         pv = prepared[0]
         self.assertNotEqual(pv.gbcms_status, "PASS")
 
+    def test_empty_allele_rejected(self):
+        """A structurally empty REF or ALT is malformed input (MAF dash alleles must
+        be '-', never ''). It must be rejected loudly (verdict FAIL, reason EMPTY_ALLELE) at prep
+        time, not passed to counting where it would silently yield zero counts."""
+        variants = [
+            gbcms_rs.Variant("chr1", 0, "", "T", "INSERTION"),  # empty REF
+            gbcms_rs.Variant("chr1", 0, "A", "", "DELETION"),  # empty ALT
+        ]
+        prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
+        self.assertEqual(len(prepared), 2)
+        for pv in prepared:
+            self.assertEqual(pv.gbcms_status, "FAIL")
+            self.assertEqual(pv.gbcms_status_reason, "EMPTY_ALLELE")
+
     def test_maf_insertion_anchor_resolution(self):
         """MAF insertion (ref='-') should get anchor base prepended."""
         # MAF: chr1:5, ref='-', alt='G' (insert G after pos 4 in 0-based)
@@ -142,8 +156,9 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(long_fasta), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
-        self.assertTrue(
-            pv.gbcms_status.startswith("PASS"),
+        self.assertEqual(
+            pv.gbcms_status,
+            "PASS",
             f"Expected PASS status, got {pv.gbcms_status}",
         )
         # Variant should have normalized (shifted leftward)
@@ -329,8 +344,9 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, True, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
-        self.assertTrue(
-            pv.gbcms_status.startswith("PASS"),
+        self.assertEqual(
+            pv.gbcms_status,
+            "PASS",
             f"Expected PASS status, got {pv.gbcms_status}",
         )
         self.assertTrue(pv.was_anchor_resolved, "Expected anchor resolution for dash-allele")
@@ -340,7 +356,7 @@ class TestNormalization(unittest.TestCase):
         self.assertLess(pv.variant.pos, 103, "Expected leftward shift")
 
     def test_n_in_alt_allele_rejected(self):
-        """ALT allele containing N should be rejected with FAIL_ALT_CONTAINS_N.
+        """ALT allele containing N should be rejected (verdict FAIL, reason ALT_CONTAINS_N).
 
         N in ALT indicates ambiguous/placeholder genotyping — no real read
         base can match it. The normalize engine should explicitly reject
@@ -350,10 +366,11 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
+        self.assertEqual(pv.gbcms_status, "FAIL")
         self.assertEqual(
-            pv.gbcms_status,
-            "FAIL_ALT_CONTAINS_N",
-            f"Expected FAIL_ALT_CONTAINS_N, got {pv.gbcms_status}",
+            pv.gbcms_status_reason,
+            "ALT_CONTAINS_N",
+            f"Expected ALT_CONTAINS_N reason, got {pv.gbcms_status_reason}",
         )
 
     def test_n_in_alt_allele_mnp_rejected(self):
@@ -362,10 +379,11 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
+        self.assertEqual(pv.gbcms_status, "FAIL")
         self.assertEqual(
-            pv.gbcms_status,
-            "FAIL_ALT_CONTAINS_N",
-            f"Expected FAIL_ALT_CONTAINS_N for MNP with N in ALT, got {pv.gbcms_status}",
+            pv.gbcms_status_reason,
+            "ALT_CONTAINS_N",
+            f"Expected ALT_CONTAINS_N reason for MNP with N in ALT, got {pv.gbcms_status_reason}",
         )
 
 

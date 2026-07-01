@@ -136,6 +136,34 @@ def _zero_counts():
     )
 
 
+def read_variant_file(path: Path) -> list[Variant]:
+    """Read raw variants from a ``.vcf``/``.vcf.gz``/``.vcf.bgz``/``.maf`` file.
+
+    Format is selected by extension. This is the pre-normalization read, so no
+    reference is required. Shared by the Pipeline (``_load_variants``) and the
+    ``build-gtf-cache`` command, which only needs the variant chromosomes.
+    """
+    reader: VariantReader
+    name_lower = path.name.lower()
+    if (
+        path.suffix.lower() == ".vcf"
+        or name_lower.endswith(".vcf.gz")
+        or name_lower.endswith(".vcf.bgz")
+    ):
+        reader = VcfReader(path)
+    elif path.suffix.lower() == ".maf":
+        reader = MafReader(path)
+    else:
+        raise ValueError(
+            f"Unsupported variant file format: '{path.suffix}'. "
+            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf."
+        )
+    variants = list(reader)
+    if hasattr(reader, "close"):
+        reader.close()
+    return variants
+
+
 class Pipeline:
     """Main pipeline for processing BAM files and counting bases at variant positions."""
 
@@ -241,7 +269,7 @@ class Pipeline:
         )
 
         # Split into valid (for counting) and all (for output)
-        valid_indices = [i for i, p in enumerate(prepared) if p.gbcms_status.startswith("PASS")]
+        valid_indices = [i for i, p in enumerate(prepared) if p.gbcms_status == "PASS"]
         rs_variants = [prepared[i].variant for i in valid_indices]
 
         # Log validation results
@@ -252,15 +280,16 @@ class Pipeline:
             n_invalid,
             len(prepared),
         )
-        invalid = [p for p in prepared if not p.gbcms_status.startswith("PASS")]
+        invalid = [p for p in prepared if p.gbcms_status != "PASS"]
         for p in invalid[:5]:
             logger.warning(
-                "Rejected variant: %s:%d %s>%s — %s",
+                "Rejected variant: %s:%d %s>%s — %s (%s)",
                 p.variant.chrom,
                 p.original_pos + 1,
                 p.original_ref,
                 p.original_alt,
                 p.gbcms_status,
+                p.gbcms_status_reason or "no reason",
             )
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
@@ -310,8 +339,17 @@ class Pipeline:
             )
 
         if not rs_variants:
-            logger.error("No valid variants remaining after preparation. Exiting.")
-            return self._stats
+            # Every variant was rejected during preparation (verdict FAIL, e.g. a contig
+            # mismatch → reason FETCH_FAILED, or EMPTY_ALLELE). This is NOT an empty variant
+            # file (that returns earlier, before any variant exists) — the variants are real,
+            # so we still fall through and write them per sample with their FAIL verdict + reason
+            # in the `gbcms_status` column and zero counts, rather than silently emitting
+            # no output. The run is not a failure (no sample raised); it exits 0.
+            logger.warning(
+                "No variants passed preparation (%d rejected); writing them with their "
+                "FAIL_* status and zero counts so the reasons are in the output, not just the log.",
+                len(prepared),
+            )
 
         self._stats["total_variants"] = len(variants)
         self._stats["valid_variants"] = len(valid_indices)
@@ -449,6 +487,8 @@ class Pipeline:
                 umi_tag=self.config.umi_tag,
                 mode=self.config.mode,
                 enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
+                strandedness=getattr(self.config, "strandedness", "reverse"),
+                mfsd=self.config.output.mfsd,
                 rna_editing_db=(
                     str(self.config.rna_editing_db)  # type: ignore[attr-defined]
                     if getattr(self.config, "rna_editing_db", None)
@@ -459,16 +499,29 @@ class Pipeline:
                     if getattr(self.config, "gtf", None)
                     else None
                 ),
+                gtf_cache_dir=(
+                    str(self.config.gtf_cache_dir)  # type: ignore[attr-defined]
+                    if getattr(self.config, "gtf_cache_dir", None)
+                    else None
+                ),
                 reference_fasta=str(self.config.reference_fasta),
                 library_type=getattr(self.config, "library_type", "capture"),
             )
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 
-            # Update gbcms_status for variants where decomposed allele won
+            # Append WARN_HOMOPOLYMER_DECOMP where the decomposed allele won.
+            # Append (not overwrite) so a co-occurring WARN_REF_CORRECTED / MULTI_ALLELIC
+            # survives; the verdict stays PASS. Reasons are '|'-separated.
             for idx, counts in zip(valid_indices, counts_list, strict=True):
                 if counts.used_decomposed:
-                    prepared[idx].gbcms_status = "PASS;WARN_HOMOPOLYMER_DECOMP"
+                    pv = prepared[idx]
+                    if "WARN_HOMOPOLYMER_DECOMP" not in pv.gbcms_status_reason:
+                        pv.gbcms_status_reason = (
+                            f"{pv.gbcms_status_reason}|WARN_HOMOPOLYMER_DECOMP"
+                            if pv.gbcms_status_reason
+                            else "WARN_HOMOPOLYMER_DECOMP"
+                        )
 
             # Merge counts back into full variant list
             # Valid variants get real counts; rejected variants get zero counts.
@@ -529,12 +582,15 @@ class Pipeline:
                 always emitted showing discriminating position ratio.
             MNP_RESCUE_ELIGIBLE: disc/len ≤ rescue_mnp_threshold.
             HIGH_N_FRACTION(f): n_count / dp > 0.05 (duplex masking hotspot).
+            NON_DISCRIMINATING_LOCUS: a sibling combination reconstructs the
+                reference haplotype, so REF and ALT are sequence-indistinguishable
+                and reads tie to NEITHER (explains a zeroed RD/AD at a covered locus).
         """
         flag_counts: dict[str, int] = {}
 
         for pv, counts in zip(prepared, full_counts, strict=True):
             # Only PASS variants get diagnostics; FAIL variants are not counted
-            if not pv.gbcms_status.startswith("PASS"):
+            if pv.gbcms_status != "PASS":
                 continue
 
             flags: list[str] = []
@@ -566,6 +622,12 @@ class Pipeline:
             if counts.dp > 0 and counts.n_count / counts.dp > 0.05:
                 frac = counts.n_count / counts.dp
                 flags.append(f"HIGH_N_FRACTION({frac:.2f})")
+
+            # NON_DISCRIMINATING_LOCUS: a sibling combination reconstructs the
+            # reference haplotype, so REF and ALT are sequence-indistinguishable and
+            # reads tie to NEITHER — surfaces an otherwise-silent zeroed RD/AD.
+            if getattr(counts, "non_discriminating_locus", False):
+                flags.append("NON_DISCRIMINATING_LOCUS")
 
             # Populate the diagnostic field
             diagnostic = ";".join(flags)
@@ -620,7 +682,7 @@ class Pipeline:
         # 1. Identify rescue candidates
         candidates: list[tuple[int, list[tuple[int, str, str]]]] = []
         for i, (pv, counts) in enumerate(zip(prepared, full_counts, strict=True)):
-            if not pv.gbcms_status.startswith("PASS"):
+            if pv.gbcms_status != "PASS":
                 continue
             if counts.ad != 0:
                 continue
@@ -672,9 +734,7 @@ class Pipeline:
         )
 
         # Filter to only valid SNPs
-        valid_snp_indices = [
-            j for j, sp in enumerate(snp_prepared) if sp.gbcms_status.startswith("PASS")
-        ]
+        valid_snp_indices = [j for j, sp in enumerate(snp_prepared) if sp.gbcms_status == "PASS"]
         valid_snp_variants = [snp_prepared[j].variant for j in valid_snp_indices]
 
         if not valid_snp_variants:
@@ -719,6 +779,8 @@ class Pipeline:
             umi_tag=self.config.umi_tag,
             mode=self.config.mode,
             enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
+            strandedness=getattr(self.config, "strandedness", "reverse"),
+            mfsd=self.config.output.mfsd,
             rna_editing_db=(
                 str(self.config.rna_editing_db)  # type: ignore[attr-defined]
                 if getattr(self.config, "rna_editing_db", None)
@@ -727,6 +789,11 @@ class Pipeline:
             gtf_path=(
                 str(self.config.gtf)  # type: ignore[attr-defined]
                 if getattr(self.config, "gtf", None)
+                else None
+            ),
+            gtf_cache_dir=(
+                str(self.config.gtf_cache_dir)  # type: ignore[attr-defined]
+                if getattr(self.config, "gtf_cache_dir", None)
                 else None
             ),
             reference_fasta=str(self.config.reference_fasta),
@@ -809,39 +876,14 @@ class Pipeline:
         )
 
     def _load_variants(self) -> list[Variant]:
-        """Load variants based on file extension."""
-        path = self.config.variant_file
-        reader: VariantReader
+        """Load variants based on file extension.
 
-        # Note: The CLI pre-checks the extension at parse time (before Pydantic), so
-        # reaching this branch with an unsupported extension means Pipeline was called
-        # programmatically rather than via the CLI.  We raise ValueError here as a
-        # defensive backstop.
-        #
-        # Accepted compressed formats:
-        #   .vcf.gz  — gzip/bgzip (standard tabix format)
-        #   .vcf.bgz — explicit bgzip extension used by some pipelines
-        # Both are block-gzip compatible and handled identically by pysam.
-        name_lower = path.name.lower()
-        if (
-            path.suffix.lower() == ".vcf"
-            or name_lower.endswith(".vcf.gz")
-            or name_lower.endswith(".vcf.bgz")
-        ):
-            reader = VcfReader(path)
-        elif path.suffix.lower() == ".maf":
-            reader = MafReader(path)
-        else:
-            raise ValueError(
-                f"Unsupported variant file format: '{path.suffix}'. "
-                "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf."
-            )
-
-        variants = list(reader)
-        if hasattr(reader, "close"):
-            reader.close()
-
-        return variants
+        Delegates to the module-level :func:`read_variant_file`. The CLI pre-checks
+        the extension at parse time (before Pydantic); an unsupported extension here
+        means Pipeline was called programmatically — :func:`read_variant_file` raises
+        ValueError as a defensive backstop.
+        """
+        return read_variant_file(self.config.variant_file)
 
     def _validate_bam_header(self, bam_path: Path, variants: list[Variant]) -> bool:
         """Check if BAM/CRAM header contains chromosomes from variants.
@@ -986,6 +1028,7 @@ class Pipeline:
                 counts,
                 sample_name=sample_name,
                 gbcms_status=pv.gbcms_status if pv else "PASS",
+                gbcms_status_reason=pv.gbcms_status_reason if pv else "",
                 gbcms_diagnostic=pv.gbcms_diagnostic if pv else "",
                 gbcms_rescue=pv.gbcms_rescue if pv else "",
                 norm_variant=norm_v,

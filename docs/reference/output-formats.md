@@ -79,7 +79,8 @@ self-describing.
     ##contig=<ID=chr2,length=242193529>
     ##FILTER=<ID=PASS,Description="All filters passed">
     ##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
-    ##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">
+    ##INFO=<ID=GS,Number=1,Type=String,Description="gbcms verdict: PASS or FAIL">
+    ##INFO=<ID=GSR,Number=1,Type=String,Description="gbcms status reason tags, |-separated (. when none)">
     ##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">
     ##INFO=<ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail">
     ##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)">
@@ -212,6 +213,11 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `MFSD_REF_LLR` | Float | Log-likelihood ratio for REF fragments |
     | `MFSD_ALT_COUNT` | Integer | ALT-classified fragments in 50–1000 bp size window |
     | `MFSD_REF_COUNT` | Integer | REF-classified fragments in 50–1000 bp size window |
+    | `MFSD_SUB_NUC_REF_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |
+    | `MFSD_SUB_NUC_ALT_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of ALT fragments |
+    | `MFSD_SUB_NUC_ENRICHMENT` | Float | Sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator |
+    | `MFSD_MONO_NUC_REF_FRAC` | Float | Mono-nucleosomal (150–200 bp) fraction of REF fragments |
+    | `MFSD_MONO_NUC_ALT_FRAC` | Float | Mono-nucleosomal (150–200 bp) fraction of ALT fragments |
 
 === "--gtf only (RNA mode)"
 
@@ -398,8 +404,9 @@ These columns are **always** appended regardless of input format.
 
     | Column | Type | Description |
     |:-------|:-----|:------------|
-    | `gbcms_status` | String | Normalization/counting status. Semicolon-separated multi-value. First token is always `PASS` or `FAIL_*`. Examples: `PASS`, `PASS;WARN_REF_CORRECTED`, `FAIL_REF_MISMATCH`. |
-    | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`. |
+    | `gbcms_status` | String | Verdict: exactly `PASS` or `FAIL`. |
+    | `gbcms_status_reason` | String | Reason tag(s), `\|`-separated; empty for a clean PASS. PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`. FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `ALT_CONTAINS_N`. Reasons stack, e.g. `WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP`. Identical string in the VCF `GSR` INFO. |
+    | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: `ZERO_ALT`, `PARTIAL_DOMINANT`, `MNP_DISC_RATIO(n/m)`, `MNP_RESCUE_ELIGIBLE`, `HIGH_N_FRACTION(f)`, and `NON_DISCRIMINATING_LOCUS` — the last (PairHMM backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed `ref_count`/`alt_count` at a covered locus rather than leaving it silent. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`. |
     | `gbcms_rescue` | String | **Conditional** — only present when `--rescue-mnp` is enabled. Structured audit trail for MNP decomposition rescue. Format: `method=decomposed;original_alt=0;positions=chr:pos(R>A):count,...`. Empty when no rescue was attempted. Failed rescues include `outcome=no_signal`. |
     | `ref_count` | Integer | REF read depth |
     | `alt_count` | Integer | ALT read depth |
@@ -489,7 +496,7 @@ These columns are **always** appended regardless of input format.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `transcript_read_counts` | String | Semicolon-separated per-transcript read-level count triplets. Format: `ENST...:AD,RD,DP;ENST...:AD,RD,DP`. Example: `ENST00000269305:11,140,162;ENST00000445888:7,95,108`. Empty when no GTF or no overlapping transcripts. |
+| `transcript_read_counts` | String | Pipe-separated per-transcript read-level count triplets. Format: `ENST...:AD,RD,DP\|ENST...:AD,RD,DP`. Example: `ENST00000269305:11,140,162\|ENST00000445888:7,95,108`. Empty when no GTF or no overlapping transcripts. |
 | `transcript_fragment_counts` | String | Same format as `transcript_read_counts` but with fragment-level counts: `ENST...:ADF,RDF,DPF`. Fragment counts ≤ read counts for each transcript. |
 
 #### Aberrant Splice Junction Detection (ASJD)
@@ -505,22 +512,24 @@ These columns are **always** appended regardless of input format.
 | `asjd_alt_motif` | String | Splice motif at ALT junction (same categories) |
 | `asjd_ref_known` | Boolean | `True` if the REF dominant junction matches a GTF-annotated intron |
 | `asjd_alt_known` | Boolean | `True` if the ALT dominant junction matches a GTF-annotated intron |
-| `asjd_n_ref_junc` | Integer | REF reads on the dominant junction |
-| `asjd_n_alt_junc` | Integer | ALT reads on the dominant junction |
-| `asjd_n_ref_total` | Integer | Total REF reads with any splice junction |
-| `asjd_n_alt_total` | Integer | Total ALT reads with any splice junction |
+| `asjd_n_ref_junc` | Integer | REF fragments on the dominant junction (deduped per QNAME) |
+| `asjd_n_alt_junc` | Integer | ALT fragments on the dominant junction (deduped per QNAME) |
+| `asjd_n_ref_total` | Integer | Total REF fragments with any splice junction (deduped per QNAME) |
+| `asjd_n_alt_total` | Integer | Total ALT fragments with any splice junction (deduped per QNAME) |
 | `asjd_diagnostic` | String | Semicolon-separated QC flags (see [Diagnostic Flags](#asjd-diagnostic-flags)) |
 
 ##### ASJD Diagnostic Flags
 
+All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one vote).
+
 | Flag | Condition | Meaning |
 |:-----|:----------|:--------|
-| `LOW_ALT_JUNC` | `asjd_n_alt_junc < 5` | Insufficient ALT junction evidence |
-| `LOW_REF_JUNC` | `asjd_n_ref_junc < 10` | Insufficient REF baseline |
-| `NOVEL_ALT_JUNC` | `asjd_alt_known == false` | ALT uses unannotated junction |
-| `NON_CANONICAL_MOTIF` | ALT motif not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
-| `STRAND_DISCORDANT` | ALT junction minority strand ≥ 30% | dUTP artifact |
-| `MULTI_JUNCTION` | ALT reads use > 2 junctions | Complex splicing event |
+| `LOW_ALT_JUNC` | `asjd_n_alt_total < 5` | Insufficient ALT junction evidence |
+| `LOW_REF_JUNC` | `asjd_n_ref_total < 10` | Insufficient REF baseline |
+| `NOVEL_ALT_JUNC` | ALT dominant junction differs from REF and is unannotated | ALT uses an unannotated junction |
+| `NON_CANONICAL_MOTIF` | ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
+| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. Disabled for `--strandedness unstranded` (no transcript strand). |
+| `MULTI_JUNCTION` | ALT fragments use > 2 distinct junctions | Complex splicing event |
 
 ---
 
@@ -536,7 +545,7 @@ These columns are **always** appended regardless of input format.
 
 ??? note "mFSD MAF Columns (`--mfsd` only)"
 
-    34 columns are appended when `--mfsd` is set. They are completely absent
+    41 columns are appended when `--mfsd` is set. They are completely absent
     without the flag (not NA-filled):
 
     | Column | Type | Description |
@@ -554,6 +563,7 @@ These columns are **always** appended regardless of input format.
     | `mfsd_delta_alt_ref` | Float | mean(ALT) − mean(REF) delta (bp) |
     | `mfsd_ks_alt_ref` | Float | KS D-stat (ALT vs REF) |
     | `mfsd_pval_alt_ref` | Float | KS p-value (ALT vs REF) |
+    | `mfsd_qval_alt_ref` | Float | Benjamini-Hochberg FDR q-value for the ALT-vs-REF KS p-value (sample-wide correction) |
     | `mfsd_delta_alt_nonref` | Float | mean(ALT) − mean(non-REF) delta |
     | `mfsd_ks_alt_nonref` | Float | KS D-stat (ALT vs non-REF) |
     | `mfsd_pval_alt_nonref` | Float | KS p-value |
@@ -575,6 +585,12 @@ These columns are **always** appended regardless of input format.
     | `mfsd_quality_score` | Float | 1 − error_rate − n_rate |
     | `mfsd_alt_confidence` | String | `HIGH` (≥5 ALT fragments), `LOW` (1–4), or `NONE` |
     | `mfsd_ks_valid` | Boolean | `True` when both ALT and REF have ≥5 fragments for reliable KS test |
+    | `mfsd_sub_nuc_ref_frac` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |
+    | `mfsd_sub_nuc_alt_frac` | Float | Sub-nucleosomal (<150 bp) fraction of ALT fragments |
+    | `mfsd_sub_nuc_enrichment` | Float | Sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator |
+    | `mfsd_mono_nuc_ref_frac` | Float | Mono-nucleosomal (150–200 bp) fraction of REF fragments |
+    | `mfsd_mono_nuc_alt_frac` | Float | Mono-nucleosomal (150–200 bp) fraction of ALT fragments |
+    | `mfsd_ch_flag` | Boolean | `True` when the variant falls in a clonal-hematopoiesis (CH) gene |
 
 ??? note "Normalization MAF Columns (`--show-normalization` only)"
 

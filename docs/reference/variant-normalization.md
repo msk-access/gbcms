@@ -42,7 +42,8 @@ MAF files represent indels using `-` dashes. gbcms converts them to VCF-style **
     Only for MAF input (`is_maf=true`) when REF or ALT is `-`, or when REF and ALT have different lengths (complex indels). VCF input skips this step entirely.
 
 !!! warning "FETCH_FAILED"
-    If the anchor base cannot be fetched (e.g., chromosome not in FASTA), the variant's `gbcms_status` is set to `FETCH_FAILED` and it is excluded from counting.
+    If the anchor base cannot be fetched (e.g., chromosome not in FASTA), the variant's
+    `gbcms_status` is set to `FAIL` with reason `FETCH_FAILED`, and it is excluded from counting.
 
 ---
 
@@ -56,18 +57,18 @@ flowchart TD
     Exact -->|"Yes"| Pass(["✅ PASS"]):::pass
     Exact -->|"No"| Sim["Compute similarity\n(matching bases / max length)"]
     Sim --> Thresh{"≥ 90%?"}
-    Thresh -->|"Yes"| Corrected(["⚠️ PASS;WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
-    Thresh -->|"No"| Fail(["❌ REF_MISMATCH\n→ excluded from counting"]):::fail
+    Thresh -->|"Yes"| Corrected(["⚠️ PASS + WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
+    Thresh -->|"No"| Fail(["❌ FAIL + REF_MISMATCH\n→ excluded from counting"]):::fail
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
     classDef fail fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 ```
 
-When a variant receives `PASS;WARN_REF_CORRECTED`, the MAF's REF allele is **replaced with the FASTA sequence** for all downstream steps (left-alignment, haplotype construction). The original MAF REF is preserved in `original_ref` for auditing.
+When a variant gets a `WARN_REF_CORRECTED` reason (verdict stays `PASS`), the MAF's REF allele is **replaced with the FASTA sequence** for all downstream steps (left-alignment, haplotype construction). The original MAF REF is preserved in `original_ref` for auditing.
 
 !!! example "Real-World Example: EGFR Exon 19 Deletion"
-    A 27bp complex EGFR deletion had 26/27 bases matching the FASTA (96%), with only the last base differing due to a MAF annotation artifact. Without tolerance, this variant was silently rejected with zero counts. With tolerant validation, it receives `PASS;WARN_REF_CORRECTED` and produces valid counts.
+    A 27bp complex EGFR deletion had 26/27 bases matching the FASTA (96%), with only the last base differing due to a MAF annotation artifact. Without tolerance, this variant was silently rejected with zero counts. With tolerant validation, it passes with a `WARN_REF_CORRECTED` reason and produces valid counts.
 
 !!! important "Common Causes of REF_MISMATCH"
     - Wrong reference genome version (GRCh37 vs GRCh38)
@@ -226,7 +227,7 @@ flowchart TD
     CountDecomp --> Compare
     Compare{"corrected AD > original AD?"}
 
-    Compare -->|"Yes"| UseDecomp["Return corrected counts"] --> FlagWarn["gbcms_status =\nPASS;WARN_HOMOPOLYMER_DECOMP"]:::warn
+    Compare -->|"Yes"| UseDecomp["Return corrected counts"] --> FlagWarn["reason +=\nWARN_HOMOPOLYMER_DECOMP"]:::warn
     Compare -->|"No"| UseOrig["Return original counts"] --> FlagPass["gbcms_status = PASS"]:::pass
 
     classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
@@ -239,25 +240,36 @@ flowchart TD
 !!! example "Real-World: SOX2"
     **SOX2** at chr17:181430901: `CCCCCC→T` (6bp→1bp, net −5bp).
     Original count: **alt=3**. Corrected `CCCCCC→CCCCT` count: **alt=79**.
-    Corrected wins → `gbcms_status = PASS;WARN_HOMOPOLYMER_DECOMP`.
+    Corrected wins → `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
 
 ---
 
 ## Validation Status Reference
 
-Every `PreparedVariant` carries a `gbcms_status` string:
+Status is carried in **two** fields: a verdict, `gbcms_status` (exactly `PASS` or
+`FAIL`), and a `|`-separated reason list, `gbcms_status_reason` (empty for a clean
+PASS). Both appear in the MAF (two columns) and the VCF INFO (`GS` = verdict,
+`GSR` = reasons). `|` is used (never `;`/`,`, which are VCF-unsafe), so the reason
+string is byte-identical in the MAF and the VCF.
 
-| Status | Meaning | Counted? |
-|:-------|:--------|:--------:|
-| `PASS` | REF matches FASTA exactly | ✅ |
-| `PASS;WARN_REF_CORRECTED` | REF ≥90% match; corrected to FASTA REF | ✅ |
-| `PASS;WARN_HOMOPOLYMER_DECOMP` | Passed, but corrected allele was used (see above) | ✅ |
-| `PASS;MULTI_ALLELIC` | Passed, variant overlaps another variant at the same locus (sibling ALT exclusion active) | ✅ |
-| `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
-| `FETCH_FAILED` | Could not fetch reference region | ❌ |
+| `gbcms_status` | `gbcms_status_reason` | Meaning | Counted? |
+|:-------|:--------|:--------|:--------:|
+| `PASS` | *(empty)* | REF matches FASTA exactly | ✅ |
+| `PASS` | `WARN_REF_CORRECTED` | REF ≥90% match; corrected to FASTA REF | ✅ |
+| `PASS` | `WARN_HOMOPOLYMER_DECOMP` | Passed, but the corrected/decomposed allele was used | ✅ |
+| `PASS` | `MULTI_ALLELIC` | Passed; overlaps a sibling variant at the same locus (sibling-ALT exclusion active) | ✅ |
+| `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
+| `FAIL` | `FETCH_FAILED` | Could not fetch the reference region | ❌ |
+| `FAIL` | `EMPTY_ALLELE` | Empty REF or ALT (malformed / non-left-anchored indel) | ❌ |
+| `FAIL` | `ALT_CONTAINS_N` | ALT allele contains an `N` base | ❌ |
+
+Reasons **stack**: a PASS variant can carry `WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP`.
 
 !!! note "Filtering Behavior"
-    The pipeline filters on `gbcms_status.startswith("PASS")`, so all `PASS` and `PASS_WARN_*` variants proceed to counting. `REF_MISMATCH` and `FETCH_FAILED` variants are logged as rejected.
+    The pipeline filters on `gbcms_status == "PASS"`, so every PASS variant — with or
+    without warning reasons — proceeds to counting. `FAIL` variants are excluded from
+    counting but still **written to the output** with their `FAIL` verdict and reason
+    (and zero counts), so the rejection reason is in the output file, not only the log.
 
 ---
 

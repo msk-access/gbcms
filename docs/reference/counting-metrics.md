@@ -211,7 +211,7 @@ Computed at **both** levels:
 
 ## Complete Output Column Reference
 
-All fields in the `BaseCounts` struct returned by `count_bam_binned()` — the binned counting entry point that groups variants into ~10kb genomic bins for a single `bam.fetch()` per bin before classifying reads. See [Architecture → Genomic Binning](architecture.md#genomic-binning) for how bins are built.
+The core counting fields of the `BaseCounts` struct returned by `count_bam_binned()` — the binned counting entry point that groups variants into ~10kb genomic bins for a single `bam.fetch()` per bin before classifying reads. See [Architecture → Genomic Binning](architecture.md#genomic-binning) for how bins are built. (The gated mFSD, RNA, and ASJD fields — plus QC fields like `mq0_count`, `singleton_alt_count`, `duplex_alt_count`, `alt_dist_end_median`/`ref_dist_end_median`, and `non_discriminating_locus` — are documented in their own sections above and in the [output-formats reference](output-formats.md).)
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
@@ -271,7 +271,7 @@ N bases are **strictly uninformative** — they do NOT contribute to RD, AD, any
 
 mFSD compares insert-size distributions for **REF-classified** vs **ALT-classified** fragments at each variant position. Short-fragment enrichment in the ALT class indicates tumor-derived cfDNA.
 
-Enabled with `--mfsd`. All 34 columns (and their VCF INFO equivalents) are absent from output without this flag.
+Enabled with `--mfsd`. All 41 columns (and their VCF INFO equivalents) are absent from output without this flag.
 
 ### Fragment Classes
 
@@ -282,7 +282,7 @@ Enabled with `--mfsd`. All 34 columns (and their VCF INFO equivalents) are absen
 | `NonREF` | Fragment supporting a third allele (neither REF nor ALT) |
 | `N` | Fragment where the base at the variant position was called `N` |
 
-### MAF Columns (34 total)
+### MAF Columns (41 total)
 
 #### Raw Counts
 
@@ -309,10 +309,17 @@ Enabled with `--mfsd`. All 34 columns (and their VCF INFO equivalents) are absen
 | `mfsd_nonref_mean` | Mean insert size (bp) for NonREF fragments |
 | `mfsd_n_mean` | Mean insert size (bp) for N fragments |
 
-#### Pairwise KS Statistics (6 pairs × 3 values = 18 columns)
+#### Pairwise KS Statistics (6 pairs × 3 values = 18 columns, + 1 FDR q-value)
 
 Each pair yields: `delta` (mean difference in bp), `ks` (KS D-statistic), `pval` (KS p-value).
 Values are `NA` when either class has fewer than 5 fragments (`mfsd_ks_valid = False`).
+
+> The `pval` is the **exact** two-sample KS p-value for small samples (the
+> low-input cfDNA regime), falling back to the asymptotic Kolmogorov series only
+> for large fragment counts. The exact value matters because at small N the KS
+> statistic is highly discrete — the asymptotic approximation mis-estimates the
+> p-value, and below a handful of fragments the test has essentially no power
+> (e.g. n=m=3 cannot reach p < 0.05 even when fully separated).
 
 | Pairs |
 |:------|
@@ -322,6 +329,12 @@ Values are `NA` when either class has fewer than 5 fragments (`mfsd_ks_valid = F
 | ALT vs N: `mfsd_delta_alt_n`, `mfsd_ks_alt_n`, `mfsd_pval_alt_n` |
 | REF vs N: `mfsd_delta_ref_n`, `mfsd_ks_ref_n`, `mfsd_pval_ref_n` |
 | NonREF vs N: `mfsd_delta_nonref_n`, `mfsd_ks_nonref_n`, `mfsd_pval_nonref_n` |
+
+An additional column, `mfsd_qval_alt_ref`, carries the Benjamini-Hochberg FDR
+q-value for the ALT-vs-REF KS p-value, corrected across all variants with a valid
+ALT-vs-REF test in the sample. The mFSD report classifies TUMOR-LIKE / CH-LIKE on
+this q-value, not the raw p-value. It is `NA` when the KS test was invalid, and
+equals the p-value until the post-counting BH pass runs.
 
 #### Derived Metrics
 
@@ -334,7 +347,23 @@ Values are `NA` when either class has fewer than 5 fragments (`mfsd_ks_valid = F
 | `mfsd_alt_confidence` | `HIGH` (≥5 ALT frags), `LOW` (1–4), `NONE` (0) |
 | `mfsd_ks_valid` | `True` when both ALT and REF have ≥5 fragments |
 
-### VCF INFO Fields (7 total)
+#### Nucleosomal Fractions
+
+| Column | Description |
+|:-------|:------------|
+| `mfsd_sub_nuc_ref_frac` | Sub-nucleosomal (<150 bp) fraction of REF fragments |
+| `mfsd_sub_nuc_alt_frac` | Sub-nucleosomal (<150 bp) fraction of ALT fragments |
+| `mfsd_sub_nuc_enrichment` | Sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator |
+| `mfsd_mono_nuc_ref_frac` | Mono-nucleosomal (150–200 bp) fraction of REF fragments |
+| `mfsd_mono_nuc_alt_frac` | Mono-nucleosomal (150–200 bp) fraction of ALT fragments |
+
+#### CH Gene Flag
+
+| Column | Description |
+|:-------|:------------|
+| `mfsd_ch_flag` | `True` when the variant falls in a clonal-hematopoiesis (CH) gene |
+
+### VCF INFO Fields (13 total)
 
 Added to `##INFO` header and per-variant INFO column when `--mfsd` is set.
 
@@ -343,10 +372,16 @@ Added to `##INFO` header and per-variant INFO column when `--mfsd` is set.
 | `MFSD_DELTA_ALT_REF` | Float | mean(ALT) − mean(REF) in bp |
 | `MFSD_KS_ALT_REF` | Float | KS D-statistic (ALT vs REF) |
 | `MFSD_PVAL_ALT_REF` | Float | KS p-value (ALT vs REF) |
+| `MFSD_QVAL_ALT_REF` | Float | Benjamini-Hochberg FDR q-value for the ALT-vs-REF KS p-value |
 | `MFSD_ALT_LLR` | Float | LLR for ALT fragments |
 | `MFSD_REF_LLR` | Float | LLR for REF fragments |
 | `MFSD_ALT_COUNT` | Integer | ALT-classified fragment count |
 | `MFSD_REF_COUNT` | Integer | REF-classified fragment count |
+| `MFSD_SUB_NUC_REF_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |
+| `MFSD_SUB_NUC_ALT_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of ALT fragments |
+| `MFSD_SUB_NUC_ENRICHMENT` | Float | Sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator |
+| `MFSD_MONO_NUC_REF_FRAC` | Float | Mono-nucleosomal (150–200 bp) fraction of REF fragments |
+| `MFSD_MONO_NUC_ALT_FRAC` | Float | Mono-nucleosomal (150–200 bp) fraction of ALT fragments |
 
 ### Parquet Output (--mfsd-parquet)
 

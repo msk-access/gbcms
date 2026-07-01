@@ -223,6 +223,7 @@ class MafWriter(OutputWriter):
         # ── 1. Status & diagnostic flags ──────────────────────────────────────
         cols = [
             "gbcms_status",
+            "gbcms_status_reason",
             "gbcms_diagnostic",
         ]
         # gbcms_rescue column is only present when --rescue-mnp is enabled (design §5)
@@ -288,6 +289,7 @@ class MafWriter(OutputWriter):
                 "mfsd_delta_alt_ref",
                 "mfsd_ks_alt_ref",
                 "mfsd_pval_alt_ref",
+                "mfsd_qval_alt_ref",
                 "mfsd_delta_alt_nonref",
                 "mfsd_ks_alt_nonref",
                 "mfsd_pval_alt_nonref",
@@ -340,7 +342,7 @@ class MafWriter(OutputWriter):
                     "exon_boundary_dist",
                     "transcript_read_counts",
                     "transcript_fragment_counts",
-                    # P4c: ASJD columns
+                    # ASJD columns
                     "asjd_flag",
                     "asjd_pval",
                     "asjd_qval",
@@ -484,7 +486,7 @@ class MafWriter(OutputWriter):
                         ),
                         "transcript_read_counts": counts.transcript_read_counts,
                         "transcript_fragment_counts": counts.transcript_fragment_counts,
-                        # P4c: ASJD
+                        # ASJD
                         "asjd_flag": str(counts.asjd_flag),
                         "asjd_pval": f"{counts.asjd_pval:.4e}" if counts.asjd_pval < 1.0 else "",
                         "asjd_qval": f"{counts.asjd_qval:.4e}" if counts.asjd_qval < 1.0 else "",
@@ -535,8 +537,12 @@ class MafWriter(OutputWriter):
                 mfsd_alt_confidence = "LOW"
             else:
                 mfsd_alt_confidence = "NONE"
-            # KS test validity: both ALT and REF need >= 5 fragments
-            mfsd_ks_valid = counts.mfsd_alt_count >= 5 and counts.mfsd_ref_count >= 5
+            # KS test validity: the Rust D-statistic (mfsd_ks_alt_ref) is NaN exactly
+            # when a fragment class fell below MIN_FOR_KS (ks_test returns NaN), so
+            # derive validity from it rather than re-hardcoding the threshold here. A
+            # literal `>= 5` would silently drift from Rust's MIN_FOR_KS if that changed,
+            # re-opening the bug where insufficient KS tests are reported as valid.
+            mfsd_ks_valid = not math.isnan(counts.mfsd_ks_alt_ref)
 
             result.update(
                 {
@@ -557,6 +563,7 @@ class MafWriter(OutputWriter):
                     "mfsd_delta_alt_ref": _fmt(counts.mfsd_delta_alt_ref),
                     "mfsd_ks_alt_ref": _fmt(counts.mfsd_ks_alt_ref),
                     "mfsd_pval_alt_ref": _fmt(counts.mfsd_pval_alt_ref),
+                    "mfsd_qval_alt_ref": _fmt(counts.mfsd_qval_alt_ref),
                     "mfsd_delta_alt_nonref": _fmt(counts.mfsd_delta_alt_nonref),
                     "mfsd_ks_alt_nonref": _fmt(counts.mfsd_ks_alt_nonref),
                     "mfsd_pval_alt_nonref": _fmt(counts.mfsd_pval_alt_nonref),
@@ -598,6 +605,7 @@ class MafWriter(OutputWriter):
         counts: Any,
         sample_name: str = "TUMOR",
         gbcms_status: str = "PASS",
+        gbcms_status_reason: str = "",
         gbcms_diagnostic: str = "",
         gbcms_rescue: str = "",
         norm_variant: Variant | None = None,
@@ -665,6 +673,7 @@ class MafWriter(OutputWriter):
 
         # Append gbcms count columns (both paths, never overwrites originals)
         row["gbcms_status"] = gbcms_status
+        row["gbcms_status_reason"] = gbcms_status_reason
         row["gbcms_diagnostic"] = gbcms_diagnostic
         # gbcms_rescue only present when --rescue-mnp is enabled (design §5)
         if self.rescue_mnp:
@@ -757,7 +766,8 @@ class VcfWriter(OutputWriter):
         headers.extend(
             [
                 '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
-                '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">',
+                '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms verdict: PASS or FAIL">',
+                '##INFO=<ID=GSR,Number=1,Type=String,Description="gbcms status reason tags, |-separated (. when none)">',
                 '##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">',
             ]
         )
@@ -786,10 +796,18 @@ class VcfWriter(OutputWriter):
                     '##INFO=<ID=MFSD_DELTA_ALT_REF,Number=1,Type=Float,Description="mFSD mean(ALT) − mean(REF) fragment size delta (bp)">',
                     '##INFO=<ID=MFSD_KS_ALT_REF,Number=1,Type=Float,Description="mFSD 2-sample KS D-statistic (ALT vs REF)">',
                     '##INFO=<ID=MFSD_PVAL_ALT_REF,Number=1,Type=Float,Description="mFSD KS p-value (ALT vs REF)">',
+                    '##INFO=<ID=MFSD_QVAL_ALT_REF,Number=1,Type=Float,Description="mFSD KS q-value (Benjamini-Hochberg FDR across variants, ALT vs REF; drives TUMOR-LIKE/CH-LIKE)">',
                     '##INFO=<ID=MFSD_ALT_LLR,Number=1,Type=Float,Description="mFSD LLR for ALT fragments: Σ log(P_tumor/P_healthy); positive=tumor-like">',
                     '##INFO=<ID=MFSD_REF_LLR,Number=1,Type=Float,Description="mFSD LLR for REF fragments">',
                     '##INFO=<ID=MFSD_ALT_COUNT,Number=1,Type=Integer,Description="ALT-classified fragments in mFSD window (50–1000 bp)">',
                     '##INFO=<ID=MFSD_REF_COUNT,Number=1,Type=Integer,Description="REF-classified fragments in mFSD window (50–1000 bp)">',
+                    # ME-1: sub/mono-nucleosomal fractions — were computed and written to MAF
+                    # but omitted from VCF; added here so the VCF mFSD surface matches MAF.
+                    '##INFO=<ID=MFSD_SUB_NUC_REF_FRAC,Number=1,Type=Float,Description="mFSD sub-nucleosomal (<150 bp) fraction of REF fragments">',
+                    '##INFO=<ID=MFSD_SUB_NUC_ALT_FRAC,Number=1,Type=Float,Description="mFSD sub-nucleosomal (<150 bp) fraction of ALT fragments">',
+                    '##INFO=<ID=MFSD_SUB_NUC_ENRICHMENT,Number=1,Type=Float,Description="mFSD sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator">',
+                    '##INFO=<ID=MFSD_MONO_NUC_REF_FRAC,Number=1,Type=Float,Description="mFSD mono-nucleosomal (150–200 bp) fraction of REF fragments">',
+                    '##INFO=<ID=MFSD_MONO_NUC_ALT_FRAC,Number=1,Type=Float,Description="mFSD mono-nucleosomal (150–200 bp) fraction of ALT fragments">',
                 ]
             )
         if self.show_normalization:
@@ -818,7 +836,7 @@ class VcfWriter(OutputWriter):
                         '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) to nearest annotated exon boundary. Missing (.) when no GTF provided.">',
                         '##INFO=<ID=TXRC,Number=1,Type=String,Description="Per-transcript read counts. Format: ENST:AD,RD,DP|ENST:AD,RD,DP. Empty when no GTF or no overlap.">',
                         '##INFO=<ID=TXFC,Number=1,Type=String,Description="Per-transcript fragment counts. Format: ENST:ADF,RDF,DPF|ENST:ADF,RDF,DPF. Empty when no GTF or no overlap.">',
-                        # P4c: ASJD INFO headers
+                        # ASJD INFO headers
                         '##INFO=<ID=ASJD,Number=0,Type=Flag,Description="Allele-specific junction divergence detected (Fisher p<0.05)">',
                         '##INFO=<ID=ASJDP,Number=1,Type=Float,Description="ASJD raw Fisher exact p-value">',
                         '##INFO=<ID=ASJDQ,Number=1,Type=Float,Description="ASJD BH-corrected q-value">',
@@ -873,6 +891,7 @@ class VcfWriter(OutputWriter):
         counts: Any,
         sample_name: str = "SAMPLE",
         gbcms_status: str = "PASS",
+        gbcms_status_reason: str = "",
         gbcms_diagnostic: str = "",
         gbcms_rescue: str = "",
         norm_variant: Variant | None = None,
@@ -883,15 +902,17 @@ class VcfWriter(OutputWriter):
         # VCF POS is 1-based
         pos = variant.pos + 1
 
-        # INFO fields (VCF spec: missing values use '.' not 'NA')
-        # VCF uses ';' as the INFO field delimiter, so multi-value fields
-        # (GS, GD) convert ';' → '|' to avoid parser mis-splitting.
-        # GR is handled conditionally below (only when --rescue-mnp).
-        gs_vcf = gbcms_status.replace(";", "|")
+        # INFO fields (VCF spec: missing values use '.' not 'NA').
+        # GS is the bare verdict (PASS/FAIL — no separators). GSR (reasons) and GD
+        # already use '|' internally, which is VCF-safe, so no conversion is needed
+        # for them — the MAF column and the VCF value are byte-identical. GD historically
+        # used ';' internally, so it still gets the ';' → '|' guard.
+        gsr_vcf = gbcms_status_reason if gbcms_status_reason else "."
         gd_vcf = gbcms_diagnostic.replace(";", "|") if gbcms_diagnostic else "."
         info_parts = [
             f"DP={counts.dp}",
-            f"GS={gs_vcf}",
+            f"GS={gbcms_status}",
+            f"GSR={gsr_vcf}",
             f"GD={gd_vcf}",
         ]
         # GR INFO value only included when --rescue-mnp is enabled (design §5)
@@ -918,10 +939,17 @@ class VcfWriter(OutputWriter):
                     f"MFSD_DELTA_ALT_REF={_fmt_vcf(counts.mfsd_delta_alt_ref)}",
                     f"MFSD_KS_ALT_REF={_fmt_vcf(counts.mfsd_ks_alt_ref)}",
                     f"MFSD_PVAL_ALT_REF={_fmt_vcf(counts.mfsd_pval_alt_ref)}",
+                    f"MFSD_QVAL_ALT_REF={_fmt_vcf(counts.mfsd_qval_alt_ref)}",
                     f"MFSD_ALT_LLR={_fmt_vcf(counts.mfsd_alt_llr)}",
                     f"MFSD_REF_LLR={_fmt_vcf(counts.mfsd_ref_llr)}",
                     f"MFSD_ALT_COUNT={counts.mfsd_alt_count}",
                     f"MFSD_REF_COUNT={counts.mfsd_ref_count}",
+                    # ME-1: sub/mono-nucleosomal fractions (VCF↔MAF parity).
+                    f"MFSD_SUB_NUC_REF_FRAC={_fmt_vcf(counts.mfsd_sub_nuc_ref_frac)}",
+                    f"MFSD_SUB_NUC_ALT_FRAC={_fmt_vcf(counts.mfsd_sub_nuc_alt_frac)}",
+                    f"MFSD_SUB_NUC_ENRICHMENT={_fmt_vcf(counts.mfsd_sub_nuc_enrichment)}",
+                    f"MFSD_MONO_NUC_REF_FRAC={_fmt_vcf(counts.mfsd_mono_nuc_ref_frac)}",
+                    f"MFSD_MONO_NUC_ALT_FRAC={_fmt_vcf(counts.mfsd_mono_nuc_alt_frac)}",
                 ]
             )
         if self.show_normalization and norm_variant:
@@ -949,12 +977,13 @@ class VcfWriter(OutputWriter):
                 # EBD: exon boundary distance (GTF-informed, '.' when no GTF)
                 ebd = counts.exon_boundary_dist
                 info_parts.append(f"EBD={ebd if ebd is not None else '.'}")
-                # TXRC/TXFC: per-transcript counts (empty → '.', ';' → '|' for VCF)
+                # TXRC/TXFC: per-transcript counts, already '|'-separated by the engine
+                # (ME-2), so VCF-safe as-is; empty → '.'.
                 txrc = counts.transcript_read_counts
                 txfc = counts.transcript_fragment_counts
-                info_parts.append(f"TXRC={txrc.replace(';', '|') if txrc else '.'}")
-                info_parts.append(f"TXFC={txfc.replace(';', '|') if txfc else '.'}")
-                # P4c: ASJD VCF INFO values
+                info_parts.append(f"TXRC={txrc if txrc else '.'}")
+                info_parts.append(f"TXFC={txfc if txfc else '.'}")
+                # ASJD VCF INFO values
                 if counts.asjd_flag:
                     info_parts.append("ASJD")
                 if counts.asjd_pval < 1.0:

@@ -1,3 +1,8 @@
+---
+name: rna-annotation
+description: Reference for gbcms RNA mode — GTF-based transcript annotation (--gtf), the COITree AnnotationIndex, exon-boundary distance, per-transcript counts, and ASJD (allele-specific junction detection). Use when touching annotation/, rna.rs, or RNA output columns. Strandedness/sense-antisense gotchas live here.
+---
+
 # RNA Annotation & ASJD
 
 ## GTF-Based Annotation (`--gtf`)
@@ -22,13 +27,26 @@ Built once in `count_bam_binned()`, shared via `Arc` across rayon workers.
 ### ASJD (Allele-Specific Junction Detection)
 
 6 diagnostic flags per variant comparing splice junction usage:
-- `asjd_n_ref_known`: known junctions in REF-classified reads
-- `asjd_n_ref_novel`: novel junctions in REF-classified reads
-- `asjd_n_alt_known`: known junctions in ALT-classified reads
-- `asjd_n_alt_novel`: novel junctions in ALT-classified reads
-- `asjd_n_ref_total`: total junctions in REF reads
-- `asjd_n_alt_total`: total junctions in ALT reads
+- `asjd_n_ref_known` / `asjd_n_ref_novel` / `asjd_n_alt_known` / `asjd_n_alt_novel`
+- `asjd_n_ref_total` / `asjd_n_alt_total`
 - `asjd_diagnostic`: semicolon-separated diagnostic string
+
+Junction counts are **per fragment** (`JunctionTally` in `detect_asjd` dedups a
+molecule's R1+R2 by QNAME hash to one vote) — required so the strand-discordance and
+Fisher tests see independent observations, not mates. `LOW_*_JUNC` gate on
+`asjd_n_*_total`; `STRAND_DISCORDANT`/Fisher gate on `asjd_n_*_junc`.
+
+### Gotchas (verify before trusting RNA outputs)
+- `gene_strand` must be populated from the GTF or `is_sense_strand` returns true
+  for all reads → `antisense_depth` stays 0 and `enforce_strandedness` is a no-op.
+- Library strand protocol is selectable via `--strandedness` (`reverse` default /
+  `forward` / `unstranded`); the read→transcript fold lives in
+  `rna.rs::read_transcript_strand(record, Strandedness)`. `reverse` = dUTP/`-s 2`
+  (FORTE default). Wrong protocol → every junction looks strand-discordant. Confirm
+  with RSeQC `infer_experiment` or the upstream `featureCounts -s` flag.
+- The splice-motif classifier must account for minus-strand genes (revcomp), else
+  canonical junctions read as OTHER / NON_CANONICAL.
+- Contig naming: `chr`-strip alone does not reconcile `MT` vs `chrM`.
 
 ### Key Files
 - `rust/src/annotation/mod.rs`: AnnotationIndex, COITree queries

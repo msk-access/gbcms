@@ -11,7 +11,7 @@ The `--mfsd-report` flag generates a self-contained HTML file alongside standard
     gbcms dna --mfsd --mfsd-parquet --mfsd-report \
       -v variants.maf -b sample.bam -f ref.fa -o output/
     ```
-    This produces three outputs: a MAF with 34 mFSD columns, a `.fsd.parquet` with raw fragment arrays, and a `.mfsd_report.html` for interactive visualization.
+    This produces three outputs: a MAF with 41 mFSD columns, a `.fsd.parquet` with raw fragment arrays, and a `.mfsd_report.html` for interactive visualization.
 
 ---
 
@@ -149,7 +149,7 @@ To export: use your browser's **Print → Save as PDF** function.
 
 ## mFSD Output Columns
 
-For the complete reference of all 34 MAF columns and 7 VCF INFO fields added by `--mfsd`, see [Counting & Metrics → mFSD](counting-metrics.md#mfsd).
+For the complete reference of all 41 MAF columns and 13 VCF INFO fields added by `--mfsd`, see [Counting & Metrics → mFSD](counting-metrics.md#mfsd).
 
 ### Additional Columns (Physical Sizing)
 
@@ -160,7 +160,7 @@ These columns are added by the physical sizing engine (new in v4.1):
 | `mfsd_sub_nuc_ref_frac` | Fraction of REF fragments that are sub-nucleosomal (< 150 bp) |
 | `mfsd_sub_nuc_alt_frac` | Fraction of ALT fragments that are sub-nucleosomal |
 | `mfsd_sub_nuc_enrichment` | Ratio of ALT to REF sub-nucleosomal fractions |
-| `mfsd_mono_nuc_ref_frac` | Fraction of REF fragments in the mono-nucleosomal range (150–250 bp) |
+| `mfsd_mono_nuc_ref_frac` | Fraction of REF fragments in the mono-nucleosomal range (150–200 bp) |
 | `mfsd_mono_nuc_alt_frac` | Fraction of ALT fragments in the mono-nucleosomal range |
 | `mfsd_ch_flag` | Boolean flag indicating CH-like fragment size profile |
 

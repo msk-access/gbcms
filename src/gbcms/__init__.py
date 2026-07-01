@@ -8,7 +8,7 @@ Example usage:
     $ gbcms dna -v variants.vcf -b sample.bam -f reference.fa -o output/
 """
 
-__version__ = "5.3.0"
+__version__ = "6.0.0"
 
 from .merge import merge_mafs
 from .models.core import (

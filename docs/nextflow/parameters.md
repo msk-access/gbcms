@@ -30,7 +30,7 @@ Complete reference for all pipeline parameters.
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
-| `--mfsd` | `false` | Enable mFSD analysis — adds 34 mFSD columns to MAF and 7 `MFSD_*` INFO fields to VCF. See [mFSD metrics](../reference/counting-metrics.md#mfsd). |
+| `--mfsd` | `false` | Enable mFSD analysis — adds 41 mFSD columns to MAF and 13 `MFSD_*` INFO fields to VCF. See [mFSD metrics](../reference/counting-metrics.md#mfsd). |
 | `--mfsd_parquet` | `false` | Write a companion `<sample>.fsd.parquet` with raw per-variant fragment size arrays. Requires `--mfsd`. |
 | `--mfsd_report` | `false` | Generate an interactive HTML report with per-variant fragment size distributions. Implies `--mfsd` and `--mfsd_parquet`. See [mFSD Report](../reference/mfsd-report.md). |
 | `--mfsd_report_min_alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
@@ -40,7 +40,8 @@ Complete reference for all pipeline parameters.
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
-| `--min_mapq` | `20` | Minimum mapping quality |
+| `--min_mapq` | `20` | Minimum mapping quality for **DNA** counting |
+| `--rna_min_mapq` | `1` | Minimum mapping quality for **RNA** counting. Defaults to `1` to match the `gbcms rna` CLI: STAR gives uniquely-mapped reads MAPQ 255 but 2–4-locus multi-mappers MAPQ 3/1, so a DNA-style floor of 20 silently drops those primaries (~16% of reads genome-wide on a FORTE sample; up to ~6% of depth at an individual locus). Raise it to 20 for unique-only RNA counting. |
 | `--min_baseq` | `20` | Minimum base quality |
 | `--fragment_qual_threshold` | `10` | Quality margin for [fragment consensus](../reference/counting-metrics.md#fragment-counting) — when R1/R2 disagree on a non-INDEL variant, the higher-quality allele wins only if the difference exceeds this. INDEL conflicts with structural CIGAR evidence bypass this threshold. |
 | `--context_padding` | `5` | Minimum flanking bases for [Phase 3 alignment](../reference/allele-classification.md#phase-3-alignment-fallback) (auto-increased in repeats) |
@@ -70,10 +71,26 @@ These parameters are only used when `--mode rna` is specified.
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--rna_editing_db` | `''` | Path to [REDIportal](http://srv00.recas.ba.infn.it/atlas/index.html) editing database file (e.g., `TABLE1_hg38_v3.txt`). Flags ALT sites that overlap known A→I RNA editing positions. |
-| `--enforce_strandedness` | `true` | Enforce dUTP strand-specific library prep. Disable with `false` for unstranded RNA-seq libraries (`--no-strandedness` equivalent). |
+| `--enforce_strandedness` | `true` | Enforce strand-specific library prep. Disable with `false` for unstranded RNA-seq libraries (`--no-strandedness` equivalent). |
+| `--strandedness` | `'reverse'` | RNA library strand protocol: `'reverse'` (dUTP/fr-firststrand, featureCounts `-s 2` — the FORTE default), `'forward'` (fr-secondstrand, `-s 1`), or `'unstranded'` (`-s 0`). Sets the read→transcript-strand fold used by `--enforce_strandedness` and ASJD strand-discordance; `'unstranded'` disables both. |
+| `--library_type` | `'capture'` | `'capture'` (default) or `'amplicon'`. Amplicon mode treats R1 and R2 as **independent observations** (no fragment-level consensus) and auto-disables strandedness — use it for amplicon/primer-based RNA panels where mates aren't independent fragments. |
 
 !!! tip "RNA mode defaults"
     RNA mode uses different PairHMM gap penalties by default (`gap_open=5e-3`, `gap_extend=0.25`) to tolerate RT-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.
+
+## GTF Index Caching (RNA)
+
+Parsing a full Ensembl GTF takes ~9s. Across a cohort that cost is otherwise paid once **per sample**. The pipeline caches the parsed index so the GTF is parsed **once for the whole cohort** — the per-sample annotation load drops from ~9s to ~0.05s.
+
+| Parameter | Default | Description |
+|:----------|:--------|:------------|
+| `--gtf_cache` | `true` | When `--gtf` is set, pre-build the GTF index once per cohort so per-sample tasks skip the parse. Set `false` to disable (each sample re-parses). |
+
+**This is automatic — no extra wiring needed.** When `--mode rna` is run with a `--gtf` (and `--gtf_cache` is left `true`), the pipeline runs a single `GBCMS_BUILD_GTF_CACHE` process up front, using the cohort's `--gtf` and `--variants`. Every per-sample `GBCMS_RNA` task then receives the prebuilt cache directory (via the Nextflow DAG, so it is guaranteed ready first) and loads the index in ~0.05s instead of re-parsing.
+
+**Why the up-front build matters.** Nextflow launches up to `queueSize` tasks at once. If the cache did not already exist, every concurrently-launched sample would cold-miss and re-parse the GTF — so a plain cache saves nothing until a later wave, and nothing at all for a cohort smaller than `queueSize`. Building it once before the fan-out lets every sample start warm.
+
+The pre-build uses the cohort `--variants` file. With `--filter_by_sample`, each sample's variants are a per-sample subset; if a subset's chromosome set differs from the cohort's, that sample simply falls back to a normal parse (the cache is keyed on the variant chromosome set). Caching is best-effort throughout — a missing, corrupt, stale-version, or unwritable cache always falls back to a fresh parse and never affects counts.
 
 ## Alignment Backend (Advanced)
 

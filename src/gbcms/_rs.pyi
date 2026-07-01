@@ -69,6 +69,7 @@ class BaseCounts:
     mfsd_delta_alt_ref: float
     mfsd_ks_alt_ref: float
     mfsd_pval_alt_ref: float
+    mfsd_qval_alt_ref: float
     mfsd_delta_alt_nonref: float
     mfsd_ks_alt_nonref: float
     mfsd_pval_alt_nonref: float
@@ -130,6 +131,9 @@ class BaseCounts:
     asjd_n_ref_total: int
     asjd_n_alt_total: int
     asjd_diagnostic: str
+    # NON_DISCRIMINATING_LOCUS marker: a sibling combo reconstructs REF, so REF/ALT
+    # are sequence-indistinguishable (PairHMM backend) and reads tie to NEITHER.
+    non_discriminating_locus: bool
     # Copy-on-write method for MNP rescue pass (BaseCounts is frozen from Python)
     def with_ad(self, new_ad: int) -> BaseCounts:
         """Return a copy with `ad` replaced by `new_ad`."""
@@ -140,7 +144,11 @@ class PreparedVariant:
     original_pos: int
     original_ref: str
     original_alt: str
-    gbcms_status: str
+    gbcms_status: str  # verdict: "PASS" or "FAIL"
+    # Status reason tags, '|'-separated; empty when a clean PASS.
+    # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC.
+    # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, ALT_CONTAINS_N.
+    gbcms_status_reason: str
     # Post-counting diagnostic flags (set by pipeline._compute_diagnostics).
     # Semicolon-separated. Empty string when no diagnostics.
     # Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
@@ -179,6 +187,8 @@ def count_bam(
     hmm_gap_extend_repeat: float = 0.5,
     mode: str = "dna",
     enforce_strandedness: bool = False,
+    strandedness: str = "reverse",
+    reference_fasta: str | None = None,
 ) -> list[BaseCounts]: ...
 def count_bam_binned(
     bam_path: str,
@@ -205,11 +215,19 @@ def count_bam_binned(
     umi_tag: str | None = None,
     mode: str = "dna",
     enforce_strandedness: bool = False,
+    strandedness: str = "reverse",
+    mfsd: bool = False,
     rna_editing_db: str | None = None,
     gtf_path: str | None = None,
+    gtf_cache_dir: str | None = None,
     reference_fasta: str | None = None,
     library_type: str = "capture",
 ) -> list[BaseCounts]: ...
+def build_gtf_cache(
+    gtf_path: str,
+    variant_chroms: list[str],
+    cache_dir: str,
+) -> int: ...
 def prepare_variants(
     variants: list[Variant],
     reference_fasta: str,
