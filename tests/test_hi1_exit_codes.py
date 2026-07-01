@@ -66,6 +66,48 @@ def test_dna_exits_zero_on_empty_variant_file(tmp_path, sample_bam, sample_fasta
     assert res.exit_code == 0, res.output
 
 
+def test_dna_all_rejected_writes_reasons_to_output(tmp_path, sample_bam, sample_fasta):
+    """When every variant is rejected in prep (here: a contig the reference lacks →
+    FAIL_FETCH_FAILED), the run still exits 0 AND writes each variant with its reason in
+    the `gbcms_status` column — so failure reasons live in the OUTPUT, not just the log."""
+    vcf = tmp_path / "absent_contig.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr_absent>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr_absent\t100\t.\tA\tT\t.\t.\t.\n"
+        "chr_absent\t200\t.\tC\tG\t.\t.\t.\n"
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    res = runner.invoke(
+        app,
+        [
+            "dna",
+            "-v",
+            str(vcf),
+            "-b",
+            sample_bam,
+            "-f",
+            sample_fasta,
+            "-o",
+            str(out),
+            "--format",
+            "maf",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+
+    mafs = list(out.glob("*.maf"))
+    assert len(mafs) == 1, f"expected one MAF written, got {mafs}"
+    rows = [ln for ln in mafs[0].read_text().splitlines() if ln and not ln.startswith("#")]
+    header, *data = rows
+    status_idx = header.split("\t").index("gbcms_status")
+    assert data, "rejected variants must still be written as rows"
+    assert all(
+        r.split("\t")[status_idx].startswith("FAIL_") for r in data
+    ), "every rejected variant must carry its FAIL_* reason in gbcms_status"
+
+
 class _FakePipeline:
     """Stand-in for Pipeline that returns a fixed run() result — isolates the CLI
     exit-code wiring from the actual counting (which depends on fixture contigs)."""

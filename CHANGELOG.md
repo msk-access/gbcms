@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   legitimately has no variants called still exits `0`, so per-sample workflows don't fail on
   it. Successful runs are unchanged (exit 0).
 
+- **Rejected variants keep their reason in the output.** When *every* variant is rejected
+  during preparation (e.g. a contig mismatch → `FAIL_FETCH_FAILED`), the run no longer
+  short-circuits with no output — it now writes each variant with its `FAIL_*` reason in the
+  `gbcms_status` column (and zero counts), so the reasons are in the output file, not only
+  the log. (Partial rejections already did this; this closes the all-rejected gap.)
+
 ### 🔄 Changed
 
 - **`--threads` is now a hard, validated thread budget.** It is the *total* worker
