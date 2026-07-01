@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔄 Changed
 
+- **Fragment-count consensus is labeled accurately (ME-12).** The stale "Majority Rule"
+  comment on the `BaseCounts` fragment fields (`DPF`/`RDF`/`ADF`) is replaced with
+  "quality-weighted consensus with an INDEL structural-priority override and a discard
+  band," pointing at `FragmentEvidence::resolve` — which is what the code has always done.
+  No behavior change. The alternative of gating a structural-ALT INDEL win on the REF mate's
+  base quality was considered and rejected (anchor BQ is orthogonal to INDEL-detection
+  confidence; see `REJECTED.md`).
+
 - **Per-transcript count columns now use `|` between transcripts, not `;` (ME-2).**
   `transcript_read_counts` / `transcript_fragment_counts` (MAF) and `TXRC` / `TXFC` (VCF)
   separate transcripts with `|` — e.g. `ENST…:AD,RD,DP|ENST…:AD,RD,DP`. `;` is the VCF INFO
