@@ -534,6 +534,18 @@ Docs updated (rna-annotation.md, output-formats.md MAF section, the Rust doc-com
 ## LO-1 — Duplicated `.pyi` stubs; `count_bam` stub missing params
 `src/gbcms/_rs.pyi` and `src/gbcms_rs.pyi` are byte-duplicates kept in sync by hand; both `count_bam` stubs omit `reference_fasta`/sibling params present in the real signature (`engine.rs:272`). **Fix:** generate one stub, symlink/re-export the other; regenerate from the actual `#[pyo3(signature)]`. **Effort:** XS.
 
+**Status: Resolved (2026-07-01).** The premise was even stronger than reported: the two
+files had already **drifted** (`src/gbcms_rs.pyi` was 435 B smaller — missing the ME-1
+nucleosomal fields *and* `fisher_exact_2x2` entirely), and the top-level `gbcms_rs` module
+they'd stub **isn't importable** — the extension is `gbcms._rs` (`pyproject module-name`,
+`Cargo lib name = "_rs"`), and every consumer does `from gbcms import _rs` (tests alias it
+`as gbcms_rs`, but `import gbcms_rs` fails). So `src/gbcms_rs.pyi` stubbed a non-existent
+module and shipped nowhere (PEP 561 uses the co-located `src/gbcms/_rs.pyi` + `py.typed`).
+**Done:** deleted the orphan `src/gbcms_rs.pyi`; added the missing `reference_fasta=None`
+to the `count_bam` stub in `src/gbcms/_rs.pyi` (the `sibling_variants` param was already
+present); updated the "dual stub, keep synced" guidance (invariant #5, `architecture.md`,
+`rust-python-ffi`/`add-feature` skills) to the single-stub reality.
+
 ## LO-2 — Legacy `count_bam` (one fetch per variant) still exported
 `lib.rs:15` exports `count_bam`; pipeline only calls `count_bam_binned`. It fetches per variant (`engine.rs:1574`) — the O(seeks) pattern binning replaced — and doubles maintenance for parity. **Fix:** gate behind a `test-only` feature or remove after parity sign-off; keep one as the parity oracle in tests. **Effort:** S.
 

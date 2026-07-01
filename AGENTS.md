@@ -32,8 +32,10 @@ native Parquet, Rayon per-bin parallelism. Full module map: `.agents/rules/archi
    `gene_strand`) across the FFI boundary over computing-then-discarding or running
    silent no-ops in Rust.
 4. **0-based internal coords**, 1-based at the VCF/MAF boundary. Convert at the edge.
-5. **Type stubs stay synced.** `src/gbcms/_rs.pyi` is authoritative; `src/gbcms_rs.pyi`
-   mirrors it. Both must match the `#[pyo3(get)]` fields exactly.
+5. **Type stub tracks the bindings.** `src/gbcms/_rs.pyi` is the single stub for the
+   `gbcms._rs` extension module; it must match the `#[pyo3(get)]` fields and
+   `#[pyo3(signature)]` params exactly. (There is no second stub — the old top-level
+   `src/gbcms_rs.pyi` mirrored a module that isn't imported and was removed in LO-1.)
 6. **mFSD/RNA columns are gated** — absent when off, never NA-filled.
 
 ## Counting test invariants (assert in every counting test)
