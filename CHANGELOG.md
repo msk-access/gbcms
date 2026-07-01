@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- **Contig-naming mismatches no longer silently produce zero counts.** When the BAM's
+  contigs were named differently from the variants (UCSC `chr1` vs Ensembl/b37 `1`), the
+  binning step found no matching contig, built 0 bins, and returned zero counts for every
+  variant while the run still exited 0 — a systematic failure masked as success. `resolve_tid`
+  now reconciles the naming via `normalize_contig` (so `chr1`↔`1`, `chrM`↔`MT` match), and a
+  genuinely-absent chromosome now logs a loud `WARN` (once per chromosome) instead of being
+  skipped silently. (MSK ACCESS runs were unaffected — BAMs and MAFs both use b37 naming.)
+  Surfaced by the new end-to-end MAF test.
+
 - **A run now exits non-zero when a sample fails (HI-1).** `Pipeline.run()` catches
   per-sample errors and returns normally, so `gbcms dna`/`rna` previously exited `0` even
   when every BAM failed (e.g. a Rust panic surfaced as `PyErr`) — masking systematic
