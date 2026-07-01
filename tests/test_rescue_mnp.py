@@ -31,6 +31,7 @@ def _mock_prepared_variant(
     ref_allele: str = "CCCCC",
     alt_allele: str = "CTCCC",
     gbcms_status: str = "PASS",
+    gbcms_status_reason: str = "",
     gbcms_diagnostic: str = "",
     gbcms_rescue: str = "",
 ):
@@ -44,6 +45,7 @@ def _mock_prepared_variant(
     return types.SimpleNamespace(
         variant=variant,
         gbcms_status=gbcms_status,
+        gbcms_status_reason=gbcms_status_reason,
         gbcms_diagnostic=gbcms_diagnostic,
         gbcms_rescue=gbcms_rescue,
         was_anchor_resolved=False,
@@ -214,7 +216,7 @@ def test_rescue_candidate_identification():
 
     candidates = []
     for i, (p, c) in enumerate(zip(prepared, full_counts, strict=True)):
-        if not p.gbcms_status.startswith("PASS"):
+        if p.gbcms_status != "PASS":
             continue
         if c.ad != 0:
             continue
@@ -295,13 +297,14 @@ def test_rescue_skips_fail():
     pv = _mock_prepared_variant(
         ref_allele="CCCCC",
         alt_allele="CTCCC",
-        gbcms_status="FAIL;REF_MISMATCH",
+        gbcms_status="FAIL",
+        gbcms_status_reason="REF_MISMATCH",
         gbcms_diagnostic="",
     )
     _mock_counts(ad=0)
 
     # Should not be a candidate
-    assert not pv.gbcms_status.startswith("PASS")
+    assert pv.gbcms_status != "PASS"
 
 
 # ── Test 10: Rescue audit trail format ────────────────────────────────────────
@@ -354,7 +357,7 @@ def test_rescue_no_signal_format():
 
 
 def test_column_count_with_rescue():
-    """With rescue_mnp=True, there should be 26 columns (25 base + gbcms_rescue)."""
+    """With rescue_mnp=True, there should be 27 columns (26 base + gbcms_rescue)."""
     writer = MafWriter.__new__(MafWriter)
     writer.column_prefix = ""
     writer.mfsd = False
@@ -363,8 +366,8 @@ def test_column_count_with_rescue():
     writer.rescue_mnp = True
 
     cols = writer._gbcms_column_names()
-    assert len(cols) == 26, f"Expected 26 gbcms MAF columns with rescue, got {len(cols)}: {cols}"
-    assert cols[2] == "gbcms_rescue", f"gbcms_rescue should be the 3rd column, got {cols[2]}"
+    assert len(cols) == 27, f"Expected 27 gbcms MAF columns with rescue, got {len(cols)}: {cols}"
+    assert cols[3] == "gbcms_rescue", f"gbcms_rescue should be the 4th column, got {cols[3]}"
 
 
 # ── Test 13: Invariant breakage after rescue ─────────────────────────────────

@@ -79,7 +79,8 @@ self-describing.
     ##contig=<ID=chr2,length=242193529>
     ##FILTER=<ID=PASS,Description="All filters passed">
     ##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
-    ##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">
+    ##INFO=<ID=GS,Number=1,Type=String,Description="gbcms verdict: PASS or FAIL">
+    ##INFO=<ID=GSR,Number=1,Type=String,Description="gbcms status reason tags, |-separated (. when none)">
     ##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">
     ##INFO=<ID=GR,Number=1,Type=String,Description="gbcms rescue audit trail">
     ##INFO=<ID=AAD,Number=1,Type=Integer,Description="Any ALT Depth (any_alt = ad + partial_alt)">
@@ -403,7 +404,8 @@ These columns are **always** appended regardless of input format.
 
     | Column | Type | Description |
     |:-------|:-----|:------------|
-    | `gbcms_status` | String | Normalization/counting status. Semicolon-separated multi-value. First token is always `PASS` or `FAIL_*`. Examples: `PASS`, `PASS;WARN_REF_CORRECTED`, `FAIL_REF_MISMATCH`. |
+    | `gbcms_status` | String | Verdict: exactly `PASS` or `FAIL`. |
+    | `gbcms_status_reason` | String | Reason tag(s), `\|`-separated; empty for a clean PASS. PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`. FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `ALT_CONTAINS_N`. Reasons stack, e.g. `WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP`. Identical string in the VCF `GSR` INFO. |
     | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: `ZERO_ALT`, `PARTIAL_DOMINANT`, `MNP_DISC_RATIO(n/m)`, `MNP_RESCUE_ELIGIBLE`, `HIGH_N_FRACTION(f)`, and `NON_DISCRIMINATING_LOCUS` — the last (PairHMM backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed `ref_count`/`alt_count` at a covered locus rather than leaving it silent. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`. |
     | `gbcms_rescue` | String | **Conditional** — only present when `--rescue-mnp` is enabled. Structured audit trail for MNP decomposition rescue. Format: `method=decomposed;original_alt=0;positions=chr:pos(R>A):count,...`. Empty when no rescue was attempted. Failed rescues include `outcome=no_signal`. |
     | `ref_count` | Integer | REF read depth |

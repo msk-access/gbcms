@@ -103,7 +103,7 @@ gbcms automatically **left-aligns** indels and complex variants during the prepa
   naming convention compatible with your variant file. (The `chr`-prefix and `M`/`MT`
   differences between the **BAM** and the variants are auto-reconciled — see below — but the
   reference anchor is fetched by name, so a variant whose contig is absent from the FASTA is
-  rejected with `FAIL_FETCH_FAILED`.)
+  rejected with verdict `FAIL` and reason `FETCH_FAILED`.)
 
 ```bash
 # Create index if missing

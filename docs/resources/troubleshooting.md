@@ -78,9 +78,9 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     auto-reconciled — you do **not** need to pre-harmonize them. A contig that has no match
     in the BAM is skipped with a one-time `WARN` (not a silent zero-count). The **reference
     FASTA**, however, is fetched by the variant's contig name, so the FASTA must contain that
-    contig — otherwise the variant is rejected with `FAIL_FETCH_FAILED`.
+    contig — otherwise the variant is rejected with verdict `FAIL`, reason `FETCH_FAILED`.
 
-??? question "`FAIL_FETCH_FAILED` in `gbcms_status` for all variants on a chromosome"
+??? question "`FETCH_FAILED` reason (verdict `FAIL`) for all variants on a chromosome"
 
     This means the **reference FASTA** anchor could not be fetched for that contig. Because
     BAM↔variant contig naming is auto-reconciled, this is now almost always a FASTA problem,
@@ -215,10 +215,10 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     Diagnose with:
     ```bash
     gbcms normalize --variants variants.maf --fasta ref.fa --output /tmp/norm/normalized.tsv
-    grep "FAIL_REF_MISMATCH" /tmp/norm/normalized.tsv | head -5   # gbcms_status column
+    grep "REF_MISMATCH" /tmp/norm/normalized.tsv | head -5   # matches the gbcms_status_reason column
     ```
 
-??? question "`PASS;WARN_REF_CORRECTED` — is this a problem?"
+??? question "`WARN_REF_CORRECTED` reason (verdict `PASS`) — is this a problem?"
 
     The REF allele was ≥90% match — corrected to FASTA sequence and counting proceeded normally.
     The original MAF REF is preserved in the `original_ref` column (when `--show-normalization` is set).
@@ -228,10 +228,10 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     If you want to audit all corrected variants:
     ```bash
-    grep "PASS;WARN_REF_CORRECTED" output.maf | wc -l
+    grep "WARN_REF_CORRECTED" output.maf | wc -l   # matches the gbcms_status_reason column
     ```
 
-??? question "`PASS;WARN_HOMOPOLYMER_DECOMP` — what changed?"
+??? question "`WARN_HOMOPOLYMER_DECOMP` reason (verdict `PASS`) — what changed?"
 
     The variant overlapped a homopolymer, and the corrected allele (e.g., `CCCCCC→CCCCT` instead
     of `CCCCCC→T`) got more ALT support. The corrected allele counts were used.

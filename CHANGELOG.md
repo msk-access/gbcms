@@ -42,6 +42,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔄 Changed
 
+- **`gbcms_status` is split into a verdict + a reason field (breaking output change).**
+  The status is now two fields with a consistent grammar in both formats: a verdict
+  (`gbcms_status` = exactly `PASS` or `FAIL`) and a `|`-separated reason list
+  (`gbcms_status_reason`, empty for a clean PASS). MAF gains the `gbcms_status_reason`
+  column; VCF gains a `GSR` INFO key. Reason tags dropped their verdict prefix
+  (`FAIL_REF_MISMATCH` → verdict `FAIL` + reason `REF_MISMATCH`; `PASS;WARN_REF_CORRECTED`
+  → verdict `PASS` + reason `WARN_REF_CORRECTED`). Reasons now **stack** with `|`
+  (`WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP`), which also fixes a bug where a
+  REF-correction warning was silently dropped on the success path and where
+  `WARN_HOMOPOLYMER_DECOMP` overwrote any existing reason. `|` is used (never `;`/`,`,
+  both VCF-INFO-unsafe), so the reason string is byte-identical in the MAF column and the
+  VCF `GSR` — no format-specific conversion. **Consumers filtering on `FAIL_FETCH_FAILED`
+  etc. must switch to `gbcms_status == "FAIL"` + a `gbcms_status_reason` check.**
+
 - **Fragment-count consensus is labeled accurately (ME-12).** The stale "Majority Rule"
   comment on the `BaseCounts` fragment fields (`DPF`/`RDF`/`ADF`) is replaced with
   "quality-weighted consensus with an INDEL structural-priority override and a discard

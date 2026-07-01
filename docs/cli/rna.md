@@ -117,7 +117,7 @@ These options are **only available** on `gbcms rna`, not on `gbcms dna`.
     When a GTF file is provided, gbcms builds a `COITree`-based annotation index and adds:
 
     - **`exon_boundary_dist`** — Signed distance to the nearest exon boundary (positive = exonic, negative = intronic)
-    - **Per-transcript read/fragment counts** — Semicolon-separated `GENE:TX:READ_COUNT` and `GENE:TX:FRAG_COUNT` strings
+    - **Per-transcript read/fragment counts** — `|`-separated `GENE:TX:READ_COUNT` and `GENE:TX:FRAG_COUNT` strings
     - **ASJD detection** — 14 columns for Aberrant Splice Junction Detection, comparing read splice junctions against annotated transcript splice sites
 
     See [RNA Annotation](../reference/rna-annotation.md) for full details.

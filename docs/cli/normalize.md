@@ -49,7 +49,8 @@ This is useful for:
 | `norm_ref` | Left-aligned REF allele |
 | `norm_alt` | Left-aligned ALT allele |
 | `variant_type` | SNP, INSERTION, DELETION, or COMPLEX |
-| `gbcms_status` | `PASS`, `PASS;WARN_HOMOPOLYMER_DECOMP`, `REF_MISMATCH`, or `FETCH_FAILED` |
+| `gbcms_status` | Verdict: `PASS` or `FAIL` |
+| `gbcms_status_reason` | `\|`-separated reason tags, empty for a clean PASS (e.g. `WARN_REF_CORRECTED`, `REF_MISMATCH`, `FETCH_FAILED`) |
 | `was_anchor_resolved` | Whether MAF anchor resolution changed pos/ref/alt |
 | `was_left_aligned` | Whether left-alignment shifted the variant |
 | `was_normalized` | Combined: `True` if either anchor resolution or left-alignment changed the variant |

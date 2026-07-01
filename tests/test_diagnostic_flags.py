@@ -9,7 +9,7 @@ Covers:
 6.  Multi-flag combination (ZERO_ALT + MNP_DISC_RATIO + MNP_RESCUE_ELIGIBLE)
 7.  FAIL variants never get diagnostics
 8.  Clean PASS variant has empty gbcms_diagnostic
-9.  Multi-value gbcms_status (PASS;MULTI_ALLELIC) still gets diagnostics
+9.  A PASS variant with reason tags (e.g. MULTI_ALLELIC) still gets diagnostics
 10. Parametric flag values are correctly formatted
 11. PARTIAL_DOMINANT does NOT fire when partial_alt == ad
 12. MNP_DISC_RATIO does NOT fire for SNPs or indels
@@ -31,6 +31,7 @@ def _mock_prepared_variant(
     alt_allele: str = "T",
     variant_type: str = "SNP",
     gbcms_status: str = "PASS",
+    gbcms_status_reason: str = "",
 ):
     """Create a mock PreparedVariant with the minimum fields needed."""
     return types.SimpleNamespace(
@@ -42,6 +43,7 @@ def _mock_prepared_variant(
             variant_type=variant_type,
         ),
         gbcms_status=gbcms_status,
+        gbcms_status_reason=gbcms_status_reason,
         gbcms_diagnostic="",
         gbcms_rescue="",
     )
@@ -180,7 +182,7 @@ def test_multi_flag_combination():
 
 def test_fail_variants_get_no_diagnostics():
     """FAIL variants should never receive diagnostic flags."""
-    pv = _mock_prepared_variant(gbcms_status="FAIL_REF_MISMATCH")
+    pv = _mock_prepared_variant(gbcms_status="FAIL", gbcms_status_reason="REF_MISMATCH")
     counts = _mock_counts(ad=0, n_count=50, dp=100)
     _make_pipeline()._compute_diagnostics([pv], [counts])
     assert pv.gbcms_diagnostic == ""
@@ -201,8 +203,8 @@ def test_clean_pass_has_empty_diagnostic():
 
 
 def test_multi_value_status_gets_diagnostics():
-    """PASS;MULTI_ALLELIC status should still receive diagnostic flags."""
-    pv = _mock_prepared_variant(gbcms_status="PASS;MULTI_ALLELIC")
+    """A PASS variant with reason tags (e.g. MULTI_ALLELIC) still gets diagnostics."""
+    pv = _mock_prepared_variant(gbcms_status="PASS", gbcms_status_reason="MULTI_ALLELIC")
     counts = _mock_counts(ad=0)
     _make_pipeline()._compute_diagnostics([pv], [counts])
     assert "ZERO_ALT" in pv.gbcms_diagnostic

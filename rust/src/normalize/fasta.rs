@@ -68,17 +68,18 @@ pub(crate) fn fetch_single_base(
 /// Tries both the given chromosome name and with/without "chr" prefix.
 ///
 /// # Returns
-/// Tuple of `(status, Option<fasta_ref>)`:
-/// - `("PASS", None)` — exact match
-/// - `("PASS_WARN_REF_CORRECTED", Some(fasta_ref))` — ≥90% match, corrected
-/// - `("REF_MISMATCH", None)` — <90% match, rejected
-/// - `("FETCH_FAILED", None)` — region could not be fetched
+/// Tuple of `(verdict, reason, Option<fasta_ref>)`, where `verdict` is `"PASS"` or
+/// `"FAIL"` and `reason` is the (possibly empty) reason tag:
+/// - `("PASS", "", None)` — exact match
+/// - `("PASS", "WARN_REF_CORRECTED", Some(fasta_ref))` — ≥90% match, corrected
+/// - `("FAIL", "REF_MISMATCH", None)` — <90% match, rejected
+/// - `("FAIL", "FETCH_FAILED", None)` — region could not be fetched
 pub(crate) fn validate_ref(
     reader: &mut fasta::IndexedReader<File>,
     chrom: &str,
     pos_0based: i64,
     ref_allele: &str,
-) -> (String, Option<String>) {
+) -> (String, String, Option<String>) {
     let ref_len = ref_allele.len() as u64;
     let pos = pos_0based as u64;
 
@@ -87,12 +88,12 @@ pub(crate) fn validate_ref(
         Ok(ref_seq) => {
             // Fast path: exact match
             if ref_seq.eq_ignore_ascii_case(ref_allele.as_bytes()) {
-                ("PASS".to_string(), None)
+                ("PASS".to_string(), String::new(), None)
             } else {
                 // Compute similarity: count matching bases (case-insensitive)
                 let max_len = ref_seq.len().max(ref_allele.len());
                 if max_len == 0 {
-                    return ("FAIL_REF_MISMATCH".to_string(), None);
+                    return ("FAIL".to_string(), "REF_MISMATCH".to_string(), None);
                 }
                 let matches = ref_seq
                     .iter()
@@ -112,13 +113,17 @@ pub(crate) fn validate_ref(
                         max_len,
                         similarity * 100.0,
                     );
-                    ("PASS;WARN_REF_CORRECTED".to_string(), Some(fasta_ref))
+                    (
+                        "PASS".to_string(),
+                        "WARN_REF_CORRECTED".to_string(),
+                        Some(fasta_ref),
+                    )
                 } else {
-                    ("FAIL_REF_MISMATCH".to_string(), None)
+                    ("FAIL".to_string(), "REF_MISMATCH".to_string(), None)
                 }
             }
         }
-        Err(_) => ("FAIL_FETCH_FAILED".to_string(), None),
+        Err(_) => ("FAIL".to_string(), "FETCH_FAILED".to_string(), None),
     }
 }
 
