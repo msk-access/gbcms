@@ -489,7 +489,7 @@ These columns are **always** appended regardless of input format.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `transcript_read_counts` | String | Semicolon-separated per-transcript read-level count triplets. Format: `ENST...:AD,RD,DP;ENST...:AD,RD,DP`. Example: `ENST00000269305:11,140,162;ENST00000445888:7,95,108`. Empty when no GTF or no overlapping transcripts. |
+| `transcript_read_counts` | String | Pipe-separated per-transcript read-level count triplets. Format: `ENST...:AD,RD,DP\|ENST...:AD,RD,DP`. Example: `ENST00000269305:11,140,162\|ENST00000445888:7,95,108`. Empty when no GTF or no overlapping transcripts. |
 | `transcript_fragment_counts` | String | Same format as `transcript_read_counts` but with fragment-level counts: `ENST...:ADF,RDF,DPF`. Fragment counts ≤ read counts for each transcript. |
 
 #### Aberrant Splice Junction Detection (ASJD)

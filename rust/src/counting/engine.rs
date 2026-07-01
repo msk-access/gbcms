@@ -2367,8 +2367,9 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
 ///
 /// # Format
 ///
-/// Read:     `"ENST...:AD,RD,DP;ENST...:AD,RD,DP"`
-/// Fragment: `"ENST...:ADF,RDF,DPF;ENST...:ADF,RDF,DPF"`
+/// Read:     `"ENST...:AD,RD,DP|ENST...:AD,RD,DP"`
+/// Fragment: `"ENST...:ADF,RDF,DPF|ENST...:ADF,RDF,DPF"`
+/// Transcripts are separated by `|` (VCF-INFO-safe; ME-2); fields within an entry by `:`/`,`.
 ///
 /// # Performance
 ///
@@ -2555,7 +2556,12 @@ fn count_per_transcript(
         return (String::new(), String::new());
     }
 
-    (read_entries.join(";"), frag_entries.join(";"))
+    // ME-2: separate transcripts with '|' (not ';'). ';' is the VCF INFO field separator,
+    // so a ';'-joined value corrupts VCF INFO parsing — which is why the writer used to
+    // repair ';'→'|' for VCF only, leaving MAF inconsistent. Joining with '|' here makes
+    // MAF, VCF, and the documented `ENST:AD,RD,DP|…` header all agree. (Within an entry,
+    // ':'/',' are the field separators — unaffected.)
+    (read_entries.join("|"), frag_entries.join("|"))
 }
 
 

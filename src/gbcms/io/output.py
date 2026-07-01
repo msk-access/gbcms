@@ -957,11 +957,12 @@ class VcfWriter(OutputWriter):
                 # EBD: exon boundary distance (GTF-informed, '.' when no GTF)
                 ebd = counts.exon_boundary_dist
                 info_parts.append(f"EBD={ebd if ebd is not None else '.'}")
-                # TXRC/TXFC: per-transcript counts (empty → '.', ';' → '|' for VCF)
+                # TXRC/TXFC: per-transcript counts, already '|'-separated by the engine
+                # (ME-2), so VCF-safe as-is; empty → '.'.
                 txrc = counts.transcript_read_counts
                 txfc = counts.transcript_fragment_counts
-                info_parts.append(f"TXRC={txrc.replace(';', '|') if txrc else '.'}")
-                info_parts.append(f"TXFC={txfc.replace(';', '|') if txfc else '.'}")
+                info_parts.append(f"TXRC={txrc if txrc else '.'}")
+                info_parts.append(f"TXFC={txfc if txfc else '.'}")
                 # ASJD VCF INFO values
                 if counts.asjd_flag:
                     info_parts.append("ASJD")
