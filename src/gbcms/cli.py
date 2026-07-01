@@ -187,8 +187,8 @@ def dna(
         "--mfsd",
         help=(
             "Enable Mutant Fragment Size Distribution (mFSD) analysis. "
-            "Adds 34 mFSD columns (KS test, LLR, mean sizes, pairwise "
-            "comparisons, derived metrics) to MAF output and 7 MFSD INFO "
+            "Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise "
+            "comparisons, derived metrics) to MAF output and 13 MFSD INFO "
             "fields to VCF. See docs/reference/counting-metrics.md#mfsd."
         ),
     ),

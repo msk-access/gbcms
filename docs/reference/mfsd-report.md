@@ -11,7 +11,7 @@ The `--mfsd-report` flag generates a self-contained HTML file alongside standard
     gbcms dna --mfsd --mfsd-parquet --mfsd-report \
       -v variants.maf -b sample.bam -f ref.fa -o output/
     ```
-    This produces three outputs: a MAF with 34 mFSD columns, a `.fsd.parquet` with raw fragment arrays, and a `.mfsd_report.html` for interactive visualization.
+    This produces three outputs: a MAF with 41 mFSD columns, a `.fsd.parquet` with raw fragment arrays, and a `.mfsd_report.html` for interactive visualization.
 
 ---
 
@@ -149,7 +149,7 @@ To export: use your browser's **Print → Save as PDF** function.
 
 ## mFSD Output Columns
 
-For the complete reference of all 34 MAF columns and 7 VCF INFO fields added by `--mfsd`, see [Counting & Metrics → mFSD](counting-metrics.md#mfsd).
+For the complete reference of all 41 MAF columns and 13 VCF INFO fields added by `--mfsd`, see [Counting & Metrics → mFSD](counting-metrics.md#mfsd).
 
 ### Additional Columns (Physical Sizing)
 

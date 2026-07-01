@@ -460,6 +460,15 @@ adding decode threads on top of the rayon budget. See §"M5 — empirical scopin
 # MEDIUM
 
 ## ME-1 — `sub_nuc`/`mono_nuc` fields computed but dropped from VCF
+**Status: Done (2026-07-01).** Chose VCF↔MAF parity (they're computed under `--mfsd` and
+already in MAF — output them, don't discard). Added 5 INFO fields to the VCF mFSD block —
+`MFSD_SUB_NUC_REF_FRAC`, `MFSD_SUB_NUC_ALT_FRAC`, `MFSD_SUB_NUC_ENRICHMENT`,
+`MFSD_MONO_NUC_REF_FRAC`, `MFSD_MONO_NUC_ALT_FRAC` (header + data row), taking VCF from 8 to
+**13** mFSD INFO fields. Also corrected pre-existing count drift in docs/CLI help (MAF is
+**41** mFSD columns, not 34; VCF is **13**, not 7) and added the new rows to the VCF field
+tables. Tests: `test_vcf_writer_mfsd_info_when_enabled` (13 header lines) +
+`test_vcf_writer_mfsd_subnuc_values_in_data_row`.
+
 **Locations:** computed `engine.rs:1494-1502`, MAF `output.py:583-587`, VCF block `output.py:916-925` (omits them). **Fix:** either add `MFSD_SUB_NUC_*`/`MFSD_MONO_NUC_*` INFO fields to `_write_header`/`write`, or skip computing them when output is VCF (couple with PF-1's gate). Decide intended VCF surface. **Effort:** S.
 
 ## ME-2 — Transcript-count delimiter `;` vs documented `|`
