@@ -58,9 +58,11 @@ M1–M4 and the load-bearing M5 items (LO-14 / PF-1 / M5a) are done. Remaining, 
 1. **M5 leftovers (optional):** **PF-2** (bin cost-sort — niche; cfDNA has no long-pole),
    **LO-3** (document the bin-span soft floor, don't cap), and **M5b** (deep-bin fetch
    reduction — the only remaining cfDNA lever, parity-sensitive; not started).
-2. **M6 — Hygiene & contracts** (HI-1 exit codes, ME-1/2/12 output parity, LO-1/4–8/13
-   docs/stubs/numerics): the next substantive milestone. Continuous cleanup; DX-1 + LO-2
-   already landed.
+2. **M6 — Hygiene & contracts** — started. **HI-1 done** (a run now exits non-zero when
+   samples fail — no more masking failure as success under Nextflow). Also **CI now runs
+   `cargo test` + clippy** (both feature configs; the Rust suite/parity oracle finally gate
+   CI). Remaining: ME-1/2/12 (output parity), LO-1/4–8/13 (docs/stubs/numerics); DX-1 + LO-2
+   already landed. Continuous cleanup.
 
 ## Open follow-ups (tracked, not lost)
 - ✅ BAM-level binned↔legacy parity gate, incl. large deletions — **done (#46)**.

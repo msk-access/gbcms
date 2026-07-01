@@ -87,6 +87,40 @@ def _is_compressed_vcf(path: Path) -> bool:
     return any(name_lower.endswith(suffix) for suffix in _COMPRESSED_VCF_SUFFIXES)
 
 
+def _exit_on_sample_failure(result: dict) -> None:
+    """Propagate per-sample *failures* to the process exit code (HI-1).
+
+    ``Pipeline.run()`` catches per-sample errors, records them in ``failed_samples``,
+    and returns normally, so a run where a BAM failed (e.g. a Rust panic surfaced as
+    ``PyErr``) would otherwise exit ``0`` and read as success to an orchestrator like
+    Nextflow. This exits **non-zero** only when a sample actually failed.
+
+    An **empty variant set is NOT a failure**: a sample can legitimately have no variants
+    called, and per-sample workflows must not fail that task. Those runs process zero
+    samples but record no ``failed_samples`` (the pipeline logs "No variants found …"),
+    and they exit ``0`` here.
+
+    Must be called **outside** the command's ``try/except Exception`` block: ``typer.Exit``
+    subclasses ``RuntimeError``, so raising it inside that block would be swallowed and
+    re-logged as a generic "Pipeline failed".
+    """
+    failed = result.get("failed_samples", [])
+    if not failed:
+        # Full success, OR a legitimately empty/rejected variant set — both exit 0.
+        return
+
+    processed = int(result.get("samples_processed", 0))
+    if processed > 0:
+        logger.error(
+            "%d of %d sample(s) failed — exiting with code 1.",
+            len(failed),
+            processed + len(failed),
+        )
+    else:
+        logger.error("All %d sample(s) failed — exiting with code 1.", len(failed))
+    raise typer.Exit(code=1)
+
+
 def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
@@ -489,12 +523,15 @@ def dna(
             rescue_mnp_threshold=rescue_mnp_threshold,
         )
 
-        pipeline = Pipeline(config)
-        pipeline.run()
+        result = Pipeline(config).run()
 
     except Exception as e:
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
+
+    # HI-1: exit non-zero if any sample failed (or none were processed). Outside the
+    # try so typer.Exit isn't caught by `except Exception` above.
+    _exit_on_sample_failure(result)
 
 
 @app.command()
@@ -879,12 +916,15 @@ def rna(
             rescue_mnp_threshold=rescue_mnp_threshold,
         )
 
-        pipeline = Pipeline(config)
-        pipeline.run()
+        result = Pipeline(config).run()
 
     except Exception as e:
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
+
+    # HI-1: exit non-zero if any sample failed (or none were processed). Outside the
+    # try so typer.Exit isn't caught by `except Exception` above.
+    _exit_on_sample_failure(result)
 
 
 @app.command("build-gtf-cache")

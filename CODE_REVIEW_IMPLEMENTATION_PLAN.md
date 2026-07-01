@@ -212,6 +212,17 @@ Apply identically to the strict path at `:1488`.
 
 ## HI-1 — Sample failures swallowed; exit code 0 even when all samples fail
 
+**Status: Done (2026-07-01).** Added `_exit_on_sample_failure(result)` (cli.py), called by
+both `dna` and `rna` *outside* the command's `try/except` (so its `typer.Exit` isn't
+swallowed). It exits **code 1** only when a sample actually **failed** (is in
+`failed_samples` — a Rust panic surfaced as `PyErr`, an unreadable BAM, …), logging
+all-failed vs partial. An **empty variant set is deliberately NOT a failure**: a sample can
+legitimately have no variants called, and per-sample Nextflow tasks must not fail on that —
+those runs process zero samples with no `failed_samples` and exit `0`. The two duplicated
+`Pipeline().run()` blocks collapsed to `result = Pipeline(config).run()` + the shared helper
+(no duplication). Tests: `tests/test_hi1_exit_codes.py` (helper unit branches + end-to-end
+empty-variant-file→0 + mocked success/failure through the CLI).
+
 **Locations:** `src/gbcms/pipeline.py:491-493` (catch/append/return), `src/gbcms/cli.py:482` (result ignored).
 
 **Issue.** `_process_sample` catches `Exception`, logs `logger.error`, appends to `_failed_samples`, and returns. `run()` logs a summary but `cli.py` never inspects `failed_samples`, so a run where every BAM failed inside Rust (e.g. a panic surfaced as `PyErr`) exits `0`. Under Nextflow this masks systematic failure as success.

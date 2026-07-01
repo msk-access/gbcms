@@ -21,7 +21,7 @@ Test pattern:
   so no real BAM/VCF parsing occurs.  Each test is self-contained via tmp_path.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -76,7 +76,7 @@ def _base_run_args(vcf, bam, fasta, output_dir, extra=None):
 def test_cli_parsing_mocked(mock_pipeline_cls, tmp_path):
     """Basic happy path: sample_id:path syntax and --suffix are parsed correctly."""
     vcf, bam, fasta, output_dir = _make_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     result = runner.invoke(
         app,
@@ -114,7 +114,7 @@ def test_cli_bam_list_parsing(mock_pipeline_cls, tmp_path):
     bam2.touch()
     bam_list = tmp_path / "bams.list"
     bam_list.write_text(f"sample1 {bam1}\nsample2\t{bam2}\n")
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     result = runner.invoke(
         app,
@@ -254,7 +254,7 @@ def test_lenient_bam_skips_missing(mock_pipeline_cls, tmp_path):
     """GAP 3: --lenient-bam allows the run to continue when a BAM is missing."""
     vcf, existing_bam, fasta, output_dir = _make_files(tmp_path)
     missing_bam = tmp_path / "nonexistent.bam"  # deliberately not created
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     result = runner.invoke(
         app,
@@ -312,7 +312,7 @@ def test_invalid_alignment_backend_rejected(tmp_path):
 def test_hmm_backend_accepted(mock_pipeline_cls, tmp_path):
     """GAP 5: --alignment-backend hmm is accepted and propagated to config."""
     vcf, bam, fasta, output_dir = _make_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     result = runner.invoke(
         app,
@@ -398,7 +398,7 @@ def test_context_padding_51_rejected(tmp_path):
 def test_context_padding_boundary_accepted(mock_pipeline_cls, tmp_path):
     """GAP 7: Boundary values 1 and 50 are accepted."""
     vcf, bam, fasta, output_dir = _make_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     for pad in ("1", "50"):
         result = runner.invoke(
@@ -457,7 +457,7 @@ def test_preserve_barcode_vcf_emits_warning(mock_pipeline_cls, tmp_path):
     includes all text written to stdout/stderr by the command.
     """
     vcf, bam, fasta, output_dir = _make_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     result = runner.invoke(
         app,
@@ -516,7 +516,7 @@ def test_invalid_column_prefix_rejected(tmp_path):
 def test_valid_column_prefix_accepted(mock_pipeline_cls, tmp_path):
     """GAP 10: Valid column prefixes (letters, digits, underscores) are accepted."""
     vcf, bam, fasta, output_dir = _make_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     for good_prefix in ("t_", "gbcms_", "T2_", ""):
         result = runner.invoke(
@@ -631,7 +631,7 @@ def test_version_flag():
 def test_min_baseq_negative_rejected(mock_pipeline_cls, tmp_path):
     """Audit: --min-baseq -1 is rejected at Pydantic model construction (ge=0)."""
     vcf, bam, fasta, output_dir = _make_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     result = runner.invoke(
         app,
@@ -665,7 +665,7 @@ def test_bam_list_missing_entry_reported_as_error(tmp_path):
     bam_list.write_text(f"good {good_bam}\nbad {bad_bam}\n")
 
     with patch("gbcms.cli.Pipeline") as mock_p:
-        mock_p.return_value = MagicMock()
+        mock_p.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
         result = runner.invoke(
             app,
             [
@@ -695,7 +695,7 @@ def test_threads_exceeds_cpu_count_warning(mock_pipeline_cls, tmp_path):
     regardless of the test machine's actual CPU count.
     """
     vcf, bam, fasta, output_dir = _make_files(tmp_path)
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     with patch("gbcms.cli.os.cpu_count", return_value=1):
         result = runner.invoke(
@@ -763,7 +763,7 @@ def test_vcf_bgz_accepted_by_dna(mock_pipeline_cls, tmp_path):
     fasta.touch()
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    mock_pipeline_cls.return_value = MagicMock()
+    mock_pipeline_cls.return_value.run.return_value = {"samples_processed": 1, "failed_samples": []}
 
     result = runner.invoke(
         app,

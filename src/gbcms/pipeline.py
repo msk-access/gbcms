@@ -338,8 +338,17 @@ class Pipeline:
             )
 
         if not rs_variants:
-            logger.error("No valid variants remaining after preparation. Exiting.")
-            return self._stats
+            # Every variant was rejected during preparation (e.g. a contig mismatch →
+            # FAIL_FETCH_FAILED, or FAIL_EMPTY_ALLELE). This is NOT an empty variant file
+            # (that returns earlier, before any variant exists) — the variants are real,
+            # so we still fall through and write them per sample with their FAIL_* reason
+            # in the `gbcms_status` column and zero counts, rather than silently emitting
+            # no output. The run is not a failure (no sample raised); it exits 0.
+            logger.warning(
+                "No variants passed preparation (%d rejected); writing them with their "
+                "FAIL_* status and zero counts so the reasons are in the output, not just the log.",
+                len(prepared),
+            )
 
         self._stats["total_variants"] = len(variants)
         self._stats["valid_variants"] = len(valid_indices)
