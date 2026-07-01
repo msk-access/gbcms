@@ -9,12 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
-- **A run now exits non-zero when samples fail (HI-1).** `Pipeline.run()` catches
+- **A run now exits non-zero when a sample fails (HI-1).** `Pipeline.run()` catches
   per-sample errors and returns normally, so `gbcms dna`/`rna` previously exited `0` even
   when every BAM failed (e.g. a Rust panic surfaced as `PyErr`) — masking systematic
-  failure as success under Nextflow. The CLI now exits **code 1** whenever the run did not
-  fully succeed (any failed sample, or zero samples processed), logging the case distinctly
-  (all-failed vs partial vs nothing-processed). Fully successful runs are unchanged (exit 0).
+  failure as success under Nextflow. The CLI now exits **code 1** when any sample actually
+  fails (all-failed or partial). An **empty variant set is not a failure**: a sample that
+  legitimately has no variants called still exits `0`, so per-sample workflows don't fail on
+  it. Successful runs are unchanged (exit 0).
 
 ### 🔄 Changed
 

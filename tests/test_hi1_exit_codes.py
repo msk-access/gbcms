@@ -1,9 +1,12 @@
-"""HI-1: sample failures (and empty/invalid runs) propagate to a non-zero exit code.
+"""HI-1: an actual sample *failure* propagates to a non-zero exit code.
 
 ``Pipeline.run()`` catches per-sample errors and returns normally, so before this fix
 the CLI exited ``0`` even when every sample failed — masking systematic failure as
-success under Nextflow. Covered at two levels: the ``_exit_on_sample_failure()``
-decision helper, and end-to-end through the ``dna`` command.
+success under Nextflow.
+
+Crucially, an **empty variant set is NOT a failure**: a sample can legitimately have no
+variants called, and per-sample workflows must not fail that task. So the exit code keys
+off ``failed_samples`` (a sample that raised), never off "zero samples processed".
 """
 
 import pytest
@@ -18,32 +21,39 @@ runner = CliRunner()
 # ── Unit: the exit-code decision ──────────────────────────────────────────
 
 
-def test_full_success_returns_without_exit():
-    # processed > 0 and no failures → returns normally (the caller then exits 0).
-    _exit_on_sample_failure({"samples_processed": 3, "failed_samples": []})
-
-
 @pytest.mark.parametrize(
     "result",
     [
         {"samples_processed": 0, "failed_samples": [{"name": "s1", "error": "boom"}]},  # all failed
         {"samples_processed": 2, "failed_samples": [{"name": "s3", "error": "boom"}]},  # partial
-        {"samples_processed": 0, "failed_samples": []},  # nothing processed (empty/invalid set)
-        {},  # defensive: missing keys behave as "nothing processed"
     ],
 )
-def test_failure_and_empty_paths_exit_code_1(result):
+def test_actual_sample_failures_exit_code_1(result):
     with pytest.raises(typer.Exit) as exc:
         _exit_on_sample_failure(result)
     assert exc.value.exit_code == 1
 
 
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"samples_processed": 3, "failed_samples": []},  # normal success
+        {"samples_processed": 0, "failed_samples": []},  # empty/rejected variant set — legitimate
+        {},  # defensive: missing keys → no failures recorded
+    ],
+)
+def test_success_and_empty_variant_set_do_not_exit(result):
+    # No sample raised → must NOT fail the run, even when zero samples were processed
+    # (a sample with nothing called is legitimate under per-sample workflows).
+    _exit_on_sample_failure(result)  # returns without raising
+
+
 # ── End-to-end through the dna command ────────────────────────────────────
 
 
-def test_dna_exits_nonzero_when_no_variants_processed(tmp_path, sample_bam, sample_fasta):
-    """A run that processes zero samples (here: an empty variant set) exits non-zero —
-    exercising the ``result → _exit_on_sample_failure`` wiring end-to-end."""
+def test_dna_exits_zero_on_empty_variant_file(tmp_path, sample_bam, sample_fasta):
+    """A sample with no variants called PASSES (exit 0) — an empty variant set is
+    legitimate, not a failure. This is the per-sample-workflow guarantee."""
     empty_vcf = tmp_path / "empty.vcf"
     empty_vcf.write_text(
         "##fileformat=VCFv4.2\n##contig=<ID=chr1>\n"
@@ -53,7 +63,7 @@ def test_dna_exits_nonzero_when_no_variants_processed(tmp_path, sample_bam, samp
         app,
         ["dna", "-v", str(empty_vcf), "-b", sample_bam, "-f", sample_fasta, "-o", str(tmp_path)],
     )
-    assert res.exit_code != 0, res.output
+    assert res.exit_code == 0, res.output
 
 
 class _FakePipeline:

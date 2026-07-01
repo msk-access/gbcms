@@ -88,38 +88,36 @@ def _is_compressed_vcf(path: Path) -> bool:
 
 
 def _exit_on_sample_failure(result: dict) -> None:
-    """Propagate pipeline sample outcomes to the process exit code (HI-1).
+    """Propagate per-sample *failures* to the process exit code (HI-1).
 
-    ``Pipeline.run()`` catches per-sample errors, records them, and returns normally,
-    so a run where every BAM failed (e.g. a Rust panic surfaced as ``PyErr``) would
-    otherwise exit ``0`` and read as success to an orchestrator like Nextflow. This
-    exits **non-zero** whenever the run did not fully succeed — any sample failed, or
-    no sample was processed at all (empty/invalid variant set) — and logs the reason
-    distinctly (all-failed vs partial vs nothing-processed) so the failure mode is
-    visible in the run log, not just the exit code.
+    ``Pipeline.run()`` catches per-sample errors, records them in ``failed_samples``,
+    and returns normally, so a run where a BAM failed (e.g. a Rust panic surfaced as
+    ``PyErr``) would otherwise exit ``0`` and read as success to an orchestrator like
+    Nextflow. This exits **non-zero** only when a sample actually failed.
+
+    An **empty variant set is NOT a failure**: a sample can legitimately have no variants
+    called, and per-sample workflows must not fail that task. Those runs process zero
+    samples but record no ``failed_samples`` (the pipeline logs "No variants found …"),
+    and they exit ``0`` here.
 
     Must be called **outside** the command's ``try/except Exception`` block: ``typer.Exit``
     subclasses ``RuntimeError``, so raising it inside that block would be swallowed and
     re-logged as a generic "Pipeline failed".
     """
     failed = result.get("failed_samples", [])
+    if not failed:
+        # Full success, OR a legitimately empty/rejected variant set — both exit 0.
+        return
+
     processed = int(result.get("samples_processed", 0))
-
-    if not failed and processed > 0:
-        return  # full success → exit 0
-
-    if failed and processed > 0:
+    if processed > 0:
         logger.error(
             "%d of %d sample(s) failed — exiting with code 1.",
             len(failed),
             processed + len(failed),
         )
-    elif failed:
-        logger.error("All %d sample(s) failed — exiting with code 1.", len(failed))
     else:
-        # No sample raised, but none succeeded either: empty/invalid variant set or
-        # no usable inputs. Pipeline already logged the specific cause above.
-        logger.error("No samples were processed — exiting with code 1.")
+        logger.error("All %d sample(s) failed — exiting with code 1.", len(failed))
     raise typer.Exit(code=1)
 
 

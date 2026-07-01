@@ -214,12 +214,14 @@ Apply identically to the strict path at `:1488`.
 
 **Status: Done (2026-07-01).** Added `_exit_on_sample_failure(result)` (cli.py), called by
 both `dna` and `rna` *outside* the command's `try/except` (so its `typer.Exit` isn't
-swallowed). It exits **code 1** whenever the run did not fully succeed — any sample in
-`failed_samples`, or `samples_processed == 0` (empty/invalid variant set) — logging the
-case distinctly (all-failed vs partial vs nothing-processed). The two duplicated
-`Pipeline().run()` blocks collapsed to `result = Pipeline(config).run()` + the shared
-helper (no duplication). Tests: `tests/test_hi1_exit_codes.py` (helper unit branches +
-end-to-end no-variants→non-zero + mocked success/failure through the CLI).
+swallowed). It exits **code 1** only when a sample actually **failed** (is in
+`failed_samples` — a Rust panic surfaced as `PyErr`, an unreadable BAM, …), logging
+all-failed vs partial. An **empty variant set is deliberately NOT a failure**: a sample can
+legitimately have no variants called, and per-sample Nextflow tasks must not fail on that —
+those runs process zero samples with no `failed_samples` and exit `0`. The two duplicated
+`Pipeline().run()` blocks collapsed to `result = Pipeline(config).run()` + the shared helper
+(no duplication). Tests: `tests/test_hi1_exit_codes.py` (helper unit branches + end-to-end
+empty-variant-file→0 + mocked success/failure through the CLI).
 
 **Locations:** `src/gbcms/pipeline.py:491-493` (catch/append/return), `src/gbcms/cli.py:482` (result ignored).
 
