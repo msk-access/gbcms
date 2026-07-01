@@ -223,6 +223,7 @@ class MafWriter(OutputWriter):
         # ── 1. Status & diagnostic flags ──────────────────────────────────────
         cols = [
             "gbcms_status",
+            "gbcms_status_reason",
             "gbcms_diagnostic",
         ]
         # gbcms_rescue column is only present when --rescue-mnp is enabled (design §5)
@@ -604,6 +605,7 @@ class MafWriter(OutputWriter):
         counts: Any,
         sample_name: str = "TUMOR",
         gbcms_status: str = "PASS",
+        gbcms_status_reason: str = "",
         gbcms_diagnostic: str = "",
         gbcms_rescue: str = "",
         norm_variant: Variant | None = None,
@@ -671,6 +673,7 @@ class MafWriter(OutputWriter):
 
         # Append gbcms count columns (both paths, never overwrites originals)
         row["gbcms_status"] = gbcms_status
+        row["gbcms_status_reason"] = gbcms_status_reason
         row["gbcms_diagnostic"] = gbcms_diagnostic
         # gbcms_rescue only present when --rescue-mnp is enabled (design §5)
         if self.rescue_mnp:
@@ -763,7 +766,8 @@ class VcfWriter(OutputWriter):
         headers.extend(
             [
                 '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">',
-                '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms normalization/counting status">',
+                '##INFO=<ID=GS,Number=1,Type=String,Description="gbcms verdict: PASS or FAIL">',
+                '##INFO=<ID=GSR,Number=1,Type=String,Description="gbcms status reason tags, |-separated (. when none)">',
                 '##INFO=<ID=GD,Number=1,Type=String,Description="gbcms post-counting diagnostic flags">',
             ]
         )
@@ -887,6 +891,7 @@ class VcfWriter(OutputWriter):
         counts: Any,
         sample_name: str = "SAMPLE",
         gbcms_status: str = "PASS",
+        gbcms_status_reason: str = "",
         gbcms_diagnostic: str = "",
         gbcms_rescue: str = "",
         norm_variant: Variant | None = None,
@@ -897,15 +902,17 @@ class VcfWriter(OutputWriter):
         # VCF POS is 1-based
         pos = variant.pos + 1
 
-        # INFO fields (VCF spec: missing values use '.' not 'NA')
-        # VCF uses ';' as the INFO field delimiter, so multi-value fields
-        # (GS, GD) convert ';' → '|' to avoid parser mis-splitting.
-        # GR is handled conditionally below (only when --rescue-mnp).
-        gs_vcf = gbcms_status.replace(";", "|")
+        # INFO fields (VCF spec: missing values use '.' not 'NA').
+        # GS is the bare verdict (PASS/FAIL — no separators). GSR (reasons) and GD
+        # already use '|' internally, which is VCF-safe, so no conversion is needed
+        # for them — the MAF column and the VCF value are byte-identical. GD historically
+        # used ';' internally, so it still gets the ';' → '|' guard.
+        gsr_vcf = gbcms_status_reason if gbcms_status_reason else "."
         gd_vcf = gbcms_diagnostic.replace(";", "|") if gbcms_diagnostic else "."
         info_parts = [
             f"DP={counts.dp}",
-            f"GS={gs_vcf}",
+            f"GS={gbcms_status}",
+            f"GSR={gsr_vcf}",
             f"GD={gd_vcf}",
         ]
         # GR INFO value only included when --rescue-mnp is enabled (design §5)

@@ -87,8 +87,8 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 2)
         for pv in prepared:
-            self.assertEqual(pv.gbcms_status, "FAIL_EMPTY_ALLELE")
-            self.assertFalse(pv.gbcms_status.startswith("PASS"))
+            self.assertEqual(pv.gbcms_status, "FAIL")
+            self.assertEqual(pv.gbcms_status_reason, "EMPTY_ALLELE")
 
     def test_maf_insertion_anchor_resolution(self):
         """MAF insertion (ref='-') should get anchor base prepended."""
@@ -364,10 +364,11 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
+        self.assertEqual(pv.gbcms_status, "FAIL")
         self.assertEqual(
-            pv.gbcms_status,
-            "FAIL_ALT_CONTAINS_N",
-            f"Expected FAIL_ALT_CONTAINS_N, got {pv.gbcms_status}",
+            pv.gbcms_status_reason,
+            "ALT_CONTAINS_N",
+            f"Expected ALT_CONTAINS_N reason, got {pv.gbcms_status_reason}",
         )
 
     def test_n_in_alt_allele_mnp_rejected(self):
@@ -376,10 +377,11 @@ class TestNormalization(unittest.TestCase):
         prepared = gbcms_rs.prepare_variants(variants, str(self.fasta_path), 5, False, 1, False)
         self.assertEqual(len(prepared), 1)
         pv = prepared[0]
+        self.assertEqual(pv.gbcms_status, "FAIL")
         self.assertEqual(
-            pv.gbcms_status,
-            "FAIL_ALT_CONTAINS_N",
-            f"Expected FAIL_ALT_CONTAINS_N for MNP with N in ALT, got {pv.gbcms_status}",
+            pv.gbcms_status_reason,
+            "ALT_CONTAINS_N",
+            f"Expected ALT_CONTAINS_N reason for MNP with N in ALT, got {pv.gbcms_status_reason}",
         )
 
 

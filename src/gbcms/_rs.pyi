@@ -144,7 +144,11 @@ class PreparedVariant:
     original_pos: int
     original_ref: str
     original_alt: str
-    gbcms_status: str
+    gbcms_status: str  # verdict: "PASS" or "FAIL"
+    # Status reason tags, '|'-separated; empty when a clean PASS.
+    # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC.
+    # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, ALT_CONTAINS_N.
+    gbcms_status_reason: str
     # Post-counting diagnostic flags (set by pipeline._compute_diagnostics).
     # Semicolon-separated. Empty string when no diagnostics.
     # Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".

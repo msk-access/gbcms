@@ -288,10 +288,11 @@ def test_column_count_delta_is_three():
     # Phase 0/1 baseline was 21 (validation_status + 4 core + 4 frag + 4 bias + 8 strand)
     # Phase 2+2b added 3 (any_alt + partial_alt + n_count) = 24
     # v4.2.0 added 1 (gbcms_diagnostic, replaces validation_status with gbcms_status) = 25
+    # status split added 1 (gbcms_status_reason alongside the PASS/FAIL verdict) = 26
     # gbcms_rescue is conditional (only with --rescue-mnp), so excluded here
-    assert len(cols) == 25, (
-        f"Expected 25 gbcms MAF columns (21 baseline + 3 diagnostic + 1 new column), "
-        f"got {len(cols)}: {cols}"
+    assert len(cols) == 26, (
+        f"Expected 26 gbcms MAF columns (21 baseline + 3 diagnostic + gbcms_status + "
+        f"gbcms_status_reason), got {len(cols)}: {cols}"
     )
 
 
@@ -337,20 +338,20 @@ def test_mock_counts_invariants():
 # ── Test 11: VCF GS/GD pipe separator ───────────────────────────────────
 
 
-def test_vcf_gs_gd_use_pipe_separator(tmp_path, mock_variant):
-    """VCF INFO GS/GD values convert ';' to '|' to avoid VCF delimiter conflict.
+def test_vcf_gs_gsr_gd_are_vcf_safe(tmp_path, mock_variant):
+    """VCF INFO GS/GSR/GD must not contain a ';' (the INFO delimiter).
 
-    VCF uses ';' as the INFO field delimiter. Multi-value GS/GD/GR fields
-    must use '|' as their internal separator (design §6).
+    GS is the bare verdict (PASS/FAIL). GSR carries reason tags '|'-separated —
+    the same value as the MAF column (no conversion). GD still converts any ';'→'|'.
     """
     counts = _mock_counts(any_alt=0, partial_alt=0, n_count=0)
     vcf_path = tmp_path / "test.vcf"
     writer = VcfWriter(vcf_path, sample_name="TUMOR", rescue_mnp=True)
-    # Pass multi-value status and diagnostic with semicolons
     writer.write(
         mock_variant,
         counts,
-        gbcms_status="PASS;WARN_REF_CORRECTED",
+        gbcms_status="PASS",
+        gbcms_status_reason="WARN_REF_CORRECTED|MULTI_ALLELIC",
         gbcms_diagnostic="ZERO_ALT;PARTIAL_DOMINANT",
         gbcms_rescue="method=decomposed;original_alt=0",
     )
@@ -360,21 +361,53 @@ def test_vcf_gs_gd_use_pipe_separator(tmp_path, mock_variant):
     assert len(data_lines) == 1
     info_field = data_lines[0].split("\t")[7]
 
-    # Split on ';' (VCF INFO delimiter) and find GS, GD, GR
+    # Split on ';' (VCF INFO delimiter) and find GS, GSR, GD, GR
     # Use maxsplit=1 because GR values contain '=' (e.g., method=decomposed|original_alt=0)
     info_parts = {
         kv.split("=", 1)[0]: kv.split("=", 1)[1] for kv in info_field.split(";") if "=" in kv
     }
 
-    # GS should use pipe, not semicolon
+    # GS is the bare verdict — no separator to break the INFO field
+    assert info_parts["GS"] == "PASS", f"GS should be the bare verdict, got: {info_parts['GS']}"
+    # GSR uses '|' natively (identical to the MAF column) — no ';' mis-split
     assert (
-        info_parts["GS"] == "PASS|WARN_REF_CORRECTED"
-    ), f"GS should use pipe separator, got: {info_parts['GS']}"
-    # GD should use pipe, not semicolon
+        info_parts["GSR"] == "WARN_REF_CORRECTED|MULTI_ALLELIC"
+    ), f"GSR should be |-separated, got: {info_parts['GSR']}"
+    # GD still converts ';' → '|'
     assert (
         info_parts["GD"] == "ZERO_ALT|PARTIAL_DOMINANT"
     ), f"GD should use pipe separator, got: {info_parts['GD']}"
-    # GR should use pipe, not semicolon
+    # GR still converts ';' → '|'
     assert (
         info_parts["GR"] == "method=decomposed|original_alt=0"
     ), f"GR should use pipe separator, got: {info_parts['GR']}"
+
+
+def test_vcf_gsr_roundtrips_via_pysam(tmp_path, mock_variant):
+    """GSR with stacked '|'-separated reasons round-trips cleanly through pysam.
+
+    Regression guard for the status-split design: a ';' would break the INFO
+    field and a ',' would make htslib split a Number=1 String into a tuple — so
+    the reason separator must stay '|'. This test would fail if either crept back.
+    """
+    pysam = pytest.importorskip("pysam")
+    counts = _mock_counts(any_alt=0, partial_alt=0, n_count=0)
+    vcf_path = tmp_path / "gsr.vcf"
+    writer = VcfWriter(vcf_path, sample_name="TUMOR")
+    writer.write(
+        mock_variant,
+        counts,
+        gbcms_status="PASS",
+        gbcms_status_reason="WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP|MULTI_ALLELIC",
+    )
+    writer.close()
+
+    rec = next(iter(pysam.VariantFile(str(vcf_path))))
+    gs = rec.info["GS"]
+    gsr = rec.info["GSR"]
+    assert gs == "PASS", f"GS should be the bare verdict, got {gs!r} ({type(gs).__name__})"
+    assert isinstance(
+        gsr, str
+    ), f"GSR must parse as one string, not split; got {type(gsr).__name__}"
+    assert gsr == "WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP|MULTI_ALLELIC", gsr
+    assert gsr.split("|") == ["WARN_REF_CORRECTED", "WARN_HOMOPOLYMER_DECOMP", "MULTI_ALLELIC"]

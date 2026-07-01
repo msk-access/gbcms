@@ -101,11 +101,16 @@ def test_dna_all_rejected_writes_reasons_to_output(tmp_path, sample_bam, sample_
     assert len(mafs) == 1, f"expected one MAF written, got {mafs}"
     rows = [ln for ln in mafs[0].read_text().splitlines() if ln and not ln.startswith("#")]
     header, *data = rows
-    status_idx = header.split("\t").index("gbcms_status")
+    cols = header.split("\t")
+    status_idx = cols.index("gbcms_status")
+    reason_idx = cols.index("gbcms_status_reason")
     assert data, "rejected variants must still be written as rows"
     assert all(
-        r.split("\t")[status_idx].startswith("FAIL_") for r in data
-    ), "every rejected variant must carry its FAIL_* reason in gbcms_status"
+        r.split("\t")[status_idx] == "FAIL" for r in data
+    ), "every rejected variant must carry the FAIL verdict in gbcms_status"
+    assert all(
+        r.split("\t")[reason_idx] for r in data
+    ), "every rejected variant must carry a non-empty reason in gbcms_status_reason"
 
 
 class _FakePipeline:

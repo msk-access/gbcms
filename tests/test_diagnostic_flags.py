@@ -31,6 +31,7 @@ def _mock_prepared_variant(
     alt_allele: str = "T",
     variant_type: str = "SNP",
     gbcms_status: str = "PASS",
+    gbcms_status_reason: str = "",
 ):
     """Create a mock PreparedVariant with the minimum fields needed."""
     return types.SimpleNamespace(
@@ -42,6 +43,7 @@ def _mock_prepared_variant(
             variant_type=variant_type,
         ),
         gbcms_status=gbcms_status,
+        gbcms_status_reason=gbcms_status_reason,
         gbcms_diagnostic="",
         gbcms_rescue="",
     )
@@ -201,8 +203,8 @@ def test_clean_pass_has_empty_diagnostic():
 
 
 def test_multi_value_status_gets_diagnostics():
-    """PASS;MULTI_ALLELIC status should still receive diagnostic flags."""
-    pv = _mock_prepared_variant(gbcms_status="PASS;MULTI_ALLELIC")
+    """A PASS variant with reason tags (e.g. MULTI_ALLELIC) still gets diagnostics."""
+    pv = _mock_prepared_variant(gbcms_status="PASS", gbcms_status_reason="MULTI_ALLELIC")
     counts = _mock_counts(ad=0)
     _make_pipeline()._compute_diagnostics([pv], [counts])
     assert "ZERO_ALT" in pv.gbcms_diagnostic

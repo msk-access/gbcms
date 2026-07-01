@@ -269,7 +269,7 @@ class Pipeline:
         )
 
         # Split into valid (for counting) and all (for output)
-        valid_indices = [i for i, p in enumerate(prepared) if p.gbcms_status.startswith("PASS")]
+        valid_indices = [i for i, p in enumerate(prepared) if p.gbcms_status == "PASS"]
         rs_variants = [prepared[i].variant for i in valid_indices]
 
         # Log validation results
@@ -280,15 +280,16 @@ class Pipeline:
             n_invalid,
             len(prepared),
         )
-        invalid = [p for p in prepared if not p.gbcms_status.startswith("PASS")]
+        invalid = [p for p in prepared if p.gbcms_status != "PASS"]
         for p in invalid[:5]:
             logger.warning(
-                "Rejected variant: %s:%d %s>%s — %s",
+                "Rejected variant: %s:%d %s>%s — %s (%s)",
                 p.variant.chrom,
                 p.original_pos + 1,
                 p.original_ref,
                 p.original_alt,
                 p.gbcms_status,
+                p.gbcms_status_reason or "no reason",
             )
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
@@ -509,10 +510,18 @@ class Pipeline:
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 
-            # Update gbcms_status for variants where decomposed allele won
+            # Append WARN_HOMOPOLYMER_DECOMP where the decomposed allele won.
+            # Append (not overwrite) so a co-occurring WARN_REF_CORRECTED / MULTI_ALLELIC
+            # survives; the verdict stays PASS. Reasons are '|'-separated.
             for idx, counts in zip(valid_indices, counts_list, strict=True):
                 if counts.used_decomposed:
-                    prepared[idx].gbcms_status = "PASS;WARN_HOMOPOLYMER_DECOMP"
+                    pv = prepared[idx]
+                    if "WARN_HOMOPOLYMER_DECOMP" not in pv.gbcms_status_reason:
+                        pv.gbcms_status_reason = (
+                            f"{pv.gbcms_status_reason}|WARN_HOMOPOLYMER_DECOMP"
+                            if pv.gbcms_status_reason
+                            else "WARN_HOMOPOLYMER_DECOMP"
+                        )
 
             # Merge counts back into full variant list
             # Valid variants get real counts; rejected variants get zero counts.
@@ -581,7 +590,7 @@ class Pipeline:
 
         for pv, counts in zip(prepared, full_counts, strict=True):
             # Only PASS variants get diagnostics; FAIL variants are not counted
-            if not pv.gbcms_status.startswith("PASS"):
+            if pv.gbcms_status != "PASS":
                 continue
 
             flags: list[str] = []
@@ -673,7 +682,7 @@ class Pipeline:
         # 1. Identify rescue candidates
         candidates: list[tuple[int, list[tuple[int, str, str]]]] = []
         for i, (pv, counts) in enumerate(zip(prepared, full_counts, strict=True)):
-            if not pv.gbcms_status.startswith("PASS"):
+            if pv.gbcms_status != "PASS":
                 continue
             if counts.ad != 0:
                 continue
@@ -725,9 +734,7 @@ class Pipeline:
         )
 
         # Filter to only valid SNPs
-        valid_snp_indices = [
-            j for j, sp in enumerate(snp_prepared) if sp.gbcms_status.startswith("PASS")
-        ]
+        valid_snp_indices = [j for j, sp in enumerate(snp_prepared) if sp.gbcms_status == "PASS"]
         valid_snp_variants = [snp_prepared[j].variant for j in valid_snp_indices]
 
         if not valid_snp_variants:
@@ -1021,6 +1028,7 @@ class Pipeline:
                 counts,
                 sample_name=sample_name,
                 gbcms_status=pv.gbcms_status if pv else "PASS",
+                gbcms_status_reason=pv.gbcms_status_reason if pv else "",
                 gbcms_diagnostic=pv.gbcms_diagnostic if pv else "",
                 gbcms_rescue=pv.gbcms_rescue if pv else "",
                 norm_variant=norm_v,

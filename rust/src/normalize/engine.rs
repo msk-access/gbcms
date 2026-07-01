@@ -167,7 +167,7 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
     while i < indices.len() {
         let idx = indices[i];
         // Skip non-PASS variants
-        if !variants[idx].gbcms_status.starts_with("PASS") {
+        if variants[idx].gbcms_status != "PASS" {
             i += 1;
             continue;
         }
@@ -186,7 +186,7 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
             if &vj.chrom != chrom {
                 break; // Different chromosome
             }
-            if !variants[jdx].gbcms_status.starts_with("PASS") {
+            if variants[jdx].gbcms_status != "PASS" {
                 j += 1;
                 continue;
             }
@@ -206,10 +206,14 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
             group_id += 1;
             for &member_idx in &group_members {
                 variants[member_idx].multi_allelic_group = Some(group_id);
-                // Append to gbcms_status so it surfaces in output columns
-                // e.g. "PASS" → "PASS;MULTI_ALLELIC"
-                if !variants[member_idx].gbcms_status.contains("MULTI_ALLELIC") {
-                    variants[member_idx].gbcms_status.push_str(";MULTI_ALLELIC");
+                // Append MULTI_ALLELIC to the reason list (|-separated) so it surfaces
+                // in the gbcms_status_reason column / GSR INFO. The verdict stays PASS.
+                let reason = &mut variants[member_idx].gbcms_status_reason;
+                if !reason.contains("MULTI_ALLELIC") {
+                    if !reason.is_empty() {
+                        reason.push('|');
+                    }
+                    reason.push_str("MULTI_ALLELIC");
                 }
             }
             debug!(
@@ -262,7 +266,8 @@ fn prepare_single_variant(
         );
         return Ok(PreparedVariant {
             variant: variant.clone(),
-            gbcms_status: "FAIL_EMPTY_ALLELE".to_string(),
+            gbcms_status: "FAIL".to_string(),
+            gbcms_status_reason: "EMPTY_ALLELE".to_string(),
             gbcms_diagnostic: String::new(),
             gbcms_rescue: String::new(),
             was_anchor_resolved: false,
@@ -303,7 +308,8 @@ fn prepare_single_variant(
                 );
                 return Ok(PreparedVariant {
                     variant: variant.clone(),
-                    gbcms_status: "FAIL_FETCH_FAILED".to_string(),
+                    gbcms_status: "FAIL".to_string(),
+                    gbcms_status_reason: "FETCH_FAILED".to_string(),
                     gbcms_diagnostic: String::new(),
                     gbcms_rescue: String::new(),
                     was_anchor_resolved: false,
@@ -332,23 +338,24 @@ fn prepare_single_variant(
         || ref_al != original_ref
         || alt_al != original_alt;
 
-    // Step 2: REF validation (with tolerance for partial mismatches)
-    let (status, corrected_ref) = validate_ref(reader, &variant.chrom, pos, &ref_al);
+    // Step 2: REF validation (with tolerance for partial mismatches).
+    // `reason` carries WARN_REF_CORRECTED forward to the PASS success path (below),
+    // so a corrected REF is surfaced rather than silently downgraded to a bare PASS.
+    let (verdict, reason, corrected_ref) = validate_ref(reader, &variant.chrom, pos, &ref_al);
 
     // If REF was partially mismatched but ≥90% similar, correct it to the FASTA REF
     if let Some(fasta_ref) = corrected_ref {
         ref_al = fasta_ref;
     }
 
-    if !status.starts_with("PASS") {
+    if verdict != "PASS" {
         debug!(
-            "REF validation {}: {}:{} {}>{} ({})",
-            status,
+            "REF validation FAIL ({}): {}:{} {}>{}",
+            reason,
             variant.chrom,
             pos + 1,
             ref_al,
             alt_al,
-            status,
         );
         return Ok(PreparedVariant {
             variant: Variant {
@@ -362,7 +369,8 @@ fn prepare_single_variant(
                 repeat_span: 0,
                 gene_strand: None,
             },
-            gbcms_status: status,
+            gbcms_status: verdict,
+            gbcms_status_reason: reason,
             gbcms_diagnostic: String::new(),
             gbcms_rescue: String::new(),
             was_anchor_resolved,
@@ -396,7 +404,8 @@ fn prepare_single_variant(
                 repeat_span: 0,
                 gene_strand: None,
             },
-            gbcms_status: "FAIL_ALT_CONTAINS_N".to_string(),
+            gbcms_status: "FAIL".to_string(),
+            gbcms_status_reason: "ALT_CONTAINS_N".to_string(),
             gbcms_diagnostic: String::new(),
             gbcms_rescue: String::new(),
             was_anchor_resolved,
@@ -605,6 +614,9 @@ fn prepare_single_variant(
             gene_strand: None,
         },
         gbcms_status: "PASS".to_string(),
+        // Carry any WARN_REF_CORRECTED from validate_ref (empty otherwise). A later
+        // pass may append MULTI_ALLELIC; the pipeline may append WARN_HOMOPOLYMER_DECOMP.
+        gbcms_status_reason: reason,
         gbcms_diagnostic: String::new(),
         gbcms_rescue: String::new(),
         was_anchor_resolved,

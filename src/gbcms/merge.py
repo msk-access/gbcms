@@ -75,6 +75,7 @@ GBCMS_COUNT_BASENAMES: list[str] = [
 # These are string/diagnostic columns (not numeric).
 GBCMS_META_BASENAMES: list[str] = [
     "gbcms_status",
+    "gbcms_status_reason",
     "gbcms_diagnostic",
     "gbcms_rescue",
     "strand_bias_p_value",
