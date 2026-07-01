@@ -2782,8 +2782,8 @@ provides these dependencies.</p>
 <a id="__codelineno-9-8" name="__codelineno-9-8" href="#getting-started-quickstart-__codelineno-9-8"></a><span class="w">    </span>--output-dir<span class="w"> </span>results/
 </code></pre></div>
 <p><strong>Output:</strong> <code>results/tumor_rna.maf</code> — standard counts + 5 RNA columns:
-<code>rna_sense_depth</code>, <code>rna_antisense_depth</code>, <code>rna_sense_strand_alt_count</code>,
-<code>rna_editing_site_overlap</code>, <code>rna_splice_spanning_count</code></p>
+<code>rna_sense_depth</code>, <code>rna_antisense_depth</code>, <code>rna_alt_sense_count</code>,
+<code>rna_editing_site</code>, <code>rna_splice_spanning</code></p>
 </div>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#getting-started-quickstart-__codelineno-10-1"></a>gbcms<span class="w"> </span>rna<span class="w"> </span><span class="se">\</span>
@@ -2929,6 +2929,10 @@ provides these dependencies.</p>
 <td style="text-align: left;"><a href="#cli-normalize"><strong>normalize</strong></a></td>
 <td style="text-align: left;">Standalone variant normalization (no counting)</td>
 </tr>
+<tr>
+<td style="text-align: left;"><strong>build-gtf-cache</strong></td>
+<td style="text-align: left;">Pre-build the shared GTF index once for a cohort so per-sample RNA runs reuse it (<code>gbcms build-gtf-cache --gtf &lt;file&gt; --variants &lt;vcf/maf&gt; --cache-dir &lt;dir&gt;</code>; see <a href="#cli-rna">rna</a>)</td>
+</tr>
 </tbody>
 </table>
 <h2 id="cli-quick-example">Quick Example<a class="headerlink" href="#cli-quick-example" title="Permanent link">¶</a></h2>
@@ -3069,7 +3073,7 @@ the index path explicitly via the Nextflow samplesheet <code>bai</code> column.<
 <tr>
 <td style="text-align: left;"><code>--threads</code></td>
 <td style="text-align: left;"><code>1</code></td>
-<td style="text-align: left;">Number of threads</td>
+<td style="text-align: left;">Total worker-thread budget for this run (minimum 1; <code>0</code> is rejected). All parallelism — read classification and any decode threads — stays within this budget, so gbcms never oversubscribes a small allocation. Multi-sample parallelism is the orchestrator's job (e.g. N concurrent Nextflow processes, each pinned to <code>task.cpus</code>), not this flag's.</td>
 </tr>
 </tbody>
 </table>
@@ -3646,7 +3650,12 @@ transparently.  See <a href="#cli-dna-required-arguments">CRAM Support</a> for d
 <tr>
 <td style="text-align: left;"><code>--gtf</code></td>
 <td style="text-align: left;"><em>(none)</em></td>
-<td style="text-align: left;">Path to Ensembl/GENCODE GTF annotation file (<code>.gtf</code> or <code>.gtf.gz</code>). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection.</td>
+<td style="text-align: left;">Path to Ensembl/GENCODE GTF annotation file (<code>.gtf</code> or <code>.gtf.gz</code>). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's <code>gene_strand</code> — required for <code>--enforce_strandedness</code> and ASJD strand-discordance to do anything.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--gtf-cache-dir</code></td>
+<td style="text-align: left;"><em>(none)</em></td>
+<td style="text-align: left;">Directory holding a prebuilt GTF index. When set, per-sample runs load the cached index (~0.05s) instead of re-parsing the GTF (~9s). Build it once for a cohort with <code>gbcms build-gtf-cache --gtf &lt;file&gt; --variants &lt;vcf/maf&gt; --cache-dir &lt;dir&gt;</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -5274,6 +5283,11 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <td style="text-align: left;"><code>'reverse'</code></td>
 <td style="text-align: left;">RNA library strand protocol: <code>'reverse'</code> (<abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>/fr-firststrand, featureCounts <code>-s 2</code> — the FORTE default), <code>'forward'</code> (fr-secondstrand, <code>-s 1</code>), or <code>'unstranded'</code> (<code>-s 0</code>). Sets the read→transcript-strand fold used by <code>--enforce_strandedness</code> and ASJD strand-discordance; <code>'unstranded'</code> disables both.</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>--library_type</code></td>
+<td style="text-align: left;"><code>'capture'</code></td>
+<td style="text-align: left;"><code>'capture'</code> (default) or <code>'amplicon'</code>. Amplicon mode treats R1 and R2 as <strong>independent observations</strong> (no fragment-level consensus) and auto-disables strandedness — use it for amplicon/primer-based RNA panels where mates aren't independent fragments.</td>
+</tr>
 </tbody>
 </table>
 <div class="admonition tip">
@@ -5976,37 +5990,38 @@ Use mouse to pan and zoom
 <a id="__codelineno-2-17" name="__codelineno-2-17" href="#reference-architecture-__codelineno-2-17"></a>rust/src/
 <a id="__codelineno-2-18" name="__codelineno-2-18" href="#reference-architecture-__codelineno-2-18"></a>├── lib.rs                    # PyO3 module exports
 <a id="__codelineno-2-19" name="__codelineno-2-19" href="#reference-architecture-__codelineno-2-19"></a>├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>│   ├── mod.rs                # AnnotationIndex struct, parse_gtf()
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>│   └── types.rs              # ExonRecord, TranscriptInfo
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>├── counting/
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>│   ├── alignment.rs          # Smith-Waterman implementation
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── pangenome.rs          # Haplotype matrix construction
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#reference-architecture-__codelineno-2-29"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#reference-architecture-__codelineno-2-30"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
-<a id="__codelineno-2-31" name="__codelineno-2-31" href="#reference-architecture-__codelineno-2-31"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
-<a id="__codelineno-2-32" name="__codelineno-2-32" href="#reference-architecture-__codelineno-2-32"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
-<a id="__codelineno-2-33" name="__codelineno-2-33" href="#reference-architecture-__codelineno-2-33"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#reference-architecture-__codelineno-2-34"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#reference-architecture-__codelineno-2-35"></a>├── normalize/
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#reference-architecture-__codelineno-2-36"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-37" name="__codelineno-2-37" href="#reference-architecture-__codelineno-2-37"></a>│   ├── engine.rs             # Normalization pipeline
-<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>│   ├── left_align.rs         # bcftools-style left-alignment
-<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>│   ├── decomp.rs             # Homopolymer decomposition
-<a id="__codelineno-2-40" name="__codelineno-2-40" href="#reference-architecture-__codelineno-2-40"></a>│   ├── fasta.rs              # Reference sequence fetcher
-<a id="__codelineno-2-41" name="__codelineno-2-41" href="#reference-architecture-__codelineno-2-41"></a>│   ├── repeat.rs             # Tandem repeat detection
-<a id="__codelineno-2-42" name="__codelineno-2-42" href="#reference-architecture-__codelineno-2-42"></a>│   └── types.rs              # NormResult enum
-<a id="__codelineno-2-43" name="__codelineno-2-43" href="#reference-architecture-__codelineno-2-43"></a>├── shared/
-<a id="__codelineno-2-44" name="__codelineno-2-44" href="#reference-architecture-__codelineno-2-44"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-45" name="__codelineno-2-45" href="#reference-architecture-__codelineno-2-45"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
-<a id="__codelineno-2-46" name="__codelineno-2-46" href="#reference-architecture-__codelineno-2-46"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
-<a id="__codelineno-2-47" name="__codelineno-2-47" href="#reference-architecture-__codelineno-2-47"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
-<a id="__codelineno-2-48" name="__codelineno-2-48" href="#reference-architecture-__codelineno-2-48"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
-<a id="__codelineno-2-49" name="__codelineno-2-49" href="#reference-architecture-__codelineno-2-49"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
-<a id="__codelineno-2-50" name="__codelineno-2-50" href="#reference-architecture-__codelineno-2-50"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>│   ├── mod.rs                # AnnotationIndex struct, COITree queries
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>│   ├── gtf.rs                # GTF parser (variant-guided streaming)
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>│   └── cache.rs              # GTF disk cache (GtfIndexBundle, bincode) — M5a
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>├── counting/
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── alignment.rs          # Smith-Waterman implementation
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#reference-architecture-__codelineno-2-29"></a>│   ├── pangenome.rs          # Haplotype matrix construction
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#reference-architecture-__codelineno-2-30"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#reference-architecture-__codelineno-2-31"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#reference-architecture-__codelineno-2-32"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#reference-architecture-__codelineno-2-33"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#reference-architecture-__codelineno-2-34"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#reference-architecture-__codelineno-2-35"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#reference-architecture-__codelineno-2-36"></a>├── normalize/
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#reference-architecture-__codelineno-2-37"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>│   ├── engine.rs             # Normalization pipeline
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>│   ├── left_align.rs         # bcftools-style left-alignment
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#reference-architecture-__codelineno-2-40"></a>│   ├── decomp.rs             # Homopolymer decomposition
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#reference-architecture-__codelineno-2-41"></a>│   ├── fasta.rs              # Reference sequence fetcher
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#reference-architecture-__codelineno-2-42"></a>│   ├── repeat.rs             # Tandem repeat detection
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#reference-architecture-__codelineno-2-43"></a>│   └── types.rs              # NormResult enum
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#reference-architecture-__codelineno-2-44"></a>├── shared/
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#reference-architecture-__codelineno-2-45"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-46" name="__codelineno-2-46" href="#reference-architecture-__codelineno-2-46"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+<a id="__codelineno-2-47" name="__codelineno-2-47" href="#reference-architecture-__codelineno-2-47"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
+<a id="__codelineno-2-48" name="__codelineno-2-48" href="#reference-architecture-__codelineno-2-48"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
+<a id="__codelineno-2-49" name="__codelineno-2-49" href="#reference-architecture-__codelineno-2-49"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
+<a id="__codelineno-2-50" name="__codelineno-2-50" href="#reference-architecture-__codelineno-2-50"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
+<a id="__codelineno-2-51" name="__codelineno-2-51" href="#reference-architecture-__codelineno-2-51"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
 </code></pre></div>
 <hr>
 <h2 id="reference-architecture-configuration">Configuration<a class="headerlink" href="#reference-architecture-configuration" title="Permanent link">¶</a></h2>
@@ -6574,7 +6589,11 @@ Use mouse to pan and zoom
 <h2 id="reference-input-formats-reference-fasta">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr><a class="headerlink" href="#reference-input-formats-reference-fasta" title="Permanent link">¶</a></h2>
 <ul>
 <li>Must have corresponding <code>.fai</code> index</li>
-<li>Chromosome names must match <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></li>
+<li>The reference is looked up by the variant's chromosome name, so the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> should use a
+  naming convention compatible with your variant file. (The <code>chr</code>-prefix and <code>M</code>/<code>MT</code>
+  differences between the <strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> and the variants are auto-reconciled — see below — but the
+  reference anchor is fetched by name, so a variant whose contig is absent from the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> is
+  rejected with <code>FAIL_FETCH_FAILED</code>.)</li>
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-input-formats-__codelineno-3-1"></a><span class="c1"># Create index if missing</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-input-formats-__codelineno-3-2"></a>samtools<span class="w"> </span>faidx<span class="w"> </span>reference.fa
@@ -6583,7 +6602,10 @@ Use mouse to pan and zoom
 <ul>
 <li>Must have corresponding index (<code>.bam.bai</code> or <code>.bai</code> for <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>; <code>.cram.crai</code> or <code>.crai</code> for CRAM)</li>
 <li>Coordinate-sorted</li>
-<li>Chromosome names must match reference</li>
+<li>Chromosome naming is auto-reconciled: <code>chr</code>-prefix differences (<code>chr1</code> ↔ <code>1</code>) and
+  mitochondrial aliases (<code>M</code> / <code>chrM</code> / <code>chrMT</code> / <code>MT</code>) between the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> and the variant file
+  are normalized automatically. Only a contig with <strong>no</strong> match in the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is skipped — and
+  gbcms logs a one-time <code>WARN</code> for it, rather than silently returning zero counts.</li>
 </ul>
 <div class="admonition info">
 <p class="admonition-title">CRAM Support (v5.3.0+)</p>
@@ -7860,7 +7882,7 @@ consensus merging, treating each read as an independent observation.</p>
 </div>
 <details class="note">
 <summary><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Columns (<code>--mfsd</code> only)</summary>
-<p>34 columns are appended when <code>--mfsd</code> is set. They are completely absent
+<p>41 columns are appended when <code>--mfsd</code> is set. They are completely absent
 without the flag (not NA-filled):</p>
 <table>
 <thead>
@@ -7935,6 +7957,11 @@ without the flag (not NA-filled):</p>
 <td style="text-align: left;"><code>mfsd_pval_alt_ref</code></td>
 <td style="text-align: left;">Float</td>
 <td style="text-align: left;">KS p-value (ALT vs REF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_qval_alt_ref</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Benjamini-Hochberg FDR q-value for the ALT-vs-REF KS p-value (sample-wide correction)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_delta_alt_nonref</code></td>
@@ -8040,6 +8067,36 @@ without the flag (not NA-filled):</p>
 <td style="text-align: left;"><code>mfsd_ks_valid</code></td>
 <td style="text-align: left;">Boolean</td>
 <td style="text-align: left;"><code>True</code> when both ALT and REF have ≥5 fragments for reliable KS test</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_sub_nuc_ref_frac</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Sub-nucleosomal (&lt;150 bp) fraction of REF fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_sub_nuc_alt_frac</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Sub-nucleosomal (&lt;150 bp) fraction of ALT fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_sub_nuc_enrichment</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Sub-nucleosomal enrichment (ALT frac / REF frac); <abbr title="Circulating tumor DNA - Tumor-derived cfDNA fragments">ctDNA</abbr> indicator</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_mono_nuc_ref_frac</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mono-nucleosomal (150–200 bp) fraction of REF fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_mono_nuc_alt_frac</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Mono-nucleosomal (150–200 bp) fraction of ALT fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_ch_flag</code></td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;"><code>True</code> when the variant falls in a clonal-hematopoiesis (CH) gene</td>
 </tr>
 </tbody>
 </table>
@@ -8330,8 +8387,8 @@ Use mouse to pan and zoom
 <p>Only for <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input (<code>is_maf=true</code>) when REF or ALT is <code>-</code>, or when REF and ALT have different lengths (complex indels). <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input skips this step entirely.</p>
 </div>
 <div class="admonition warning">
-<p class="admonition-title">FETCH_FAILED</p>
-<p>If the anchor base cannot be fetched (e.g., chromosome not in <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), the variant's <code>gbcms_status</code> is set to <code>FETCH_FAILED</code> and it is excluded from counting.</p>
+<p class="admonition-title">FAIL_FETCH_FAILED</p>
+<p>If the anchor base cannot be fetched (e.g., chromosome not in <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), the variant's <code>gbcms_status</code> is set to <code>FAIL_FETCH_FAILED</code> and it is excluded from counting.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-step-2-ref-validation">Step 2: REF Validation<a class="headerlink" href="#reference-variant-normalization-step-2-ref-validation" title="Permanent link">¶</a></h2>
@@ -8363,7 +8420,7 @@ Use mouse to pan and zoom
     Exact --&gt;|"No"| Sim["Compute similarity\n(matching bases / max length)"]
     Sim --&gt; Thresh{"≥ 90%?"}
     Thresh --&gt;|"Yes"| Corrected(["⚠️ PASS;WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
-    Thresh --&gt;|"No"| Fail(["❌ REF_MISMATCH\n→ excluded from counting"]):::fail
+    Thresh --&gt;|"No"| Fail(["❌ FAIL_REF_MISMATCH\n→ excluded from counting"]):::fail
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
@@ -8722,20 +8779,30 @@ Corrected wins → <code>gbcms_status = PASS;WARN_HOMOPOLYMER_DECOMP</code>.</p>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>REF_MISMATCH</code></td>
+<td style="text-align: left;"><code>FAIL_REF_MISMATCH</code></td>
 <td style="text-align: left;">REF allele &lt;90% match against reference genome</td>
 <td style="text-align: center;">❌</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>FETCH_FAILED</code></td>
+<td style="text-align: left;"><code>FAIL_FETCH_FAILED</code></td>
 <td style="text-align: left;">Could not fetch reference region</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAIL_EMPTY_ALLELE</code></td>
+<td style="text-align: left;">REF or ALT allele is empty (malformed / non-left-anchored indel)</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAIL_ALT_CONTAINS_N</code></td>
+<td style="text-align: left;">ALT allele contains an <code>N</code> base</td>
 <td style="text-align: center;">❌</td>
 </tr>
 </tbody>
 </table>
 <div class="admonition note">
 <p class="admonition-title">Filtering Behavior</p>
-<p>The pipeline filters on <code>gbcms_status.startswith("PASS")</code>, so all <code>PASS</code> and <code>PASS_WARN_*</code> variants proceed to counting. <code>REF_MISMATCH</code> and <code>FETCH_FAILED</code> variants are logged as rejected.</p>
+<p>The pipeline filters on <code>gbcms_status.startswith("PASS")</code>, so all <code>PASS</code> and <code>PASS;WARN_*</code> variants proceed to counting. The <code>FAIL_*</code> variants are excluded from counting but are still <strong>written to the output</strong> with their <code>FAIL_*</code> status in the <code>gbcms_status</code> column (and zero counts), so the rejection reason is in the output file, not only the log.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-limitations">Limitations<a class="headerlink" href="#reference-variant-normalization-limitations" title="Permanent link">¶</a></h2>
@@ -9385,6 +9452,24 @@ position, which is exceptionally unlikely for a 2–3 base overhang.</p>
 is provided via <code>--gtf</code> on the <code>gbcms rna</code> command. Without <code>--gtf</code>, RNA mode
 operates identically to v4.2.0 — no annotation columns are added.</p>
 </div>
+<p>With <code>--gtf</code>, GTF mode appends <strong>17 columns</strong> total: <code>exon_boundary_dist</code> (1),
+<code>transcript_read_counts</code> + <code>transcript_fragment_counts</code> (2), and the 14 ASJD fields
+(7 metrics × 2 alleles).</p>
+<div class="admonition important">
+<p class="admonition-title"><code>gene_strand</code> is the keystone</p>
+<p>Parsing the GTF also back-fills each variant's <strong><code>gene_strand</code></strong> (the transcript's
+<code>+</code>/<code>-</code> strand). This is what makes strand-aware features work: without it,
+<code>--enforce_strandedness</code> and the ASJD strand-discordance test are silent no-ops
+(every read reads as sense, so <code>antisense_depth</code> stays 0). Strand-specific counting
+therefore requires <code>--gtf</code>, not just <code>--strandedness</code>.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Cohort runs: pre-build the GTF cache</p>
+<p>The GTF is parsed per sample. For a cohort, run <code>gbcms build-gtf-cache</code> once and
+point every sample at the same <code>--gtf-cache-dir</code> so each per-sample run reuses the
+prebuilt index (~9s parse → ~0.05s load). The Nextflow pipeline wires this up
+automatically via the <code>GBCMS_BUILD_GTF_CACHE</code> process (<code>--gtf_cache</code>, default on).</p>
+</div>
 <hr>
 <h2 id="reference-rna-annotation-gtf-requirements">GTF Requirements<a class="headerlink" href="#reference-rna-annotation-gtf-requirements" title="Permanent link">¶</a></h2>
 <p>gbcms supports <strong>Ensembl</strong> and <strong>GENCODE</strong> GTF annotation files.</p>
@@ -9624,8 +9709,10 @@ Use mouse to pan and zoom
    span the same junction votes once, so the junction totals and the strand-discordance
    test reflect independent fragments, not mates.</li>
 </ol>
-<h3 id="reference-rna-annotation-output-columns-14">Output Columns (14)<a class="headerlink" href="#reference-rna-annotation-output-columns-14" title="Permanent link">¶</a></h3>
-<p>See <a href="#reference-output-formats-aberrant-splice-junction-detection-asjd">Output Formats → ASJD</a> for the complete column reference.</p>
+<h3 id="reference-rna-annotation-output-columns-14-asjd">Output Columns (14 ASJD)<a class="headerlink" href="#reference-rna-annotation-output-columns-14-asjd" title="Permanent link">¶</a></h3>
+<p>The 14 ASJD fields are part of the 17 columns GTF mode adds (alongside
+<code>exon_boundary_dist</code> and the two per-transcript count columns).
+See <a href="#reference-output-formats-aberrant-splice-junction-detection-asjd">Output Formats → ASJD</a> for the complete column reference.</p>
 <h3 id="reference-rna-annotation-diagnostic-flags">Diagnostic Flags<a class="headerlink" href="#reference-rna-annotation-diagnostic-flags" title="Permanent link">¶</a></h3>
 <p>The <code>asjd_diagnostic</code> column provides semicolon-separated QC flags. All junction
 counts are <strong>per fragment</strong> (a molecule's R1 and R2 are deduped to one vote):</p>
@@ -11435,7 +11522,7 @@ Use mouse to pan and zoom
 </div>
 <hr>
 <h2 id="reference-counting-metrics-complete-output-column-reference">Complete Output Column Reference<a class="headerlink" href="#reference-counting-metrics-complete-output-column-reference" title="Permanent link">¶</a></h2>
-<p>All fields in the <code>BaseCounts</code> struct returned by <code>count_bam_binned()</code> — the binned counting entry point that groups variants into ~10kb genomic bins for a single <code>bam.fetch()</code> per bin before classifying reads. See <a href="#reference-architecture-genomic-binning">Architecture → Genomic Binning</a> for how bins are built.</p>
+<p>The core counting fields of the <code>BaseCounts</code> struct returned by <code>count_bam_binned()</code> — the binned counting entry point that groups variants into ~10kb genomic bins for a single <code>bam.fetch()</code> per bin before classifying reads. See <a href="#reference-architecture-genomic-binning">Architecture → Genomic Binning</a> for how bins are built. (The gated <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, RNA, and ASJD fields — plus QC fields like <code>mq0_count</code>, <code>singleton_alt_count</code>, <code>duplex_alt_count</code>, <code>alt_dist_end_median</code>/<code>ref_dist_end_median</code>, and <code>non_discriminating_locus</code> — are documented in their own sections above and in the <a href="#reference-output-formats">output-formats reference</a>.)</p>
 <table>
 <thead>
 <tr>
@@ -11615,7 +11702,7 @@ Use mouse to pan and zoom
 <hr>
 <h2 id="reference-counting-metrics-mfsd"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> — Mutant Fragment Size Distribution<a class="headerlink" href="#reference-counting-metrics-mfsd" title="Permanent link">¶</a></h2>
 <p><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> compares insert-size distributions for <strong>REF-classified</strong> vs <strong>ALT-classified</strong> fragments at each variant position. Short-fragment enrichment in the ALT class indicates tumor-derived <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>.</p>
-<p>Enabled with <code>--mfsd</code>. All 34 columns (and their <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO equivalents) are absent from output without this flag.</p>
+<p>Enabled with <code>--mfsd</code>. All 41 columns (and their <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO equivalents) are absent from output without this flag.</p>
 <h3 id="reference-counting-metrics-fragment-classes">Fragment Classes<a class="headerlink" href="#reference-counting-metrics-fragment-classes" title="Permanent link">¶</a></h3>
 <table>
 <thead>
@@ -11643,7 +11730,7 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
-<h3 id="reference-counting-metrics-maf-columns-34-total"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Columns (34 total)<a class="headerlink" href="#reference-counting-metrics-maf-columns-34-total" title="Permanent link">¶</a></h3>
+<h3 id="reference-counting-metrics-maf-columns-41-total"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Columns (41 total)<a class="headerlink" href="#reference-counting-metrics-maf-columns-41-total" title="Permanent link">¶</a></h3>
 <h4 id="reference-counting-metrics-raw-counts">Raw Counts<a class="headerlink" href="#reference-counting-metrics-raw-counts" title="Permanent link">¶</a></h4>
 <table>
 <thead>
@@ -11717,7 +11804,7 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
-<h4 id="reference-counting-metrics-pairwise-ks-statistics-6-pairs-3-values-18-columns">Pairwise KS Statistics (6 pairs × 3 values = 18 columns)<a class="headerlink" href="#reference-counting-metrics-pairwise-ks-statistics-6-pairs-3-values-18-columns" title="Permanent link">¶</a></h4>
+<h4 id="reference-counting-metrics-pairwise-ks-statistics-6-pairs-3-values-18-columns-1-fdr-q-value">Pairwise KS Statistics (6 pairs × 3 values = 18 columns, + 1 FDR q-value)<a class="headerlink" href="#reference-counting-metrics-pairwise-ks-statistics-6-pairs-3-values-18-columns-1-fdr-q-value" title="Permanent link">¶</a></h4>
 <p>Each pair yields: <code>delta</code> (mean difference in bp), <code>ks</code> (KS D-statistic), <code>pval</code> (KS p-value).
 Values are <code>NA</code> when either class has fewer than 5 fragments (<code>mfsd_ks_valid = False</code>).</p>
 <blockquote>
@@ -11755,6 +11842,11 @@ p-value, and below a handful of fragments the test has essentially no power
 </tr>
 </tbody>
 </table>
+<p>An additional column, <code>mfsd_qval_alt_ref</code>, carries the Benjamini-Hochberg FDR
+q-value for the ALT-vs-REF KS p-value, corrected across all variants with a valid
+ALT-vs-REF test in the sample. The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classifies TUMOR-LIKE / CH-LIKE on
+this q-value, not the raw p-value. It is <code>NA</code> when the KS test was invalid, and
+equals the p-value until the post-counting BH pass runs.</p>
 <h4 id="reference-counting-metrics-derived-metrics">Derived Metrics<a class="headerlink" href="#reference-counting-metrics-derived-metrics" title="Permanent link">¶</a></h4>
 <table>
 <thead>
@@ -11790,7 +11882,53 @@ p-value, and below a handful of fragments the test has essentially no power
 </tr>
 </tbody>
 </table>
-<h3 id="reference-counting-metrics-vcf-info-fields-7-total"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO Fields (7 total)<a class="headerlink" href="#reference-counting-metrics-vcf-info-fields-7-total" title="Permanent link">¶</a></h3>
+<h4 id="reference-counting-metrics-nucleosomal-fractions">Nucleosomal Fractions<a class="headerlink" href="#reference-counting-metrics-nucleosomal-fractions" title="Permanent link">¶</a></h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>mfsd_sub_nuc_ref_frac</code></td>
+<td style="text-align: left;">Sub-nucleosomal (&lt;150 bp) fraction of REF fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_sub_nuc_alt_frac</code></td>
+<td style="text-align: left;">Sub-nucleosomal (&lt;150 bp) fraction of ALT fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_sub_nuc_enrichment</code></td>
+<td style="text-align: left;">Sub-nucleosomal enrichment (ALT frac / REF frac); <abbr title="Circulating tumor DNA - Tumor-derived cfDNA fragments">ctDNA</abbr> indicator</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_mono_nuc_ref_frac</code></td>
+<td style="text-align: left;">Mono-nucleosomal (150–200 bp) fraction of REF fragments</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mfsd_mono_nuc_alt_frac</code></td>
+<td style="text-align: left;">Mono-nucleosomal (150–200 bp) fraction of ALT fragments</td>
+</tr>
+</tbody>
+</table>
+<h4 id="reference-counting-metrics-ch-gene-flag">CH Gene Flag<a class="headerlink" href="#reference-counting-metrics-ch-gene-flag" title="Permanent link">¶</a></h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>mfsd_ch_flag</code></td>
+<td style="text-align: left;"><code>True</code> when the variant falls in a clonal-hematopoiesis (CH) gene</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reference-counting-metrics-vcf-info-fields-13-total"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO Fields (13 total)<a class="headerlink" href="#reference-counting-metrics-vcf-info-fields-13-total" title="Permanent link">¶</a></h3>
 <p>Added to <code>##INFO</code> header and per-variant INFO column when <code>--mfsd</code> is set.</p>
 <table>
 <thead>
@@ -11815,6 +11953,11 @@ p-value, and below a handful of fragments the test has essentially no power
 <td style="text-align: left;"><code>MFSD_PVAL_ALT_REF</code></td>
 <td style="text-align: left;">Float</td>
 <td style="text-align: left;">KS p-value (ALT vs REF)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MFSD_QVAL_ALT_REF</code></td>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;">Benjamini-Hochberg FDR q-value for the ALT-vs-REF KS p-value</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MFSD_ALT_LLR</code></td>
@@ -12381,7 +12524,7 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_mono_nuc_ref_frac</code></td>
-<td style="text-align: left;">Fraction of REF fragments in the mono-nucleosomal range (150–250 bp)</td>
+<td style="text-align: left;">Fraction of REF fragments in the mono-nucleosomal range (150–200 bp)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_mono_nuc_alt_frac</code></td>
@@ -13165,7 +13308,7 @@ see <code>.agents/rules/architecture.md</code> §"Legacy count_bam parity oracle
 and <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> validation:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#development-developer-guide-__codelineno-5-1"></a>pytest<span class="w"> </span>-v<span class="w">                                    </span><span class="c1"># Full suite</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#development-developer-guide-__codelineno-5-2"></a>pytest<span class="w"> </span>tests/test_shifted_indels.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Windowed + shifted indel-specific</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#development-developer-guide-__codelineno-5-3"></a>pytest<span class="w"> </span>tests/test_variant_checks.py<span class="w"> </span>-v<span class="w">      </span><span class="c1"># Core allele-classification</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#development-developer-guide-__codelineno-5-3"></a>pytest<span class="w"> </span>tests/test_accuracy.py<span class="w"> </span>-v<span class="w">            </span><span class="c1"># Core allele-classification</span>
 </code></pre></div>
 <h3 id="development-developer-guide-rust-unit-tests-cargo-test">Rust Unit Tests (cargo test)<a class="headerlink" href="#development-developer-guide-rust-unit-tests-cargo-test" title="Permanent link">¶</a></h3>
 <p>Normalization engine tests — left-alignment, repeat detection, adaptive padding,
@@ -14500,6 +14643,21 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>resolve_thread_budget</code>, and the resolved budget is logged. Counts are unaffected.</p>
 </li>
 </ul>
+<h3 id="development-changelog-documentation">📖 Documentation<a class="headerlink" href="#development-changelog-documentation" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Repo-wide documentation accuracy sweep.</strong> A four-way audit against the current code
+  corrected the docs where they had drifted: the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> schema (now <strong>41 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns / 13 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  <code>MFSD_*</code> INFO fields</strong>, up from a stale 34/7, with the q-value + nucleosomal-fraction +
+  CH-flag columns added); the mono-nucleosomal range (150–200 bp); <code>gbcms_status</code> values (the
+  real <code>FAIL_*</code> prefixes + the two missing statuses); crashing examples (<code>normalize</code> uses
+  <code>--output &lt;file.tsv&gt;</code>, not <code>--output-dir</code>; corrected RNA <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column names in the quickstart);
+  the Nextflow README defaults (on-by-default filters, <code>pairhmm</code> backend, Nextflow ≥22.10.1) and
+  its missing param surface (<code>--strandedness</code>, <code>--gtf</code>, <code>--library_type</code>, <code>--mfsd*</code>, <code>--merge_*</code>);
+  and previously-undocumented features (<code>build-gtf-cache</code> / <code>--gtf-cache-dir</code>, exit-code
+  semantics, the <code>--threads</code> hard budget, and contig auto-reconciliation). Also fixed the
+  <code>--rna-editing-db</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> help (it loads a REDIportal <strong>TABLE1</strong>, not a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>) and several
+  developer-doc references to files/paths that had moved.</li>
+</ul>
 <h3 id="development-changelog-internal">🧹 Internal<a class="headerlink" href="#development-changelog-internal" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Single type stub for the Rust extension (LO-1).</strong> Removed the orphan
@@ -14630,7 +14788,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Strand Bias Sanitization</strong>: Handled edge cases in Fisher's exact test where structural strand arrays contain all zeros, returning <code>.</code>, <code>1.0</code>, or <code>NA</code> instead of <code>NaN</code>/<code>Inf</code>.</li>
 <li><strong>Merge Engine Robustness</strong>: <code>gbcms merge</code> uses Polars <code>comment_prefix</code> natively to skip provenance comment lines without failure.</li>
 </ul>
-<h3 id="development-changelog-documentation">📚 Documentation<a class="headerlink" href="#development-changelog-documentation" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_1">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_1" title="Permanent link">¶</a></h3>
 <ul>
 <li>Updated <code>cli/rna.md</code> to note CRAM and provenance support for RNA mode.</li>
 <li>Updated <code>cli/merge.md</code> to explain <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> comment line compatibility.</li>
@@ -14701,7 +14859,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>298 Python tests</strong> (up from 255): 32 merge, 8 batch, 11 INDEL consensus tests.</li>
 <li><strong>161 Rust tests</strong> (up from 150): 11 new fragment consensus unit tests, 0 Clippy warnings.</li>
 </ul>
-<h3 id="development-changelog-documentation_1">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_2">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/cli/merge.md</code> — <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> reference for <code>gbcms merge</code> covering usage,
   combined columns schema, Nextflow integration, and Fisher strand bias.</li>
@@ -14838,7 +14996,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </li>
 <li><strong>0 Clippy warnings</strong> (strict <code>-D warnings</code> mode).</li>
 </ul>
-<h3 id="development-changelog-documentation_2">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_3">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/reference/rna-annotation.md</code> — GTF requirements, annotation
   index architecture, exon boundary distance, per-transcript counting, and
@@ -14929,7 +15087,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>gbcms_status</code> rename.</li>
 <li>All 238 Python tests pass; all 119 Rust tests pass.</li>
 </ul>
-<h3 id="development-changelog-documentation_3">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_4">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Updated</strong> <code>docs/reference/output-formats.md</code> — <code>gbcms_status</code>,
   <code>gbcms_diagnostic</code>, <code>gbcms_rescue</code> columns; <code>partial_alt</code> description
@@ -15012,7 +15170,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>--no-strandedness</code> only when disabled (was incorrectly passing
   <code>--enforce-strandedness</code> as an additive flag).</li>
 </ul>
-<h3 id="development-changelog-documentation_4">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_5">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/reference/mfsd-report.md</code> — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> interactive report reference
   covering Fragment Origin Signal classification, interactive features, output
@@ -15095,7 +15253,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   match tracking, invariant enforcement, and edge cases (all-N reads, mixed BQ/N).</li>
 <li>Updated <code>tests/test_column_count_delta_is_three</code> to assert 24 gbcms DNA columns.</li>
 </ul>
-<h4 id="development-changelog-documentation_5">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_5" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-documentation_6">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_6" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Updated</strong> <code>docs/reference/counting-metrics.md</code> — diagnostic columns, invariant
   tables, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> tag definitions, N-base handling section.</li>
@@ -15196,7 +15354,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>parquet_writer.rs</code> relocated</strong>: Moved from <code>counting/</code> into <code>shared/</code> during
   module extraction.</li>
 </ul>
-<h3 id="development-changelog-documentation_6">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_7">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_7" title="Permanent link">¶</a></h3>
 <p>Major documentation overhaul — 28+ files updated:
 - Complete MkDocs plugin utilization pass (tabbed, details, admonitions,
   mermaid, code annotations, glightbox) across all reference pages
@@ -15260,7 +15418,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Resolved <code>mypy</code> <code>AlignedSegment.cigar</code> attribute errors in test suite.</li>
 <li>Lint and stale-comment cleanup post Phase 6 audit.</li>
 </ul>
-<h3 id="development-changelog-documentation_7">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_8">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_8" title="Permanent link">¶</a></h3>
 <ul>
 <li>Full documentation sync with codebase after Phase 6 (<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>) merge.</li>
 <li>PDF generation guide added to developer documentation.</li>
@@ -15291,7 +15449,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Rust module structure</strong>: Split <code>counting.rs</code> (1904 LOC) and <code>normalize.rs</code> (1221 LOC) into idiomatic module directories: <code>counting/</code> (7 modules) and <code>normalize/</code> (7 modules)</li>
 <li><strong>AlignmentBackend threading</strong>: <code>AlignmentBackend</code> enum threaded through all Phase 3 call sites</li>
 </ul>
-<h3 id="development-changelog-documentation_8">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_9">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Comprehensive audit</strong>: 28 fixes across 23 files — all GitBook URLs → MkDocs, version templating (X.Y.Z), undocumented <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options, 5 mermaid diagrams updated for post-2.7.0 logic, architecture module tree refreshed, <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> documented end-to-end</li>
 <li>Deleted stale <code>nextflow/CHANGES.md</code></li>
@@ -15342,7 +15500,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong>Tolerant REF validation</strong>: Variants with ≥90% REF match against the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> are now counted (status <code>PASS_WARN_REF_CORRECTED</code>) instead of being silently rejected. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF is used for haplotype construction. Variants with &lt;90% match are still rejected as <code>REF_MISMATCH</code></li>
 </ul>
-<h3 id="development-changelog-documentation_9">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_10">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Visual posters</strong>: Added overview, normalization, and read-filter/counting-metrics posters (JPG) to reference documentation pages with lightbox support</li>
 <li><strong>Embedded PDFs</strong>: Added inline PDF viewer for allele classification guide and detailed overview presentation via <code>mkdocs-pdf</code> plugin</li>
@@ -15428,7 +15586,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Type stubs</strong>: <code>_rs.pyi</code> and <code>gbcms_rs.pyi</code> synced with Rust bindings (added <code>ref_context</code>, <code>ref_context_start</code>, <code>fragment_qual_threshold</code>)</li>
 <li><strong>Linting</strong>: All files pass black, ruff, and mypy</li>
 </ul>
-<h3 id="development-changelog-documentation_10">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_11">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_11" title="Permanent link">¶</a></h3>
 <ul>
 <li>Architecture comparison table updated with windowed indels and masked comparison</li>
 <li>Nextflow config and docs updated with new <code>min_baseq</code> default</li>
@@ -15474,7 +15632,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Code Quality</strong>: Added <code>__all__</code> exports, docstrings, and type hints across all modules</li>
 <li><strong>StrEnum</strong>: Modern enum pattern with Python 3.10 backport</li>
 </ul>
-<h3 id="development-changelog-documentation_11">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_12">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_12" title="Permanent link">¶</a></h3>
 <ul>
 <li>New <code>docs/ARCHITECTURE.md</code> with system diagrams</li>
 <li>New <code>docs/DEVELOPMENT.md</code> (developer guide)</li>
@@ -15511,7 +15669,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Resource management</strong> with automatic retry and scaling</li>
 <li><strong>Comprehensive documentation</strong> in <code>docs/NEXTFLOW.md</code> and <code>nextflow/README.md</code></li>
 </ul>
-<h4 id="development-changelog-documentation_12">Documentation<a class="headerlink" href="#development-changelog-documentation_12" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-documentation_13">Documentation<a class="headerlink" href="#development-changelog-documentation_13" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Usage pattern comparison</strong> guide (<code>docs/WORKFLOWS.md</code>) for choosing between <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and Nextflow</li>
 <li><strong>MkDocs integration</strong> for beautiful GitHub Pages documentation</li>
@@ -15527,7 +15685,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>GitBook integration</strong>: configured to read from <code>main</code> branch</li>
 <li><strong>Nextflow module</strong>: improved parameter passing with meta.suffix support</li>
 </ul>
-<h3 id="development-changelog-documentation_13">📝 Documentation<a class="headerlink" href="#development-changelog-documentation_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_14">📝 Documentation<a class="headerlink" href="#development-changelog-documentation_14" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete Nextflow workflow guide with SLURM examples</li>
 <li>Per-sample suffix usage examples</li>
@@ -15619,7 +15777,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Reference validation against <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> for all variant types</li>
 <li>Thread-safe <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> access with per-thread readers</li>
 </ul>
-<h3 id="development-changelog-documentation_14">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_14" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-documentation_15">📚 Documentation<a class="headerlink" href="#development-changelog-documentation_15" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete rewrite of all documentation</li>
 <li>New guides: <code>INSTALLATION.md</code>, <code>CLI_FEATURES.md</code>, <code>INPUT_OUTPUT.md</code></li>
@@ -15754,10 +15912,15 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Test edge cases and error conditions</li>
 </ul>
 <h3 id="development-contributing-counting-engine-changes">Counting Engine Changes<a class="headerlink" href="#development-contributing-counting-engine-changes" title="Permanent link">¶</a></h3>
-<p>Changes to <code>rust/src/counting.rs</code> require additional verification:</p>
+<p>Changes to the counting engine (<code>rust/src/counting/</code> — especially <code>engine.rs</code> and
+<code>variant_checks.rs</code>) require additional verification:</p>
 <ul>
 <li><strong>Unit tests</strong>: <code>cargo test</code> must pass (all existing tests + new tests for the change)</li>
-<li><strong>22-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> regression</strong>: Run the regression suite and verify no unintended count shifts</li>
+<li><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-slice regression</strong>: Run the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-slice regression suite and verify no unintended
+  count shifts (see the developer guide for the current slice set)</li>
+<li><strong>Binned↔legacy parity</strong>: any change to read classification / filtering / fragment
+  consensus / fetch-window logic must be mirrored in the legacy <code>count_single_variant</code>,
+  or the parity tests fail (see <code>.agents/rules/architecture.md</code>)</li>
 <li><strong>Variant-type coverage</strong>: If modifying a specific variant type (<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Indel/Complex),
   ensure the regression <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> includes representative variants of that type</li>
 <li><strong>MnpResult paths</strong>: Any changes to <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> handling must test all 5 <code>MnpResult</code> variants:
@@ -15779,10 +15942,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <p>Update documentation as needed</p>
 </li>
 <li>
-<p><strong>Run tests and linters</strong>
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#development-contributing-__codelineno-7-1"></a>make<span class="w"> </span><span class="nb">test</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#development-contributing-__codelineno-7-2"></a>make<span class="w"> </span>lint
+<p><strong>Run tests and linters</strong> — the Python <em>and</em> Rust gates (<code>make test</code>/<code>make lint</code> cover
+   Python only; the Rust lint/tests must be run separately, or you'll ship un-linted Rust):
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#development-contributing-__codelineno-7-1"></a>make<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>lint<span class="w">                                   </span><span class="c1"># Python: pytest + ruff/black/mypy</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#development-contributing-__codelineno-7-2"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
 </code></pre></div>
+   The load-bearing invariants (binned↔legacy parity, one base-quality gate across
+   alignment backends, the 4 counting-test invariants) are in <code>.agents/rules/architecture.md</code>
+   (in the repo root) — read them before touching the engine.
 </li>
 <li>
 <p><strong>Commit your changes</strong>
@@ -15906,11 +16073,18 @@ chromosome naming is consistent across <abbr title="Variant Call Format - Standa
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#resources-troubleshooting-__codelineno-6-5"></a><span class="c1"># Check names in MAF/VCF</span>
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#resources-troubleshooting-__codelineno-6-6"></a>head<span class="w"> </span>-20<span class="w"> </span>variants.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-f5<span class="w">   </span><span class="c1"># Chromosome column</span>
 </code></pre></div>
-<p>Common mismatch: <code>chr1</code> vs <code>1</code>. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> and variant file must match.</p>
+<p><code>chr1</code> vs <code>1</code> and <code>M</code>/<code>MT</code> differences between the <strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> and the variant file are
+auto-reconciled — you do <strong>not</strong> need to pre-harmonize them. A contig that has no match
+in the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is skipped with a one-time <code>WARN</code> (not a silent zero-count). The <strong>reference
+<abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></strong>, however, is fetched by the variant's contig name, so the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> must contain that
+contig — otherwise the variant is rejected with <code>FAIL_FETCH_FAILED</code>.</p>
 </details>
 <details class="question">
-<summary><code>FETCH_FAILED</code> in <code>gbcms_status</code> for all variants on a chromosome</summary>
-<p>See chromosome mismatch above. Also check:
+<summary><code>FAIL_FETCH_FAILED</code> in <code>gbcms_status</code> for all variants on a chromosome</summary>
+<p>This means the <strong>reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></strong> anchor could not be fetched for that contig. Because
+<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>↔variant contig naming is auto-reconciled, this is now almost always a <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> problem,
+not a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> one. Check:
+- The contig exists in the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> under the variant's name (<code>grep "^&gt;" reference.fa</code>)
 - <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> <code>.fai</code> index is present (<code>samtools faidx reference.fa</code>)
 - No truncated / corrupted <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></p>
 </details>
@@ -15938,7 +16112,7 @@ chromosome naming is consistent across <abbr title="Variant Call Format - Standa
 <p><strong>Left-alignment shift</strong> — for large deletions (≥5bp), <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-aligns the anchor;
    the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position may be several bases right of the anchor.
    Run normalization to see the left-aligned coordinates:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#resources-troubleshooting-__codelineno-8-1"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/norm/
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#resources-troubleshooting-__codelineno-8-1"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output<span class="w"> </span>/tmp/norm/normalized.tsv
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#resources-troubleshooting-__codelineno-8-2"></a><span class="c1"># Check norm_pos vs original Start_Position</span>
 </code></pre></div>
 </li>
@@ -16048,8 +16222,8 @@ gbcms requires ≥90% base match to auto-correct; below that, the variant is exc
 - Chromosome naming mismatch (<code>chr1</code> vs <code>1</code>)
 - Trailing-base error in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation (fixed by tolerant validation if ≥90% match)</p>
 <p>Diagnose with:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#resources-troubleshooting-__codelineno-13-1"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/norm/
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#resources-troubleshooting-__codelineno-13-2"></a>grep<span class="w"> </span><span class="s2">"REF_MISMATCH"</span><span class="w"> </span>/tmp/norm/normalized.maf<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#resources-troubleshooting-__codelineno-13-1"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output<span class="w"> </span>/tmp/norm/normalized.tsv
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#resources-troubleshooting-__codelineno-13-2"></a>grep<span class="w"> </span><span class="s2">"FAIL_REF_MISMATCH"</span><span class="w"> </span>/tmp/norm/normalized.tsv<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5<span class="w">   </span><span class="c1"># gbcms_status column</span>
 </code></pre></div>
 </details>
 <details class="question">
@@ -16101,7 +16275,7 @@ gbcms cannot assign sense/antisense without strand annotation.</p>
 - Use <code>--no-strandedness</code> to count all reads regardless of strand</p>
 </details>
 <details class="question">
-<summary>RNA editing flag (<code>rna_editing_site_overlap</code>) is always False</summary>
+<summary>RNA editing flag (<code>rna_editing_site</code>) is always False</summary>
 <p>Ensure <code>--rna-editing-db</code> points to a valid REDIportal TABLE1 file:
 </p><div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#resources-troubleshooting-__codelineno-16-1"></a><span class="c1"># Verify file exists and is readable</span>
 <a id="__codelineno-16-2" name="__codelineno-16-2" href="#resources-troubleshooting-__codelineno-16-2"></a>head<span class="w"> </span>-3<span class="w"> </span>TABLE1_hg38.txt.gz<span class="w"> </span><span class="p">|</span><span class="w"> </span>zcat<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-3
@@ -16130,6 +16304,17 @@ that lack the <code>ps</code> command needed for Nextflow resource tracking.</p>
 <summary>Docker permission denied</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#resources-troubleshooting-__codelineno-18-1"></a>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>docker<span class="w"> </span><span class="nv">$USER</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>newgrp<span class="w"> </span>docker
 </code></pre></div>
+</details>
+<details class="question">
+<summary>When does <code>gbcms</code> exit non-zero? (orchestration / Nextflow)</summary>
+<p><code>gbcms</code> exits <strong>1 if any sample fails</strong> (a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> raises during counting — e.g. a missing
+index or a Rust panic surfaced as an error), whether all samples failed or only some.
+Successful runs exit <strong>0</strong>.</p>
+<p>An <strong>empty or fully-rejected variant set is not a failure</strong>: a sample that legitimately
+has no variants called (or whose variants are all rejected at prep) still exits <strong>0</strong>, and
+the rejected variants are written to the output with their <code>FAIL_*</code> <code>gbcms_status</code>. This
+lets a per-sample workflow keep going instead of failing the whole cohort on a sample that
+genuinely has nothing to count.</p>
 </details>
 <hr>
 <h2 id="resources-troubleshooting-debugging-tools">Debugging Tools<a class="headerlink" href="#resources-troubleshooting-debugging-tools" title="Permanent link">¶</a></h2>

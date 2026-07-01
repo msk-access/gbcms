@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -2289,6 +2289,11 @@
 <td style="text-align: left;"><code>--strandedness</code></td>
 <td style="text-align: left;"><code>'reverse'</code></td>
 <td style="text-align: left;">RNA library strand protocol: <code>'reverse'</code> (<abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>/fr-firststrand, featureCounts <code>-s 2</code> — the FORTE default), <code>'forward'</code> (fr-secondstrand, <code>-s 1</code>), or <code>'unstranded'</code> (<code>-s 0</code>). Sets the read→transcript-strand fold used by <code>--enforce_strandedness</code> and ASJD strand-discordance; <code>'unstranded'</code> disables both.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--library_type</code></td>
+<td style="text-align: left;"><code>'capture'</code></td>
+<td style="text-align: left;"><code>'capture'</code> (default) or <code>'amplicon'</code>. Amplicon mode treats R1 and R2 as <strong>independent observations</strong> (no fragment-level consensus) and auto-disables strandedness — use it for amplicon/primer-based RNA panels where mates aren't independent fragments.</td>
 </tr>
 </tbody>
 </table>

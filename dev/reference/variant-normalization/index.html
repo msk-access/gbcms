@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -1116,8 +1116,8 @@ Use mouse to pan and zoom
 <p>Only for <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input (<code>is_maf=true</code>) when REF or ALT is <code>-</code>, or when REF and ALT have different lengths (complex indels). <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input skips this step entirely.</p>
 </div>
 <div class="admonition warning">
-<p class="admonition-title">FETCH_FAILED</p>
-<p>If the anchor base cannot be fetched (e.g., chromosome not in <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), the variant's <code>gbcms_status</code> is set to <code>FETCH_FAILED</code> and it is excluded from counting.</p>
+<p class="admonition-title">FAIL_FETCH_FAILED</p>
+<p>If the anchor base cannot be fetched (e.g., chromosome not in <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), the variant's <code>gbcms_status</code> is set to <code>FAIL_FETCH_FAILED</code> and it is excluded from counting.</p>
 </div>
 <hr>
 <h2 id="step-2-ref-validation">Step 2: REF Validation<a class="headerlink" href="#step-2-ref-validation" title="Permanent link">¶</a></h2>
@@ -1148,7 +1148,7 @@ Use mouse to pan and zoom
     Exact --&gt;|"No"| Sim["Compute similarity\n(matching bases / max length)"]
     Sim --&gt; Thresh{"≥ 90%?"}
     Thresh --&gt;|"Yes"| Corrected(["⚠️ PASS;WARN_REF_CORRECTED\nFASTA REF used downstream"]):::warn
-    Thresh --&gt;|"No"| Fail(["❌ REF_MISMATCH\n→ excluded from counting"]):::fail
+    Thresh --&gt;|"No"| Fail(["❌ FAIL_REF_MISMATCH\n→ excluded from counting"]):::fail
 
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef warn fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
@@ -1504,20 +1504,30 @@ Corrected wins → <code>gbcms_status = PASS;WARN_HOMOPOLYMER_DECOMP</code>.</p>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>REF_MISMATCH</code></td>
+<td style="text-align: left;"><code>FAIL_REF_MISMATCH</code></td>
 <td style="text-align: left;">REF allele &lt;90% match against reference genome</td>
 <td style="text-align: center;">❌</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>FETCH_FAILED</code></td>
+<td style="text-align: left;"><code>FAIL_FETCH_FAILED</code></td>
 <td style="text-align: left;">Could not fetch reference region</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAIL_EMPTY_ALLELE</code></td>
+<td style="text-align: left;">REF or ALT allele is empty (malformed / non-left-anchored indel)</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAIL_ALT_CONTAINS_N</code></td>
+<td style="text-align: left;">ALT allele contains an <code>N</code> base</td>
 <td style="text-align: center;">❌</td>
 </tr>
 </tbody>
 </table>
 <div class="admonition note">
 <p class="admonition-title">Filtering Behavior</p>
-<p>The pipeline filters on <code>gbcms_status.startswith("PASS")</code>, so all <code>PASS</code> and <code>PASS_WARN_*</code> variants proceed to counting. <code>REF_MISMATCH</code> and <code>FETCH_FAILED</code> variants are logged as rejected.</p>
+<p>The pipeline filters on <code>gbcms_status.startswith("PASS")</code>, so all <code>PASS</code> and <code>PASS;WARN_*</code> variants proceed to counting. The <code>FAIL_*</code> variants are excluded from counting but are still <strong>written to the output</strong> with their <code>FAIL_*</code> status in the <code>gbcms_status</code> column (and zero counts), so the rejection reason is in the output file, not only the log.</p>
 </div>
 <hr>
 <h2 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">¶</a></h2>
@@ -1541,7 +1551,7 @@ Corrected wins → <code>gbcms_status = PASS;WARN_HOMOPOLYMER_DECOMP</code>.</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 10, 2026 20:19:24 UTC"><span class="timeago" datetime="2026-05-10T20:19:24+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 10, 2026 20:19:24 UTC">2026-05-10</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="July 1, 2026 15:57:53 UTC"><span class="timeago" datetime="2026-07-01T15:57:53+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="July 1, 2026 15:57:53 UTC">2026-07-01</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

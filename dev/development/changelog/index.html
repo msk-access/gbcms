@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -774,6 +774,21 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>resolve_thread_budget</code>, and the resolved budget is logged. Counts are unaffected.</p>
 </li>
 </ul>
+<h3 id="documentation">📖 Documentation<a class="headerlink" href="#documentation" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Repo-wide documentation accuracy sweep.</strong> A four-way audit against the current code
+  corrected the docs where they had drifted: the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> schema (now <strong>41 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns / 13 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+<code>MFSD_*</code> INFO fields</strong>, up from a stale 34/7, with the q-value + nucleosomal-fraction +
+  CH-flag columns added); the mono-nucleosomal range (150–200 bp); <code>gbcms_status</code> values (the
+  real <code>FAIL_*</code> prefixes + the two missing statuses); crashing examples (<code>normalize</code> uses
+  <code>--output &lt;file.tsv&gt;</code>, not <code>--output-dir</code>; corrected RNA <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column names in the quickstart);
+  the Nextflow README defaults (on-by-default filters, <code>pairhmm</code> backend, Nextflow ≥22.10.1) and
+  its missing param surface (<code>--strandedness</code>, <code>--gtf</code>, <code>--library_type</code>, <code>--mfsd*</code>, <code>--merge_*</code>);
+  and previously-undocumented features (<code>build-gtf-cache</code> / <code>--gtf-cache-dir</code>, exit-code
+  semantics, the <code>--threads</code> hard budget, and contig auto-reconciliation). Also fixed the
+  <code>--rna-editing-db</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> help (it loads a REDIportal <strong>TABLE1</strong>, not a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>) and several
+  developer-doc references to files/paths that had moved.</li>
+</ul>
 <h3 id="internal">🧹 Internal<a class="headerlink" href="#internal" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Single type stub for the Rust extension (LO-1).</strong> Removed the orphan
@@ -904,7 +919,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Strand Bias Sanitization</strong>: Handled edge cases in Fisher's exact test where structural strand arrays contain all zeros, returning <code>.</code>, <code>1.0</code>, or <code>NA</code> instead of <code>NaN</code>/<code>Inf</code>.</li>
 <li><strong>Merge Engine Robustness</strong>: <code>gbcms merge</code> uses Polars <code>comment_prefix</code> natively to skip provenance comment lines without failure.</li>
 </ul>
-<h3 id="documentation">📚 Documentation<a class="headerlink" href="#documentation" title="Permanent link">¶</a></h3>
+<h3 id="documentation_1">📚 Documentation<a class="headerlink" href="#documentation_1" title="Permanent link">¶</a></h3>
 <ul>
 <li>Updated <code>cli/rna.md</code> to note CRAM and provenance support for RNA mode.</li>
 <li>Updated <code>cli/merge.md</code> to explain <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> comment line compatibility.</li>
@@ -975,7 +990,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>298 Python tests</strong> (up from 255): 32 merge, 8 batch, 11 INDEL consensus tests.</li>
 <li><strong>161 Rust tests</strong> (up from 150): 11 new fragment consensus unit tests, 0 Clippy warnings.</li>
 </ul>
-<h3 id="documentation_1">📚 Documentation<a class="headerlink" href="#documentation_1" title="Permanent link">¶</a></h3>
+<h3 id="documentation_2">📚 Documentation<a class="headerlink" href="#documentation_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/cli/merge.md</code> — <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> reference for <code>gbcms merge</code> covering usage,
   combined columns schema, Nextflow integration, and Fisher strand bias.</li>
@@ -1112,7 +1127,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </li>
 <li><strong>0 Clippy warnings</strong> (strict <code>-D warnings</code> mode).</li>
 </ul>
-<h3 id="documentation_2">📚 Documentation<a class="headerlink" href="#documentation_2" title="Permanent link">¶</a></h3>
+<h3 id="documentation_3">📚 Documentation<a class="headerlink" href="#documentation_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/reference/rna-annotation.md</code> — GTF requirements, annotation
   index architecture, exon boundary distance, per-transcript counting, and
@@ -1203,7 +1218,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>gbcms_status</code> rename.</li>
 <li>All 238 Python tests pass; all 119 Rust tests pass.</li>
 </ul>
-<h3 id="documentation_3">📚 Documentation<a class="headerlink" href="#documentation_3" title="Permanent link">¶</a></h3>
+<h3 id="documentation_4">📚 Documentation<a class="headerlink" href="#documentation_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Updated</strong> <code>docs/reference/output-formats.md</code> — <code>gbcms_status</code>,
   <code>gbcms_diagnostic</code>, <code>gbcms_rescue</code> columns; <code>partial_alt</code> description
@@ -1286,7 +1301,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <code>--no-strandedness</code> only when disabled (was incorrectly passing
   <code>--enforce-strandedness</code> as an additive flag).</li>
 </ul>
-<h3 id="documentation_4">📚 Documentation<a class="headerlink" href="#documentation_4" title="Permanent link">¶</a></h3>
+<h3 id="documentation_5">📚 Documentation<a class="headerlink" href="#documentation_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>[NEW]</strong> <code>docs/reference/mfsd-report.md</code> — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> interactive report reference
   covering Fragment Origin Signal classification, interactive features, output
@@ -1369,7 +1384,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   match tracking, invariant enforcement, and edge cases (all-N reads, mixed BQ/N).</li>
 <li>Updated <code>tests/test_column_count_delta_is_three</code> to assert 24 gbcms DNA columns.</li>
 </ul>
-<h4 id="documentation_5">📚 Documentation<a class="headerlink" href="#documentation_5" title="Permanent link">¶</a></h4>
+<h4 id="documentation_6">📚 Documentation<a class="headerlink" href="#documentation_6" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Updated</strong> <code>docs/reference/counting-metrics.md</code> — diagnostic columns, invariant
   tables, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> tag definitions, N-base handling section.</li>
@@ -1470,7 +1485,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>parquet_writer.rs</code> relocated</strong>: Moved from <code>counting/</code> into <code>shared/</code> during
   module extraction.</li>
 </ul>
-<h3 id="documentation_6">📚 Documentation<a class="headerlink" href="#documentation_6" title="Permanent link">¶</a></h3>
+<h3 id="documentation_7">📚 Documentation<a class="headerlink" href="#documentation_7" title="Permanent link">¶</a></h3>
 <p>Major documentation overhaul — 28+ files updated:
 - Complete MkDocs plugin utilization pass (tabbed, details, admonitions,
   mermaid, code annotations, glightbox) across all reference pages
@@ -1534,7 +1549,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Resolved <code>mypy</code> <code>AlignedSegment.cigar</code> attribute errors in test suite.</li>
 <li>Lint and stale-comment cleanup post Phase 6 audit.</li>
 </ul>
-<h3 id="documentation_7">📚 Documentation<a class="headerlink" href="#documentation_7" title="Permanent link">¶</a></h3>
+<h3 id="documentation_8">📚 Documentation<a class="headerlink" href="#documentation_8" title="Permanent link">¶</a></h3>
 <ul>
 <li>Full documentation sync with codebase after Phase 6 (<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>) merge.</li>
 <li>PDF generation guide added to developer documentation.</li>
@@ -1565,7 +1580,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Rust module structure</strong>: Split <code>counting.rs</code> (1904 LOC) and <code>normalize.rs</code> (1221 LOC) into idiomatic module directories: <code>counting/</code> (7 modules) and <code>normalize/</code> (7 modules)</li>
 <li><strong>AlignmentBackend threading</strong>: <code>AlignmentBackend</code> enum threaded through all Phase 3 call sites</li>
 </ul>
-<h3 id="documentation_8">📚 Documentation<a class="headerlink" href="#documentation_8" title="Permanent link">¶</a></h3>
+<h3 id="documentation_9">📚 Documentation<a class="headerlink" href="#documentation_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Comprehensive audit</strong>: 28 fixes across 23 files — all GitBook URLs → MkDocs, version templating (X.Y.Z), undocumented <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options, 5 mermaid diagrams updated for post-2.7.0 logic, architecture module tree refreshed, <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> documented end-to-end</li>
 <li>Deleted stale <code>nextflow/CHANGES.md</code></li>
@@ -1616,7 +1631,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong>Tolerant REF validation</strong>: Variants with ≥90% REF match against the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> are now counted (status <code>PASS_WARN_REF_CORRECTED</code>) instead of being silently rejected. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF is used for haplotype construction. Variants with &lt;90% match are still rejected as <code>REF_MISMATCH</code></li>
 </ul>
-<h3 id="documentation_9">📚 Documentation<a class="headerlink" href="#documentation_9" title="Permanent link">¶</a></h3>
+<h3 id="documentation_10">📚 Documentation<a class="headerlink" href="#documentation_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Visual posters</strong>: Added overview, normalization, and read-filter/counting-metrics posters (JPG) to reference documentation pages with lightbox support</li>
 <li><strong>Embedded PDFs</strong>: Added inline PDF viewer for allele classification guide and detailed overview presentation via <code>mkdocs-pdf</code> plugin</li>
@@ -1702,7 +1717,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Type stubs</strong>: <code>_rs.pyi</code> and <code>gbcms_rs.pyi</code> synced with Rust bindings (added <code>ref_context</code>, <code>ref_context_start</code>, <code>fragment_qual_threshold</code>)</li>
 <li><strong>Linting</strong>: All files pass black, ruff, and mypy</li>
 </ul>
-<h3 id="documentation_10">📚 Documentation<a class="headerlink" href="#documentation_10" title="Permanent link">¶</a></h3>
+<h3 id="documentation_11">📚 Documentation<a class="headerlink" href="#documentation_11" title="Permanent link">¶</a></h3>
 <ul>
 <li>Architecture comparison table updated with windowed indels and masked comparison</li>
 <li>Nextflow config and docs updated with new <code>min_baseq</code> default</li>
@@ -1748,7 +1763,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Code Quality</strong>: Added <code>__all__</code> exports, docstrings, and type hints across all modules</li>
 <li><strong>StrEnum</strong>: Modern enum pattern with Python 3.10 backport</li>
 </ul>
-<h3 id="documentation_11">📚 Documentation<a class="headerlink" href="#documentation_11" title="Permanent link">¶</a></h3>
+<h3 id="documentation_12">📚 Documentation<a class="headerlink" href="#documentation_12" title="Permanent link">¶</a></h3>
 <ul>
 <li>New <code>docs/ARCHITECTURE.md</code> with system diagrams</li>
 <li>New <code>docs/DEVELOPMENT.md</code> (developer guide)</li>
@@ -1785,7 +1800,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Resource management</strong> with automatic retry and scaling</li>
 <li><strong>Comprehensive documentation</strong> in <code>docs/NEXTFLOW.md</code> and <code>nextflow/README.md</code></li>
 </ul>
-<h4 id="documentation_12">Documentation<a class="headerlink" href="#documentation_12" title="Permanent link">¶</a></h4>
+<h4 id="documentation_13">Documentation<a class="headerlink" href="#documentation_13" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Usage pattern comparison</strong> guide (<code>docs/WORKFLOWS.md</code>) for choosing between <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> and Nextflow</li>
 <li><strong>MkDocs integration</strong> for beautiful GitHub Pages documentation</li>
@@ -1801,7 +1816,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>GitBook integration</strong>: configured to read from <code>main</code> branch</li>
 <li><strong>Nextflow module</strong>: improved parameter passing with meta.suffix support</li>
 </ul>
-<h3 id="documentation_13">📝 Documentation<a class="headerlink" href="#documentation_13" title="Permanent link">¶</a></h3>
+<h3 id="documentation_14">📝 Documentation<a class="headerlink" href="#documentation_14" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete Nextflow workflow guide with SLURM examples</li>
 <li>Per-sample suffix usage examples</li>
@@ -1893,7 +1908,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Reference validation against <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> for all variant types</li>
 <li>Thread-safe <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> access with per-thread readers</li>
 </ul>
-<h3 id="documentation_14">📚 Documentation<a class="headerlink" href="#documentation_14" title="Permanent link">¶</a></h3>
+<h3 id="documentation_15">📚 Documentation<a class="headerlink" href="#documentation_15" title="Permanent link">¶</a></h3>
 <ul>
 <li>Complete rewrite of all documentation</li>
 <li>New guides: <code>INSTALLATION.md</code>, <code>CLI_FEATURES.md</code>, <code>INPUT_OUTPUT.md</code></li>

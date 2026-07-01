@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -1739,10 +1739,15 @@
 <li>Test edge cases and error conditions</li>
 </ul>
 <h3 id="counting-engine-changes">Counting Engine Changes<a class="headerlink" href="#counting-engine-changes" title="Permanent link">¶</a></h3>
-<p>Changes to <code>rust/src/counting.rs</code> require additional verification:</p>
+<p>Changes to the counting engine (<code>rust/src/counting/</code> — especially <code>engine.rs</code> and
+<code>variant_checks.rs</code>) require additional verification:</p>
 <ul>
 <li><strong>Unit tests</strong>: <code>cargo test</code> must pass (all existing tests + new tests for the change)</li>
-<li><strong>22-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> regression</strong>: Run the regression suite and verify no unintended count shifts</li>
+<li><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-slice regression</strong>: Run the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-slice regression suite and verify no unintended
+  count shifts (see the developer guide for the current slice set)</li>
+<li><strong>Binned↔legacy parity</strong>: any change to read classification / filtering / fragment
+  consensus / fetch-window logic must be mirrored in the legacy <code>count_single_variant</code>,
+  or the parity tests fail (see <code>.agents/rules/architecture.md</code>)</li>
 <li><strong>Variant-type coverage</strong>: If modifying a specific variant type (<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Indel/Complex),
   ensure the regression <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> includes representative variants of that type</li>
 <li><strong>MnpResult paths</strong>: Any changes to <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> handling must test all 5 <code>MnpResult</code> variants:
@@ -1764,10 +1769,14 @@
 <p>Update documentation as needed</p>
 </li>
 <li>
-<p><strong>Run tests and linters</strong>
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>make<span class="w"> </span><span class="nb">test</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>make<span class="w"> </span>lint
+<p><strong>Run tests and linters</strong> — the Python <em>and</em> Rust gates (<code>make test</code>/<code>make lint</code> cover
+   Python only; the Rust lint/tests must be run separately, or you'll ship un-linted Rust):
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>make<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>lint<span class="w">                                   </span><span class="c1"># Python: pytest + ruff/black/mypy</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
 </code></pre></div>
+   The load-bearing invariants (binned↔legacy parity, one base-quality gate across
+   alignment backends, the 4 counting-test invariants) are in <code>.agents/rules/architecture.md</code>
+   (in the repo root) — read them before touching the engine.
 </li>
 <li>
 <p><strong>Commit your changes</strong>

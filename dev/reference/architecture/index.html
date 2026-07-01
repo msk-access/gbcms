@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -1471,37 +1471,38 @@ Use mouse to pan and zoom
 <a href="#__codelineno-2-17" id="__codelineno-2-17" name="__codelineno-2-17"></a>rust/src/
 <a href="#__codelineno-2-18" id="__codelineno-2-18" name="__codelineno-2-18"></a>├── lib.rs                    # PyO3 module exports
 <a href="#__codelineno-2-19" id="__codelineno-2-19" name="__codelineno-2-19"></a>├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
-<a href="#__codelineno-2-20" id="__codelineno-2-20" name="__codelineno-2-20"></a>│   ├── mod.rs                # AnnotationIndex struct, parse_gtf()
-<a href="#__codelineno-2-21" id="__codelineno-2-21" name="__codelineno-2-21"></a>│   └── types.rs              # ExonRecord, TranscriptInfo
-<a href="#__codelineno-2-22" id="__codelineno-2-22" name="__codelineno-2-22"></a>├── counting/
-<a href="#__codelineno-2-23" id="__codelineno-2-23" name="__codelineno-2-23"></a>│   ├── mod.rs                # Submodule re-exports
-<a href="#__codelineno-2-24" id="__codelineno-2-24" name="__codelineno-2-24"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
-<a href="#__codelineno-2-25" id="__codelineno-2-25" name="__codelineno-2-25"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
-<a href="#__codelineno-2-26" id="__codelineno-2-26" name="__codelineno-2-26"></a>│   ├── alignment.rs          # Smith-Waterman implementation
-<a href="#__codelineno-2-27" id="__codelineno-2-27" name="__codelineno-2-27"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
-<a href="#__codelineno-2-28" id="__codelineno-2-28" name="__codelineno-2-28"></a>│   ├── pangenome.rs          # Haplotype matrix construction
-<a href="#__codelineno-2-29" id="__codelineno-2-29" name="__codelineno-2-29"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
-<a href="#__codelineno-2-30" id="__codelineno-2-30" name="__codelineno-2-30"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
-<a href="#__codelineno-2-31" id="__codelineno-2-31" name="__codelineno-2-31"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
-<a href="#__codelineno-2-32" id="__codelineno-2-32" name="__codelineno-2-32"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
-<a href="#__codelineno-2-33" id="__codelineno-2-33" name="__codelineno-2-33"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
-<a href="#__codelineno-2-34" id="__codelineno-2-34" name="__codelineno-2-34"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
-<a href="#__codelineno-2-35" id="__codelineno-2-35" name="__codelineno-2-35"></a>├── normalize/
-<a href="#__codelineno-2-36" id="__codelineno-2-36" name="__codelineno-2-36"></a>│   ├── mod.rs                # Submodule re-exports
-<a href="#__codelineno-2-37" id="__codelineno-2-37" name="__codelineno-2-37"></a>│   ├── engine.rs             # Normalization pipeline
-<a href="#__codelineno-2-38" id="__codelineno-2-38" name="__codelineno-2-38"></a>│   ├── left_align.rs         # bcftools-style left-alignment
-<a href="#__codelineno-2-39" id="__codelineno-2-39" name="__codelineno-2-39"></a>│   ├── decomp.rs             # Homopolymer decomposition
-<a href="#__codelineno-2-40" id="__codelineno-2-40" name="__codelineno-2-40"></a>│   ├── fasta.rs              # Reference sequence fetcher
-<a href="#__codelineno-2-41" id="__codelineno-2-41" name="__codelineno-2-41"></a>│   ├── repeat.rs             # Tandem repeat detection
-<a href="#__codelineno-2-42" id="__codelineno-2-42" name="__codelineno-2-42"></a>│   └── types.rs              # NormResult enum
-<a href="#__codelineno-2-43" id="__codelineno-2-43" name="__codelineno-2-43"></a>├── shared/
-<a href="#__codelineno-2-44" id="__codelineno-2-44" name="__codelineno-2-44"></a>│   ├── mod.rs                # Submodule re-exports
-<a href="#__codelineno-2-45" id="__codelineno-2-45" name="__codelineno-2-45"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
-<a href="#__codelineno-2-46" id="__codelineno-2-46" name="__codelineno-2-46"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
-<a href="#__codelineno-2-47" id="__codelineno-2-47" name="__codelineno-2-47"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
-<a href="#__codelineno-2-48" id="__codelineno-2-48" name="__codelineno-2-48"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
-<a href="#__codelineno-2-49" id="__codelineno-2-49" name="__codelineno-2-49"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
-<a href="#__codelineno-2-50" id="__codelineno-2-50" name="__codelineno-2-50"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
+<a href="#__codelineno-2-20" id="__codelineno-2-20" name="__codelineno-2-20"></a>│   ├── mod.rs                # AnnotationIndex struct, COITree queries
+<a href="#__codelineno-2-21" id="__codelineno-2-21" name="__codelineno-2-21"></a>│   ├── gtf.rs                # GTF parser (variant-guided streaming)
+<a href="#__codelineno-2-22" id="__codelineno-2-22" name="__codelineno-2-22"></a>│   └── cache.rs              # GTF disk cache (GtfIndexBundle, bincode) — M5a
+<a href="#__codelineno-2-23" id="__codelineno-2-23" name="__codelineno-2-23"></a>├── counting/
+<a href="#__codelineno-2-24" id="__codelineno-2-24" name="__codelineno-2-24"></a>│   ├── mod.rs                # Submodule re-exports
+<a href="#__codelineno-2-25" id="__codelineno-2-25" name="__codelineno-2-25"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+<a href="#__codelineno-2-26" id="__codelineno-2-26" name="__codelineno-2-26"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
+<a href="#__codelineno-2-27" id="__codelineno-2-27" name="__codelineno-2-27"></a>│   ├── alignment.rs          # Smith-Waterman implementation
+<a href="#__codelineno-2-28" id="__codelineno-2-28" name="__codelineno-2-28"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+<a href="#__codelineno-2-29" id="__codelineno-2-29" name="__codelineno-2-29"></a>│   ├── pangenome.rs          # Haplotype matrix construction
+<a href="#__codelineno-2-30" id="__codelineno-2-30" name="__codelineno-2-30"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
+<a href="#__codelineno-2-31" id="__codelineno-2-31" name="__codelineno-2-31"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+<a href="#__codelineno-2-32" id="__codelineno-2-32" name="__codelineno-2-32"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
+<a href="#__codelineno-2-33" id="__codelineno-2-33" name="__codelineno-2-33"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+<a href="#__codelineno-2-34" id="__codelineno-2-34" name="__codelineno-2-34"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
+<a href="#__codelineno-2-35" id="__codelineno-2-35" name="__codelineno-2-35"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
+<a href="#__codelineno-2-36" id="__codelineno-2-36" name="__codelineno-2-36"></a>├── normalize/
+<a href="#__codelineno-2-37" id="__codelineno-2-37" name="__codelineno-2-37"></a>│   ├── mod.rs                # Submodule re-exports
+<a href="#__codelineno-2-38" id="__codelineno-2-38" name="__codelineno-2-38"></a>│   ├── engine.rs             # Normalization pipeline
+<a href="#__codelineno-2-39" id="__codelineno-2-39" name="__codelineno-2-39"></a>│   ├── left_align.rs         # bcftools-style left-alignment
+<a href="#__codelineno-2-40" id="__codelineno-2-40" name="__codelineno-2-40"></a>│   ├── decomp.rs             # Homopolymer decomposition
+<a href="#__codelineno-2-41" id="__codelineno-2-41" name="__codelineno-2-41"></a>│   ├── fasta.rs              # Reference sequence fetcher
+<a href="#__codelineno-2-42" id="__codelineno-2-42" name="__codelineno-2-42"></a>│   ├── repeat.rs             # Tandem repeat detection
+<a href="#__codelineno-2-43" id="__codelineno-2-43" name="__codelineno-2-43"></a>│   └── types.rs              # NormResult enum
+<a href="#__codelineno-2-44" id="__codelineno-2-44" name="__codelineno-2-44"></a>├── shared/
+<a href="#__codelineno-2-45" id="__codelineno-2-45" name="__codelineno-2-45"></a>│   ├── mod.rs                # Submodule re-exports
+<a href="#__codelineno-2-46" id="__codelineno-2-46" name="__codelineno-2-46"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+<a href="#__codelineno-2-47" id="__codelineno-2-47" name="__codelineno-2-47"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
+<a href="#__codelineno-2-48" id="__codelineno-2-48" name="__codelineno-2-48"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
+<a href="#__codelineno-2-49" id="__codelineno-2-49" name="__codelineno-2-49"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
+<a href="#__codelineno-2-50" id="__codelineno-2-50" name="__codelineno-2-50"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
+<a href="#__codelineno-2-51" id="__codelineno-2-51" name="__codelineno-2-51"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
 </code></pre></div>
 <hr>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">¶</a></h2>
@@ -1901,7 +1902,7 @@ the rescue provenance, enabling downstream users to reconcile the invariant brea
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 16, 2026 09:57:31 UTC"><span class="timeago" datetime="2026-05-16T09:57:31+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 16, 2026 09:57:31 UTC">2026-05-16</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="July 1, 2026 15:57:53 UTC"><span class="timeago" datetime="2026-07-01T15:57:53+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="July 1, 2026 15:57:53 UTC">2026-07-01</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

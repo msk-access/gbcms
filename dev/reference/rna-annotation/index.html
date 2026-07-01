@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -599,10 +599,10 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#output-columns-14">
+<a class="md-nav__link" href="#output-columns-14-asjd">
 <span class="md-ellipsis">
       
-        Output Columns (14)
+        Output Columns (14 ASJD)
       
     </span>
 </a>
@@ -993,10 +993,10 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#output-columns-14">
+<a class="md-nav__link" href="#output-columns-14-asjd">
 <span class="md-ellipsis">
       
-        Output Columns (14)
+        Output Columns (14 ASJD)
       
     </span>
 </a>
@@ -1085,6 +1085,24 @@
 <p>All features described on this page are enabled only when a GTF annotation file
 is provided via <code>--gtf</code> on the <code>gbcms rna</code> command. Without <code>--gtf</code>, RNA mode
 operates identically to v4.2.0 — no annotation columns are added.</p>
+</div>
+<p>With <code>--gtf</code>, GTF mode appends <strong>17 columns</strong> total: <code>exon_boundary_dist</code> (1),
+<code>transcript_read_counts</code> + <code>transcript_fragment_counts</code> (2), and the 14 ASJD fields
+(7 metrics × 2 alleles).</p>
+<div class="admonition important">
+<p class="admonition-title"><code>gene_strand</code> is the keystone</p>
+<p>Parsing the GTF also back-fills each variant's <strong><code>gene_strand</code></strong> (the transcript's
+<code>+</code>/<code>-</code> strand). This is what makes strand-aware features work: without it,
+<code>--enforce_strandedness</code> and the ASJD strand-discordance test are silent no-ops
+(every read reads as sense, so <code>antisense_depth</code> stays 0). Strand-specific counting
+therefore requires <code>--gtf</code>, not just <code>--strandedness</code>.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Cohort runs: pre-build the GTF cache</p>
+<p>The GTF is parsed per sample. For a cohort, run <code>gbcms build-gtf-cache</code> once and
+point every sample at the same <code>--gtf-cache-dir</code> so each per-sample run reuses the
+prebuilt index (~9s parse → ~0.05s load). The Nextflow pipeline wires this up
+automatically via the <code>GBCMS_BUILD_GTF_CACHE</code> process (<code>--gtf_cache</code>, default on).</p>
 </div>
 <hr>
 <h2 id="gtf-requirements">GTF Requirements<a class="headerlink" href="#gtf-requirements" title="Permanent link">¶</a></h2>
@@ -1323,8 +1341,10 @@ Use mouse to pan and zoom
    span the same junction votes once, so the junction totals and the strand-discordance
    test reflect independent fragments, not mates.</li>
 </ol>
-<h3 id="output-columns-14">Output Columns (14)<a class="headerlink" href="#output-columns-14" title="Permanent link">¶</a></h3>
-<p>See <a href="../output-formats/#aberrant-splice-junction-detection-asjd">Output Formats → ASJD</a> for the complete column reference.</p>
+<h3 id="output-columns-14-asjd">Output Columns (14 ASJD)<a class="headerlink" href="#output-columns-14-asjd" title="Permanent link">¶</a></h3>
+<p>The 14 ASJD fields are part of the 17 columns GTF mode adds (alongside
+<code>exon_boundary_dist</code> and the two per-transcript count columns).
+See <a href="../output-formats/#aberrant-splice-junction-detection-asjd">Output Formats → ASJD</a> for the complete column reference.</p>
 <h3 id="diagnostic-flags">Diagnostic Flags<a class="headerlink" href="#diagnostic-flags" title="Permanent link">¶</a></h3>
 <p>The <code>asjd_diagnostic</code> column provides semicolon-separated QC flags. All junction
 counts are <strong>per fragment</strong> (a molecule's R1 and R2 are deduped to one vote):</p>
@@ -1435,7 +1455,7 @@ per-<abbr title="Binary Alignment Map - Compressed sequence alignment file forma
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="July 1, 2026 12:56:30 UTC"><span class="timeago" datetime="2026-07-01T12:56:30+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="July 1, 2026 12:56:30 UTC">2026-07-01</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="July 1, 2026 15:57:53 UTC"><span class="timeago" datetime="2026-07-01T15:57:53+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="July 1, 2026 15:57:53 UTC">2026-07-01</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
