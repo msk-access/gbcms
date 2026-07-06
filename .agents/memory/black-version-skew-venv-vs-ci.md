@@ -23,7 +23,7 @@ failed CI once `-D warnings` was enabled.
 **Why:** CI is the source of truth; a stale local toolchain gives false confidence.
 
 **How to apply:** before trusting a lint gate, run the **CI-matching** version:
-- black → `/Users/shahr2/mambaforge/bin/black --check src/ tests/` (26.5.x), not `.venv/bin/black`.
+- black → `~/mambaforge/bin/black --check src/ tests/` (26.5.x), not `.venv/bin/black`.
 - clippy/cargo test → `rustup update stable` first, then `rustup run stable cargo clippy
   --all-targets -- -D warnings` (both feature configs) and `cargo test`.
 `ruff`/`mypy` have not shown skew. See [[harness-stay-small]]. CI now runs `cargo test` +
