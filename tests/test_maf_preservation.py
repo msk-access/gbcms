@@ -226,7 +226,7 @@ def test_maf_preserve_barcode(tmp_path):
                 "End_Position": "100",
                 "Reference_Allele": "A",
                 "Tumor_Seq_Allele2": "T",
-                "Tumor_Sample_Barcode": "C-XULUC7-L001-d01",
+                "Tumor_Sample_Barcode": "C-000000-L001-d01",
             }
         )
 
@@ -254,7 +254,7 @@ def test_maf_preserve_barcode(tmp_path):
     with open(out_preserve) as f:
         row = next(_read_maf_output(out_preserve))
         assert (
-            row["Tumor_Sample_Barcode"] == "C-XULUC7-L001-d01"
+            row["Tumor_Sample_Barcode"] == "C-000000-L001-d01"
         ), "preserve_barcode=True should keep original barcode"
 
 
