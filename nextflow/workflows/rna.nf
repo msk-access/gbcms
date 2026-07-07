@@ -20,7 +20,7 @@ workflow GBCMS_RNA_WF {
 
     main:
 
-    ch_versions = Channel.empty()
+    ch_versions = channel.empty()
 
     //
     // MODULE: Run gbcms rna (each task reuses the cohort's prebuilt GTF cache)

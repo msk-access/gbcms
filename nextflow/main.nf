@@ -2,18 +2,9 @@
 
 nextflow.enable.dsl = 2
 
-/*
-========================================================================================
-    VALIDATE INPUTS
-========================================================================================
-*/
-
-if (!params.input)    { exit 1, 'Input samplesheet not specified! Use --input' }
-if (!params.variants) { exit 1, 'Variants file not specified! Use --variants' }
-if (!params.fasta)    { exit 1, 'Reference FASTA not specified! Use --fasta' }
-if (!(params.mode in ['dna', 'rna'])) {
-    exit 1, "Invalid mode '${params.mode}'. Must be 'dna' or 'rna'. Use --mode dna|rna"
-}
+// Input validation lives inside the workflow body below: the strict syntax of
+// Nextflow ≥26.04 disallows statements at the script top level (only includes,
+// params, processes, workflows, and functions are permitted here).
 
 /*
 ========================================================================================
@@ -27,18 +18,14 @@ include { GBCMS_BUILD_GTF_CACHE } from './modules/local/gbcms/build_gtf_cache/ma
 include { FILTER_MAF }            from './modules/local/gbcms/filter_maf/main'
 include { PIPELINE_SUMMARY }      from './modules/local/gbcms/pipeline_summary/main'
 
-// Helper: Check if a MAF file has at least one data row (not just header/comments)
-def hasData = { file ->
-    def dataLineCount = 0
-    file.withReader { reader ->
-        String line
-        while ((line = reader.readLine()) != null && dataLineCount < 2) {
-            if (!line.startsWith('#') && line.trim()) {
-                dataLineCount++
-            }
-        }
-    }
-    return dataLineCount > 1
+// Helper: Check if a MAF file has at least one data row (not just header/comments).
+// A function (not a closure assigned to a var): the strict syntax of Nextflow ≥26.04
+// disallows the assignment-in-while-condition and postfix ++ the closure form used.
+def hasData(mafFile) {
+    // > 1 non-comment, non-blank line = header + at least one data row.
+    // No while-loop: strict syntax (Nextflow ≥26.04) removed while loops.
+    def rows = mafFile.readLines().findAll { line -> !line.startsWith('#') && line.trim() }
+    return rows.size() > 1
 }
 
 /*
@@ -48,6 +35,15 @@ def hasData = { file ->
 */
 
 workflow {
+
+    // Validate required inputs (moved here from the script top level for the
+    // strict syntax of Nextflow ≥26.04; `error` replaces the removed `exit`).
+    if (!params.input)    { error 'Input samplesheet not specified! Use --input' }
+    if (!params.variants) { error 'Variants file not specified! Use --variants' }
+    if (!params.fasta)    { error 'Reference FASTA not specified! Use --fasta' }
+    if (!(params.mode in ['dna', 'rna'])) {
+        error "Invalid mode '${params.mode}'. Must be 'dna' or 'rna'. Use --mode dna|rna"
+    }
 
     log.info """
     ============================================================
@@ -62,7 +58,7 @@ workflow {
     //
     // STEP 1: Parse samplesheet
     //
-    Channel
+    channel
         .fromPath(params.input)
         .splitCsv(header:true, sep:',', quote:'"')
         .map { row ->
@@ -132,10 +128,10 @@ workflow {
     // Validate: duplicate sample IDs without suffix/bam_type would produce
     // identical output filenames, silently overwriting each other.
     ch_samplesheet
-        .map { meta, bam, bai -> "${meta.id}${meta.suffix ?: ''}" }
+        .map { meta, _bam, _bai -> "${meta.id}${meta.suffix ?: ''}" }
         .collect()
         .map { keys ->
-            def dupes = keys.countBy { it }.findAll { k, v -> v > 1 }
+            def dupes = keys.countBy { k -> k }.findAll { _k, v -> v > 1 }
             if (dupes) {
                 error "Duplicate output keys detected: ${dupes.keySet().join(', ')}. " +
                       "Multiple rows share the same sample ID without a distinguishing " +
@@ -156,7 +152,7 @@ workflow {
     if (params.filter_by_sample && ch_variants_file.name.endsWith('.maf')) {
 
         // Pair each sample with the shared MAF for filtering
-        ch_to_filter = ch_samplesheet.map { meta, bam, bai -> [ meta, ch_variants_file ] }
+        ch_to_filter = ch_samplesheet.map { meta, _bam, _bai -> [ meta, ch_variants_file ] }
 
         FILTER_MAF( ch_to_filter )
 
@@ -174,12 +170,12 @@ workflow {
         ch_ready = ch_samplesheet
             .map { meta, bam, bai -> [ meta.id, meta, bam, bai ] }
             .join( ch_filtered_valid.map { meta, maf -> [ meta.id, maf ] } )
-            .map { id, meta, bam, bai, variants -> [ meta, bam, bai, variants ] }
+            .map { _id, meta, bam, bai, variants -> [ meta, bam, bai, variants ] }
 
         // Collect ALL stats (including skipped samples) for summary
         PIPELINE_SUMMARY(
             FILTER_MAF.out.stats
-                .map { meta, stats -> stats }
+                .map { _meta, stats -> stats }
                 .collect()
         )
 
@@ -202,7 +198,7 @@ workflow {
             GBCMS_BUILD_GTF_CACHE( [ file(params.gtf), ch_variants_file ] )
             ch_gtf_cache = GBCMS_BUILD_GTF_CACHE.out.cache_dir.first()
         } else {
-            ch_gtf_cache = Channel.value([])
+            ch_gtf_cache = channel.value([])
         }
 
         GBCMS_RNA_WF (
