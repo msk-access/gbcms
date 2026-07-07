@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up Nextflow ${{ env.NXF_VER }}
-        uses: nextflow-io/setup-nextflow@v2
+        uses: nf-core/setup-nextflow@v2
         with:
           version: ${{ env.NXF_VER }}
 
