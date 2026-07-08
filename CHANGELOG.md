@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔄 Changed
+
+- **Nextflow pipeline is now compatible with the strict syntax parser** that is the
+  default from **Nextflow 26.04**, while still running on 25.x. Verified with
+  `nextflow lint` on 26.04.0 (0 errors) and config resolution on both 25.10 and 26.04.
+  - `nextflow.config`: replaced the legacy `check_max()` helper (function definitions
+    are illegal in strict config) with the native `process.resourceLimits` directive;
+    `--max_cpus/--max_memory/--max_time` still apply. Bumped the `nextflowVersion`
+    floor to `>=24.04.0` (when `resourceLimits` landed).
+  - `main.nf`: moved input validation into the `workflow` body (top-level statements
+    are disallowed) using `error` instead of the removed `exit`; rewrote the
+    `hasData` helper without a `while` loop (removed in strict syntax); `Channel` →
+    `channel`.
+  - **Removed the remote nf-core institutional-config include.** The strict config
+    syntax forbids the `try/catch` (and `if`) guards that made a fetch failure
+    non-fatal. The local `iris`/`slurm` profiles are self-sufficient; users who want
+    an institutional config can still supply one with `-c`. The `custom_config_base`
+    / `custom_config_version` params were removed.
+
 ## [6.0.0] - 2026-07-01
 
 > [!WARNING]
