@@ -15,12 +15,14 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[cfg(feature = "legacy-parity")]
     m.add_function(wrap_pyfunction!(counting::count_bam, m)?)?;
     m.add_function(wrap_pyfunction!(counting::count_bam_binned, m)?)?;
+    m.add_function(wrap_pyfunction!(counting::count_bam_binned_observations, m)?)?;
     m.add_function(wrap_pyfunction!(counting::build_gtf_cache, m)?)?;
     m.add_function(wrap_pyfunction!(normalize::prepare_variants, m)?)?;
     m.add_function(wrap_pyfunction!(counting::write_fsd_parquet, m)?)?;
     m.add_function(wrap_pyfunction!(shared::stats::fisher_exact_2x2_py, m)?)?;
     m.add_class::<types::Variant>()?;
     m.add_class::<types::BaseCounts>()?;
+    m.add_class::<types::Observation>()?;
     m.add_class::<normalize::PreparedVariant>()?;
     Ok(())
 }

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **Per-molecule observation export.** `count_bam_binned_observations()` returns the same
+  counts as `count_bam_binned()` plus the per-molecule allele calls the engine normally
+  aggregates away — one `Observation` per fragment per variant, carrying the molecule
+  identity, the resolved allele (REF / ALT / N / OTHER), and its best supporting base
+  quality. Because a molecule observed at two variants in one call shares a
+  `molecule_hash`, callers can link alleles **across loci** (read-backed phasing, allelic
+  imbalance, duplex-masking QC); gbcms itself does no such linking.
+  - **Public API:** `gbcms.observe_molecules()` → `ObservationResult`. This is the
+    supported surface; `gbcms._rs` remains internal and is not covered by SemVer.
+  - **Counting is untouched** — both entry points share one core, `count_bam_binned`'s
+    signature and return are unchanged, and observations are off unless requested
+    (no allocation when off). Binned↔legacy parity is unaffected.
+  - Rows are sorted by `(variant_index, molecule_hash)`, so output is deterministic
+    despite parallel bin processing and hash-map iteration order.
+  - Decomposed variants emit **one** set of rows: observations follow the same
+    higher-`ad` arbitration as the counts, so the losing allele form is never exported.
+
 ### 🔄 Changed
 
 - **Nextflow pipeline is now compatible with the strict syntax parser** that is the
