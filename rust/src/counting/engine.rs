@@ -3291,21 +3291,21 @@ mod tests {
     fn test_splice_motif_orientation_by_strand() {
         // A canonical GT-AG intron on the MINUS strand appears on the forward genome
         // as left=CT (revcomp of acceptor AG) and right=AC (revcomp of donor GT).
-        let left_minus = [b'C', b'T'];
-        let right_minus = [b'A', b'C'];
+        let left_minus = *b"CT";
+        let right_minus = *b"AC";
         // Read forward (plus orientation) it is non-canonical...
         assert_eq!(motif_label(left_minus, right_minus), "OTHER");
         // ...but minus orientation (revcomp + donor/acceptor swap) recovers GT-AG.
         assert_eq!(motif_label(revcomp2(right_minus), revcomp2(left_minus)), "GT-AG");
 
         // Plus-strand canonical intron: left=GT donor, right=AG acceptor.
-        assert_eq!(motif_label([b'G', b'T'], [b'A', b'G']), "GT-AG");
+        assert_eq!(motif_label(*b"GT", *b"AG"), "GT-AG");
 
         // Building-block sanity.
-        assert_eq!(revcomp2([b'A', b'C']), [b'G', b'T']);
-        assert_eq!(revcomp2([b'C', b'T']), [b'A', b'G']);
-        assert_eq!(canonical_motif([b'A', b'T'], [b'A', b'C']), Some("AT-AC"));
-        assert_eq!(canonical_motif([b'C', b'C'], [b'G', b'G']), None);
+        assert_eq!(revcomp2(*b"AC"), *b"GT");
+        assert_eq!(revcomp2(*b"CT"), *b"AG");
+        assert_eq!(canonical_motif(*b"AT", *b"AC"), Some("AT-AC"));
+        assert_eq!(canonical_motif(*b"CC", *b"GG"), None);
     }
 
     /// Build a synthetic BAM record for testing.
