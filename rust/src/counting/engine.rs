@@ -831,8 +831,10 @@ fn count_bam_binned_core(
                 // Each bin owns its Vecs; they are concatenated here. A shared `&mut`
                 // sink cannot cross the rayon closure, and a Mutex would serialize the
                 // hot deep-coverage bins — so per-bin ownership + merge is the shape.
-                // Work-stealing makes the merge ORDER nondeterministic; counts are
-                // order-invariant, observations are not, so they are sorted below.
+                // (`bins.par_iter()` is indexed, so this reduce splits contiguously and
+                // joins adjacent results: bin ORDER is preserved. The nondeterminism the
+                // sort below fixes comes from `HashMap` iteration *within* a variant, not
+                // from here.)
                 .try_reduce(
                     || (Vec::new(), Vec::new()),
                     |mut acc: BinOutput, batch| {
@@ -851,10 +853,11 @@ fn count_bam_binned_core(
                 all_counts[vi] = counts;
             }
 
-            // Deterministic observation order. Two independent sources of nondeterminism
-            // feed this Vec — rayon work-stealing across bins, and HashMap<u64, _>
-            // iteration inside each variant — and neither affects counts (which are
-            // order-invariant), so parity would never catch it. One stable sort erases both.
+            // Deterministic observation order. `HashMap<u64, FragmentEvidence>` iteration
+            // inside each variant is nondeterministic (RandomState), and it does not affect
+            // counts — those are order-invariant sums — so parity could never catch it.
+            // Sorting by the join key makes the emitted rows reproducible run-to-run
+            // (verified on real BAMs across 1/4/8 threads).
             if emit_obs {
                 observations.sort_by_key(|o| (o.variant_index, o.molecule_hash));
             }

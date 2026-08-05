@@ -271,6 +271,47 @@ and emits `Ref`. **Tests:** (1) fragment-level `adf/rdf/dpf`↔obs invariant; (2
 (3) multi-allelic sibling case; (4) determinism (two runs → identical sorted Vec); (5) flag-off
 regression (`BaseCounts` frozen); (6) all obs comparisons order-insensitive; (7) signature-parity.
 
+## 5a. Validation on real data (post-implementation)
+
+Run against real MSK-ACCESS v2 cfDNA (GRCh37) and a STAR RNA BAM (GRCh38), on sites
+discovered from the BAMs themselves. Statistics only — no identifiers or sequence.
+
+| check | DNA (ACCESS v2) | RNA (STAR) |
+|---|---|---|
+| fragment-level invariant (`#ALT==adf`, `#REF==rdf`, `len==dpf`) | **0 failures / 39,561 rows** over 40 variants | **0 failures / 3,274 rows** |
+| determinism (6 runs × threads 1/4/8) | identical, sorted, unique keys | identical |
+| counts vs `count_bam_binned` | identical | identical |
+| cross-locus molecule linking | 7,607 / 18,050 molecules at >1 variant | 463 / 487 |
+
+**Answers to the two narrowing questions raised in review** — measured, not argued:
+
+- **`mode` (and RNA annotation) are irrelevant to the export.** On the STAR BAM,
+  `mode="dna"`, `mode="rna"`, and `mode="rna"` **with the real 1.5 GB GRCh38.111 GTF loaded**
+  (1.65 M exons, annotation active) all produced **byte-identical** observations — same rows,
+  same molecule hashes, same alleles, same qualities. RNA-specific work (ASJD, per-transcript
+  counts) lands in RNA *counts*, not in the per-fragment resolution the export reads. So the
+  wrapper not forwarding `mode`/`gtf_path` costs the export nothing.
+- **`sibling_variants` and `alignment_backend` did not change the export** on real SNVs
+  (15,686 rows, identical allele mix for sw vs pairhmm, and with vs without siblings) — nor on
+  real deletions. The backend is forwarded anyway (the config default is `pairhmm` while the
+  Rust default is `sw`, so not forwarding it would have made the *same config object* count
+  differently here than through `Pipeline`).
+- **Normalization measurably matters for indels.** On real deletion sites the public wrapper
+  (normalize + decompose) recovered **13 ALT molecules vs 11** without it, and the
+  un-normalized path logged `check_deletion: ref_context is None … cannot validate deleted
+  bases`. This is the defect the first implementation shipped with.
+- **`N` rows appear only below the base-quality gate.** At the default `min_baseq=20`: 0 N /
+  300 OTHER. At `min_baseq=0`: **202 N / 97 OTHER** — the same molecules, reclassified. N bases
+  carry low quality, so they are filtered before reaching fragment evidence unless the gate is
+  relaxed. Worth documenting: the N/OTHER split is real but conditional on `min_baseq`.
+
+**End-to-end cross-locus use.** Linking molecules by `molecule_hash` across two nearby real
+variants and weighting each by its base quality yields a usable phase statistic — e.g. a pair
+38 bp apart with 256/402 molecules spanning both loci. Note that interpreting *ALT+REF* is the
+caller's job, not gbcms's: against a homozygous background every molecule reads ALT+REF, which
+is not "trans" in any meaningful sense. The engine reports what each molecule showed; what it
+means is the consumer's problem — exactly the seam this proposal preserves.
+
 ## 6. Performance & memory
 
 - **Flag-off: zero** (mirror the mFSD gate `Vec::with_capacity(0)` at `engine.rs:1700`).
