@@ -462,7 +462,19 @@ class Pipeline:
             align_cfg = self.config.alignment
             if align_cfg.backend != "sw":
                 logger.info("Using alignment backend: %s", align_cfg.backend)
-            counts_list = _get_rs().count_bam_binned(
+            # One pass either way: when observations are requested, the same core also
+            # writes the per-molecule rows straight to Parquet from Rust, so counts are
+            # identical and the rows never cross the FFI boundary (flat memory at panel
+            # scale). Mirrors how --mfsd-parquet delegates to the native writer.
+            _obs_path: str | None = None
+            if self.config.output.observations_parquet:
+                _obs_path = str(
+                    self.config.output.directory / f"{sample_name}.observations.parquet"
+                )
+            _count_fn = (
+                _get_rs().count_bam_binned_observations if _obs_path else _get_rs().count_bam_binned
+            )
+            _result = _count_fn(
                 str(bam_path),
                 rs_variants,
                 decomposed,
@@ -506,7 +518,13 @@ class Pipeline:
                 ),
                 reference_fasta=str(self.config.reference_fasta),
                 library_type=getattr(self.config, "library_type", "capture"),
+                **({"observations_path": _obs_path} if _obs_path else {}),
             )
+            # The observations entry point returns (counts, rows); rows are empty because
+            # they were written to Parquet. Counts are the same either way.
+            counts_list = _result[0] if _obs_path else _result
+            if _obs_path:
+                logger.info("Wrote per-molecule observations → %s", _obs_path)
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 

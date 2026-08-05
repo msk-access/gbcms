@@ -447,3 +447,61 @@ def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
         (o.variant_index, o.molecule_hash, o.allele, o.best_qual) for o in mem.observations
     )
     assert from_file == from_mem
+
+
+def test_cli_flag_writes_observations_alongside_counts(tmp_path):
+    """`--observations-parquet` must produce the side-file without disturbing counts.
+
+    Every external consumer (Nextflow, ACCESS-Pipeline, CWL) reaches gbcms through the CLI,
+    so a capability that exists only in the Python API is unreachable to them — which is
+    exactly the audience the at-scale Parquet path was built for. Mirrors --mfsd-parquet.
+    """
+    pytest.importorskip("pyarrow.parquet")
+    from typer.testing import CliRunner
+
+    from gbcms.cli import app
+
+    ref = "A" * 200
+    fasta = tmp_path / "ref.fa"
+    fasta.write_text(">chr1\n" + ref + "\n")
+    pysam.faidx(str(fasta))
+
+    bam = build_bam(
+        tmp_path,
+        [_read(f"alt{i}", ALT_BASE) for i in range(3)]
+        + [_read(f"ref{i}", REF_BASE) for i in range(2)],
+        filename="cli.bam",
+    )
+    vcf = tmp_path / "v.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        f"chr1\t{POS + 1}\t.\t{REF_BASE}\t{ALT_BASE}\t.\tPASS\t.\n"
+    )
+    out = tmp_path / "out"
+
+    args = ["dna", "-v", str(vcf), "-b", bam, "-f", str(fasta), "-o", str(out)]
+    res_off = CliRunner().invoke(app, args)
+    assert res_off.exit_code == 0, res_off.output
+    assert not list(out.glob("*.observations.parquet")), "written without the flag"
+
+    res_on = CliRunner().invoke(app, [*args, "--observations-parquet"])
+    assert res_on.exit_code == 0, res_on.output
+    written = list(out.glob("*.observations.parquet"))
+    assert len(written) == 1, "flag did not produce the side-file"
+
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(written[0])
+    assert table.num_rows == 5  # one row per fragment
+    assert [f.name for f in table.schema] == [
+        "variant_index",
+        "chrom",
+        "pos",
+        "ref",
+        "alt",
+        "molecule_hash",
+        "allele",
+        "best_qual",
+    ]
+    # the counts output is still produced, unchanged by the flag
+    assert list(out.glob("*.vcf")) or list(out.glob("*.maf"))

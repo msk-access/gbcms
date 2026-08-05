@@ -201,6 +201,16 @@ def dna(
             "mFSD visualizations. Requires --mfsd."
         ),
     ),
+    observations_parquet: bool = typer.Option(
+        False,
+        "--observations-parquet",
+        help=(
+            "Write a companion <sample>.observations.parquet with the per-molecule allele "
+            "call at each variant (which molecule carried REF/ALT/N/OTHER). Enables "
+            "read-backed phasing and allelic-imbalance analyses downstream. Counts are "
+            "unchanged; rows are written from Rust, so memory is flat at panel scale."
+        ),
+    ),
     mfsd_report: bool = typer.Option(
         False,
         "--mfsd-report",
@@ -473,6 +483,7 @@ def dna(
             preserve_barcode=preserve_barcode,
             mfsd=mfsd,
             mfsd_parquet=mfsd_parquet,
+            observations_parquet=observations_parquet,
             mfsd_report=mfsd_report,
             mfsd_report_min_alt=mfsd_report_min_alt,
             mfsd_report_max_variants=mfsd_report_max_variants,
@@ -673,6 +684,16 @@ def rna(
     filter_improper_pair: bool = typer.Option(False, help="Filter improperly paired reads"),
     filter_indel: bool = typer.Option(False, help="Filter reads containing indels"),
     # Normalization
+    observations_parquet: bool = typer.Option(
+        False,
+        "--observations-parquet",
+        help=(
+            "Write a companion <sample>.observations.parquet with the per-molecule allele "
+            "call at each variant (which molecule carried REF/ALT/N/OTHER). Enables "
+            "read-backed phasing and allelic-imbalance analyses downstream. Counts are "
+            "unchanged; rows are written from Rust, so memory is flat at panel scale."
+        ),
+    ),
     show_normalization: bool = typer.Option(
         False,
         "--show-normalization",
@@ -865,6 +886,7 @@ def rna(
             preserve_barcode=preserve_barcode,
             mfsd=False,  # mFSD not applicable to RNA
             mfsd_parquet=False,
+            observations_parquet=observations_parquet,
         )
 
         quality_config = QualityThresholds(
