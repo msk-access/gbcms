@@ -341,3 +341,45 @@ def test_wrapper_forwards_decomposition_so_alt_is_not_lost(tmp_path):
     assert alleles[ALLELE_ALT] == 6, f"ALT molecules lost: {dict(alleles)}"
     assert alleles[ALLELE_REF] == 4
     assert result.variant_status == ["PASS"]
+
+
+def test_vcf_and_maf_representations_converge(tmp_path):
+    """The same deletion, written VCF-style or MAF-style, must observe identically.
+
+    VCF alleles are already anchored, so `is_maf=False` (the default) is correct and needs
+    no reference lookup. MAF writes indels with '-' and the anchor base can only be resolved
+    against the reference — so `is_maf=True` is required there. Getting that flag wrong
+    silently drops the ALT molecules at PASS status, the same failure class as losing the
+    decomposed form, which is why `is_maf` is an explicit parameter rather than a guess.
+    """
+    import gbcms
+    from gbcms.core.kernel import CoordinateKernel
+
+    ref = "A" * 100 + "TAG" + "A" * 100  # anchor T at 0-based 100, deleted A at 101
+    fasta = tmp_path / "ref.fa"
+    fasta.write_text(">chr1\n" + ref + "\n")
+    pysam.faidx(str(fasta))
+
+    def read(name, carries_del):
+        if carries_del:  # 1bp deletion of the A at 101
+            return make_read(name, ref[90:101] + ref[102:120], 90, ((0, 11), (2, 1), (0, 18)))
+        return make_read(name, ref[90:120], 90, ((0, 30),))
+
+    bam = build_bam(
+        tmp_path,
+        [read(f"d{i}", True) for i in range(5)] + [read(f"r{i}", False) for i in range(4)],
+        filename="vcfmaf.bam",
+    )
+
+    # VCF: 1-based POS = anchor, REF = anchor+deleted, ALT = anchor
+    v_vcf = CoordinateKernel.vcf_to_internal("chr1", 101, "TA", "T")
+    # MAF: 1-based Start = first deleted base, REF = deleted base, ALT = '-'
+    v_maf = CoordinateKernel.maf_to_internal("chr1", 102, 102, "A", "-")
+
+    vcf = gbcms.observe_molecules(bam, [v_vcf], reference_fasta=str(fasta), is_maf=False)
+    maf = gbcms.observe_molecules(bam, [v_maf], reference_fasta=str(fasta), is_maf=True)
+
+    mix_vcf = Counter(o.allele for o in vcf.observations)
+    mix_maf = Counter(o.allele for o in maf.observations)
+    assert mix_vcf[ALLELE_ALT] == 5, f"VCF path lost ALT molecules: {dict(mix_vcf)}"
+    assert mix_vcf == mix_maf, f"VCF {dict(mix_vcf)} != MAF {dict(mix_maf)}"
