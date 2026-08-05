@@ -18,7 +18,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -26,7 +26,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1647,6 +1647,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#public-api-vs-internals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public API vs internals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#code-style" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1825,6 +1836,15 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Build Docker image</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>gbcms:latest<span class="w"> </span>.
 </code></pre></div>
+<h2 id="public-api-vs-internals">Public API vs internals<a class="headerlink" href="#public-api-vs-internals" title="Permanent link">¶</a></h2>
+<p><code>gbcms._rs</code> is the <strong>internal</strong> <abbr title="Python-Rust interop library for building native Python modules">PyO3</abbr> extension module. It is underscore-prefixed and absent
+from <code>gbcms.__all__</code> on purpose: its surface (an ~88-field <code>BaseCounts</code>, a ~35-parameter
+<code>count_bam_binned</code>) tracks the engine and changes with it. <strong>It is not covered by Semantic
+Versioning</strong> — do not depend on it from outside this repository.</p>
+<p>The supported API is what <code>gbcms.__all__</code> exports: <code>Pipeline</code>, the config models, <code>Variant</code>,
+<code>merge_mafs</code>, and <code>observe_molecules</code>. A new engine capability that external consumers need
+should get a narrow public wrapper (see <code>src/gbcms/observations.py</code>) rather than exposing
+<code>_rs</code> — that way the promise we keep stable is small enough to actually honour.</p>
 <h2 id="code-style">Code Style<a class="headerlink" href="#code-style" title="Permanent link">¶</a></h2>
 <ul>
 <li>Follow PEP 8 style guidelines</li>
@@ -2039,7 +2059,7 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
         <script src="../js/print-site.js"></script>
       

@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -29,7 +29,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -14639,6 +14639,44 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Per-molecule observation export.</strong> <code>count_bam_binned_observations()</code> returns the same
+  counts as <code>count_bam_binned()</code> plus the per-molecule allele calls the engine normally
+  aggregates away — one <code>Observation</code> per fragment per variant, carrying the molecule
+  identity, the resolved allele (REF / ALT / N / OTHER), and its best supporting base
+  quality. Because a molecule observed at two variants in one call shares a
+  <code>molecule_hash</code>, callers can link alleles <strong>across loci</strong> (read-backed phasing, allelic
+  imbalance, duplex-masking QC); gbcms itself does no such linking.</li>
+<li><strong>Public API:</strong> <code>gbcms.observe_molecules()</code> → <code>ObservationResult</code>. This is the
+    supported surface; <code>gbcms._rs</code> remains internal and is not covered by SemVer.</li>
+<li><strong>Counting is untouched</strong> — both entry points share one core, <code>count_bam_binned</code>'s
+    signature and return are unchanged, and observations are off unless requested
+    (no allocation when off). Binned↔legacy parity is unaffected.</li>
+<li>Rows are sorted by <code>(variant_index, molecule_hash)</code>, so output is deterministic
+    despite parallel bin processing and hash-map iteration order.</li>
+<li>Decomposed variants emit <strong>one</strong> set of rows: observations follow the same
+    higher-<code>ad</code> arbitration as the counts, so the losing allele form is never exported.</li>
+</ul>
+<h3 id="development-changelog-changed">🔄 Changed<a class="headerlink" href="#development-changelog-changed" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Nextflow pipeline is now compatible with the strict syntax parser</strong> that is the
+  default from <strong>Nextflow 26.04</strong>, while still running on 25.x. Verified with
+  <code>nextflow lint</code> on 26.04.0 (0 errors) and config resolution on both 25.10 and 26.04.</li>
+<li><code>nextflow.config</code>: replaced the legacy <code>check_max()</code> helper (function definitions
+    are illegal in strict config) with the native <code>process.resourceLimits</code> directive;
+    <code>--max_cpus/--max_memory/--max_time</code> still apply. Bumped the <code>nextflowVersion</code>
+    floor to <code>&gt;=24.04.0</code> (when <code>resourceLimits</code> landed).</li>
+<li><code>main.nf</code>: moved input validation into the <code>workflow</code> body (top-level statements
+    are disallowed) using <code>error</code> instead of the removed <code>exit</code>; rewrote the
+    <code>hasData</code> helper without a <code>while</code> loop (removed in strict syntax); <code>Channel</code> →
+    <code>channel</code>.</li>
+<li><strong>Removed the remote nf-core institutional-config include.</strong> The strict config
+    syntax forbids the <code>try/catch</code> (and <code>if</code>) guards that made a fetch failure
+    non-fatal. The local <code>iris</code>/<code>slurm</code> profiles are self-sufficient; users who want
+    an institutional config can still supply one with <code>-c</code>. The <code>custom_config_base</code>
+    / <code>custom_config_version</code> params were removed.</li>
+</ul>
 <h2 id="development-changelog-600-2026-07-01">[6.0.0] - 2026-07-01<a class="headerlink" href="#development-changelog-600-2026-07-01" title="Permanent link">¶</a></h2>
 <blockquote>
 <p>[!WARNING]
@@ -14694,7 +14732,7 @@ This major release changes several output behaviours:
   <code>min_mapq = 20</code>. Set <code>--rna_min_mapq 20</code> to restore unique-only RNA counting.</p>
 </li>
 </ul>
-<h3 id="development-changelog-changed">🔄 Changed<a class="headerlink" href="#development-changelog-changed" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_1">🔄 Changed<a class="headerlink" href="#development-changelog-changed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li>
 <p><strong><code>gbcms_status</code> is split into a verdict + a reason field (breaking output change).</strong>
@@ -14797,7 +14835,7 @@ This major release changes several output behaviours:
   normal parse, never affecting correctness.</p>
 </li>
 </ul>
-<h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
 <ul>
 <li>
 <p><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> now emits the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> sub-/mono-nucleosomal fields (ME-1).</strong> <code>MFSD_SUB_NUC_REF_FRAC</code>,
@@ -14829,7 +14867,7 @@ This major release changes several output behaviours:
   (100% strand partition) at ACTB and GAPDH.</p>
 </li>
 </ul>
-<h3 id="development-changelog-changed_1">🔄 Changed<a class="headerlink" href="#development-changelog-changed_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_2">🔄 Changed<a class="headerlink" href="#development-changelog-changed_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>ASJD junction evidence is now counted per fragment, not per mate.</strong> A molecule
   whose R1 and R2 overlap on a short cDNA insert can have both mates carry the same
@@ -14869,13 +14907,13 @@ This major release changes several output behaviours:
   into a misclassification.</li>
 </ul>
 <h2 id="development-changelog-530-2026-05-16">[5.3.0] - 2026-05-16<a class="headerlink" href="#development-changelog-530-2026-05-16" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>CRAM Support</strong>: Full CRAM file support across all commands (<code>dna</code> and <code>rna</code>). The <code>--bam</code> argument now transparently accepts CRAM files.</li>
 <li><strong>CRAM Index Auto-Discovery</strong>: The Nextflow pipeline automatically discovers <code>.crai</code> or <code>.cram.crai</code> indexes in the same directory as the CRAM files.</li>
 <li><strong>Reference Binding</strong>: Rust engine's <code>IndexedReader</code> correctly initializes CRAM references using the provided <code>--fasta</code>.</li>
 </ul>
-<h3 id="development-changelog-changed_2">🔄 Changed<a class="headerlink" href="#development-changelog-changed_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_3">🔄 Changed<a class="headerlink" href="#development-changelog-changed_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Provenance Comment Lines</strong>: Output <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> files now include <code>#gbcms vX.Y.Z</code> and <code>#command ...</code> provenance lines before the header row in both DNA and RNA modes.</li>
 <li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> Header Provenance</strong>: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> headers now include <code>##source</code>, <code>##gbcms_command</code>, <code>##reference</code>, and <code>##contig</code> metadata in both DNA and RNA modes.</li>
@@ -14896,7 +14934,7 @@ This major release changes several output behaviours:
 <li>Added test validation for merge engine skipping <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> provenance comment lines safely.</li>
 </ul>
 <h2 id="development-changelog-520-2026-05-15">[5.2.0] - 2026-05-15<a class="headerlink" href="#development-changelog-520-2026-05-15" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms merge</code> command</strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> command for merging per-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-type genotyped
   MAFs (e.g., duplex + simplex) into a single output with type-prefixed count
@@ -15024,7 +15062,7 @@ This major release changes several output behaviours:
   <code>ad</code>) because R1/R2 fragment consensus is bypassed. This is expected behavior,
   not a bug.</li>
 </ul>
-<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>GTF-based transcript annotation</strong> (<code>--gtf</code>): RNA mode can now load an
   Ensembl/GENCODE GTF file to enable:<ul>
@@ -15121,7 +15159,7 @@ This major release changes several output behaviours:
   (<code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS_MULTI_ALLELIC</code>) replaced with
   semicolon-separated (<code>PASS;WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS;MULTI_ALLELIC</code>).</li>
 </ul>
-<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms_diagnostic</code> column (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) + <code>GD</code> INFO key (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)</strong>: Post-counting
   diagnostic flags computed automatically. Flags include:<ul>
@@ -15209,7 +15247,7 @@ This major release changes several output behaviours:
   <code>alignment_backend</code> changed from <code>'hmm'</code> to <code>'pairhmm'</code>. Pipelines relying
   on the old Nextflow defaults may see behavior changes.</li>
 </ul>
-<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Physical fragment sizing</strong>: Rust-native fragment size calculation using
   aligned read positions instead of TLEN, improving accuracy for supplementary
@@ -15310,7 +15348,7 @@ This major release changes several output behaviours:
 <li>Ruff UP015 fix: removed unnecessary <code>"r"</code> mode argument from <code>open()</code>.</li>
 </ul>
 <h3 id="development-changelog-n-base-diagnostic-integration-phases-03">🧬 N-Base Diagnostic Integration (Phases 0–3)<a class="headerlink" href="#development-changelog-n-base-diagnostic-integration-phases-03" title="Permanent link">¶</a></h3>
-<h4 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Diagnostic output columns</strong>: <code>any_alt</code>, <code>partial_alt</code>, <code>n_count</code> appended to
   all <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (24 gbcms DNA columns total, up from 21).</li>
@@ -15327,7 +15365,7 @@ This major release changes several output behaviours:
 <li><strong>ALT-contains-N rejection</strong>: Variants where the ALT allele contains N are
   rejected with <code>FAIL_ALT_CONTAINS_N</code> validation status and <code>warn!</code>-level log.</li>
 </ul>
-<h4 id="development-changelog-changed_3">🔄 Changed<a class="headerlink" href="#development-changelog-changed_3" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-changed_4">🔄 Changed<a class="headerlink" href="#development-changelog-changed_4" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality strategy</strong>: Replaced all-or-nothing <code>min(BQ across block)</code> gate
   with <strong>masked per-position evaluation</strong> — each discriminating position (REF ≠ ALT)
@@ -15383,7 +15421,7 @@ This major release changes several output behaviours:
   power-set sibling combinatorics for true multi-haplotype evaluation.
   Only affects <code>--alignment-backend hmm</code>.</li>
 </ul>
-<h3 id="development-changelog-changed_4">🔄 Changed<a class="headerlink" href="#development-changelog-changed_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_5">🔄 Changed<a class="headerlink" href="#development-changelog-changed_5" title="Permanent link">¶</a></h3>
 <ul>
 <li>Normalization logging now shows granular breakdown:
   <code>"X normalized (Y anchor-resolved, Z left-aligned)"</code> in both Rust engine
@@ -15403,7 +15441,7 @@ This major release changes several output behaviours:
   logic, and statistics extracted from <code>counting/</code> into <code>shared/</code>. Any Rust
   consumer crate linking against gbcms internals must update import paths.</li>
 </ul>
-<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 3 <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> unification</strong> (<code>feat: unify check_complex Phase 3</code>):
   Complex indel classification now routes through a unified pangenomic pipeline
@@ -15495,7 +15533,7 @@ This major release changes several output behaviours:
   A final <code>py-gbcms==3.0.0</code> deprecation stub on PyPI re-exports <code>gbcms</code> and
   issues a <code>DeprecationWarning</code> for smooth migration.</li>
 </ul>
-<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> native integration</strong>: <code>--mfsd</code> and <code>--mfsd-parquet</code> flags output a
   Parquet file with 31 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns + 7 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields via the Rust native
@@ -15523,7 +15561,7 @@ This major release changes several output behaviours:
 <li>Added <code>mkdocs-print-site-plugin</code> to <abbr title="Continuous Integration - Automated build and test system">CI</abbr> docs install step and <code>pyproject.toml</code>.</li>
 </ul>
 <h2 id="development-changelog-280-2026-02-23">[2.8.0] - 2026-02-23<a class="headerlink" href="#development-changelog-280-2026-02-23" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> alignment backend</strong>: Alternative Phase 3 alignment via <code>--alignment-backend hmm</code> with probabilistic scoring using base quality probabilities. Configurable <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold (default 2.3 ≈ ln(10)) and gap probabilities for repeat/non-repeat regions. 6 new <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options. Exposed as first-class Nextflow params in <code>nextflow.config</code></li>
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> min-BQ-across-block quality strategy</strong>: <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality now assessed using min(BQ) across the entire block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>. Low-quality <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads now fall through to <code>check_complex</code> for masked comparison instead of being silently skipped</li>
@@ -15563,7 +15601,7 @@ This major release changes several output behaviours:
 <li>Multi-allelic isolation, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/neither, fragment consensus, normalization tests</li>
 </ul>
 <h2 id="development-changelog-270-2026-02-19">[2.7.0] - 2026-02-19<a class="headerlink" href="#development-changelog-270-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
@@ -15590,7 +15628,7 @@ This major release changes several output behaviours:
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
-<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Tolerant REF validation</strong>: Variants with ≥90% REF match against the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> are now counted (status <code>PASS_WARN_REF_CORRECTED</code>) instead of being silently rejected. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF is used for haplotype construction. Variants with &lt;90% match are still rejected as <code>REF_MISMATCH</code></li>
 </ul>
@@ -15605,7 +15643,7 @@ This major release changes several output behaviours:
 <li><strong><code>deploy-docs.yml</code></strong>: Added <code>mkdocs-pdf</code> to docs <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pip install dependencies</li>
 </ul>
 <h2 id="development-changelog-260-2026-02-18">[2.6.0] - 2026-02-18<a class="headerlink" href="#development-changelog-260-2026-02-18" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Adaptive context padding</strong>: Dynamically increases <code>ref_context</code> flanking in tandem repeat regions (homopolymer through hexanucleotide). Formula: <code>max(default, repeat_span/2 + 3)</code>, capped at 50bp. Enabled by default (<code>--adaptive-context/--no-adaptive-context</code>)</li>
 <li><strong><code>gbcms normalize</code> command</strong>: Standalone variant normalization (left-align + REF validate) without counting, outputs <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> with original and normalized coordinates</li>
@@ -15621,7 +15659,7 @@ This major release changes several output behaviours:
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style conversion</strong>: Corrected complex variant handling in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→internal coordinate conversion</li>
 <li><strong>Lint</strong>: Fixed ruff I001/E402/B905 and black formatting in <code>pipeline.py</code></li>
 </ul>
-<h3 id="development-changelog-changed_5">🔄 Changed<a class="headerlink" href="#development-changelog-changed_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_6">🔄 Changed<a class="headerlink" href="#development-changelog-changed_6" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dead code removed</strong>: <code>GenomicInterval</code> class, <code>Variant.interval</code> property, <code>fragment_counting</code> config field</li>
 <li><strong><code>fetch_single_base()</code> refactored</strong>: Delegates to <code>fetch_region()</code>, removing 33 lines of duplicated chr-prefix retry logic</li>
@@ -15629,7 +15667,7 @@ This major release changes several output behaviours:
 <li><strong>Nextflow pipeline diagram</strong> added to docs index</li>
 </ul>
 <h2 id="development-changelog-250-2026-02-12">[2.5.0] - 2026-02-12<a class="headerlink" href="#development-changelog-250-2026-02-12" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_14">✨ Added<a class="headerlink" href="#development-changelog-added_14" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--preserve-barcode</code> flag</strong>: Keeps original <code>Tumor_Sample_Barcode</code> from input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> instead of overriding with <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> sample name (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows)</li>
 <li><strong><code>--column-prefix</code> parameter</strong>: Controls prefix for gbcms count columns in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (default: none; use <code>--column-prefix t_</code> for legacy compatibility) ⚠️</li>
@@ -15647,7 +15685,7 @@ This major release changes several output behaviours:
 <li><strong><code>splitCsv</code> quote handling</strong>: Added <code>quote:'"'</code> parameter for correct RFC 4180 parsing of comma-separated TSB values within quoted CSV fields</li>
 <li><strong>mypy <code>no-redef</code> error</strong>: Removed redundant type annotation in <code>output.py</code> else branch</li>
 </ul>
-<h3 id="development-changelog-changed_6">🔄 Changed<a class="headerlink" href="#development-changelog-changed_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_7">🔄 Changed<a class="headerlink" href="#development-changelog-changed_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output column prefix default</strong>: Changed from <code>t_</code> to empty string (no prefix). Use <code>--column-prefix t_</code> for legacy <code>t_ref_count</code> / <code>t_alt_count</code> style columns ⚠️</li>
 <li><strong><code>MafWriter</code> refactored</strong>: <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> path preserves all original columns verbatim; <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> path builds row from GDC fieldnames with <code>CoordinateKernel</code> coordinate conversion</li>
@@ -15656,7 +15694,7 @@ This major release changes several output behaviours:
 <li><strong>Nextflow config</strong>: Added <code>column_prefix</code>, <code>preserve_barcode</code>, <code>filter_by_sample</code> parameters</li>
 </ul>
 <h2 id="development-changelog-240-2026-02-10">[2.4.0] - 2026-02-10<a class="headerlink" href="#development-changelog-240-2026-02-10" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_14">✨ Added<a class="headerlink" href="#development-changelog-added_14" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_15">✨ Added<a class="headerlink" href="#development-changelog-added_15" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment Consensus Engine</strong>: <code>FragmentEvidence</code> struct with u64 QNAME hashing and quality-weighted R1/R2 consensus; ambiguous fragments are discarded (not assigned to REF)</li>
 <li><strong><code>--fragment-qual-threshold</code></strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> option (default 10) controlling consensus quality difference for fragment conflict resolution</li>
@@ -15666,7 +15704,7 @@ This major release changes several output behaviours:
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Normalization Docs</strong>: Added indel normalization and coordinate handling to <code>docs/reference/input-formats.md</code></li>
 <li><strong>47 Tests</strong>: Up from 16 — added <code>test_shifted_indels.py</code> (15), <code>test_fuzzy_complex.py</code> (14), <code>test_fragment_consensus.py</code> (4)</li>
 </ul>
-<h3 id="development-changelog-changed_7">🔄 Changed<a class="headerlink" href="#development-changelog-changed_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_8">🔄 Changed<a class="headerlink" href="#development-changelog-changed_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--min-baseq</code> default</strong>: <code>0</code> → <code>20</code> (Phred Q20) — activates quality masking by default for improved accuracy on low-coverage samples ⚠️</li>
 <li><strong><code>--version</code> flag</strong>: Added to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>gbcms --version</code>)</li>
@@ -15690,14 +15728,14 @@ This major release changes several output behaviours:
 <li><code>.antigravity</code> project files updated with current Rust LOC (~1270) and test counts (47)</li>
 </ul>
 <h2 id="development-changelog-230-2026-02-06">[2.3.0] - 2026-02-06<a class="headerlink" href="#development-changelog-230-2026-02-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_15">✨ Added<a class="headerlink" href="#development-changelog-added_15" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_16">✨ Added<a class="headerlink" href="#development-changelog-added_16" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow <abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> Auto-Discovery</strong>: Checks <code>.bam.bai</code> and <code>.bai</code> extensions automatically</li>
 <li><strong>Documentation Modernization</strong>: Hierarchical navigation, glightbox, panzoom, abbreviations</li>
 <li><strong>Performance Benchmarks</strong>: <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> duplex sample metrics in documentation</li>
 <li><strong>RHEL 8 Installation Guide</strong>: Conda-based source installation for legacy Linux</li>
 </ul>
-<h3 id="development-changelog-changed_8">🔄 Changed<a class="headerlink" href="#development-changelog-changed_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_9">🔄 Changed<a class="headerlink" href="#development-changelog-changed_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dockerfile</strong>: Added <code>procps</code>, <code>bash</code>, OCI labels, <code>maturin[patchelf]</code>, selective COPY</li>
 <li><strong>Nextflow Config</strong>: <code>--platform linux/amd64</code>, shell config, local profile, observability (trace/report/timeline/dag)</li>
@@ -15712,14 +15750,14 @@ This major release changes several output behaviours:
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Build</strong>: Resolved <code>curl-sys</code> OpenSSL version conflict by switching to manylinux_2_34</li>
 </ul>
 <h2 id="development-changelog-220-2026-02-04">[2.2.0] - 2026-02-04<a class="headerlink" href="#development-changelog-220-2026-02-04" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_16">✨ Added<a class="headerlink" href="#development-changelog-added_16" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_17">✨ Added<a class="headerlink" href="#development-changelog-added_17" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Multi-platform Wheel Publishing</strong>: Maturin-based <abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds for Linux (x86_64, aarch64), macOS (Intel, Apple Silicon), and Windows</li>
 <li><strong>Structured Logging</strong>: New <code>utils/logging.py</code> module with Rich console output, timing utilities, and log file support</li>
 <li><strong>Mermaid Diagrams</strong>: Architecture documentation with interactive flowcharts</li>
 <li><strong>Release Guide</strong>: Comprehensive <code>docs/RELEASE.md</code> with git-flow workflow</li>
 </ul>
-<h3 id="development-changelog-changed_9">🔄 Changed<a class="headerlink" href="#development-changelog-changed_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_10">🔄 Changed<a class="headerlink" href="#development-changelog-changed_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Folder Restructure</strong>: Moved Rust code to <code>rust/</code> (bundled as <code>gbcms._rs</code>)</li>
 <li><strong>Config Hierarchy</strong>: Nested Pydantic models (<code>ReadFilters</code>, <code>QualityThresholds</code>, <code>OutputConfig</code>) for better organization</li>
@@ -15751,7 +15789,7 @@ This major release changes several output behaviours:
 <li><strong>Documentation</strong>: Added Changelog to documentation navigation</li>
 </ul>
 <h2 id="development-changelog-210-2025-11-25">[2.1.0] - 2025-11-25<a class="headerlink" href="#development-changelog-210-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_17">✨ Added<a class="headerlink" href="#development-changelog-added_17" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_18">✨ Added<a class="headerlink" href="#development-changelog-added_18" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-nextflow-workflow">Nextflow Workflow<a class="headerlink" href="#development-changelog-nextflow-workflow" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Production-ready Nextflow workflow</strong> for processing multiple samples in parallel</li>
@@ -15773,7 +15811,7 @@ This major release changes several output behaviours:
 <li><strong>Reorganized documentation structure</strong> with clear <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> vs Nextflow separation</li>
 <li><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Quick Start guide</strong> (<code>docs/quick-start.md</code>)</li>
 </ul>
-<h3 id="development-changelog-changed_10">🔧 Changed<a class="headerlink" href="#development-changelog-changed_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_11">🔧 Changed<a class="headerlink" href="#development-changelog-changed_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Documentation workflow</strong>: docs now live on <code>main</code> branch with automated deployment</li>
 <li><strong>GitBook integration</strong>: configured to read from <code>main</code> branch</li>
@@ -15790,7 +15828,7 @@ This major release changes several output behaviours:
 <h2 id="development-changelog-200-2025-11-21">[2.0.0] - 2025-11-21<a class="headerlink" href="#development-changelog-200-2025-11-21" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-major-rewrite">🚀 Major Rewrite<a class="headerlink" href="#development-changelog-major-rewrite" title="Permanent link">¶</a></h3>
 <p>Version 2.0.0 represents a complete rewrite of py-gbcms with a focus on performance, correctness, and modern architecture.</p>
-<h3 id="development-changelog-added_18">✨ Added<a class="headerlink" href="#development-changelog-added_18" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_19">✨ Added<a class="headerlink" href="#development-changelog-added_19" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-core-features">Core Features<a class="headerlink" href="#development-changelog-core-features" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Rust-based Counting Engine</strong>: Hybrid Python/Rust architecture for 20x+ performance improvement</li>
@@ -15832,7 +15870,7 @@ This major release changes several output behaviours:
 <li><strong>Comprehensive Tests</strong>: Extended test suite with accuracy and filter validation</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr>/<abbr title="Continuous Deployment - Automated release system">CD</abbr></strong>: GitHub Actions workflows for testing, linting, and releases</li>
 </ul>
-<h3 id="development-changelog-changed_11">🔄 Changed<a class="headerlink" href="#development-changelog-changed_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-changed_12">🔄 Changed<a class="headerlink" href="#development-changelog-changed_12" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-architecture">Architecture<a class="headerlink" href="#development-changelog-architecture" title="Permanent link">¶</a></h4>
 <ul>
 <li>Migrated from pure Python to hybrid Python/Rust architecture</li>
@@ -15989,6 +16027,15 @@ This major release changes several output behaviours:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#development-contributing-__codelineno-5-1"></a><span class="c1"># Build Docker image</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#development-contributing-__codelineno-5-2"></a>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>gbcms:latest<span class="w"> </span>.
 </code></pre></div>
+<h2 id="development-contributing-public-api-vs-internals">Public API vs internals<a class="headerlink" href="#development-contributing-public-api-vs-internals" title="Permanent link">¶</a></h2>
+<p><code>gbcms._rs</code> is the <strong>internal</strong> <abbr title="Python-Rust interop library for building native Python modules">PyO3</abbr> extension module. It is underscore-prefixed and absent
+from <code>gbcms.__all__</code> on purpose: its surface (an ~88-field <code>BaseCounts</code>, a ~35-parameter
+<code>count_bam_binned</code>) tracks the engine and changes with it. <strong>It is not covered by Semantic
+Versioning</strong> — do not depend on it from outside this repository.</p>
+<p>The supported API is what <code>gbcms.__all__</code> exports: <code>Pipeline</code>, the config models, <code>Variant</code>,
+<code>merge_mafs</code>, and <code>observe_molecules</code>. A new engine capability that external consumers need
+should get a narrow public wrapper (see <code>src/gbcms/observations.py</code>) rather than exposing
+<code>_rs</code> — that way the promise we keep stable is small enough to actually honour.</p>
 <h2 id="development-contributing-code-style">Code Style<a class="headerlink" href="#development-contributing-code-style" title="Permanent link">¶</a></h2>
 <ul>
 <li>Follow PEP 8 style guidelines</li>
@@ -16745,7 +16792,7 @@ Built with <a href="https://antigravity.google/">Antigravity</a> |
       <script id="__config" type="application/json">{"annotate": null, "base": "/gbcms/dev", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
         <script src="../js/print-site.js"></script>
       
