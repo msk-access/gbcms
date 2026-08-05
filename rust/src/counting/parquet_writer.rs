@@ -24,7 +24,10 @@
 use std::fs::File;
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, Int32Array, Int64Array, ListArray, StringArray};
+use arrow_array::{
+    ArrayRef, Int32Array, Int64Array, ListArray, StringArray, UInt32Array, UInt64Array,
+    UInt8Array,
+};
 use arrow_buffer::OffsetBuffer;
 use arrow_schema::{DataType, Field, Schema};
 use parquet::arrow::ArrowWriter;
@@ -32,7 +35,7 @@ use parquet::file::properties::WriterProperties;
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 
-use crate::types::BaseCounts;
+use crate::types::{BaseCounts, Observation, Variant};
 
 /// Write per-variant mFSD fragment size arrays to a Parquet file.
 ///
@@ -177,5 +180,103 @@ pub fn write_fsd_parquet(
         path,
     );
 
+    Ok(())
+}
+
+/// Write per-molecule observations to a Parquet file.
+///
+/// Called from inside the counting core when `observations_path` is set, so the rows never
+/// cross the FFI boundary — the same reason `write_fsd_parquet` exists. A panel- or
+/// genome-wide run produces 10^6–10^7 observations; materializing those as Python objects
+/// costs GC pressure and roughly doubles peak RSS, while writing them here costs one
+/// streaming pass.
+///
+/// The file is **self-describing**: each row echoes `(chrom, pos, ref, alt)` alongside
+/// `variant_index`. An index alone is meaningless once the data outlives the call that
+/// produced it, and columnar dictionary encoding makes the locus columns nearly free.
+///
+/// # Arguments
+/// * `path`         - Output `.parquet` path.
+/// * `observations` - Rows to write (already sorted by `(variant_index, molecule_hash)`).
+/// * `variants`     - The call's variant list; indexed by `Observation::variant_index`.
+///
+/// # Errors
+/// `PyIOError` if the file cannot be created or written.
+pub fn write_observations_parquet(
+    path: &str,
+    observations: &[Observation],
+    variants: &[Variant],
+) -> PyResult<()> {
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("variant_index", DataType::UInt32, false),
+        Field::new("chrom", DataType::Utf8, false),
+        Field::new("pos", DataType::Int64, false),
+        Field::new("ref", DataType::Utf8, false),
+        Field::new("alt", DataType::Utf8, false),
+        Field::new("molecule_hash", DataType::UInt64, false),
+        Field::new("allele", DataType::UInt8, false),
+        Field::new("best_qual", DataType::UInt8, false),
+    ]));
+
+    let n = observations.len();
+    let mut variant_index = Vec::with_capacity(n);
+    let mut chroms = Vec::with_capacity(n);
+    let mut positions = Vec::with_capacity(n);
+    let mut refs = Vec::with_capacity(n);
+    let mut alts = Vec::with_capacity(n);
+    let mut molecule_hash = Vec::with_capacity(n);
+    let mut allele = Vec::with_capacity(n);
+    let mut best_qual = Vec::with_capacity(n);
+
+    for obs in observations {
+        let v = variants.get(obs.variant_index as usize).ok_or_else(|| {
+            PyIOError::new_err(format!(
+                "observation references variant_index {} but only {} variants were given",
+                obs.variant_index,
+                variants.len()
+            ))
+        })?;
+        variant_index.push(obs.variant_index);
+        chroms.push(v.chrom.clone());
+        positions.push(v.pos);
+        refs.push(v.ref_allele.clone());
+        alts.push(v.alt_allele.clone());
+        molecule_hash.push(obs.molecule_hash);
+        allele.push(obs.allele);
+        best_qual.push(obs.best_qual);
+    }
+
+    let columns: Vec<ArrayRef> = vec![
+        Arc::new(UInt32Array::from(variant_index)),
+        Arc::new(StringArray::from(chroms)),
+        Arc::new(Int64Array::from(positions)),
+        Arc::new(StringArray::from(refs)),
+        Arc::new(StringArray::from(alts)),
+        Arc::new(UInt64Array::from(molecule_hash)),
+        Arc::new(UInt8Array::from(allele)),
+        Arc::new(UInt8Array::from(best_qual)),
+    ];
+    let batch = arrow_array::RecordBatch::try_new(schema.clone(), columns)
+        .map_err(|e| PyIOError::new_err(format!("Arrow batch build failed: {e}")))?;
+
+    let file = File::create(path).map_err(|e| {
+        PyIOError::new_err(format!("Cannot create observations Parquet file '{path}': {e}"))
+    })?;
+    let props = WriterProperties::builder()
+        .set_compression(parquet::basic::Compression::ZSTD(
+            parquet::basic::ZstdLevel::try_new(1)
+                .map_err(|e| PyIOError::new_err(format!("Invalid ZSTD level: {e}")))?,
+        ))
+        .build();
+    let mut writer = ArrowWriter::try_new(file, schema, Some(props))
+        .map_err(|e| PyIOError::new_err(format!("Parquet writer init failed: {e}")))?;
+    writer
+        .write(&batch)
+        .map_err(|e| PyIOError::new_err(format!("Parquet write failed: {e}")))?;
+    writer
+        .close()
+        .map_err(|e| PyIOError::new_err(format!("Parquet writer close failed: {e}")))?;
+
+    log::debug!("write_observations_parquet: wrote {n} observations → {path}");
     Ok(())
 }

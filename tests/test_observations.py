@@ -14,6 +14,7 @@ spuriously and mask real bugs.
 from collections import Counter
 
 import pysam
+import pytest
 from helpers import build_bam, make_read
 
 from gbcms._rs import Variant, count_bam_binned, count_bam_binned_observations
@@ -383,3 +384,66 @@ def test_vcf_and_maf_representations_converge(tmp_path):
     mix_maf = Counter(o.allele for o in maf.observations)
     assert mix_vcf[ALLELE_ALT] == 5, f"VCF path lost ALT molecules: {dict(mix_vcf)}"
     assert mix_vcf == mix_maf, f"VCF {dict(mix_vcf)} != MAF {dict(mix_maf)}"
+
+
+# ── 8. Parquet sink (at-scale path) ─────────────────────────────────────────────────
+
+
+def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
+    """Writing to Parquet must carry exactly the rows the in-memory path returns.
+
+    At panel/genome scale the FFI materialization — not the counting — is the bottleneck,
+    so the rows are written from Rust and never become Python objects. The two paths must
+    therefore agree exactly, or the at-scale path is silently a different answer.
+    """
+    import gbcms
+    from gbcms.models.core import Variant as PyVariant
+    from gbcms.models.core import VariantType
+
+    bam = build_bam(
+        tmp_path,
+        [_read(f"alt{i}", ALT_BASE) for i in range(4)]
+        + [_read(f"ref{i}", REF_BASE) for i in range(3)],
+        filename="pq.bam",
+    )
+    variants = [
+        PyVariant(chrom="chr1", pos=POS, ref=REF_BASE, alt=ALT_BASE, variant_type=VariantType.SNP)
+    ]
+    out = tmp_path / "obs.parquet"
+
+    mem = gbcms.observe_molecules(bam, variants)
+    written = gbcms.observe_molecules(bam, variants, observations_path=out)
+
+    assert written.path == out and out.exists()
+    assert written.observations == [], "rows must not cross the FFI boundary when written"
+    assert written.n_rows == mem.n_rows == 7
+
+    pq = pytest.importorskip("pyarrow.parquet")
+    table = pq.read_table(out).to_pydict()
+    # self-describing: the locus travels with the rows, so the file stands alone
+    assert [f.name for f in pq.read_table(out).schema] == [
+        "variant_index",
+        "chrom",
+        "pos",
+        "ref",
+        "alt",
+        "molecule_hash",
+        "allele",
+        "best_qual",
+    ]
+    assert set(table["chrom"]) == {"chr1"} and set(table["pos"]) == {POS}
+    assert set(table["ref"]) == {REF_BASE} and set(table["alt"]) == {ALT_BASE}
+
+    from_file = sorted(
+        zip(
+            table["variant_index"],
+            table["molecule_hash"],
+            table["allele"],
+            table["best_qual"],
+            strict=True,
+        )
+    )
+    from_mem = sorted(
+        (o.variant_index, o.molecule_hash, o.allele, o.best_qual) for o in mem.observations
+    )
+    assert from_file == from_mem

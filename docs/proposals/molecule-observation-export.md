@@ -343,7 +343,7 @@ public wrapper `gbcms.observe_molecules` + `ObservationResult` (§3a), re-export
 document in CONTRIBUTING that `gbcms._rs` is internal / not SemVer-covered**; document
 `molecule_hash` + by-BAM tier + the ACCESS `filter_improper_pair` note; tests 1–7 **plus a wrapper
 smoke test**; CHANGELOG; MINOR bump.
-**PR-2 (activates the Parquet sink):** wire `observations_path=Some(...)` to the Rust-side Parquet
+**PR-2 (DONE — Parquet sink active):** wire `observations_path=Some(...)` to the Rust-side Parquet
 writer (mirroring `parquet_writer.rs`) for the genome-wide/ACCESS cliff — additive, the signature is
 already in place from PR-1.
 **PR-3 (separate):** **isoform-resolved** RNA export (`(variant, transcript, molecule)` key) — for

@@ -55,6 +55,16 @@ ALLELE_N = 2
 ALLELE_OTHER = 3
 
 
+def _parquet_row_count(path: Path) -> int:
+    """Row count of a written Parquet file, from its footer metadata (no data read)."""
+    try:
+        import pyarrow.parquet as pq
+
+        return int(pq.ParquetFile(path).metadata.num_rows)
+    except ImportError:  # pragma: no cover - pyarrow is optional for readers
+        return -1
+
+
 @dataclass(frozen=True)
 class ObservationResult:
     """Outcome of :func:`observe_molecules`.
@@ -101,8 +111,10 @@ def observe_molecules(
             threads). Library defaults are used when omitted.
         observations_path: When given, rows are written to Parquet from Rust rather than
             materialized as Python objects — for panel- or genome-wide runs, where the FFI
-            round-trip, not the counting, is the bottleneck.
-            *(Reserved: the writer lands in a follow-up; passing a path currently raises.)*
+            round-trip, not the counting, is the bottleneck. The returned
+            ``observations`` list is then empty and ``path``/``n_rows`` describe the file,
+            whose columns are ``variant_index, chrom, pos, ref, alt, molecule_hash, allele,
+            best_qual`` (self-describing, so it stands alone once written).
 
     Returns:
         An :class:`ObservationResult`. Check ``variant_status`` before trusting rows for a
@@ -114,12 +126,6 @@ def observe_molecules(
         ``filters.improper_pair`` for consensus BAMs whose reads carry no PROPER_PAIR flag
         (some UMI-collapsed pipelines emit none) — every read would be discarded.
     """
-    if observations_path is not None:
-        raise NotImplementedError(
-            "Parquet streaming of observations is not implemented yet; omit "
-            "`observations_path` to receive them in memory."
-        )
-
     # Sub-model defaults, so a caller with no config never has to build a full
     # GbcmsDnaConfig (which requires variant/bam paths this entry point does not use).
     filters = config.filters if config is not None else ReadFilters()
@@ -174,7 +180,18 @@ def observe_molecules(
         umi_tag=config.umi_tag if config is not None else None,
         library_type=getattr(config, "library_type", "capture") if config else "capture",
         reference_fasta=str(reference_fasta) if reference_fasta is not None else None,
+        observations_path=str(observations_path) if observations_path is not None else None,
     )
+    if observations_path is not None:
+        # Rows were written from Rust and never crossed the FFI boundary, so `observations`
+        # comes back empty by design. Read the row count from the file rather than guessing.
+        path = Path(observations_path)
+        return ObservationResult(
+            observations=[],
+            path=path,
+            n_rows=_parquet_row_count(path),
+            variant_status=status,
+        )
     return ObservationResult(
         observations=observations,
         path=None,
