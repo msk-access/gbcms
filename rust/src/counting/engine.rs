@@ -31,9 +31,16 @@ use std::collections::{HashMap, HashSet};
 
 use crate::annotation::AnnotationIndex;
 use crate::shared::stats::fisher_strand_bias;
-use crate::types::{BaseCounts, Variant};
+use crate::types::{
+    BaseCounts, Observation, Variant, OBS_ALLELE_ALT, OBS_ALLELE_N, OBS_ALLELE_OTHER,
+    OBS_ALLELE_REF,
+};
 
 use rayon::prelude::*;
+
+/// What one genomic bin produces: `(vi, counts)` pairs plus the per-molecule rows for
+/// those variants (empty unless observations were requested).
+type BinOutput = (Vec<(usize, BaseCounts)>, Vec<Observation>);
 
 use anyhow::{Context, Result};
 use log::{debug, info, trace, warn};
@@ -539,11 +546,17 @@ pub fn build_gtf_cache(
 ///
 /// // INTENTIONAL: This is the new codepath. count_bam() is retained for
 /// // parity testing until the 22-BAM regression confirms identical counts.
+/// Shared implementation behind `count_bam_binned` (counts only) and
+/// `count_bam_binned_observations` (counts + per-molecule rows).
+///
+/// Both public entry points delegate here, so the counting path is literally the same
+/// code — the export cannot drift from the counts, and binned↔legacy parity is decided by
+/// one implementation rather than two. `emit_obs=false` allocates nothing and returns an
+/// empty observation Vec (invariant 3: output-aware, no compute-then-discard).
 #[allow(clippy::too_many_arguments)]
-#[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
-pub fn count_bam_binned(
+fn count_bam_binned_core(
     py: Python<'_>,
+    emit_obs: bool,
     bam_path: String,
     mut variants: Vec<Variant>,
     decomposed: Vec<Option<Variant>>,
@@ -575,7 +588,7 @@ pub fn count_bam_binned(
     gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
-) -> PyResult<Vec<BaseCounts>> {
+) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     // Parse alignment backend from string
     let backend = match alignment_backend {
         "hmm" | "pairhmm" => AlignmentBackend::PairHMM {
@@ -742,7 +755,8 @@ pub fn count_bam_binned(
 
     // Process bins in parallel, each bin does one bam.fetch()
     #[allow(deprecated)]
-    let bin_results: Result<Vec<(usize, BaseCounts)>, anyhow::Error> = py.allow_threads(move || {
+    #[allow(clippy::type_complexity)]
+    let bin_results: Result<BinOutput, anyhow::Error> = py.allow_threads(move || {
         pool.install(|| {
             bins.par_iter()
                 .map_init(
@@ -810,13 +824,22 @@ pub fn count_bam_binned(
                             &annotation,
                             fasta_reader,
                             amplicon_mode,
+                            emit_obs,
                         )?)
                     },
                 )
+                // Each bin owns its Vecs; they are concatenated here. A shared `&mut`
+                // sink cannot cross the rayon closure, and a Mutex would serialize the
+                // hot deep-coverage bins — so per-bin ownership + merge is the shape.
+                // (`bins.par_iter()` is indexed, so this reduce splits contiguously and
+                // joins adjacent results: bin ORDER is preserved. The nondeterminism the
+                // sort below fixes comes from `HashMap` iteration *within* a variant, not
+                // from here.)
                 .try_reduce(
-                    Vec::new,
-                    |mut acc, batch| {
-                        acc.extend(batch);
+                    || (Vec::new(), Vec::new()),
+                    |mut acc: BinOutput, batch| {
+                        acc.0.extend(batch.0);
+                        acc.1.extend(batch.1);
                         Ok(acc)
                     },
                 )
@@ -825,9 +848,18 @@ pub fn count_bam_binned(
 
     // Scatter results back to variant-order array
     match bin_results {
-        Ok(pairs) => {
+        Ok((pairs, mut observations)) => {
             for (vi, counts) in pairs {
                 all_counts[vi] = counts;
+            }
+
+            // Deterministic observation order. `HashMap<u64, FragmentEvidence>` iteration
+            // inside each variant is nondeterministic (RandomState), and it does not affect
+            // counts — those are order-invariant sums — so parity could never catch it.
+            // Sorting by the join key makes the emitted rows reproducible run-to-run
+            // (verified on real BAMs across 1/4/8 threads).
+            if emit_obs {
+                observations.sort_by_key(|o| (o.variant_index, o.molecule_hash));
             }
 
             // ── BH-FDR correction for ASJD p-values ──
@@ -893,10 +925,120 @@ pub fn count_bam_binned(
                 );
             }
 
-            Ok(all_counts)
+            Ok((all_counts, observations))
         }
         Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e))),
     }
+}
+
+/// Bin-centric parallel BAM counting with BAQ and UMI support.
+///
+/// Unchanged public entry point: same signature, same `list[BaseCounts]` return. Delegates
+/// to `count_bam_binned_core` with observations off, so nothing about this call path — or
+/// its callers — changes. For per-molecule rows use `count_bam_binned_observations`.
+#[allow(clippy::too_many_arguments)]
+#[pyfunction]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
+pub fn count_bam_binned(
+    py: Python<'_>,
+    bam_path: String,
+    variants: Vec<Variant>,
+    decomposed: Vec<Option<Variant>>,
+    min_mapq: u8,
+    min_baseq: u8,
+    filter_duplicates: bool,
+    filter_secondary: bool,
+    filter_supplementary: bool,
+    filter_qc_failed: bool,
+    filter_improper_pair: bool,
+    filter_indel: bool,
+    threads: usize,
+    fragment_qual_threshold: u8,
+    sibling_variants: Vec<Vec<Variant>>,
+    alignment_backend: &str,
+    hmm_llr_threshold: f64,
+    hmm_gap_open: f64,
+    hmm_gap_extend: f64,
+    hmm_gap_open_repeat: f64,
+    hmm_gap_extend_repeat: f64,
+    apply_baq: bool,
+    umi_tag: Option<&str>,
+    mode: &str,
+    enforce_strandedness: bool,
+    strandedness: &str,
+    mfsd: bool,
+    rna_editing_db: Option<&str>,
+    gtf_path: Option<&str>,
+    gtf_cache_dir: Option<&str>,
+    reference_fasta: Option<&str>,
+    library_type: &str,
+) -> PyResult<Vec<BaseCounts>> {
+    let (counts, _observations) = count_bam_binned_core(
+        py, false, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
+        filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair,
+        filter_indel, threads, fragment_qual_threshold, sibling_variants, alignment_backend,
+        hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
+        hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
+        mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
+    )?;
+    Ok(counts)
+}
+
+/// Same counting as `count_bam_binned`, plus the per-molecule allele calls it normally
+/// aggregates away — returned as `(list[BaseCounts], list[Observation])` from one pass.
+///
+/// One `Observation` per fragment per variant, carrying the molecule identity, the resolved
+/// allele, and its best supporting base quality. The same molecule seen at two variants in
+/// this call shares a `molecule_hash`, which is what lets a caller link alleles across loci;
+/// gbcms does no such linking itself. Rows are sorted by `(variant_index, molecule_hash)`,
+/// so output is deterministic despite parallel bin processing.
+///
+/// Counts are byte-identical to `count_bam_binned` — same core, same classifier.
+#[allow(clippy::too_many_arguments)]
+#[pyfunction]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
+pub fn count_bam_binned_observations(
+    py: Python<'_>,
+    bam_path: String,
+    variants: Vec<Variant>,
+    decomposed: Vec<Option<Variant>>,
+    min_mapq: u8,
+    min_baseq: u8,
+    filter_duplicates: bool,
+    filter_secondary: bool,
+    filter_supplementary: bool,
+    filter_qc_failed: bool,
+    filter_improper_pair: bool,
+    filter_indel: bool,
+    threads: usize,
+    fragment_qual_threshold: u8,
+    sibling_variants: Vec<Vec<Variant>>,
+    alignment_backend: &str,
+    hmm_llr_threshold: f64,
+    hmm_gap_open: f64,
+    hmm_gap_extend: f64,
+    hmm_gap_open_repeat: f64,
+    hmm_gap_extend_repeat: f64,
+    apply_baq: bool,
+    umi_tag: Option<&str>,
+    mode: &str,
+    enforce_strandedness: bool,
+    strandedness: &str,
+    mfsd: bool,
+    rna_editing_db: Option<&str>,
+    gtf_path: Option<&str>,
+    gtf_cache_dir: Option<&str>,
+    reference_fasta: Option<&str>,
+    library_type: &str,
+) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
+    count_bam_binned_core(
+        py, true, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
+        filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair,
+        filter_indel, threads, fragment_qual_threshold, sibling_variants, alignment_backend,
+        hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
+        hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
+        mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
+    )
 }
 
 /// Compute the reference-consumed end position of an aligned record.
@@ -993,7 +1135,8 @@ fn count_bin_shared(
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
     amplicon_mode: bool,
-) -> Result<Vec<(usize, BaseCounts)>> {
+    emit_obs: bool,
+) -> Result<BinOutput> {
 
     // ══════════════════════════════════════════════════════════════════════
     // PHASE 0: Single fetch + universal filtering → read cache
@@ -1076,43 +1219,57 @@ fn count_bin_shared(
     // Per-variant filters (strandedness, anchor overlap) are applied here.
 
     let mut results = Vec::with_capacity(bin.variant_indices.len());
+    let mut bin_observations: Vec<Observation> = Vec::new();
 
     for &vi in &bin.variant_indices {
         let variant = &variants[vi];
         let siblings = &sibling_variants[vi];
 
-        let counts_orig = count_variant_from_cache(
+        let (counts_orig, obs_orig) = count_variant_from_cache(
             &read_cache, variant, siblings,
             min_mapq, min_baseq,
             filter_improper_pair, filter_indel,
             fragment_qual_threshold, backend,
             apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
             editing_sites, annotation, amplicon_mode,
+            emit_obs, vi as u32,
         )?;
 
         // Dual-count for decomposed variants: run the same classification
         // against the decomposed variant form and take the higher ALT count.
-        let mut final_counts = if let Some(ref decomp) = decomposed[vi] {
-            let counts_decomp = count_variant_from_cache(
+        //
+        // Observations follow the SAME arbitration as the counts. A decomposed variant
+        // runs the classifier twice, so keeping both sets would emit two contradictory
+        // allele calls per molecule (including the losing allele form) — and counts
+        // parity would stay green while the export was wrong. Only the winner's rows survive.
+        let (mut final_counts, final_obs) = if let Some(ref decomp) = decomposed[vi] {
+            let (counts_decomp, obs_decomp) = count_variant_from_cache(
                 &read_cache, decomp, siblings,
                 min_mapq, min_baseq,
                 filter_improper_pair, filter_indel,
                 fragment_qual_threshold, backend,
                 apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
                 editing_sites, annotation, amplicon_mode,
+                emit_obs, vi as u32,
             )?;
 
             if counts_decomp.ad > counts_orig.ad {
-                BaseCounts {
-                    used_decomposed: true,
-                    ..counts_decomp
-                }
+                (
+                    BaseCounts {
+                        used_decomposed: true,
+                        ..counts_decomp
+                    },
+                    obs_decomp,
+                )
             } else {
-                counts_orig
+                (counts_orig, obs_orig)
             }
         } else {
-            counts_orig
+            (counts_orig, obs_orig)
         };
+        if emit_obs {
+            bin_observations.extend(final_obs);
+        }
 
         // ── Non-discriminating-locus detection (PairHMM backend) ──
         // When a sibling combination reconstructs the reference haplotype, REF and
@@ -1177,7 +1334,7 @@ fn count_bin_shared(
         results.push((vi, final_counts));
     }
 
-    Ok(results)
+    Ok((results, bin_observations))
 }
 
 
@@ -1290,7 +1447,13 @@ fn count_variant_from_cache(
     editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     amplicon_mode: bool,
-) -> Result<BaseCounts> {
+    // ── Observation export (additive; counting is untouched) ──
+    // `emit_obs` is the output-aware gate (invariant 3): when false, no per-molecule
+    // rows are built or allocated. `variant_index` is stamped onto each row so the
+    // caller can join back to its input `variants` list.
+    emit_obs: bool,
+    variant_index: u32,
+) -> Result<(BaseCounts, Vec<Observation>)> {
 
     let mut counts = BaseCounts::default();
 
@@ -1703,8 +1866,36 @@ fn count_variant_from_cache(
     let mut nonref_sizes: Vec<f64> = Vec::with_capacity(mfsd_cap);
     let mut n_sizes:      Vec<f64> = Vec::with_capacity(mfsd_cap);
 
-    for evidence in fragments.values() {
+    // Observation export: one row per fragment, mirroring the PF-1 mFSD gate above —
+    // capacity 0 (no allocation) when the caller did not ask for observations.
+    let mut observations: Vec<Observation> =
+        Vec::with_capacity(if emit_obs { fragments.len() } else { 0 });
+
+    for (molecule_hash, evidence) in fragments.iter() {
         let (frag_ref, frag_alt) = evidence.resolve(qual_diff_threshold);
+
+        // Per-molecule export. Reuses the SAME resolved call that feeds rdf/adf/dpf
+        // below, so the export cannot diverge from the counts — it is the same value.
+        // REF is first-class; NEITHER splits into N (ambiguous base — a strand-discordant
+        // molecule in consensus BAMs) vs OTHER (third allele / no consensus). No counting
+        // logic is touched, so binned↔legacy parity is unaffected.
+        if emit_obs {
+            let (allele, best_qual) = if frag_ref {
+                (OBS_ALLELE_REF, evidence.best_ref_qual)
+            } else if frag_alt {
+                (OBS_ALLELE_ALT, evidence.best_alt_qual)
+            } else if evidence.has_n_base {
+                (OBS_ALLELE_N, 0)
+            } else {
+                (OBS_ALLELE_OTHER, 0)
+            };
+            observations.push(Observation {
+                variant_index,
+                molecule_hash: *molecule_hash,
+                allele,
+                best_qual,
+            });
+        }
 
         // Count every fragment in dpf regardless of consensus outcome.
         // Discarded fragments (ambiguous R1-vs-R2 within quality threshold)
@@ -1775,7 +1966,7 @@ fn count_variant_from_cache(
         reads_considered,
     );
 
-    Ok(counts)
+    Ok((counts, observations))
 }
 
 
@@ -3100,21 +3291,21 @@ mod tests {
     fn test_splice_motif_orientation_by_strand() {
         // A canonical GT-AG intron on the MINUS strand appears on the forward genome
         // as left=CT (revcomp of acceptor AG) and right=AC (revcomp of donor GT).
-        let left_minus = [b'C', b'T'];
-        let right_minus = [b'A', b'C'];
+        let left_minus = *b"CT";
+        let right_minus = *b"AC";
         // Read forward (plus orientation) it is non-canonical...
         assert_eq!(motif_label(left_minus, right_minus), "OTHER");
         // ...but minus orientation (revcomp + donor/acceptor swap) recovers GT-AG.
         assert_eq!(motif_label(revcomp2(right_minus), revcomp2(left_minus)), "GT-AG");
 
         // Plus-strand canonical intron: left=GT donor, right=AG acceptor.
-        assert_eq!(motif_label([b'G', b'T'], [b'A', b'G']), "GT-AG");
+        assert_eq!(motif_label(*b"GT", *b"AG"), "GT-AG");
 
         // Building-block sanity.
-        assert_eq!(revcomp2([b'A', b'C']), [b'G', b'T']);
-        assert_eq!(revcomp2([b'C', b'T']), [b'A', b'G']);
-        assert_eq!(canonical_motif([b'A', b'T'], [b'A', b'C']), Some("AT-AC"));
-        assert_eq!(canonical_motif([b'C', b'C'], [b'G', b'G']), None);
+        assert_eq!(revcomp2(*b"AC"), *b"GT");
+        assert_eq!(revcomp2(*b"CT"), *b"AG");
+        assert_eq!(canonical_motif(*b"AT", *b"AC"), Some("AT-AC"));
+        assert_eq!(canonical_motif(*b"CC", *b"GG"), None);
     }
 
     /// Build a synthetic BAM record for testing.

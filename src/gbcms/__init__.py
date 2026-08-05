@@ -21,6 +21,7 @@ from .models.core import (
     Variant,
     VariantType,
 )
+from .observations import ObservationResult, observe_molecules
 from .pipeline import Pipeline
 
 __all__ = [
@@ -34,5 +35,7 @@ __all__ = [
     "Pipeline",
     "Variant",
     "VariantType",
+    "ObservationResult",
     "merge_mafs",
+    "observe_molecules",
 ]

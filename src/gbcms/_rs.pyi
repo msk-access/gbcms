@@ -139,6 +139,24 @@ class BaseCounts:
         """Return a copy with `ad` replaced by `new_ad`."""
         ...
 
+class Observation:
+    """One molecule's resolved allele at one variant (see `count_bam_binned_observations`).
+
+    `allele`: 0=REF, 1=ALT, 2=N (ambiguous base — a strand-discordant molecule in
+    consensus BAMs), 3=OTHER (third allele / no consensus).
+    `molecule_hash` is comparable only within a single call, under one umi_tag/library_type;
+    in amplicon mode it is per-read-end rather than per-fragment.
+    """
+
+    @property
+    def variant_index(self) -> int: ...
+    @property
+    def molecule_hash(self) -> int: ...
+    @property
+    def allele(self) -> int: ...
+    @property
+    def best_qual(self) -> int: ...
+
 class PreparedVariant:
     variant: Variant
     original_pos: int
@@ -223,6 +241,39 @@ def count_bam_binned(
     reference_fasta: str | None = None,
     library_type: str = "capture",
 ) -> list[BaseCounts]: ...
+def count_bam_binned_observations(
+    bam_path: str,
+    variants: list[Variant],
+    decomposed: list[Variant | None],
+    min_mapq: int,
+    min_baseq: int,
+    filter_duplicates: bool,
+    filter_secondary: bool,
+    filter_supplementary: bool,
+    filter_qc_failed: bool,
+    filter_improper_pair: bool,
+    filter_indel: bool,
+    threads: int,
+    fragment_qual_threshold: int = 10,
+    sibling_variants: list[list[Variant]] = ...,
+    alignment_backend: str = "sw",
+    hmm_llr_threshold: float = 2.3,
+    hmm_gap_open: float = 1e-4,
+    hmm_gap_extend: float = 0.1,
+    hmm_gap_open_repeat: float = 1e-2,
+    hmm_gap_extend_repeat: float = 0.5,
+    apply_baq: bool = False,
+    umi_tag: str | None = None,
+    mode: str = "dna",
+    enforce_strandedness: bool = False,
+    strandedness: str = "reverse",
+    mfsd: bool = False,
+    rna_editing_db: str | None = None,
+    gtf_path: str | None = None,
+    gtf_cache_dir: str | None = None,
+    reference_fasta: str | None = None,
+    library_type: str = "capture",
+) -> tuple[list[BaseCounts], list[Observation]]: ...
 def build_gtf_cache(
     gtf_path: str,
     variant_chroms: list[str],

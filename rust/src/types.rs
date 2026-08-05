@@ -435,3 +435,53 @@ impl BaseCounts {
         }
     }
 }
+
+/// Allele state of one molecule at one variant, as resolved by
+/// [`FragmentEvidence::resolve`](crate::shared::fragment::FragmentEvidence::resolve).
+///
+/// REF is first-class (not "absence of ALT") because reference-allele observations are
+/// themselves signal for some consumers. `NEITHER` is split into `N` (an ambiguous base —
+/// in consensus BAMs this marks a *strand-discordant* molecule) and `OTHER` (a third
+/// allele / no-consensus), because the two mean different things for QC.
+pub const OBS_ALLELE_REF: u8 = 0;
+pub const OBS_ALLELE_ALT: u8 = 1;
+pub const OBS_ALLELE_N: u8 = 2;
+pub const OBS_ALLELE_OTHER: u8 = 3;
+
+/// One molecule's resolved allele at one variant — the per-molecule view that
+/// `BaseCounts` aggregates away.
+///
+/// Emitted only when observations are requested; the counting path is unchanged, so
+/// binned↔legacy parity is unaffected. The same molecule observed at two variants in the
+/// same call carries the same `molecule_hash`, which is what lets a consumer link alleles
+/// across loci (e.g. cis/trans phasing) — gbcms itself does no such linking.
+///
+/// `molecule_hash` semantics: `hash_molecule(qname, umi)`; in **amplicon mode** the read
+/// number is XOR-folded in, so the key is per-read-end rather than per-fragment. Hashes are
+/// comparable only *within one call*, under one `umi_tag`/`library_type`.
+#[pyclass]
+#[derive(Debug, Clone, Default)]
+pub struct Observation {
+    /// Index into the `variants` list passed to the counting call.
+    #[pyo3(get)]
+    pub variant_index: u32,
+    /// Stable molecule identity within this call (see struct docs).
+    #[pyo3(get)]
+    pub molecule_hash: u64,
+    /// 0=REF, 1=ALT, 2=N, 3=OTHER (see the `OBS_ALLELE_*` constants).
+    #[pyo3(get)]
+    pub allele: u8,
+    /// Best base quality supporting the called allele; 0 for N/OTHER (no called allele).
+    #[pyo3(get)]
+    pub best_qual: u8,
+}
+
+#[pymethods]
+impl Observation {
+    fn __repr__(&self) -> String {
+        format!(
+            "Observation(variant_index={}, molecule_hash={}, allele={}, best_qual={})",
+            self.variant_index, self.molecule_hash, self.allele, self.best_qual
+        )
+    }
+}
