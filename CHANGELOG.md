@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **`min_mapq` on `Observation`** and in the observations Parquet schema — the worst MAPQ
+  among the reads backing each molecule. Minimum rather than best, deliberately: a molecule
+  is only as trustworthy as its least confidently placed read, so a paired fragment reports
+  its worse mate and one cleanly-placed read cannot launder an ambiguous one.
+  `255` is the SAM spec's *unavailable*, distinct from `0`, which is a real value meaning
+  the read mapped ambiguously.
+
+  Exported rather than left to inference because the `--min-mapq` threshold *bounds* mapping
+  confidence without measuring it: assuming every surviving molecule sat at the gate would
+  charge them all the same error, swamping the base-quality term and flattening exactly the
+  per-molecule differences a weighted linkage statistic exists to express. Consumers doing
+  read-backed phasing need the measured value.
+
+  `FragmentEvidence` gained a matching `min_mapq` field, tracked for **every** read reaching
+  fragment evidence — including reads that are neither REF nor ALT, which still count toward
+  `dpf` and still describe the fragment's placement.
+
 ### 🔧 Changed
 
 - **`alignment_backend` now defaults to `pairhmm` in `gbcms._rs`**, matching the CLI,

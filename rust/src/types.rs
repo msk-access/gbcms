@@ -459,8 +459,12 @@ pub const OBS_ALLELE_OTHER: u8 = 3;
 /// `molecule_hash` semantics: `hash_molecule(qname, umi)`; in **amplicon mode** the read
 /// number is XOR-folded in, so the key is per-read-end rather than per-fragment. Hashes are
 /// comparable only *within one call*, under one `umi_tag`/`library_type`.
+/// There is deliberately **no `Default` impl**: `min_mapq` has no safe zero. A derived
+/// default would report `0`, which is a *real* MAPQ meaning "mapped ambiguously", so a
+/// partially-built row (`Observation { .., ..Default::default() }`) would silently claim
+/// evidence was badly placed. Omitting the impl makes that fail to compile instead.
 #[pyclass]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Observation {
     /// Index into the `variants` list passed to the counting call.
     #[pyo3(get)]
@@ -474,6 +478,18 @@ pub struct Observation {
     /// Best base quality supporting the called allele; 0 for N/OTHER (no called allele).
     #[pyo3(get)]
     pub best_qual: u8,
+    /// Worst (minimum) MAPQ among the reads that contributed evidence to this molecule.
+    ///
+    /// Minimum, not best: a molecule is only as trustworthy as its least confidently placed
+    /// read, and a consumer weighting evidence by error probability needs the pessimistic
+    /// bound. `255` is the SAM spec's "mapping quality unavailable", distinct from `0`,
+    /// which is a real value meaning the read mapped ambiguously.
+    ///
+    /// Exported because the `--min-mapq` filter threshold is not a substitute: it *bounds*
+    /// the value without measuring it, and collapsing every molecule to the threshold would
+    /// flatten exactly the per-molecule differences a linkage statistic weights by.
+    #[pyo3(get)]
+    pub min_mapq: u8,
 }
 
 #[pymethods]

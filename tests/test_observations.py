@@ -274,7 +274,66 @@ def test_paired_reads_collapse_to_one_molecule(tmp_path, backend):
     _assert_reconciles(counts, observations)
 
 
-# ── 7. indels — the class where the two backends actually disagree ──────────────────
+# ── 7. min_mapq ─────────────────────────────────────────────────────────────────────
+
+
+def test_min_mapq_reports_the_measured_value_not_the_filter_threshold(tmp_path, backend):
+    """Each molecule carries its own MAPQ, not the `--min-mapq` gate it happened to pass.
+
+    The threshold is the reason this field has to exist: it *bounds* mapping confidence
+    without measuring it. A consumer weighting evidence by error probability and forced to
+    assume the threshold would charge every molecule ~1e-2, swamping the base-quality term
+    and flattening exactly the per-molecule differences the weighting exists to express.
+    """
+    reads = [_read("hi", ALT_BASE), _read("mid", ALT_BASE), _read("lo", REF_BASE)]
+    reads[0].mapping_quality = 60
+    reads[1].mapping_quality = 42
+    reads[2].mapping_quality = 25  # still above the min_mapq=20 gate below
+    bam = build_bam(tmp_path, reads, filename="mapq.bam")
+
+    counts, observations = _observe(bam, [_variant()], backend)
+    _assert_reconciles(counts, observations)
+    assert sorted(o.min_mapq for o in observations) == [25, 42, 60]
+
+
+def test_min_mapq_takes_the_worst_read_of_a_fragment(tmp_path, backend):
+    """R1+R2 are one molecule, and it is only as trustworthy as its worse-placed read.
+
+    Taking the best (or last-seen) would let a cleanly-placed mate launder an ambiguously
+    placed one — confidence manufactured from the pair rather than measured.
+    """
+    paired, mate = 0x1 | 0x2 | 0x40, 0x1 | 0x2 | 0x80
+    r1 = _read("frag", ALT_BASE, flag=paired)
+    r2 = _read("frag", ALT_BASE, flag=mate)
+    r1.mapping_quality, r2.mapping_quality = 60, 23
+    bam = build_bam(tmp_path, [r1, r2], filename="mapqpair.bam")
+
+    counts, observations = _observe(bam, [_variant()], backend)
+    assert counts[0].adf == 1, "fixture did not collapse to one fragment"
+    assert len(observations) == 1
+    assert observations[0].min_mapq == 23, "kept the better read's MAPQ instead of the worse"
+
+
+def test_min_mapq_is_never_the_unavailable_sentinel_for_an_observed_molecule(tmp_path, backend):
+    """255 means "unavailable"; a molecule built from real reads must report a real value.
+
+    Guards the initializer: `min_mapq` starts at 255 so an unobserved fragment cannot
+    masquerade as MAPQ 0 (a real value meaning multi-mapping). If the running-minimum update
+    were ever skipped — gated behind is_ref/is_alt, say — rows would silently ship 255 and a
+    consumer would degrade them as unknown rather than use the evidence.
+    """
+    bam = build_bam(
+        tmp_path,
+        [_read("a", ALT_BASE), _read("r", REF_BASE), _read("n", "N"), _read("o", "G")],
+        filename="mapqsent.bam",
+    )
+    _, observations = _observe(bam, [_variant()], backend)
+    assert observations, "fixture produced no rows"
+    # includes the N and OTHER molecules — they have no called allele but are still placed
+    assert all(o.min_mapq == 60 for o in observations), {o.allele: o.min_mapq for o in observations}
+
+
+# ── 8. indels — the class where the two backends actually disagree ──────────────────
 
 
 def test_deletion_rows_reconcile_under_both_backends(tmp_path, backend):
@@ -319,7 +378,7 @@ def test_deletion_rows_reconcile_under_both_backends(tmp_path, backend):
     assert counts[0].adf > 0, f"{backend} found no ALT — fixture is not exercising the deletion"
 
 
-# ── 8. the public wrapper ───────────────────────────────────────────────────────────
+# ── 9. the public wrapper ───────────────────────────────────────────────────────────
 
 
 def test_public_wrapper_returns_observations(tmp_path):
@@ -425,7 +484,7 @@ def test_vcf_and_maf_representations_converge(tmp_path):
     assert mix_vcf == mix_maf, f"VCF {dict(mix_vcf)} != MAF {dict(mix_maf)}"
 
 
-# ── 9. Parquet sink (at-scale path) ─────────────────────────────────────────────────
+# ── 10. Parquet sink (at-scale path) ─────────────────────────────────────────────────
 
 
 def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
@@ -469,6 +528,7 @@ def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
         "molecule_hash",
         "allele",
         "best_qual",
+        "min_mapq",
     ]
     assert set(table["chrom"]) == {"chr1"} and set(table["pos"]) == {POS}
     assert set(table["ref"]) == {REF_BASE} and set(table["alt"]) == {ALT_BASE}
@@ -479,11 +539,13 @@ def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
             table["molecule_hash"],
             table["allele"],
             table["best_qual"],
+            table["min_mapq"],
             strict=True,
         )
     )
     from_mem = sorted(
-        (o.variant_index, o.molecule_hash, o.allele, o.best_qual) for o in mem.observations
+        (o.variant_index, o.molecule_hash, o.allele, o.best_qual, o.min_mapq)
+        for o in mem.observations
     )
     assert from_file == from_mem
 
@@ -541,6 +603,7 @@ def test_cli_flag_writes_observations_alongside_counts(tmp_path):
         "molecule_hash",
         "allele",
         "best_qual",
+        "min_mapq",
     ]
     # the counts output is still produced, unchanged by the flag
     assert list(out.glob("*.vcf")) or list(out.glob("*.maf"))

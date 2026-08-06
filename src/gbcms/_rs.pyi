@@ -146,6 +146,8 @@ class Observation:
     consensus BAMs), 3=OTHER (third allele / no consensus).
     `molecule_hash` is comparable only within a single call, under one umi_tag/library_type;
     in amplicon mode it is per-read-end rather than per-fragment.
+    `min_mapq`: worst MAPQ among the reads backing this molecule; 255 = unavailable (SAM
+    spec), which is distinct from 0 (a real value meaning the read mapped ambiguously).
     """
 
     @property
@@ -156,6 +158,8 @@ class Observation:
     def allele(self) -> int: ...
     @property
     def best_qual(self) -> int: ...
+    @property
+    def min_mapq(self) -> int: ...
 
 class PreparedVariant:
     variant: Variant

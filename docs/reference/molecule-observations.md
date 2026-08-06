@@ -61,6 +61,7 @@ once written.
 | `molecule_hash` | `uint64` | Molecule identity — **the join key across variants** |
 | `allele` | `uint8` | `0`=REF, `1`=ALT, `2`=N, `3`=OTHER |
 | `best_qual` | `uint8` | Best base quality supporting the called allele; `0` for N/OTHER |
+| `min_mapq` | `uint8` | Worst MAPQ among the reads backing this molecule; `255` = unavailable |
 
 Rows are sorted by `(variant_index, molecule_hash)`, so output is byte-reproducible run to run
 despite parallel processing. Compression is Zstandard level 1.
@@ -78,6 +79,31 @@ despite parallel processing. Compression is Zstandard level 1.
     N bases carry low quality, so they are usually filtered before reaching fragment
     evidence. Measured on real cfDNA: at the default `--min-baseq 20` a locus set yielded
     0 N / 300 OTHER rows; at `--min-baseq 0` the same molecules gave 202 N / 97 OTHER.
+
+### `min_mapq` semantics
+
+The **minimum** MAPQ across the reads that contributed evidence to the molecule — not the
+best, and not an average. A molecule is only as trustworthy as its least confidently placed
+read, so a consumer weighting evidence by error probability needs the pessimistic bound.
+For a paired fragment this means the worse mate's value: one cleanly-placed mate cannot
+launder an ambiguously-placed one.
+
+Two values are easy to confuse and mean opposite things:
+
+| Value | Meaning |
+|:------|:--------|
+| `0` | A **real** MAPQ — the read mapped ambiguously (multi-mapping). Trust it least. |
+| `255` | **Unavailable** (SAM spec). No mapping quality was recorded; not a confidence claim. |
+
+!!! note "Why this is exported rather than inferred from `--min-mapq`"
+    The filter threshold *bounds* mapping confidence without measuring it. Assuming every
+    surviving molecule sat at the threshold would charge them all the same error — swamping
+    the base-quality term and flattening precisely the per-molecule differences that make a
+    weighted statistic worth computing. Reads that clear a `--min-mapq 20` gate are mostly
+    MAPQ 60; treating them as 20 discards that.
+
+Reads below `--min-mapq` never reach fragment evidence, so this value is always at or above
+the threshold you ran with.
 
 ### `molecule_hash` semantics
 
@@ -104,7 +130,7 @@ variants = [Variant(chrom="17", pos=7676153, ref="T", alt="A",
 result = observe_molecules("sample.bam", variants, reference_fasta="ref.fa")
 
 for obs in result.observations:
-    print(obs.variant_index, obs.molecule_hash, obs.allele, obs.best_qual)
+    print(obs.variant_index, obs.molecule_hash, obs.allele, obs.best_qual, obs.min_mapq)
 ```
 
 | Parameter | Description |
