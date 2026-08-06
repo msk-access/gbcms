@@ -146,6 +146,8 @@ class Observation:
     consensus BAMs), 3=OTHER (third allele / no consensus).
     `molecule_hash` is comparable only within a single call, under one umi_tag/library_type;
     in amplicon mode it is per-read-end rather than per-fragment.
+    `min_mapq`: worst MAPQ among the reads backing this molecule; 255 = unavailable (SAM
+    spec), which is distinct from 0 (a real value meaning the read mapped ambiguously).
     """
 
     @property
@@ -156,6 +158,8 @@ class Observation:
     def allele(self) -> int: ...
     @property
     def best_qual(self) -> int: ...
+    @property
+    def min_mapq(self) -> int: ...
 
 class PreparedVariant:
     variant: Variant
@@ -186,18 +190,18 @@ def count_bam(
     bam_path: str,
     variants: list[Variant],
     decomposed: list[Variant | None],
-    min_mapq: int = 20,
-    min_baseq: int = 20,
-    filter_duplicates: bool = True,
-    filter_secondary: bool = True,
-    filter_supplementary: bool = True,
-    filter_qc_failed: bool = True,
-    filter_improper_pair: bool = False,
-    filter_indel: bool = False,
-    threads: int = 1,
+    min_mapq: int,
+    min_baseq: int,
+    filter_duplicates: bool,
+    filter_secondary: bool,
+    filter_supplementary: bool,
+    filter_qc_failed: bool,
+    filter_improper_pair: bool,
+    filter_indel: bool,
+    threads: int,
     fragment_qual_threshold: int = 10,
     sibling_variants: list[list[Variant]] | None = None,
-    alignment_backend: str = "sw",
+    alignment_backend: str = "pairhmm",
     hmm_llr_threshold: float = 2.3,
     hmm_gap_open: float = 1e-4,
     hmm_gap_extend: float = 0.1,
@@ -212,18 +216,18 @@ def count_bam_binned(
     bam_path: str,
     variants: list[Variant],
     decomposed: list[Variant | None],
-    min_mapq: int = 20,
-    min_baseq: int = 20,
-    filter_duplicates: bool = True,
-    filter_secondary: bool = True,
-    filter_supplementary: bool = True,
-    filter_qc_failed: bool = True,
-    filter_improper_pair: bool = False,
-    filter_indel: bool = False,
-    threads: int = 1,
+    min_mapq: int,
+    min_baseq: int,
+    filter_duplicates: bool,
+    filter_secondary: bool,
+    filter_supplementary: bool,
+    filter_qc_failed: bool,
+    filter_improper_pair: bool,
+    filter_indel: bool,
+    threads: int,
     fragment_qual_threshold: int = 10,
     sibling_variants: list[list[Variant]] | None = None,
-    alignment_backend: str = "sw",
+    alignment_backend: str = "pairhmm",
     hmm_llr_threshold: float = 2.3,
     hmm_gap_open: float = 1e-4,
     hmm_gap_extend: float = 0.1,
@@ -256,7 +260,7 @@ def count_bam_binned_observations(
     threads: int,
     fragment_qual_threshold: int = 10,
     sibling_variants: list[list[Variant]] = ...,
-    alignment_backend: str = "sw",
+    alignment_backend: str = "pairhmm",
     hmm_llr_threshold: float = 2.3,
     hmm_gap_open: float = 1e-4,
     hmm_gap_extend: float = 0.1,
@@ -282,14 +286,14 @@ def build_gtf_cache(
 ) -> int: ...
 def prepare_variants(
     variants: list[Variant],
-    reference_fasta: str,
+    fasta_path: str,
     context_padding: int,
     is_maf: bool,
-    threads: int,
-    adaptive_context: bool,
+    threads: int = 1,
+    adaptive_context: bool = True,
 ) -> list[PreparedVariant]: ...
 def write_fsd_parquet(
-    output_path: str,
+    path: str,
     chroms: list[str],
     positions: list[int],
     refs: list[str],

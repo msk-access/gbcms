@@ -21,7 +21,7 @@ Example::
                         variant_type=VariantType.SNP)]
     result = observe_molecules("sample.bam", variants, reference_fasta="hg19.fa")
     for obs in result.observations:
-        ...  # obs.variant_index, obs.molecule_hash, obs.allele, obs.best_qual
+        ...  # obs.variant_index, obs.molecule_hash, obs.allele, obs.best_qual, obs.min_mapq
 """
 
 from __future__ import annotations
@@ -114,7 +114,7 @@ def observe_molecules(
             round-trip, not the counting, is the bottleneck. The returned
             ``observations`` list is then empty and ``path``/``n_rows`` describe the file,
             whose columns are ``variant_index, chrom, pos, ref, alt, molecule_hash, allele,
-            best_qual`` (self-describing, so it stands alone once written).
+            best_qual, min_mapq`` (self-describing, so it stands alone once written).
 
     Returns:
         An :class:`ObservationResult`. Check ``variant_status`` before trusting rows for a

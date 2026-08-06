@@ -9,6 +9,13 @@ It must be fragment-level, not read-level: a read excluded by the multi-allelic 
 guard still contributes REF evidence to its fragment, so it counts in `rdf` and emits a REF
 row even though read-level `rd` excluded it. Asserting against `rd`/`ad`/`dp` would fail
 spuriously and mask real bugs.
+
+Every `_rs`-level test below runs under **both** alignment backends. The reconciliation
+invariant is only assertable at this level — `observe_molecules` returns rows without the
+counts to reconcile against — and the two backends are not interchangeable: on real ACCESS
+indels they disagree on ~5% of molecule calls. Pinned to one, the invariant would be proven
+for a classifier half the callers never reach. `pairhmm` is the default at every layer; `sw`
+remains selectable, so both are exercised here.
 """
 
 from collections import Counter
@@ -37,8 +44,19 @@ def _variant(ref=REF_BASE, alt=ALT_BASE):
     return Variant("chr1", POS, ref, alt, "SNP")
 
 
-def _kwargs(variants, **overrides):
-    """Standard counting args; `overrides` tweak individual ones per test."""
+@pytest.fixture(params=["sw", "pairhmm"])
+def backend(request):
+    """Both alignment backends: `pairhmm` is the default everywhere, `sw` the explicit opt-in."""
+    return request.param
+
+
+def _kwargs(variants, backend, **overrides):
+    """Standard counting args; `overrides` tweak individual ones per test.
+
+    `backend` is positional and required so every test states which classifier it scored
+    itself against rather than inheriting one — the same reason the Rust layer no longer
+    has a `Default` impl for `AlignmentBackend`.
+    """
     kwargs = {
         "decomposed": [None] * len(variants),
         "min_mapq": 20,
@@ -52,17 +70,18 @@ def _kwargs(variants, **overrides):
         "threads": 1,
         "fragment_qual_threshold": 10,
         "sibling_variants": [[] for _ in variants],
+        "alignment_backend": backend,
     }
     kwargs.update(overrides)
     return kwargs
 
 
-def _observe(bam, variants, **overrides):
-    return count_bam_binned_observations(bam, variants, **_kwargs(variants, **overrides))
+def _observe(bam, variants, backend, **overrides):
+    return count_bam_binned_observations(bam, variants, **_kwargs(variants, backend, **overrides))
 
 
-def _count(bam, variants, **overrides):
-    return count_bam_binned(bam, variants, **_kwargs(variants, **overrides))
+def _count(bam, variants, backend, **overrides):
+    return count_bam_binned(bam, variants, **_kwargs(variants, backend, **overrides))
 
 
 def _assert_reconciles(counts, observations):
@@ -81,7 +100,7 @@ def _assert_reconciles(counts, observations):
 # ── 1. counts unchanged + the reconciliation invariant ──────────────────────────────
 
 
-def test_counts_are_identical_with_and_without_observations(tmp_path):
+def test_counts_are_identical_with_and_without_observations(tmp_path, backend):
     """`count_bam_binned` must be unaffected — same core, observations off."""
     bam = build_bam(
         tmp_path,
@@ -89,8 +108,8 @@ def test_counts_are_identical_with_and_without_observations(tmp_path):
         + [_read(f"ref{i}", REF_BASE) for i in range(2)],
     )
     variants = [_variant()]
-    counts_only = _count(bam, variants)
-    counts, observations = _observe(bam, variants)
+    counts_only = _count(bam, variants, backend)
+    counts, observations = _observe(bam, variants, backend)
 
     fields = ("dp", "rd", "ad", "dpf", "rdf", "adf", "dp_fwd", "dp_rev")
     for f in fields:
@@ -98,13 +117,13 @@ def test_counts_are_identical_with_and_without_observations(tmp_path):
     assert observations, "observations were requested but none were emitted"
 
 
-def test_observations_reconcile_with_fragment_counts(tmp_path):
+def test_observations_reconcile_with_fragment_counts(tmp_path, backend):
     bam = build_bam(
         tmp_path,
         [_read(f"alt{i}", ALT_BASE) for i in range(4)]
         + [_read(f"ref{i}", REF_BASE) for i in range(3)],
     )
-    counts, observations = _observe(bam, [_variant()])
+    counts, observations = _observe(bam, [_variant()], backend)
     _assert_reconciles(counts, observations)
     assert Counter(o.allele for o in observations) == {1: 4, 0: 3}
 
@@ -112,7 +131,7 @@ def test_observations_reconcile_with_fragment_counts(tmp_path):
 # ── 2. decomposed variants must not double-emit ─────────────────────────────────────
 
 
-def test_decomposed_variant_emits_the_winning_forms_rows(tmp_path):
+def test_decomposed_variant_emits_the_winning_forms_rows(tmp_path, backend):
     """The decomposed form WINS here, so the arbitration branch is actually executed.
 
     A decomposed variant runs the classifier twice and the higher-`ad` form wins. The
@@ -130,22 +149,7 @@ def test_decomposed_variant_emits_the_winning_forms_rows(tmp_path):
     # original has NO support; the decomposed form carries all 3 ALT molecules
     variants = [Variant("chr1", POS, REF_BASE, "G", "SNP")]
     decomposed = [Variant("chr1", POS, REF_BASE, ALT_BASE, "SNP")]
-    counts, observations = count_bam_binned_observations(
-        bam,
-        variants,
-        decomposed=decomposed,
-        min_mapq=20,
-        min_baseq=20,
-        filter_duplicates=True,
-        filter_secondary=True,
-        filter_supplementary=True,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-        threads=1,
-        fragment_qual_threshold=10,
-        sibling_variants=[[]],
-    )
+    counts, observations = _observe(bam, variants, backend, decomposed=decomposed)
     assert counts[0].used_decomposed, "fixture failed to exercise the decomposed-wins branch"
     assert counts[0].adf == 3
     _assert_reconciles(counts, observations)
@@ -158,7 +162,7 @@ def test_decomposed_variant_emits_the_winning_forms_rows(tmp_path):
 # ── 3. multi-allelic siblings ───────────────────────────────────────────────────────
 
 
-def test_sibling_variants_still_reconcile(tmp_path):
+def test_sibling_variants_still_reconcile(tmp_path, backend):
     """With a sibling, reads excluded read-level still carry REF into their fragment."""
     bam = build_bam(
         tmp_path,
@@ -167,20 +171,10 @@ def test_sibling_variants_still_reconcile(tmp_path):
         + [_read("third", "G")],
     )
     variants = [_variant()]
-    counts, observations = count_bam_binned_observations(
+    counts, observations = _observe(
         bam,
         variants,
-        decomposed=[None],
-        min_mapq=20,
-        min_baseq=20,
-        filter_duplicates=True,
-        filter_secondary=True,
-        filter_supplementary=True,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-        threads=1,
-        fragment_qual_threshold=10,
+        backend,
         sibling_variants=[[Variant("chr1", POS, REF_BASE, "G", "SNP")]],
     )
     _assert_reconciles(counts, observations)
@@ -189,16 +183,16 @@ def test_sibling_variants_still_reconcile(tmp_path):
 # ── 4. determinism ──────────────────────────────────────────────────────────────────
 
 
-def test_observation_order_is_deterministic(tmp_path):
+def test_observation_order_is_deterministic(tmp_path, backend):
     """Rayon bin order and HashMap iteration are both nondeterministic; sorting erases both."""
     reads = [_read(f"alt{i}", ALT_BASE) for i in range(10)]
     reads += [_read(f"ref{i}", REF_BASE) for i in range(10)]
     bam = build_bam(tmp_path, reads)
     variants = [_variant()]
 
-    _, first = _observe(bam, variants, threads=4)
+    _, first = _observe(bam, variants, backend, threads=4)
     for _ in range(3):
-        _, again = _observe(bam, variants, threads=4)
+        _, again = _observe(bam, variants, backend, threads=4)
         assert [(o.variant_index, o.molecule_hash, o.allele) for o in first] == [
             (o.variant_index, o.molecule_hash, o.allele) for o in again
         ]
@@ -209,7 +203,7 @@ def test_observation_order_is_deterministic(tmp_path):
 # ── 5. molecule identity is shared across variants (what enables cross-locus linking) ─
 
 
-def test_same_molecule_shares_one_hash_across_variants(tmp_path):
+def test_same_molecule_shares_one_hash_across_variants(tmp_path, backend):
     """A read spanning two variants yields one molecule_hash at both — the join key."""
     pos2 = POS + 5
     reads = []
@@ -220,7 +214,7 @@ def test_same_molecule_shares_one_hash_across_variants(tmp_path):
         reads.append(make_read(f"m{i}", "".join(seq), 90, ((0, SEQ_LEN),)))
     bam = build_bam(tmp_path, reads)
     variants = [_variant(), Variant("chr1", pos2, REF_BASE, ALT_BASE, "SNP")]
-    counts, observations = _observe(bam, variants)
+    counts, observations = _observe(bam, variants, backend)
     _assert_reconciles(counts, observations)
 
     at0 = {o.molecule_hash for o in observations if o.variant_index == 0}
@@ -231,16 +225,16 @@ def test_same_molecule_shares_one_hash_across_variants(tmp_path):
 # ── 6. allele encoding ──────────────────────────────────────────────────────────────
 
 
-def test_ref_and_alt_are_distinguished(tmp_path):
+def test_ref_and_alt_are_distinguished(tmp_path, backend):
     """REF is first-class, not 'absence of ALT'."""
     bam = build_bam(tmp_path, [_read("a", ALT_BASE), _read("r", REF_BASE)])
-    _, observations = _observe(bam, [_variant()])
+    _, observations = _observe(bam, [_variant()], backend)
     by_allele = {o.allele: o for o in observations}
     assert set(by_allele) == {0, 1}
     assert by_allele[1].best_qual > 0 and by_allele[0].best_qual > 0
 
 
-def test_n_base_is_reported_as_N_not_OTHER(tmp_path):
+def test_n_base_is_reported_as_N_not_OTHER(tmp_path, backend):
     """The N/OTHER split is the point: N marks an ambiguous base, OTHER a third allele.
 
     In consensus BAMs an N is a *strand-discordant* molecule, which is diagnostic — it must
@@ -248,7 +242,7 @@ def test_n_base_is_reported_as_N_not_OTHER(tmp_path):
     leaves every count identical, so only an explicit assertion catches it.
     """
     bam = build_bam(tmp_path, [_read("n", "N"), _read("third", "G"), _read("r", REF_BASE)])
-    counts, observations = _observe(bam, [_variant()])
+    counts, observations = _observe(bam, [_variant()], backend)
     _assert_reconciles(counts, observations)
     alleles = Counter(o.allele for o in observations)
     assert alleles[ALLELE_N] == 1, f"expected one N row, got {dict(alleles)}"
@@ -260,7 +254,7 @@ def test_n_base_is_reported_as_N_not_OTHER(tmp_path):
             assert obs.best_qual == 0
 
 
-def test_paired_reads_collapse_to_one_molecule(tmp_path):
+def test_paired_reads_collapse_to_one_molecule(tmp_path, backend):
     """Fragment-level, not read-level: R1+R2 of one template are ONE observation.
 
     This is the whole reason the export is per-molecule and the invariant is asserted
@@ -272,7 +266,7 @@ def test_paired_reads_collapse_to_one_molecule(tmp_path):
         tmp_path,
         [_read("frag", ALT_BASE, flag=paired), _read("frag", ALT_BASE, flag=mate)],
     )
-    counts, observations = _observe(bam, [_variant()])
+    counts, observations = _observe(bam, [_variant()], backend)
     c = counts[0]
     assert c.ad == 2 and c.adf == 1, f"fixture not read-vs-fragment discriminating: {c.ad}/{c.adf}"
     assert len(observations) == 1, "R1+R2 of one template must yield ONE observation"
@@ -280,7 +274,111 @@ def test_paired_reads_collapse_to_one_molecule(tmp_path):
     _assert_reconciles(counts, observations)
 
 
-# ── 7. the public wrapper ───────────────────────────────────────────────────────────
+# ── 7. min_mapq ─────────────────────────────────────────────────────────────────────
+
+
+def test_min_mapq_reports_the_measured_value_not_the_filter_threshold(tmp_path, backend):
+    """Each molecule carries its own MAPQ, not the `--min-mapq` gate it happened to pass.
+
+    The threshold is the reason this field has to exist: it *bounds* mapping confidence
+    without measuring it. A consumer weighting evidence by error probability and forced to
+    assume the threshold would charge every molecule ~1e-2, swamping the base-quality term
+    and flattening exactly the per-molecule differences the weighting exists to express.
+    """
+    reads = [_read("hi", ALT_BASE), _read("mid", ALT_BASE), _read("lo", REF_BASE)]
+    reads[0].mapping_quality = 60
+    reads[1].mapping_quality = 42
+    reads[2].mapping_quality = 25  # still above the min_mapq=20 gate below
+    bam = build_bam(tmp_path, reads, filename="mapq.bam")
+
+    counts, observations = _observe(bam, [_variant()], backend)
+    _assert_reconciles(counts, observations)
+    assert sorted(o.min_mapq for o in observations) == [25, 42, 60]
+
+
+def test_min_mapq_takes_the_worst_read_of_a_fragment(tmp_path, backend):
+    """R1+R2 are one molecule, and it is only as trustworthy as its worse-placed read.
+
+    Taking the best (or last-seen) would let a cleanly-placed mate launder an ambiguously
+    placed one — confidence manufactured from the pair rather than measured.
+    """
+    paired, mate = 0x1 | 0x2 | 0x40, 0x1 | 0x2 | 0x80
+    r1 = _read("frag", ALT_BASE, flag=paired)
+    r2 = _read("frag", ALT_BASE, flag=mate)
+    r1.mapping_quality, r2.mapping_quality = 60, 23
+    bam = build_bam(tmp_path, [r1, r2], filename="mapqpair.bam")
+
+    counts, observations = _observe(bam, [_variant()], backend)
+    assert counts[0].adf == 1, "fixture did not collapse to one fragment"
+    assert len(observations) == 1
+    assert observations[0].min_mapq == 23, "kept the better read's MAPQ instead of the worse"
+
+
+def test_min_mapq_is_never_the_unavailable_sentinel_for_an_observed_molecule(tmp_path, backend):
+    """255 means "unavailable"; a molecule built from real reads must report a real value.
+
+    Guards the initializer: `min_mapq` starts at 255 so an unobserved fragment cannot
+    masquerade as MAPQ 0 (a real value meaning multi-mapping). If the running-minimum update
+    were ever skipped — gated behind is_ref/is_alt, say — rows would silently ship 255 and a
+    consumer would degrade them as unknown rather than use the evidence.
+    """
+    bam = build_bam(
+        tmp_path,
+        [_read("a", ALT_BASE), _read("r", REF_BASE), _read("n", "N"), _read("o", "G")],
+        filename="mapqsent.bam",
+    )
+    _, observations = _observe(bam, [_variant()], backend)
+    assert observations, "fixture produced no rows"
+    # includes the N and OTHER molecules — they have no called allele but are still placed
+    assert all(o.min_mapq == 60 for o in observations), {o.allele: o.min_mapq for o in observations}
+
+
+# ── 8. indels — the class where the two backends actually disagree ──────────────────
+
+
+def test_deletion_rows_reconcile_under_both_backends(tmp_path, backend):
+    """The reconciliation invariant on an INDEL, not a SNP.
+
+    Every other `_rs`-level fixture in this file is a SNP, so until now the invariant was
+    never asserted on the variant class that matters most downstream — indels dominate the
+    reversion classes gbcms feeds, and indels are where the deletion-specific paths
+    (CIGAR walking, the ambiguity window, decomposition) actually run.
+
+    This particular deletion is unambiguous, and both backends agree on it (5 ALT / 4 REF) —
+    a clean deletion is exactly what WFA triage resolves without reaching PairHMM. It is
+    therefore not a divergence fixture, and is not claimed as one; the measured 5-of-104
+    disagreement lives in repeat-context indels that synthetic reads do not reproduce
+    honestly. What this pins down is narrower and still worth pinning: on an indel, under
+    *both* classifiers, the exported rows reconcile with the counts beside them.
+
+    The assertion is deliberately not a fixed allele mix. Which molecules a backend calls ALT
+    is the classifier's business and the two are allowed to differ; the export's contract is
+    only that it reports whatever that decision was.
+    """
+    from gbcms.core.kernel import CoordinateKernel
+
+    ref = "A" * 100 + "TAG" + "A" * 100  # anchor T at 0-based 100, deleted A at 101
+
+    def read(name, carries_del):
+        if carries_del:  # 1bp deletion of the A at 101
+            return make_read(name, ref[90:101] + ref[102:120], 90, ((0, 11), (2, 1), (0, 18)))
+        return make_read(name, ref[90:120], 90, ((0, 30),))
+
+    bam = build_bam(
+        tmp_path,
+        [read(f"d{i}", True) for i in range(5)] + [read(f"r{i}", False) for i in range(4)],
+        filename="del.bam",
+    )
+    v = CoordinateKernel.vcf_to_internal("chr1", 101, "TA", "T")
+    variants = [Variant(v.chrom, v.pos, v.ref, v.alt, v.variant_type.value)]
+
+    counts, observations = _observe(bam, variants, backend)
+    _assert_reconciles(counts, observations)
+    assert counts[0].dpf == 9, "fixture lost molecules before classification"
+    assert counts[0].adf > 0, f"{backend} found no ALT — fixture is not exercising the deletion"
+
+
+# ── 9. the public wrapper ───────────────────────────────────────────────────────────
 
 
 def test_public_wrapper_returns_observations(tmp_path):
@@ -386,7 +484,7 @@ def test_vcf_and_maf_representations_converge(tmp_path):
     assert mix_vcf == mix_maf, f"VCF {dict(mix_vcf)} != MAF {dict(mix_maf)}"
 
 
-# ── 8. Parquet sink (at-scale path) ─────────────────────────────────────────────────
+# ── 10. Parquet sink (at-scale path) ─────────────────────────────────────────────────
 
 
 def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
@@ -430,6 +528,7 @@ def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
         "molecule_hash",
         "allele",
         "best_qual",
+        "min_mapq",
     ]
     assert set(table["chrom"]) == {"chr1"} and set(table["pos"]) == {POS}
     assert set(table["ref"]) == {REF_BASE} and set(table["alt"]) == {ALT_BASE}
@@ -440,11 +539,13 @@ def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
             table["molecule_hash"],
             table["allele"],
             table["best_qual"],
+            table["min_mapq"],
             strict=True,
         )
     )
     from_mem = sorted(
-        (o.variant_index, o.molecule_hash, o.allele, o.best_qual) for o in mem.observations
+        (o.variant_index, o.molecule_hash, o.allele, o.best_qual, o.min_mapq)
+        for o in mem.observations
     )
     assert from_file == from_mem
 
@@ -502,6 +603,7 @@ def test_cli_flag_writes_observations_alongside_counts(tmp_path):
         "molecule_hash",
         "allele",
         "best_qual",
+        "min_mapq",
     ]
     # the counts output is still produced, unchanged by the flag
     assert list(out.glob("*.vcf")) or list(out.glob("*.maf"))

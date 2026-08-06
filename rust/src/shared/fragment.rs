@@ -61,6 +61,19 @@ pub struct FragmentEvidence {
     /// Set by `observe()` when `is_structural=true && is_alt=true`.
     /// Follows the same sticky-flag pattern as `has_n_base`.
     pub has_structural_alt: bool,
+
+    // ── Mapping confidence ──────────────────────────────────────────────────────────
+    /// Worst (minimum) MAPQ among the reads that contributed evidence to this fragment.
+    ///
+    /// Minimum rather than best, deliberately: a fragment is only as trustworthy as its
+    /// least confidently placed read, and a consumer weighting evidence by error
+    /// probability needs the pessimistic bound, not the flattering one.
+    ///
+    /// Initialized to `u8::MAX` (255), which the SAM spec defines as "mapping quality is
+    /// unavailable" — so a fragment that somehow recorded no read reports *unknown* rather
+    /// than the maximally-confident 0-error reading that a `0` initializer would imply.
+    /// (0 is a real, meaningful MAPQ: multi-mapping. It must never arise by default.)
+    pub min_mapq: u8,
 }
 
 impl FragmentEvidence {
@@ -75,6 +88,7 @@ impl FragmentEvidence {
             insert_size: None,
             has_n_base: false,
             has_structural_alt: false,
+            min_mapq: u8::MAX,
         }
     }
 
@@ -106,6 +120,10 @@ impl FragmentEvidence {
     ///   a direct CIGAR I/D op match (via `ClassifyResult::is_alt_structural`).
     ///   Sticky across reads of the pair — once set, not cleared. Enables
     ///   `resolve()` to prioritize structural evidence over BQ comparisons.
+    /// - `mapq`: this read's MAPQ. Tracked as a running minimum in `min_mapq`.
+    ///   Appended last on purpose: every other trailing parameter is a `bool`, so a
+    ///   mis-ordered call fails to compile rather than silently swapping two `u8`s
+    ///   (which is what inserting it next to `base_qual` would have risked).
     #[allow(clippy::too_many_arguments)]
     pub fn observe(
         &mut self,
@@ -117,7 +135,13 @@ impl FragmentEvidence {
         tlen: i32,
         is_n_base: bool,
         is_structural: bool,
+        mapq: u8,
     ) {
+        // Unconditional, and before any allele branching: a read that is neither REF nor
+        // ALT still counts toward DPF, so its mapping confidence still describes the
+        // fragment. Gating this on is_ref/is_alt would leave those fragments reporting 255.
+        self.min_mapq = self.min_mapq.min(mapq);
+
         // Guard: a read cannot be both REF and ALT simultaneously.
         // ClassifyResult constructors enforce mutual exclusivity, so this
         // should never fire. Compiles out in --release builds; in production,
@@ -292,6 +316,11 @@ pub fn hash_molecule(qname: &[u8], umi: Option<&[u8]>) -> u64 {
 mod tests {
     use super::*;
 
+    /// Typical high-confidence MAPQ. These tests exercise allele resolution, not mapping
+    /// confidence, so one uniform value keeps `min_mapq` out of the way; the tracking
+    /// itself is covered by its own tests below.
+    const TEST_MAPQ: u8 = 60;
+
     /// Helper: create a FragmentEvidence with specific REF/ALT observations.
     /// Simulates observe() calls with given qualities and structural flag.
     fn evidence_with(
@@ -301,12 +330,57 @@ mod tests {
     ) -> FragmentEvidence {
         let mut ev = FragmentEvidence::new();
         if ref_qual > 0 {
-            ev.observe(true, false, ref_qual, true, true, 200, false, false);
+            ev.observe(true, false, ref_qual, true, true, 200, false, false, TEST_MAPQ);
         }
         if alt_qual > 0 {
-            ev.observe(false, true, alt_qual, false, false, 200, false, structural_alt);
+            ev.observe(false, true, alt_qual, false, false, 200, false, structural_alt, TEST_MAPQ);
         }
         ev
+    }
+
+    // ── min_mapq tracking ────────────────────────────────────────────
+
+    #[test]
+    fn min_mapq_keeps_the_worst_read_not_the_best() {
+        // A fragment is only as trustworthy as its least confidently placed read. Taking
+        // the max (or last) would let one well-placed mate launder a badly-placed one.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 30, true, true, 200, false, false, 60);
+        ev.observe(false, true, 30, false, false, 200, false, false, 11);
+        assert_eq!(ev.min_mapq, 11);
+        // order must not matter
+        let mut rev = FragmentEvidence::new();
+        rev.observe(false, true, 30, false, false, 200, false, false, 11);
+        rev.observe(true, false, 30, true, true, 200, false, false, 60);
+        assert_eq!(rev.min_mapq, 11);
+    }
+
+    #[test]
+    fn min_mapq_is_tracked_for_neither_ref_nor_alt_reads() {
+        // A read that is neither REF nor ALT still counts toward DPF, so it still describes
+        // the fragment's mapping confidence. Gating the update on is_ref/is_alt would leave
+        // those fragments reporting the "unavailable" sentinel instead of what was measured.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(false, false, 0, true, true, 200, false, false, 7);
+        assert_eq!(ev.min_mapq, 7);
+    }
+
+    #[test]
+    fn unobserved_fragment_reports_unavailable_not_zero() {
+        // 0 is a REAL MAPQ meaning multi-mapping. If it were the initializer, a fragment
+        // that recorded nothing would be indistinguishable from one placed ambiguously —
+        // and a consumer weighting by error probability would silently discard good
+        // evidence. 255 is the SAM spec's "unavailable".
+        assert_eq!(FragmentEvidence::new().min_mapq, u8::MAX);
+        assert_ne!(FragmentEvidence::new().min_mapq, 0);
+    }
+
+    #[test]
+    fn mapq_zero_is_recorded_faithfully() {
+        // The flip side: a genuine MAPQ 0 must survive as 0, not be treated as "missing".
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 30, true, true, 200, false, false, 0);
+        assert_eq!(ev.min_mapq, 0);
     }
 
     // ── resolve() structural priority tests ───────────────────────────
@@ -381,10 +455,10 @@ mod tests {
         // a subsequent non-structural observation is made.
         let mut ev = FragmentEvidence::new();
         // First read: structural ALT
-        ev.observe(false, true, 30, true, true, 200, false, true);
+        ev.observe(false, true, 30, true, true, 200, false, true, TEST_MAPQ);
         assert!(ev.has_structural_alt, "should be set after structural ALT");
         // Second read: non-structural REF
-        ev.observe(true, false, 90, false, false, 200, false, false);
+        ev.observe(true, false, 90, false, false, 200, false, false, TEST_MAPQ);
         assert!(ev.has_structural_alt, "should remain set (sticky)");
     }
 
@@ -395,7 +469,7 @@ mod tests {
         // is_structural=true with is_ref=true (shouldn't happen, but
         // defensive programming).
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 50, true, true, 200, false, true);
+        ev.observe(true, false, 50, true, true, 200, false, true, TEST_MAPQ);
         assert!(!ev.has_structural_alt, "REF obs should not set structural ALT flag");
     }
 
@@ -403,7 +477,7 @@ mod tests {
     fn observe_non_structural_alt_does_not_set_flag() {
         // Non-structural ALT (e.g., Phase 3 alignment) should not set the flag.
         let mut ev = FragmentEvidence::new();
-        ev.observe(false, true, 50, true, true, 200, false, false);
+        ev.observe(false, true, 50, true, true, 200, false, false, TEST_MAPQ);
         assert!(!ev.has_structural_alt, "non-structural ALT should not set flag");
     }
 }

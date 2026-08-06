@@ -216,6 +216,7 @@ pub fn write_observations_parquet(
         Field::new("molecule_hash", DataType::UInt64, false),
         Field::new("allele", DataType::UInt8, false),
         Field::new("best_qual", DataType::UInt8, false),
+        Field::new("min_mapq", DataType::UInt8, false),
     ]));
 
     let n = observations.len();
@@ -227,6 +228,7 @@ pub fn write_observations_parquet(
     let mut molecule_hash = Vec::with_capacity(n);
     let mut allele = Vec::with_capacity(n);
     let mut best_qual = Vec::with_capacity(n);
+    let mut min_mapq = Vec::with_capacity(n);
 
     for obs in observations {
         let v = variants.get(obs.variant_index as usize).ok_or_else(|| {
@@ -244,6 +246,7 @@ pub fn write_observations_parquet(
         molecule_hash.push(obs.molecule_hash);
         allele.push(obs.allele);
         best_qual.push(obs.best_qual);
+        min_mapq.push(obs.min_mapq);
     }
 
     let columns: Vec<ArrayRef> = vec![
@@ -255,6 +258,7 @@ pub fn write_observations_parquet(
         Arc::new(UInt64Array::from(molecule_hash)),
         Arc::new(UInt8Array::from(allele)),
         Arc::new(UInt8Array::from(best_qual)),
+        Arc::new(UInt8Array::from(min_mapq)),
     ];
     let batch = arrow_array::RecordBatch::try_new(schema.clone(), columns)
         .map_err(|e| PyIOError::new_err(format!("Arrow batch build failed: {e}")))?;
