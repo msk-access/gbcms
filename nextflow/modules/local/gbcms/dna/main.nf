@@ -12,6 +12,7 @@ process GBCMS_DNA {
 
     output:
     tuple val(meta), path("*.{vcf,maf}"),          emit: counts
+    tuple val(meta), path("*.observations.parquet"),         emit: observations_parquet, optional: true
     tuple val(meta), path("*.fsd.parquet"),         emit: fsd_parquet,  optional: true
     tuple val(meta), path("*.mfsd_report.html"),    emit: mfsd_report,  optional: true
     path "versions.yml"                           , emit: versions
@@ -49,6 +50,9 @@ process GBCMS_DNA {
 
     // Alignment backend — always pass explicitly
     def backend_arg = "--alignment-backend ${params.alignment_backend}"
+
+    // Per-molecule observation export (companion Parquet; counts unchanged).
+    def observations_arg = params.observations_parquet ? "--observations-parquet" : ""
     def hmm_args = params.alignment_backend in ['hmm', 'pairhmm'] ? \
         "--llr-threshold ${params.llr_threshold} --gap-open-prob ${params.gap_open_prob} --gap-extend-prob ${params.gap_extend_prob} --repeat-gap-open-prob ${params.gap_open_prob_repeat} --repeat-gap-extend-prob ${params.gap_extend_prob_repeat}" : ""
     
@@ -100,6 +104,7 @@ process GBCMS_DNA {
         ${mfsd_arg} \\
         ${mfsd_parquet_arg} \\
         ${mfsd_report_arg} \\
+        ${observations_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml

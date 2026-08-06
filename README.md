@@ -18,6 +18,7 @@
 - 🎯 **Quality Filters**: 8 configurable read and quality filtering options with heuristic BAQ
 - 🧬 **RNA Mode**: Transcriptome-aware counting with strandedness, splice detection, and A-to-I editing
 - 🔗 **UMI Support**: Molecule-level deduplication with UMI-aware fragment grouping
+- 🔬 **Per-Molecule Observations**: Export which molecule carried which allele at each variant — the layer beneath the counts — enabling read-backed phasing and allelic imbalance
 - 🔧 **Normalize Command**: Standalone variant normalization (left-align + REF validation) without counting
 
 ## Installation
@@ -199,7 +200,7 @@ If you use `gbcms` in your research, please cite:
 
 **BibTeX:**
 ```bibtex
-@software{pygbcms,
+@software{gbcms,
   author       = {Shah, Ronak and contributors},
   title        = {gbcms: A high-performance orientation-aware genotype counting system for genomic variants},
   year         = {2026},
