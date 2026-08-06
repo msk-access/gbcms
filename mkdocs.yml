@@ -102,6 +102,7 @@ nav:
     - Allele Classification: reference/allele-classification.md
     - Counting & Metrics: reference/counting-metrics.md
     - mFSD Report: reference/mfsd-report.md
+    - Per-Molecule Observations: reference/molecule-observations.md
     - Complex Indels: reference/complex-indels.md
     - Glossary: reference/glossary.md
   

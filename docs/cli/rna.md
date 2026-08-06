@@ -217,6 +217,12 @@ flowchart TD
 
 ---
 
+## Observation Options
+
+| Flag | Default | Description |
+|:-----|:--------|:------------|
+| `--observations-parquet` | `false` | Write a companion `<sample>.observations.parquet` with the per-molecule allele call at each variant. Works on spliced (N-CIGAR) alignments; the rows are molecule-level, not isoform-level. See [Per-Molecule Observations](../reference/molecule-observations.md). |
+
 ## Quality Thresholds
 
 RNA mode uses **different MAPQ default** to accommodate STAR aligner behavior:

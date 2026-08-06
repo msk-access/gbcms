@@ -69,6 +69,15 @@ short-fragment enrichment associated with tumor-derived cfDNA
     (raw fragment sizes), and `<sample>.mfsd_report.html` (interactive visualization).
     Using `--mfsd-report` auto-enables `--mfsd` and `--mfsd-parquet`.
 
+## Observation Options
+
+| Flag | Default | Description |
+|:-----|:--------|:------------|
+| `--observations-parquet` | `false` | Write a companion `<sample>.observations.parquet` with the per-molecule allele call at each variant (which molecule carried REF/ALT/N/OTHER). Enables read-backed phasing and allelic-imbalance analyses downstream. Counts output is unchanged. See [Per-Molecule Observations](../reference/molecule-observations.md). |
+
+Rows are written from Rust, so memory stays flat at panel scale. Nothing is written unless the
+flag is passed.
+
 ## Filtering Options
 
 | Option | Default | Description |
@@ -251,6 +260,7 @@ See [Output Formats](../reference/output-formats.md) for a complete column-level
 - **MAF** output: VCF→MAF vs MAF→MAF column sets, `Tumor_Sample_Barcode` behaviour, and column prefix options
 - **mFSD columns** (with `--mfsd`): all 41 mFSD fields
 - **Normalization columns** (with `--show-normalization`)
+- **Companion files**: `.fsd.parquet` (with `--mfsd-parquet`) and `.observations.parquet` (with `--observations-parquet`)
 
 ## Related
 
