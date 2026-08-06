@@ -831,6 +831,8 @@
       
         
       
+        
+      
     
     
     
@@ -1145,6 +1147,34 @@
     
   
     mFSD Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/molecule-observations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-Molecule Observations
   
 
     
@@ -1891,6 +1921,17 @@
     <span class="md-ellipsis">
       
         mFSD Report
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reference-molecule-observations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Molecule Observations
       
     </span>
   </a>
@@ -3128,6 +3169,25 @@ This produces <code>&lt;sample&gt;.maf</code> (with 41 <abbr title="Mutant Fragm
 (raw fragment sizes), and <code>&lt;sample&gt;.mfsd_report.html</code> (interactive visualization).
 Using <code>--mfsd-report</code> auto-enables <code>--mfsd</code> and <code>--mfsd-parquet</code>.
 </div>
+<h2 id="cli-dna-observation-options">Observation Options<a class="headerlink" href="#cli-dna-observation-options" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--observations-parquet</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Write a companion <code>&lt;sample&gt;.observations.parquet</code> with the per-molecule allele call at each variant (which molecule carried REF/ALT/N/OTHER). Enables read-backed phasing and allelic-imbalance analyses downstream. Counts output is unchanged. See <a href="#reference-molecule-observations">Per-Molecule Observations</a>.</td>
+</tr>
+</tbody>
+</table>
+<p>Rows are written from Rust, so memory stays flat at panel scale. Nothing is written unless the
+flag is passed.</p>
 <h2 id="cli-dna-filtering-options">Filtering Options<a class="headerlink" href="#cli-dna-filtering-options" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -3451,6 +3511,7 @@ for the full design rationale.</p>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></strong> output: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> vs <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column sets, <code>Tumor_Sample_Barcode</code> behaviour, and column prefix options</li>
 <li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> columns</strong> (with <code>--mfsd</code>): all 41 <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> fields</li>
 <li><strong>Normalization columns</strong> (with <code>--show-normalization</code>)</li>
+<li><strong>Companion files</strong>: <code>.fsd.parquet</code> (with <code>--mfsd-parquet</code>) and <code>.observations.parquet</code> (with <code>--observations-parquet</code>)</li>
 </ul>
 <h2 id="cli-dna-related">Related<a class="headerlink" href="#cli-dna-related" title="Permanent link">¶</a></h2>
 <ul>
@@ -3856,6 +3917,23 @@ Use mouse to pan and zoom
 The file is loaded once at startup and stored as a hash set for O(1) lookup per variant.
 </div>
 <hr>
+<h2 id="cli-rna-observation-options">Observation Options<a class="headerlink" href="#cli-rna-observation-options" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--observations-parquet</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Write a companion <code>&lt;sample&gt;.observations.parquet</code> with the per-molecule allele call at each variant. Works on spliced (N-<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>) alignments; the rows are molecule-level, not isoform-level. See <a href="#reference-molecule-observations">Per-Molecule Observations</a>.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="cli-rna-quality-thresholds">Quality Thresholds<a class="headerlink" href="#cli-rna-quality-thresholds" title="Permanent link">¶</a></h2>
 <p>RNA mode uses <strong>different <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> default</strong> to accommodate <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> aligner behavior:</p>
 <table>
@@ -8262,6 +8340,20 @@ written alongside the main output:</p>
 for downstream <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> visualisations (density plots, empirical CDF comparisons).
 Written natively by Rust — no pyarrow dependency required.</p>
 </details>
+<details class="note">
+<summary>Companion Parquet file (<code>--observations-parquet</code>)</summary>
+<p>When <code>--observations-parquet</code> is set, a per-molecule file is written alongside
+the main output:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#reference-output-formats-__codelineno-9-1"></a>{--output-dir}/{sample_name}.observations.parquet
+</code></pre></div>
+<p>One row per fragment per variant — <code>variant_index, chrom, pos, ref, alt,
+molecule_hash, allele, best_qual</code> — recording <strong>which molecule carried which
+allele</strong>. Because a molecule seen at two variants shares a <code>molecule_hash</code>,
+the rows can be joined across loci for read-backed phasing and allelic
+imbalance. Counts output is unchanged. Written natively by Rust, so memory
+stays flat at panel scale. See
+<a href="#reference-molecule-observations">Per-Molecule Observations</a>.</p>
+</details>
 <hr>
 <h2 id="reference-output-formats-missing-values">Missing Values<a class="headerlink" href="#reference-output-formats-missing-values" title="Permanent link">¶</a></h2>
 <table>
@@ -12573,7 +12665,287 @@ Use mouse to pan and zoom
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-complex-indels" heading-number="5.11"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-molecule-observations" heading-number="5.11"><html><head>
+        <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function () {
+            remove_material_navigation();remove_mkdocs_theme_navigation();
+        })
+        </script>
+        </head><body><div><h1 id="per-molecule-observations">Per-Molecule Observations<a class="headerlink" href="#reference-molecule-observations-per-molecule-observations" title="Permanent link">¶</a></h1>
+<p>The allele each individual molecule carried at each variant — the layer beneath <code>BaseCounts</code>.</p>
+<h2 id="reference-molecule-observations-overview">Overview<a class="headerlink" href="#reference-molecule-observations-overview" title="Permanent link">¶</a></h2>
+<p>Standard output tells you <strong>how many</strong> molecules supported REF and ALT at a position. Some
+analyses need to know <strong>which molecule</strong> carried <strong>which allele</strong> — because the same molecule
+observed at two positions links them.</p>
+<p>gbcms already resolves that per-fragment call while counting, then aggregates it away. The
+observation export surfaces it instead of discarding it. Counting is unaffected: the same
+classifier produces both, so the rows can never disagree with the counts beside them.</p>
+<div class="admonition tip">
+<p class="admonition-title">Quick Start</p>
+<p></p><div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#reference-molecule-observations-__codelineno-0-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--observations-parquet<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#reference-molecule-observations-__codelineno-0-2"></a><span class="w">  </span>-v<span class="w"> </span>variants.maf<span class="w"> </span>-b<span class="w"> </span>sample.bam<span class="w"> </span>-f<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>output/
+</code></pre></div>
+Produces the usual <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <strong>plus</strong> <code>&lt;sample&gt;.observations.parquet</code> with one row per
+molecule per variant.
+</div>
+<p><strong>What it enables.</strong> A molecule seen at two variants in the same run carries the same
+<code>molecule_hash</code>, so joining on it answers questions counts cannot:</p>
+<ul>
+<li><strong>Read-backed phasing</strong> — are two variants on the <em>same</em> molecule (cis) or different ones (trans)?</li>
+<li><strong>Allelic imbalance</strong> — per-molecule allele ratios rather than pooled totals.</li>
+<li><strong>Duplex-masking QC</strong> — how many molecules were strand-discordant (<code>N</code>) at a locus.</li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">gbcms does not interpret</p>
+<p>The export reports what each molecule showed. It performs <strong>no linking, phasing, or
+calling</strong> — deciding what the pattern <em>means</em> belongs to the consumer. Against a
+homozygous background, for instance, every molecule reads ALT+REF, which is not "trans"
+in any meaningful sense.</p>
+</div>
+<hr>
+<h2 id="reference-molecule-observations-cli-options"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Options<a class="headerlink" href="#reference-molecule-observations-cli-options" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--observations-parquet</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Write a companion <code>&lt;sample&gt;.observations.parquet</code> with the per-molecule allele call at each variant. Available on <code>dna</code> and <code>rna</code>. Counts output is unchanged.</td>
+</tr>
+</tbody>
+</table>
+<p>Nothing is written unless the flag is passed, and no per-molecule rows are built when it is
+absent — the cost is zero when off.</p>
+<hr>
+<h2 id="reference-molecule-observations-output-schema">Output Schema<a class="headerlink" href="#reference-molecule-observations-output-schema" title="Permanent link">¶</a></h2>
+<p>One row per <strong>fragment</strong> per variant. Every row echoes its locus, so the file stands alone
+once written.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Column</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>variant_index</code></td>
+<td style="text-align: left;"><code>uint32</code></td>
+<td style="text-align: left;">Index into the input variant list</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>chrom</code></td>
+<td style="text-align: left;"><code>string</code></td>
+<td style="text-align: left;">Chromosome</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>pos</code></td>
+<td style="text-align: left;"><code>int64</code></td>
+<td style="text-align: left;">0-based position</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ref</code></td>
+<td style="text-align: left;"><code>string</code></td>
+<td style="text-align: left;">Reference allele</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt</code></td>
+<td style="text-align: left;"><code>string</code></td>
+<td style="text-align: left;">Alternate allele</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>molecule_hash</code></td>
+<td style="text-align: left;"><code>uint64</code></td>
+<td style="text-align: left;">Molecule identity — <strong>the join key across variants</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>allele</code></td>
+<td style="text-align: left;"><code>uint8</code></td>
+<td style="text-align: left;"><code>0</code>=REF, <code>1</code>=ALT, <code>2</code>=N, <code>3</code>=OTHER</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>best_qual</code></td>
+<td style="text-align: left;"><code>uint8</code></td>
+<td style="text-align: left;">Best base quality supporting the called allele; <code>0</code> for N/OTHER</td>
+</tr>
+</tbody>
+</table>
+<p>Rows are sorted by <code>(variant_index, molecule_hash)</code>, so output is byte-reproducible run to run
+despite parallel processing. Compression is Zstandard level 1.</p>
+<h3 id="reference-molecule-observations-allele-values">Allele values<a class="headerlink" href="#reference-molecule-observations-allele-values" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Value</th>
+<th style="text-align: left;">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>0</code> REF</td>
+<td style="text-align: left;">Molecule carried the reference allele. <strong>First-class</strong> — reference observations are themselves signal for some analyses (e.g. back-mutation).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>1</code> ALT</td>
+<td style="text-align: left;">Molecule carried the alternate allele.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>2</code> N</td>
+<td style="text-align: left;">Ambiguous base. In consensus BAMs this marks a <strong>strand-discordant</strong> molecule — diagnostic, not noise.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>3</code> OTHER</td>
+<td style="text-align: left;">A third allele, or no fragment consensus.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">N rows depend on <code>--min-baseq</code></p>
+<p>N bases carry low quality, so they are usually filtered before reaching fragment
+evidence. Measured on real <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>: at the default <code>--min-baseq 20</code> a locus set yielded
+0 N / 300 OTHER rows; at <code>--min-baseq 0</code> the same molecules gave 202 N / 97 OTHER.</p>
+</div>
+<h3 id="reference-molecule-observations-molecule_hash-semantics"><code>molecule_hash</code> semantics<a class="headerlink" href="#reference-molecule-observations-molecule_hash-semantics" title="Permanent link">¶</a></h3>
+<p><code>molecule_hash</code> is <code>hash_molecule(qname, umi)</code> and is comparable <strong>only within a single run</strong>
+using one <code>--umi-tag</code> and library type. Two caveats:</p>
+<ul>
+<li>In <strong>amplicon</strong> mode the read number is folded into the hash, so the key is per-read-end
+  rather than per-fragment.</li>
+<li>It is a 64-bit hash with no stored qname. Collisions are negligible per locus but aggregate
+  over very large cross-locus joins.</li>
+</ul>
+<hr>
+<h2 id="reference-molecule-observations-python-api">Python API<a class="headerlink" href="#reference-molecule-observations-python-api" title="Permanent link">¶</a></h2>
+<p>For targeted work — a handful of loci — the rows come back in memory:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-molecule-observations-__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">gbcms</span><span class="w"> </span><span class="kn">import</span> <span class="n">Variant</span><span class="p">,</span> <span class="n">VariantType</span><span class="p">,</span> <span class="n">observe_molecules</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#reference-molecule-observations-__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#reference-molecule-observations-__codelineno-1-3"></a><span class="n">variants</span> <span class="o">=</span> <span class="p">[</span><span class="n">Variant</span><span class="p">(</span><span class="n">chrom</span><span class="o">=</span><span class="s2">"17"</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="mi">7676153</span><span class="p">,</span> <span class="n">ref</span><span class="o">=</span><span class="s2">"T"</span><span class="p">,</span> <span class="n">alt</span><span class="o">=</span><span class="s2">"A"</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-molecule-observations-__codelineno-1-4"></a>                    <span class="n">variant_type</span><span class="o">=</span><span class="n">VariantType</span><span class="o">.</span><span class="n">SNP</span><span class="p">)]</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-molecule-observations-__codelineno-1-5"></a>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#reference-molecule-observations-__codelineno-1-6"></a><span class="n">result</span> <span class="o">=</span> <span class="n">observe_molecules</span><span class="p">(</span><span class="s2">"sample.bam"</span><span class="p">,</span> <span class="n">variants</span><span class="p">,</span> <span class="n">reference_fasta</span><span class="o">=</span><span class="s2">"ref.fa"</span><span class="p">)</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#reference-molecule-observations-__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#reference-molecule-observations-__codelineno-1-8"></a><span class="k">for</span> <span class="n">obs</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">observations</span><span class="p">:</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#reference-molecule-observations-__codelineno-1-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">variant_index</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">molecule_hash</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">allele</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">best_qual</span><span class="p">)</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>bam</code></td>
+<td style="text-align: left;">Indexed <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>/CRAM.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>variants</code></td>
+<td style="text-align: left;">Variants to observe. <code>variant_index</code> indexes into this list <strong>positionally</strong> — it is never filtered or reordered, so the join key stays meaningful even when a variant fails validation.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>reference_fasta</code></td>
+<td style="text-align: left;">Reference for normalization. <strong>Strongly recommended for indels</strong> (see below).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>is_maf</code></td>
+<td style="text-align: left;">Set when variants came from a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, whose <code>-</code> alleles need anchor resolution.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>config</code></td>
+<td style="text-align: left;"><code>GbcmsDnaConfig</code> for filters, quality gates, alignment backend, threads.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>observations_path</code></td>
+<td style="text-align: left;">Write to Parquet instead of returning rows (see <a href="#reference-molecule-observations-scale">Scale</a>).</td>
+</tr>
+</tbody>
+</table>
+<p><code>ObservationResult</code> carries <code>observations</code>, <code>path</code>, <code>n_rows</code>, and <code>variant_status</code> — one status
+per input variant. Anything other than <code>PASS</code> means normalization rejected that variant (e.g.
+<code>REF_MISMATCH</code>) and its rows should be discarded.</p>
+<div class="admonition warning">
+<p class="admonition-title">Always pass a reference for indels</p>
+<p>Normalization supplies left-alignment, <code>ref_context</code>, and the <strong>decomposed</strong> form of
+complex indels — often the form the reads actually carry. Without it those molecules are
+scored <code>OTHER</code> and the variant appears to have <strong>zero ALT support</strong>. Measured on real
+ACCESS deletions: 13 ALT molecules with a reference, 11 without.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title"><code>gbcms._rs</code> is internal</p>
+<p><code>observe_molecules</code> is the supported surface. <code>gbcms._rs</code> is an implementation detail and
+is <strong>not covered by SemVer</strong> — see <a href="#development-contributing">Contributing</a>.</p>
+</div>
+<hr>
+<h2 id="reference-molecule-observations-scale">Scale<a class="headerlink" href="#reference-molecule-observations-scale" title="Permanent link">¶</a></h2>
+<p>Two paths, one capability:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Workload</th>
+<th style="text-align: left;">Approach</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Targeted</strong> (a few loci)</td>
+<td style="text-align: left;">Omit <code>observations_path</code> — rows return in memory. A two-locus query is ~128 KB.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Panel / genome-wide</strong></td>
+<td style="text-align: left;">Pass <code>observations_path=</code> (or use <code>--observations-parquet</code>). Rows are written <strong>from Rust</strong> and never become Python objects.</td>
+</tr>
+</tbody>
+</table>
+<p>At panel scale a run yields 10⁶–10⁷ observations. Materializing that many Python objects costs
+GC pressure and roughly doubles peak RSS — under Nextflow per-sample fan-out that is where a
+worker dies. Counting was never the bottleneck; the FFI boundary is. Writing from Rust avoids
+it entirely, and the columnar format compresses well (39,561 real rows → 227 KB).</p>
+<hr>
+<h2 id="reference-molecule-observations-read-filtering-caveat">Read Filtering Caveat<a class="headerlink" href="#reference-molecule-observations-read-filtering-caveat" title="Permanent link">¶</a></h2>
+<p>Molecules are grouped by <code>hash_molecule(qname, umi)</code>, so reads must not be pre-filtered in a
+way that removes whole molecules.</p>
+<div class="admonition danger">
+<p class="admonition-title">Do not enable <code>--filter-improper-pair</code> on consensus BAMs</p>
+<p>Some <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>-collapsed pipelines emit reads with <strong>no <code>PROPER_PAIR</code> flag at all</strong> — measured
+at 0.0% across every <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> type in one ACCESS version. Filtering on that flag discards
+<strong>100% of reads</strong>, silently. gbcms defaults this filter to <code>false</code>, so out-of-the-box runs
+are safe; simply do not turn it on for such data.</p>
+</div>
+<hr>
+<h2 id="reference-molecule-observations-guarantees">Guarantees<a class="headerlink" href="#reference-molecule-observations-guarantees" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>Counts are unchanged.</strong> Both entry points share one core, so enabling observations cannot
+  alter a single count. The existing <code>count_bam_binned</code> signature and return are untouched.</li>
+<li><strong>Rows reconcile with fragment-level counts.</strong> For every variant, <code>#ALT == adf</code>,
+  <code>#REF == rdf</code>, and <code>total rows == dpf</code>. This is asserted in the test suite — note it is
+  <em>fragment</em>-level, not read-level, because a read excluded by the multi-allelic sibling guard
+  still contributes REF evidence to its fragment.</li>
+<li><strong>Deterministic output.</strong> Stable sort by <code>(variant_index, molecule_hash)</code>; verified identical
+  across repeated runs at 1, 4 and 8 threads on real BAMs.</li>
+<li><strong>Decomposed variants emit one set of rows.</strong> When a decomposed form wins arbitration, the
+  observations follow the counts — the losing allele form is never exported.</li>
+</ul>
+<hr>
+<h2 id="reference-molecule-observations-related">Related<a class="headerlink" href="#reference-molecule-observations-related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="#cli-dna">DNA Command</a> — <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag reference</li>
+<li><a href="#cli-rna">RNA Command</a> — same flag in RNA mode</li>
+<li><a href="#reference-counting-metrics">Counting &amp; Metrics</a> — the aggregate counts these rows underlie</li>
+<li><a href="#reference-output-formats">Output Formats</a> — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output structure</li>
+<li><a href="#reference-variant-normalization">Variant Normalization</a> — why a reference matters for indels</li>
+<li><a href="#reference-read-filters">Read Filters</a> — filter semantics, including <code>--filter-improper-pair</code></li>
+</ul>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-complex-indels" heading-number="5.12"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -12873,7 +13245,7 @@ spanning a small repeat motif (e.g., dinucleotide repeat <code>ACAC</code>).</p>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-glossary" heading-number="5.12"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-glossary" heading-number="5.13"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -16682,14 +17054,19 @@ genuinely has nothing to count.</p>
                 .print-site-enumerate-headings #reference-mfsd-report h2:before { content: '5.10.' counter(counter-reference-mfsd-report-2) ' ' }
                 .print-site-enumerate-headings #reference-mfsd-report h2 {  counter-increment: counter-reference-mfsd-report-2 }
             
-.print-site-enumerate-headings #reference-complex-indels > h1:before { content: '5.11 ' }
+.print-site-enumerate-headings #reference-molecule-observations > h1:before { content: '5.11 ' }
 
-                .print-site-enumerate-headings #reference-complex-indels h2:before { content: '5.11.' counter(counter-reference-complex-indels-2) ' ' }
+                .print-site-enumerate-headings #reference-molecule-observations h2:before { content: '5.11.' counter(counter-reference-molecule-observations-2) ' ' }
+                .print-site-enumerate-headings #reference-molecule-observations h2 {  counter-increment: counter-reference-molecule-observations-2 }
+            
+.print-site-enumerate-headings #reference-complex-indels > h1:before { content: '5.12 ' }
+
+                .print-site-enumerate-headings #reference-complex-indels h2:before { content: '5.12.' counter(counter-reference-complex-indels-2) ' ' }
                 .print-site-enumerate-headings #reference-complex-indels h2 {  counter-increment: counter-reference-complex-indels-2 }
             
-.print-site-enumerate-headings #reference-glossary > h1:before { content: '5.12 ' }
+.print-site-enumerate-headings #reference-glossary > h1:before { content: '5.13 ' }
 
-                .print-site-enumerate-headings #reference-glossary h2:before { content: '5.12.' counter(counter-reference-glossary-2) ' ' }
+                .print-site-enumerate-headings #reference-glossary h2:before { content: '5.13.' counter(counter-reference-glossary-2) ' ' }
                 .print-site-enumerate-headings #reference-glossary h2 {  counter-increment: counter-reference-glossary-2 }
             
 .print-site-enumerate-headings #section-6 > h1:before { content: '6 ' }

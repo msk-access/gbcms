@@ -766,6 +766,18 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="../molecule-observations/">
+<span class="md-ellipsis">
+    
+  
+    Per-Molecule Observations
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="../complex-indels/">
 <span class="md-ellipsis">
     
@@ -2841,6 +2853,20 @@ written alongside the main output:</p>
 for downstream <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> visualisations (density plots, empirical CDF comparisons).
 Written natively by Rust — no pyarrow dependency required.</p>
 </details>
+<details class="note">
+<summary>Companion Parquet file (<code>--observations-parquet</code>)</summary>
+<p>When <code>--observations-parquet</code> is set, a per-molecule file is written alongside
+the main output:</p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-9-1" id="__codelineno-9-1" name="__codelineno-9-1"></a>{--output-dir}/{sample_name}.observations.parquet
+</code></pre></div>
+<p>One row per fragment per variant — <code>variant_index, chrom, pos, ref, alt,
+molecule_hash, allele, best_qual</code> — recording <strong>which molecule carried which
+allele</strong>. Because a molecule seen at two variants shares a <code>molecule_hash</code>,
+the rows can be joined across loci for read-backed phasing and allelic
+imbalance. Counts output is unchanged. Written natively by Rust, so memory
+stays flat at panel scale. See
+<a href="../molecule-observations/">Per-Molecule Observations</a>.</p>
+</details>
 <hr>
 <h2 id="missing-values">Missing Values<a class="headerlink" href="#missing-values" title="Permanent link">¶</a></h2>
 <table>
@@ -2893,7 +2919,7 @@ or <code>0.0</code> (incorrect p-value due to floating-point underflow).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="July 1, 2026 17:13:21 UTC"><span class="timeago" datetime="2026-07-01T17:13:21+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="July 1, 2026 17:13:21 UTC">2026-07-01</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 6, 2026 01:55:49 UTC"><span class="timeago" datetime="2026-08-06T01:55:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 6, 2026 01:55:49 UTC">2026-08-06</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
