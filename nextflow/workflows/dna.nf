@@ -20,7 +20,7 @@ workflow GBCMS_DNA_WF {
 
     main:
     
-    ch_versions = Channel.empty()
+    ch_versions = channel.empty()
 
     //
     // MODULE: Run gbcms dna (per-BAM genotyping)
@@ -43,11 +43,11 @@ workflow GBCMS_DNA_WF {
 
         // Extract typed MAF outputs: [ sample_id, bam_type, maf_path ]
         ch_typed_mafs = GBCMS_DNA.out.counts
-            .filter { meta, counts -> meta.bam_type != null }
+            .filter { meta, _counts -> meta.bam_type != null }
             .map { meta, counts ->
                 // counts may be a list — find the MAF file
                 def maf = counts instanceof List
-                    ? counts.find { it.name.endsWith('.maf') }
+                    ? counts.find { f -> f.name.endsWith('.maf') }
                     : (counts.name.endsWith('.maf') ? counts : null)
                 if (maf == null) {
                     log.warn "Sample ${meta.id} (${meta.bam_type}): no MAF output found for merge — skipping"
@@ -55,12 +55,12 @@ workflow GBCMS_DNA_WF {
                 }
                 return [ meta.id, meta.bam_type, maf ]
             }
-            .filter { it != null }
+            .filter { item -> item != null }
 
         // Group by sample ID: [ sample_id, [type1, type2, ...], [maf1, maf2, ...] ]
         ch_grouped = ch_typed_mafs
             .groupTuple(by: 0)
-            .filter { sample_id, types, mafs ->
+            .filter { sample_id, types, _mafs ->
                 if (types.size() < 2) {
                     log.warn "Sample ${sample_id}: only ${types.size()} BAM type(s) — need ≥2 for merge, skipping"
                     return false

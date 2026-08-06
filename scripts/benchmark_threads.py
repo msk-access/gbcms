@@ -2,23 +2,16 @@ import subprocess
 import time
 from pathlib import Path
 
-# Configuration
-VCF_INPUT = Path("~/Downloads/C-U1MJT8-L001-d.DONOR22-TP.combined-variants_anno.vcf").expanduser()
-REF_FASTA = Path(
-    "/Users/shahr2/Library/CloudStorage/OneDrive-MemorialSloanKetteringCancerCenter/Downloads/03Jan2023/nucleo_qc_generation/test_data/Homo_sapiens_assembly19.fasta"
-)
-OUT_DIR = Path("~/Downloads/gbcms_benchmarks").expanduser()
+# Configuration — set these to local paths before running (no data is committed).
+VCF_INPUT = Path("/path/to/variants.vcf")
+REF_FASTA = Path("/path/to/Homo_sapiens_assembly19.fasta")
+OUT_DIR = Path("~/gbcms_benchmarks").expanduser()
 BAM_LIST = OUT_DIR / "bams.txt"
 
+# (sample_name, bam_path) pairs — replace with your own.
 BAMS = [
-    (
-        "C-6WTKCL-L001-d",
-        "/Users/shahr2/Downloads/C-6WTKCL-L001-d_cl_aln_srt_MD_IR_FX_BR__aln_srt_IR_FX-duplex.bam",
-    ),
-    (
-        "C-6WTKCL-N001-d",
-        "/Users/shahr2/Downloads/C-6WTKCL-N001-d_cl_aln_srt_MD_IR_FX_BR__aln_srt_IR_FX-duplex.bam",
-    ),
+    ("TUMOR-SAMPLE", "/path/to/tumor.bam"),
+    ("NORMAL-SAMPLE", "/path/to/normal.bam"),
 ]
 
 

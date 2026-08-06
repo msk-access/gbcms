@@ -1,0 +1,37 @@
+name: Nextflow Lint
+
+# Catches Nextflow strict-syntax regressions (the parser that is the default from
+# Nextflow 26.04). Strict-clean code is a subset of legacy-valid code, so linting
+# on the pinned strict version also protects the 25.x runtime — one job covers both.
+# Bump NXF_VER deliberately (a one-line PR) when adopting a newer Nextflow; this
+# job in that PR then proves the pipeline still passes at the new version.
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'nextflow/**'
+      - '.github/workflows/nextflow-lint.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'nextflow/**'
+      - '.github/workflows/nextflow-lint.yml'
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      NXF_VER: '26.04.0'   # pinned strict-parser version — bump deliberately
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Nextflow ${{ env.NXF_VER }}
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: ${{ env.NXF_VER }}
+
+      - name: Lint pipeline (strict syntax)
+        run: nextflow lint nextflow/

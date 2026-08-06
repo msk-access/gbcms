@@ -33,6 +33,7 @@ Complete reference for all pipeline parameters.
 | `--mfsd` | `false` | Enable mFSD analysis — adds 41 mFSD columns to MAF and 13 `MFSD_*` INFO fields to VCF. See [mFSD metrics](../reference/counting-metrics.md#mfsd). |
 | `--mfsd_parquet` | `false` | Write a companion `<sample>.fsd.parquet` with raw per-variant fragment size arrays. Requires `--mfsd`. |
 | `--mfsd_report` | `false` | Generate an interactive HTML report with per-variant fragment size distributions. Implies `--mfsd` and `--mfsd_parquet`. See [mFSD Report](../reference/mfsd-report.md). |
+| `--observations_parquet` | `false` | Write a companion `<sample>.observations.parquet` recording which molecule carried which allele at each variant. Enables read-backed phasing and allelic-imbalance analyses. Counts output is unchanged. See [Per-Molecule Observations](../reference/molecule-observations.md). |
 | `--mfsd_report_min_alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
 | `--mfsd_report_max_variants` | `20` | Maximum variants in the HTML report. Use `-1` for no limit. |
 

@@ -49,6 +49,32 @@ nextflow/
 
 When changing a CLI default or filter, update `nextflow.config` in the same change.
 
+## ⚠️ Strict syntax (Nextflow ≥26.04 — the default parser)
+
+The code must parse under both the 25.x legacy parser and the ≥26.04 strict parser.
+The strict parser is stricter than Groovy — do **not** reintroduce any of these
+(each is a hard parse error, not a warning):
+
+- **No `while` loops** and **no `for` loops** — use `.readLines()`, `.each`, `.findAll`,
+  etc. (`hasData` in `main.nf` reads this way).
+- **No assignment inside a condition** (`while ((x = next()) != null)`), **no postfix
+  `++`/`--`** — use `x += 1`.
+- **No statements at a script's top level** — input validation, `if`-guards, and
+  variable assignments must live inside `workflow {}` / a process / a function.
+  Use `error 'msg'`, not the removed `exit`.
+- **config files:** no function definitions (`def check_max(){}` → use
+  `process.resourceLimits = [cpus:…, memory:…, time:…]`), and **no `try/catch` or
+  `if` at the config top level** (this is why the remote nf-core `includeConfig` was
+  removed — a fetch failure can no longer be caught; local `iris`/`slurm` profiles
+  are self-sufficient, users add institutional configs via `-c`).
+- **Deprecations (warn now, error later):** `Channel.x()` → `channel.x()`; declare
+  explicit closure params instead of implicit `it`; prefix unused closure params `_`.
+
+**Always lint before merging** (bootstrap 26.04 once, it caches):
+```bash
+NXF_VER=26.04.0 nextflow lint nextflow/     # must report 0 errors
+```
+
 ## Key Files
 - `nextflow/nextflow.config`, `nextflow/modules/local/gbcms/*/main.nf`
 - `nextflow/README.md`, `docs/nextflow/parameters.md`

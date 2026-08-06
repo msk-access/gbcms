@@ -32,6 +32,7 @@ pub(crate) mod parquet_writer;
 #[cfg(feature = "legacy-parity")]
 pub use engine::count_bam;
 pub use engine::count_bam_binned;
+pub use engine::count_bam_binned_observations;
 pub use engine::build_gtf_cache;
 pub use parquet_writer::write_fsd_parquet;
 

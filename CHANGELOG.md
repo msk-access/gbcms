@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-08-06
+
+### ✨ Added
+
+- **`--observations-parquet` CLI flag** on `gbcms dna` and `gbcms rna`, writing
+  `<sample>.observations.parquet` alongside the normal counts output. Follows the
+  `--mfsd-parquet` pattern (flag → `OutputConfig` → pipeline calls the native writer). This is
+  what makes the capability reachable for Nextflow / ACCESS-Pipeline / CWL consumers, which
+  invoke gbcms through the CLI rather than the Python API. Counts output is unchanged, and
+  nothing is written unless the flag is passed.
+- **Parquet sink for observations.** `observations_path=` on
+  `count_bam_binned_observations()` / `gbcms.observe_molecules()` writes the rows to
+  Parquet **from Rust**, so they never cross the FFI boundary. A panel- or genome-wide run
+  produces 10^6–10^7 observations, where materializing that many Python objects — not the
+  counting — is the bottleneck; the same reasoning behind `write_fsd_parquet`. The file is
+  self-describing (`variant_index, chrom, pos, ref, alt, molecule_hash, allele, best_qual`),
+  since a bare index means nothing once the data outlives the call that produced it.
+  Verified on real data: identical row content to the in-memory path.
+- **Per-molecule observation export.** `count_bam_binned_observations()` returns the same
+  counts as `count_bam_binned()` plus the per-molecule allele calls the engine normally
+  aggregates away — one `Observation` per fragment per variant, carrying the molecule
+  identity, the resolved allele (REF / ALT / N / OTHER), and its best supporting base
+  quality. Because a molecule observed at two variants in one call shares a
+  `molecule_hash`, callers can link alleles **across loci** (read-backed phasing, allelic
+  imbalance, duplex-masking QC); gbcms itself does no such linking.
+  - **Public API:** `gbcms.observe_molecules()` → `ObservationResult`. This is the
+    supported surface; `gbcms._rs` remains internal and is not covered by SemVer.
+  - **Counting is untouched** — both entry points share one core, `count_bam_binned`'s
+    signature and return are unchanged, and observations are off unless requested
+    (no allocation when off). Binned↔legacy parity is unaffected.
+  - Rows are sorted by `(variant_index, molecule_hash)`, so output is deterministic
+    despite parallel bin processing and hash-map iteration order.
+  - Decomposed variants emit **one** set of rows: observations follow the same
+    higher-`ad` arbitration as the counts, so the losing allele form is never exported.
+
+### 🔄 Changed
+
+- **Nextflow pipeline is now compatible with the strict syntax parser** that is the
+  default from **Nextflow 26.04**, while still running on 25.x. Verified with
+  `nextflow lint` on 26.04.0 (0 errors) and config resolution on both 25.10 and 26.04.
+  - `nextflow.config`: replaced the legacy `check_max()` helper (function definitions
+    are illegal in strict config) with the native `process.resourceLimits` directive;
+    `--max_cpus/--max_memory/--max_time` still apply. Bumped the `nextflowVersion`
+    floor to `>=24.04.0` (when `resourceLimits` landed).
+  - `main.nf`: moved input validation into the `workflow` body (top-level statements
+    are disallowed) using `error` instead of the removed `exit`; rewrote the
+    `hasData` helper without a `while` loop (removed in strict syntax); `Channel` →
+    `channel`.
+  - **Removed the remote nf-core institutional-config include.** The strict config
+    syntax forbids the `try/catch` (and `if`) guards that made a fetch failure
+    non-fatal. The local `iris`/`slurm` profiles are self-sufficient; users who want
+    an institutional config can still supply one with `-c`. The `custom_config_base`
+    / `custom_config_version` params were removed.
+
 ## [6.0.0] - 2026-07-01
 
 > [!WARNING]

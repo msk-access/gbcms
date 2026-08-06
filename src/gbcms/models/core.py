@@ -244,6 +244,15 @@ class OutputConfig(BaseModel):
             "Requires mfsd=True."
         ),
     )
+    observations_parquet: bool = Field(
+        default=False,
+        description=(
+            "Write a companion <sample>.observations.parquet with the per-molecule allele "
+            "call at each variant (variant_index, chrom, pos, ref, alt, molecule_hash, "
+            "allele, best_qual). Enables downstream molecule-level analyses such as "
+            "read-backed phasing and allelic imbalance. Counts are unaffected."
+        ),
+    )
     mfsd_report: bool = Field(
         default=False,
         description=(

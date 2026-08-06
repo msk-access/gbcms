@@ -68,6 +68,18 @@ mypy src/
 docker build -t gbcms:latest .
 ```
 
+## Public API vs internals
+
+`gbcms._rs` is the **internal** PyO3 extension module. It is underscore-prefixed and absent
+from `gbcms.__all__` on purpose: its surface (an ~88-field `BaseCounts`, a ~35-parameter
+`count_bam_binned`) tracks the engine and changes with it. **It is not covered by Semantic
+Versioning** — do not depend on it from outside this repository.
+
+The supported API is what `gbcms.__all__` exports: `Pipeline`, the config models, `Variant`,
+`merge_mafs`, and `observe_molecules`. A new engine capability that external consumers need
+should get a narrow public wrapper (see `src/gbcms/observations.py`) rather than exposing
+`_rs` — that way the promise we keep stable is small enough to actually honour.
+
 ## Code Style
 
 - Follow PEP 8 style guidelines

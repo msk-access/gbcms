@@ -4,7 +4,7 @@ process GBCMS_RNA {
 
     publishDir "${params.outdir}/gbcms", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:6.0.0"
+    container "ghcr.io/msk-access/gbcms:6.1.0"
 
     input:
     tuple val(meta), path(bam), path(bai), path(variants)
@@ -13,6 +13,7 @@ process GBCMS_RNA {
 
     output:
     tuple val(meta), path("*.{vcf,maf}"),  emit: counts
+    tuple val(meta), path("*.observations.parquet"), emit: observations_parquet, optional: true
     path "versions.yml"                   , emit: versions
 
     when:
@@ -45,6 +46,9 @@ process GBCMS_RNA {
 
     // Alignment backend — always pass explicitly
     def backend_arg = "--alignment-backend ${params.alignment_backend}"
+
+    // Per-molecule observation export (companion Parquet; counts unchanged).
+    def observations_arg = params.observations_parquet ? "--observations-parquet" : ""
     def hmm_args = params.alignment_backend in ['hmm', 'pairhmm'] ? \
         "--llr-threshold ${params.llr_threshold} --gap-open-prob ${params.gap_open_prob} --gap-extend-prob ${params.gap_extend_prob} --repeat-gap-open-prob ${params.gap_open_prob_repeat} --repeat-gap-extend-prob ${params.gap_extend_prob_repeat}" : ""
     
@@ -113,6 +117,7 @@ process GBCMS_RNA {
         ${strandedness_arg} \\
         ${strand_protocol_arg} \\
         ${library_type_arg} \\
+        ${observations_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml

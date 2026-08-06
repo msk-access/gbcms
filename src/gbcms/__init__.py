@@ -8,7 +8,7 @@ Example usage:
     $ gbcms dna -v variants.vcf -b sample.bam -f reference.fa -o output/
 """
 
-__version__ = "6.0.0"
+__version__ = "6.1.0"
 
 from .merge import merge_mafs
 from .models.core import (
@@ -21,6 +21,7 @@ from .models.core import (
     Variant,
     VariantType,
 )
+from .observations import ObservationResult, observe_molecules
 from .pipeline import Pipeline
 
 __all__ = [
@@ -34,5 +35,7 @@ __all__ = [
     "Pipeline",
     "Variant",
     "VariantType",
+    "ObservationResult",
     "merge_mafs",
+    "observe_molecules",
 ]
