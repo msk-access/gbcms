@@ -258,14 +258,21 @@ fn build_genomic_bins(
 /// (SNP, Ins, Del, MNP, Complex) need to fall back to haplotype-level
 /// alignment for ambiguous reads.
 ///
-/// Selectable via `--alignment-backend` CLI flag.
-#[derive(Clone, Debug, Default, PartialEq)]
+/// Selectable via `--alignment-backend` CLI flag; `pairhmm` is the default at every layer.
+///
+/// There is deliberately **no `Default` impl**. The backend materially changes indel calls
+/// (measured: 5 of 104 molecule calls differ on real ACCESS deletions), so every entry point
+/// states its choice rather than inheriting one silently. A `#[default]` here previously
+/// still named `SmithWaterman` long after `pairhmm` became the real default everywhere else.
+#[derive(Clone, Debug, PartialEq)]
 pub enum AlignmentBackend {
-    /// Smith-Waterman with affine gap penalties (default for v2.8.0).
+    /// Smith-Waterman with affine gap penalties. The default through v2.8.0; kept as an
+    /// explicit opt-in for backend comparison and for callers wanting the cheaper classifier.
     /// Score-margin classification: (alt_score - ref_score) > 0 → ALT.
-    #[default]
     SmithWaterman,
-    /// PairHMM with BQ-aware emissions (planned default for v3.0.0).
+    /// PairHMM with BQ-aware emissions — **the default since v3.0.0**. WFA edit-distance
+    /// triage (`wfa_router`) runs in front of it and resolves clear-cut reads directly;
+    /// only ambiguous reads reach the full model. WFA is not a separate backend.
     /// LLR classification: log P(read|ALT) - log P(read|REF) > threshold → ALT.
     PairHMM {
         /// Log-likelihood ratio threshold for confident calls (default: 2.3 ≈ 10:1 odds).
@@ -299,6 +306,38 @@ impl AlignmentBackend {
     }
 }
 
+/// Parse the `alignment_backend` token, rejecting anything unrecognized.
+///
+/// Deliberately strict. This previously fell back to Smith-Waterman on any unmatched string,
+/// so a typo or wrong casing (`"PairHMM"`, `"smith-waterman"`, `"pairhm"`) silently computed
+/// with the other classifier and returned plausible-looking counts. The backends genuinely
+/// disagree on ambiguous indels, so that failure was invisible and wrong rather than loud.
+/// Mirrors the `strandedness` parse in the same call path, which has always erred loudly.
+///
+/// Accepts exactly the tokens the CLI enum can emit: `sw`, `hmm`, `pairhmm`.
+fn parse_alignment_backend(
+    token: &str,
+    llr_threshold: f64,
+    gap_open: f64,
+    gap_extend: f64,
+    gap_open_repeat: f64,
+    gap_extend_repeat: f64,
+) -> PyResult<AlignmentBackend> {
+    match token {
+        "hmm" | "pairhmm" => Ok(AlignmentBackend::PairHMM {
+            llr_threshold,
+            gap_open,
+            gap_extend,
+            gap_open_repeat,
+            gap_extend_repeat,
+        }),
+        "sw" => Ok(AlignmentBackend::SmithWaterman),
+        other => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "unknown alignment_backend {other:?}; expected \"pairhmm\" (alias \"hmm\") or \"sw\""
+        ))),
+    }
+}
+
 
 /// Count bases for a list of variants in a BAM file.
 ///
@@ -317,7 +356,7 @@ impl AlignmentBackend {
 #[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false, strandedness="reverse", reference_fasta=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false, strandedness="reverse", reference_fasta=None))]
 pub fn count_bam(
     py: Python<'_>,
     bam_path: String,
@@ -345,17 +384,14 @@ pub fn count_bam(
     strandedness: &str,
     reference_fasta: Option<&str>,
 ) -> PyResult<Vec<BaseCounts>> {
-    // Parse alignment backend from string
-    let backend = match alignment_backend {
-        "hmm" | "pairhmm" => AlignmentBackend::PairHMM {
-            llr_threshold: hmm_llr_threshold,
-            gap_open: hmm_gap_open,
-            gap_extend: hmm_gap_extend,
-            gap_open_repeat: hmm_gap_open_repeat,
-            gap_extend_repeat: hmm_gap_extend_repeat,
-        },
-        _ => AlignmentBackend::SmithWaterman,
-    };
+    let backend = parse_alignment_backend(
+        alignment_backend,
+        hmm_llr_threshold,
+        hmm_gap_open,
+        hmm_gap_extend,
+        hmm_gap_open_repeat,
+        hmm_gap_extend_repeat,
+    )?;
 
     // Parse the RNA library strand protocol (loud error on an unknown token).
     let strandedness = rna::Strandedness::from_protocol(strandedness)
@@ -590,17 +626,14 @@ fn count_bam_binned_core(
     reference_fasta: Option<&str>,
     library_type: &str,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
-    // Parse alignment backend from string
-    let backend = match alignment_backend {
-        "hmm" | "pairhmm" => AlignmentBackend::PairHMM {
-            llr_threshold: hmm_llr_threshold,
-            gap_open: hmm_gap_open,
-            gap_extend: hmm_gap_extend,
-            gap_open_repeat: hmm_gap_open_repeat,
-            gap_extend_repeat: hmm_gap_extend_repeat,
-        },
-        _ => AlignmentBackend::SmithWaterman,
-    };
+    let backend = parse_alignment_backend(
+        alignment_backend,
+        hmm_llr_threshold,
+        hmm_gap_open,
+        hmm_gap_extend,
+        hmm_gap_open_repeat,
+        hmm_gap_extend_repeat,
+    )?;
 
     // ── Load RNA editing site database (if provided) ──
     // Loaded ONCE at init, then shared across all bins/threads via Arc.
@@ -964,7 +997,7 @@ fn count_bam_binned_core(
 /// its callers — changes. For per-molecule rows use `count_bam_binned_observations`.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -1022,7 +1055,7 @@ pub fn count_bam_binned(
 /// Counts are byte-identical to `count_bam_binned` — same core, same classifier.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", observations_path=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", observations_path=None))]
 pub fn count_bam_binned_observations(
     py: Python<'_>,
     bam_path: String,
@@ -1729,7 +1762,7 @@ fn count_variant_from_cache(
         // (base_qual==0 && !is_ref && !is_alt) which could mis-classify
         // true third-allele reads with qual=0 as N-class fragments.
         let tlen = mfsd::calc_physical_insert_size(record);
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural);
+        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
 
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
@@ -1921,6 +1954,7 @@ fn count_variant_from_cache(
                 molecule_hash: *molecule_hash,
                 allele,
                 best_qual,
+                min_mapq: evidence.min_mapq,
             });
         }
 
@@ -2243,7 +2277,7 @@ fn count_single_variant(
         let tlen = mfsd::calc_physical_insert_size(&record);
         let is_n_base = base_qual == 0 && !is_ref && !is_alt;
 
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural);
+        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq());
 
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
@@ -2767,7 +2801,7 @@ fn count_per_transcript(
             }
 
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-            evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural);
+            evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
 
             if result.is_ref {
                 tx_rd += 1;

@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **`min_mapq` on `Observation`** and in the observations Parquet schema — the worst MAPQ
+  among the reads backing each molecule. Minimum rather than best, deliberately: a molecule
+  is only as trustworthy as its least confidently placed read, so a paired fragment reports
+  its worse mate and one cleanly-placed read cannot launder an ambiguous one.
+  `255` is the SAM spec's *unavailable*, distinct from `0`, which is a real value meaning
+  the read mapped ambiguously.
+
+  Exported rather than left to inference because the `--min-mapq` threshold *bounds* mapping
+  confidence without measuring it: assuming every surviving molecule sat at the gate would
+  charge them all the same error, swamping the base-quality term and flattening exactly the
+  per-molecule differences a weighted linkage statistic exists to express. Consumers doing
+  read-backed phasing need the measured value.
+
+  `FragmentEvidence` gained a matching `min_mapq` field, tracked for **every** read reaching
+  fragment evidence — including reads that are neither REF nor ALT, which still count toward
+  `dpf` and still describe the fragment's placement.
+
+### 🔧 Changed
+
+- **`alignment_backend` now defaults to `pairhmm` in `gbcms._rs`**, matching the CLI,
+  `Pipeline`, and `observe_molecules`, which all already defaulted to it. A direct `_rs`
+  caller that omitted the argument previously got Smith-Waterman — a different classifier
+  than the identical call made through any supported entry point (measured: 5 of 104
+  molecule calls differ on real ACCESS deletions). **No production path changes**: the CLI,
+  Nextflow, and the Python API have always passed the backend explicitly, so counts are
+  unchanged.
+
+### 🐛 Fixed
+
+- **An unrecognized `alignment_backend` token now raises `ValueError`** instead of silently
+  falling back to Smith-Waterman. `"PairHMM"`, `"smith-waterman"`, or any typo previously
+  produced plausible counts from a classifier the caller never asked for, with nothing
+  logged. Validation now happens before any I/O, so a bad token fails immediately rather
+  than after a full read pass. Unreachable from the CLI (typer validates the enum first);
+  reachable from `_rs`. ([#79](https://github.com/msk-access/gbcms/issues/79))
+- **`_rs.pyi` corrected to match the extension, and the match is now enforced.**
+  `count_bam` and `count_bam_binned` each declared nine defaults (`min_mapq` … `threads`)
+  that the pyo3 signature does not grant, so mypy accepted calls that fail at runtime with
+  *missing 9 required positional arguments*; `prepare_variants` and `write_fsd_parquet`
+  named parameters that do not exist at runtime (`reference_fasta` → `fasta_path`,
+  `output_path` → `path`), so any keyword call using the documented name raised `TypeError`.
+  New `tests/test_rs_stub_parity.py` compares the stub against pyo3's `__text_signature__`,
+  turning AGENTS.md invariant 5 from a review item into a CI gate — it catches all four of
+  the above.
+- Removed the `Default` impl on `AlignmentBackend`, which still named `SmithWaterman` long
+  after `pairhmm` became the real default everywhere else. Nothing called it; it served only
+  to mislead.
+
 ## [6.1.0] - 2026-08-06
 
 ### ✨ Added
