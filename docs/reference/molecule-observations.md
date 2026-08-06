@@ -105,6 +105,27 @@ Two values are easy to confuse and mean opposite things:
 Reads below `--min-mapq` never reach fragment evidence, so this value is always at or above
 the threshold you ran with.
 
+#### Why `min_mapq` is a minimum but `best_qual` is a maximum
+
+The two aggregate in opposite directions on purpose — they describe different failure modes.
+
+**MAPQ asks whether the read is in the right place.** If *any* read backing the molecule is
+badly placed, the molecule's locus assignment is suspect, so the weakest link governs.
+
+**Base quality asks how strong the evidence for the called allele is.** Reads that agree
+reinforce each other: if two reads both call ALT at Q40 and Q20, the chance both are wrong is
+roughly the product of their error rates — *better* than either alone. Taking the maximum
+therefore **understates** the combined evidence rather than flattering it.
+
+Reads that *disagree* are not handled by either number: fragment resolution arbitrates them,
+and a fragment with no consensus is reported as `OTHER` with `best_qual = 0`. So the case a
+"worst base quality" column would be for is already visible in the `allele` field.
+
+There is deliberately no `min_baseq` column for the same reason there is a `min_mapq` one:
+bases below `--min-baseq` are filtered before reaching fragment evidence, so such a column
+would mostly re-report the threshold you passed — whereas MAPQ genuinely varies above its
+threshold and is worth measuring.
+
 ### `molecule_hash` semantics
 
 `molecule_hash` is `hash_molecule(qname, umi)` and is comparable **only within a single run**
