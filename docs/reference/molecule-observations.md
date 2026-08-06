@@ -130,24 +130,21 @@ per input variant. Anything other than `PASS` means normalization rejected that 
     `observe_molecules` is the supported surface. `gbcms._rs` is an implementation detail and
     is **not covered by SemVer** — see [Contributing](../development/contributing.md).
 
-    A concrete reason to prefer it: `_rs.count_bam_binned_observations` defaults
-    `alignment_backend` to `"sw"`, whereas every real path — the CLI, Nextflow, `Pipeline`,
-    and `observe_molecules` — passes `pairhmm` explicitly. The two are not interchangeable
-    (on real ACCESS deletions they disagree on ~5% of molecule calls), and an unrecognized
-    backend string also falls back to `sw` rather than raising. Neither can reach you through
-    `observe_molecules`; both can if you call `_rs` directly and omit the argument.
-
 ### Alignment backend
 
 Observations are emitted **after** classification, so they inherit whatever the counting
 backend decided — the export has no opinion of its own. Rows always reconcile with the counts
 beside them regardless of backend, but the underlying calls can differ between `sw` and
-`pairhmm` on ambiguous indels. Compare observation sets only when they were produced under
-the same backend.
+`pairhmm` on ambiguous indels (measured: 5 of 104 molecule calls on real ACCESS deletions).
+Compare observation sets only when they were produced under the same backend.
 
-`pairhmm` is the default everywhere it is user-selectable. WFA is **not** a third choice: it
-is an edit-distance triage step in front of PairHMM that resolves clear-cut reads directly and
-defers ambiguous ones to the full model.
+`pairhmm` is the default at **every** layer — the CLI, `Pipeline`, `observe_molecules`, and
+the `gbcms._rs` entry points alike. An unrecognized backend token raises `ValueError` rather
+than quietly falling back, so a typo cannot silently score your data with the other
+classifier.
+
+WFA is **not** a third choice: it is an edit-distance triage step in front of PairHMM that
+resolves clear-cut reads directly and defers only ambiguous ones to the full model.
 
 ---
 

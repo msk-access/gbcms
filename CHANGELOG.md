@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Changed
+
+- **`alignment_backend` now defaults to `pairhmm` in `gbcms._rs`**, matching the CLI,
+  `Pipeline`, and `observe_molecules`, which all already defaulted to it. A direct `_rs`
+  caller that omitted the argument previously got Smith-Waterman — a different classifier
+  than the identical call made through any supported entry point (measured: 5 of 104
+  molecule calls differ on real ACCESS deletions). **No production path changes**: the CLI,
+  Nextflow, and the Python API have always passed the backend explicitly, so counts are
+  unchanged.
+
+### 🐛 Fixed
+
+- **An unrecognized `alignment_backend` token now raises `ValueError`** instead of silently
+  falling back to Smith-Waterman. `"PairHMM"`, `"smith-waterman"`, or any typo previously
+  produced plausible counts from a classifier the caller never asked for, with nothing
+  logged. Validation now happens before any I/O, so a bad token fails immediately rather
+  than after a full read pass. Unreachable from the CLI (typer validates the enum first);
+  reachable from `_rs`. ([#79](https://github.com/msk-access/gbcms/issues/79))
+- **`_rs.pyi` corrected to match the extension, and the match is now enforced.**
+  `count_bam` and `count_bam_binned` each declared nine defaults (`min_mapq` … `threads`)
+  that the pyo3 signature does not grant, so mypy accepted calls that fail at runtime with
+  *missing 9 required positional arguments*; `prepare_variants` and `write_fsd_parquet`
+  named parameters that do not exist at runtime (`reference_fasta` → `fasta_path`,
+  `output_path` → `path`), so any keyword call using the documented name raised `TypeError`.
+  New `tests/test_rs_stub_parity.py` compares the stub against pyo3's `__text_signature__`,
+  turning AGENTS.md invariant 5 from a review item into a CI gate — it catches all four of
+  the above.
+- Removed the `Default` impl on `AlignmentBackend`, which still named `SmithWaterman` long
+  after `pairhmm` became the real default everywhere else. Nothing called it; it served only
+  to mislead.
+
 ## [6.1.0] - 2026-08-06
 
 ### ✨ Added

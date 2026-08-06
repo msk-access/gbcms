@@ -12,10 +12,10 @@ spuriously and mask real bugs.
 
 Every `_rs`-level test below runs under **both** alignment backends. The reconciliation
 invariant is only assertable at this level — `observe_molecules` returns rows without the
-counts to reconcile against — and `_rs` defaults to `sw` while every production path (CLI,
-Nextflow, `Pipeline`, `observe_molecules`) runs `pairhmm`. Pinned to one backend the invariant
-would be proven for a classifier no user actually invokes. The two are not interchangeable:
-on real ACCESS indels they disagree on ~5% of molecule calls.
+counts to reconcile against — and the two backends are not interchangeable: on real ACCESS
+indels they disagree on ~5% of molecule calls. Pinned to one, the invariant would be proven
+for a classifier half the callers never reach. `pairhmm` is the default at every layer; `sw`
+remains selectable, so both are exercised here.
 """
 
 from collections import Counter
@@ -46,15 +46,16 @@ def _variant(ref=REF_BASE, alt=ALT_BASE):
 
 @pytest.fixture(params=["sw", "pairhmm"])
 def backend(request):
-    """Both alignment backends: `pairhmm` is what production runs, `sw` is the `_rs` default."""
+    """Both alignment backends: `pairhmm` is the default everywhere, `sw` the explicit opt-in."""
     return request.param
 
 
 def _kwargs(variants, backend, **overrides):
     """Standard counting args; `overrides` tweak individual ones per test.
 
-    `backend` is positional and required so a test cannot silently fall back to the `_rs`
-    default and score itself against a classifier production never uses.
+    `backend` is positional and required so every test states which classifier it scored
+    itself against rather than inheriting one — the same reason the Rust layer no longer
+    has a `Default` impl for `AlignmentBackend`.
     """
     kwargs = {
         "decomposed": [None] * len(variants),

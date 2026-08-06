@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
+from gbcms.cli import AlignmentBackend as _CliBackend
 from gbcms.cli import app
 from gbcms.models.core import AlignmentConfig, GbcmsConfig
 
@@ -166,3 +167,62 @@ def test_cli_invalid_backend(tmp_path):
     result = runner.invoke(app, args)
     # Should fail with validation error from AlignmentConfig
     assert result.exit_code != 0
+
+
+# ── the Rust layer (where the silent fallback used to live) ─────────────────────────
+
+
+def _rs_args(bam):
+    """The 12 required positional args for `_rs.count_bam_binned`, with an empty variant list."""
+    return (bam, [], [], 20, 20, True, True, True, False, False, False, 1)
+
+
+@pytest.mark.parametrize("token", ["PairHMM", "smith-waterman", "pairhm", "SW", "", "hmm2"])
+def test_rs_rejects_unknown_backend_token(token):
+    """An unrecognized backend must raise, not quietly compute with the other classifier.
+
+    The CLI has always rejected bad values at the typer/pydantic layer, but the Rust parse
+    beneath it fell back to Smith-Waterman on *any* unmatched string. Nothing surfaced: the
+    run completed and returned plausible counts computed by a classifier the caller did not
+    ask for, and the backends genuinely disagree on ambiguous indels. Only a direct `_rs`
+    caller could reach it — which is precisely who has no CLI validation in front of them.
+
+    The nonexistent BAM path is deliberate: a `ValueError` rather than a file error proves
+    the token is validated *before* any I/O, so a bad flag fails fast instead of after a
+    full-depth read pass.
+    """
+    from gbcms._rs import count_bam_binned
+
+    with pytest.raises(ValueError, match="unknown alignment_backend"):
+        count_bam_binned(*_rs_args("nonexistent.bam"), alignment_backend=token)
+
+
+@pytest.mark.parametrize("token", ["pairhmm", "hmm", "sw"])
+def test_rs_accepts_every_token_the_cli_can_emit(token, tmp_path):
+    """The accept-list must cover the CLI enum exactly, or a valid flag fails deep in Rust.
+
+    Pairs with the rejection test above: strictness is only safe if it accepts everything a
+    supported path can produce. `AlignmentBackend` is that contract, and asserting against
+    the enum means adding a CLI option without a Rust arm fails here rather than in the field.
+    """
+    from helpers import build_bam, make_read
+
+    from gbcms._rs import count_bam_binned
+
+    assert token in {b.value for b in _CliBackend}, "test is stale w.r.t. the CLI enum"
+    bam = build_bam(tmp_path, [make_read("r1", "A" * 20, 90, ((0, 20),))])
+    # Empty variant list: reaching an empty result proves the token parsed and ran.
+    assert count_bam_binned(*_rs_args(bam), alignment_backend=token) == []
+
+
+def test_rs_default_backend_is_pairhmm():
+    """`_rs` must default to the same backend as every layer above it.
+
+    It defaulted to `sw` while the CLI, `Pipeline`, and `observe_molecules` all defaulted to
+    `pairhmm`, so a direct `_rs` caller silently got a different classifier than the identical
+    call through any supported entry point.
+    """
+    from gbcms import _rs
+
+    sig = _rs.count_bam_binned.__text_signature__
+    assert 'alignment_backend="pairhmm"' in sig, f"unexpected default in {sig}"
