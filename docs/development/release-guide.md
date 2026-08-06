@@ -14,7 +14,7 @@ Before starting a release, ensure:
 
 ## Version Locations
 
-All these files must be updated with the new version (9 references total):
+All these files must be updated with the new version (10 references total):
 
 | File | Line | Format |
 |:-----|:-----|:-------|
@@ -22,6 +22,7 @@ All these files must be updated with the new version (9 references total):
 | `src/gbcms/__init__.py` | 11 | `__version__ = "X.Y.Z"` |
 | `rust/Cargo.toml` | 3 | `version = "X.Y.Z"` |
 | `nextflow/modules/local/gbcms/dna/main.nf` | 7 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
+| `nextflow/modules/local/gbcms/build_gtf_cache/main.nf` | 4 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
 | `nextflow/modules/local/gbcms/rna/main.nf` | 7 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
 | `nextflow/modules/local/gbcms/normalize/main.nf` | 18 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
 | `nextflow/modules/local/gbcms/merge/main.nf` | 7 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
