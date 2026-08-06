@@ -14641,6 +14641,20 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
 <ul>
+<li><strong><code>--observations-parquet</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</strong> on <code>gbcms dna</code> and <code>gbcms rna</code>, writing
+  <code>&lt;sample&gt;.observations.parquet</code> alongside the normal counts output. Follows the
+  <code>--mfsd-parquet</code> pattern (flag → <code>OutputConfig</code> → pipeline calls the native writer). This is
+  what makes the capability reachable for Nextflow / ACCESS-Pipeline / CWL consumers, which
+  invoke gbcms through the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> rather than the Python API. Counts output is unchanged, and
+  nothing is written unless the flag is passed.</li>
+<li><strong>Parquet sink for observations.</strong> <code>observations_path=</code> on
+  <code>count_bam_binned_observations()</code> / <code>gbcms.observe_molecules()</code> writes the rows to
+  Parquet <strong>from Rust</strong>, so they never cross the FFI boundary. A panel- or genome-wide run
+  produces 10^6–10^7 observations, where materializing that many Python objects — not the
+  counting — is the bottleneck; the same reasoning behind <code>write_fsd_parquet</code>. The file is
+  self-describing (<code>variant_index, chrom, pos, ref, alt, molecule_hash, allele, best_qual</code>),
+  since a bare index means nothing once the data outlives the call that produced it.
+  Verified on real data: identical row content to the in-memory path.</li>
 <li><strong>Per-molecule observation export.</strong> <code>count_bam_binned_observations()</code> returns the same
   counts as <code>count_bam_binned()</code> plus the per-molecule allele calls the engine normally
   aggregates away — one <code>Observation</code> per fragment per variant, carrying the molecule

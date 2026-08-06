@@ -75,7 +75,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -1915,8 +1915,18 @@ sites: <code>pipeline.py:465</code> (<code>zip(valid_indices, counts_list)</code
 fixtures, <code>_rs.pyi:193/225</code>. A <strong>new pyfunction</strong> keeps the existing return byte-identical and
 matches house style (<code>count_bam</code>, <code>count_bam_binned</code>, <code>write_fsd_parquet</code> are already separate
 pyfunctions, <code>lib.rs:16-20</code>). <code>Observation</code> is a <strong>pyclass</strong> (not a bare tuple/<code>u8</code>) so fields can
-be added without an arity break. <strong><code>_rs</code>-layer only</strong> — do <strong>not</strong> thread into <code>Pipeline</code>/<abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>
-(<code>write_fsd_parquet</code> precedent: an <code>_rs</code> export called post-count, not a <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> concept).
+be added without an arity break.</p>
+<p><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> surfacing — CORRECTED.</strong> An earlier revision argued for <code>_rs</code>-layer only, citing
+<code>write_fsd_parquet</code> as "an <code>_rs</code> export called post-count, not a <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> concept". <strong>That was
+backwards</strong>: <code>write_fsd_parquet</code> <em>is</em> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>-reachable — <code>--mfsd-parquet</code> (<code>cli.py</code>) →
+<code>OutputConfig.mfsd_parquet</code> → <code>pipeline.py</code> invokes the native writer. The established gbcms
+pattern for a Rust-written Parquet side-file is exactly <strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag → OutputConfig → pipeline calls
+the writer post-count</strong>, and observations now follow it (<code>--observations-parquet</code> on <code>dna</code> and
+<code>rna</code>). The consequence of the earlier position was concrete: <strong>every external consumer
+(Nextflow, ACCESS-Pipeline, CWL) shells to the <code>gbcms</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> in a container and never touches the
+Python API</strong>, so the at-scale Parquet path would have been unreachable by exactly the users it was
+built for. The <em>record type</em> stays <code>_rs</code>-internal — consumers get <code>gbcms.observe_molecules</code> — only
+the file-producing flag is surfaced.
 Add a <strong>signature-parity test</strong> so the two ~32-param wrappers can't drift.</p>
 <h3 id="3a-public-wrapper-ruled-keep-_rs-internal-expose-one-narrow-supported-api">3a. Public wrapper — RULED: keep <code>_rs</code> internal, expose one narrow supported API<a class="headerlink" href="#3a-public-wrapper-ruled-keep-_rs-internal-expose-one-narrow-supported-api" title="Permanent link">¶</a></h3>
 <p><code>_rs</code> stays <strong>internal</strong> (88-field <code>BaseCounts</code>, 35-param <code>count_bam_binned</code> — a surface nobody
@@ -2165,11 +2175,18 @@ public wrapper <code>gbcms.observe_molecules</code> + <code>ObservationResult</c
 document in CONTRIBUTING that <code>gbcms._rs</code> is internal / not SemVer-covered</strong>; document
 <code>molecule_hash</code> + by-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> tier + the ACCESS <code>filter_improper_pair</code> note; tests 1–7 <strong>plus a wrapper
 smoke test</strong>; CHANGELOG; MINOR bump.
-<strong>PR-2 (activates the Parquet sink):</strong> wire <code>observations_path=Some(...)</code> to the Rust-side Parquet
+<strong>PR-2 (DONE — Parquet sink active):</strong> wire <code>observations_path=Some(...)</code> to the Rust-side Parquet
 writer (mirroring <code>parquet_writer.rs</code>) for the genome-wide/ACCESS cliff — additive, the signature is
 already in place from PR-1.
-<strong>PR-3 (separate):</strong> <strong>isoform-resolved</strong> RNA export (<code>(variant, transcript, molecule)</code> key) — for
-"which isoform does this molecule support", <em>not</em> needed for RNA phasing (PR-1 covers that).</p>
+<strong>PR-3 (deferred, separate design):</strong> <strong>isoform-resolved</strong> RNA export
+(<code>(variant, transcript, molecule)</code> key) — answers <em>which isoform a molecule supports</em>.
+<strong>Corrected rationale:</strong> an earlier note justified deferring this with "real-data testing showed
+<code>mode</code>/GTF do not change the export". That measurement is true but does <strong>not</strong> support the
+conclusion — the export emits from the transcript-agnostic <code>1706</code> loop, so a GTF <em>cannot</em> change
+it, which shows the flat record is <strong>blind to isoform</strong>, not that isoform resolution is
+unnecessary. The honest reason to defer: <strong>no consumer needs it yet</strong> (the interpretation layer's
+RNA work — splice-restoring reversions, expression — is a later roadmap milestone), and the record
+shape should follow those requirements rather than be guessed now.</p>
 <p><strong>Resolved by the maintainer:</strong> <em>tier</em> = by-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, <strong>conditional on a tier-homogeneous <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> (§2 ⚠);
 <em>workload</em> = both scales → Parquet path co-designed into the signature now (§3); RNA-mode covered by
 PR-1, isoform-resolved deferred (§5.3).</p>
@@ -2285,7 +2302,7 @@ scope at <code>1706</code>; (c) no existing determinism test asserts on returned
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 5, 2026 14:44:31 UTC"><span class="timeago" datetime="2026-08-05T14:44:31+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 5, 2026 14:44:31 UTC">2026-08-05</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 5, 2026 21:51:13 UTC"><span class="timeago" datetime="2026-08-05T21:51:13+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 5, 2026 21:51:13 UTC">2026-08-05</span>
   </span>
 
     
