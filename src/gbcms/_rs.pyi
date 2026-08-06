@@ -273,6 +273,7 @@ def count_bam_binned_observations(
     gtf_cache_dir: str | None = None,
     reference_fasta: str | None = None,
     library_type: str = "capture",
+    observations_path: str | None = None,
 ) -> tuple[list[BaseCounts], list[Observation]]: ...
 def build_gtf_cache(
     gtf_path: str,

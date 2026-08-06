@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ Added
 
+- **`--observations-parquet` CLI flag** on `gbcms dna` and `gbcms rna`, writing
+  `<sample>.observations.parquet` alongside the normal counts output. Follows the
+  `--mfsd-parquet` pattern (flag → `OutputConfig` → pipeline calls the native writer). This is
+  what makes the capability reachable for Nextflow / ACCESS-Pipeline / CWL consumers, which
+  invoke gbcms through the CLI rather than the Python API. Counts output is unchanged, and
+  nothing is written unless the flag is passed.
+- **Parquet sink for observations.** `observations_path=` on
+  `count_bam_binned_observations()` / `gbcms.observe_molecules()` writes the rows to
+  Parquet **from Rust**, so they never cross the FFI boundary. A panel- or genome-wide run
+  produces 10^6–10^7 observations, where materializing that many Python objects — not the
+  counting — is the bottleneck; the same reasoning behind `write_fsd_parquet`. The file is
+  self-describing (`variant_index, chrom, pos, ref, alt, molecule_hash, allele, best_qual`),
+  since a bare index means nothing once the data outlives the call that produced it.
+  Verified on real data: identical row content to the in-memory path.
 - **Per-molecule observation export.** `count_bam_binned_observations()` returns the same
   counts as `count_bam_binned()` plus the per-molecule allele calls the engine normally
   aggregates away — one `Observation` per fragment per variant, carrying the molecule

@@ -181,8 +181,19 @@ sites: `pipeline.py:465` (`zip(valid_indices, counts_list)`), `pipeline.py:757`
 fixtures, `_rs.pyi:193/225`. A **new pyfunction** keeps the existing return byte-identical and
 matches house style (`count_bam`, `count_bam_binned`, `write_fsd_parquet` are already separate
 pyfunctions, `lib.rs:16-20`). `Observation` is a **pyclass** (not a bare tuple/`u8`) so fields can
-be added without an arity break. **`_rs`-layer only** — do **not** thread into `Pipeline`/CLI
-(`write_fsd_parquet` precedent: an `_rs` export called post-count, not a CLI concept).
+be added without an arity break.
+
+**CLI surfacing — CORRECTED.** An earlier revision argued for `_rs`-layer only, citing
+`write_fsd_parquet` as "an `_rs` export called post-count, not a CLI concept". **That was
+backwards**: `write_fsd_parquet` *is* CLI-reachable — `--mfsd-parquet` (`cli.py`) →
+`OutputConfig.mfsd_parquet` → `pipeline.py` invokes the native writer. The established gbcms
+pattern for a Rust-written Parquet side-file is exactly **CLI flag → OutputConfig → pipeline calls
+the writer post-count**, and observations now follow it (`--observations-parquet` on `dna` and
+`rna`). The consequence of the earlier position was concrete: **every external consumer
+(Nextflow, ACCESS-Pipeline, CWL) shells to the `gbcms` CLI in a container and never touches the
+Python API**, so the at-scale Parquet path would have been unreachable by exactly the users it was
+built for. The *record type* stays `_rs`-internal — consumers get `gbcms.observe_molecules` — only
+the file-producing flag is surfaced.
 Add a **signature-parity test** so the two ~32-param wrappers can't drift.
 
 ### 3a. Public wrapper — RULED: keep `_rs` internal, expose one narrow supported API
@@ -343,11 +354,18 @@ public wrapper `gbcms.observe_molecules` + `ObservationResult` (§3a), re-export
 document in CONTRIBUTING that `gbcms._rs` is internal / not SemVer-covered**; document
 `molecule_hash` + by-BAM tier + the ACCESS `filter_improper_pair` note; tests 1–7 **plus a wrapper
 smoke test**; CHANGELOG; MINOR bump.
-**PR-2 (activates the Parquet sink):** wire `observations_path=Some(...)` to the Rust-side Parquet
+**PR-2 (DONE — Parquet sink active):** wire `observations_path=Some(...)` to the Rust-side Parquet
 writer (mirroring `parquet_writer.rs`) for the genome-wide/ACCESS cliff — additive, the signature is
 already in place from PR-1.
-**PR-3 (separate):** **isoform-resolved** RNA export (`(variant, transcript, molecule)` key) — for
-"which isoform does this molecule support", *not* needed for RNA phasing (PR-1 covers that).
+**PR-3 (deferred, separate design):** **isoform-resolved** RNA export
+(`(variant, transcript, molecule)` key) — answers *which isoform a molecule supports*.
+**Corrected rationale:** an earlier note justified deferring this with "real-data testing showed
+`mode`/GTF do not change the export". That measurement is true but does **not** support the
+conclusion — the export emits from the transcript-agnostic `1706` loop, so a GTF *cannot* change
+it, which shows the flat record is **blind to isoform**, not that isoform resolution is
+unnecessary. The honest reason to defer: **no consumer needs it yet** (the interpretation layer's
+RNA work — splice-restoring reversions, expression — is a later roadmap milestone), and the record
+shape should follow those requirements rather than be guessed now.
 
 **Resolved by the maintainer:** *tier* = by-BAM, **conditional on a tier-homogeneous BAM** (§2 ⚠);
 *workload* = both scales → Parquet path co-designed into the signature now (§3); RNA-mode covered by

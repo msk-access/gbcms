@@ -14,6 +14,7 @@ spuriously and mask real bugs.
 from collections import Counter
 
 import pysam
+import pytest
 from helpers import build_bam, make_read
 
 from gbcms._rs import Variant, count_bam_binned, count_bam_binned_observations
@@ -383,3 +384,124 @@ def test_vcf_and_maf_representations_converge(tmp_path):
     mix_maf = Counter(o.allele for o in maf.observations)
     assert mix_vcf[ALLELE_ALT] == 5, f"VCF path lost ALT molecules: {dict(mix_vcf)}"
     assert mix_vcf == mix_maf, f"VCF {dict(mix_vcf)} != MAF {dict(mix_maf)}"
+
+
+# ── 8. Parquet sink (at-scale path) ─────────────────────────────────────────────────
+
+
+def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
+    """Writing to Parquet must carry exactly the rows the in-memory path returns.
+
+    At panel/genome scale the FFI materialization — not the counting — is the bottleneck,
+    so the rows are written from Rust and never become Python objects. The two paths must
+    therefore agree exactly, or the at-scale path is silently a different answer.
+    """
+    import gbcms
+    from gbcms.models.core import Variant as PyVariant
+    from gbcms.models.core import VariantType
+
+    bam = build_bam(
+        tmp_path,
+        [_read(f"alt{i}", ALT_BASE) for i in range(4)]
+        + [_read(f"ref{i}", REF_BASE) for i in range(3)],
+        filename="pq.bam",
+    )
+    variants = [
+        PyVariant(chrom="chr1", pos=POS, ref=REF_BASE, alt=ALT_BASE, variant_type=VariantType.SNP)
+    ]
+    out = tmp_path / "obs.parquet"
+
+    mem = gbcms.observe_molecules(bam, variants)
+    written = gbcms.observe_molecules(bam, variants, observations_path=out)
+
+    assert written.path == out and out.exists()
+    assert written.observations == [], "rows must not cross the FFI boundary when written"
+    assert written.n_rows == mem.n_rows == 7
+
+    pq = pytest.importorskip("pyarrow.parquet")
+    table = pq.read_table(out).to_pydict()
+    # self-describing: the locus travels with the rows, so the file stands alone
+    assert [f.name for f in pq.read_table(out).schema] == [
+        "variant_index",
+        "chrom",
+        "pos",
+        "ref",
+        "alt",
+        "molecule_hash",
+        "allele",
+        "best_qual",
+    ]
+    assert set(table["chrom"]) == {"chr1"} and set(table["pos"]) == {POS}
+    assert set(table["ref"]) == {REF_BASE} and set(table["alt"]) == {ALT_BASE}
+
+    from_file = sorted(
+        zip(
+            table["variant_index"],
+            table["molecule_hash"],
+            table["allele"],
+            table["best_qual"],
+            strict=True,
+        )
+    )
+    from_mem = sorted(
+        (o.variant_index, o.molecule_hash, o.allele, o.best_qual) for o in mem.observations
+    )
+    assert from_file == from_mem
+
+
+def test_cli_flag_writes_observations_alongside_counts(tmp_path):
+    """`--observations-parquet` must produce the side-file without disturbing counts.
+
+    Every external consumer (Nextflow, ACCESS-Pipeline, CWL) reaches gbcms through the CLI,
+    so a capability that exists only in the Python API is unreachable to them — which is
+    exactly the audience the at-scale Parquet path was built for. Mirrors --mfsd-parquet.
+    """
+    pytest.importorskip("pyarrow.parquet")
+    from typer.testing import CliRunner
+
+    from gbcms.cli import app
+
+    ref = "A" * 200
+    fasta = tmp_path / "ref.fa"
+    fasta.write_text(">chr1\n" + ref + "\n")
+    pysam.faidx(str(fasta))
+
+    bam = build_bam(
+        tmp_path,
+        [_read(f"alt{i}", ALT_BASE) for i in range(3)]
+        + [_read(f"ref{i}", REF_BASE) for i in range(2)],
+        filename="cli.bam",
+    )
+    vcf = tmp_path / "v.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        f"chr1\t{POS + 1}\t.\t{REF_BASE}\t{ALT_BASE}\t.\tPASS\t.\n"
+    )
+    out = tmp_path / "out"
+
+    args = ["dna", "-v", str(vcf), "-b", bam, "-f", str(fasta), "-o", str(out)]
+    res_off = CliRunner().invoke(app, args)
+    assert res_off.exit_code == 0, res_off.output
+    assert not list(out.glob("*.observations.parquet")), "written without the flag"
+
+    res_on = CliRunner().invoke(app, [*args, "--observations-parquet"])
+    assert res_on.exit_code == 0, res_on.output
+    written = list(out.glob("*.observations.parquet"))
+    assert len(written) == 1, "flag did not produce the side-file"
+
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(written[0])
+    assert table.num_rows == 5  # one row per fragment
+    assert [f.name for f in table.schema] == [
+        "variant_index",
+        "chrom",
+        "pos",
+        "ref",
+        "alt",
+        "molecule_hash",
+        "allele",
+        "best_qual",
+    ]
+    # the counts output is still produced, unchanged by the flag
+    assert list(out.glob("*.vcf")) or list(out.glob("*.maf"))

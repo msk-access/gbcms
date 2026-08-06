@@ -557,6 +557,7 @@ pub fn build_gtf_cache(
 fn count_bam_binned_core(
     py: Python<'_>,
     emit_obs: bool,
+    observations_path: Option<&str>,
     bam_path: String,
     mut variants: Vec<Variant>,
     decomposed: Vec<Option<Variant>>,
@@ -753,6 +754,16 @@ fn count_bam_binned_core(
     // Result array: one BaseCounts per variant, initialized to default
     let mut all_counts: Vec<BaseCounts> = (0..n).map(|_| BaseCounts::default()).collect();
 
+    // The Parquet rows echo (chrom, pos, ref, alt) so the file is self-describing — a bare
+    // variant_index means nothing once the data outlives the call. `variants` is moved into
+    // the rayon closure below, so keep the loci here. One small clone per call, not per row,
+    // and only when a path was actually requested.
+    let obs_loci: Option<Vec<Variant>> = if emit_obs && observations_path.is_some() {
+        Some(variants.clone())
+    } else {
+        None
+    };
+
     // Process bins in parallel, each bin does one bam.fetch()
     #[allow(deprecated)]
     #[allow(clippy::type_complexity)]
@@ -860,6 +871,21 @@ fn count_bam_binned_core(
             // (verified on real BAMs across 1/4/8 threads).
             if emit_obs {
                 observations.sort_by_key(|o| (o.variant_index, o.molecule_hash));
+            }
+
+            // At-scale path: stream the rows to Parquet from here rather than returning
+            // them. A panel- or genome-wide run yields 10^6–10^7 observations, where the
+            // FFI materialization (10^7 PyObjects, roughly doubled peak RSS) — not the
+            // counting — is the bottleneck. Same reasoning as `write_fsd_parquet`.
+            // The returned Vec is then emptied, so the caller never pays that cost.
+            if let (Some(path), Some(loci)) = (observations_path, obs_loci.as_ref()) {
+                crate::counting::parquet_writer::write_observations_parquet(
+                    path,
+                    &observations,
+                    loci,
+                )?;
+                observations.clear();
+                observations.shrink_to_fit();
             }
 
             // ── BH-FDR correction for ASJD p-values ──
@@ -974,7 +1000,7 @@ pub fn count_bam_binned(
     library_type: &str,
 ) -> PyResult<Vec<BaseCounts>> {
     let (counts, _observations) = count_bam_binned_core(
-        py, false, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
+        py, false, None, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
         filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair,
         filter_indel, threads, fragment_qual_threshold, sibling_variants, alignment_backend,
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
@@ -996,7 +1022,7 @@ pub fn count_bam_binned(
 /// Counts are byte-identical to `count_bam_binned` — same core, same classifier.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="sw", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", observations_path=None))]
 pub fn count_bam_binned_observations(
     py: Python<'_>,
     bam_path: String,
@@ -1030,9 +1056,10 @@ pub fn count_bam_binned_observations(
     gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
+    observations_path: Option<&str>,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     count_bam_binned_core(
-        py, true, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
+        py, true, observations_path, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
         filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair,
         filter_indel, threads, fragment_qual_threshold, sibling_variants, alignment_backend,
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
