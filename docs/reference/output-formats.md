@@ -677,6 +677,22 @@ are distinct — counts are **additive** across BAM types with no double-countin
     for downstream mFSD visualisations (density plots, empirical CDF comparisons).
     Written natively by Rust — no pyarrow dependency required.
 
+??? note "Companion Parquet file (`--observations-parquet`)"
+    When `--observations-parquet` is set, a per-molecule file is written alongside
+    the main output:
+
+    ```
+    {--output-dir}/{sample_name}.observations.parquet
+    ```
+
+    One row per fragment per variant — `variant_index, chrom, pos, ref, alt,
+    molecule_hash, allele, best_qual` — recording **which molecule carried which
+    allele**. Because a molecule seen at two variants shares a `molecule_hash`,
+    the rows can be joined across loci for read-backed phasing and allelic
+    imbalance. Counts output is unchanged. Written natively by Rust, so memory
+    stays flat at panel scale. See
+    [Per-Molecule Observations](molecule-observations.md).
+
 ---
 
 ## Missing Values
