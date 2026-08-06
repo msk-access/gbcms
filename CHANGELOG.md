@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.2.0] - 2026-08-06
+
 ### ✨ Added
 
 - **`min_mapq` on `Observation`** and in the observations Parquet schema — the worst MAPQ
