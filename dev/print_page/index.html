@@ -5214,6 +5214,11 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <td style="text-align: left;">Generate an interactive HTML report with per-variant fragment size distributions. Implies <code>--mfsd</code> and <code>--mfsd_parquet</code>. See <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>.</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>--observations_parquet</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Write a companion <code>&lt;sample&gt;.observations.parquet</code> recording which molecule carried which allele at each variant. Enables read-backed phasing and allelic-imbalance analyses. Counts output is unchanged. See <a href="#reference-molecule-observations">Per-Molecule Observations</a>.</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>--mfsd_report_min_alt</code></td>
 <td style="text-align: left;"><code>3</code></td>
 <td style="text-align: left;">Minimum ALT fragment count to include a variant in the HTML report.</td>
@@ -14655,7 +14660,7 @@ Use mouse to pan and zoom
 </ul>
 <hr>
 <h2 id="development-release-guide-version-locations">Version Locations<a class="headerlink" href="#development-release-guide-version-locations" title="Permanent link">¶</a></h2>
-<p>All these files must be updated with the new version (9 references total):</p>
+<p>All these files must be updated with the new version (10 references total):</p>
 <table>
 <thead>
 <tr>
@@ -14683,6 +14688,11 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;"><code>nextflow/modules/local/gbcms/dna/main.nf</code></td>
 <td style="text-align: left;">7</td>
+<td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>nextflow/modules/local/gbcms/build_gtf_cache/main.nf</code></td>
+<td style="text-align: left;">4</td>
 <td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
 </tr>
 <tr>
@@ -15011,6 +15021,7 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h2 id="development-changelog-610-2026-08-06">[6.1.0] - 2026-08-06<a class="headerlink" href="#development-changelog-610-2026-08-06" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--observations-parquet</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</strong> on <code>gbcms dna</code> and <code>gbcms rna</code>, writing
