@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.3.0] - 2026-08-07
+
 ### ✨ Added
 
 - **`observe_molecules()` takes the settings it actually uses.** New keyword arguments
