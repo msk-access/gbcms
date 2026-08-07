@@ -1,6 +1,12 @@
 # Claude Code local (machine-specific permissions; not shared)
 .claude/settings.local.json
 
+# Agent worktrees: `git worktree add` targets created by agent runs. These are
+# full linked checkouts of this repo; committing one would stage a bogus gitlink
+# (embedded-repo) entry. Note .claude/hooks/, .claude/settings.json, and the
+# .claude/skills symlink ARE tracked — ignore only this subpath, never .claude/.
+.claude/worktrees/
+
 # User-tier memory is personal and never published. It lives in the recall dir
 # (.agents/memory/, via symlink) so the agent surfaces it, but is not committed
 # to this shared repo. feedback/project/reference memories ARE committed.

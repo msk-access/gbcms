@@ -14,13 +14,14 @@ Before starting a release, ensure:
 
 ## Version Locations
 
-All these files must be updated with the new version (10 references total):
+All these files must be updated with the new version (11 references total):
 
 | File | Line | Format |
 |:-----|:-----|:-------|
 | `pyproject.toml` | 3 | `version = "X.Y.Z"` |
 | `src/gbcms/__init__.py` | 11 | `__version__ = "X.Y.Z"` |
 | `rust/Cargo.toml` | 3 | `version = "X.Y.Z"` |
+| `rust/Cargo.lock` | `gbcms_rs` entry | `version = "X.Y.Z"` — **not edited by hand**; run `cargo check` after bumping `Cargo.toml` and commit the result |
 | `nextflow/modules/local/gbcms/dna/main.nf` | 7 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
 | `nextflow/modules/local/gbcms/build_gtf_cache/main.nf` | 4 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
 | `nextflow/modules/local/gbcms/rna/main.nf` | 7 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
@@ -36,9 +37,16 @@ All these files must be updated with the new version (10 references total):
 !!! tip "Verify all references"
     After updating, run this to ensure no stale versions remain:
     ```bash
-    grep -rn "OLD_VERSION" --include="*.py" --include="*.toml" --include="*.nf" --include="*.md" . \
-      | grep -v ".git/" | grep -v "site/" | grep -v "CHANGELOG"
+    grep -rn "OLD_VERSION" --include="*.py" --include="*.toml" --include="*.nf" --include="*.md" \
+      --include="*.config" --include="Cargo.lock" . \
+      | grep -v ".git/" | grep -v "site/" | grep -v "CHANGELOG" | grep -v "docs/proposals/"
     ```
+
+    The `*.config` and `Cargo.lock` patterns matter: `nextflow/nextflow.config` and
+    `rust/Cargo.lock` both pin the version but match none of the extension globs above them,
+    so an earlier form of this command reported "clean" while two files were still stale.
+    `docs/proposals/` is excluded because proposal documents cite the version they *shipped
+    in* — those references are history and must not be bumped.
 
 ---
 
@@ -48,7 +56,7 @@ All these files must be updated with the new version (10 references total):
 gitGraph LR:
    commit id: "ongoing develop work"
    branch release/X.Y.Z
-   commit id: "bump versions (5 files)"
+   commit id: "bump versions (11 refs)"
    commit id: "update CHANGELOG.md"
    checkout main
    merge release/X.Y.Z id: "PR merged" tag: "X.Y.Z"
@@ -137,6 +145,31 @@ git push origin release/X.Y.Z
 - Title: `Release X.Y.Z`
 - Describe changes from CHANGELOG
 - Wait for CI to pass
+
+!!! warning "Confirm the checks actually appeared — absent is not the same as passing"
+    Opening the PR immediately after `git push` can race: GitHub occasionally fails to
+    dispatch any workflow for the `pull_request` event, and the PR then shows only the
+    GitBook statuses. Nothing is marked failed or pending — the checks are simply **not
+    there**, which reads like "nothing to run" rather than "nothing ran". This happened on
+    6.2.0; 6.1.0 got the full suite from the same steps, so it is intermittent, not config.
+
+    ```bash
+    gh pr checks <PR>            # expect Tests jobs + Nextflow Lint, not just GitBook
+    gh run list --branch release/X.Y.Z
+    ```
+
+    If they are missing, re-fire rather than assuming:
+
+    ```bash
+    # verify the exact release SHA (no PR churn, no notifications)
+    gh workflow run test.yml --ref release/X.Y.Z
+    gh workflow run nextflow-lint.yml --ref release/X.Y.Z
+
+    # or re-fire the pull_request event so checks attach to the PR itself
+    gh pr close <PR> && gh pr reopen <PR>
+    ```
+
+    Pausing a beat between `git push` and PR creation makes the race far less likely.
 
 ### 7. Merge to main (creates tag)
 

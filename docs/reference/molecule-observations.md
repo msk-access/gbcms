@@ -61,6 +61,7 @@ once written.
 | `molecule_hash` | `uint64` | Molecule identity — **the join key across variants** |
 | `allele` | `uint8` | `0`=REF, `1`=ALT, `2`=N, `3`=OTHER |
 | `best_qual` | `uint8` | Best base quality supporting the called allele; `0` for N/OTHER |
+| `min_mapq` | `uint8` | Worst MAPQ among the reads backing this molecule; `255` = unavailable |
 
 Rows are sorted by `(variant_index, molecule_hash)`, so output is byte-reproducible run to run
 despite parallel processing. Compression is Zstandard level 1.
@@ -78,6 +79,52 @@ despite parallel processing. Compression is Zstandard level 1.
     N bases carry low quality, so they are usually filtered before reaching fragment
     evidence. Measured on real cfDNA: at the default `--min-baseq 20` a locus set yielded
     0 N / 300 OTHER rows; at `--min-baseq 0` the same molecules gave 202 N / 97 OTHER.
+
+### `min_mapq` semantics
+
+The **minimum** MAPQ across the reads that contributed evidence to the molecule — not the
+best, and not an average. A molecule is only as trustworthy as its least confidently placed
+read, so a consumer weighting evidence by error probability needs the pessimistic bound.
+For a paired fragment this means the worse mate's value: one cleanly-placed mate cannot
+launder an ambiguously-placed one.
+
+Two values are easy to confuse and mean opposite things:
+
+| Value | Meaning |
+|:------|:--------|
+| `0` | A **real** MAPQ — the read mapped ambiguously (multi-mapping). Trust it least. |
+| `255` | **Unavailable** (SAM spec). No mapping quality was recorded; not a confidence claim. |
+
+!!! note "Why this is exported rather than inferred from `--min-mapq`"
+    The filter threshold *bounds* mapping confidence without measuring it. Assuming every
+    surviving molecule sat at the threshold would charge them all the same error — swamping
+    the base-quality term and flattening precisely the per-molecule differences that make a
+    weighted statistic worth computing. Reads that clear a `--min-mapq 20` gate are mostly
+    MAPQ 60; treating them as 20 discards that.
+
+Reads below `--min-mapq` never reach fragment evidence, so this value is always at or above
+the threshold you ran with.
+
+#### Why `min_mapq` is a minimum but `best_qual` is a maximum
+
+The two aggregate in opposite directions on purpose — they describe different failure modes.
+
+**MAPQ asks whether the read is in the right place.** If *any* read backing the molecule is
+badly placed, the molecule's locus assignment is suspect, so the weakest link governs.
+
+**Base quality asks how strong the evidence for the called allele is.** Reads that agree
+reinforce each other: if two reads both call ALT at Q40 and Q20, the chance both are wrong is
+roughly the product of their error rates — *better* than either alone. Taking the maximum
+therefore **understates** the combined evidence rather than flattering it.
+
+Reads that *disagree* are not handled by either number: fragment resolution arbitrates them,
+and a fragment with no consensus is reported as `OTHER` with `best_qual = 0`. So the case a
+"worst base quality" column would be for is already visible in the `allele` field.
+
+There is deliberately no `min_baseq` column for the same reason there is a `min_mapq` one:
+bases below `--min-baseq` are filtered before reaching fragment evidence, so such a column
+would mostly re-report the threshold you passed — whereas MAPQ genuinely varies above its
+threshold and is worth measuring.
 
 ### `molecule_hash` semantics
 
@@ -104,7 +151,7 @@ variants = [Variant(chrom="17", pos=7676153, ref="T", alt="A",
 result = observe_molecules("sample.bam", variants, reference_fasta="ref.fa")
 
 for obs in result.observations:
-    print(obs.variant_index, obs.molecule_hash, obs.allele, obs.best_qual)
+    print(obs.variant_index, obs.molecule_hash, obs.allele, obs.best_qual, obs.min_mapq)
 ```
 
 | Parameter | Description |
@@ -129,6 +176,22 @@ per input variant. Anything other than `PASS` means normalization rejected that 
 !!! note "`gbcms._rs` is internal"
     `observe_molecules` is the supported surface. `gbcms._rs` is an implementation detail and
     is **not covered by SemVer** — see [Contributing](../development/contributing.md).
+
+### Alignment backend
+
+Observations are emitted **after** classification, so they inherit whatever the counting
+backend decided — the export has no opinion of its own. Rows always reconcile with the counts
+beside them regardless of backend, but the underlying calls can differ between `sw` and
+`pairhmm` on ambiguous indels (measured: 5 of 104 molecule calls on real ACCESS deletions).
+Compare observation sets only when they were produced under the same backend.
+
+`pairhmm` is the default at **every** layer — the CLI, `Pipeline`, `observe_molecules`, and
+the `gbcms._rs` entry points alike. An unrecognized backend token raises `ValueError` rather
+than quietly falling back, so a typo cannot silently score your data with the other
+classifier.
+
+WFA is **not** a third choice: it is an edit-distance triage step in front of PairHMM that
+resolves clear-cut reads directly and defers only ambiguous ones to the full model.
 
 ---
 
