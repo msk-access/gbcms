@@ -188,10 +188,22 @@ After PR approval:
 
 The tag triggers `.github/workflows/release.yml`:
 
-1. **Build wheels** (Linux x86_64, aarch64; macOS x86_64, arm64; Windows)
+1. **Build one wheel** — `cp311`, `manylinux_2_34_x86_64` — plus an **sdist** (jobs `linux`
+   and `sdist`)
 2. **Publish to PyPI** (via maturin)
 3. **Build Docker image** → push to `ghcr.io/msk-access/gbcms:X.Y.Z`
 4. **Deploy docs** → GitHub Pages (versioned via `mike` as `X.Y.Z` / `stable`)
+
+!!! warning "One wheel, not a matrix"
+    This list previously claimed Linux x86_64 + aarch64, macOS x86_64 + arm64, and Windows.
+    `release.yml` has only `linux` and `sdist` jobs, and 6.2.0 published exactly
+    `gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl` and `gbcms-X.Y.Z.tar.gz`.
+
+    The practical consequence, worth knowing before telling a user to `pip install gbcms`:
+    **everyone not on cp311 manylinux x86_64 builds from the sdist**, which needs a Rust
+    toolchain. That includes macOS (Intel and Apple Silicon) and every Python other than
+    3.11. Broadening the matrix is a real change to `release.yml`, not a docs fix — until
+    then, this list should describe what actually ships.
 
 ### 9. Create the GitHub Release
 
