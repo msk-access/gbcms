@@ -281,3 +281,47 @@ def test_supplementary_shared_qname_not_double_counted(tmp_path):
         filter_supplementary=False,
     )[0]
     assert counts.dp == 1, f"supplementary must not double-count DP, got {counts.dp}"
+
+
+def test_supplementary_only_locus_is_seen_at_fragment_level_when_opted_in(tmp_path):
+    """The other half of the contract: opting out must actually admit the evidence.
+
+    Pairs with `test_supplementary_shared_qname_not_double_counted` above. That one pins
+    read-level DP against inflation when a primary and its supplementary overlap the *same*
+    locus. This covers the opposite arrangement — a locus reached **only** by the
+    supplementary segment, which is what a molecule spanning a large deletion looks like.
+
+    Previously both flags were inert: an unconditional skip dropped these records before
+    fragment evidence, so such a locus reported `dpf=0` — not a filtered read but a wrong
+    answer, since a molecule demonstrably covers it. Now `filter_supplementary=False`
+    admits it to fragment evidence (where the QNAME hash makes double-counting impossible)
+    while read-level DP keeps its promise and stays 0.
+    """
+    bam_path = tmp_path / "split.bam"
+    header = {"HD": {"VN": "1.0"}, "SQ": [{"LN": 2000, "SN": "chr1"}]}
+    with pysam.AlignmentFile(bam_path, "wb", header=header) as outf:
+        # primary covers 100–200; its supplementary segment covers 1000–1100 only
+        for flag, start in ((2, 100), (0x800 | 2, 1000)):
+            a = pysam.AlignedSegment()
+            a.query_name = "frag1"
+            a.query_sequence = "A" * 100
+            a.flag = flag
+            a.reference_id = 0
+            a.reference_start = start
+            a.mapping_quality = 60
+            a.cigartuples = [(0, 100)]
+            outf.write(a)
+    pysam.index(str(bam_path))
+
+    far = gbcms_rs.Variant("chr1", 1050, "A", "T", "SNP")  # only the supplementary reaches it
+    filtered = count_both(str(bam_path), [far], min_mapq=0, min_baseq=0)[0]
+    assert filtered.dpf == 0, "default must still exclude it"
+
+    admitted = count_both(
+        str(bam_path), [far], min_mapq=0, min_baseq=0, filter_supplementary=False
+    )[0]
+    assert admitted.dpf == 1, "opting out did not admit the supplementary to fragment evidence"
+    assert admitted.dp == 0, (
+        "read-level DP must stay 0 — a supplementary is not a first-class read observation, "
+        "independent of the filter flag"
+    )

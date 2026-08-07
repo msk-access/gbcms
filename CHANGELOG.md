@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **`observe_molecules()` takes the settings it actually uses.** New keyword arguments
+  `filters`, `quality`, `alignment`, `umi_tag`, `threads`, `apply_baq` and `library_type`
+  sit alongside the existing `config=`, which keeps working; an individual argument
+  overrides the matching `config` field.
+
+  Previously the only way to change a setting was to build a whole `GbcmsDnaConfig`, whose
+  four required fields — `variant_file`, `bam_files`, `reference_fasta`, `output` — have
+  **zero overlap** with the seven this entry point reads. Two of them must name files that
+  exist on disk. So adjusting one filter meant fabricating an output directory and a variant
+  path that are never touched: paths that look load-bearing and are not.
+
+  Found by the first real consumer (mulligan) needing a non-default read filter.
+
+  `umi_tag` is the one argument where `None` is an explicit choice rather than an omission —
+  it means "group by read pair, not UMI family" and overrides `config` accordingly. Every
+  other argument treats `None` as "not supplied". Without that distinction, a caller passing
+  `umi_tag=None` alongside a config that sets one would silently inherit it and change what
+  counts as a molecule.
+
+### 🐛 Fixed
+
+- **`--filter-secondary` and `--filter-supplementary` now change the result when turned
+  off.** They previously could not change **any** output: an unconditional skip in the
+  counting loop discarded those records *before* fragment evidence, regardless of the
+  flags. Measured across all six read filters on real MSK-ACCESS data, these were the only
+  two that did nothing (`duplicates`, `improper_pair` and `indel` all worked).
+  ([#82](https://github.com/msk-access/gbcms/issues/82))
+
+  **Default runs are byte-identical** — both filters still default to on, so such records
+  never reach the cache. Verified on real data: total depth unchanged at 1202 across 40
+  loci, and binned↔legacy parity holds.
+
+  Turning a filter **off** now admits those records to **fragment**-level evidence
+  (`dpf`/`rdf`/`adf`) and to the per-molecule observation export. They still never
+  contribute to read-level `dp`/`rd`/`ad`: a supplementary shares a QNAME with its primary
+  and is the same physical read, so counting both would report depth 2 where one read
+  exists. Fragments are immune either way — `hash_molecule` keys on QNAME, so a primary and
+  its supplementary collapse into one.
+
+  What this fixes concretely: a locus reached **only** by a supplementary segment used to
+  report `dpf=0` — not a filtered read but a wrong answer, since a molecule demonstrably
+  covers it. That is what made a molecule spanning a large deletion invisible to
+  cross-locus phasing.
+
+  New consequence to be aware of: with the filter off, an admitted supplementary raises
+  `dpf` while leaving `dp` unchanged, so the two stop moving together. The observation
+  export reconciles with `dpf`, and that invariant is verified under both settings.
+
 ## [6.2.0] - 2026-08-06
 
 ### ✨ Added
