@@ -146,6 +146,31 @@ git push origin release/X.Y.Z
 - Describe changes from CHANGELOG
 - Wait for CI to pass
 
+!!! warning "Confirm the checks actually appeared — absent is not the same as passing"
+    Opening the PR immediately after `git push` can race: GitHub occasionally fails to
+    dispatch any workflow for the `pull_request` event, and the PR then shows only the
+    GitBook statuses. Nothing is marked failed or pending — the checks are simply **not
+    there**, which reads like "nothing to run" rather than "nothing ran". This happened on
+    6.2.0; 6.1.0 got the full suite from the same steps, so it is intermittent, not config.
+
+    ```bash
+    gh pr checks <PR>            # expect Tests jobs + Nextflow Lint, not just GitBook
+    gh run list --branch release/X.Y.Z
+    ```
+
+    If they are missing, re-fire rather than assuming:
+
+    ```bash
+    # verify the exact release SHA (no PR churn, no notifications)
+    gh workflow run test.yml --ref release/X.Y.Z
+    gh workflow run nextflow-lint.yml --ref release/X.Y.Z
+
+    # or re-fire the pull_request event so checks attach to the PR itself
+    gh pr close <PR> && gh pr reopen <PR>
+    ```
+
+    Pausing a beat between `git push` and PR creation makes the race far less likely.
+
 ### 7. Merge to main (creates tag)
 
 After PR approval:
