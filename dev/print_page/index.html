@@ -14954,11 +14954,23 @@ commit history and makes the back-merge conflict-free.</p>
 <h3 id="development-release-guide-8-ci-release-pipeline">8. <abbr title="Continuous Integration - Automated build and test system">CI</abbr> Release Pipeline<a class="headerlink" href="#development-release-guide-8-ci-release-pipeline" title="Permanent link">¶</a></h3>
 <p>The tag triggers <code>.github/workflows/release.yml</code>:</p>
 <ol>
-<li><strong>Build wheels</strong> (Linux x86_64, aarch64; macOS x86_64, arm64; Windows)</li>
+<li><strong>Build one wheel</strong> — <code>cp311</code>, <code>manylinux_2_34_x86_64</code> — plus an <strong>sdist</strong> (jobs <code>linux</code>
+   and <code>sdist</code>)</li>
 <li><strong>Publish to PyPI</strong> (via maturin)</li>
 <li><strong>Build Docker image</strong> → push to <code>ghcr.io/msk-access/gbcms:X.Y.Z</code></li>
 <li><strong>Deploy docs</strong> → GitHub Pages (versioned via <code>mike</code> as <code>X.Y.Z</code> / <code>stable</code>)</li>
 </ol>
+<div class="admonition warning">
+<p class="admonition-title">One wheel, not a matrix</p>
+<p>This list previously claimed Linux x86_64 + aarch64, macOS x86_64 + arm64, and Windows.
+<code>release.yml</code> has only <code>linux</code> and <code>sdist</code> jobs, and 6.2.0 published exactly
+<code>gbcms-X.Y.Z-cp311-cp311-manylinux_2_34_x86_64.whl</code> and <code>gbcms-X.Y.Z.tar.gz</code>.</p>
+<p>The practical consequence, worth knowing before telling a user to <code>pip install gbcms</code>:
+<strong>everyone not on cp311 manylinux x86_64 builds from the sdist</strong>, which needs a Rust
+toolchain. That includes macOS (Intel and Apple Silicon) and every Python other than
+3.11. Broadening the matrix is a real change to <code>release.yml</code>, not a docs fix — until
+then, this list should describe what actually ships.</p>
+</div>
 <h3 id="development-release-guide-9-create-the-github-release">9. Create the GitHub Release<a class="headerlink" href="#development-release-guide-9-create-the-github-release" title="Permanent link">¶</a></h3>
 <div class="admonition danger">
 <p class="admonition-title">The workflow does NOT create the GitHub Release</p>
