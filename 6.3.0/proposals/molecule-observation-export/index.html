@@ -1,0 +1,2442 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-performance variant counting from BAM files">
+      
+      
+        <meta name="author" content="MSK-ACCESS">
+      
+      
+        <link rel="canonical" href="https://msk-access.github.io/gbcms/6.3.0/proposals/molecule-observation-export/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Proposal: per-molecule observation export for gbcms - gbcms</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/print-site.css">
+    
+      <link rel="stylesheet" href="../../css/print-site-material.css">
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/panzoom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style><meta name="panzoom-theme" content="material">
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#proposal-per-molecule-observation-export-for-gbcms" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="gbcms" class="md-header__button md-logo" aria-label="gbcms" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            gbcms
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Proposal: per-molecule observation export for gbcms
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom" aria-label="Switch to dark mode" type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden="">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom" aria-label="Switch to light mode" type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden="">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/msk-access/gbcms" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="gbcms" class="md-nav__button md-logo" aria-label="gbcms" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+
+    </a>
+    gbcms
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/msk-access/gbcms" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    msk-access/gbcms
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../getting-started/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/dna/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DNA Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/rna/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RNA Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/merge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/normalize/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Normalize Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../nextflow/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nextflow Pipeline
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Nextflow Pipeline
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../nextflow/samplesheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Samplesheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../nextflow/parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parameters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../nextflow/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5">
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How It Works
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    How It Works
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/input-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/variant-normalization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variant Normalization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/read-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/rna-splice-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RNA Splice Handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/rna-annotation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RNA Annotation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/allele-classification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Allele Classification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/counting-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Counting &amp; Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/mfsd-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    mFSD Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/molecule-observations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-Molecule Observations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/complex-indels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complex Indels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6">
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/developer-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/testing-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/release-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7">
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../resources/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../resources/citation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Citation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#1-do-we-need-this-at-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Do we need this at all?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The record
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-api-new-pyfunction-shared-core-reject-the-flagtuple" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. API — new pyfunction + shared core (reject the flag+tuple)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. API — new pyfunction + shared core (reject the flag+tuple)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3a-public-wrapper-ruled-keep-_rs-internal-expose-one-narrow-supported-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3a. Public wrapper — RULED: keep _rs internal, expose one narrow supported API
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-consequences-to-existing-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Consequences to existing workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-parity-determinism-the-load-bearing-part" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Parity &amp; determinism — the load-bearing part
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5a-validation-on-real-data-post-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5a. Validation on real data (post-implementation)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-performance-memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Performance &amp; memory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-alternatives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Alternatives
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-plan-open-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Plan &amp; open decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<div><h1 id="proposal-per-molecule-observation-export-for-gbcms">Proposal: per-molecule observation export for gbcms<a class="headerlink" href="#proposal-per-molecule-observation-export-for-gbcms" title="Permanent link">¶</a></h1>
+<p><strong>Status:</strong> v4 — <strong>design complete, all decisions ruled.</strong> Code-grounded analysis of <code>develop</code>,
+plus maintainer rulings (one-invocation/one-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, Parquet path co-designed, emit N/Other, join key,
+<code>_rs</code> internal + narrow public wrapper) and measurements against real ACCESS v1/v2 BAMs.
+Ready to become a gbcms issue or a PR-1 branch.
+<strong>Type:</strong> additive engine capability · <strong>Compat:</strong> existing API byte-identical · <strong>Version:</strong> MINOR (6.1.0)</p>
+<blockquote>
+<p>v1 of this draft proposed a flag on <code>count_bam_binned</code> that widened its return to a tuple,
+and emitted inside <code>count_variant_from_cache</code>. <strong>Both were wrong</strong> and are corrected below:
+a tuple return breaks every caller unconditionally (a pyo3 fn has one static return type),
+and <code>count_variant_from_cache</code> runs <strong>twice</strong> for decomposed variants, so emitting there
+double-emits contradictory calls with zero parity signal. All claims below are verified
+against <code>py-gbcms@develop</code> with file:line.</p>
+</blockquote>
+<h2 id="1-do-we-need-this-at-all">1. Do we need this at all?<a class="headerlink" href="#1-do-we-need-this-at-all" title="Permanent link">¶</a></h2>
+<p><strong>Yes — but the reason is single-source-of-truth, not performance.</strong> For a targeted consumer
+(a handful of loci) a consumer-side htslib pass is tractable. The real argument: the per-molecule
+allele call is the output of a classifier stack gbcms <strong>already runs and discards</strong> at the
+finalization loop (<code>engine.rs:1706</code>) — <code>hash_molecule</code> identity (<code>fragment.rs:277</code>),
+<code>FragmentEvidence::observe</code> consensus + <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>/N/structural handling, <code>resolve()</code> with structural
+priority + qual-diff discard band (<code>fragment.rs:204</code>), fed by Smith-Waterman realignment. A
+consumer that <strong>re-derives</strong> allele calls produces phasing calls that need not agree with the
+<code>counts.ad/adf</code> it is phasing on — reporting cis/trans from numbers that silently disagree with
+the counts in the same table.</p>
+<p><strong>The guarantee is only real if the export is bound to counts by test (§5).</strong> Ship it without
+the fragment-level <code>adf/rdf/dpf</code> invariant test and you get the maintenance cost and none of the
+consistency — at which point the consumer's own read pass was the honest choice.</p>
+<p><strong>Seam (hard):</strong> this is a <em>generic</em> capability — emit the resolved per-molecule call. <strong>Zero
+phasing/join/reversion logic in gbcms</strong> (no "molecules covering ≥2 loci" pre-filter — that is
+phasing, and belongs to the consumer). A generic variant-subset/min-coverage param is fine.</p>
+<h2 id="2-the-record">2. The record<a class="headerlink" href="#2-the-record" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="cp">#[pyclass]</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">Observation</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="cp">#[pyo3(get)]</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">variant_index</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">,</span><span class="w">  </span><span class="c1">// join key; semantics-free; stable WITHIN one call</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="cp">#[pyo3(get)]</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">molecule_hash</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w">  </span><span class="c1">// hash_molecule(qname, umi); see caveats</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="cp">#[pyo3(get)]</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">allele</span><span class="p">:</span><span class="w"> </span><span class="kt">u8</span><span class="p">,</span><span class="w">          </span><span class="c1">// 0=Ref 1=Alt 2=N 3=Other (+ Python IntEnum)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="cp">#[pyo3(get)]</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">best_qual</span><span class="p">:</span><span class="w"> </span><span class="kt">u8</span><span class="p">,</span><span class="w">       </span><span class="c1">// winning allele's best base qual; 0 for N/Other</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
+</code></pre></div>
+<p>Corrections vs v1:
+- <strong>Drop <code>is_duplex</code>.</strong> <code>duplex_alt_count</code>/<code>singleton_alt_count</code> (<code>types.rs:284/287</code>) are
+  <strong>declared but never assigned</strong> anywhere in <code>rust/src</code>; <code>FragmentEvidence</code> has no strand-family
+  field. Populating it means new fgbio-consensus-tag logic in the engine → classification-adjacent,
+  seam-breaking, parity-pressuring. <strong>Epsilon = <code>10^(-best_qual/10)</code></strong> instead. (Honest caveat:
+  <code>best_qual</code> is max-across-mates, an optimistic per-fragment proxy — document it.)
+- <strong>Tier is by-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, not a field.</strong> The <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> workflow emits <strong>four</strong> BAMs — <code>duplex</code>, <code>simplex</code>,
+  <code>all-unique</code> (= simplex ∪ duplex ∪ unique molecules), and <code>standard</code> (uncollapsed) — and gbcms is
+  already run <strong>per-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> with counts merged</strong> (<code>merge.py</code>; the <code>D_*</code>/<code>SD_*</code> fragment columns). Calling
+  is done on <code>duplex</code>; evidence uses <code>duplex + simplex</code>. So the consumer invokes the export <strong>once per
+  <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> and stamps the tier / ε floor (duplex <code>~1e-6</code>, simplex <code>~3.4e-5</code>, raw/standard <code>~1e-3</code>) from
+  the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> it chose — the engine needs <strong>no duplex-family tracking</strong> and the record needs <strong>no tier
+  field</strong>. <code>best_qual</code> refines ε <em>within</em> a tier.
+  <strong>Set relationships matter (consumer-side, out of scope for gbcms but worth stating):</strong> <code>duplex</code> and
+  <code>simplex</code> are <strong>disjoint</strong> molecule sets, so their union is safe — that is why the workflow combines
+  exactly those two. <code>all-unique</code> and <code>standard</code> are <strong>supersets</strong>, so mixing a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> with its superset
+  re-observes the same molecule and inflates linkage evidence. The consumer must never combine
+  overlapping BAMs.
+  <strong>The standard (non-<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>) <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is a first-class case, not a fallback:</strong> tumor/WES/WGS is one
+  uncollapsed <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, <code>raw</code> ε — the same export, one invocation, no tier bookkeeping at all.
+  (Verified: the read-end XOR at <code>engine.rs:1527</code> is guarded by <code>if amplicon_mode</code>, so a
+  non-amplicon <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> correctly merges R1/R2 into one molecule by qname; <code>hash_molecule(qname,
+  None)</code> works with no <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>.)
+- <strong>✅ RESOLVED — ONE invocation, one <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, for every context.</strong> <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> → <code>all-unique</code>;
+  standard tumor/WES/WGS → the standard <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>. No union, no per-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> bookkeeping, no special-casing:
+  the <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> path and the standard path are the <em>same</em> call.
+  <strong>Why duplicates are not a concern:</strong> the <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> BAMs are produced <strong>after <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> collapsing</strong>, so
+  one read-pair <em>is</em> one molecule. Grouping by qname (gbcms's default when no <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> tag is given) is
+  therefore exactly right, and PCR duplicates were already removed upstream by the collapse.
+  <strong>ε policy — and this is version-dependent (verified against real ACCESS v1 and v2 BAMs,
+  tag keys + tier composition only, 3000 reads/<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>):</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>collapsing tool</th>
+<th>tags on <code>all-unique</code></th>
+<th>tier recoverable from one <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ACCESS v2</strong></td>
+<td>fgbio (<code>_collapsed_grouped</code>, bwa)</td>
+<td>full set: <code>MI, RX, aD, bD, cD, cE, aE/bE, …</code></td>
+<td><strong>yes</strong></td>
+</tr>
+<tr>
+<td><strong>ACCESS v1</strong></td>
+<td>Marianas</td>
+<td><code>AS, MQ, NM, RG, XS</code> only — <strong>no fgbio tags</strong></td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<p>In v2, <code>aD&gt;0 &amp;&amp; bD&gt;0</code> <strong>exactly reproduces the file partition</strong>: the <code>duplex</code> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is 100%
+  duplex by that rule and the <code>simplex</code> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is 100% single-strand, so the tags discriminate
+  perfectly <em>within</em> <code>all-unique</code>. So for v2, <strong>one invocation on <code>all-unique</code> yields both the
+  complete molecule set AND full tier resolution</strong> — the operational simplicity and the ε
+  hierarchy, not a trade between them.
+  <strong>ACCESS v1 (Marianas) — verified in detail.</strong> No per-read tier marker exists: a single <code>@RG</code>,
+  aligner tags only (<code>AS/XS/NM/MQ</code>), and <code>YA/YM/YO/YX</code> turn out to be <strong>ABRA2 realignment
+  annotations</strong> (values like <code>1:2361920:850M2I473M</code>), present in <em>both</em> duplex and simplex at
+  0.2–0.4% — not tier. Tier is therefore recoverable <strong>only from which file</strong> a read is in. Also
+  verified in a 20 kb window: <code>duplex ∩ simplex = 0</code> (<strong>disjoint</strong>, so the union is safe),
+  <code>duplex ⊆ all-unique</code> and <code>simplex ⊆ all-unique</code> both <strong>100%</strong> (qnames are preserved identically
+  across the collapsed BAMs), and composition is ~<strong>2.6% duplex / 13.5% simplex / 84% singletons</strong>.
+  Three viable v1 policies, <strong>none of which need a gbcms change</strong>:
+  <strong>(a)</strong> observe <code>duplex</code> + <code>simplex</code>, tier by file — matches ACCESS's own evidence convention
+  ("call on duplex, evidence from duplex+simplex"); excludes singletons. <em>Recommended.</em>
+  <strong>(b)</strong> one invocation on <code>all-unique</code> with a <strong>uniform conservative ε</strong> — simplest and uniform
+  with v2/standard; underweights the 2.6% duplex molecules (the highest-value ones). Errs <strong>toward
+  indeterminate, never toward false-cis</strong> (ADR-0016 §5), and costs little because "confident CIS
+  needs duplex OR ≥2 concordant molecules" already forces ≥2 for non-duplex evidence.
+  <strong>(c)</strong> one pass on <code>all-unique</code> + a cheap <strong>qname-set lookup</strong> at the two loci against the
+  duplex/simplex BAMs to stamp tier — viable precisely because qnames are 100% preserved; full tier
+  <em>and</em> all molecules, at the cost of consumer-side complexity.
+  v0.3 calibration then <strong>measures</strong> what each policy's evidence is actually worth.</p>
+<p><strong>⚠ Corrects an earlier claim in this document.</strong> "gbcms never needs a tier feature" holds only
+  if we accept the v1-style uniform ε. To get tier from a <em>single</em> v2 invocation, <strong>gbcms must read
+  <code>aD</code>/<code>bD</code></strong> — which it currently does not (verified: no fgbio tag reads in <code>rust/src</code>). Crucially,
+  that is a far smaller and safer change than feared: stamping a <strong>tier on the exported
+  <code>Observation</code></strong> is export-only and <strong>cannot affect counts → parity-safe by construction</strong>, unlike
+  populating <code>duplex_alt_count</code> in <code>BaseCounts</code> (<code>types.rs:287</code>), which would change counts and
+  pressure the parity suite. Scope: read two integer tags where <code>FragmentEvidence</code> is already
+  built, and add one field to the record.
+  <strong>There are exactly four BAMs — <code>simplex</code>, <code>duplex</code>, <code>all-unique</code>, <code>standard</code> — and there is
+  NO simplex+duplex <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>.</strong> "SimplexDuplex" (ACCESS-Pipeline <code>python_tools/constants.py:331</code>,
+  and the <code>SD_*</code> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns) is a <strong>counts-level reporting merge</strong> of the two disjoint BAMs, not
+  a file: gbcms is run on each <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> and the counts merged (<code>merge.py</code>). That merge existing at all
+  is itself the evidence that <code>Simplex</code> and <code>Duplex</code> are disjoint sets — you would not merge
+  counts from a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> with its own superset.
+- <strong>⚠ Superseded background — why <code>all-unique</code> was rejected for phasing.</strong> <code>all-unique</code> mixes
+  duplex + simplex + singleton molecules in <strong>one</strong> file, so pointing at it yields observations
+  with <strong>no tier information</strong> — and <strong>gbcms does not read fgbio duplex tags anywhere</strong>
+  (verified: no <code>aD</code>/<code>bD</code>/<code>cD</code>/<code>cE</code> reads in <code>rust/src</code>; <code>duplex_alt_count</code>/<code>singleton_alt_count</code>
+  at <code>types.rs:284/287</code> are declarations only). Every molecule would have to be weighted at the
+  <strong>worst</strong> tier (~1e-3), discarding the duplex sensitivity that makes low-AF reversion calling
+  work. Three ways out:
+  <strong>(a) observe <code>duplex</code> + <code>simplex</code> separately</strong> — two invocations, disjoint sets, tier from <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>
+  identity, ε hierarchy preserved; loses only <em>singletons</em>, which are the weakest evidence anyway.
+  <strong>No gbcms change.</strong> ← recommended for PR-1.
+  <strong>(b) observe <code>all-unique</code> + add per-molecule tier to gbcms</strong> — one file, singletons included at
+  an honest high ε; requires a <strong>new engine feature</strong> (read fgbio tags, populate a tier) that is
+  classification-adjacent and needs its own parity story. Possible follow-on.
+  <strong>(c) <code>all-unique</code> with no tier</strong> — rejected: silently throws away the duplex advantage.
+- <strong><code>allele</code> is 4-state, REF first-class.</strong> <code>resolve()</code> returns <code>(is_ref, is_alt)</code> with REF a real
+  state — <strong>back-mutation/reversion IS the REF signal</strong>, so REF must be explicit, not "absence of
+  ALT." Split <code>NEITHER</code> into <code>N</code> vs <code>Other</code> via the already-tracked <code>has_n_base</code> (<code>fragment.rs:53</code>,
+  routed at <code>engine.rs:1738</code>) — free, and QC-valuable (duplex-masking vs third-allele/contamination).
+- <strong><code>best_qual = 0</code> for N/Other</strong> (no called allele) — specified so consumers are deterministic.
+- <strong><code>molecule_hash</code> semantics — documented on the API:</strong> per-read-end (not per-molecule) in
+  <strong>amplicon</strong> mode (<code>mol_hash ^= is_read1?0x1:0x2</code>, <code>engine.rs:1527</code>); comparable <strong>only</strong> within a
+  single call with fixed <code>umi_tag</code>/<code>library_type</code>. Surface <code>library_type</code>/umi context with the result.
+- <strong>Optional QC-only fields</strong> (<code>is_forward</code>, <code>insert_size: Option&lt;i32&gt;</code> — keep the <code>None</code>-when-TLEN=0
+  distinction, <code>fragment.rs:49</code>) only if a QC consumer needs them; not in the hot phasing core.</p>
+<p>Serves phasing (join + ε), LOH/allelic-imbalance, and duplex-masking/contamination QC — no phasing
+semantics in gbcms.</p>
+<h2 id="3-api-new-pyfunction-shared-core-reject-the-flagtuple">3. API — new pyfunction + shared core (reject the flag+tuple)<a class="headerlink" href="#3-api-new-pyfunction-shared-core-reject-the-flagtuple" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1">// EXISTING symbol — signature + return BYTE-IDENTICAL; calls core, discards obs</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="cp">#[pyfunction]</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">count_bam_binned</span><span class="p">(</span><span class="o">..</span><span class="p">.)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">PyResult</span><span class="o">&lt;</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">BaseCounts</span><span class="o">&gt;&gt;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1">// NEW sibling — the only entry point that emits. `observations_path`:</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1">//   None       → return observations in-memory (targeted phasing; ~128 KB)</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1">//   Some(path) → stream them to Parquet FROM RUST (genome-wide/ACCESS; avoids the PyO3 cliff),</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1">//                returning an empty obs Vec + a row count</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="cp">#[pyfunction]</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">count_bam_binned_observations</span><span class="p">(</span><span class="o">..</span><span class="p">.</span><span class="n">same</span><span class="w"> </span><span class="n">params</span><span class="o">..</span><span class="p">.,</span><span class="w"> </span><span class="n">observations_path</span><span class="p">:</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;&amp;</span><span class="kt">str</span><span class="o">&gt;</span><span class="p">)</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">PyResult</span><span class="o">&lt;</span><span class="p">(</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">BaseCounts</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">Observation</span><span class="o">&gt;</span><span class="p">)</span><span class="o">&gt;</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1">// PRIVATE core refactored out of the current body</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="k">fn</span><span class="w"> </span><span class="nf">count_bam_binned_core</span><span class="p">(</span><span class="o">..</span><span class="p">.,</span><span class="w"> </span><span class="n">emit_obs</span><span class="p">:</span><span class="w"> </span><span class="kt">bool</span><span class="p">,</span><span class="w"> </span><span class="n">obs_sink</span><span class="p">:</span><span class="w"> </span><span class="nc">ObsSink</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="p">(</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">BaseCounts</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">Observation</span><span class="o">&gt;</span><span class="p">)</span><span class="o">&gt;</span>
+</code></pre></div>
+<p><strong>Co-designed for both scales (per the maintainer's "also genome-wide/ACCESS-<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>").</strong> The
+<code>observations_path</code> param unifies the in-memory and at-scale paths in <strong>one</strong> function/core: with no
+path, observations return over FFI (fine for a few loci); with a path, the core writes Parquet
+directly (mirroring <code>parquet_writer.rs</code>/<code>write_fsd_parquet</code>) so 10⁷ rows <strong>never cross the FFI
+boundary</strong> — the exact cliff <code>write_fsd_parquet</code> avoids. This is not a separate <code>write_obs_parquet</code>
+(that would take the obs <em>back</em> through FFI, defeating the purpose); the write happens inside the
+Rust core. Per-bin streaming into the Parquet writer (vs. collect-then-write) is a later memory
+optimization, not required for v1.</p>
+<p>Why: a pyo3 fn has <strong>one</strong> static return type, so widening <code>count_bam_binned</code> to a tuple breaks
+<strong>all</strong> callers <em>unconditionally</em> (the <code>emit=false</code> default can't protect the return) — verified
+sites: <code>pipeline.py:465</code> (<code>zip(valid_indices, counts_list)</code>), <code>pipeline.py:757</code>
+(<code>snp_counts[offset]</code>), parity harness <code>helpers.py:165</code>, <code>test_pipeline_v2.py:123</code>, ~10 parity
+fixtures, <code>_rs.pyi:193/225</code>. A <strong>new pyfunction</strong> keeps the existing return byte-identical and
+matches house style (<code>count_bam</code>, <code>count_bam_binned</code>, <code>write_fsd_parquet</code> are already separate
+pyfunctions, <code>lib.rs:16-20</code>). <code>Observation</code> is a <strong>pyclass</strong> (not a bare tuple/<code>u8</code>) so fields can
+be added without an arity break.</p>
+<p><strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> surfacing — CORRECTED.</strong> An earlier revision argued for <code>_rs</code>-layer only, citing
+<code>write_fsd_parquet</code> as "an <code>_rs</code> export called post-count, not a <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> concept". <strong>That was
+backwards</strong>: <code>write_fsd_parquet</code> <em>is</em> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>-reachable — <code>--mfsd-parquet</code> (<code>cli.py</code>) →
+<code>OutputConfig.mfsd_parquet</code> → <code>pipeline.py</code> invokes the native writer. The established gbcms
+pattern for a Rust-written Parquet side-file is exactly <strong><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag → OutputConfig → pipeline calls
+the writer post-count</strong>, and observations now follow it (<code>--observations-parquet</code> on <code>dna</code> and
+<code>rna</code>). The consequence of the earlier position was concrete: <strong>every external consumer
+(Nextflow, ACCESS-Pipeline, CWL) shells to the <code>gbcms</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> in a container and never touches the
+Python API</strong>, so the at-scale Parquet path would have been unreachable by exactly the users it was
+built for. The <em>record type</em> stays <code>_rs</code>-internal — consumers get <code>gbcms.observe_molecules</code> — only
+the file-producing flag is surfaced.
+Add a <strong>signature-parity test</strong> so the two ~32-param wrappers can't drift.</p>
+<h3 id="3a-public-wrapper-ruled-keep-_rs-internal-expose-one-narrow-supported-api">3a. Public wrapper — RULED: keep <code>_rs</code> internal, expose one narrow supported API<a class="headerlink" href="#3a-public-wrapper-ruled-keep-_rs-internal-expose-one-narrow-supported-api" title="Permanent link">¶</a></h3>
+<p><code>_rs</code> stays <strong>internal</strong> (88-field <code>BaseCounts</code>, 35-param <code>count_bam_binned</code> — a surface nobody
+should promise to freeze). Consumers get one small, supported entry point instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># src/gbcms/observations.py — re-exported in gbcms.__all__</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">observe_molecules</span><span class="p">(</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">bam</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">variants</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Variant</span><span class="p">],</span>           <span class="c1"># already-public gbcms.Variant</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">config</span><span class="p">:</span> <span class="n">GbcmsDnaConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># already-public config; defaults when None</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">observations_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>   <span class="c1"># None → in-memory; path → Parquet</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ObservationResult</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">ObservationResult</span><span class="p">:</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">observations</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Observation</span><span class="p">]</span>   <span class="c1"># empty when streamed to Parquet</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span>                 <span class="c1"># where written, if any</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">n_rows</span><span class="p">:</span> <span class="nb">int</span>                       <span class="c1"># always the true row count</span>
+</code></pre></div>
+<p><strong>Observations only — deliberately no counts.</strong> Counts already have a public path (<code>Pipeline</code>), and
+<code>BaseCounts</code> is precisely the 88-field surface we want to keep internal. Consistency does not require
+one <em>invocation</em>, only one <em>engine</em>: gbcms is deterministic, so <code>Pipeline</code> counts and these
+observations agree by construction. It also matches the consumer's model — mulligan consumes <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>/<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>
+from its input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (ADR-0005) and needs only the per-molecule calls.</p>
+<p><strong>Total public commitment:</strong> one function (4 params) + <code>Observation</code> (4 fields) + <code>ObservationResult</code>
+(3 fields), reusing the already-public <code>Variant</code> / <code>GbcmsDnaConfig</code>. Small enough to actually keep
+stable — which is the point of the ruling. Adding a field to <code>Observation</code> later (e.g. a <code>tier</code> from
+fgbio <code>aD</code>/<code>bD</code>) stays non-breaking under attribute access.
+<code>_rs.count_bam_binned_observations</code> remains the internal implementation the wrapper delegates to;
+state in CONTRIBUTING that <strong><code>gbcms._rs</code> is internal and not covered by SemVer</strong>.</p>
+<h2 id="4-consequences-to-existing-workflows">4. Consequences to existing workflows<a class="headerlink" href="#4-consequences-to-existing-workflows" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Option C (new fn)</th>
+<th>v1 draft (tuple)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pipeline.py:465/:757</code></td>
+<td>none</td>
+<td><strong>breaks</strong></td>
+</tr>
+<tr>
+<td>Parity harness + ~10 fixtures</td>
+<td>none</td>
+<td><strong>breaks all</strong></td>
+</tr>
+<tr>
+<td><code>_rs.pyi</code> stub</td>
+<td>+1 additive</td>
+<td>forced edit + mypy break</td>
+</tr>
+<tr>
+<td>External MSK (ACCESS-Pipeline, cwl, nextflow)</td>
+<td><strong>none</strong> — all shell to the <code>gbcms</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> in container <code>ghcr.io/msk-access/gbcms:6.0.0</code>; none touch <code>_rs</code></td>
+<td><strong>breaks</strong> direct-<code>_rs</code> callers</td>
+</tr>
+<tr>
+<td>Legacy <code>count_single_variant</code> oracle</td>
+<td>untouched, non-emitting</td>
+<td>untouched</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Blast radius under Option C ≈ zero.</strong> MINOR bump (6.1.0), <code>[Unreleased] → Added</code>.</p>
+<h2 id="5-parity-determinism-the-load-bearing-part">5. Parity &amp; determinism — the load-bearing part<a class="headerlink" href="#5-parity-determinism-the-load-bearing-part" title="Permanent link">¶</a></h2>
+<p><strong>"Parity green" is necessary-not-sufficient:</strong> the suite compares only <code>BaseCounts</code> fields
+(<code>helpers.py</code>), so observations are invisible to it. Three holes it cannot see:</p>
+<ol>
+<li><strong>Decomposed double-emit (most dangerous).</strong> <code>count_variant_from_cache</code> runs <strong>twice</strong> per
+   decomposed variant (<code>engine.rs:1084</code> original, <code>~1094</code> twin), arbitrated at <code>~1105</code>. Both run
+   the <code>1706</code> loop → emitting there pushes two contradictory allele sets per molecule (incl. the
+   <em>losing</em> form); counts keep only the winner, so <strong>parity stays green while the export is
+   corrupt.</strong> → Emit into a returned per-call <code>Vec</code>; <code>count_bin_shared</code> keeps only the <strong>winning</strong>
+   invocation's observations at arbitration.</li>
+<li><strong>Threading nondeterminism.</strong> Order varies from the cross-bin <code>try_reduce</code> merge (<code>engine.rs:816</code>,
+   work-stealing) and <code>HashMap::iter</code> (<code>RandomState</code>) at <code>1706</code>. The hash <em>value</em> is deterministic
+   (<code>DefaultHasher</code>, <code>fragment.rs:277</code>); <em>order</em> is not; counts are order-invariant so parity never
+   flags it. → <strong>Stable <code>sort_by_key(|o| (variant_index, molecule_hash))</code></strong> after merge.</li>
+<li><strong>RNA transcript loop is the wrong site — but RNA-mode runs are still covered.</strong>
+   <code>count_per_transcript</code> (<code>engine.rs:2411</code>) resolves per-transcript <code>tx_fragments</code> at <code>~2567</code> → K
+   duplicate-key rows per molecule; it is also a <em>reporting</em> path (returns formatted
+   <code>"ENST…:AD,RD,DP"</code> strings, not data). The <code>1706</code> path <strong>already runs in RNA mode</strong>.
+   → <strong>Emit only from <code>1706</code>.</strong> Consequence: <strong>RNA-mode observations work in PR-1</strong> — same record,
+   keyed by molecule, which is what RNA-read phasing needs (spliced reads co-locate loci that are far
+   apart genomically). Only <strong>isoform-resolved</strong> export is deferred (key <code>(variant, transcript,
+   molecule)</code>, which the flat record cannot represent) — that answers <em>which isoform</em> a molecule
+   supports, a different question from phasing.</li>
+</ol>
+<p><strong>Concurrency shape:</strong> the v1 <code>Option&lt;&amp;mut Vec&gt;</code> sink through the rayon <code>par_iter</code> (<code>engine.rs:748</code>)
+is <strong>not implementable</strong> (shared <code>&amp;mut</code> can't cross the closure; a <code>Mutex</code> serializes hot bins). Use
+a <strong>per-bin owned <code>Vec&lt;Observation&gt;</code></strong> carried alongside the existing <code>Vec&lt;(usize, BaseCounts)&gt;</code>
+(<code>count_bin_shared</code>, <code>engine.rs:970</code>) and merged in the same <code>try_reduce</code>.</p>
+<p><strong>No independent oracle → the invariant test is the only guard, and must be fragment-level:</strong></p>
+<blockquote>
+<p>per variant: <code>#obs(Alt)==counts.adf</code> ∧ <code>#obs(Ref)==counts.rdf</code> ∧ <code>len(obs)==counts.dpf</code>.</p>
+</blockquote>
+<p>Read-level (<code>ad/rd/dp</code>) would spuriously fail — a read dropped by the multi-allelic sibling guard
+still carries REF into the fragment (<code>engine.rs:1542</code>, before the <code>continue</code>), so it counts in <code>rdf</code>
+and emits <code>Ref</code>. <strong>Tests:</strong> (1) fragment-level <code>adf/rdf/dpf</code>↔obs invariant; (2) decomposed case;
+(3) multi-allelic sibling case; (4) determinism (two runs → identical sorted Vec); (5) flag-off
+regression (<code>BaseCounts</code> frozen); (6) all obs comparisons order-insensitive; (7) signature-parity.</p>
+<h2 id="5a-validation-on-real-data-post-implementation">5a. Validation on real data (post-implementation)<a class="headerlink" href="#5a-validation-on-real-data-post-implementation" title="Permanent link">¶</a></h2>
+<p>Run against real MSK-ACCESS v2 <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> (GRCh37) and a <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> RNA <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> (GRCh38), on sites
+discovered from the BAMs themselves. Statistics only — no identifiers or sequence.</p>
+<table>
+<thead>
+<tr>
+<th>check</th>
+<th>DNA (ACCESS v2)</th>
+<th>RNA (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fragment-level invariant (<code>#ALT==adf</code>, <code>#REF==rdf</code>, <code>len==dpf</code>)</td>
+<td><strong>0 failures / 39,561 rows</strong> over 40 variants</td>
+<td><strong>0 failures / 3,274 rows</strong></td>
+</tr>
+<tr>
+<td>determinism (6 runs × threads 1/4/8)</td>
+<td>identical, sorted, unique keys</td>
+<td>identical</td>
+</tr>
+<tr>
+<td>counts vs <code>count_bam_binned</code></td>
+<td>identical</td>
+<td>identical</td>
+</tr>
+<tr>
+<td>cross-locus molecule linking</td>
+<td>7,607 / 18,050 molecules at &gt;1 variant</td>
+<td>463 / 487</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Answers to the two narrowing questions raised in review</strong> — measured, not argued:</p>
+<ul>
+<li><strong><code>mode</code> (and RNA annotation) are irrelevant to the export.</strong> On the <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>,
+  <code>mode="dna"</code>, <code>mode="rna"</code>, and <code>mode="rna"</code> <strong>with the real 1.5 GB GRCh38.111 GTF loaded</strong>
+  (1.65 M exons, annotation active) all produced <strong>byte-identical</strong> observations — same rows,
+  same molecule hashes, same alleles, same qualities. RNA-specific work (ASJD, per-transcript
+  counts) lands in RNA <em>counts</em>, not in the per-fragment resolution the export reads. So the
+  wrapper not forwarding <code>mode</code>/<code>gtf_path</code> costs the export nothing.</li>
+<li><strong><code>sibling_variants</code> and <code>alignment_backend</code> did not change the export</strong> on real SNVs
+  (15,686 rows, identical allele mix for sw vs pairhmm, and with vs without siblings) — nor on
+  real deletions. The backend is forwarded anyway (the config default is <code>pairhmm</code> while the
+  Rust default is <code>sw</code>, so not forwarding it would have made the <em>same config object</em> count
+  differently here than through <code>Pipeline</code>).</li>
+<li><strong>Normalization measurably matters for indels.</strong> On real deletion sites the public wrapper
+  (normalize + decompose) recovered <strong>13 ALT molecules vs 11</strong> without it, and the
+  un-normalized path logged <code>check_deletion: ref_context is None … cannot validate deleted
+  bases</code>. This is the defect the first implementation shipped with.</li>
+<li><strong><code>N</code> rows appear only below the base-quality gate.</strong> At the default <code>min_baseq=20</code>: 0 N /
+  300 OTHER. At <code>min_baseq=0</code>: <strong>202 N / 97 OTHER</strong> — the same molecules, reclassified. N bases
+  carry low quality, so they are filtered before reaching fragment evidence unless the gate is
+  relaxed. Worth documenting: the N/OTHER split is real but conditional on <code>min_baseq</code>.</li>
+</ul>
+<p><strong>End-to-end cross-locus use.</strong> Linking molecules by <code>molecule_hash</code> across two nearby real
+variants and weighting each by its base quality yields a usable phase statistic — e.g. a pair
+38 bp apart with 256/402 molecules spanning both loci. Note that interpreting <em>ALT+REF</em> is the
+caller's job, not gbcms's: against a homozygous background every molecule reads ALT+REF, which
+is not "trans" in any meaningful sense. The engine reports what each molecule showed; what it
+means is the consumer's problem — exactly the seam this proposal preserves.</p>
+<h2 id="6-performance-memory">6. Performance &amp; memory<a class="headerlink" href="#6-performance-memory" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>Flag-off: zero</strong> (mirror the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> gate <code>Vec::with_capacity(0)</code> at <code>engine.rs:1700</code>).</li>
+<li>Memory ≈ Σ per-variant deduped fragment count (the <code>1706</code> map), <strong>not</strong> <code>#frags × #variants</code>.</li>
+<li>Targeted phasing (~2 loci): ~<strong>128 KB</strong> → in-memory return is ideal.</li>
+<li>ACCESS panel <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>: ~10⁶–10⁷ obs ≈ <strong>30–320 MB</strong>; genome-wide ≈ <strong>~160 MB</strong>, ×Nextflow fan-out.</li>
+<li><strong>The real cliff is <abbr title="Python-Rust interop library for building native Python modules">PyO3</abbr> materialization</strong> (10⁷ PyObjects, doubled peak RSS) — exactly what
+  <code>write_fsd_parquet</code> was built to avoid. Because the maintainer wants the <strong>genome-wide/ACCESS-<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></strong>
+  path too, the <code>observations_path</code> param (§3) is <strong>co-designed into v1</strong>: no path → in-memory
+  (targeted phasing); path → Parquet written from Rust (no FFI crossing). One function serves both.</li>
+</ul>
+<h2 id="7-alternatives">7. Alternatives<a class="headerlink" href="#7-alternatives" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Option</th>
+<th>Compat</th>
+<th>Parity</th>
+<th>Rayon-safe</th>
+<th>Seam</th>
+<th>Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td>flag + tuple return (v1)</td>
+<td>❌ breaks all</td>
+<td>fixtures break</td>
+<td>sink not impl.</td>
+<td>ok</td>
+<td><strong>reject</strong></td>
+</tr>
+<tr>
+<td>B</td>
+<td><code>CountResult</code> pyclass, one entry</td>
+<td>❌ same return break</td>
+<td>fixtures break</td>
+<td>ok</td>
+<td>ok</td>
+<td>reject now</td>
+</tr>
+<tr>
+<td><strong>C</strong></td>
+<td><strong>new fn + shared core</strong></td>
+<td>✅ byte-identical</td>
+<td>green by construction</td>
+<td>✅ per-bin Vec</td>
+<td>✅ <code>_rs</code>-only</td>
+<td><strong>PICK</strong></td>
+</tr>
+<tr>
+<td>D</td>
+<td>Parquet sink (<code>observations_path</code>)</td>
+<td>✅ additive</td>
+<td>green</td>
+<td>✅ serial</td>
+<td>ok</td>
+<td><strong>folded into C</strong> (at-scale mode)</td>
+</tr>
+<tr>
+<td>E</td>
+<td>consumer keeps own htslib pass</td>
+<td>✅ no change</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>✅</td>
+<td>reject — calls <strong>drift</strong> from counts (§1)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="8-plan-open-decisions">8. Plan &amp; open decisions<a class="headerlink" href="#8-plan-open-decisions" title="Permanent link">¶</a></h2>
+<p><strong>PR-1 (in-memory return; covers DNA <em>and</em> RNA mode):</strong> refactor body into
+<code>count_bam_binned_core(emit_obs, obs_sink)</code>; add <code>Observation</code> pyclass + <code>.pyi</code> + Python <code>IntEnum</code>;
+emit at <code>1706</code>, keep winning decomposed set at <code>~1105</code>, per-bin Vec in <code>try_reduce</code>, stable sort; add
+<code>count_bam_binned_observations</code> (with an inert <code>observations_path=None</code>) in <code>lib.rs</code>; <strong>add the
+public wrapper <code>gbcms.observe_molecules</code> + <code>ObservationResult</code> (§3a), re-export in <code>__all__</code>, and
+document in CONTRIBUTING that <code>gbcms._rs</code> is internal / not SemVer-covered</strong>; document
+<code>molecule_hash</code> + by-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> tier + the ACCESS <code>filter_improper_pair</code> note; tests 1–7 <strong>plus a wrapper
+smoke test</strong>; CHANGELOG; MINOR bump.
+<strong>PR-2 (DONE — Parquet sink active):</strong> wire <code>observations_path=Some(...)</code> to the Rust-side Parquet
+writer (mirroring <code>parquet_writer.rs</code>) for the genome-wide/ACCESS cliff — additive, the signature is
+already in place from PR-1.
+<strong>PR-3 (deferred, separate design):</strong> <strong>isoform-resolved</strong> RNA export
+(<code>(variant, transcript, molecule)</code> key) — answers <em>which isoform a molecule supports</em>.
+<strong>Corrected rationale:</strong> an earlier note justified deferring this with "real-data testing showed
+<code>mode</code>/GTF do not change the export". That measurement is true but does <strong>not</strong> support the
+conclusion — the export emits from the transcript-agnostic <code>1706</code> loop, so a GTF <em>cannot</em> change
+it, which shows the flat record is <strong>blind to isoform</strong>, not that isoform resolution is
+unnecessary. The honest reason to defer: <strong>no consumer needs it yet</strong> (the interpretation layer's
+RNA work — splice-restoring reversions, expression — is a later roadmap milestone), and the record
+shape should follow those requirements rather than be guessed now.</p>
+<p><strong>Resolved by the maintainer:</strong> <em>tier</em> = by-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, <strong>conditional on a tier-homogeneous <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> (§2 ⚠);
+<em>workload</em> = both scales → Parquet path co-designed into the signature now (§3); RNA-mode covered by
+PR-1, isoform-resolved deferred (§5.3).</p>
+<p><strong>Also resolved:</strong> <em>which <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>(s)</em> — <strong>one invocation per tier-homogeneous <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> (standard = 1;
+<abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> = duplex + simplex, disjoint, unioned). <strong>No gbcms tier feature is needed, now or later</strong> (§2).
+With that settled, <strong>nothing further changes gbcms scope</strong> — the remaining items are shape choices.</p>
+<p><strong>All open decisions are now RULED — the design is complete.</strong></p>
+<ol>
+<li><strong>Is <code>gbcms._rs</code> part of the SemVer public contract?</strong> → <strong>RULED: no — keep <code>_rs</code> internal AND add
+   a narrow public wrapper</strong> (<code>gbcms.observe_molecules</code>, §3a). <code>_rs</code> is documented as internal in
+   CONTRIBUTING and stays free to evolve; consumers depend on a 4-param function + two small records.
+   Best of both: a supported surface for the consumer, no frozen 88-field/35-param commitment.</li>
+<li><strong>Emit N/Other rows?</strong> → <strong>Emit.</strong> <strong>Measured on real ACCESS v1 <em>and</em> v2 BAMs</strong> (exact
+   classification vs the b37 reference, <code>ignore_orphans=False</code> — see the ⚠ below):</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></th>
+<th>REF</th>
+<th>N</th>
+<th>non-REF</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>v2 all-unique (phasing input)</td>
+<td>98.72%</td>
+<td><strong>0.33%</strong></td>
+<td>0.96%</td>
+</tr>
+<tr>
+<td>v2 duplex</td>
+<td>99.60%</td>
+<td>0.40%</td>
+<td>0.001%</td>
+</tr>
+<tr>
+<td>v1 all-unique</td>
+<td>98.71%</td>
+<td><strong>1.13%</strong></td>
+<td>0.16%</td>
+</tr>
+<tr>
+<td>v1 duplex</td>
+<td>99.97%</td>
+<td>0.03%</td>
+<td>0.007%</td>
+</tr>
+<tr>
+<td>v2 / v1 standard (uncollapsed)</td>
+<td>99.67 / 99.81%</td>
+<td><strong>0.003 / 0.002%</strong></td>
+<td>0.33 / 0.19%</td>
+</tr>
+</tbody>
+</table>
+<p>Most "non-REF" is <em>true ALT</em> (germline/somatic), which the export labels <strong>ALT</strong>, not Other. So
+   <strong>N/Other rows are ≈0.03–1.1% of the total</strong> across every platform — dropping them saves ~1% at
+   most, nowhere near enough to trade away an invariant. Two corroborating findings: N is ~<strong>0.002%</strong>
+   in uncollapsed BAMs vs <strong>0.03–1.1%</strong> in consensus BAMs, i.e. N marks <strong>strand-discordant</strong>
+   molecules and those rows carry real QC information; and non-REF runs <strong>0.001% (v2 duplex) vs
+   0.33% (standard)</strong>, a ~300× gap that independently confirms the ε hierarchy.</p>
+<blockquote>
+<p><strong>Note (measured): ACCESS v1 BAMs are 100% paired but 0.0% <code>PROPER_PAIR</code></strong> (all-unique, duplex
+<em>and</em> standard; v2 is 93.7–100%). Any proper-pair filter therefore discards <strong>100% of v1 reads</strong>
+silently. <strong>gbcms already handles this correctly</strong> — <code>filter_improper_pair</code> defaults to
+<strong><code>False</code></strong> in both the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>cli.py:280</code>, <code>:673</code>) and the config model (<code>models/core.py:94</code>),
+so out-of-the-box runs are safe; it is caller-controlled and simply should not be enabled for
+ACCESS. No gbcms change needed. (Worth stating in the export's docs anyway: the same trap in
+pysam — whose <code>pileup(ignore_orphans=True)</code> default is the <em>opposite</em> choice — produced an empty
+first measurement here, and the consumer's own read pass must likewise never filter on it.) (ii) The <code>len==dpf</code> invariant is <strong>load-bearing</strong> (no second implementation cross-checks
+   the export). (iii) <strong>Span breaks without them</strong>: a molecule that is Ref at locus 1 and N at locus 2
+   would emit one row and be indistinguishable from one that never spanned, destroying the
+   "looked-and-saw-nothing" vs "couldn't-look" distinction (ADR-0006). If memory bites on the Parquet
+   path, add an opt-in <code>min_informative</code> filter <em>then</em>.
+3. <strong>Join key?</strong> → <strong>Both, split by path.</strong> In-memory: <strong><code>variant_index</code></strong> — compact, unambiguous
+   within the call, and already a first-class internal concept (the <code>all_counts[vi]</code> scatter tracks
+   original index through binning). Parquet: <strong>additionally echo <code>(chrom,pos,ref,alt)</code></strong> so a
+   persisted file is self-describing once it outlives the call; columnar dictionary-encoding makes
+   those columns nearly free on disk.</p>
+</blockquote>
+<p><strong>Criticality note:</strong> allele-specific CN is unavailable for <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> (FACETS is IMPACT-only; the <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>
+CNV caller is coverage/loess with no <code>lcn</code> — verified), so <strong>LOH-based phasing cannot run there</strong>.
+For the primary <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> workload this export is therefore the <em>only</em> phasing evidence, not a
+consistency bonus — which is the argument for doing it properly (the fragment-level invariant test)
+rather than cheaply.</p>
+<p><strong>Verify before coding:</strong> (a) <code>count_variant_from_cache</code> returning <code>(BaseCounts, Vec&lt;Observation&gt;)</code>
+threads cleanly through both decomposed call sites + arbitration; (b) <code>best_*_qual</code>/orientation in
+scope at <code>1706</code>; (c) no existing determinism test asserts on returned-data order beyond <code>BaseCounts</code>.</p>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 5, 2026 21:51:13 UTC"><span class="timeago" datetime="2026-08-05T21:51:13+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 5, 2026 21:51:13 UTC">2026-08-05</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 3, 2026 17:35:08 UTC"><span class="timeago" datetime="2026-08-03T17:35:08+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 3, 2026 17:35:08 UTC">2026-08-03</span>
+  </span>
+
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden="">
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Developed by <a href="https://github.com/rhshah">Ronak H Shah</a> @ 
+<a href="https://www.mskcc.org">MSKCC</a> | 
+Built with <a href="https://antigravity.google/">Antigravity</a> | 
+<a href="https://github.com/msk-access/gbcms/blob/main/LICENSE">AGPL-3.0</a>
+
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/msk-access/gbcms" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.path", "toc.follow", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/print-site.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+        <script src="../../assets/javascripts/panzoom.min.js"></script>
+      
+        <script src="../../assets/javascripts/zoompan.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
