@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -1278,6 +1278,34 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#min_mapq-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        min_mapq semantics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="min_mapq semantics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-min_mapq-is-a-minimum-but-best_qual-is-a-maximum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why min_mapq is a minimum but best_qual is a maximum
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#molecule_hash-semantics" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1301,6 +1329,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Python API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#alignment-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alignment backend
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1828,6 +1873,34 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#min_mapq-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        min_mapq semantics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="min_mapq semantics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-min_mapq-is-a-minimum-but-best_qual-is-a-maximum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why min_mapq is a minimum but best_qual is a maximum
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#molecule_hash-semantics" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1851,6 +1924,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Python API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#alignment-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alignment backend
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2070,6 +2160,11 @@ once written.</p>
 <td style="text-align: left;"><code>uint8</code></td>
 <td style="text-align: left;">Best base quality supporting the called allele; <code>0</code> for N/OTHER</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>min_mapq</code></td>
+<td style="text-align: left;"><code>uint8</code></td>
+<td style="text-align: left;">Worst <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> among the reads backing this molecule; <code>255</code> = unavailable</td>
+</tr>
 </tbody>
 </table>
 <p>Rows are sorted by <code>(variant_index, molecule_hash)</code>, so output is byte-reproducible run to run
@@ -2107,6 +2202,56 @@ despite parallel processing. Compression is Zstandard level 1.</p>
 evidence. Measured on real <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>: at the default <code>--min-baseq 20</code> a locus set yielded
 0 N / 300 OTHER rows; at <code>--min-baseq 0</code> the same molecules gave 202 N / 97 OTHER.</p>
 </div>
+<h3 id="min_mapq-semantics"><code>min_mapq</code> semantics<a class="headerlink" href="#min_mapq-semantics" title="Permanent link">¶</a></h3>
+<p>The <strong>minimum</strong> <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> across the reads that contributed evidence to the molecule — not the
+best, and not an average. A molecule is only as trustworthy as its least confidently placed
+read, so a consumer weighting evidence by error probability needs the pessimistic bound.
+For a paired fragment this means the worse mate's value: one cleanly-placed mate cannot
+launder an ambiguously-placed one.</p>
+<p>Two values are easy to confuse and mean opposite things:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Value</th>
+<th style="text-align: left;">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>0</code></td>
+<td style="text-align: left;">A <strong>real</strong> <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> — the read mapped ambiguously (multi-mapping). Trust it least.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>255</code></td>
+<td style="text-align: left;"><strong>Unavailable</strong> (SAM spec). No mapping quality was recorded; not a confidence claim.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Why this is exported rather than inferred from <code>--min-mapq</code></p>
+<p>The filter threshold <em>bounds</em> mapping confidence without measuring it. Assuming every
+surviving molecule sat at the threshold would charge them all the same error — swamping
+the base-quality term and flattening precisely the per-molecule differences that make a
+weighted statistic worth computing. Reads that clear a <code>--min-mapq 20</code> gate are mostly
+<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 60; treating them as 20 discards that.</p>
+</div>
+<p>Reads below <code>--min-mapq</code> never reach fragment evidence, so this value is always at or above
+the threshold you ran with.</p>
+<h4 id="why-min_mapq-is-a-minimum-but-best_qual-is-a-maximum">Why <code>min_mapq</code> is a minimum but <code>best_qual</code> is a maximum<a class="headerlink" href="#why-min_mapq-is-a-minimum-but-best_qual-is-a-maximum" title="Permanent link">¶</a></h4>
+<p>The two aggregate in opposite directions on purpose — they describe different failure modes.</p>
+<p><strong><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> asks whether the read is in the right place.</strong> If <em>any</em> read backing the molecule is
+badly placed, the molecule's locus assignment is suspect, so the weakest link governs.</p>
+<p><strong>Base quality asks how strong the evidence for the called allele is.</strong> Reads that agree
+reinforce each other: if two reads both call ALT at Q40 and Q20, the chance both are wrong is
+roughly the product of their error rates — <em>better</em> than either alone. Taking the maximum
+therefore <strong>understates</strong> the combined evidence rather than flattering it.</p>
+<p>Reads that <em>disagree</em> are not handled by either number: fragment resolution arbitrates them,
+and a fragment with no consensus is reported as <code>OTHER</code> with <code>best_qual = 0</code>. So the case a
+"worst base quality" column would be for is already visible in the <code>allele</code> field.</p>
+<p>There is deliberately no <code>min_baseq</code> column for the same reason there is a <code>min_mapq</code> one:
+bases below <code>--min-baseq</code> are filtered before reaching fragment evidence, so such a column
+would mostly re-report the threshold you passed — whereas <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> genuinely varies above its
+threshold and is worth measuring.</p>
 <h3 id="molecule_hash-semantics"><code>molecule_hash</code> semantics<a class="headerlink" href="#molecule_hash-semantics" title="Permanent link">¶</a></h3>
 <p><code>molecule_hash</code> is <code>hash_molecule(qname, umi)</code> and is comparable <strong>only within a single run</strong>
 using one <code>--umi-tag</code> and library type. Two caveats:</p>
@@ -2127,7 +2272,7 @@ using one <code>--umi-tag</code> and library type. Two caveats:</p>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">result</span> <span class="o">=</span> <span class="n">observe_molecules</span><span class="p">(</span><span class="s2">"sample.bam"</span><span class="p">,</span> <span class="n">variants</span><span class="p">,</span> <span class="n">reference_fasta</span><span class="o">=</span><span class="s2">"ref.fa"</span><span class="p">)</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="k">for</span> <span class="n">obs</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">observations</span><span class="p">:</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">variant_index</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">molecule_hash</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">allele</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">best_qual</span><span class="p">)</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">variant_index</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">molecule_hash</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">allele</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">best_qual</span><span class="p">,</span> <span class="n">obs</span><span class="o">.</span><span class="n">min_mapq</span><span class="p">)</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2178,6 +2323,18 @@ ACCESS deletions: 13 ALT molecules with a reference, 11 without.</p>
 <p><code>observe_molecules</code> is the supported surface. <code>gbcms._rs</code> is an implementation detail and
 is <strong>not covered by SemVer</strong> — see <a href="../../development/contributing/">Contributing</a>.</p>
 </div>
+<h3 id="alignment-backend">Alignment backend<a class="headerlink" href="#alignment-backend" title="Permanent link">¶</a></h3>
+<p>Observations are emitted <strong>after</strong> classification, so they inherit whatever the counting
+backend decided — the export has no opinion of its own. Rows always reconcile with the counts
+beside them regardless of backend, but the underlying calls can differ between <code>sw</code> and
+<code>pairhmm</code> on ambiguous indels (measured: 5 of 104 molecule calls on real ACCESS deletions).
+Compare observation sets only when they were produced under the same backend.</p>
+<p><code>pairhmm</code> is the default at <strong>every</strong> layer — the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr>, <code>Pipeline</code>, <code>observe_molecules</code>, and
+the <code>gbcms._rs</code> entry points alike. An unrecognized backend token raises <code>ValueError</code> rather
+than quietly falling back, so a typo cannot silently score your data with the other
+classifier.</p>
+<p><abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> is <strong>not</strong> a third choice: it is an edit-distance triage step in front of <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> that
+resolves clear-cut reads directly and defers only ambiguous ones to the full model.</p>
 <hr>
 <h2 id="scale">Scale<a class="headerlink" href="#scale" title="Permanent link">¶</a></h2>
 <p>Two paths, one capability:</p>
@@ -2263,7 +2420,7 @@ are safe; simply do not turn it on for such data.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 6, 2026 01:55:49 UTC"><span class="timeago" datetime="2026-08-06T01:55:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 6, 2026 01:55:49 UTC">2026-08-06</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 6, 2026 20:31:37 UTC"><span class="timeago" datetime="2026-08-06T20:31:37+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 6, 2026 20:31:37 UTC">2026-08-06</span>
   </span>
 
     

@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -1219,7 +1219,7 @@
 </ul>
 <hr>
 <h2 id="version-locations">Version Locations<a class="headerlink" href="#version-locations" title="Permanent link">¶</a></h2>
-<p>All these files must be updated with the new version (10 references total):</p>
+<p>All these files must be updated with the new version (11 references total):</p>
 <table>
 <thead>
 <tr>
@@ -1243,6 +1243,11 @@
 <td style="text-align: left;"><code>rust/Cargo.toml</code></td>
 <td style="text-align: left;">3</td>
 <td style="text-align: left;"><code>version = "X.Y.Z"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rust/Cargo.lock</code></td>
+<td style="text-align: left;"><code>gbcms_rs</code> entry</td>
+<td style="text-align: left;"><code>version = "X.Y.Z"</code> — <strong>not edited by hand</strong>; run <code>cargo check</code> after bumping <code>Cargo.toml</code> and commit the result</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>nextflow/modules/local/gbcms/dna/main.nf</code></td>
@@ -1293,9 +1298,15 @@
 <div class="admonition tip">
 <p class="admonition-title">Verify all references</p>
 <p>After updating, run this to ensure no stale versions remain:
-</p><div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">"OLD_VERSION"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.py"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.toml"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.nf"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.md"</span><span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">".git/"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">"site/"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">"CHANGELOG"</span>
+</p><div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">"OLD_VERSION"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.py"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.toml"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.nf"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.md"</span><span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a><span class="w">  </span>--include<span class="o">=</span><span class="s2">"*.config"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"Cargo.lock"</span><span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">".git/"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">"site/"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">"CHANGELOG"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">"docs/proposals/"</span>
 </code></pre></div>
+<p>The <code>*.config</code> and <code>Cargo.lock</code> patterns matter: <code>nextflow/nextflow.config</code> and
+<code>rust/Cargo.lock</code> both pin the version but match none of the extension globs above them,
+so an earlier form of this command reported "clean" while two files were still stale.
+<code>docs/proposals/</code> is excluded because proposal documents cite the version they <em>shipped
+in</em> — those references are history and must not be bumped.</p>
 </div>
 <hr>
 <h2 id="release-workflow">Release Workflow<a class="headerlink" href="#release-workflow" title="Permanent link">¶</a></h2>
@@ -1322,7 +1333,7 @@
 <pre class="mermaid"><code>gitGraph LR:
    commit id: "ongoing develop work"
    branch release/X.Y.Z
-   commit id: "bump versions (5 files)"
+   commit id: "bump versions (11 refs)"
    commit id: "update CHANGELOG.md"
    checkout main
    merge release/X.Y.Z id: "PR merged" tag: "X.Y.Z"
@@ -1398,6 +1409,26 @@ release tag is bare (<code>5.3.0</code>, <code>5.2.0</code>, …); keep it that 
 <li>Describe changes from CHANGELOG</li>
 <li>Wait for <abbr title="Continuous Integration - Automated build and test system">CI</abbr> to pass</li>
 </ul>
+<div class="admonition warning">
+<p class="admonition-title">Confirm the checks actually appeared — absent is not the same as passing</p>
+<p>Opening the PR immediately after <code>git push</code> can race: GitHub occasionally fails to
+dispatch any workflow for the <code>pull_request</code> event, and the PR then shows only the
+GitBook statuses. Nothing is marked failed or pending — the checks are simply <strong>not
+there</strong>, which reads like "nothing to run" rather than "nothing ran". This happened on
+6.2.0; 6.1.0 got the full suite from the same steps, so it is intermittent, not config.</p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a>gh<span class="w"> </span>pr<span class="w"> </span>checks<span class="w"> </span>&lt;PR&gt;<span class="w">            </span><span class="c1"># expect Tests jobs + Nextflow Lint, not just GitBook</span>
+<a href="#__codelineno-6-2" id="__codelineno-6-2" name="__codelineno-6-2"></a>gh<span class="w"> </span>run<span class="w"> </span>list<span class="w"> </span>--branch<span class="w"> </span>release/X.Y.Z
+</code></pre></div>
+<p>If they are missing, re-fire rather than assuming:</p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-7-1" id="__codelineno-7-1" name="__codelineno-7-1"></a><span class="c1"># verify the exact release SHA (no PR churn, no notifications)</span>
+<a href="#__codelineno-7-2" id="__codelineno-7-2" name="__codelineno-7-2"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>test.yml<span class="w"> </span>--ref<span class="w"> </span>release/X.Y.Z
+<a href="#__codelineno-7-3" id="__codelineno-7-3" name="__codelineno-7-3"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>nextflow-lint.yml<span class="w"> </span>--ref<span class="w"> </span>release/X.Y.Z
+<a href="#__codelineno-7-4" id="__codelineno-7-4" name="__codelineno-7-4"></a>
+<a href="#__codelineno-7-5" id="__codelineno-7-5" name="__codelineno-7-5"></a><span class="c1"># or re-fire the pull_request event so checks attach to the PR itself</span>
+<a href="#__codelineno-7-6" id="__codelineno-7-6" name="__codelineno-7-6"></a>gh<span class="w"> </span>pr<span class="w"> </span>close<span class="w"> </span>&lt;PR&gt;<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>gh<span class="w"> </span>pr<span class="w"> </span>reopen<span class="w"> </span>&lt;PR&gt;
+</code></pre></div>
+<p>Pausing a beat between <code>git push</code> and PR creation makes the race far less likely.</p>
+</div>
 <h3 id="7-merge-to-main-creates-tag">7. Merge to main (creates tag)<a class="headerlink" href="#7-merge-to-main-creates-tag" title="Permanent link">¶</a></h3>
 <p>After PR approval:
 - <strong>Merge commit</strong> (do NOT squash) to <code>main</code>
@@ -1427,50 +1458,50 @@ or the Releases page will keep showing the <em>previous</em> version even though
 exists and the packages published.</p>
 </div>
 <p>Create it from the CHANGELOG section on the (already-pushed) bare tag and mark it latest:</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a><span class="c1"># Extract the [X.Y.Z] section from CHANGELOG.md into notes.md, then:</span>
-<a href="#__codelineno-6-2" id="__codelineno-6-2" name="__codelineno-6-2"></a>gh<span class="w"> </span>release<span class="w"> </span>create<span class="w"> </span>X.Y.Z<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-3" id="__codelineno-6-3" name="__codelineno-6-3"></a><span class="w">  </span>--title<span class="w"> </span><span class="s2">"X.Y.Z — &lt;short summary&gt;"</span><span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-4" id="__codelineno-6-4" name="__codelineno-6-4"></a><span class="w">  </span>--notes-file<span class="w"> </span>notes.md<span class="w"> </span><span class="se">\</span>
-<a href="#__codelineno-6-5" id="__codelineno-6-5" name="__codelineno-6-5"></a><span class="w">  </span>--latest<span class="w"> </span>--verify-tag
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-8-1" id="__codelineno-8-1" name="__codelineno-8-1"></a><span class="c1"># Extract the [X.Y.Z] section from CHANGELOG.md into notes.md, then:</span>
+<a href="#__codelineno-8-2" id="__codelineno-8-2" name="__codelineno-8-2"></a>gh<span class="w"> </span>release<span class="w"> </span>create<span class="w"> </span>X.Y.Z<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-3" id="__codelineno-8-3" name="__codelineno-8-3"></a><span class="w">  </span>--title<span class="w"> </span><span class="s2">"X.Y.Z — &lt;short summary&gt;"</span><span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-4" id="__codelineno-8-4" name="__codelineno-8-4"></a><span class="w">  </span>--notes-file<span class="w"> </span>notes.md<span class="w"> </span><span class="se">\</span>
+<a href="#__codelineno-8-5" id="__codelineno-8-5" name="__codelineno-8-5"></a><span class="w">  </span>--latest<span class="w"> </span>--verify-tag
 </code></pre></div>
 <p>Verify with <code>gh release list</code> — the new version should show <strong>Latest</strong>.</p>
 <h3 id="10-merge-main-back-to-develop">10. Merge main back to develop<a class="headerlink" href="#10-merge-main-back-to-develop" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-7-1" id="__codelineno-7-1" name="__codelineno-7-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
-<a href="#__codelineno-7-2" id="__codelineno-7-2" name="__codelineno-7-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a href="#__codelineno-7-3" id="__codelineno-7-3" name="__codelineno-7-3"></a>git<span class="w"> </span>merge<span class="w"> </span>main
-<a href="#__codelineno-7-4" id="__codelineno-7-4" name="__codelineno-7-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-9-1" id="__codelineno-9-1" name="__codelineno-9-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
+<a href="#__codelineno-9-2" id="__codelineno-9-2" name="__codelineno-9-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
+<a href="#__codelineno-9-3" id="__codelineno-9-3" name="__codelineno-9-3"></a>git<span class="w"> </span>merge<span class="w"> </span>main
+<a href="#__codelineno-9-4" id="__codelineno-9-4" name="__codelineno-9-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
 </code></pre></div>
 <h3 id="11-cleanup">11. Cleanup<a class="headerlink" href="#11-cleanup" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-8-1" id="__codelineno-8-1" name="__codelineno-8-1"></a><span class="c1"># Delete local release branch</span>
-<a href="#__codelineno-8-2" id="__codelineno-8-2" name="__codelineno-8-2"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/X.Y.Z
-<a href="#__codelineno-8-3" id="__codelineno-8-3" name="__codelineno-8-3"></a>
-<a href="#__codelineno-8-4" id="__codelineno-8-4" name="__codelineno-8-4"></a><span class="c1"># Delete remote release branch (optional)</span>
-<a href="#__codelineno-8-5" id="__codelineno-8-5" name="__codelineno-8-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/X.Y.Z
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-10-1" id="__codelineno-10-1" name="__codelineno-10-1"></a><span class="c1"># Delete local release branch</span>
+<a href="#__codelineno-10-2" id="__codelineno-10-2" name="__codelineno-10-2"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/X.Y.Z
+<a href="#__codelineno-10-3" id="__codelineno-10-3" name="__codelineno-10-3"></a>
+<a href="#__codelineno-10-4" id="__codelineno-10-4" name="__codelineno-10-4"></a><span class="c1"># Delete remote release branch (optional)</span>
+<a href="#__codelineno-10-5" id="__codelineno-10-5" name="__codelineno-10-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/X.Y.Z
 </code></pre></div>
 <hr>
 <h2 id="hotfix-workflow">Hotfix Workflow<a class="headerlink" href="#hotfix-workflow" title="Permanent link">¶</a></h2>
 <p>For critical production fixes:</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-9-1" id="__codelineno-9-1" name="__codelineno-9-1"></a><span class="c1"># Create hotfix from main</span>
-<a href="#__codelineno-9-2" id="__codelineno-9-2" name="__codelineno-9-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
-<a href="#__codelineno-9-3" id="__codelineno-9-3" name="__codelineno-9-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>hotfix/X.Y.Z
-<a href="#__codelineno-9-4" id="__codelineno-9-4" name="__codelineno-9-4"></a>
-<a href="#__codelineno-9-5" id="__codelineno-9-5" name="__codelineno-9-5"></a><span class="c1"># Fix, commit, push</span>
-<a href="#__codelineno-9-6" id="__codelineno-9-6" name="__codelineno-9-6"></a>git<span class="w"> </span>add<span class="w"> </span>-A
-<a href="#__codelineno-9-7" id="__codelineno-9-7" name="__codelineno-9-7"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix: critical issue description"</span>
-<a href="#__codelineno-9-8" id="__codelineno-9-8" name="__codelineno-9-8"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>hotfix/X.Y.Z
-<a href="#__codelineno-9-9" id="__codelineno-9-9" name="__codelineno-9-9"></a>
-<a href="#__codelineno-9-10" id="__codelineno-9-10" name="__codelineno-9-10"></a><span class="c1"># PR to main, then merge back to develop</span>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-11-1" id="__codelineno-11-1" name="__codelineno-11-1"></a><span class="c1"># Create hotfix from main</span>
+<a href="#__codelineno-11-2" id="__codelineno-11-2" name="__codelineno-11-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
+<a href="#__codelineno-11-3" id="__codelineno-11-3" name="__codelineno-11-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>hotfix/X.Y.Z
+<a href="#__codelineno-11-4" id="__codelineno-11-4" name="__codelineno-11-4"></a>
+<a href="#__codelineno-11-5" id="__codelineno-11-5" name="__codelineno-11-5"></a><span class="c1"># Fix, commit, push</span>
+<a href="#__codelineno-11-6" id="__codelineno-11-6" name="__codelineno-11-6"></a>git<span class="w"> </span>add<span class="w"> </span>-A
+<a href="#__codelineno-11-7" id="__codelineno-11-7" name="__codelineno-11-7"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix: critical issue description"</span>
+<a href="#__codelineno-11-8" id="__codelineno-11-8" name="__codelineno-11-8"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>hotfix/X.Y.Z
+<a href="#__codelineno-11-9" id="__codelineno-11-9" name="__codelineno-11-9"></a>
+<a href="#__codelineno-11-10" id="__codelineno-11-10" name="__codelineno-11-10"></a><span class="c1"># PR to main, then merge back to develop</span>
 </code></pre></div>
 <hr>
 <h2 id="automation-scripts">Automation Scripts<a class="headerlink" href="#automation-scripts" title="Permanent link">¶</a></h2>
 <h3 id="git-flow-helpersh">git-flow-helper.sh<a class="headerlink" href="#git-flow-helpersh" title="Permanent link">¶</a></h3>
 <p>Interactive helper for git-flow operations:</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-10-1" id="__codelineno-10-1" name="__codelineno-10-1"></a>./git-flow-helper.sh
-<a href="#__codelineno-10-2" id="__codelineno-10-2" name="__codelineno-10-2"></a><span class="c1"># Options:</span>
-<a href="#__codelineno-10-3" id="__codelineno-10-3" name="__codelineno-10-3"></a><span class="c1"># 1) Create feature branch</span>
-<a href="#__codelineno-10-4" id="__codelineno-10-4" name="__codelineno-10-4"></a><span class="c1"># 2) Create release branch</span>
-<a href="#__codelineno-10-5" id="__codelineno-10-5" name="__codelineno-10-5"></a><span class="c1"># 3) Show git status</span>
-<a href="#__codelineno-10-6" id="__codelineno-10-6" name="__codelineno-10-6"></a><span class="c1"># 4) Cleanup merged branches</span>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-12-1" id="__codelineno-12-1" name="__codelineno-12-1"></a>./git-flow-helper.sh
+<a href="#__codelineno-12-2" id="__codelineno-12-2" name="__codelineno-12-2"></a><span class="c1"># Options:</span>
+<a href="#__codelineno-12-3" id="__codelineno-12-3" name="__codelineno-12-3"></a><span class="c1"># 1) Create feature branch</span>
+<a href="#__codelineno-12-4" id="__codelineno-12-4" name="__codelineno-12-4"></a><span class="c1"># 2) Create release branch</span>
+<a href="#__codelineno-12-5" id="__codelineno-12-5" name="__codelineno-12-5"></a><span class="c1"># 3) Show git status</span>
+<a href="#__codelineno-12-6" id="__codelineno-12-6" name="__codelineno-12-6"></a><span class="c1"># 4) Cleanup merged branches</span>
 </code></pre></div>
 <h3 id="makefile-targets">Makefile Targets<a class="headerlink" href="#makefile-targets" title="Permanent link">¶</a></h3>
 <table>
@@ -1568,7 +1599,7 @@ exists and the packages published.</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 6, 2026 02:06:19 UTC"><span class="timeago" datetime="2026-08-06T02:06:19+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 6, 2026 02:06:19 UTC">2026-08-06</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 7, 2026 01:54:11 UTC"><span class="timeago" datetime="2026-08-07T01:54:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 7, 2026 01:54:11 UTC">2026-08-07</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
