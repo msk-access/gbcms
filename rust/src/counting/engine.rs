@@ -1614,17 +1614,26 @@ fn count_variant_from_cache(
             continue; // Read doesn't overlap variant fetch window
         }
 
-        // Supplementary/secondary alignments are not first-class fragment
-        // observations: they share a QNAME with their primary, so counting them at
-        // read level double-counts DP/RD/AD at the anchor. Skip them regardless of
-        // the user filter flags (which only govern whether such records reach the
-        // cache at all). Fragment-level counts already collapse them via the QNAME
-        // hash, and the legacy count_single_variant path applies the same skip so
-        // binned and legacy stay in parity.
-        if record.is_supplementary() || record.is_secondary() {
-            continue;
+        // Supplementary/secondary alignments share a QNAME with their primary, so they are
+        // never *first-class* read-level observations: counting one toward DP/RD/AD would
+        // report two reads where one physical read exists. That holds regardless of the
+        // filter flags, and is what the CLI documents ("secondary/supplementary never count
+        // toward read-level depth regardless").
+        //
+        // They ARE admitted to fragment evidence when the caller opts out via
+        // `filter_supplementary` / `filter_secondary` (the flags gate cache admission
+        // above). That cannot double-count: `hash_molecule` keys on QNAME, so a primary and
+        // its supplementary collapse into ONE `FragmentEvidence`. What it does fix is a
+        // locus covered *only* by a supplementary segment, which previously reported
+        // `dpf=0` — not a filtered read but a wrong answer, and the reason a molecule
+        // spanning a large deletion was invisible to cross-locus phasing.
+        //
+        // Previously an unconditional skip sat here, discarding these records before
+        // fragment evidence too, which made both flags unable to change any output at all.
+        let first_class = !(record.is_supplementary() || record.is_secondary());
+        if first_class {
+            reads_considered += 1;
         }
-        reads_considered += 1;
 
         // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
         if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness) {
@@ -1635,7 +1644,8 @@ fn count_variant_from_cache(
         // Mirrors GATK's MappingQualityZero annotation — a high MQ0 count
         // is a locus-level red flag for regions with high homology or
         // pseudogenes, even when those reads are filtered for classification.
-        if record.mapq() == 0 {
+        // Read-level, so first-class records only (see `first_class` above).
+        if first_class && record.mapq() == 0 {
             counts.mq0_count += 1;
         }
 
@@ -1714,12 +1724,17 @@ fn count_variant_from_cache(
         // ── TOTAL DEPTH: all anchor-overlapping reads count toward DP,
         // regardless of allele classification (REF, ALT, or other/ambiguous).
         // This ensures DP reflects true physical coverage at the locus.
-        counts.dp += 1;
+        // First-class records only: a supplementary segment sharing a QNAME with its
+        // primary is the same physical read, and counting both would report depth 2 where
+        // one read exists. It still reaches fragment evidence below.
         let is_reverse = record.is_reverse();
-        if is_reverse {
-            counts.dp_rev += 1;
-        } else {
-            counts.dp_fwd += 1;
+        if first_class {
+            counts.dp += 1;
+            if is_reverse {
+                counts.dp_rev += 1;
+            } else {
+                counts.dp_fwd += 1;
+            }
         }
 
         // ── FRAGMENT TRACKING: track ALL fragments for DPF.
@@ -2137,19 +2152,18 @@ fn count_single_variant(
             continue;
         }
 
-        // Supplementary/secondary alignments are not first-class fragment
-        // observations (shared QNAME → would double-count read-level DP/RD/AD). Skip
-        // them regardless of the user filter flags, mirroring count_variant_from_cache
-        // so the binned and legacy paths stay in parity.
-        if record.is_supplementary() || record.is_secondary() {
-            continue;
-        }
+        // Supplementary/secondary share a QNAME with their primary, so they never count as
+        // first-class read-level observations (DP/RD/AD) regardless of the filter flags —
+        // mirroring count_variant_from_cache so binned and legacy stay in parity. They do
+        // reach fragment evidence when the caller opts out, where the QNAME hash collapses
+        // them into the primary's fragment and no double-count is possible.
+        let first_class = !(record.is_supplementary() || record.is_secondary());
 
         // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE the MAPQ filter.
         // Mirrors GATK's MappingQualityZero annotation — a high MQ0
         // count is a locus-level red flag for regions with high homology
         // or pseudogenes, even when those reads are filtered out.
-        if record.mapq() == 0 {
+        if first_class && record.mapq() == 0 {
             counts.mq0_count += 1;
         }
 
@@ -2237,13 +2251,16 @@ fn count_single_variant(
         // ── TOTAL DEPTH: all anchor-overlapping reads count toward DP,
         // regardless of allele classification (REF, ALT, or other/ambiguous).
         // This ensures DP reflects true physical coverage at the locus.
-        counts.dp += 1;
+        // First-class records only — a supplementary segment is the same physical read as
+        // its primary, so counting both would report depth 2 where one read exists.
         let is_reverse = record.is_reverse();
-
-        if is_reverse {
-            counts.dp_rev += 1;
-        } else {
-            counts.dp_fwd += 1;
+        if first_class {
+            counts.dp += 1;
+            if is_reverse {
+                counts.dp_rev += 1;
+            } else {
+                counts.dp_fwd += 1;
+            }
         }
 
         // ── FRAGMENT TRACKING: track ALL fragments for DPF.

@@ -280,11 +280,11 @@ def dna(
     filter_duplicates: bool = typer.Option(True, help="Filter duplicate reads"),
     filter_secondary: bool = typer.Option(
         True,
-        help="Exclude secondary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+        help="Exclude secondary alignments from the read cache. They never count toward read-level depth regardless; turning this off admits them to FRAGMENT-level evidence (dpf/rdf/adf), which is what cross-locus phasing needs.",
     ),
     filter_supplementary: bool = typer.Option(
         True,
-        help="Exclude supplementary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+        help="Exclude supplementary alignments from the read cache. They never count toward read-level depth regardless; turning this off admits them to FRAGMENT-level evidence (dpf/rdf/adf), which is what cross-locus phasing needs.",
     ),
     filter_qc_failed: bool = typer.Option(True, help="Filter reads failing QC"),
     filter_improper_pair: bool = typer.Option(False, help="Filter improperly paired reads"),
@@ -674,11 +674,11 @@ def rna(
     filter_duplicates: bool = typer.Option(True, help="Filter duplicate reads"),
     filter_secondary: bool = typer.Option(
         True,
-        help="Exclude secondary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+        help="Exclude secondary alignments from the read cache. They never count toward read-level depth regardless; turning this off admits them to FRAGMENT-level evidence (dpf/rdf/adf), which is what cross-locus phasing needs.",
     ),
     filter_supplementary: bool = typer.Option(
         True,
-        help="Exclude supplementary alignments from the read cache (secondary/supplementary never count toward read-level depth regardless)",
+        help="Exclude supplementary alignments from the read cache. They never count toward read-level depth regardless; turning this off admits them to FRAGMENT-level evidence (dpf/rdf/adf), which is what cross-locus phasing needs.",
     ),
     filter_qc_failed: bool = typer.Option(True, help="Filter reads failing QC"),
     filter_improper_pair: bool = typer.Option(False, help="Filter improperly paired reads"),

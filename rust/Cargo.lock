@@ -785,7 +785,7 @@ dependencies = [
 
 [[package]]
 name = "gbcms_rs"
-version = "6.2.0"
+version = "6.3.0"
 dependencies = [
  "anyhow",
  "arrow-array",

@@ -19,10 +19,12 @@ remains selectable, so both are exercised here.
 """
 
 from collections import Counter
+from pathlib import Path
 
 import pysam
 import pytest
 from helpers import build_bam, make_read
+from pydantic import ValidationError
 
 from gbcms._rs import Variant, count_bam_binned, count_bam_binned_observations
 from gbcms.observations import ALLELE_ALT, ALLELE_N, ALLELE_OTHER, ALLELE_REF
@@ -42,6 +44,14 @@ def _read(name, base_at_pos, start=90, flag=0):
 
 def _variant(ref=REF_BASE, alt=ALT_BASE):
     return Variant("chr1", POS, ref, alt, "SNP")
+
+
+def _py_variant(ref=REF_BASE, alt=ALT_BASE):
+    """The public-model twin of `_variant()`. `observe_molecules` takes these, not `_rs` ones."""
+    from gbcms.models.core import Variant as PyVariant
+    from gbcms.models.core import VariantType
+
+    return PyVariant(chrom="chr1", pos=POS, ref=ref, alt=alt, variant_type=VariantType.SNP)
 
 
 @pytest.fixture(params=["sw", "pairhmm"])
@@ -379,6 +389,126 @@ def test_deletion_rows_reconcile_under_both_backends(tmp_path, backend):
 
 
 # ── 9. the public wrapper ───────────────────────────────────────────────────────────
+
+
+def test_settings_are_configurable_without_fabricating_a_config(tmp_path):
+    """The motivating case: change one setting without inventing paths that mean nothing.
+
+    `GbcmsDnaConfig` requires `variant_file`, `bam_files`, `reference_fasta` and `output` —
+    a set with **zero** overlap with what this entry point reads. Before the individual
+    arguments existed, adjusting a single filter meant constructing all four, so a caller
+    had to supply an output directory and a variant path that are never touched. Paths that
+    look load-bearing and are not is how the next reader gets misled.
+    """
+    import gbcms
+    from gbcms.models.core import GbcmsDnaConfig, ReadFilters
+
+    with pytest.raises(ValidationError):
+        GbcmsDnaConfig()  # the four required-but-unread fields
+
+    bam = build_bam(tmp_path, [_read("a", ALT_BASE)], filename="nocfg.bam")
+    result = gbcms.observe_molecules(bam, [_py_variant()], filters=ReadFilters(duplicates=False))
+    assert result.n_rows == 1
+
+
+def test_filters_argument_actually_reaches_the_engine(tmp_path):
+    """A forwarded setting must change the result, or it is decoration.
+
+    Uses `duplicates` deliberately. `supplementary` would be the intuitive choice for an
+    observation test, but supplementary reads are dropped unconditionally further in
+    (msk-access/gbcms#82), so asserting a difference there would fail — and asserting
+    *no* difference would pass whether or not the argument was plumbed at all.
+    """
+    import gbcms
+    from gbcms.models.core import ReadFilters
+
+    dup = _read("dup", ALT_BASE)
+    dup.flag |= 0x400  # mark duplicate
+    bam = build_bam(tmp_path, [_read("keep", ALT_BASE), dup], filename="dupfilt.bam")
+
+    filtered = gbcms.observe_molecules(bam, [_py_variant()], filters=ReadFilters(duplicates=True))
+    kept = gbcms.observe_molecules(bam, [_py_variant()], filters=ReadFilters(duplicates=False))
+    assert filtered.n_rows == 1, "duplicate was not filtered"
+    assert kept.n_rows == 2, "duplicates=False did not reach the engine"
+
+
+def test_umi_tag_argument_decides_what_counts_as_one_molecule(tmp_path):
+    """`umi_tag` is folded into `molecule_hash`, so it changes molecule identity itself."""
+    import gbcms
+
+    paired, mate = 0x1 | 0x2 | 0x40, 0x1 | 0x2 | 0x80
+    r1 = _read("frag", ALT_BASE, flag=paired)
+    r2 = _read("frag", ALT_BASE, flag=mate)
+    r1.set_tag("MI", "famA")
+    r2.set_tag("MI", "famB")  # same template, deliberately different families
+    bam = build_bam(tmp_path, [r1, r2], filename="umitag.bam")
+
+    by_qname = gbcms.observe_molecules(bam, [_py_variant()], umi_tag=None)
+    by_umi = gbcms.observe_molecules(bam, [_py_variant()], umi_tag="MI")
+    assert by_qname.n_rows == 1, "without a UMI tag the pair is one molecule"
+    assert by_umi.n_rows == 2, "umi_tag did not reach the engine"
+
+
+def _throwaway_config(tmp_path, bam, **over):
+    """Build a `GbcmsDnaConfig` purely to have one — every required field is unread here.
+
+    Not just four extra keyword arguments: `variant_file` and `reference_fasta` must name
+    files that **exist on disk**, `bam_files` is a dict, and `output` is an `OutputConfig`.
+    This helper is the cost the individual arguments remove, kept only so the override
+    tests below have a config to override.
+    """
+    from gbcms.models.core import GbcmsDnaConfig, OutputConfig
+
+    (tmp_path / "unused.txt").write_text("")
+    (tmp_path / "unused.fa").write_text(">chr1\nA\n")
+    return GbcmsDnaConfig(
+        variant_file=tmp_path / "unused.txt",
+        bam_files={"s": Path(bam)},
+        reference_fasta=tmp_path / "unused.fa",
+        output=OutputConfig(directory=tmp_path / "unused_out"),
+        **over,
+    )
+
+
+def test_explicit_argument_overrides_config(tmp_path):
+    """Both supplied → the individual argument wins, so a pipeline config can be adjusted."""
+    import gbcms
+    from gbcms.models.core import ReadFilters
+
+    dup = _read("dup", ALT_BASE)
+    dup.flag |= 0x400
+    bam = build_bam(tmp_path, [_read("keep", ALT_BASE), dup], filename="override.bam")
+    cfg = _throwaway_config(tmp_path, bam, filters=ReadFilters(duplicates=True))
+    assert gbcms.observe_molecules(bam, [_py_variant()], config=cfg).n_rows == 1
+    assert (
+        gbcms.observe_molecules(
+            bam, [_py_variant()], config=cfg, filters=ReadFilters(duplicates=False)
+        ).n_rows
+        == 2
+    ), "the explicit argument did not override config"
+
+
+def test_umi_tag_none_overrides_a_config_that_sets_one(tmp_path):
+    """`None` is a real choice for `umi_tag`, not an absence — the one nullable argument.
+
+    Every other argument treats `None` as "not supplied" and defers to `config`. If
+    `umi_tag` did the same, a caller passing `umi_tag=None` to group by read pair would
+    silently inherit the config's tag and group by UMI family instead — changing what
+    counts as one molecule, with nothing to indicate it.
+    """
+    import gbcms
+
+    paired, mate = 0x1 | 0x2 | 0x40, 0x1 | 0x2 | 0x80
+    r1 = _read("frag", ALT_BASE, flag=paired)
+    r2 = _read("frag", ALT_BASE, flag=mate)
+    r1.set_tag("MI", "famA")
+    r2.set_tag("MI", "famB")
+    bam = build_bam(tmp_path, [r1, r2], filename="umi_none.bam")
+    cfg = _throwaway_config(tmp_path, bam, umi_tag="MI")
+    assert gbcms.observe_molecules(bam, [_py_variant()], config=cfg).n_rows == 2
+    assert (
+        gbcms.observe_molecules(bam, [_py_variant()], config=cfg, umi_tag=None).n_rows == 1
+    ), "umi_tag=None was treated as 'not supplied' instead of an explicit override"
 
 
 def test_public_wrapper_returns_observations(tmp_path):
