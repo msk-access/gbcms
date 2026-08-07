@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **`observe_molecules()` takes the settings it actually uses.** New keyword arguments
+  `filters`, `quality`, `alignment`, `umi_tag`, `threads`, `apply_baq` and `library_type`
+  sit alongside the existing `config=`, which keeps working; an individual argument
+  overrides the matching `config` field.
+
+  Previously the only way to change a setting was to build a whole `GbcmsDnaConfig`, whose
+  four required fields — `variant_file`, `bam_files`, `reference_fasta`, `output` — have
+  **zero overlap** with the seven this entry point reads. Two of them must name files that
+  exist on disk. So adjusting one filter meant fabricating an output directory and a variant
+  path that are never touched: paths that look load-bearing and are not.
+
+  Found by the first real consumer (mulligan) needing a non-default read filter.
+
+  `umi_tag` is the one argument where `None` is an explicit choice rather than an omission —
+  it means "group by read pair, not UMI family" and overrides `config` accordingly. Every
+  other argument treats `None` as "not supplied". Without that distinction, a caller passing
+  `umi_tag=None` alongside a config that sets one would silently inherit it and change what
+  counts as a molecule.
+
+### 📝 Documentation
+
+- Recorded that `filters.supplementary` and `filters.secondary` **cannot change the result**:
+  supplementary and secondary alignments are dropped before fragment evidence is built, so
+  they never produce an observation. Measured across all six read filters on real data — the
+  other four behave as documented. See
+  [#82](https://github.com/msk-access/gbcms/issues/82).
+
 ## [6.2.0] - 2026-08-06
 
 ### ✨ Added

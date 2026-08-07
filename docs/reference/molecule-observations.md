@@ -160,12 +160,56 @@ for obs in result.observations:
 | `variants` | Variants to observe. `variant_index` indexes into this list **positionally** — it is never filtered or reordered, so the join key stays meaningful even when a variant fails validation. |
 | `reference_fasta` | Reference for normalization. **Strongly recommended for indels** (see below). |
 | `is_maf` | Set when variants came from a MAF, whose `-` alleles need anchor resolution. |
-| `config` | `GbcmsDnaConfig` for filters, quality gates, alignment backend, threads. |
+| `filters` | `ReadFilters` — which reads are excluded. |
+| `quality` | `QualityThresholds` — MAPQ and base-quality gates. |
+| `alignment` | `AlignmentConfig` — backend and PairHMM parameters. Defaults to `pairhmm`. |
+| `umi_tag` | BAM tag holding the UMI (e.g. `"MI"`). Folded into `molecule_hash`, so it decides what counts as one molecule. |
+| `threads`, `apply_baq`, `library_type` | Worker threads; BAQ; `capture` (default) or `amplicon`. |
+| `config` | A whole `GbcmsDnaConfig` to take settings from — convenient if you already have one. |
 | `observations_path` | Write to Parquet instead of returning rows (see [Scale](#scale)). |
 
 `ObservationResult` carries `observations`, `path`, `n_rows`, and `variant_status` — one status
 per input variant. Anything other than `PASS` means normalization rejected that variant (e.g.
 `REF_MISMATCH`) and its rows should be discarded.
+
+### Configuring a run
+
+Pass the settings you mean:
+
+```python
+from gbcms.models.core import ReadFilters, QualityThresholds
+
+result = observe_molecules(
+    "sample.bam", variants,
+    reference_fasta="ref.fa",
+    filters=ReadFilters(improper_pair=False),
+    quality=QualityThresholds(min_mapping_quality=30),
+    umi_tag="MI",
+)
+```
+
+`config=` still works and is handy when a pipeline already built one. An individual argument
+**overrides** the matching `config` field, so you can reuse a config and adjust one setting.
+Prefer the individual arguments otherwise: `GbcmsDnaConfig` requires `variant_file`,
+`bam_files`, `reference_fasta` and `output` — none of which this entry point reads, and
+`variant_file`/`reference_fasta` must name files that exist.
+
+!!! note "`umi_tag=None` is an explicit choice, not an omission"
+    For every other argument, `None` means "not supplied" and defers to `config`. `umi_tag`
+    is different because `None` is itself a real setting there — group by read pair rather
+    than by UMI family. Passing `umi_tag=None` therefore **overrides** a `config` that sets
+    one, instead of silently inheriting it and changing what counts as a molecule.
+
+!!! warning "Filter and quality settings apply to the counting, not to the export"
+    The rows and the counts they reconcile with (`adf`/`rdf`/`dpf`) come from **one pass over
+    one read set**, which is why these default to the counting defaults rather than to
+    something phasing-friendly. A different default here would make rows and counts disagree
+    about which reads exist.
+
+    Note also that `filters.supplementary` and `filters.secondary` cannot change the
+    result — supplementary and secondary alignments are dropped before fragment evidence is
+    built, so they never produce an observation. See
+    [issue #82](https://github.com/msk-access/gbcms/issues/82).
 
 !!! warning "Always pass a reference for indels"
     Normalization supplies left-alignment, `ref_context`, and the **decomposed** form of

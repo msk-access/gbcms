@@ -29,7 +29,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from gbcms._rs import Observation, count_bam_binned_observations, prepare_variants
 from gbcms._rs import Variant as _RsVariant
@@ -47,6 +47,23 @@ __all__ = [
     "ObservationResult",
     "observe_molecules",
 ]
+
+
+class _Unset:
+    """Sentinel distinguishing "argument not supplied" from an explicit ``None``.
+
+    Needed only for ``umi_tag``, which is genuinely nullable: ``None`` is a *meaningful*
+    value there (group by read pair, no UMI). Without this, a caller passing a ``config``
+    that sets a UMI tag plus ``umi_tag=None`` to override it would silently inherit the
+    config's tag and group by UMI family anyway — changing what counts as one molecule
+    with nothing to indicate it.
+    """
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return "<unset>"
+
+
+_UNSET = _Unset()
 
 # `Observation.allele` values. Mirrors the OBS_ALLELE_* constants in rust/src/types.rs.
 ALLELE_REF = 0
@@ -92,6 +109,13 @@ def observe_molecules(
     reference_fasta: str | Path | None = None,
     is_maf: bool = False,
     config: GbcmsDnaConfig | None = None,
+    filters: ReadFilters | None = None,
+    quality: QualityThresholds | None = None,
+    alignment: AlignmentConfig | None = None,
+    umi_tag: str | None = cast(Any, _UNSET),
+    threads: int | None = None,
+    apply_baq: bool | None = None,
+    library_type: str | None = None,
     observations_path: str | Path | None = None,
 ) -> ObservationResult:
     """Observe the per-molecule allele at each variant.
@@ -107,8 +131,26 @@ def observe_molecules(
             ALT support, is scored REF and its ALT molecules are exported as ``OTHER``.
         is_maf: Set when the variants came from a MAF, whose ``-`` alleles need anchor
             resolution during normalization. Ignored without ``reference_fasta``.
-        config: Counting configuration (filters, quality gates, alignment backend, UMI tag,
-            threads). Library defaults are used when omitted.
+        config: A full :class:`GbcmsDnaConfig` to take settings from. Convenient when you
+            already have one; prefer the individual arguments below otherwise, since
+            ``GbcmsDnaConfig`` requires ``variant_file``/``bam_files``/``reference_fasta``/
+            ``output`` — none of which this entry point reads.
+        filters: Read filters. Note that ``supplementary`` and ``secondary`` cannot change
+            the result — those alignments are dropped before fragment evidence is built, so
+            they never produce an observation. A molecule spanning a large deletion is
+            therefore invisible at the locus only its supplementary segment covers
+            (msk-access/gbcms#82). The other four filters behave as documented.
+        quality: MAPQ/base-quality gates. Reads below them never reach fragment evidence,
+            so they bound ``Observation.min_mapq`` from below.
+        alignment: Alignment backend and PairHMM parameters. Defaults to ``pairhmm``.
+        umi_tag: BAM tag holding the UMI (e.g. ``"MI"``). Folded into ``molecule_hash``, so
+            it decides what counts as one molecule. Passing ``None`` is an **explicit**
+            choice of qname-keyed (per-read-pair) grouping and overrides ``config`` — unlike
+            the other arguments, omitting it and passing ``None`` are different things.
+        threads: Worker threads. Defaults to 1.
+        apply_baq: Apply BAQ before classification. Defaults to off.
+        library_type: ``"capture"`` (default) or ``"amplicon"``. In amplicon mode the read
+            number is folded into ``molecule_hash``, making the key per-read-end.
         observations_path: When given, rows are written to Parquet from Rust rather than
             materialized as Python objects — for panel- or genome-wide runs, where the FFI
             round-trip, not the counting, is the bottleneck. The returned
@@ -121,17 +163,50 @@ def observe_molecules(
         given ``variant_index``.
 
     Note:
+        An individual argument **overrides** the corresponding field of ``config`` when both
+        are given, so a caller can reuse a pipeline config and adjust one setting. For every
+        argument except ``umi_tag``, passing ``None`` means "not supplied" and defers to
+        ``config``; ``umi_tag`` treats ``None`` as an explicit override, because ``None`` is
+        a real grouping choice there rather than an absence.
+
+    Note:
         Molecules are grouped by ``hash_molecule(qname, umi)``, so reads must not be
         pre-filtered in a way that drops whole molecules. In particular do **not** enable
         ``filters.improper_pair`` for consensus BAMs whose reads carry no PROPER_PAIR flag
         (some UMI-collapsed pipelines emit none) — every read would be discarded.
+
+    Note:
+        Filter and quality settings apply to the **counting**, not to the export layered on
+        top: the returned rows and the counts they reconcile with (``adf``/``rdf``/``dpf``)
+        come from one pass over one read set. That is why these default to the counting
+        defaults rather than to something phasing-friendly — a different default here would
+        make rows and counts disagree about which reads exist.
     """
-    # Sub-model defaults, so a caller with no config never has to build a full
-    # GbcmsDnaConfig (which requires variant/bam paths this entry point does not use).
-    filters = config.filters if config is not None else ReadFilters()
-    quality = config.quality if config is not None else QualityThresholds()
-    align = config.alignment if config is not None else AlignmentConfig()
-    threads = config.threads if config is not None else 1
+
+    # Resolution order: explicit argument > `config` field > library default. `config` is
+    # accepted for convenience, but its four required fields (variant_file, bam_files,
+    # reference_fasta, output) are ones this entry point never reads — so requiring it just
+    # to change a filter meant fabricating paths that look meaningful and are not.
+    def _pick(explicit: object, attr: str, fallback: object, unset: object = None) -> object:
+        """explicit argument > `config` field > library default.
+
+        `unset` names the value that means "caller did not supply this". It is `None` for
+        every parameter whose type excludes `None`, and `_UNSET` for `umi_tag`, where `None`
+        is itself a meaningful choice (group by read pair rather than UMI family).
+        """
+        if explicit is not unset:
+            return explicit
+        if config is not None:
+            return getattr(config, attr, fallback)
+        return fallback
+
+    filters = cast(ReadFilters, _pick(filters, "filters", ReadFilters()))
+    quality = cast(QualityThresholds, _pick(quality, "quality", QualityThresholds()))
+    align = cast(AlignmentConfig, _pick(alignment, "alignment", AlignmentConfig()))
+    threads = cast(int, _pick(threads, "threads", 1))
+    apply_baq = cast(bool, _pick(apply_baq, "apply_baq", False))
+    umi_tag = cast("str | None", _pick(umi_tag, "umi_tag", None, unset=_UNSET))
+    library_type = cast(str, _pick(library_type, "library_type", "capture"))
 
     rs_variants = [_RsVariant(v.chrom, v.pos, v.ref, v.alt, v.variant_type.value) for v in variants]
     decomposed: list[_RsVariant | None] = [None] * len(rs_variants)
@@ -176,9 +251,9 @@ def observe_molecules(
         hmm_gap_extend=align.hmm_gap_extend,
         hmm_gap_open_repeat=align.hmm_gap_open_repeat,
         hmm_gap_extend_repeat=align.hmm_gap_extend_repeat,
-        apply_baq=config.apply_baq if config is not None else False,
-        umi_tag=config.umi_tag if config is not None else None,
-        library_type=getattr(config, "library_type", "capture") if config else "capture",
+        apply_baq=apply_baq,
+        umi_tag=umi_tag,
+        library_type=library_type,
         reference_fasta=str(reference_fasta) if reference_fasta is not None else None,
         observations_path=str(observations_path) if observations_path is not None else None,
     )
