@@ -62,12 +62,35 @@ flowchart LR
 | Filter | CLI Flag | Default | SAM Flag | Description |
 |:-------|:---------|:--------|:---------|:------------|
 | Duplicates | `--filter-duplicates` | **On** | `0x400` | PCR/optical duplicates |
-| Secondary | `--filter-secondary` | **On** | `0x100` | Secondary alignments |
-| Supplementary | `--filter-supplementary` | **On** | `0x800` | Chimeric/split alignments |
+| Secondary | `--filter-secondary` | **On** | `0x100` | Secondary alignments (see note) |
+| Supplementary | `--filter-supplementary` | **On** | `0x800` | Chimeric/split alignments (see note) |
 | QC Failed | `--filter-qc-failed` | **On** | `0x200` | Platform QC failures |
 | Improper Pair | `--filter-improper-pair` | Off | `0x2` (inverted) | Reads not properly paired |
 | Indel reads | `--filter-indel` | Off | CIGAR-based | Any Ins or Del in CIGAR |
 | MAPQ threshold | `--min-mapq` | **20** (DNA) / **1** (RNA) | — | Minimum mapping quality |
+
+!!! note "Secondary and supplementary affect fragment counts, never read-level depth"
+    These two behave differently from the rest. A secondary or supplementary alignment
+    shares a QNAME with its primary, so it is **never** a first-class read-level
+    observation: it does not contribute to `dp`, `rd` or `ad` however the flags are set.
+    Counting one would report two reads where a single physical read exists.
+
+    Turning the filter **off** admits them to **fragment**-level evidence (`dpf`, `rdf`,
+    `adf`) and to the [per-molecule observation export](molecule-observations.md). That
+    cannot double-count — fragments are keyed by QNAME hash, so a primary and its
+    supplementary collapse into one — and it is what makes a locus reached *only* by a
+    supplementary segment visible at all. Such a locus otherwise reports `dpf=0` despite a
+    molecule demonstrably covering it, which is why a molecule spanning a large deletion
+    was invisible to cross-locus phasing.
+
+    Consequence worth knowing: with the filter off, an admitted supplementary raises `dpf`
+    while leaving `dp` unchanged. The two measure different things and stop moving together.
+
+!!! danger "`--filter-improper-pair` can discard everything"
+    Some UMI-collapsed pipelines emit reads with **no `PROPER_PAIR` flag at all** — measured
+    at 0.0% across every alignment type in one MSK-ACCESS version, despite 100% of reads
+    being paired. Enabling this filter there removes **every read**, silently. It defaults
+    to off for that reason.
 
 ---
 

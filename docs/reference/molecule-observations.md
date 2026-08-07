@@ -206,10 +206,20 @@ Prefer the individual arguments otherwise: `GbcmsDnaConfig` requires `variant_fi
     something phasing-friendly. A different default here would make rows and counts disagree
     about which reads exist.
 
-    Note also that `filters.supplementary` and `filters.secondary` cannot change the
-    result — supplementary and secondary alignments are dropped before fragment evidence is
-    built, so they never produce an observation. See
-    [issue #82](https://github.com/msk-access/gbcms/issues/82).
+!!! tip "Set `supplementary=False` for cross-locus phasing"
+    A molecule spanning a large deletion reaches the far locus **only** through its
+    supplementary alignment. The default filters those (matching counting), so that locus
+    gets no observation at all — it reports `dpf=0` even though a molecule demonstrably
+    covers it.
+
+    Admitting them cannot double-count: `molecule_hash` keys on QNAME, so a primary and its
+    supplementary collapse into one fragment. They still never contribute to read-level
+    `dp`/`rd`/`ad` — a supplementary is the same physical read as its primary, and counting
+    both would report depth 2 where one read exists.
+
+    One consequence worth knowing: an admitted supplementary can raise `dpf` while leaving
+    `dp` unchanged, so those two stop moving together. They measure different things, and
+    the rows here reconcile with `dpf`.
 
 !!! warning "Always pass a reference for indels"
     Normalization supplies left-alignment, `ref_context`, and the **decomposed** form of

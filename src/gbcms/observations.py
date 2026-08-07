@@ -135,11 +135,13 @@ def observe_molecules(
             already have one; prefer the individual arguments below otherwise, since
             ``GbcmsDnaConfig`` requires ``variant_file``/``bam_files``/``reference_fasta``/
             ``output`` — none of which this entry point reads.
-        filters: Read filters. Note that ``supplementary`` and ``secondary`` cannot change
-            the result — those alignments are dropped before fragment evidence is built, so
-            they never produce an observation. A molecule spanning a large deletion is
-            therefore invisible at the locus only its supplementary segment covers
-            (msk-access/gbcms#82). The other four filters behave as documented.
+        filters: Read filters. **Set ``supplementary=False`` for cross-locus phasing**: a
+            molecule spanning a large deletion reaches the far locus only through its
+            supplementary alignment, and the default (filtered, matching counting) leaves
+            that locus with no observation at all. Such records join their primary's
+            fragment via the QNAME hash, so admitting them cannot double-count; they still
+            never contribute to read-level ``dp``/``rd``/``ad``, which is why an admitted
+            supplementary can raise ``dpf`` while leaving ``dp`` unchanged.
         quality: MAPQ/base-quality gates. Reads below them never reach fragment evidence,
             so they bound ``Observation.min_mapq`` from below.
         alignment: Alignment backend and PairHMM parameters. Defaults to ``pairhmm``.

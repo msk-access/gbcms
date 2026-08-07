@@ -28,13 +28,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `umi_tag=None` alongside a config that sets one would silently inherit it and change what
   counts as a molecule.
 
-### 📝 Documentation
+### 🐛 Fixed
 
-- Recorded that `filters.supplementary` and `filters.secondary` **cannot change the result**:
-  supplementary and secondary alignments are dropped before fragment evidence is built, so
-  they never produce an observation. Measured across all six read filters on real data — the
-  other four behave as documented. See
-  [#82](https://github.com/msk-access/gbcms/issues/82).
+- **`--filter-secondary` and `--filter-supplementary` now change the result when turned
+  off.** They previously could not change **any** output: an unconditional skip in the
+  counting loop discarded those records *before* fragment evidence, regardless of the
+  flags. Measured across all six read filters on real MSK-ACCESS data, these were the only
+  two that did nothing (`duplicates`, `improper_pair` and `indel` all worked).
+  ([#82](https://github.com/msk-access/gbcms/issues/82))
+
+  **Default runs are byte-identical** — both filters still default to on, so such records
+  never reach the cache. Verified on real data: total depth unchanged at 1202 across 40
+  loci, and binned↔legacy parity holds.
+
+  Turning a filter **off** now admits those records to **fragment**-level evidence
+  (`dpf`/`rdf`/`adf`) and to the per-molecule observation export. They still never
+  contribute to read-level `dp`/`rd`/`ad`: a supplementary shares a QNAME with its primary
+  and is the same physical read, so counting both would report depth 2 where one read
+  exists. Fragments are immune either way — `hash_molecule` keys on QNAME, so a primary and
+  its supplementary collapse into one.
+
+  What this fixes concretely: a locus reached **only** by a supplementary segment used to
+  report `dpf=0` — not a filtered read but a wrong answer, since a molecule demonstrably
+  covers it. That is what made a molecule spanning a large deletion invisible to
+  cross-locus phasing.
+
+  New consequence to be aware of: with the filter off, an admitted supplementary raises
+  `dpf` while leaving `dp` unchanged, so the two stop moving together. The observation
+  export reconciles with `dpf`, and that invariant is verified under both settings.
 
 ## [6.2.0] - 2026-08-06
 
