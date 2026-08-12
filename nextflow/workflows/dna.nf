@@ -6,6 +6,7 @@
 
 include { GBCMS_DNA }     from '../modules/local/gbcms/dna/main'
 include { MERGE_COUNTS }  from '../modules/local/gbcms/merge/main'
+include { asBool }        from '../modules/local/utils/main'
 
 /*
 ========================================================================================
@@ -39,7 +40,7 @@ workflow GBCMS_DNA_WF {
     //   2. Group by sample ID using groupTuple
     //   3. Run MERGE_COUNTS to produce a single merged MAF per sample
     //
-    if (params.merge_counts) {
+    if (asBool(params.merge_counts)) {
 
         // Extract typed MAF outputs: [ sample_id, bam_type, maf_path ]
         ch_typed_mafs = GBCMS_DNA.out.counts

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Fixed
+
+- **Nextflow: turning off a default-on read filter now actually reaches the engine.**
+  `--filter_duplicates false`, `--filter_secondary false`, `--filter_supplementary false`,
+  and `--filter_qc_failed false` were silent no-ops: the modules omitted the flag when
+  false, and the CLI default (on) won. The DNA/RNA modules now always pass the explicit
+  on/off form (`--filter-x` / `--no-filter-x`) for all six read filters.
+- **Nextflow ≥26.04: boolean and numeric CLI params are coerced explicitly.** The strict
+  parser hands CLI overrides to the script as Strings (`--flag false` arrives as the
+  truthy String `"false"`; 25.x coerced it to `Boolean false`), which silently inverted
+  every boolean param check. A shared `asBool()` helper
+  (`nextflow/modules/local/utils/main.nf`) now guards every boolean param decision, and
+  `process.resourceLimits` casts `max_cpus`/`max_memory`/`max_time`. Verified end-to-end
+  on 25.10 and 26.04: identical generated commands both ways for all six filters.
+
 ## [6.3.0] - 2026-08-07
 
 ### ✨ Added
