@@ -1,7 +1,7 @@
 process GBCMS_BUILD_GTF_CACHE {
     label 'process_medium'
 
-    container "ghcr.io/msk-access/gbcms:6.3.0"
+    container "ghcr.io/msk-access/gbcms:6.3.1"
 
     input:
     tuple path(gtf), path(variants)
