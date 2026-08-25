@@ -1,3 +1,5 @@
+include { asBool } from '../../utils/main'
+
 process MERGE_COUNTS {
     tag "$sample_id"
     label 'process_low'
@@ -25,11 +27,12 @@ process MERGE_COUNTS {
         .collect { type, maf -> "--input ${type}:${maf}" }
         .join(' ')
 
-    // Optional: disable combined columns
-    def combined_arg = params.merge_add_combined ? "" : "--no-combined"
+    // Optional: disable combined columns (asBool: CLI overrides arrive as
+    // Strings under the ≥26.04 strict parser, and "false" is truthy)
+    def combined_arg = asBool(params.merge_add_combined) ? "" : "--no-combined"
 
     // Optional: use legacy naming (t_{metric}_{type})
-    def legacy_arg = params.merge_legacy_naming ? "--legacy-naming" : ""
+    def legacy_arg = asBool(params.merge_legacy_naming) ? "--legacy-naming" : ""
 
     """
     gbcms merge \\

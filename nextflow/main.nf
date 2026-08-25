@@ -17,6 +17,7 @@ include { GBCMS_RNA_WF }          from './workflows/rna'
 include { GBCMS_BUILD_GTF_CACHE } from './modules/local/gbcms/build_gtf_cache/main'
 include { FILTER_MAF }            from './modules/local/gbcms/filter_maf/main'
 include { PIPELINE_SUMMARY }      from './modules/local/gbcms/pipeline_summary/main'
+include { asBool }                from './modules/local/utils/main'
 
 // Helper: Check if a MAF file has at least one data row (not just header/comments).
 // A function (not a closure assigned to a var): the strict syntax of Nextflow ≥26.04
@@ -149,7 +150,7 @@ workflow {
     //
     // STEP 2: Conditional MAF filtering (shared by DNA and RNA)
     //
-    if (params.filter_by_sample && ch_variants_file.name.endsWith('.maf')) {
+    if (asBool(params.filter_by_sample) && ch_variants_file.name.endsWith('.maf')) {
 
         // Pair each sample with the shared MAF for filtering
         ch_to_filter = ch_samplesheet.map { meta, _bam, _bai -> [ meta, ch_variants_file ] }
@@ -194,7 +195,7 @@ workflow {
         // GBCMS_RNA task so none of them re-parse the GTF (~9s each). Without this
         // up-front build, concurrently-launched samples all cold-miss. Disabled (no
         // GTF, or --gtf_cache false) => [] => the per-sample runs parse as before.
-        if (params.gtf && params.gtf_cache) {
+        if (params.gtf && asBool(params.gtf_cache)) {
             GBCMS_BUILD_GTF_CACHE( [ file(params.gtf), ch_variants_file ] )
             ch_gtf_cache = GBCMS_BUILD_GTF_CACHE.out.cache_dir.first()
         } else {
