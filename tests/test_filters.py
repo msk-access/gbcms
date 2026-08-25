@@ -1,6 +1,6 @@
 import pysam
 import pytest
-from helpers import count_both
+from helpers import build_bam, count_both, make_read
 
 from gbcms import _rs as gbcms_rs
 from gbcms.models.core import Variant, VariantType
@@ -325,3 +325,77 @@ def test_supplementary_only_locus_is_seen_at_fragment_level_when_opted_in(tmp_pa
         "read-level DP must stay 0 — a supplementary is not a first-class read observation, "
         "independent of the filter flag"
     )
+
+
+# ── qc-failed filter contract ────────────────────────────────────────────
+
+
+def _qc_contract_reads(flag_alt_and_some_ref):
+    """Mixed population at chr1:150 (A>T): 6 REF reads, 4 ALT reads.
+
+    With flag_alt_and_some_ref, the 4 ALT reads and 2 of the REF reads carry
+    the QC-fail bit (0x200) — same reads, same sequences, only the flag differs.
+    """
+    qc = 0x200 if flag_alt_and_some_ref else 0
+    reads = []
+    for i in range(6):
+        flag = qc if flag_alt_and_some_ref and i < 2 else 0
+        reads.append(make_read(f"ref{i}", "A" * 100, 100, ((0, 100),), flag=flag))
+    alt_seq = "A" * 50 + "T" + "A" * 49
+    for i in range(4):
+        reads.append(make_read(f"alt{i}", alt_seq, 100, ((0, 100),), flag=qc))
+    return reads
+
+
+def _assert_counting_invariants(c):
+    assert c.dp >= c.rd + c.ad
+    assert c.dpf >= c.rdf + c.adf
+    assert c.rd == c.rd_fwd + c.rd_rev
+    assert c.ad == c.ad_fwd + c.ad_rev
+
+
+def test_qc_failed_filter_contract(tmp_path):
+    """Three-way contract for filter_qc_failed, at read AND fragment level.
+
+    1. filter on drops exactly the QC-flagged reads (here: all ALT evidence);
+    2. filter off restores counts identical to the same reads unflagged;
+    3. the filter has no effect on a BAM without QC-fail flags.
+    """
+    variant = gbcms_rs.Variant("chr1", 150, "A", "T", "SNP")
+    clean_bam = build_bam(tmp_path, _qc_contract_reads(False), "qc_clean.bam")
+    flagged_bam = build_bam(tmp_path, _qc_contract_reads(True), "qc_flagged.bam")
+
+    def count(bam, qc_filter):
+        c = count_both(
+            bam,
+            [variant],
+            min_mapq=0,
+            min_baseq=0,
+            filter_secondary=False,
+            filter_supplementary=False,
+            filter_qc_failed=qc_filter,
+            filter_improper_pair=False,
+            filter_indel=False,
+        )[0]
+        _assert_counting_invariants(c)
+        return c
+
+    baseline = count(clean_bam, False)
+    assert (baseline.dp, baseline.rd, baseline.ad) == (10, 6, 4)
+
+    # 1. Filter on: the 6 flagged reads (2 REF + 4 ALT) vanish — ALT evidence
+    #    disappears entirely, so a miscounted no-op here would fake a variant call.
+    on = count(flagged_bam, True)
+    assert (on.dp, on.rd, on.ad) == (4, 4, 0)
+    assert (on.dpf, on.rdf, on.adf) == (4, 4, 0)
+
+    # 2. Filter off: flagged reads are admitted; every read- and fragment-level
+    #    field matches the unflagged baseline exactly.
+    off = count(flagged_bam, False)
+    for field in ("dp", "rd", "ad", "dpf", "rdf", "adf", "rd_fwd", "rd_rev", "ad_fwd", "ad_rev"):
+        assert getattr(off, field) == getattr(baseline, field), field
+
+    # 3. No QC flags present: the filter setting must not change anything.
+    clean_on = count(clean_bam, True)
+    for field in ("dp", "rd", "ad", "dpf", "rdf", "adf"):
+        assert getattr(clean_on, field) == getattr(baseline, field), field
