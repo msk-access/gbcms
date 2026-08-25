@@ -639,14 +639,16 @@ def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
     ]
     out = tmp_path / "obs.parquet"
 
+    # Without pyarrow the written-side n_rows is unknowable (-1), so skip up
+    # front rather than failing the n_rows comparison below.
+    pq = pytest.importorskip("pyarrow.parquet")
+
     mem = gbcms.observe_molecules(bam, variants)
     written = gbcms.observe_molecules(bam, variants, observations_path=out)
 
     assert written.path == out and out.exists()
     assert written.observations == [], "rows must not cross the FFI boundary when written"
     assert written.n_rows == mem.n_rows == 7
-
-    pq = pytest.importorskip("pyarrow.parquet")
     table = pq.read_table(out).to_pydict()
     # self-describing: the locus travels with the rows, so the file stands alone
     assert [f.name for f in pq.read_table(out).schema] == [

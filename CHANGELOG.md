@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.3.1] - 2026-08-25
+
+### 🔧 Fixed
+
+- **Nextflow: turning off a default-on read filter now actually reaches the engine.**
+  `--filter_duplicates false`, `--filter_secondary false`, `--filter_supplementary false`,
+  and `--filter_qc_failed false` were silent no-ops: the modules omitted the flag when
+  false, and the CLI default (on) won. The DNA/RNA modules now always pass the explicit
+  on/off form (`--filter-x` / `--no-filter-x`) for all six read filters.
+- **Nextflow ≥26.04: boolean and numeric CLI params are coerced explicitly.** The strict
+  parser hands CLI overrides to the script as Strings (`--flag false` arrives as the
+  truthy String `"false"`; 25.x coerced it to `Boolean false`), which silently inverted
+  every boolean param check. A shared `asBool()` helper
+  (`nextflow/modules/local/utils/main.nf`) now guards every boolean param decision, and
+  `process.resourceLimits` casts `max_cpus`/`max_memory`/`max_time`. Verified end-to-end
+  on 25.10 and 26.04: identical generated commands both ways for all six filters.
+
+### ✨ Added
+
+- **Contract tests pinning filter and phasing behavior** (no production code changes):
+  - `test_qc_failed_filter_contract` — three-way qc-failed filter proof at read and
+    fragment level: flagged reads dropped by default, `--no-filter-qc-failed` restores
+    byte-identical counts, no effect on unflagged BAMs.
+  - `test_partial_haplotype_contract` — the cis-phasing contract for DNP/ONP variants:
+    a multi-nt ALT counts toward `alt_count` only when the full haplotype co-occurs on
+    one read; partial-haplotype reads are surfaced via `partial_alt`/`any_alt`
+    (`any_alt == ad + partial_alt` asserted end-to-end), and a spurious multimer with
+    no read support reports all three as 0.
+
 ## [6.3.0] - 2026-08-07
 
 ### ✨ Added

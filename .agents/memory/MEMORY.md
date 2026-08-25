@@ -22,6 +22,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Legacy count_bam parity oracle](legacy-parity-oracle.md) — feature-gated (`legacy-parity`, default on); shipped wheel omits it; mirror binned-path changes in both or parity breaks.
 
 ## Validation / testing
+- [QC-fail flag absent from MSK data](qcfail-flag-absent-msk-data.md) — no pipeline stage sets 0x200; filter verified correct but inert in practice (contract test pins it).
 - [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.
 - [Siblings break binned↔legacy parity](siblings-break-binned-legacy-parity.md) — never pass sibling_variants to count_both; parity only holds without siblings.
 

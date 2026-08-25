@@ -1,10 +1,12 @@
+include { asBool } from '../../utils/main'
+
 process GBCMS_DNA {
     tag "$meta.id"
     label 'process_medium'
 
     publishDir "${params.outdir}/gbcms", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:6.3.0"
+    container "ghcr.io/msk-access/gbcms:6.3.1"
 
     input:
     tuple val(meta), path(bam), path(bai), path(variants)
@@ -36,47 +38,53 @@ process GBCMS_DNA {
     def col_prefix = meta.bam_type ? "${meta.bam_type}_" : (params.column_prefix ?: '')
     def col_prefix_arg = col_prefix ? "--column-prefix ${col_prefix}" : ""
 
+    // Boolean params go through asBool(): the ≥26.04 strict parser hands CLI
+    // overrides to the script as Strings, and the String "false" is truthy.
+
     // Preserve original Tumor_Sample_Barcode from input MAF
-    def preserve_barcode_arg = params.preserve_barcode ? "--preserve-barcode" : ""
+    def preserve_barcode_arg = asBool(params.preserve_barcode) ? "--preserve-barcode" : ""
 
     // Show normalization columns in output
-    def show_norm_arg = params.show_normalization ? "--show-normalization" : ""
+    def show_norm_arg = asBool(params.show_normalization) ? "--show-normalization" : ""
 
     // MNP rescue pass (v4.3.0 — decomposes MNPs into SNPs for re-counting)
-    def rescue_mnp_arg = params.rescue_mnp ? "--rescue-mnp --rescue-mnp-threshold ${params.rescue_mnp_threshold}" : ""
+    def rescue_mnp_arg = asBool(params.rescue_mnp) ? "--rescue-mnp --rescue-mnp-threshold ${params.rescue_mnp_threshold}" : ""
 
     // Adaptive context padding in repeat regions
-    def adaptive_arg = params.adaptive_context ? "" : "--no-adaptive-context"
+    def adaptive_arg = asBool(params.adaptive_context) ? "" : "--no-adaptive-context"
 
     // Alignment backend — always pass explicitly
     def backend_arg = "--alignment-backend ${params.alignment_backend}"
 
     // Per-molecule observation export (companion Parquet; counts unchanged).
-    def observations_arg = params.observations_parquet ? "--observations-parquet" : ""
+    def observations_arg = asBool(params.observations_parquet) ? "--observations-parquet" : ""
     def hmm_args = params.alignment_backend in ['hmm', 'pairhmm'] ? \
         "--llr-threshold ${params.llr_threshold} --gap-open-prob ${params.gap_open_prob} --gap-extend-prob ${params.gap_extend_prob} --repeat-gap-open-prob ${params.gap_open_prob_repeat} --repeat-gap-extend-prob ${params.gap_extend_prob_repeat}" : ""
     
-    // Construct filter arguments
+    // Construct filter arguments. Always pass the explicit on/off form: omitting
+    // a flag falls back to the CLI default (true for duplicates/secondary/
+    // supplementary/qc-failed), which silently re-enabled filters a user had
+    // turned off in Nextflow.
     def filters = ""
-    if (params.filter_duplicates)    filters += " --filter-duplicates"
-    if (params.filter_secondary)     filters += " --filter-secondary"
-    if (params.filter_supplementary) filters += " --filter-supplementary"
-    if (params.filter_qc_failed)     filters += " --filter-qc-failed"
-    if (params.filter_improper_pair) filters += " --filter-improper-pair"
-    if (params.filter_indel)         filters += " --filter-indel"
+    filters += asBool(params.filter_duplicates)    ? " --filter-duplicates"    : " --no-filter-duplicates"
+    filters += asBool(params.filter_secondary)     ? " --filter-secondary"     : " --no-filter-secondary"
+    filters += asBool(params.filter_supplementary) ? " --filter-supplementary" : " --no-filter-supplementary"
+    filters += asBool(params.filter_qc_failed)     ? " --filter-qc-failed"     : " --no-filter-qc-failed"
+    filters += asBool(params.filter_improper_pair) ? " --filter-improper-pair" : " --no-filter-improper-pair"
+    filters += asBool(params.filter_indel)         ? " --filter-indel"         : " --no-filter-indel"
 
     // UMI tag (e.g., 'XM', 'RX')
     def umi_arg = params.umi_tag ? "--umi-tag ${params.umi_tag}" : ""
 
     // BAQ: CLI default for DNA is --no-baq (off). Pass --apply-baq only if user explicitly enables.
-    def baq_arg = params.apply_baq ? "--apply-baq" : ""
+    def baq_arg = asBool(params.apply_baq) ? "--apply-baq" : ""
 
     // mFSD analysis (off by default — must opt in)
-    def mfsd_arg         = params.mfsd         ? "--mfsd"          : ""
-    def mfsd_parquet_arg = params.mfsd_parquet ? "--mfsd-parquet"  : ""
+    def mfsd_arg         = asBool(params.mfsd)         ? "--mfsd"          : ""
+    def mfsd_parquet_arg = asBool(params.mfsd_parquet) ? "--mfsd-parquet"  : ""
 
     // mFSD interactive HTML report
-    def mfsd_report_arg  = params.mfsd_report  ? "--mfsd-report --mfsd-report-min-alt ${params.mfsd_report_min_alt} --mfsd-report-max-variants ${params.mfsd_report_max_variants}" : ""
+    def mfsd_report_arg  = asBool(params.mfsd_report)  ? "--mfsd-report --mfsd-report-min-alt ${params.mfsd_report_min_alt} --mfsd-report-max-variants ${params.mfsd_report_max_variants}" : ""
 
     """
     gbcms dna \\

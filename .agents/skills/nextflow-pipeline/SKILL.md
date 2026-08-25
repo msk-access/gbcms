@@ -69,6 +69,13 @@ The strict parser is stricter than Groovy — do **not** reintroduce any of thes
   are self-sufficient, users add institutional configs via `-c`).
 - **Deprecations (warn now, error later):** `Channel.x()` → `channel.x()`; declare
   explicit closure params instead of implicit `it`; prefix unused closure params `_`.
+- **CLI params are Strings on ≥26.04** — `--flag false` arrives as the truthy String
+  `"false"` (25.x coerced it to `Boolean false`), so `params.x ?` silently inverts.
+  Route every boolean param through `asBool()` (`include { asBool } from
+  '<...>/modules/local/utils/main'`) and cast numerics at use sites (see
+  `resourceLimits` in nextflow.config). Also: never emit a bool CLI flag by
+  omission-when-false if the gbcms CLI default is true — pass the explicit
+  `--no-<flag>` form (see the filter block in the dna/rna modules).
 
 **Always lint before merging** (bootstrap 26.04 once, it caches):
 ```bash

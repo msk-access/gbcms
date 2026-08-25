@@ -1,10 +1,12 @@
+include { asBool } from '../../utils/main'
+
 process MERGE_COUNTS {
     tag "$sample_id"
     label 'process_low'
 
     publishDir "${params.outdir}/gbcms/merged", mode: params.publish_dir_mode
 
-    container "ghcr.io/msk-access/gbcms:6.3.0"
+    container "ghcr.io/msk-access/gbcms:6.3.1"
 
     input:
     tuple val(sample_id), val(bam_types), path(mafs)
@@ -25,11 +27,12 @@ process MERGE_COUNTS {
         .collect { type, maf -> "--input ${type}:${maf}" }
         .join(' ')
 
-    // Optional: disable combined columns
-    def combined_arg = params.merge_add_combined ? "" : "--no-combined"
+    // Optional: disable combined columns (asBool: CLI overrides arrive as
+    // Strings under the ≥26.04 strict parser, and "false" is truthy)
+    def combined_arg = asBool(params.merge_add_combined) ? "" : "--no-combined"
 
     // Optional: use legacy naming (t_{metric}_{type})
-    def legacy_arg = params.merge_legacy_naming ? "--legacy-naming" : ""
+    def legacy_arg = asBool(params.merge_legacy_naming) ? "--legacy-naming" : ""
 
     """
     gbcms merge \\
