@@ -1693,7 +1693,7 @@ fn count_variant_from_cache(
         // base is to the nearest end of the read. Bases near read ends
         // have higher error rates and misalignment probability.
         // Stored per-allele for median computation after the loop.
-        if is_ref || is_alt {
+        if first_class && (is_ref || is_alt) {
             if let Some(read_idx) = find_read_pos(record, variant.pos) {
                 let read_len = record.seq_len();
                 let dist = std::cmp::min(read_idx, read_len.saturating_sub(1 + read_idx)) as u32;
@@ -1778,6 +1778,16 @@ fn count_variant_from_cache(
         // true third-allele reads with qual=0 as N-class fragments.
         let tlen = mfsd::calc_physical_insert_size(record);
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+
+        // Secondary/supplementary records end here: they are fragment evidence
+        // only. Every counter below (n_count, any_alt/partial_alt, RD/AD,
+        // sense/antisense depth, splice-spanning) is read-level and defined over
+        // the same first-class read set as DP — counting these records there
+        // broke DP >= RD+AD whenever the secondary or supplementary filter was
+        // disabled.
+        if !first_class {
+            continue;
+        }
 
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
@@ -2296,6 +2306,13 @@ fn count_single_variant(
 
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq());
 
+        // Secondary/supplementary records end here: fragment evidence only —
+        // read-level counters below are defined over the first-class read set
+        // (same as DP). Mirrors the identical gate in the binned path.
+        if !first_class {
+            continue;
+        }
+
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
         //
@@ -2793,8 +2810,13 @@ fn count_per_transcript(
                 continue;
             }
 
-            // ── Count reads
-            tx_dp += 1;
+            // ── Count reads (first-class only, same rule as the main engine:
+            // secondary/supplementary records feed fragment evidence but never
+            // read-level tx_dp/tx_rd/tx_ad)
+            let first_class = !(record.is_supplementary() || record.is_secondary());
+            if first_class {
+                tx_dp += 1;
+            }
 
             // ── Fragment tracking
             let mut mol_hash = if let Some(tag) = umi_tag {
@@ -2820,10 +2842,12 @@ fn count_per_transcript(
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
             evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
 
-            if result.is_ref {
-                tx_rd += 1;
-            } else if result.is_alt {
-                tx_ad += 1;
+            if first_class {
+                if result.is_ref {
+                    tx_rd += 1;
+                } else if result.is_alt {
+                    tx_ad += 1;
+                }
             }
         }
 

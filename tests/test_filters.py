@@ -399,3 +399,66 @@ def test_qc_failed_filter_contract(tmp_path):
     clean_on = count(clean_bam, True)
     for field in ("dp", "rd", "ad", "dpf", "rdf", "adf"):
         assert getattr(clean_on, field) == getattr(baseline, field), field
+
+
+# ── secondary/supplementary read-level exclusion contract ────────────────
+
+
+def test_secondary_admission_is_fragment_only(tmp_path):
+    """Admitted secondary alignments must never reach read-level counts.
+
+    With --no-filter-secondary, secondary records are admitted to FRAGMENT
+    evidence only. Before the fix they also received read-level ref/alt calls
+    while DP correctly excluded them, so shipped output violated DP >= RD+AD
+    (issue #89; observed on real RNA BAMs as e.g. rd+ad=182 > dp=124).
+
+    Population at chr1:150 (A>T): 4 primary REF, 2 primary ALT, and 3
+    secondary ALT alignments with distinct QNAMEs (multimapper-style, so each
+    secondary is also a distinct fragment key).
+    """
+    reads = []
+    for i in range(4):
+        reads.append(make_read(f"ref{i}", "A" * 100, 100, ((0, 100),)))
+    alt_seq = "A" * 50 + "T" + "A" * 49
+    for i in range(2):
+        reads.append(make_read(f"alt{i}", alt_seq, 100, ((0, 100),)))
+    for i in range(3):
+        reads.append(make_read(f"sec{i}", alt_seq, 100, ((0, 100),), flag=0x100))
+    bam = build_bam(tmp_path, reads, "sec_leak.bam")
+    variant = gbcms_rs.Variant("chr1", 150, "A", "T", "SNP")
+
+    admitted = count_both(
+        bam,
+        [variant],
+        min_mapq=0,
+        min_baseq=0,
+        filter_secondary=False,
+        filter_supplementary=False,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    # Read level: primaries only — 6 first-class reads, 2 of them ALT.
+    assert (
+        admitted.dp >= admitted.rd + admitted.ad
+    ), f"invariant violated: {admitted.rd}+{admitted.ad} > {admitted.dp}"
+    assert (admitted.dp, admitted.rd, admitted.ad) == (6, 4, 2)
+    assert admitted.any_alt == admitted.ad + admitted.partial_alt
+    # Fragment level: the 3 secondary records are distinct molecules, admitted.
+    assert admitted.dpf >= admitted.rdf + admitted.adf
+    assert (admitted.dpf, admitted.rdf, admitted.adf) == (9, 4, 5)
+
+    # Default filters: secondaries excluded everywhere.
+    default = count_both(
+        bam,
+        [variant],
+        min_mapq=0,
+        min_baseq=0,
+        filter_secondary=True,
+        filter_supplementary=True,
+        filter_qc_failed=False,
+        filter_improper_pair=False,
+        filter_indel=False,
+    )[0]
+    assert (default.dp, default.rd, default.ad) == (6, 4, 2)
+    assert (default.dpf, default.rdf, default.adf) == (6, 4, 2)
