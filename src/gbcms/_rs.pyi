@@ -284,6 +284,7 @@ def build_gtf_cache(
     variant_chroms: list[str],
     cache_dir: str,
 ) -> int: ...
+def reset_log_caching() -> None: ...
 def prepare_variants(
     variants: list[Variant],
     fasta_path: str,
