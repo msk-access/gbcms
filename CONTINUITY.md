@@ -11,14 +11,28 @@ Full plan + evidence in the issue; three-regime taxonomy validated on internal
 data (local pointers: gitignored `user-local-validation-data` memory; baselines:
 `~/Downloads/gbcms_test/wrong_length_baselines/`).
 
-- **Phase 0 DONE:** target-contract battery `tests/test_wrong_length_contract.py`
-  (7 pass / 8 xfail-strict documenting the bug); baselines captured; MAF/VCF
-  input equivalence confirmed on the bug case.
-- **Phase 1 (next):** repeat-scan anchor fix (scan first changed base, not the
-  VCF anchor) + padding `span + default_pad` in `rust/src/normalize/engine.rs`;
-  three consumers (adaptive padding, `window_pad`, SW gap tuning).
-- Then Phase 2 (wrong-length rule), 3 (logging/transparency), 4 (docs/cleanup),
-  5 (real-data validation vs baselines). Per-step pre/post review protocol in #91.
+- **Phase 0 DONE:** target-contract battery `tests/test_wrong_length_contract.py`;
+  baselines captured; MAF/VCF input equivalence confirmed on the bug case.
+- **Phase 1 DONE** (760a1ea): repeat scan anchors at the first changed base;
+  padding `span + default_pad`.
+- **Phase 2 DONE** (586218a + 6a52414): wrong-length rule — placement-aware
+  ≥50bp deletion band (≤3 retained in span, ≤3 changed outside; covers split
+  reps, rejects displaced net-matches), insertion truncation containment
+  (dual low-complexity gates), windowed flags split (same-length S3-fail keeps
+  Phase-3; wrong-length → repeat: neither+partial / unique: REF+partial), NO
+  Phase-3 for wrong-length (length-blind + tiny-context promotion risk, proven
+  by adversarial review). Plus: `--trace` was entirely dead (pyo3-log Debug cap
+  + wrong logger name "gbcms_rs" vs "_rs") — fixed, with `_rs.reset_log_caching()`.
+  Contract 19/19; pytest 448; all acceptance targets exact (FLT3 7/252,
+  AR 15/9, RNA 15/17, SMARCB1 310); 74-set + fullbam5 panels explained-identical.
+  Phase-2 detail comment on #91.
+- **Phase 3 (next):** logging/transparency — 3 misleading "SW fallback" trace
+  lines (variant_checks.rs phase3_classify), PARTIAL_DOMINANT engine-level test,
+  silent-failure audit, document hardcoded 0.1/0.5 in dynamic_sw_gap_extend.
+- Then Phase 4 (docs/cleanup — incl. rewriting
+  `docs/reference/allele-classification.md`, which still describes the removed
+  reciprocal-overlap rule; CHANGELOG minor bump; MAF↔VCF equivalence test),
+  5 (final real-data validation vs baselines + PR). Protocol in #91.
 
 Previous state (code-review remediation) below for history.
 
