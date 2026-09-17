@@ -260,7 +260,7 @@ When debugging specific variant types, use targeted BAM slices:
 |:-------------|:-------------|:--------------|
 | Del+SNV (complex) | SOX9 `GC→T`, ABL1 `AG→T` | Routes to `check_complex`, not `check_deletion`; alt > 0 |
 | Large deletion, REF=0 | NF2 ~100bp DEL | M-block REF fallback in `check_complex`; ref > 0 |
-| Shifted large deletion | TP53 `GACCGTGCAAGT→-` | `has_nearby_length_match` Phase 3; alt matches sign-out |
+| Shifted large deletion | TP53 `GACCGTGCAAGT→-` | `has_shifted_same_length` Phase 3; alt matches sign-out |
 | MNP/DNP | TERT (5bp), BRCA2 (2bp) | ALT recovery vs sign-out |
 | Shifted insertion | JAK1 `65306997` | Multi-allelic isolation, windowed INS scan |
 

@@ -20,7 +20,7 @@
 //! For reads with ≤2 mismatches vs the correct haplotype, this is extremely fast.
 //! This should resolve 70-80% of reads without touching PairHMM.
 
-use log::{debug, trace};
+use log::trace;
 use wfa2lib_rs::aligner::EditAligner;
 use wfa2lib_rs::penalties::WavefrontPenalties;
 
@@ -150,7 +150,7 @@ pub fn wfa_fast_path(
         }
     }
 
-    debug!(
+    trace!(
         "wfa_fast_path: excess(ref={} alt={}) masked(ref={} alt={}) read_len={}",
         best_ref_excess, best_alt_excess, best_ref_masked, best_alt_masked, read_seq.len(),
     );
@@ -164,7 +164,7 @@ pub fn wfa_fast_path(
     } else if best_ref_excess > OFF_TARGET_THRESHOLD && best_alt_excess > OFF_TARGET_THRESHOLD {
         // Off-target on the RAW read's excess divergence (length gap removed,
         // BQ-independent): the read diverges from BOTH classes beyond that gap.
-        debug!(
+        trace!(
             "wfa_fast_path: off-target (excess ref={} alt={} > threshold={})",
             best_ref_excess, best_alt_excess, OFF_TARGET_THRESHOLD,
         );

@@ -89,7 +89,7 @@ Status is two fields: `gbcms_status` (verdict `PASS`/`FAIL`) and `gbcms_status_r
 | **Genomic binning** | Variant grouping by chromosome for cache-efficient counting (`count_bam_binned`) |
 | **Parity test** | Test verifying `count_bam` and `count_bam_binned` produce identical results |
 | **Complex Del+SNV** | A deletion-format variant (`len(REF) > len(ALT) == 1`) where the anchor base also substitutes (`alt[0] ≠ ref[0]`). Examples: `GC→T`, `AG→T`. Routed to `check_complex` instead of `check_deletion`. |
-| **has_nearby_length_match** | Flag set in `check_deletion` when a windowed Del matches in length (≥5bp) but fails S3 sequence validation. Triggers Phase 3 SW fallback to handle BWA left-alignment shifts. |
+| **has_shifted_same_length** | Flag set in `check_deletion`/`check_insertion` when a windowed indel matches in length (≥5bp for deletions) but fails S3 sequence validation. Triggers Phase 3 arbitration to handle BWA left-alignment shifts. (A wrong-LENGTH windowed op sets `has_wrong_length_nearby` instead and resolves as partial evidence.) |
 | **left-alignment shift** | BWA repositions an indel's anchor to the leftmost equivalent position. For partial-repeat regions, this places the anchor several bases left of where the CIGAR `D` operation appears in reads. |
 | **is_worth_realignment** | Predicate in `check_complex` returning `true` when a read's CIGAR contains indel evidence in the variant window. If `false`, M-block anchor coverage check classifies clean REF reads for deletion-direction variants. |
 

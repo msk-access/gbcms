@@ -144,7 +144,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 ??? question "`alt_count` is lower than expected for a deletion ≥5bp"
 
     BWA left-alignment can shift the anchor further left than where the CIGAR `D` appears.
-    The `has_nearby_length_match` Phase 3 fallback handles this for deletions ≥5bp.
+    The `has_shifted_same_length` Phase 3 fallback handles this for deletions ≥5bp.
 
     For deletions <5bp failing S3 sequence validation, CIGAR-definitive REF is used — this is
     intentional. A 1-4bp deletion in the wrong reference context is almost certainly spurious noise,
@@ -152,7 +152,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     To diagnose deletion ≥5bp still returning low alt:
     ```bash
-    RUST_LOG=trace gbcms dna ... 2>&1 | grep "has_nearby_length_match\|S3.*fail"
+    gbcms dna --trace ... 2>&1 | grep "S3 reject\|falling back to phase3_classify"
     ```
 
 ??? question "Large Δalt vs sign-out `t_alt` for MNP / ONP / DNP variants"

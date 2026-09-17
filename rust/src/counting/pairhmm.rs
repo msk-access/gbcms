@@ -22,7 +22,9 @@ use bio::stats::pairhmm::{
     EmissionParameters, GapParameters, PairHMM, StartEndGapParameters, XYEmission,
 };
 use bio::stats::{LogProb, Prob};
-use log::{debug, trace};
+use log::trace;
+#[cfg(test)]
+use log::debug;
 
 use super::utils::{median_qual, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
@@ -277,8 +279,23 @@ pub fn dynamic_gap_extend(repeat_span: usize, p_base: f64, p_max: f64) -> f64 {
 /// The SW path naturally has a slightly higher threshold (~12bp) for full
 /// relaxation than PairHMM, which is appropriate since SW scoring is less
 /// quality-aware and benefits from tighter gap control.
+///
+/// ## Fixed constants — CLI gap overrides do NOT reach this function
+///
+/// The logistic here always uses 0.1/0.5, the *defaults* of
+/// `--hmm-gap-extend`/`--hmm-gap-extend-repeat`. A user who overrides those
+/// flags retunes the PairHMM probabilities but not this SW penalty: the
+/// integer mapping below (−1 tight / 0 free, flip at ~12bp) was calibrated
+/// against the default curve, and scaling it by user probabilities would
+/// change the flip point in ways the integer rounding makes discontinuous.
+/// The divergence is deliberate and low-stakes under the default PairHMM
+/// backend, where SW runs only when the pangenomic haplotype matrix cannot
+/// be built (variant outside the ref_context window, or haplotype >
+/// MAX_HAP_LEN). Under `--alignment-backend sw`, however, these
+/// fixed-constant aligners ARE the primary Phase-3 engine and there are no
+/// SW gap CLI flags at all — a real asymmetry to keep in mind if tuned-gap
+/// behavior ever matters for sw-backend runs.
 pub fn dynamic_sw_gap_extend(repeat_span: usize) -> i32 {
-    // Use default base/max for the logistic (PairHMM defaults: 0.1, 0.5)
     let logistic = dynamic_gap_extend(repeat_span, 0.1, 0.5);
     (-(1.0 - logistic)).round() as i32
 }
@@ -498,7 +515,7 @@ pub fn classify_by_marginalized_pairhmm(
     let llr = best_alt_ll - best_ref_ll;
     let med_qual = median_qual(adjusted_quals, min_baseq);
 
-    debug!(
+    trace!(
         "marginalized_pairhmm: best_ref_ll={:.3} best_alt_ll={:.3} llr={:.3} threshold={:.3} \
          nhaps={} read_len={}",
         best_ref_ll, best_alt_ll, llr, llr_threshold,

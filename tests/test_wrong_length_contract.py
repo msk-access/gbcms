@@ -307,6 +307,16 @@ def test_ins_unrelated_insert_stays_partial(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
+def test_ins_same_length_wrong_sequence_stays_partial(tmp_path):
+    """A same-LENGTH insertion at the anchor whose bases confidently mismatch
+    the expected insert (+TT observed vs +CC expected, all Q30) is a third
+    allele: never absorbed into rd, never counted as the queried ALT."""
+    ref = _mk_ref()
+    bam = _bam(tmp_path, ref, _ref_reads(ref, 200) + _ins_reads(ref, 200, "TT"))
+    c = _count(bam, _ins_variant(ref, 200, "CC"))
+    assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
+
+
 def test_ins_unique_context_windowed_noise_keeps_rd(tmp_path):
     """A stray 1bp insertion NEAR (not at) the anchor in unique context is
     alignment noise: the anchor-covering M is definitive REF. The read keeps

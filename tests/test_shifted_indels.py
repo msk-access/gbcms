@@ -91,15 +91,20 @@ class TestInsertionWindowed:
         assert counts.ad == 1, f"Expected ad=1 (windowed ALT, shifted left), got {counts.ad}"
 
     def test_wrong_inserted_sequence(self, tmp_path):
-        """INS within window but wrong inserted base → REF (S1 rejects).
-        Read has insertion of 'G' instead of 'T' near anchor.
+        """Same-length insertion AT the anchor with a confidently wrong base
+        ('G' at Q30 instead of expected 'T') is a third allele: neither REF
+        (the read provably carries an insertion — rd must not absorb it) nor
+        the queried ALT, and it surfaces as partial evidence.
         """
         reads = [_make_read("r1", "AAAAAGAAAA", 96, ((0, 5), (1, 1), (0, 4)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, INS_VARIANT)
-        # The read covers the anchor so it should be counted as REF
-        assert counts.rd == 1, f"Expected rd=1 (wrong seq → REF), got {counts.rd}"
+        assert counts.rd == 0, f"Expected rd=0 (third allele, not REF), got {counts.rd}"
         assert counts.ad == 0
+        assert counts.partial_alt == 1, (
+            f"Expected partial_alt=1 (wrong-sequence insertion surfaced), "
+            f"got {counts.partial_alt}"
+        )
 
     def test_outside_window(self, tmp_path):
         """INS 8bp away from anchor → not detected (outside ±5bp window).

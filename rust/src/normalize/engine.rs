@@ -438,72 +438,107 @@ fn prepare_single_variant(
             let wide_start = (pos - pad).max(0);
             let wide_end = pos + ref_al.len() as i64 + pad;
 
-            if let Ok(wide_ref) = fetch_region(
+            match fetch_region(
                 reader,
                 &variant.chrom,
                 wide_start as u64,
                 wide_end as u64,
             ) {
-                let pos_before_align = pos;
-                let (new_pos, new_ref, new_alt, modified) = left_align_variant(
-                    pos,
-                    ref_al.as_bytes(),
-                    alt_al.as_bytes(),
-                    &wide_ref,
-                    wide_start,
-                    norm_window as usize,
-                );
-
-                if modified {
-                    debug!(
-                        "Left-aligned: {}:{} {}>{} → {}:{} {}>{}",
-                        variant.chrom,
-                        pos + 1,
-                        ref_al,
-                        alt_al,
-                        variant.chrom,
-                        new_pos + 1,
-                        String::from_utf8_lossy(&new_ref),
-                        String::from_utf8_lossy(&new_alt),
+                Ok(wide_ref) => {
+                    let pos_before_align = pos;
+                    let (new_pos, new_ref, new_alt, modified) = left_align_variant(
+                        pos,
+                        ref_al.as_bytes(),
+                        alt_al.as_bytes(),
+                        &wide_ref,
+                        wide_start,
+                        norm_window as usize,
                     );
-                    pos = new_pos;
-                    ref_al = String::from_utf8(new_ref)
-                        .unwrap_or_else(|_| ref_al.clone());
-                    alt_al = String::from_utf8(new_alt)
-                        .unwrap_or_else(|_| alt_al.clone());
-                    was_left_aligned = true;
 
-                    // Re-determine variant type after normalization
-                    vtype = if ref_al.len() == 1 && alt_al.len() == 1 {
-                        "SNP".to_string()
-                    } else if ref_al.len() == 1 && alt_al.len() > 1 {
-                        "INSERTION".to_string()
-                    } else if ref_al.len() > 1 && alt_al.len() == 1 {
-                        "DELETION".to_string()
-                    } else {
-                        "COMPLEX".to_string()
-                    };
+                    if modified {
+                        match (String::from_utf8(new_ref), String::from_utf8(new_alt)) {
+                            (Ok(new_ref_s), Ok(new_alt_s)) => {
+                                debug!(
+                                    "Left-aligned: {}:{} {}>{} → {}:{} {}>{}",
+                                    variant.chrom,
+                                    pos + 1,
+                                    ref_al,
+                                    alt_al,
+                                    variant.chrom,
+                                    new_pos + 1,
+                                    new_ref_s,
+                                    new_alt_s,
+                                );
+                                pos = new_pos;
+                                ref_al = new_ref_s;
+                                alt_al = new_alt_s;
+                                was_left_aligned = true;
 
-                    // Check: did the variant shift all the way to the window edge?
-                    // If so, it may not have fully converged — expand and retry.
-                    let shift = pos_before_align - pos;
-                    if shift >= norm_window && norm_window < max_norm_window {
-                        norm_window = (norm_window * 2).min(max_norm_window);
-                        debug!(
-                            "Left-align hit window edge (shift={}bp), \
-                             expanding to {}bp for {}:{}",
-                            shift, norm_window, variant.chrom, pos + 1
-                        );
-                        continue; // Re-align with wider window
+                                // Re-determine variant type after normalization
+                                vtype = if ref_al.len() == 1 && alt_al.len() == 1 {
+                                    "SNP".to_string()
+                                } else if ref_al.len() == 1 && alt_al.len() > 1 {
+                                    "INSERTION".to_string()
+                                } else if ref_al.len() > 1 && alt_al.len() == 1 {
+                                    "DELETION".to_string()
+                                } else {
+                                    "COMPLEX".to_string()
+                                };
+
+                                // Check: did the variant shift all the way to the window
+                                // edge? If so, it may not have fully converged — expand
+                                // and retry.
+                                let shift = pos_before_align - pos;
+                                if shift >= norm_window {
+                                    if norm_window < max_norm_window {
+                                        norm_window = (norm_window * 2).min(max_norm_window);
+                                        debug!(
+                                            "Left-align hit window edge (shift={}bp), \
+                                             expanding to {}bp for {}:{}",
+                                            shift, norm_window, variant.chrom, pos + 1
+                                        );
+                                        continue; // Re-align with wider window
+                                    }
+                                    // The safety cap (centromeric/telomeric repeat
+                                    // oceans) bound before convergence: the variant is
+                                    // left-aligned only as far as the cap allows.
+                                    warn!(
+                                        "Left-align hit the {}bp window cap without \
+                                         converging for {}:{} (shift={}bp) — anchor may \
+                                         not be fully left-aligned",
+                                        max_norm_window, variant.chrom, pos + 1, shift
+                                    );
+                                }
+                            }
+                            _ => {
+                                // Non-UTF-8 bytes in the fetched window (corrupt
+                                // reference). Keep the variant EXACTLY as it was —
+                                // adopting the shifted pos with reverted alleles
+                                // would corrupt coordinates.
+                                warn!(
+                                    "Left-align produced non-UTF-8 alleles for {}:{} \
+                                     (corrupt reference window?) — keeping the \
+                                     unnormalized variant",
+                                    variant.chrom, pos + 1
+                                );
+                            }
+                        }
                     }
                 }
-            } else {
-                debug!(
-                    "Wide ref fetch failed for {}:{}-{}, skipping normalization",
-                    variant.chrom, wide_start, wide_end,
-                );
+                Err(e) => {
+                    // A missed left-alignment shifts the counting anchor for every
+                    // downstream consumer (repeat scan, windowed matching, Phase-3
+                    // haplotypes), so this must be loud. Reachable for real inputs:
+                    // the FASTA reader errors when the window end passes the contig
+                    // end, so indels within ~100bp of a contig boundary land here.
+                    warn!(
+                        "Wide ref fetch failed for {}:{}-{} ({e}) — variant NOT \
+                         left-aligned; counting proceeds at the input coordinates",
+                        variant.chrom, wide_start, wide_end,
+                    );
+                }
             }
-            break; // Normal exit: alignment converged or fetch failed
+            break; // Normal exit: alignment converged, capped, or fetch failed
         }
     }
 
@@ -544,9 +579,9 @@ fn prepare_single_variant(
                 ctx_start,
             ),
             Err(e) => {
-                println!("REF_CTX ERROR: {:?}", e);
                 warn!(
-                    "ref_context fetch failed for {}:{}-{}, SW alignment will be skipped",
+                    "ref_context fetch failed for {}:{}-{} ({e}) — haplotype \
+                     alignment (Phase 3) will be skipped for this variant",
                     variant.chrom, ctx_start, ctx_end,
                 );
                 (None, 0)

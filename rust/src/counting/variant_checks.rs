@@ -117,16 +117,18 @@ fn pangenomic_classify(
 
 /// Backend-aware Phase 3 classification.
 ///
-/// Routes to Smith-Waterman (`classify_by_alignment`) or the pangenomic
-/// WFA+PairHMM pipeline based on the active backend. Called from all
-/// Phase 3 fallback sites in variant_checks (check_complex, check_insertion,
-/// check_deletion).
+/// Routes to `check_complex` (SW backend) or the pangenomic WFA+PairHMM
+/// pipeline (PairHMM backend). Called from the Phase 3 fallback sites in
+/// check_insertion and check_deletion.
 ///
 /// For PairHMM backend:
 /// 1. Build pangenomic haplotype matrix (H0/H1/H2..H2n) from variant + siblings
 /// 2. Try WFA fast-path triage (edit distance; resolves ~70-80% of reads)
 /// 3. Ambiguous reads fall through to marginalized PairHMM (BQ-aware)
-/// 4. If haplotype matrix construction fails, falls back to SW
+/// 4. If the pangenomic pipeline cannot run (no ref_context, window
+///    extraction failure, short window, matrix build failure), falls back to
+///    `check_complex`'s full pipeline — where Smith-Waterman itself runs only
+///    if the matrix cannot be built there either
 #[allow(clippy::too_many_arguments)]
 fn phase3_classify<F: Fn(u8, u8) -> i32>(
     record: &Record,
@@ -168,28 +170,33 @@ fn phase3_classify<F: Fn(u8, u8) -> i32>(
                             return result;
                         }
                         // pangenomic_classify returned None (matrix build failed) —
-                        // fall through to SW fallback below.
+                        // fall through to the check_complex fallback below.
                     } else {
                         trace!(
-                            "phase3: sub_seq too short ({} < 3) → SW fallback at {}:{}",
+                            "phase3: sub_seq too short ({} < 3) → check_complex fallback at {}:{}",
                             sub_seq.len(), variant.chrom, variant.pos + 1,
                         );
                     }
                 } else {
                     trace!(
-                        "phase3: read window extraction failed → SW fallback at {}:{}",
+                        "phase3: read window extraction failed → check_complex fallback at {}:{}",
                         variant.chrom, variant.pos + 1,
                     );
                 }
             } else {
                 debug!(
-                    "phase3: variant {}:{} has no ref_context → SW fallback",
+                    "phase3: variant {}:{} has no ref_context → check_complex fallback",
                     variant.chrom, variant.pos + 1,
                 );
             }
-            // Fallback: if pangenomic pipeline fails at any stage, use SW via check_complex
+            // Fallback when the pangenomic pipeline cannot run here: check_complex's
+            // FULL pipeline (structural bypass → CIGAR reconstruction → masked
+            // comparison → Levenshtein → its own Phase 3). Under this PairHMM
+            // backend, check_complex's Phase 3 retries the pangenomic pipeline;
+            // actual Smith-Waterman runs only if the haplotype matrix cannot be
+            // built there either.
             trace!(
-                "phase3: using check_complex (SW) fallback for {}:{}",
+                "phase3: falling back to check_complex full pipeline for {}:{}",
                 variant.chrom, variant.pos + 1,
             );
             check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
@@ -1175,6 +1182,54 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                                         );
                                         return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural); // ALT — strict match
                                     }
+                                    if reliable > 0 {
+                                        // Confident mismatch on ≥min_baseq bases: the
+                                        // read carries a same-length insertion of
+                                        // DIFFERENT bases at the exact anchor — a third
+                                        // allele. Like the wrong-length rule: not REF
+                                        // (rd must not absorb it), not the queried ALT,
+                                        // and Phase 3 must not arbitrate — alignment
+                                        // scoring promotes a wrong-sequence insert to
+                                        // ALT because it still beats the gapped REF
+                                        // alignment. Partial evidence.
+                                        let arp = anchor_read_pos.unwrap_or(0);
+                                        let qual =
+                                            if arp < quals.len() { quals[arp] } else { 0 };
+                                        trace!(
+                                            "check_insertion: I({}) at anchor {} matches \
+                                             expected length but bases mismatch \
+                                             (mismatches={}, reliable={}) — distinct \
+                                             allele → neither + partial evidence",
+                                            ins_len_usize, anchor_pos, mismatches, reliable
+                                        );
+                                        return ClassifyResult::neither_with_nearby(
+                                            qual, ClassifyPhase::Structural,
+                                        );
+                                    }
+                                    // Every inserted base is below min_baseq: no
+                                    // confident read of the inserted sequence, and a
+                                    // definitive call on quality-rejected bases would
+                                    // break the cross-backend quality contract. Flag
+                                    // for post-walk Phase-3 arbitration (BQ-aware;
+                                    // windowed matches still win first), which
+                                    // propagates partial evidence on non-ALT.
+                                    has_shifted_same_length = true;
+                                    trace!(
+                                        "check_insertion: I({}) at anchor {} matches expected \
+                                         length but all inserted bases are below min_baseq → \
+                                         Phase-3 arbitration",
+                                        ins_len_usize, anchor_pos
+                                    );
+                                } else {
+                                    // Insert runs past the read end (truncated record):
+                                    // the inserted bases cannot be verified — same
+                                    // Phase-3 arbitration as the low-quality case.
+                                    has_shifted_same_length = true;
+                                    trace!(
+                                        "check_insertion: I({}) at anchor {} extends past the \
+                                         read end → Phase-3 arbitration",
+                                        ins_len_usize, anchor_pos
+                                    );
                                 }
                             } else {
                                 // Wrong-length insertion at the anchor: I(n), n ≠ expected.
@@ -1226,7 +1281,10 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                                 return ClassifyResult::neither_with_nearby(qual, ClassifyPhase::Structural);
                             }
                         }
-                        // Anchor at end but no insertion at all → REF coverage
+                        // Anchor at the block end: either no I op followed (plain
+                        // REF coverage) or an unverified same-length I was flagged
+                        // above — found_ref_coverage still gates the post-walk
+                        // Phase-3 branch for that flag.
                         found_ref_coverage = true;
                     } else {
                         // Anchor in middle of match block → read covers anchor without insertion
@@ -1298,7 +1356,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                                     // Length matches but sequence differs — the caller
                                     // and aligner may represent the same event
                                     // differently (e.g., shifted insertion in a repeat).
-                                    // Track this so Phase 3 SW can arbitrate.
+                                    // Track this so Phase 3 can arbitrate.
                                     has_shifted_same_length = true;
                                     trace!(
                                         "check_insertion: windowed I({}) at pos {} seq \
