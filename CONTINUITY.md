@@ -3,9 +3,26 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-06-30_
+_Last updated: 2026-09-17_
 
 ## Now
+**Issue #91 — wrong-length pure-indel fix** (`fix/wrong-length-indel-partial`).
+Full plan + evidence in the issue; three-regime taxonomy validated on internal
+data (local pointers: gitignored `user-local-validation-data` memory; baselines:
+`~/Downloads/gbcms_test/wrong_length_baselines/`).
+
+- **Phase 0 DONE:** target-contract battery `tests/test_wrong_length_contract.py`
+  (7 pass / 8 xfail-strict documenting the bug); baselines captured; MAF/VCF
+  input equivalence confirmed on the bug case.
+- **Phase 1 (next):** repeat-scan anchor fix (scan first changed base, not the
+  VCF anchor) + padding `span + default_pad` in `rust/src/normalize/engine.rs`;
+  three consumers (adaptive padding, `window_pad`, SW gap tuning).
+- Then Phase 2 (wrong-length rule), 3 (logging/transparency), 4 (docs/cleanup),
+  5 (real-data validation vs baselines). Per-step pre/post review protocol in #91.
+
+Previous state (code-review remediation) below for history.
+
+### Previous: code-review remediation
 Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)
 ticket by ticket, one PR each, with review-before/after discipline and real-data
 validation on MSK cfDNA-duplex (b37) and STAR/FORTE RNA (GRCh38) samples.
