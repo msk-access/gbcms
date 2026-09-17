@@ -264,10 +264,10 @@ class TestDeletionWindowed:
         the windowed CIGAR match. The read covers the anchor with a Match op and
         no deletion at the expected position → REF (CIGAR definitive).
 
-        Fix 4 (has_nearby_length_match) only applies to deletions ≥5bp —
-        short deletions (1-4bp) failing S3 are almost certainly spurious noise,
-        so CIGAR remains definitive for them. A 1bp S3-rejected windowed Del
-        does NOT trigger Phase 3; found_ref_coverage=True → REF.
+        Fix 4 (now the has_shifted_same_length flag) only applies to deletions
+        ≥5bp — short deletions (1-4bp) failing S3 are almost certainly spurious
+        noise, so CIGAR remains definitive for them. A 1bp S3-rejected windowed
+        Del does NOT trigger Phase 3; found_ref_coverage=True → REF.
         """
         # ref_context: "AAAAAATGAAAAAAAA" covering [195, 210)
         # pos 201='T', 202='G'. Deletion shifts to 203 → ref='A' but expected='T' → S3 reject.

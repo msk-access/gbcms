@@ -81,6 +81,10 @@ pub struct ClassifyResult {
     /// Whether the checker found structural evidence of the variant but the
     /// final classification was REF or neither. Set by:
     /// - `check_insertion`/`check_deletion`: right-length INDEL, wrong sequence
+    /// - `check_insertion`/`check_deletion`: WRONG-length pure indel at/near
+    ///   the anchor — a distinct allele in the same tract (lone op →
+    ///   `neither_with_nearby`; split-suspect → Phase 3 with this flag
+    ///   propagated on non-ALT results)
     /// - `check_complex` Levenshtein: ALT edit distance close to REF
     /// - `classify_by_alignment`: ALT alignment score close to REF
     ///
@@ -129,6 +133,20 @@ impl ClassifyResult {
     #[inline]
     pub fn neither_with_partial(phase: ClassifyPhase, partial_count: u8, has_n: bool) -> Self {
         Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: partial_count, has_n_base: has_n, has_nearby_evidence: false, is_structural: false }
+    }
+
+    /// Neither REF nor ALT, with structural nearby evidence: the CIGAR proved
+    /// an indel exists at/near the anchor but of the WRONG length — for a pure
+    /// indel that is a distinct allele in the same tract (slippage ladder),
+    /// not the reference and not the queried ALT. Consumed by the engine to
+    /// increment `partial_alt`/`any_alt` (PARTIAL_DOMINANT diagnostics).
+    /// The anchor quality is carried for the legacy path's N heuristic
+    /// (`base_qual == 0 && neither` reads as N-class): a real anchor quality
+    /// keeps these reads out of the N bucket. Fragment consensus ignores the
+    /// qual of neither results.
+    #[inline]
+    pub fn neither_with_nearby(qual: u8, phase: ClassifyPhase) -> Self {
+        Self { is_ref: false, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: true, is_structural: false }
     }
 
     /// Shorthand for REF classification.

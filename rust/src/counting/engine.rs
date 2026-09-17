@@ -4400,11 +4400,14 @@ mod tests {
             "check_complex with no N in reconstructed haplotype should have has_n_base=false");
     }
 
-    // ── INDEL Phase 3 fallback tests ──
+    // ── INDEL wrong-length / nearby-evidence tests ──
     //
-    // These tests verify the wrong-length INDEL Phase 3 fallback paths
-    // added to fix PAX5-class discordances. Each test documents which
-    // code path in check_insertion/check_deletion it exercises.
+    // These tests verify the wrong-length INDEL handling added to fix
+    // PAX5-class discordances (originally Phase-3 fallbacks; now the
+    // wrong-length rule resolves lone ops directly as neither + partial
+    // evidence, with Phase 3 kept for split representations and shifted
+    // same-length candidates). Each test documents which code path in
+    // check_insertion/check_deletion it exercises.
 
     // Aligner construction is inlined in each test below because:
     // 1. Rust's impl Trait creates distinct opaque types per call site
@@ -4492,11 +4495,10 @@ mod tests {
     #[test]
     fn test_insertion_wrong_length_at_anchor() {
         // PAX5-class test: read has I(1) at strict anchor but expected I(2).
-        // Expected path: Step 1.1 → wrong-length else clause → phase3_classify.
-        // Phase 3 (SW) compares read haplotype against REF/ALT and may return
-        // REF (since the read doesn't carry the expected ALT). In that case,
-        // has_nearby_evidence must be set because I(1) at the anchor is
-        // structural evidence of a third allele.
+        // Expected path: strict wrong-length rule — no truncation (observed
+        // 1bp is below the containment floor), no split ops → lone wrong-
+        // length I → neither + has_nearby_evidence, because I(1) at the
+        // anchor is structural evidence of a third allele.
         //
         // Geometry:
         //   Ref:  ...GGGGA---GGGGG...   (anchor A at pos 14)

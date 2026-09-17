@@ -5,17 +5,21 @@ the variant anchor is evidence of a *different allele* (or a truncated
 representation, for complex insertion sequences) — never a definitive REF or
 full ALT call:
 
-  - pure DEL, single wrong-length D op (outside the >=50bp +/-3bp band)
+  - pure DEL, single wrong-length D op outside the >=50bp band
       -> neither + partial_alt
   - pure INS, wrong length, observed insert NOT a high-identity substring of a
     non-low-complexity expected insert -> neither + partial_alt
   - pure INS truncation of a complex expected insert -> ALT (same event)
-  - split/multi-op reads whose net matches the expected event -> Phase-3
-    (unchanged; regime-2 protection)
+  - >=50bp band is placement-aware: reads deleting essentially the whole
+    expected span (<=3 retained, <=3 changed outside) -> structural ALT,
+    covering split representations (regime-2 protection); net-matching but
+    DISPLACED deletions (M ops across the expected span) are rejected ->
+    partial, and shifted same-length candidates keep Phase-3 arbitration
+  - windowed (not-at-anchor) wrong-length ops: repeat tract -> neither +
+    partial_alt; unique context -> REF at anchor + partial_alt (noise is
+    surfaced, never silently absorbed)
   - delins/complex variants -> Phase-3 (unchanged)
 
-Until the fix lands, the tests documenting the bug are xfail(strict=True):
-they fail on develop for the reasons stated, and must flip green with the fix.
 Every counting assertion runs through count_both (binned<->legacy parity) and
 asserts the counting invariants.
 """
@@ -23,15 +27,10 @@ asserts the counting invariants.
 import random
 
 import pysam
-import pytest
 from helpers import build_bam as _repo_build_bam  # noqa: F401  (500bp variant)
 from helpers import count_both, make_read
 
 from gbcms._rs import Variant
-
-XFAIL = pytest.mark.xfail(
-    strict=True, reason="issue #91: wrong-length pure indel gets a definitive call"
-)
 
 
 # ── local fixtures: contigs longer than helpers' 500bp default ───────────
@@ -159,7 +158,6 @@ def test_del_exact_control(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 6, 0)
 
 
-@XFAIL
 def test_del_homopolymer_1bp_vs_2bp(tmp_path):
     """The clinical headline case: 1bp slippage allele vs annotated 2bp del."""
     ref = _mk_ref(plants=HOMOPOLY)
@@ -168,7 +166,6 @@ def test_del_homopolymer_1bp_vs_2bp(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
-@XFAIL
 def test_del_homopolymer_3bp_vs_2bp(tmp_path):
     ref = _mk_ref(plants=HOMOPOLY)
     bam = _bam(tmp_path, ref, _ref_reads(ref, 200) + _del_reads(ref, 200, 3))
@@ -176,7 +173,6 @@ def test_del_homopolymer_3bp_vs_2bp(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
-@XFAIL
 def test_del_ggc_tract_6bp_vs_3bp(tmp_path):
     ref = _mk_ref(plants=GGC)
     bam = _bam(tmp_path, ref, _ref_reads(ref, 200) + _del_reads(ref, 200, 6))
@@ -199,7 +195,6 @@ def test_del_large_exact_control(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 6, 0)
 
 
-@XFAIL
 def test_del_large_60_vs_100(tmp_path):
     """Same-anchor D(60) for an annotated 100bp del: real large dels show zero
     length wobble (9 events, 12-539bp), so 60 != 100 is a different event."""
@@ -209,7 +204,6 @@ def test_del_large_60_vs_100(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
-@XFAIL
 def test_del_large_40_vs_100(tmp_path):
     ref = _mk_ref(n=800)
     bam = _bam(tmp_path, ref, _ref_reads(ref, 300) + _del_reads(ref, 300, 40))
@@ -218,18 +212,56 @@ def test_del_large_40_vs_100(tmp_path):
 
 
 def test_del_large_split_representation_stays_alt(tmp_path):
-    """Regime-2 protection: D(50)+2M+D(48) net=-98~-100 with wobble... net
-    -(50+48)=-98 is outside the +/-3 band of -100 on purpose? No: keep the
-    protected case exact — net -100 via D(50)+2M+D(50) skipping 2 matched
-    bases is not expressible; use D(60)+2M+D(40): net -100. Must stay ALT."""
+    """Regime-2 protection: an aligner may emit one large deletion as two D
+    ops separated by a few matched bases. D(60)+2M+D(40) against an annotated
+    102bp deletion removes 100 of the 102 expected-span bases (2 retained,
+    0 outside) — within the placement-aware band, so these reads must keep
+    counting as ALT, not be demoted by the wrong-length rule."""
     ref = _mk_ref(n=800)
     bam = _bam(tmp_path, ref, _ref_reads(ref, 300) + _split_del_reads(ref, 300, 60, 2, 40))
     c = _count(bam, _del_variant(ref, 300, 102))
-    # deleted span = 60 + 40 with 2 matched bases between; annotate the exact
-    # composite: expected REF spans 102 bases of which 100 are deleted. The
-    # contract: this read pattern must keep counting as ALT (Phase-3 arbitration),
-    # not be demoted by the wrong-length rule.
     assert c.ad == 6
+
+
+def test_del_large_net_matching_but_displaced_not_alt(tmp_path):
+    """Adversarial guard: D ops that NET the expected length while the read's
+    M ops match reference across most of the expected span prove the deletion
+    is ABSENT. D(2)@anchor + M(53) + D(49) nets -51 for an annotated 50bp del
+    but deletes only 2 of the 50 expected bases — must never count as ALT."""
+    ref = _mk_ref(n=800)
+    p0, rl = 300, 100
+    reads = []
+    for i in range(6):
+        s = p0 - 30 - (i % 5)
+        left = p0 - s
+        right = rl - left - 53
+        seq = ref[s:p0] + ref[p0 + 2 : p0 + 55] + ref[p0 + 104 : p0 + 104 + right]
+        reads.append(
+            make_read(f"disp{i}", seq, s, ((0, left), (2, 2), (0, 53), (2, 49), (0, right)))
+        )
+    bam = _bam(tmp_path, ref, _ref_reads(ref, 300) + reads)
+    c = _count(bam, _del_variant(ref, 300, 50))
+    assert c.ad == 0
+
+
+def test_del_large_net_matching_left_flank_not_alt(tmp_path):
+    """Mirror of the displaced case: D(44) ending 4bp left of the anchor plus
+    D(6) at the anchor nets -50 for an annotated 50bp del, but 44 of the 50
+    expected bases are present as reference matches — must never be ALT."""
+    ref = _mk_ref(n=800)
+    rl = 100
+    reads = []
+    for i in range(6):
+        s = 231 - (i % 5)
+        left = 251 - s  # M up to ref pos 251, then D(44) covers 251..295
+        right = rl - left - 5
+        seq = ref[s:251] + ref[295:300] + ref[306 : 306 + right]
+        reads.append(
+            make_read(f"mirr{i}", seq, s, ((0, left), (2, 44), (0, 5), (2, 6), (0, right)))
+        )
+    bam = _bam(tmp_path, ref, _ref_reads(ref, 300) + reads)
+    c = _count(bam, _del_variant(ref, 300, 50))
+    assert c.ad == 0
 
 
 # ═════════════════════════ pure insertions ═══════════════════════════════
@@ -240,7 +272,6 @@ def test_ins_exact_control(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 6, 0)
 
 
-@XFAIL
 def test_ins_homopolymer_1bp_vs_2bp(tmp_path):
     """+A vs annotated +AA in the homopolymer: distinct slippage alleles.
     The read carrying +A is NOT reference — rd must not absorb it."""
@@ -257,7 +288,6 @@ def test_ins_unique_context_1bp_vs_2bp(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 
-@XFAIL
 def test_ins_truncation_of_complex_insert_counts_alt(tmp_path):
     """Regime 3: sequencing errors truncate long inserted sequences, producing
     shorter I ops whose sequence is a prefix of the expected insert. Sign-out
@@ -268,13 +298,57 @@ def test_ins_truncation_of_complex_insert_counts_alt(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (8, 6, 0)
 
 
-@XFAIL
 def test_ins_unrelated_insert_stays_partial(tmp_path):
     """Wrong-length insert whose sequence is NOT contained in the expected
     insert: different event -> partial."""
     ref = _mk_ref()
     bam = _bam(tmp_path, ref, _ref_reads(ref, 200) + _ins_reads(ref, 200, "GGGGGGGGGGG"))
     c = _count(bam, _ins_variant(ref, 200, COMPLEX_INS))
+    assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
+
+
+def test_ins_unique_context_windowed_noise_keeps_rd(tmp_path):
+    """A stray 1bp insertion NEAR (not at) the anchor in unique context is
+    alignment noise: the anchor-covering M is definitive REF. The read keeps
+    rd and carries partial evidence — surfaced, not silently absorbed."""
+    ref = _mk_ref()
+    anchor, rl = 200, 100
+    reads = []
+    for i in range(6):
+        s = anchor - 30 - (i % 5)
+        left = 205 - s  # M through ref pos 204; I(1) sits at the 204/205 boundary
+        seq = ref[s:205] + "T" + ref[205 : 205 + (rl - left - 1)]
+        reads.append(make_read(f"noise{i}", seq, s, ((0, left), (1, 1), (0, rl - left - 1))))
+    bam = _bam(tmp_path, ref, _ref_reads(ref, anchor) + reads)
+    c = _count(bam, _ins_variant(ref, anchor, "TT"))
+    assert (c.rd, c.ad, c.partial_alt) == (14, 0, 6)
+
+
+def test_ins_repeat_tract_windowed_wrong_length_stays_partial(tmp_path):
+    """A wrong-length I placed mid-tract (not left-aligned to the anchor) in
+    a homopolymer is the same-tract slippage allele: neither + partial, and
+    rd must not absorb it. repeat_span is pinned as prepare_variants would
+    set it for the A(10) tract."""
+    ref = _mk_ref(plants=HOMOPOLY)
+    anchor, rl = 199, 100
+    reads = []
+    for i in range(6):
+        s = anchor - 30 - (i % 5)
+        left = 204 - s  # M through ref pos 203 (mid-tract), covers the anchor
+        seq = ref[s:204] + "A" + ref[204 : 204 + (rl - left - 1)]
+        reads.append(make_read(f"mid{i}", seq, s, ((0, left), (1, 1), (0, rl - left - 1))))
+    bam = _bam(tmp_path, ref, _ref_reads(ref, anchor) + reads)
+    v = Variant(
+        chrom="chr1",
+        pos=anchor,
+        ref_allele=ref[anchor],
+        alt_allele=ref[anchor] + "AA",
+        variant_type="INSERTION",
+        ref_context=ref[anchor - 12 : anchor + 20],
+        ref_context_start=anchor - 12,
+        repeat_span=10,
+    )
+    c = _count(bam, v)
     assert (c.rd, c.ad, c.partial_alt) == (8, 0, 6)
 
 

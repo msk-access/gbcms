@@ -22,7 +22,9 @@ mod types;
 mod decomp;
 mod left_align;
 pub(crate) mod fasta;
-mod repeat;
+// pub(crate): counting::variant_checks reuses find_tandem_repeat for the
+// insertion truncation-containment rule (low-complexity gate).
+pub(crate) mod repeat;
 mod engine;
 
 // Re-exports for lib.rs
