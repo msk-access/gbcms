@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: afbf4a49-f216-4b9f-aa60-421bb8c1073c
-  modified: 2026-09-17T19:30:39.399Z
+  modified: 2026-09-17T21:08:26.221Z
 ---
 
 **Updated 2026-09-17 (supersedes the 2026-07 guidance "keep tolerant length
@@ -28,9 +28,25 @@ grants free ALT anyway (large-del ALT haplotype = short junction window).
    only); insertions show a truncation smear that is the same event → sequence
    containment (identity ≥~90%, non-low-complexity insert) keeps it.
 
-**How to apply:** the fix (issue #91) replaces reciprocal-overlap with an
-exact-length rule (±3bp band ≥50bp) for single-op pure dels, routes wrong-length
-single-op pure indels to `partial_alt` (skip Phase-3), keeps Phase-3 for
-multi-op/split reads and all delins. Preserve Fix 2/3/4 + PAX5 gains — see the
-must-not-regress list in #91. Related: [[siblings-break-binned-legacy-parity]],
-[[pysam-validation-oracle]].
+**Why the 50bp threshold (operator-confirmed rationale):** it is an
+artifact-SIZE prior, not an event-rarity claim. Slippage/stutter/alignment
+artifacts produce SMALL spurious indel ops (overwhelmingly <50bp, mostly
+1–few bp in repeat context); a read essentially never acquires a ≥50bp D by
+artifact. So ≥50bp marks where an observed big op is trusted as a REAL
+deletion in that molecule — the only question is which event it belongs to
+(in the placement-aware band → the queried event → ALT; outside it → a real
+DIFFERENT deletion → `partial_alt`, not noise). Below 50bp wrong-length ops
+are likely artifacts or, in tracts, real distinct slippage alleles — no
+length tolerance is safe there (the <5bp windowed noise gates encode the
+same prior).
+
+**How to apply:** the fix (issue #91 Phase 2, commits 586218a/6a52414)
+replaces reciprocal-overlap with a placement-aware band for pure dels ≥50bp
+(≤3 retained bases in the expected span, ≤3 changed outside — covers split
+D+M+D representations in CIGAR space); ALL other wrong-length pure-indel
+evidence → `partial_alt`, never Phase-3 (Phase-3 is length-blind in tracts
+and, with narrow context, promotes not-the-event reads — proven by
+adversarial review). Shifted same-length S3-fail candidates keep Phase-3;
+delins keep Phase-3. Preserve Fix 2/3/4 + PAX5 gains — see the
+must-not-regress list in #91. Related:
+[[siblings-break-binned-legacy-parity]], [[pysam-validation-oracle]].
