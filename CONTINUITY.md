@@ -36,13 +36,20 @@ data (local pointers: gitignored `user-local-validation-data` memory; baselines:
   e2e reporting-chain test. Measured: ad unchanged everywhere; 8 reads
   rd→partial on 3 insertion rows. Separable findings (2 high: _zero_counts
   stub crash, --bam-list fail-fast violation) → issue #92.
-- **Phase 4 (next):** docs — REWRITE `docs/reference/allele-classification.md`
-  and `docs/reference/complex-indels.md` (both still diagram the removed
-  reciprocal-overlap tier, the removed strict-path REF fall-through, and the
-  retired has_nearby_length_match flag); output-formats partial_alt semantics;
-  cli docs; CHANGELOG minor bump with behavior callout; dead-code sweep;
-  committed MAF↔VCF equivalence test.
-- Then Phase 5 (final real-data validation vs baselines + PR). Protocol in #91.
+- **Phase 4 DONE** (f261d9b): docs rewritten + 24-agent docs-vs-code
+  verification (21 discrepancies fixed, much pre-existing rot: MNP no-fallback,
+  Phase-2.5 routing, interior guard, fictional RUST_LOG/GBCMS_LOG_LEVEL, false
+  DP invariant, broken normalize command, invalid windowed examples). New code
+  finding → #92: dynamic_sw_gap_extend is a constant −1 (logistic caps at 0.5;
+  relaxation never engages). CHANGELOG [Unreleased] with minor-bump callout;
+  counting-engine skill updated; MAF↔VCF equivalence test committed
+  (tests/test_e2e_maf_vcf_equivalence.py).
+- **Phase 5 (next):** final real-data validation vs
+  `~/Downloads/gbcms_test/wrong_length_baselines/` (rerun 74-set + fullbam5 +
+  FLT3/AR debug + RNA locus on the final build; expected state is the measured
+  Phase-2/3 deltas already posted to #91 — everything else byte-identical);
+  full QA; version-number bump decision (minor per CHANGELOG callout); PR to
+  develop with the #91 narrative. Protocol in #91.
 
 Previous state (code-review remediation) below for history.
 
