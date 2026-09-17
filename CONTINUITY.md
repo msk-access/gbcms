@@ -44,12 +44,15 @@ data (local pointers: gitignored `user-local-validation-data` memory; baselines:
   relaxation never engages). CHANGELOG [Unreleased] with minor-bump callout;
   counting-engine skill updated; MAF↔VCF equivalence test committed
   (tests/test_e2e_maf_vcf_equivalence.py).
-- **Phase 5 (next):** final real-data validation vs
-  `~/Downloads/gbcms_test/wrong_length_baselines/` (rerun 74-set + fullbam5 +
-  FLT3/AR debug + RNA locus on the final build; expected state is the measured
-  Phase-2/3 deltas already posted to #91 — everything else byte-identical);
-  full QA; version-number bump decision (minor per CHANGELOG callout); PR to
-  develop with the #91 narrative. Protocol in #91.
+- **Phase 5 DONE:** final-build validation matrix all-exact (FLT3 7/252,
+  AR 15/9, RNA 15/17; 74-set 69/74 identical with exactly the 5 predicted
+  rows; fullbam5 14/15 with the 1 predicted row; CLI matrix + large panel
+  conform, 2 script rows attributed to un-pinned-anchor construction).
+  Review reconciliation: 69 findings across 4 adversarial passes, all fixed
+  or in #92. Branch PHI scan clean. Version: release branch cuts 6.4.0
+  (CHANGELOG callout shipped). **PR #93 open to develop** (PHI/accuracy
+  verified body). Remaining: CI green -> merge; then #92 follow-ups
+  (class-1 xfail battery first).
 
 Previous state (code-review remediation) below for history.
 
