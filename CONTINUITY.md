@@ -26,13 +26,23 @@ data (local pointers: gitignored `user-local-validation-data` memory; baselines:
   Contract 19/19; pytest 448; all acceptance targets exact (FLT3 7/252,
   AR 15/9, RNA 15/17, SMARCB1 310); 74-set + fullbam5 panels explained-identical.
   Phase-2 detail comment on #91.
-- **Phase 3 (next):** logging/transparency — 3 misleading "SW fallback" trace
-  lines (variant_checks.rs phase3_classify), PARTIAL_DOMINANT engine-level test,
-  silent-failure audit, document hardcoded 0.1/0.5 in dynamic_sw_gap_extend.
-- Then Phase 4 (docs/cleanup — incl. rewriting
-  `docs/reference/allele-classification.md`, which still describes the removed
-  reciprocal-overlap rule; CHANGELOG minor bump; MAF↔VCF equivalence test),
-  5 (final real-data validation vs baselines + PR). Protocol in #91.
+- **Phase 3 DONE** (a96b8a6): 36-agent silent-failure audit → 21 confirmed
+  findings. Fixed here: same-length wrong-seq insertion no longer absorbed
+  into rd (third allele → neither+partial; Phase-3 only for unverifiable
+  bases — SW provably promotes confident wrong-seq to ALT); phase3 "SW
+  fallback" logs corrected; enforce-strandedness + GTF-coverage warns (incl.
+  cache-hit path); left-align failure loudness (fetch fail, cap bind, UTF-8);
+  per-read debug→trace; dynamic_sw_gap_extend divergence doc; PARTIAL_DOMINANT
+  e2e reporting-chain test. Measured: ad unchanged everywhere; 8 reads
+  rd→partial on 3 insertion rows. Separable findings (2 high: _zero_counts
+  stub crash, --bam-list fail-fast violation) → issue #92.
+- **Phase 4 (next):** docs — REWRITE `docs/reference/allele-classification.md`
+  and `docs/reference/complex-indels.md` (both still diagram the removed
+  reciprocal-overlap tier, the removed strict-path REF fall-through, and the
+  retired has_nearby_length_match flag); output-formats partial_alt semantics;
+  cli docs; CHANGELOG minor bump with behavior callout; dead-code sweep;
+  committed MAF↔VCF equivalence test.
+- Then Phase 5 (final real-data validation vs baselines + PR). Protocol in #91.
 
 Previous state (code-review remediation) below for history.
 
