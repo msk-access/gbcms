@@ -27,7 +27,6 @@ asserts the counting invariants.
 import random
 
 import pysam
-from helpers import build_bam as _repo_build_bam  # noqa: F401  (500bp variant)
 from helpers import count_both, make_read
 
 from gbcms._rs import Variant

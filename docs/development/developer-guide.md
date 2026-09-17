@@ -112,7 +112,7 @@ flowchart LR
 
     To observe binning at runtime:
     ```bash
-    RUST_LOG=info gbcms dna ... 2>&1 | grep "Built.*bins"
+    gbcms dna ... 2>&1 | grep "Built.*bins"
     # Example: "Built 42 genomic bins from 1247 variants (window=10000bp)"
     ```
 
@@ -232,7 +232,7 @@ count_bam_binned() → _merge_counts() → _compute_diagnostics() → _rescue_mn
 
 ```bash
 # Enable rescue with debug logging to see per-variant decisions
-GBCMS_LOG_LEVEL=DEBUG gbcms dna --rescue-mnp --variants input.maf --bam sample:sample.bam --fasta ref.fa --format maf --output-dir out/
+gbcms dna --verbose --rescue-mnp --variants input.maf --bam sample:sample.bam --fasta ref.fa --format maf --output-dir out/
 
 # Look for rescue log lines:
 # INFO  — "MNP rescue: 3 candidate(s) for SAMPLE"
@@ -369,13 +369,14 @@ cd rust && cargo clippy --all-targets -- -D warnings && cargo test
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|:---------|:--------|:------------|
-| `GBCMS_LOG_LEVEL` | INFO | Logging level |
-| `RUST_LOG` | — | Rust logging |
+Logging is controlled by CLI flags, not environment variables: `--verbose` enables
+DEBUG (Python and Rust — Rust records are forwarded through `pyo3-log` into Python's
+`logging`), and `--trace` additionally enables per-read Rust `trace!()` diagnostics.
+`RUST_LOG` has **no effect** on gbcms.
 
 ```bash
-GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms dna ...
+gbcms dna --verbose ...   # DEBUG-level logs
+gbcms dna --trace ...     # per-read classification diagnostics (slow)
 ```
 
 ---

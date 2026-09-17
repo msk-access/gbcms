@@ -2151,10 +2151,9 @@ fn count_single_variant(
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
     // ALT + REF: Same affine gap penalties for fair comparison.
-    // Continuous gap_extend: uses logistic sigmoid to smoothly transition
-    // from tight (-1) to free (0) as repeat_span increases.
-    // Replaces the previous rigid `repeat_span >= 10` binary threshold
-    // to prevent boundary artifacts at the transition point.
+    // NOTE: dynamic_sw_gap_extend is currently a constant -1 for every
+    // repeat_span — the intended tight-to-free relaxation never engages
+    // with the fixed default curve (see its doc; issue #92).
     let gap_open: i32 = -5;
     let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
     let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);

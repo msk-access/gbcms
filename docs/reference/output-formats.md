@@ -411,7 +411,7 @@ These columns are **always** appended regardless of input format.
     | `ref_count` | Integer | REF read depth |
     | `alt_count` | Integer | ALT read depth |
     | `any_alt` | Integer | Any ALT Depth — reads with ALT evidence at ≥1 discriminating position. Invariant: `any_alt = alt_count + partial_alt` |
-    | `partial_alt` | Integer | Partial ALT Depth — reads matching ALT at some but not all discriminating positions. Populated for all variant types including INDELs (via Phase 3 structural evidence propagation). |
+    | `partial_alt` | Integer | Partial ALT Depth — partial or structural ALT evidence that is not a full match. For MNP/complex: reads matching ALT at some but not all discriminating positions. For pure indels: reads whose CIGAR proves an indel of a **different length** (or a same-length insert with different bases) at the anchor — a distinct allele in the same tract — plus Phase-3 structural-evidence propagation. `PARTIAL_DOMINANT` in `gbcms_diagnostic` marks loci where this exceeds `alt_count`. |
     | `n_count` | Integer | N-base Depth — reads with N base at ≥1 discriminating position (duplex masking QC metric) |
     | `total_count` | Integer | Total read depth (DP) |
     | `vaf` | Float | Read-level variant allele fraction |

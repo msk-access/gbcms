@@ -9,8 +9,8 @@
 //!
 //! ## Selection
 //!
-//! Activated via `--alignment-backend hmm`. The `sw` backend remains the
-//! default for v2.8.0; PairHMM becomes the default in v3.0.0.
+//! The default backend (`--alignment-backend hmm`); Smith-Waterman remains
+//! selectable via `sw` for reproducibility with pre-3.0 releases.
 //!
 //! ## Architecture
 //!
@@ -264,37 +264,39 @@ pub fn dynamic_gap_extend(repeat_span: usize, p_base: f64, p_max: f64) -> f64 {
 
 /// Convert the continuous logistic gap_extend to an integer SW penalty.
 ///
-/// Smith-Waterman uses integer gap penalties (typically -1 for tight, 0 for free).
-/// This function maps the logistic curve to i32 by rounding:
+/// Smith-Waterman uses integer gap penalties. This maps the logistic curve
+/// to i32 by rounding:
 ///
 /// ```text
 ///   sw_gap_extend = round(-1.0 * (1.0 - logistic(repeat_span)))
 /// ```
 ///
-/// - repeat_span=0  → round(-0.893) = -1 (tight)
-/// - repeat_span=10 → round(-0.500) = -1 (tight, Rust rounds half away from zero)
-/// - repeat_span=12 → round(-0.280) = 0  (free)
-/// - repeat_span=20 → round(-0.107) = 0  (free)
+/// ## In practice this is a CONSTANT −1 for every repeat_span
 ///
-/// The SW path naturally has a slightly higher threshold (~12bp) for full
-/// relaxation than PairHMM, which is appropriate since SW scoring is less
-/// quality-aware and benefits from tighter gap control.
+/// With the fixed defaults below (`p_base=0.1`, `p_max=0.5`) the logistic is
+/// capped at 0.5, so the pre-round value lies in `(-0.9, -0.5]` — and Rust's
+/// `round` (half away from zero) maps that entire range to −1:
+///
+/// - repeat_span=0  → round(-0.893) = -1
+/// - repeat_span=12 → round(-0.608) = -1
+/// - repeat_span→∞  → round(-0.500) = -1
+///
+/// The intended tight→free relaxation for deep repeats never engages; SW
+/// always runs with gap_extend = −1. Whether to make the relaxation real
+/// (map the curve so large spans reach 0) or delete the inert machinery is
+/// tracked in issue #92 — changing it alters SW alignment scores and needs
+/// its own validation pass.
 ///
 /// ## Fixed constants — CLI gap overrides do NOT reach this function
 ///
-/// The logistic here always uses 0.1/0.5, the *defaults* of
-/// `--hmm-gap-extend`/`--hmm-gap-extend-repeat`. A user who overrides those
-/// flags retunes the PairHMM probabilities but not this SW penalty: the
-/// integer mapping below (−1 tight / 0 free, flip at ~12bp) was calibrated
-/// against the default curve, and scaling it by user probabilities would
-/// change the flip point in ways the integer rounding makes discontinuous.
-/// The divergence is deliberate and low-stakes under the default PairHMM
-/// backend, where SW runs only when the pangenomic haplotype matrix cannot
-/// be built (variant outside the ref_context window, or haplotype >
-/// MAX_HAP_LEN). Under `--alignment-backend sw`, however, these
-/// fixed-constant aligners ARE the primary Phase-3 engine and there are no
-/// SW gap CLI flags at all — a real asymmetry to keep in mind if tuned-gap
-/// behavior ever matters for sw-backend runs.
+/// The logistic here always uses 0.1/0.5, the *defaults* of the PairHMM
+/// gap-extend flags. Overriding those flags retunes the PairHMM
+/// probabilities but never this SW penalty. Low-stakes under the default
+/// PairHMM backend, where SW runs only when the pangenomic haplotype matrix
+/// cannot be built (variant outside the ref_context window, or haplotype >
+/// MAX_HAP_LEN). Under `--alignment-backend sw`, these fixed-constant
+/// aligners ARE the primary Phase-3 engine and there are no SW gap CLI
+/// flags at all.
 pub fn dynamic_sw_gap_extend(repeat_span: usize) -> i32 {
     let logistic = dynamic_gap_extend(repeat_span, 0.1, 0.5);
     (-(1.0 - logistic)).round() as i32

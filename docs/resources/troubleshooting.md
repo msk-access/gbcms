@@ -105,7 +105,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
        **complex Del+SNV** routed to `check_complex`, not `check_deletion`.
        Use `--trace` logging to confirm:
        ```bash
-       RUST_LOG=trace gbcms dna --variants variants.maf --bam sample.bam \
+       gbcms dna --trace --variants variants.maf --bam sample.bam \
            --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep "check_complex\|check_deletion"
        ```
        See [Complex Indels](../reference/complex-indels.md) for detailed case studies.
@@ -125,7 +125,8 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     5. **Verbose per-read trace** — most diagnostic tool:
        ```bash
-       RUST_LOG=trace gbcms dna ... 2>&1 | grep "7579309"  # Filter to specific position
+       # Per-read trace lines print 0-BASED positions; variant-level lines are 1-based.
+       gbcms dna --trace ... 2>&1 | grep -E "7579308|7579309"  # 0-based and 1-based
        ```
 
 ??? question "`ref_count = 0` for a large deletion"
@@ -137,7 +138,8 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     If `ref = 0`, check:
     - The variant was normalized correctly (M-block REF fallback only applies in `check_complex`)
     - The BAM slice has coverage at the anchor position (`samtools depth -a sample.bam -r chr22:30038094-30038095`)
-    - The deletion is ≥50bp (interior REF guard applies; smaller deletions use the normal path)
+    - Reads actually **span the anchor**: reads mapping entirely inside a large deleted span
+      carry no information about the variant and count as neither, not REF
 
     See [NF2 Case Study](../reference/complex-indels.md#case-2-nf2-large-deletion-ref-reads-invisible).
 
@@ -330,24 +332,26 @@ gbcms has two levels of diagnostic output:
 
 ```bash
 # Verbose: see per-variant decisions
-RUST_LOG=info gbcms dna --verbose --variants variants.maf --bam sample.bam \
+gbcms dna --verbose --variants variants.maf --bam sample.bam \
     --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | tee debug.log
 
-# Trace: per-read detail (slow — run on small BAMs or specific regions)
-RUST_LOG=trace gbcms dna --trace --variants variants.maf --bam sample.bam \
-    --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep "7579309" > tp53_trace.log
+# Trace: per-read detail (slow — run on small BAMs or specific regions).
+# Per-read trace lines print 0-BASED positions; variant-level lines are 1-based,
+# so grep both spellings of the coordinate.
+gbcms dna --trace --variants variants.maf --bam sample.bam \
+    --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep -E "7579308|7579309" > tp53_trace.log
 ```
 
 ### Inspecting Genomic Bin Construction
 
-gbcms groups variants into **~10kb genomic bins** before BAM traversal to reduce `bam.fetch()` calls (see [Architecture → Genomic Binning](../reference/architecture.md#genomic-binning)). Enable `RUST_LOG=info` to observe bin construction:
+gbcms groups variants into **~10kb genomic bins** before BAM traversal to reduce `bam.fetch()` calls (see [Architecture → Genomic Binning](../reference/architecture.md#genomic-binning)). Bin construction is logged at INFO by default:
 
 ```bash
-RUST_LOG=info gbcms dna --variants variants.maf --bam sample.bam \
+gbcms dna --variants variants.maf --bam sample.bam \
     --fasta ref.fa --output-dir /tmp/out/ 2>&1 | grep -i "bin"
-# Example:
-# [INFO  gbcms] Built 42 genomic bins from 1247 variants (window=10000bp, max_per_bin=200)
-# [INFO  gbcms] Bin chr17:7571720-7579309 → 83 variants (1 fetch)
+# Example (INFO):
+#   Built 42 genomic bins from 1247 variants (window=10000bp)
+# Per-bin detail (read counts, filter breakdown) is DEBUG-level — add --verbose.
 ```
 
 !!! tip "Expected bin counts"
