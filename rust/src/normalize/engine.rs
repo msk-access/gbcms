@@ -15,7 +15,7 @@ use super::types::PreparedVariant;
 use super::decomp::check_homopolymer_decomp;
 use super::left_align::left_align_variant;
 use super::fasta::{fetch_region, resolve_maf_anchor, validate_ref};
-use super::repeat::{find_tandem_repeat, compute_adaptive_padding};
+use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_offset};
 
 /// Prepare variants for counting in a single pass over the reference FASTA.
 ///
@@ -512,11 +512,16 @@ fn prepare_single_variant(
     //         MNPs are excluded: they are pure substitutions that don't need
     //         ref_context for SW/HMM indel realignment.
     let (ref_context, ref_context_start) = if is_indel || (vtype == "COMPLEX" && !is_mnp) {
+        // Scan for repeats at the FIRST CHANGED base, not the shared anchor:
+        // a left-aligned repeat indel's anchor sits one base left of the
+        // tract, where the scan finds span 1 and adaptive padding never
+        // widens (issue #91).
+        let change_off = first_change_offset(&ref_al, &alt_al);
         let effective_padding = if adaptive_context {
             compute_adaptive_padding(
                 reader,
                 &variant.chrom,
-                pos,
+                pos + change_off,
                 ref_al.len(),
                 context_padding,
                 50,  // max cap
@@ -594,7 +599,11 @@ fn prepare_single_variant(
     // find_tandem_repeat detects tandem repeats around the variant position.
     let variant_repeat_span = if let Some(ref ctx) = ref_context {
         let ctx_bytes = ctx.as_bytes();
-        let pos_in_ctx = (pos - ref_context_start) as usize;
+        // Same first-changed-base anchoring as the adaptive scan above:
+        // repeat_span feeds the windowed-scan width and SW gap tuning, and an
+        // anchor-based scan misses edge tracts entirely (issue #91).
+        let scan_pos = pos + first_change_offset(&ref_al, &alt_al);
+        let pos_in_ctx = (scan_pos - ref_context_start) as usize;
         let (_motif_len, span) = find_tandem_repeat(ctx_bytes, pos_in_ctx.min(ctx_bytes.len().saturating_sub(1)));
         span
     } else {
@@ -862,48 +871,60 @@ mod tests {
 
     // -- compute_adaptive_padding (formula) tests --
 
+    // Formula: genuine repeat (span >= 2) pads by the full tract span on top
+    // of the default, so the haplotype window always contains the tract plus
+    // unique flank on both sides (issue #91). Non-repeats keep the default.
+    fn effective_padding(span: usize, default_pad: i64, max_pad: i64) -> i64 {
+        let adaptive = if span >= 2 { span as i64 + default_pad } else { 0 };
+        default_pad.max(adaptive).min(max_pad)
+    }
+
     #[test]
     fn test_adaptive_padding_default() {
-        // Non-repeat: span=1 → adaptive = 1/2+3 = 3 → max(5,3) = 5
-        let span = 1;
-        let default_pad: i64 = 5;
-        let max_pad: i64 = 50;
-        let adaptive = (span as i64) / 2 + 3;
-        let effective = default_pad.max(adaptive).min(max_pad);
-        assert_eq!(effective, 5, "Non-repeat should use default padding");
+        // Non-repeat: span=1 → default padding unchanged
+        assert_eq!(effective_padding(1, 5, 50), 5, "Non-repeat should use default padding");
     }
 
     #[test]
     fn test_adaptive_padding_homopoly() {
-        // Poly-A span=14 → adaptive = 14/2+3 = 10 → max(5,10) = 10
-        let span = 14;
-        let default_pad: i64 = 5;
-        let max_pad: i64 = 50;
-        let adaptive = (span as i64) / 2 + 3;
-        let effective = default_pad.max(adaptive).min(max_pad);
-        assert_eq!(effective, 10, "Homopolymer should increase padding");
+        // Poly-A span=14 → 14 + 5 = 19: tract + 5bp unique flank each side
+        assert_eq!(effective_padding(14, 5, 50), 19, "Homopolymer must span tract + flanks");
     }
 
     #[test]
     fn test_adaptive_padding_dinuc() {
-        // CA-repeat span=20 → adaptive = 20/2+3 = 13 → max(5,13) = 13
-        let span = 20;
-        let default_pad: i64 = 5;
-        let max_pad: i64 = 50;
-        let adaptive = (span as i64) / 2 + 3;
-        let effective = default_pad.max(adaptive).min(max_pad);
-        assert_eq!(effective, 13, "Dinucleotide repeat should increase padding");
+        // CA-repeat span=20 → 20 + 5 = 25
+        assert_eq!(effective_padding(20, 5, 50), 25, "Dinucleotide repeat must span tract + flanks");
     }
 
     #[test]
     fn test_adaptive_padding_capped() {
-        // Very long repeat span=120 → adaptive = 120/2+3 = 63 → min(63,50) = 50
-        let span = 120;
-        let default_pad: i64 = 5;
-        let max_pad: i64 = 50;
-        let adaptive = (span as i64) / 2 + 3;
-        let effective = default_pad.max(adaptive).min(max_pad);
-        assert_eq!(effective, 50, "Should be capped at max_pad");
+        // Very long repeat span=120 → 125 → capped at 50
+        assert_eq!(effective_padding(120, 5, 50), 50, "Should be capped at max_pad");
+    }
+
+    // -- first_change_offset + scan-anchor regression (issue #91) --
+
+    #[test]
+    fn test_first_change_offset_indels_and_complex() {
+        use super::super::repeat::first_change_offset;
+        assert_eq!(first_change_offset("GAA", "G"), 1, "pure deletion: first deleted base");
+        assert_eq!(first_change_offset("G", "GTT"), 1, "pure insertion: first inserted base");
+        assert_eq!(first_change_offset("GC", "T"), 0, "complex without shared anchor");
+        assert_eq!(first_change_offset("GAT", "GCT"), 1, "substitution after anchor");
+    }
+
+    #[test]
+    fn test_repeat_scan_at_first_changed_base_finds_edge_tract() {
+        // Anchor 'C' sits one base left of a 10-A tract. Scanning at the
+        // anchor found span 1 (the historical bug); scanning at the first
+        // deleted base finds the full tract.
+        let seq = b"GGTTCAAAAAAAAAATTGG";
+        let anchor = 4; // the 'C'
+        let (_, span_at_anchor) = find_tandem_repeat(seq, anchor);
+        let (_, span_at_change) = find_tandem_repeat(seq, anchor + 1);
+        assert_eq!(span_at_anchor, 1, "anchor scan misses the tract (documented bug)");
+        assert_eq!(span_at_change, 10, "first-changed-base scan finds the tract");
     }
 
     // -- Gap 1B: Dynamic window expansion tests --
