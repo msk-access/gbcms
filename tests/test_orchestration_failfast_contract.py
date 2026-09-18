@@ -1,8 +1,8 @@
 """Target contract for orchestration fail-fast and silent-failure fixes.
 
-Each xfail(strict=True) test documents a verified defect in the Python
-orchestration layer and states the behavior the fix must produce; they fail
-on the current code for the reasons given and must flip green with the fix:
+Each test documents a defect that was verified on the pre-fix code and pins
+the fixed behavior (the battery was committed red as xfail(strict=True) and
+flipped green by the fixes):
 
   - a rejected (FAIL) variant must not crash ``--mfsd`` or RNA ``--gtf``
     runs (the zero-count stub must satisfy every column the writers read)
@@ -30,10 +30,6 @@ from typer.testing import CliRunner
 from gbcms.cli import app
 
 runner = CliRunner()
-
-XFAIL = pytest.mark.xfail(
-    strict=True, reason="orchestration silent-failure: fix pending (issue #92 class 1)"
-)
 
 BAM_CONTIG = "1"  # normalized name; the pipeline strips 'chr' before fetch
 SNV_POS0 = 100  # 0-based PASS SNV position
@@ -124,7 +120,6 @@ def test_fail_variant_without_gated_modes_is_fine(tmp_path):
     assert statuses[0].startswith("FAIL") and statuses[1] == "PASS"
 
 
-@XFAIL
 def test_mfsd_run_survives_a_rejected_variant(tmp_path):
     """--mfsd + one FAIL variant: the zero-count stub lacks the mFSD q-value
     and sub/mono-nucleosomal fields the MAF writer reads, so the sample
@@ -142,11 +137,12 @@ def test_mfsd_run_survives_a_rejected_variant(tmp_path):
     assert len(rows) == 2
 
 
-@XFAIL
 def test_rna_gtf_run_survives_a_rejected_variant(tmp_path):
     """RNA + --gtf + one FAIL variant: the stub lacks exon_boundary_dist,
     transcript_* and asjd_* fields read by the RNA/GTF columns → crash.
-    Fixed: exit 0 with both rows written."""
+    Fixed: exit 0 with both rows written, and the FAIL row's ASJD p-value
+    renders as the not-applicable sentinel (empty cell), never as a
+    significant 0.0."""
     fasta, ref = _build_reference(tmp_path)
     bam = _build_bam(tmp_path, ref)
     outdir = tmp_path / "out"
@@ -171,9 +167,13 @@ def test_rna_gtf_run_survives_a_rejected_variant(tmp_path):
     assert result.exit_code == 0, result.output
     rows = list(read_maf_output(glob.glob(str(outdir / "*.maf"))[0]))
     assert len(rows) == 2
+    fail_row = next(r for r in rows if r["gbcms_status"].startswith("FAIL"))
+    assert fail_row["asjd_pval"] == "", (
+        "rejected variant must carry the not-applicable ASJD sentinel, "
+        f"got {fail_row['asjd_pval']!r}"
+    )
 
 
-@XFAIL
 def test_mfsd_parquet_survives_a_rejected_variant(tmp_path):
     """--mfsd-parquet + one FAIL variant: the merged counts list contains a
     Python stub that PyO3 cannot cast as BaseCounts → the parquet write (or
@@ -204,12 +204,11 @@ def test_mfsd_parquet_survives_a_rejected_variant(tmp_path):
 
 
 # ═════════════ --bam-list fail-fast contract ═════════════════════════════
-@XFAIL
 def test_bam_list_missing_entry_fails_fast(tmp_path):
     """A missing BAM in --bam-list without --lenient-bam must exit non-zero
     (the --lenient-bam help text and the parser docstring both promise
-    fail-fast). Today the entry is skipped and the run exits 0 with fewer
-    samples."""
+    fail-fast). Pre-fix, the entry was skipped and the run exited 0 with
+    fewer samples."""
     fasta, ref = _build_reference(tmp_path)
     good = _build_bam(tmp_path, ref, name="good.bam")
     listfile = tmp_path / "bams.list"
@@ -263,11 +262,10 @@ def test_bam_list_missing_entry_lenient_skips(tmp_path):
     assert glob.glob(str(outdir / "good*.maf")), "good sample must still be processed"
 
 
-@XFAIL
 def test_bam_list_read_error_fails_fast(tmp_path):
-    """An unreadable --bam-list (here: a directory) raises OSError, which is
-    currently logged and swallowed — the run continues with whatever --bam
-    supplied and exits 0. A half-read (or unreadable) list is as fatal as a
+    """An unreadable --bam-list (here: a directory) raises OSError, which was
+    logged and swallowed pre-fix — the run continued with whatever --bam
+    supplied and exited 0. A half-read (or unreadable) list is as fatal as a
     missing one: must exit non-zero."""
     fasta, ref = _build_reference(tmp_path)
     good = _build_bam(tmp_path, ref, name="good.bam")
@@ -295,10 +293,9 @@ def test_bam_list_read_error_fails_fast(tmp_path):
     assert result.exit_code != 0, "unreadable bam-list must fail fast"
 
 
-@XFAIL
 def test_duplicate_sample_names_are_an_error(tmp_path):
     """Two --bam arguments whose sample names collide (same file stem in
-    different directories) silently overwrite each other today — one BAM is
+    different directories) silently overwrote each other pre-fix — one BAM was
     never processed. Must exit non-zero naming the collision."""
     fasta, ref = _build_reference(tmp_path)
     d1 = tmp_path / "runA"
@@ -330,7 +327,6 @@ def test_duplicate_sample_names_are_an_error(tmp_path):
 
 
 # ═════════════ writer and merge silent data loss ═════════════════════════
-@XFAIL
 def test_maf_writer_warns_on_colliding_input_columns(tmp_path, caplog):
     """An input MAF that already carries a gbcms output column name (e.g.
     ref_count from a previous genotyping run) has its values replaced in
@@ -367,7 +363,6 @@ def test_maf_writer_warns_on_colliding_input_columns(tmp_path, caplog):
     ), "collision with input-MAF columns must be warned about"
 
 
-@XFAIL
 def test_merge_does_not_coerce_float_count_strings_to_zero(tmp_path):
     """A count value of '12.0' (pandas/R round-trip formatting) is cast with
     strict=False and silently becomes null → 0 in the combined sums. The fix
@@ -401,23 +396,26 @@ def test_merge_does_not_coerce_float_count_strings_to_zero(tmp_path):
     assert combined == "17", f"12.0 + 5 must merge to 17, got {combined!r}"
 
 
-@XFAIL
 def test_batch_reader_rejects_ragged_rows(tmp_path):
-    """A row with more fields than the header currently has its overflow
-    silently truncated (and gbcms count columns are the trailing columns).
-    The batch readers must fail loudly on ragged rows."""
-    import polars as pl
+    """Pre-fix, an over-length row had its overflow silently truncated and
+    an under-length row was silently null-padded — and gbcms count columns
+    are the trailing columns, exactly what a lost tail zeroes. Both shapes
+    must fail loudly, naming the line."""
+    from gbcms.io.batch import read_maf, scan_maf
 
-    from gbcms.io.batch import read_maf
-
-    p = tmp_path / "ragged.maf"
-    p.write_text("A\tB\tC\nx\ty\tz\textra_field\n")
-    with pytest.raises(pl.exceptions.ComputeError):
-        read_maf(p)
+    over = tmp_path / "over.maf"
+    over.write_text("A\tB\tC\nx\ty\tz\textra_field\n")
+    with pytest.raises(ValueError, match="line 2"):
+        read_maf(over)
+    under = tmp_path / "under.maf"
+    under.write_text("A\tB\tC\nx\ty\n")
+    with pytest.raises(ValueError, match="line 2"):
+        read_maf(under)
+    with pytest.raises(ValueError, match="line 2"):
+        scan_maf(under)
 
 
 # ═════════════ failure diagnostics ═══════════════════════════════════════
-@XFAIL
 def test_failed_sample_report_names_the_exception_type(tmp_path, monkeypatch):
     """A sample failure is reported via str(e) only — for a KeyError that is
     just the key, with no exception type and no traceback. The report must

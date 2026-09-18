@@ -109,7 +109,11 @@ class MafWriter(OutputWriter):
 
     Supports two output strategies based on input format:
     - MAF→MAF: Preserves all original MAF columns, appends gbcms count columns.
-      Original positional/allele/type columns are NEVER overwritten.
+      Original positional/allele/type columns are never overwritten — EXCEPT
+      when the input MAF already carries a column with a gbcms output name
+      (e.g. ``ref_count`` from a previous genotyping run, or ``t_alt_count``
+      with the legacy prefix): those values are REPLACED by this run's, and a
+      warning names every colliding column at write time.
     - VCF→MAF: Generates GDC-compliant MAF coordinates from internal VCF-style
       representation using CoordinateKernel.internal_to_maf().
 
@@ -384,6 +388,18 @@ class MafWriter(OutputWriter):
         gbcms_cols = self._gbcms_column_names()
         existing = set(original_headers)
 
+        # Input columns that share a gbcms output name are refreshed in
+        # place by write() — say so, or a re-genotyped MAF silently loses
+        # its previous run's values.
+        collisions = sorted(c for c in gbcms_cols if c in existing)
+        if collisions:
+            logger.warning(
+                "Input MAF already contains %d gbcms output column(s): %s — "
+                "their values will be replaced by this run's results.",
+                len(collisions),
+                ", ".join(collisions),
+            )
+
         # Only append gbcms columns not already in the original headers
         new_cols = [c for c in gbcms_cols if c not in existing]
         self.fieldnames = list(original_headers) + new_cols
@@ -615,7 +631,9 @@ class MafWriter(OutputWriter):
 
         Two output strategies:
         - MAF→MAF (variant.metadata populated): Pass through all original columns,
-          append gbcms count columns. Original values are NEVER overwritten.
+          append gbcms count columns. Non-gbcms originals are never overwritten;
+          input columns sharing a gbcms output name are refreshed (warned at
+          header time).
         - VCF→MAF (no metadata): Generate GDC-compliant MAF coordinates from
           internal representation using CoordinateKernel.internal_to_maf().
 
@@ -671,7 +689,9 @@ class MafWriter(OutputWriter):
         if not (variant.metadata and self.preserve_barcode):
             row["Tumor_Sample_Barcode"] = sample_name
 
-        # Append gbcms count columns (both paths, never overwrites originals)
+        # Append gbcms count columns. Non-gbcms original columns are
+        # untouched; same-named input columns are refreshed (warned at
+        # header time).
         row["gbcms_status"] = gbcms_status
         row["gbcms_status_reason"] = gbcms_status_reason
         row["gbcms_diagnostic"] = gbcms_diagnostic

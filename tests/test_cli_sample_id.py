@@ -651,10 +651,10 @@ def test_min_baseq_negative_rejected(mock_pipeline_cls, tmp_path):
 
 
 def test_bam_list_missing_entry_reported_as_error(tmp_path):
-    """GAP 4 (audit): A missing BAM in --bam-list is logged at ERROR level, not WARNING.
+    """A missing BAM in --bam-list is logged at ERROR level, not WARNING.
 
-    The run still continues (entry is skipped), but the message severity is ERROR
-    so operators and monitoring systems can detect missing data.
+    With --lenient-bam the entry is skipped and the run continues; without it
+    the run fails fast (pinned in test_orchestration_failfast_contract).
     """
     vcf, _, fasta, output_dir = _make_files(tmp_path)
     good_bam = tmp_path / "good.bam"
@@ -678,10 +678,11 @@ def test_bam_list_missing_entry_reported_as_error(tmp_path):
                 str(fasta),
                 "-o",
                 str(output_dir),
+                "--lenient-bam",
             ],
         )
 
-    # Run succeeds (entry skipped, not fatal)
+    # With --lenient-bam the run succeeds (entry skipped, not fatal)
     assert result.exit_code == 0
     # The missing BAM must appear somewhere in the output (ERROR message)
     assert "not found" in result.output.lower() or bad_bam.name in result.output
