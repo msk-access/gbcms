@@ -66,8 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrong-length contract battery (`tests/test_wrong_length_contract.py`, 20 tests through
   the binned↔legacy parity oracle) and an end-to-end `PARTIAL_DOMINANT` reporting-chain
   test driving the full CLI.
-- Documentation: [Wrong-Length Pure Indels](docs/reference/allele-classification.md) rule
-  reference and a worked case study (Case 4 in `docs/reference/complex-indels.md`);
+- Documentation: "Wrong-Length Pure Indels" rule reference in
+  `docs/reference/allele-classification.md` and a worked case study (Case 4 in
+  `docs/reference/complex-indels.md`);
   `partial_alt` semantics updated in output docs; fictional `RUST_LOG`/`GBCMS_LOG_LEVEL`
   controls removed from docs (logging is `--verbose`/`--trace`).
 
