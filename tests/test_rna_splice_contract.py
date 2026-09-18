@@ -30,7 +30,6 @@ import glob
 import random
 
 import pysam
-import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
@@ -219,9 +218,9 @@ def test_gap_representation_does_not_flip_the_call(tmp_path):
     # deletion away from the junction the reads carry, and the test would
     # exercise the shifted-representation path (S3 reject → Phase 3) instead
     # of its stated intent — the D-vs-N flip at a FIXED junction. (The
-    # shifted+spliced combination is a real, separate defect: D6 consensus
-    # splicing corrupts ref_context coordinates and Phase 3 then drops these
-    # carriers — issue #94 cluster B; it gets its own test with the D6 fix.)
+    # shifted+spliced combination was a separate defect — consensus splicing
+    # corrupted ref_context coordinates until its removal; pinned green by
+    # test_windowed_deletion_after_junction_in_repeat_rna.)
     if ref[anchor] == ref[anchor + glen]:
         swap = "A" if ref[anchor] != "A" else "G"
         ref = _mk_ref(plants=((anchor + glen, swap),))
@@ -435,8 +434,7 @@ def test_windowed_deletion_after_junction_in_repeat(tmp_path):
     vcf = _vcf(tmp_path, rows_v)
     bam = _bam(tmp_path, ref, carriers + refs)
     fasta = _fasta(tmp_path, ref)
-    # DNA mode isolates the cluster-A machinery (no D6 consensus splicing,
-    # no BAQ): the triage defers, the post-N windowed scan verifies the
+    # DNA mode isolates the splice-evidence machinery with no BAQ in play: the triage defers, the post-N windowed scan verifies the
     # deleted bases at the shifted position, carriers count ALT.
     r = _run(tmp_path, vcf, bam, fasta, mode="dna")[0]
     assert (
@@ -446,18 +444,13 @@ def test_windowed_deletion_after_junction_in_repeat(tmp_path):
     assert int(r["total_count"]) == 9
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D6 consensus splicing corrupts ref_context offsets: the S3 "
-    "sequence check reads the spliced context at genomic coordinates and "
-    "rejects the shifted candidate (issue #94 cluster B)",
-)
 def test_windowed_deletion_after_junction_in_repeat_rna(tmp_path):
-    """RNA-mode twin of the DNA-mode case above. The 4 junction carriers
-    reach the post-N windowed scan (splice_skip_excluded=0 proves the triage
-    deferred), but D6 splices the intron out of ref_context without a
-    coordinate map, so verify_deleted_bases reads garbage at the shifted
-    position and the same-event carriers fall to neither."""
+    """RNA-mode twin of the DNA-mode case above. Committed red (xfail-strict)
+    while consensus splicing still drained introns from ref_context in place:
+    the S3 sequence check then read the spliced context at genomic
+    coordinates and rejected the shifted candidate. With ref_context always
+    genomic, RNA matches DNA — the carriers windowed-match through the
+    post-N scan."""
     ref = _mk_ref(plants=((339, "CATATATATATG"),))
     anchor = 339
     rows_v = [(anchor + 1, ref[anchor : anchor + 3], ref[anchor])]
@@ -482,6 +475,8 @@ def test_windowed_deletion_after_junction_in_repeat_rna(tmp_path):
     assert (
         int(r["alt_count"]) == 4
     ), f"shifted post-N carriers must count ALT, got ad={r['alt_count']}"
+    assert int(r["ref_count"]) == 5
+    assert int(r["total_count"]) == 9
 
 
 def test_intronic_mnp_counts_no_spliced_depth(tmp_path):
@@ -565,3 +560,173 @@ def test_legacy_parity_with_spliced_reads(tmp_path):
     assert c.ad == c.ad_fwd + c.ad_rev
     assert c.ad == 4, f"M-N-D-M carriers must count ALT in both paths, got ad={c.ad}"
     assert c.rd == 3, f"only base-covering pre-mRNA reads count REF, got rd={c.rd}"
+
+
+def test_mq0_tracking_precedes_strandedness_filter(tmp_path):
+    """mq0_count is a physical-locus red flag: an antisense MAPQ-0 read is
+    still a read at the locus, so it must be tallied BEFORE the strandedness
+    filter drops it — in BOTH engine paths. The binned path previously
+    filtered strandedness first, so its mq0_count diverged from legacy for
+    stranded RNA libraries."""
+    from helpers import build_bam
+
+    from gbcms import _rs
+
+    rng = random.Random(3)
+    ref = "".join(rng.choice("ACGT") for _ in range(500))
+    pos = 250
+    # Forward single-end read = R1; under the dUTP/reverse protocol its
+    # transcript strand is the flip ('-'), so with gene_strand '+' it is
+    # antisense and the strandedness filter drops it from counting.
+    antisense_mq0 = make_read("a0", ref[200:300], 200, ((0, 100),), mapq=0)
+    sense_mq30 = make_read("s0", ref[200:300], 200, ((0, 100),), flag=16, mapq=30)
+    bam = build_bam(tmp_path, [antisense_mq0, sense_mq30])
+    alt = "A" if ref[pos] != "A" else "G"
+    v = _rs.Variant(
+        chrom="chr1",
+        pos=pos,
+        ref_allele=ref[pos],
+        alt_allele=alt,
+        variant_type="SNP",
+        ref_context=ref[pos - 5 : pos + 6],
+        ref_context_start=pos - 5,
+        gene_strand="+",
+    )
+    kwargs = {
+        "min_mapq": 0,
+        "min_baseq": 0,
+        "filter_duplicates": True,
+        "filter_secondary": True,
+        "filter_supplementary": True,
+        "filter_qc_failed": False,
+        "filter_improper_pair": False,
+        "filter_indel": False,
+        "threads": 1,
+        "mode": "rna",
+        "enforce_strandedness": True,
+        "strandedness": "reverse",
+    }
+    legacy = _rs.count_bam(bam, [v], [None], **kwargs)[0]
+    binned = _rs.count_bam_binned(bam, [v], [None], **kwargs)[0]
+    assert (
+        legacy.mq0_count == 1
+    ), f"legacy must tally the antisense MAPQ-0 read, got {legacy.mq0_count}"
+    assert (
+        binned.mq0_count == legacy.mq0_count
+    ), f"binned mq0_count ({binned.mq0_count}) diverges from legacy ({legacy.mq0_count})"
+    # The antisense read must still be excluded from counting proper.
+    for c in (legacy, binned):
+        assert c.dp == 1 and c.rd == 1 and c.ad == 0
+        assert c.dp >= c.rd + c.ad
+        assert c.dpf >= c.rdf + c.adf
+        assert c.rd == c.rd_fwd + c.rd_rev
+        assert c.ad == c.ad_fwd + c.ad_rev
+
+
+def test_large_deletion_band_near_junction(tmp_path):
+    """The ≥50bp in-band resolution verifies deleted bases through
+    ref_context at genomic offsets. Pre-removal, the co-occurring spliced
+    population made consensus splicing drain the intron from ref_context, so
+    the band's context guard read shifted bytes and rejected in-band
+    carriers. Pinned green: the guard verifies against genomic context
+    regardless of how many reads splice over the span."""
+    ref = _mk_ref()
+    anchor, glen = 300, 60
+    if ref[anchor] == ref[anchor + glen]:  # pin against left-alignment
+        swap = "A" if ref[anchor] != "A" else "G"
+        ref = _mk_ref(plants=((anchor + glen, swap),))
+    rows_v = [(anchor + 1, ref[anchor : anchor + 1 + glen], ref[anchor])]
+    reads = (
+        _exonic_reads(ref, anchor, 6)
+        # in-band carriers: D(59) for an expected D(60) — 1 span base
+        # retained, nothing changed outside → same event, band-verified
+        + _del_reads(ref, anchor + 1, 59, 4)
+        + _spliced_reads(ref, anchor + 1, 100, 5)  # N over the span
+    )
+    rows = _run(tmp_path, _vcf(tmp_path, rows_v), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
+    r = rows[0]
+    assert (
+        int(r["alt_count"]) == 4
+    ), f"in-band carriers must stay ALT with spliced reads present, got ad={r['alt_count']}"
+    assert int(r["ref_count"]) == 6
+    assert int(r["total_count"]) == 10  # spliced-over reads excluded
+
+
+def test_phase3_matrix_mode_equivalence_near_junction(tmp_path):
+    """Phase-3 pangenomic matrix offsets (variant AND sibling) index
+    ref_context genomically with no RNA-mode awareness. Pre-removal,
+    co-occurring spliced reads made RNA mode drain the intron from the
+    context before matrix construction while DNA mode used genomic — the
+    same reads at the same delins then classified differently by mode.
+    Pinned: with BAQ off and no strandedness, RNA and DNA must agree
+    read-for-read."""
+    from helpers import build_bam
+
+    from gbcms import _rs
+
+    rng = random.Random(5)
+    ref = "".join(rng.choice("ACGT") for _ in range(500))
+    pos = 300  # delins REF span [300, 303)
+    alt = "".join("A" if b != "A" else "G" for b in ref[pos : pos + 2])  # 3bp -> 2bp
+    intron = (304, 364)  # junction 1bp past the REF span, inside the context
+    rl = 100
+    reads = []
+    for i in range(4):  # delins carriers as an aligner writes them: mismatched
+        # M over the substituted bases plus a 1bp D (3bp REF -> 2bp ALT)
+        s = pos - 40 - (i % 4)
+        left = pos - s
+        seq = ref[s:pos] + alt + ref[pos + 3 : pos + 3 + (rl - left - 2)]
+        reads.append(make_read(f"xc{i}", seq, s, ((0, left + 2), (2, 1), (0, rl - left - 2))))
+    for i in range(5):  # spliced reads: aligned over the span, N just past it
+        s = intron[0] - 40 - (i % 5)
+        left = intron[0] - s
+        right = rl - left
+        seq = ref[s : intron[0]] + ref[intron[1] : intron[1] + right]
+        reads.append(
+            make_read(f"xs{i}", seq, s, ((0, left), (3, intron[1] - intron[0]), (0, right)))
+        )
+    bam = build_bam(tmp_path, reads)
+    pad = 8
+    v = _rs.Variant(
+        chrom="chr1",
+        pos=pos,
+        ref_allele=ref[pos : pos + 3],
+        alt_allele=alt,
+        variant_type="COMPLEX",
+        ref_context=ref[pos - pad : pos + 3 + pad],
+        ref_context_start=pos - pad,
+    )
+    sib = _rs.Variant(
+        chrom="chr1",
+        pos=pos - 4,
+        ref_allele=ref[pos - 4],
+        alt_allele="C" if ref[pos - 4] != "C" else "T",
+        variant_type="SNP",
+        ref_context=ref[pos - pad : pos + 3 + pad],
+        ref_context_start=pos - pad,
+    )
+    kwargs = {
+        "min_mapq": 0,
+        "min_baseq": 0,
+        "filter_duplicates": True,
+        "filter_secondary": True,
+        "filter_supplementary": True,
+        "filter_qc_failed": False,
+        "filter_improper_pair": False,
+        "filter_indel": False,
+        "threads": 1,
+        "sibling_variants": [[sib]],
+        "apply_baq": False,
+    }
+    dna = _rs.count_bam_binned(bam, [v], [None], mode="dna", **kwargs)[0]
+    rna = _rs.count_bam_binned(bam, [v], [None], mode="rna", **kwargs)[0]
+    for field in ("dp", "rd", "ad", "partial_alt", "dpf", "rdf", "adf"):
+        assert getattr(dna, field) == getattr(rna, field), (
+            f"{field}: dna={getattr(dna, field)} rna={getattr(rna, field)} — "
+            "mode must not change classification when BAQ is off"
+        )
+    # The equivalence must not be vacuous: the delins carriers reach Phase-3
+    # matrix scoring and count ALT; the span-aligned spliced reads count REF.
+    assert rna.ad == 4, f"delins carriers must count ALT, got ad={rna.ad}"
+    assert rna.rd == 5, f"span-aligned spliced reads must count REF, got rd={rna.rd}"
+    assert rna.dp >= rna.rd + rna.ad

@@ -705,9 +705,11 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
             // shifted outside the variant span, the reconstruction over the
             // span is clean REF sequence and Phase 2 absorbs an ALT carrier
             // into rd. No clean evidence exists for such a read → neither.
-            // (Splice-aware Phase-3 scoring against the D6 consensus-spliced
-            // haplotype needs the D6 coordinate-map rework — issue #94
-            // cluster B; until then this stays conservative.)
+            // (Splice-aware Phase-3 scoring would need a spliced haplotype
+            // with an explicit genomic→spliced coordinate map and
+            // junction-compatible extraction — tracked in issue #94; until
+            // real-data measurement justifies that machinery, this stays
+            // conservative.)
             if super::rna::has_splice_junction(record)
                 && observe_read_span(record, win_start, win_end).skipped
             {

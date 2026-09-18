@@ -10,6 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The changes below alter reported counts at wrong-length indel loci and at
 > spliced RNA positions, and warrant a **minor version bump** on release.
 
+### ⚠️ Changed — consensus intron snipping of ref_context removed (user-visible)
+
+- **`ref_context` is always genomic now.** The RNA-mode step that drained
+  consensus introns from the variant's reference context before Phase 3 had
+  no coordinate map: the context shrank while `ref_context_start` stayed
+  genomic, so shifted-indel sequence verification, the large-deletion band's
+  context guard, and haplotype offsets all read garbage right of a snipped
+  intron — so exon-contained reads were scored against haplotypes whose
+  offsets no longer matched their genomic coordinates, and pre-mRNA /
+  intron-retention reads against a haplotype missing bases their sequence
+  genuinely contains. Removing it
+  fixes windowed shifted-deletion matching near acceptors (contract test
+  `test_windowed_deletion_after_junction_in_repeat_rna`, committed red) and
+  erases the binned-vs-legacy RNA divergence around it; junction reads
+  needing alignment-based scoring stay conservatively `neither` under the
+  splice-aware evidence rule. Re-validated on local (non-repo) clinical RNA
+  data — the b37 dedup and FORTE hg38 smoke loci report unchanged counts. A
+  coordinate-mapped spliced-haplotype rework remains tracked in issue #94,
+  gated on real-data measurement; it must keep pre-mRNA / intron-retention
+  reads genomically scored.
+- **`mq0_count` now tallies before the RNA strandedness filter in the binned
+  path**, matching the legacy path: an antisense MAPQ-0 read is still a
+  physical read at the locus, and the two paths previously diverged on this
+  diagnostic in stranded RNA mode.
+
 ### ⚠️ Changed — splice-aware evidence in RNA counting (user-visible)
 
 - **Reads spliced over a variant no longer count depth or REF.** A CIGAR `N`

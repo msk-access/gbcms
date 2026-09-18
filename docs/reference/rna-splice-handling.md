@@ -79,25 +79,29 @@ calling:
 This produces a clean BAM where no read contains `N` operators, at the
 cost of losing the original read structure.
 
-## gbcms Approach: Dual-Mechanism (No BAM Modification)
+## gbcms Approach (No BAM Modification)
 
-gbcms handles splice-junction artifacts **without modifying the BAM**,
-using two complementary mechanisms:
+gbcms handles splice-junction artifacts **without modifying the BAM**:
+the evidence rule above governs what a spliced read may testify to, and
+heuristic BAQ handles overhang misalignment.
 
-### 1. Consensus Intron Snipping (automatic in RNA mode)
+!!! note "Removed: consensus intron snipping of `ref_context`"
+    An earlier step drained consensus introns from `ref_context` in place
+    so Phase 3 could score junction reads against a mature-mRNA haplotype.
+    It had no coordinate map — the context shrank while
+    `ref_context_start` stayed genomic — so every position-indexed check
+    right of a snipped intron (shifted-deletion sequence verification, the
+    large-deletion band's context guard, haplotype offsets) read garbage,
+    so exon-contained reads were scored against haplotypes whose offsets
+    no longer matched their genomic coordinates, and pre-mRNA /
+    intron-retention reads against a haplotype missing bases their
+    sequence genuinely contains. It was removed; `ref_context` is always
+    genomic.
+    Splice-aware Phase-3 scoring, if real-data measurement shows it is
+    needed, requires an explicit genomic→spliced coordinate map with
+    junction-compatible extraction (tracked in issue #94).
 
-`apply_consensus_splicing()` in `rna.rs` modifies the *reference
-haplotype*, not the reads:
-
-- Examines local read pileup for consensus introns (>50% threshold)
-- Removes intronic bases from the reference haplotype used by PairHMM
-- PairHMM then evaluates reads against a mature mRNA-like reference
-
-This is arguably more elegant than SplitNCigarReads because reads
-retain their original structure while the reference adapts to the
-biology.
-
-### 2. Heuristic BAQ Near Splice Junctions (`--apply-baq`)
+### Heuristic BAQ Near Splice Junctions (`--apply-baq`)
 
 `apply_heuristic_baq()` in `baq.rs` penalizes base qualities within
 5bp of CIGAR `N`/RefSkip operations:

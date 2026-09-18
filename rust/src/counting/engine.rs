@@ -26,7 +26,6 @@
 use pyo3::prelude::*;
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::{self, Read, Record};
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use crate::annotation::AnnotationIndex;
@@ -1575,64 +1574,25 @@ fn count_variant_from_cache(
     let v_start = (variant.pos - window_pad).max(0);
     let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
 
-    // ── D6: RNA CONSENSUS SPLICING ──────────────────────────────────────
-    // For RNA mode, snip consensus introns from the variant's ref_context
-    // so that haplotype alignment in Phase 3 uses a mature-mRNA-like
-    // reference instead of genomic (intron-containing) sequence.
-    //
-    // The read cache provides local reads — only reads overlapping this
-    // variant's window contribute their CIGAR N ops for intron discovery.
-    // apply_consensus_splicing uses >50% consensus threshold to filter
-    // alignment artifacts and rare alternative splicing.
-    //
-    // Uses Cow to avoid cloning Variant when no introns are found
-    // (common case: >80% of variants have no overlapping introns).
-    //
-    // KNOWN GAP (issue #94 cluster B): the spliced context's designed
-    // consumer — Phase-3 alignment of junction-spanning reads against the
-    // mature-mRNA haplotype — is currently unreachable, because raw-window
-    // extraction refuses N-crossing reads (no coordinate map exists to make
-    // the spliced context safe: splicing shrinks ref_context while
-    // ref_context_start stays genomic, so every `pos - ref_context_start`
-    // indexer right of the first snipped intron is off). Until the D6
-    // rework adds that map, the spliced context only affects N-free reads
-    // and the splice-aware evidence rule carries junction reads instead.
-    let effective_variant: Cow<'_, Variant>;
-    if mode == "rna" {
-        if let Some(ref ctx) = variant.ref_context {
-            let local_reads: Vec<&Record> = read_cache.iter()
-                .filter(|r| r.pos() < v_end && read_ref_end(r) > v_start)
-                .collect();
-
-            let spliced_ctx = rna::apply_consensus_splicing(
-                ctx.as_bytes(), &local_reads, variant.ref_context_start,
-            );
-
-            if spliced_ctx.len() != ctx.len() {
-                // Introns were snipped — create a modified variant copy
-                let mut v2 = variant.clone();
-                v2.ref_context = Some(String::from_utf8_lossy(&spliced_ctx).into_owned());
-                debug!(
-                    "D6 splice: {}:{} ref_context {} → {} bases ({} intron bases removed)",
-                    variant.chrom, variant.pos + 1,
-                    ctx.len(), spliced_ctx.len(),
-                    ctx.len() - spliced_ctx.len(),
-                );
-                effective_variant = Cow::Owned(v2);
-            } else {
-                effective_variant = Cow::Borrowed(variant);
-            }
-        } else {
-            effective_variant = Cow::Borrowed(variant);
-        }
-    } else {
-        effective_variant = Cow::Borrowed(variant);
-    }
-    // Shadow `variant` with the potentially-spliced version.
-    // All downstream code (Phase 3 classification, haplotype matrix
-    // construction) automatically uses the mature mRNA ref_context.
-    let variant = effective_variant.as_ref();
-
+    // ── NO CONSENSUS SPLICING OF ref_context (removed, issue #94 cluster B).
+    // An earlier step ("D6") drained consensus introns from ref_context in
+    // place so Phase 3 could score junction reads against a mature-mRNA
+    // haplotype. It had no coordinate map: splicing shrank the context while
+    // ref_context_start stayed genomic, so every `pos - ref_context_start`
+    // indexer right of a snipped intron — S3 sequence verification, the
+    // large-deletion band's context guard, haplotype offsets — read garbage,
+    // so exon-contained reads were scored against haplotypes whose offsets
+    // no longer matched their genomic coordinates (and pre-mRNA /
+    // intron-retention reads, whose bases genuinely include intron sequence,
+    // against a haplotype missing those bases — such reads must stay
+    // genomically scored in any future spliced-haplotype rework).
+    // Meanwhile its intended consumer became unreachable: the
+    // splice-aware evidence rule refuses to extract or string-compare across
+    // an N, so junction-spanning reads never reach Phase 3 scoring at all.
+    // ref_context is therefore ALWAYS genomic. Splice-aware Phase-3 scoring,
+    // if real-data measurement shows it is needed, requires an explicit
+    // genomic→spliced coordinate map with junction-compatible extraction
+    // and translated variant/sibling offsets — tracked in issue #94.
     let mut reads_considered = 0u32;
 
     for record in read_cache {
@@ -1666,18 +1626,21 @@ fn count_variant_from_cache(
             reads_considered += 1;
         }
 
-        // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
-        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness) {
-            continue;
-        }
-
-        // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE any MAPQ-based skip.
+        // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE any MAPQ-based skip
+        // AND before the strandedness filter — an antisense MAPQ-0 read is
+        // still a physical read at the locus, and the legacy path counts it
+        // (the two paths previously diverged on this diagnostic in RNA mode).
         // Mirrors GATK's MappingQualityZero annotation — a high MQ0 count
         // is a locus-level red flag for regions with high homology or
         // pseudogenes, even when those reads are filtered for classification.
         // Read-level, so first-class records only (see `first_class` above).
         if first_class && record.mapq() == 0 {
             counts.mq0_count += 1;
+        }
+
+        // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
+        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness) {
+            continue;
         }
 
         // ── MAPQ SKIP (Phase 1): MAPQ=0 reads were kept in the cache
@@ -2108,9 +2071,13 @@ fn count_variant_from_cache(
 // count_bam_binned uses count_bin_shared/count_variant_from_cache instead.
 // Do NOT remove until count_bam itself is removed (D8b cleanup).
 //
-// NOTE: Consensus splicing (D6) is NOT applied in this legacy path because
-// it requires buffered reads (two-pass). D6 is only available via
-// count_bam_binned which has the D10 read cache.
+// NOTE: ref_context is always genomic in BOTH paths — consensus splicing of
+// the context was removed (see the note in count_variant_from_cache). Two
+// RNA behavioral divergences remain, both binned-only because they need
+// inputs this legacy path never receives (RNA features are exempt from the
+// parity oracle per AGENTS.md invariant #1): exon-boundary BAQ suppression
+// (suppress when exon_boundary_dist <= 5; needs the GTF annotation) and
+// rna_editing_site_overlap (needs the REDIportal editing-sites set).
 #[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 fn count_single_variant(

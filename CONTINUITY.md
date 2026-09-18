@@ -6,9 +6,8 @@
 _Last updated: 2026-09-18_
 
 ## Now
-**Issue #94 cluster A — splice-aware evidence rule: DONE on
-`fix/rna-splice-aware-counting` (battery 5bc8f47 red → 56e703b green; not yet
-pushed/PR'd).** The rule: a read testifies only through aligned bases (or a D
+**Issue #94 clusters A + B1 — DONE on `fix/rna-splice-aware-counting`
+(battery 5bc8f47 red → 56e703b green → B1 commit; not yet pushed/PR'd).** The rule: a read testifies only through aligned bases (or a D
 op) at the discriminating positions; N over all of them → neither + excluded
 from DP/DPF (splice_skip_triage + covers_locus, mirrored binned/legacy/
 per-transcript); D-vs-N never flips the call; post-N anchor/windowed
@@ -21,16 +20,29 @@ b37 dedup RNA (DP drop pysam-exact) and FORTE hg38 GAPDH junction smoke
 (intronic DP 826→2; use `~/Downloads/pipeline_resources/gunzip_gtf/
 Homo_sapiens.GRCh38.111.gtf` for FORTE — Ensembl contigs, found 2026-09-18).
 
-**Next: #94 cluster B** — D6 consensus-splicing coordinate integrity is now
-the blocking defect: the spliced ref_context has no coordinate map, so every
-`pos - ref_context_start` indexer right of a snipped intron is off; its
-Phase-3 consumer is unreachable (extraction refuses N-crossing reads) and it
-actively breaks windowed S3 near junctions. RED TEST ALREADY COMMITTED:
-`test_windowed_deletion_after_junction_in_repeat_rna` (xfail-strict) pins the
-repro. Then: repeat_span recompute post-splice, per-transcript/ASJD spliced
-context + partial_alt parity, strandedness gating decision, RNA-BAQ
-measurement (junction-adjacent inserted bases are BAQ-unverifiable without
---gtf suppression — pinned in the insertion contract test). PR after B.
+**#94 cluster B1 — DONE (same branch, uncommitted→committed today):**
+consensus splicing of ref_context REMOVED (no coordinate map = corruption;
+its Phase-3 consumer unreachable; exon-contained reads mis-scored).
+ref_context is always genomic; the xfail flipped green; mq0_count now
+tallied before the strandedness filter in binned (matches legacy); two new
+regression pins (≥50bp band guard near junction; Phase-3 pangenome
+variant+sibling matrix DNA↔RNA mode-equivalence). Sonnet-model adversarial
+review (Fable subagents hit the monthly spend cap — model override in the
+workflow script is the mechanism): all confirmed findings fixed. Real data:
+b37 + FORTE counts unchanged.
+
+**Next: #94 B2 (evidence-gated) + remaining items** — measurement on FORTE
+GAPDH acceptor deletion: 824 junction reads end `neither` via the splice
+guards, and they observe the deleted span WITH ALIGNED BASES → the dominant
+recoverable population needs only a STRUCTURAL rule (span-aligned REF
+testimony at deletion loci whose anchor is spliced out), NOT the
+coordinate-mapped spliced-haplotype machinery (B2b, delins-carrier tail
+only; must keep pre-mRNA/intron-retention reads genomically scored). Then:
+strandedness gating decision remains open (order now consistent for mq0);
+RNA-BAQ measurement (junction-adjacent inserted bases are BAQ-unverifiable
+without --gtf suppression — pinned in the insertion contract test);
+per-transcript partial_alt is locus-level-only by design (no new columns).
+PR after B2a decision.
 
 **Issue #91 — wrong-length pure-indel fix: MERGED to develop (#93, 75062d6);
 issue closed.** Ships with the next minor release — the release branch cuts
