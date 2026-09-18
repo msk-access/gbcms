@@ -372,12 +372,27 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     """
 
     # ── Helper: cast + null-fill for a combined sum ───────────────────────
+    def _num(col: str) -> pl.Expr:
+        """String count column → Int64, tolerating float formatting.
+
+        A pandas/R round-trip renders integer columns as '12.0'; a direct
+        Int64 cast would null that (and fill_null would silently turn it
+        into 0), so cast through Float64 and round. Genuinely non-numeric
+        values (e.g. 'NA') still become null → 0 here — they are counted
+        and warned about before this runs (see merge_mafs)."""
+        return (
+            pl.col(col)
+            .cast(pl.Float64, strict=False)
+            .round(0)
+            .cast(pl.Int64, strict=False)
+            .fill_null(0)
+        )
+
     def _sum(metric: str) -> pl.Expr:
         """Sum simplex_{metric} + duplex_{metric}, casting from string."""
-        return (
-            pl.col(f"simplex_{metric}").cast(pl.Int64, strict=False).fill_null(0)
-            + pl.col(f"duplex_{metric}").cast(pl.Int64, strict=False).fill_null(0)
-        ).alias(f"simplex_duplex_{metric}")
+        return (_num(f"simplex_{metric}") + _num(f"duplex_{metric}")).alias(
+            f"simplex_duplex_{metric}"
+        )
 
     def _total(ref_metric: str, alt_metric: str, total_name: str) -> pl.Expr:
         """Compute total = combined_ref + combined_alt."""

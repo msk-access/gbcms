@@ -1190,13 +1190,18 @@ def _parse_bam_inputs(
     Parse BAM inputs from direct arguments and/or a BAM list file.
 
     Validation behaviour:
-    - **Fail-fast (default)**: If any BAM path does not exist, all missing paths
-      are logged at ERROR level and ``typer.Exit(code=1)`` is raised.
+    - **Fail-fast (default)**: If any BAM path does not exist — from ``--bam``
+      or from a ``--bam-list`` entry — all missing paths are logged at ERROR
+      level and ``typer.Exit(code=1)`` is raised.
     - **Lenient mode** (``lenient=True``, enabled via ``--lenient-bam``): Missing
       paths are logged as errors but skipped; the run continues with the
       remaining samples.
-    - **BAM list file not found**: Always fails immediately regardless of lenient
-      mode.  The list file itself is a required input, not an optional sample.
+    - **BAM list file missing or unreadable**: Always fails immediately
+      regardless of lenient mode. The list file itself is a required input,
+      not an optional sample, and a half-read list would silently run a
+      partial sample set.
+    - **Duplicate sample names**: Always a hard error — the later BAM would
+      silently replace the earlier one, which would then never be processed.
 
     Args:
         bam_files: List of BAM paths (optionally with ``sample_id:path`` format).
@@ -1208,10 +1213,33 @@ def _parse_bam_inputs(
         Dictionary mapping sample names to resolved BAM ``Path`` objects.
 
     Raises:
-        typer.Exit: If any BAM file or the list file itself is missing and
-            ``lenient`` is False.
+        typer.Exit: If any BAM path is missing while ``lenient`` is False;
+            unconditionally for a missing or unreadable list file, or a
+            duplicate sample name.
     """
     bams_dict: dict[str, Path] = {}
+
+    def _register(sample_name: str, bam_path: Path, source: str) -> None:
+        """Register one sample, refusing duplicate names.
+
+        A duplicate sample name means one BAM would silently replace the
+        other and never be processed — always a mistake, so it is a hard
+        error regardless of lenient mode. sample_id:path syntax (or a
+        two-column list entry) disambiguates deliberate same-stem inputs.
+        """
+        if sample_name in bams_dict:
+            logger.error(
+                "Duplicate sample name '%s': %s (%s) would replace %s. "
+                "Use sample_id:path (or a two-column --bam-list entry) to "
+                "give the inputs distinct names.",
+                sample_name,
+                bam_path,
+                source,
+                bams_dict[sample_name],
+            )
+            raise typer.Exit(code=1)
+        logger.debug("Registered BAM sample '%s' (%s): %s", sample_name, source, bam_path)
+        bams_dict[sample_name] = bam_path
 
     # ── 1. Process direct --bam arguments ────────────────────────────────────
     if bam_files:
@@ -1224,8 +1252,7 @@ def _parse_bam_inputs(
                 missing.append(str(bam_path))
                 continue
 
-            logger.debug("Registered BAM sample '%s': %s", sample_name, bam_path)
-            bams_dict[sample_name] = bam_path
+            _register(sample_name, bam_path, "--bam")
 
         if missing and not lenient:
             logger.error(
@@ -1247,6 +1274,7 @@ def _parse_bam_inputs(
             raise typer.Exit(code=1)
 
         logger.debug("Reading BAM list from: %s", bam_list)
+        list_missing: list[str] = []
         try:
             with open(bam_list) as f:
                 for line in f:
@@ -1263,20 +1291,31 @@ def _parse_bam_inputs(
                         sample_name = bam_path.stem
 
                     if not bam_path.exists():
-                        # Upgraded from WARNING to ERROR — a missing BAM in the
-                        # list is always unexpected, whether in lenient mode or not.
                         logger.error(
                             "BAM file from list not found: %s (sample '%s')",
                             bam_path,
                             sample_name,
                         )
+                        list_missing.append(str(bam_path))
                         continue
 
-                    logger.debug("Registered BAM sample from list '%s': %s", sample_name, bam_path)
-                    bams_dict[sample_name] = bam_path
+                    _register(sample_name, bam_path, "--bam-list")
 
         except OSError as e:
+            # A list file that cannot be (fully) read is as fatal as a
+            # missing one: continuing would run a partial sample set while
+            # exiting 0.
             logger.error("Error reading BAM list file %s: %s", bam_list, e)
+            raise typer.Exit(code=1) from e
+
+        if list_missing and not lenient:
+            logger.error(
+                "%d BAM file(s) from %s not found. "
+                "Add --lenient-bam to skip missing entries and continue with the rest.",
+                len(list_missing),
+                bam_list,
+            )
+            raise typer.Exit(code=1)
 
     return bams_dict
 

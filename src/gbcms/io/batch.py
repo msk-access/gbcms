@@ -27,6 +27,32 @@ __all__ = ["read_maf", "scan_maf", "read_parquet", "write_maf"]
 logger = logging.getLogger(__name__)
 
 
+def _validate_rectangular(path: Path, *, comment_prefix: str = "#") -> None:
+    """Reject MAF files whose data rows do not match the header width.
+
+    The polars parser raises for rows with MORE fields than the header but
+    silently null-pads rows with FEWER — and a row that lost its trailing
+    fields has lost exactly the gbcms count columns, which downstream
+    null-filling would silently turn into zeros. One cheap text pass over
+    the file catches both shapes with the offending line number.
+    """
+    header_width: int | None = None
+    with open(path) as fh:
+        for line_no, line in enumerate(fh, start=1):
+            if line.startswith(comment_prefix):
+                continue
+            width = line.rstrip("\n").count("\t") + 1
+            if header_width is None:
+                header_width = width
+                continue
+            if width != header_width:
+                raise ValueError(
+                    f"{path}: line {line_no} has {width} field(s) but the "
+                    f"header has {header_width} — a ragged row would corrupt "
+                    "the trailing count columns. Fix or remove the row."
+                )
+
+
 def read_maf(path: Path, *, comment_prefix: str = "#") -> pl.DataFrame:
     """Read a MAF file into a Polars DataFrame, skipping comment lines.
 
@@ -49,13 +75,18 @@ def read_maf(path: Path, *, comment_prefix: str = "#") -> pl.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"MAF file not found: {path}")
 
+    _validate_rectangular(path, comment_prefix=comment_prefix)
     logger.debug("Reading MAF (batch): %s", path)
     df = pl.read_csv(
         path,
         separator="\t",
         comment_prefix=comment_prefix,
         infer_schema_length=0,  # All columns as strings
-        truncate_ragged_lines=True,
+        # Over-length rows raise in the parser; under-length rows would be
+        # silently null-padded by polars, so _validate_rectangular above
+        # rejects both shapes before parsing — the gbcms count columns are
+        # the LAST columns of the file, exactly what a lost tail would
+        # silently zero.
     )
     logger.info("Loaded MAF: %s (%d rows × %d cols)", path.name, df.height, df.width)
     return df
@@ -81,13 +112,15 @@ def scan_maf(path: Path, *, comment_prefix: str = "#") -> pl.LazyFrame:
     if not path.exists():
         raise FileNotFoundError(f"MAF file not found: {path}")
 
+    _validate_rectangular(path, comment_prefix=comment_prefix)
     logger.debug("Lazy-scanning MAF: %s", path)
     return pl.scan_csv(
         path,
         separator="\t",
         comment_prefix=comment_prefix,
         infer_schema_length=0,
-        truncate_ragged_lines=True,
+        # Rectangularity is enforced by _validate_rectangular above — see
+        # read_maf.
     )
 
 

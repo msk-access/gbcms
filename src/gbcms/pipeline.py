@@ -133,6 +133,36 @@ def _zero_counts():
         antisense_strand_alt_count=0,
         rna_editing_site_overlap=False,
         splice_spanning_count=0,
+        # mFSD — BH-corrected q-value and nucleosomal fractions (NaN like the
+        # other continuous mFSD stats: 0.0 would read as a computed value)
+        mfsd_qval_alt_ref=_nan,
+        mfsd_sub_nuc_ref_frac=_nan,
+        mfsd_sub_nuc_alt_frac=_nan,
+        mfsd_sub_nuc_enrichment=_nan,
+        mfsd_mono_nuc_ref_frac=_nan,
+        mfsd_mono_nuc_alt_frac=_nan,
+        # RNA+GTF annotation columns, mirroring what a counted variant the
+        # annotator never touched would carry. ASJD p/q use the
+        # not-applicable sentinel 1.0 (AsjdResult::empty): the writers render
+        # values < 1.0 in scientific notation, so 0.0 would read as maximal
+        # significance for a variant that was never counted.
+        exon_boundary_dist=None,
+        transcript_read_counts="",
+        transcript_fragment_counts="",
+        asjd_flag=False,
+        asjd_pval=1.0,
+        asjd_qval=1.0,
+        asjd_ref_junction="",
+        asjd_alt_junction="",
+        asjd_ref_motif="",
+        asjd_alt_motif="",
+        asjd_ref_known=False,
+        asjd_alt_known=False,
+        asjd_n_ref_junc=0,
+        asjd_n_alt_junc=0,
+        asjd_n_ref_total=0,
+        asjd_n_alt_total=0,
+        asjd_diagnostic="",
     )
 
 
@@ -560,8 +590,11 @@ class Pipeline:
             logger.debug("Sample %s completed in %.3fs", sample_name, sample_time)
 
         except Exception as e:
-            logger.error("Error processing sample %s: %s", sample_name, e)
-            self._failed_samples.append({"name": sample_name, "error": str(e)})
+            # logger.exception captures the traceback; the stored message
+            # names the exception class because str(e) alone can be a bare
+            # dictionary key (KeyError) or even empty.
+            logger.exception("Error processing sample %s", sample_name)
+            self._failed_samples.append({"name": sample_name, "error": f"{type(e).__name__}: {e}"})
 
     @staticmethod
     def _merge_counts(
@@ -1062,22 +1095,41 @@ class Pipeline:
         logger.debug("Results written to %s", output_path)
 
         # Write companion mFSD Parquet when --mfsd-parquet is enabled.
-        # Delegates to the native Rust writer (no pyarrow dep).
+        # Delegates to the native Rust writer (no pyarrow dep). Rejected
+        # variants carry Python zero-count stubs that PyO3 cannot cast as
+        # BaseCounts, and they have no fragment sizes to write anyway — pass
+        # only the counted (real BaseCounts) rows and say how many were left
+        # out, so a row-count difference vs the MAF/VCF is explained.
         if self.config.output.mfsd_parquet:
             fsd_path = output_path.with_suffix("").with_suffix(".fsd.parquet")
+            counted = [
+                (v, c)
+                for v, c in zip(variants, counts_list, strict=True)
+                if not isinstance(c, types.SimpleNamespace)
+            ]
+            excluded = len(variants) - len(counted)
             _get_rs().write_fsd_parquet(
                 str(fsd_path),
-                [v.chrom for v in variants],
-                [v.pos + 1 for v in variants],  # 1-based MAF/VCF convention
-                [v.ref for v in variants],
-                [v.alt for v in variants],
-                counts_list,
+                [v.chrom for v, _ in counted],
+                [v.pos + 1 for v, _ in counted],  # 1-based MAF/VCF convention
+                [v.ref for v, _ in counted],
+                [v.alt for v, _ in counted],
+                [c for _, c in counted],
             )
-            logger.info(
-                "mFSD Parquet written: %s (%d variants)",
-                fsd_path,
-                len(variants),
-            )
+            if excluded:
+                logger.info(
+                    "mFSD Parquet written: %s (%d variants; %d rejected "
+                    "variant(s) excluded — no fragment data exists for them)",
+                    fsd_path,
+                    len(counted),
+                    excluded,
+                )
+            else:
+                logger.info(
+                    "mFSD Parquet written: %s (%d variants)",
+                    fsd_path,
+                    len(counted),
+                )
 
             # Generate mFSD HTML report when --mfsd-report is enabled.
             # Runs after parquet write since it reads the parquet file.

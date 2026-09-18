@@ -10,6 +10,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The changes below alter reported counts at wrong-length indel loci and warrant a
 > **minor version bump** on release.
 
+### ⚠️ Changed — orchestration fail-fast (user-visible)
+
+- **`--bam-list` entries that do not exist now fail the run** (exit 1) unless
+  `--lenient-bam` is given — matching the long-documented fail-fast promise. An
+  unreadable list file is equally fatal: previously both cases silently ran a
+  partial sample set and exited 0.
+- **Duplicate sample names are now a hard error** (from `--bam`, `--bam-list`, or
+  a mix): the later BAM silently replaced the earlier one, which was then never
+  processed. Use `sample_id:path` (or two-column list entries) to disambiguate
+  deliberate same-stem inputs.
+- **Ragged MAF rows now raise in the batch readers** (`gbcms merge` inputs)
+  instead of having their overflow fields silently truncated — the gbcms count
+  columns are the trailing columns, exactly what truncation dropped.
+
+### 🔧 Fixed
+
+- **A rejected (FAIL) variant no longer crashes `--mfsd`, RNA `--gtf`, or
+  `--mfsd-parquet` runs**: the zero-count stub now carries every column the
+  writers read (mFSD q-value and nucleosomal fractions, RNA/GTF annotation and
+  ASJD fields), and the mFSD Parquet excludes rejected variants (they have no
+  fragment data) with the exclusion logged.
+- **`gbcms merge` no longer coerces float-formatted count strings to 0**: a
+  pandas/R round-trip renders integers as `12.0`, which the combined-column sums
+  silently nulled to 0; genuinely non-numeric values (e.g. `NA`) are counted and
+  warned about per column.
+- **Re-genotyping warns about replaced columns**: an input MAF already carrying
+  gbcms output column names (e.g. `ref_count` from a previous run) has those
+  values refreshed — now with a warning naming every colliding column, and the
+  writer's docstring no longer claims originals are never overwritten.
+- **Failed-sample reports name the exception type and log the traceback**
+  (`KeyError: some_key` instead of a bare `'some_key'`).
+
 ### ⚠️ Changed — wrong-length pure-indel evidence is a distinct allele (issue #91)
 
 - **A read whose CIGAR proves a pure indel of a DIFFERENT length at the variant anchor now
