@@ -24,7 +24,12 @@ duplex + consensus ladders local; MSI-H + FLT3-ITD being pulled), community
 head-to-head harness (C++ GBCMS, bam-readcount, GATK) scored vs pysam truth.
 Identity-band design intent: annotation-representation tolerance — test both
 policies (see memory + #92 comments). No new output columns, ever.
-**Issue #92** (audit follow-ups). Start with the class-1 xfail-strict battery (encode every deterministic repro as a
+**Issue #92**: class-1 DONE — PR #95 open (battery a4aa891 red → e23c4c3
+green; 11 review findings fixed incl. ASJD-sentinel high; real ACCESS/RNA
+smoke). Next after #95 merges: #94 RNA splice-aware correctness, then
+remaining class-2 (insert band both-policies + in-tract sub-5bp gate with
+offline mismatch-anatomy survey first), class-3 observability.
+(Original class-1 note: the xfail-strict battery (encode every deterministic repro as a
 failing test first: _zero_counts crash, --bam-list fail-fast, OSError swallow,
 duplicate samples, MafWriter collisions, merge coercion, ragged rows, traceback
 logging), then fix red→green on one branch. Class 2 (measured, count-affecting:
