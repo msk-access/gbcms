@@ -13,8 +13,18 @@ validated on internal data (local pointers: gitignored
 `user-local-validation-data` memory; baselines:
 `~/Downloads/gbcms_test/wrong_length_baselines/` — keep for #92 validation).
 
-**Next up: issue #92** (audit follow-ups, 12 items + enhancement). Start with
-the class-1 xfail-strict battery (encode every deterministic repro as a
+**Next up:** class-1 xfail battery (#92) -> **#94 RNA splice-aware correctness**
+(20 confirmed findings, 6 high: spliced-around reads count definitive REF for
+junction-abutting indels; D6 consensus-splicing corrupts ref_context offsets;
+insert_truncation_match lacks the reliable-base gate [our Phase-2, invariant-2
+violation]; RNA-BAQ vs unverifiable-bases branch). Holistic requirements now
+standing for every item: RNA lens on BOTH builds (b37 dedup RNA + v47lift37;
+hg38 FORTE STAR + v50 — all local, verified), real-data validation (ACCESS
+duplex + consensus ladders local; MSI-H + FLT3-ITD being pulled), community
+head-to-head harness (C++ GBCMS, bam-readcount, GATK) scored vs pysam truth.
+Identity-band design intent: annotation-representation tolerance — test both
+policies (see memory + #92 comments). No new output columns, ever.
+**Issue #92** (audit follow-ups). Start with the class-1 xfail-strict battery (encode every deterministic repro as a
 failing test first: _zero_counts crash, --bam-list fail-fast, OSError swallow,
 duplicate samples, MafWriter collisions, merge coercion, ragged rows, traceback
 logging), then fix red→green on one branch. Class 2 (measured, count-affecting:
