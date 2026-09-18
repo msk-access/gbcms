@@ -232,7 +232,7 @@ The core counting fields of the `BaseCounts` struct returned by `count_bam_binne
 | `fsb_or` | f64 | Fragment-level strand bias odds ratio |
 | `used_decomposed` | bool | True if corrected homopolymer allele was used |
 | `any_alt` | u32 | Reads with **any** ALT evidence at ≥1 discriminating position (DMP-compatible) |
-| `partial_alt` | u32 | Reads with **partial** ALT match only (some but not all positions match ALT) |
+| `partial_alt` | u32 | Partial/structural ALT evidence short of a full match: MNP/complex reads matching ALT at some but not all discriminating positions, and pure-indel reads carrying a **wrong-length** (or same-length wrong-sequence) indel at the anchor — a distinct allele in the same tract |
 | `n_count` | u32 | Reads with N base at ≥1 discriminating position (duplex masking diagnostic) |
 
 ### Diagnostic Column Invariants
@@ -243,7 +243,7 @@ The diagnostic columns maintain strict structural invariants:
 |:----------|:--------|:----------|
 | Decomposed ALT | `any_alt = ad + partial_alt` | Separates full from partial ALT evidence |
 | ALT bound | `any_alt >= ad` | `partial_alt` is non-negative |
-| Depth decomposition | `DP >= RD + AD + partial_alt + n_count` | Remaining reads are third-allele or low-BQ |
+| Depth bound | `DP >= RD + AD` | `partial_alt` and `n_count` are diagnostic overlays, not depth partitions: a REF-classified read with nearby structural evidence counts in BOTH `rd` and `partial_alt`, and `n_count` increments independently of classification |
 
 ### VCF INFO/FORMAT Tags
 

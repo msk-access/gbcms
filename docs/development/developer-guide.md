@@ -112,7 +112,7 @@ flowchart LR
 
     To observe binning at runtime:
     ```bash
-    RUST_LOG=info gbcms dna ... 2>&1 | grep "Built.*bins"
+    gbcms dna ... 2>&1 | grep "Built.*bins"
     # Example: "Built 42 genomic bins from 1247 variants (window=10000bp)"
     ```
 
@@ -232,7 +232,7 @@ count_bam_binned() → _merge_counts() → _compute_diagnostics() → _rescue_mn
 
 ```bash
 # Enable rescue with debug logging to see per-variant decisions
-GBCMS_LOG_LEVEL=DEBUG gbcms dna --rescue-mnp --variants input.maf --bam sample:sample.bam --fasta ref.fa --format maf --output-dir out/
+gbcms dna --verbose --rescue-mnp --variants input.maf --bam sample:sample.bam --fasta ref.fa --format maf --output-dir out/
 
 # Look for rescue log lines:
 # INFO  — "MNP rescue: 3 candidate(s) for SAMPLE"
@@ -260,7 +260,7 @@ When debugging specific variant types, use targeted BAM slices:
 |:-------------|:-------------|:--------------|
 | Del+SNV (complex) | SOX9 `GC→T`, ABL1 `AG→T` | Routes to `check_complex`, not `check_deletion`; alt > 0 |
 | Large deletion, REF=0 | NF2 ~100bp DEL | M-block REF fallback in `check_complex`; ref > 0 |
-| Shifted large deletion | TP53 `GACCGTGCAAGT→-` | `has_nearby_length_match` Phase 3; alt matches sign-out |
+| Shifted large deletion | TP53 `GACCGTGCAAGT→-` | `has_shifted_same_length` Phase 3; alt matches sign-out |
 | MNP/DNP | TERT (5bp), BRCA2 (2bp) | ALT recovery vs sign-out |
 | Shifted insertion | JAK1 `65306997` | Multi-allelic isolation, windowed INS scan |
 
@@ -369,13 +369,14 @@ cd rust && cargo clippy --all-targets -- -D warnings && cargo test
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|:---------|:--------|:------------|
-| `GBCMS_LOG_LEVEL` | INFO | Logging level |
-| `RUST_LOG` | — | Rust logging |
+Logging is controlled by CLI flags, not environment variables: `--verbose` enables
+DEBUG (Python and Rust — Rust records are forwarded through `pyo3-log` into Python's
+`logging`), and `--trace` additionally enables per-read Rust `trace!()` diagnostics.
+`RUST_LOG` has **no effect** on gbcms.
 
 ```bash
-GBCMS_LOG_LEVEL=DEBUG RUST_LOG=debug gbcms dna ...
+gbcms dna --verbose ...   # DEBUG-level logs
+gbcms dna --trace ...     # per-read classification diagnostics (slow)
 ```
 
 ---

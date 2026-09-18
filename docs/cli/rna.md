@@ -281,7 +281,7 @@ RNA mode uses the **same filter defaults** as DNA mode — duplicates, secondary
 
     **Workaround:** Use `--trace` logging and grep for `D6 splice` to confirm whether intron snipping fired for the variant of interest:
     ```bash
-    RUST_LOG=trace gbcms rna ... 2>&1 | grep "D6 splice\|<chrom>:<pos>"
+    gbcms rna --trace ... 2>&1 | grep "D6 splice\|<chrom>:<pos>"
     ```
 
 ---

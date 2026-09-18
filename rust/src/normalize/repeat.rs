@@ -22,6 +22,25 @@ use super::fasta::fetch_region;
 /// 4. If the span covers ≥ 2 full copies of the motif, record it
 ///
 /// The longest span (breaking ties in favour of larger motif) wins.
+/// Offset of the first base that differs between REF and ALT alleles.
+///
+/// For anchored VCF-style indels (`GAA>G`, `G>GTT`) this is 1 — the first
+/// deleted/inserted base — which is where a repeat scan must start. Scanning
+/// at the shared anchor base instead (offset 0) sits one base LEFT of the
+/// tract for every left-aligned repeat indel and finds span 1 (issue #91).
+/// For complex alleles whose first bases already differ, the offset is 0.
+pub(crate) fn first_change_offset(ref_al: &str, alt_al: &str) -> i64 {
+    let r = ref_al.as_bytes();
+    let a = alt_al.as_bytes();
+    let shared = r.len().min(a.len());
+    for i in 0..shared {
+        if !r[i].eq_ignore_ascii_case(&a[i]) {
+            return i as i64;
+        }
+    }
+    shared as i64
+}
+
 pub(crate) fn find_tandem_repeat(seq: &[u8], pos_in_seq: usize) -> (usize, usize) {
     let len = seq.len();
     let mut best_unit = 1;
@@ -76,7 +95,9 @@ pub(crate) fn find_tandem_repeat(seq: &[u8], pos_in_seq: usize) -> (usize, usize
 /// Strategy:
 /// 1. Fetch a wide scan window (±`scan_radius` bp) around the variant
 /// 2. Run `find_tandem_repeat()` at the variant position within the window
-/// 3. `effective = max(default_pad, repeat_span / 2 + 3)`, capped at `max_pad`
+/// 3. `effective = max(default_pad, repeat_span + default_pad)` for genuine
+///    repeats (span >= 2), capped at `max_pad` — the window must contain the
+///    whole tract plus unique flank on both sides (issue #91)
 /// 4. Falls back to `default_pad` on FASTA fetch failure
 ///
 /// # Arguments
@@ -101,7 +122,10 @@ pub(crate) fn compute_adaptive_padding(
     let scan_seq = match fetch_region(reader, chrom, scan_start as u64, scan_end as u64) {
         Ok(s) => s,
         Err(_) => {
-            debug!(
+            // warn (not debug): a silent fallback here narrows the Phase-3
+            // haplotype window in exactly the repeat contexts where a narrow
+            // window mis-arbitrates wrong-length indels (issue #91).
+            log::warn!(
                 "Adaptive scan fetch failed for {}:{}-{}, using default padding {}",
                 chrom, scan_start, scan_end, default_pad
             );
@@ -113,7 +137,16 @@ pub(crate) fn compute_adaptive_padding(
     let pos_in_scan = (pos - scan_start) as usize;
 
     let (motif_len, repeat_span) = find_tandem_repeat(&scan_seq, pos_in_scan);
-    let adaptive = (repeat_span as i64) / 2 + 3;
+    // A Phase-3 haplotype window can only distinguish tract lengths when it
+    // contains the ENTIRE repeat tract plus unique flank on both sides, so a
+    // genuine repeat (span >= 2) pads by the full span on top of the default.
+    // The previous `span/2 + 3` could never cover an edge-anchored tract
+    // (issue #91). Non-repeat positions keep the default unchanged.
+    let adaptive = if repeat_span >= 2 {
+        repeat_span as i64 + default_pad
+    } else {
+        0
+    };
     let effective = default_pad.max(adaptive).min(max_pad);
 
     if effective > default_pad {

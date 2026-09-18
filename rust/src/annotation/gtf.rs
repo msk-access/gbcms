@@ -52,6 +52,37 @@ pub fn parse_gtf(
 /// from the exon records by [`GtfIndexBundle::into_index`]. Splitting the parse out
 /// here lets the cache layer persist/restore the bundle without touching the
 /// arch-specific trees. This is the function that does the ~8.7s text parse.
+/// Warn once for every variant chromosome that has no loaded exons.
+///
+/// A variant chromosome absent from `chrom_map` makes splice distance,
+/// per-transcript counts, ASJD and strand resolution silently inert for its
+/// variants while annotation works normally elsewhere. Called from both the
+/// text-parse path and the cache-hit path, so cohort samples reusing a warm
+/// `--gtf-cache-dir` still see the warning. Both sides of the comparison are
+/// already contig-normalized (chr prefix stripped, M/MT folded), so a gap
+/// means the GTF genuinely lacks the contig or spells it in a form the
+/// normalizer does not cover (e.g. accession-style names).
+pub(crate) fn warn_uncovered_variant_chroms(
+    chrom_map: &HashMap<String, u32>,
+    variant_chroms: &HashSet<String>,
+) {
+    let mut uncovered: Vec<&String> = variant_chroms
+        .iter()
+        .filter(|c| !chrom_map.contains_key(*c))
+        .collect();
+    if !uncovered.is_empty() {
+        uncovered.sort();
+        warn!(
+            "GTF annotation: no exons loaded for variant chromosome(s) {:?} \
+             (names shown are normalized) — splice distance, per-transcript \
+             counts, ASJD and gene strand are inert for variants there. The \
+             GTF lacks these contigs, or uses spellings the normalizer does \
+             not cover (e.g. accession-style names).",
+            uncovered,
+        );
+    }
+}
+
 pub(crate) fn parse_gtf_to_bundle(
     gtf_path: &str,
     variant_chroms: &HashSet<String>,
@@ -179,13 +210,17 @@ pub(crate) fn parse_gtf_to_bundle(
         // strand all become no-ops), so make the *reason* loud and actionable. An
         // exon record that reached the chromosome filter either loaded or bumped
         // `skipped_chrom`; so `skipped_chrom > 0` means exons existed but matched no
-        // variant chromosome (a naming mismatch), whereas `== 0` means the file had
-        // no `exon` feature records at all (likely the wrong file or feature column).
+        // variant chromosome, whereas `== 0` means the file had no `exon` feature
+        // records at all (likely the wrong file or feature column). Common spellings
+        // (chr prefix, M/MT) are already normalized on both sides before comparison,
+        // so a residual mismatch means the GTF genuinely lacks those contigs or uses
+        // spellings the normalizer does not cover (e.g. accession-style names).
         if skipped_chrom > 0 {
             warn!(
                 "GTF parser: exon records exist but none on the variant chromosomes {:?} in {} \
-                 ({} exon rows skipped by the chromosome filter) — likely a contig-naming \
-                 mismatch (e.g. chr1 vs 1, chrM vs MT). RNA annotation will be inert.",
+                 ({} exon rows skipped by the chromosome filter; names shown are normalized). \
+                 The GTF lacks these contigs, or uses spellings the normalizer does not cover \
+                 (e.g. accession-style names). RNA annotation will be inert.",
                 variant_chroms, gtf_path, skipped_chrom,
             );
         } else {
@@ -195,6 +230,16 @@ pub(crate) fn parse_gtf_to_bundle(
                 gtf_path, total_lines, skipped_non_exon, skipped_parse,
             );
         }
+    }
+
+    // Partial coverage is as silent a failure as an empty index, per chromosome:
+    // a variant chromosome with zero loaded exons gets no chrom_map entry, so
+    // splice distance, per-transcript counts, ASJD and strand resolution are all
+    // inert for its variants while working normally elsewhere. Name the gaps.
+    // (The cache-hit path in `parse_gtf_cached` runs the same check, so cohort
+    // samples reusing a warm cache still see the warning.)
+    if !exons.is_empty() {
+        warn_uncovered_variant_chroms(&chrom_map, variant_chroms);
     }
 
     info!(

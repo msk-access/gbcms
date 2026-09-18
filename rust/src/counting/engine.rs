@@ -706,6 +706,27 @@ fn count_bam_binned_core(
             resolved, variants.len(),
         );
     }
+    // Strandedness enforcement needs a gene strand per variant; variants left
+    // without one (no GTF, intergenic locus, or a GTF/variant contig mismatch)
+    // pass every read as sense — the antisense artifacts the flag exists to
+    // remove are counted. Say so once, loudly, instead of enforcing nothing
+    // while the run banner claims enforce_strandedness=true.
+    if enforce_strandedness {
+        let unresolved = variants.iter().filter(|v| v.gene_strand.is_none()).count();
+        if unresolved > 0 {
+            warn!(
+                "--enforce-strandedness: {}/{} variants have no gene strand ({}) — \
+                 strandedness is NOT enforced for them and antisense reads are counted",
+                unresolved,
+                variants.len(),
+                if annotation.is_some() {
+                    "locus not covered by the GTF, or contig naming mismatch"
+                } else {
+                    "no --gtf provided"
+                },
+            );
+        }
+    }
 
     // Store FASTA path for thread-local readers (used by ASJD motif classification)
     let fasta_path_owned: Option<String> = reference_fasta.map(|p| p.to_string());
@@ -2130,10 +2151,9 @@ fn count_single_variant(
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
     // ALT + REF: Same affine gap penalties for fair comparison.
-    // Continuous gap_extend: uses logistic sigmoid to smoothly transition
-    // from tight (-1) to free (0) as repeat_span increases.
-    // Replaces the previous rigid `repeat_span >= 10` binary threshold
-    // to prevent boundary artifacts at the transition point.
+    // NOTE: dynamic_sw_gap_extend is currently a constant -1 for every
+    // repeat_span — the intended tight-to-free relaxation never engages
+    // with the fixed default curve (see its doc; issue #92).
     let gap_open: i32 = -5;
     let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
     let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
@@ -2787,7 +2807,12 @@ fn count_per_transcript(
                 continue; // Incompatible junctions → skip for this transcript
             }
 
-            // ── BAQ (same suppression logic as main counting)
+            // ── BAQ. NOTE: unlike the main counting path, this applies BAQ
+            // unconditionally — the exon-boundary suppression (skip BAQ within
+            // 5bp of an annotated boundary, where it would penalize legitimate
+            // junction-spanning reads) is NOT applied here or in detect_asjd.
+            // Per-transcript counts near exon boundaries can therefore be
+            // slightly more conservative than the main counts.
             let baq_adjusted = if apply_baq {
                 apply_heuristic_baq(record)
             } else {
@@ -4400,11 +4425,14 @@ mod tests {
             "check_complex with no N in reconstructed haplotype should have has_n_base=false");
     }
 
-    // ── INDEL Phase 3 fallback tests ──
+    // ── INDEL wrong-length / nearby-evidence tests ──
     //
-    // These tests verify the wrong-length INDEL Phase 3 fallback paths
-    // added to fix PAX5-class discordances. Each test documents which
-    // code path in check_insertion/check_deletion it exercises.
+    // These tests verify the wrong-length INDEL handling added to fix
+    // PAX5-class discordances (originally Phase-3 fallbacks; now the
+    // wrong-length rule resolves lone ops directly as neither + partial
+    // evidence, with Phase 3 kept for split representations and shifted
+    // same-length candidates). Each test documents which code path in
+    // check_insertion/check_deletion it exercises.
 
     // Aligner construction is inlined in each test below because:
     // 1. Rust's impl Trait creates distinct opaque types per call site
@@ -4492,11 +4520,10 @@ mod tests {
     #[test]
     fn test_insertion_wrong_length_at_anchor() {
         // PAX5-class test: read has I(1) at strict anchor but expected I(2).
-        // Expected path: Step 1.1 → wrong-length else clause → phase3_classify.
-        // Phase 3 (SW) compares read haplotype against REF/ALT and may return
-        // REF (since the read doesn't carry the expected ALT). In that case,
-        // has_nearby_evidence must be set because I(1) at the anchor is
-        // structural evidence of a third allele.
+        // Expected path: strict wrong-length rule — no truncation (observed
+        // 1bp is below the containment floor), no split ops → lone wrong-
+        // length I → neither + has_nearby_evidence, because I(1) at the
+        // anchor is structural evidence of a third allele.
         //
         // Geometry:
         //   Ref:  ...GGGGA---GGGGG...   (anchor A at pos 14)
@@ -4539,41 +4566,20 @@ mod tests {
 
     #[test]
     fn test_insertion_same_length_wrong_sequence() {
-        // Read has I(2) at anchor but with wrong bases ("TT" vs expected "CC").
-        // Expected path: strict fast path → length matches → seq mismatch →
-        //   falls through to windowed scan or post-walk → has_nearby_length_match.
+        // Read has I(2) at anchor but with wrong bases ("TT" vs expected "CC")
+        // on confident (≥min_baseq) bases: a same-length THIRD allele.
         //
         // Geometry:
         //   Ref:  ...GGGGA---GGGGG...
         //   Read: ...GGGGATTGGGGG       (I(2) = "TT" instead of "CC")
         //   CIGAR: 5M 2I 5M
         //
-        // The strict path rejects because sequence doesn't match. Since the
-        // insertion is at the anchor position, the windowed scan also sees it
-        // (but skips it as the strict position). The post-walk handler should
-        // not trigger has_nearby_length_match for strict-position mismatches
-        // because found_ref_coverage is false (anchor is at end of M block,
-        // and the next op is I, not M). Actually: anchor is at pos 14, which
-        // is 10+5-1=14 (end of M block) → strict path fires → seq doesn't
-        // match → falls through → found_ref_coverage = true (set at line 1176
-        // "Anchor at end but no insertion at all") — wait, the I(2) exists so
-        // line 1175 fires. Let me re-check.
-        //
-        // Actually: strict path at anchor_pos == block_end - 1: gets
-        // Cigar::Ins(2) → ins_len_usize == expected_ins_len → sequence check
-        // fails → does NOT return → falls to line 1175 "Anchor at end but
-        // no insertion at all → found_ref_coverage = true". But wait, there
-        // IS an insertion (just wrong seq). The code currently falls through
-        // to found_ref_coverage = true because the if-chain doesn't have a
-        // separate seq-mismatch branch. Then the post-walk check doesn't
-        // fire (has_nearby_length_match is false). Result: REF.
-        //
-        // This is actually the existing behavior for same-length wrong-seq
-        // at the strict position — it's handled by Phase 3 via the windowed
-        // scan's seq-mismatch path if the insertion is also visible there.
-        // For strict-only, it falls through to REF.
-        //
-        // Let's verify this is at least not classified as ALT.
+        // Expected path: strict fast path → length matches → confident seq
+        // mismatch → neither + has_nearby_evidence. Not REF (rd must not
+        // absorb a read that provably carries an insertion), not ALT (the
+        // bases are provably not the queried insert), and not Phase 3 —
+        // alignment scoring would promote the wrong-sequence insert to ALT
+        // because it still beats the gapped REF alignment.
         let seq = b"GGGGATTGGGGG";
         let qual = &[35_u8; 12];
         let cigar = CigarString(vec![Cigar::Match(5), Cigar::Ins(2), Cigar::Match(5)]);
@@ -4595,9 +4601,14 @@ mod tests {
             &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
         );
 
-        // Must NOT be classified as ALT with wrong sequence
+        // A confident wrong-sequence insertion is a distinct allele:
+        // neither REF nor ALT, with partial evidence for any_alt/partial_alt.
         assert!(!result.is_alt,
-            "Same-length insertion with wrong sequence should not be ALT");
+            "Same-length insertion with wrong sequence must not be ALT");
+        assert!(!result.is_ref,
+            "Same-length insertion with wrong sequence must not be absorbed into REF");
+        assert!(result.has_nearby_evidence,
+            "Same-length wrong-sequence insertion must carry partial evidence");
     }
 
     #[test]

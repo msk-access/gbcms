@@ -595,7 +595,13 @@ class Pipeline:
         Flags (per design §3):
             ZERO_ALT: ad == 0 and variant was successfully counted.
             PARTIAL_DOMINANT: partial_alt > ad (more structural evidence
-                than confirmed ALT calls).
+                than confirmed ALT calls). For pure indels partial_alt
+                includes wrong-length evidence — reads whose CIGAR proves an
+                indel of a DIFFERENT length in the same tract (a distinct
+                slippage allele; at >=50bp deletion loci, a real different
+                large event). A dominant partial count therefore usually
+                means the locus carries a coexisting allele the annotation
+                does not describe; per-read lengths are visible with --trace.
             MNP_DISC_RATIO(n/m): for MNPs (ref_len == alt_len > 1),
                 always emitted showing discriminating position ratio.
             MNP_RESCUE_ELIGIBLE: disc/len ≤ rescue_mnp_threshold.

@@ -3,9 +3,60 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-06-30_
+_Last updated: 2026-09-17_
 
 ## Now
+**Issue #91 — wrong-length pure-indel fix** (`fix/wrong-length-indel-partial`).
+Full plan + evidence in the issue; three-regime taxonomy validated on internal
+data (local pointers: gitignored `user-local-validation-data` memory; baselines:
+`~/Downloads/gbcms_test/wrong_length_baselines/`).
+
+- **Phase 0 DONE:** target-contract battery `tests/test_wrong_length_contract.py`;
+  baselines captured; MAF/VCF input equivalence confirmed on the bug case.
+- **Phase 1 DONE** (760a1ea): repeat scan anchors at the first changed base;
+  padding `span + default_pad`.
+- **Phase 2 DONE** (586218a + 6a52414): wrong-length rule — placement-aware
+  ≥50bp deletion band (≤3 retained in span, ≤3 changed outside; covers split
+  reps, rejects displaced net-matches), insertion truncation containment
+  (dual low-complexity gates), windowed flags split (same-length S3-fail keeps
+  Phase-3; wrong-length → repeat: neither+partial / unique: REF+partial), NO
+  Phase-3 for wrong-length (length-blind + tiny-context promotion risk, proven
+  by adversarial review). Plus: `--trace` was entirely dead (pyo3-log Debug cap
+  + wrong logger name "gbcms_rs" vs "_rs") — fixed, with `_rs.reset_log_caching()`.
+  Contract 19/19; pytest 448; all acceptance targets exact (FLT3 7/252,
+  AR 15/9, RNA 15/17, SMARCB1 310); 74-set + fullbam5 panels explained-identical.
+  Phase-2 detail comment on #91.
+- **Phase 3 DONE** (a96b8a6): 36-agent silent-failure audit → 21 confirmed
+  findings. Fixed here: same-length wrong-seq insertion no longer absorbed
+  into rd (third allele → neither+partial; Phase-3 only for unverifiable
+  bases — SW provably promotes confident wrong-seq to ALT); phase3 "SW
+  fallback" logs corrected; enforce-strandedness + GTF-coverage warns (incl.
+  cache-hit path); left-align failure loudness (fetch fail, cap bind, UTF-8);
+  per-read debug→trace; dynamic_sw_gap_extend divergence doc; PARTIAL_DOMINANT
+  e2e reporting-chain test. Measured: ad unchanged everywhere; 8 reads
+  rd→partial on 3 insertion rows. Separable findings (2 high: _zero_counts
+  stub crash, --bam-list fail-fast violation) → issue #92.
+- **Phase 4 DONE** (f261d9b): docs rewritten + 24-agent docs-vs-code
+  verification (21 discrepancies fixed, much pre-existing rot: MNP no-fallback,
+  Phase-2.5 routing, interior guard, fictional RUST_LOG/GBCMS_LOG_LEVEL, false
+  DP invariant, broken normalize command, invalid windowed examples). New code
+  finding → #92: dynamic_sw_gap_extend is a constant −1 (logistic caps at 0.5;
+  relaxation never engages). CHANGELOG [Unreleased] with minor-bump callout;
+  counting-engine skill updated; MAF↔VCF equivalence test committed
+  (tests/test_e2e_maf_vcf_equivalence.py).
+- **Phase 5 DONE:** final-build validation matrix all-exact (FLT3 7/252,
+  AR 15/9, RNA 15/17; 74-set 69/74 identical with exactly the 5 predicted
+  rows; fullbam5 14/15 with the 1 predicted row; CLI matrix + large panel
+  conform, 2 script rows attributed to un-pinned-anchor construction).
+  Review reconciliation: 69 findings across 4 adversarial passes, all fixed
+  or in #92. Branch PHI scan clean. Version: release branch cuts 6.4.0
+  (CHANGELOG callout shipped). **PR #93 open to develop** (PHI/accuracy
+  verified body). Remaining: CI green -> merge; then #92 follow-ups
+  (class-1 xfail battery first).
+
+Previous state (code-review remediation) below for history.
+
+### Previous: code-review remediation
 Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)
 ticket by ticket, one PR each, with review-before/after discipline and real-data
 validation on MSK cfDNA-duplex (b37) and STAR/FORTE RNA (GRCh38) samples.

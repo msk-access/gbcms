@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> The changes below alter reported counts at wrong-length indel loci and warrant a
+> **minor version bump** on release.
+
+### ⚠️ Changed — wrong-length pure-indel evidence is a distinct allele (issue #91)
+
+- **A read whose CIGAR proves a pure indel of a DIFFERENT length at the variant anchor now
+  counts as `partial_alt`, never as REF or the queried ALT.** In repeat tracts, coexisting
+  distinct-length indel populations are distinct slippage alleles; the previous behavior
+  routed them to the length-blind Phase-3 haplotype window, which promoted them to ALT and
+  inflated VAF several-fold at tract loci (a homopolymer locus with 7 true-ALT reads
+  reported 259). `alt_count` now reflects exact support; the distinct-allele evidence
+  surfaces in `partial_alt`/`any_alt`, and `PARTIAL_DOMINANT` flags loci where it dominates.
+- **Placement-aware ≥50bp deletion band** replaces the reciprocal-overlap tier: a
+  wrong-length D at the anchor is the annotated event only when the read deletes essentially
+  the whole expected span (≤3 retained bases, ≤3 changed outside) — accepting breakpoint
+  wobble and split `D+M+D` representations while rejecting displaced net-matches. The old
+  ≥50% overlap rule accepted any deletion sharing half the annotated length (its sequence
+  check compared reference against reference, identically true by construction).
+- **Insertion truncation containment**: a shorter insert that is a ≥90%-identity slice of a
+  non-low-complexity expected insert still counts as ALT (sequencer truncation smear of long
+  insertions); both sequences must be non-low-complexity so repeat-tract slippage is never
+  mistaken for truncation.
+- **Same-length insertions with confidently mismatching bases** (≥`--min-baseq`) are a
+  third allele → `partial_alt`; they were previously absorbed into `ref_count` with no
+  signal. Unverifiable cases (all inserted bases low-quality) go to Phase-3 arbitration.
+- **Windowed wrong-length ops** (deletions ≥5bp — 1–4bp windowed Ds remain
+  CIGAR-definitive alignment noise; insertions at any size): repeat tract → `partial_alt`;
+  unique context → REF with the stray op surfaced as `partial_alt`. Same-length S3-fail candidates keep the Phase-3
+  left-alignment rescue (TP53-class), now via the split `has_shifted_same_length` flag.
+- **Repeat scan anchors at the first changed base** (not the shared VCF anchor, which sits
+  one base left of a left-aligned tract), and adaptive context padding covers the whole
+  tract plus flank — Phase-3 haplotype windows in repeat regions are no longer too narrow
+  to distinguish tract lengths.
+- Delins/complex variants are unaffected: they route to `check_complex`, whose Phase-3
+  realignment correctly resolves split and mismatch-absorbed representations of one event.
+
+### 🔧 Fixed
+
+- **`--trace` never emitted a single per-read Rust trace line**: pyo3-log's default filter
+  capped forwarding at DEBUG, and the Python side configured a logger name (`gbcms_rs`)
+  that pyo3-log never uses (`_rs.…`). Both fixed; `_rs.reset_log_caching()` exposed so
+  enabling trace after Rust code has logged is not silently ignored.
+- **Left-alignment failures are loud**: wide-window FASTA fetch failure warns with the
+  error (reachable near contig ends) instead of silently skipping normalization; the
+  2500bp expansion cap binding without convergence warns; non-UTF-8 alleles from a corrupt
+  reference keep the variant fully unnormalized instead of emitting a shifted position with
+  reverted alleles; a stray `println!` on ref_context fetch failure removed.
+- **`--enforce-strandedness` warns when variants have no resolved gene strand** (no GTF,
+  uncovered locus, contig mismatch) instead of silently not enforcing.
+- **GTF annotation warns per variant chromosome with zero loaded exons**, on both the
+  text-parse and the `--gtf-cache-dir` cache-hit paths (a warm cohort cache previously
+  silenced the warning after the first sample).
+- Per-read `debug!` diagnostics demoted to `trace!` (WFA router, marginalized PairHMM).
+
+### ✨ Added
+
+- Wrong-length contract battery (`tests/test_wrong_length_contract.py`, 20 tests through
+  the binned↔legacy parity oracle) and an end-to-end `PARTIAL_DOMINANT` reporting-chain
+  test driving the full CLI.
+- Documentation: "Wrong-Length Pure Indels" rule reference in
+  `docs/reference/allele-classification.md` and a worked case study (Case 4 in
+  `docs/reference/complex-indels.md`);
+  `partial_alt` semantics updated in output docs; fictional `RUST_LOG`/`GBCMS_LOG_LEVEL`
+  controls removed from docs (logging is `--verbose`/`--trace`).
+
 ## [6.3.1] - 2026-08-25
 
 ### 🔧 Fixed

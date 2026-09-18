@@ -82,6 +82,20 @@ pub(crate) fn parse_gtf_cached(
                 cf.display(),
                 bundle.exons.len(),
             );
+            // The parse-path coverage warnings live in parse_gtf_to_bundle,
+            // which a cache hit skips — but the cache key includes the
+            // variant-chrom set, so a hit carries the exact same gaps. Re-run
+            // the cheap checks here so cohort samples on a warm cache are not
+            // silently blind to inert annotation.
+            if bundle.exons.is_empty() {
+                warn!(
+                    "GTF cache hit: cached index from {} is EMPTY — RNA annotation \
+                     will be inert (see the warnings from the run that built it)",
+                    cf.display(),
+                );
+            } else {
+                super::gtf::warn_uncovered_variant_chroms(&bundle.chrom_map, variant_chroms);
+            }
             return Ok(bundle.into_index());
         }
     }
