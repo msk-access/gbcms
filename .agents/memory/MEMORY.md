@@ -5,6 +5,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 ## How we work (feedback)
 - [Harness stays small](harness-stay-small.md) — curate skills/rules ruthlessly; every line is paid for each turn.
 - [No ticket labels in code](no-ticket-labels-in-code.md) — comments/logs explain what/why/how, never CR-/HI-/ME-/P4c labels.
+- [Identity band = annotation tolerance](identity-band-annotation-tolerance.md) — the ≥90% insert band exists for imperfect ALT representations; BQ masking can't replace it — test both policies. No new columns/flags: new signal goes to logs/diagnostics/validation tooling.
 
 ## References
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.
