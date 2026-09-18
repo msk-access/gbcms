@@ -3,9 +3,35 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-17_
+_Last updated: 2026-09-18_
 
 ## Now
+**Issue #94 cluster A — splice-aware evidence rule: DONE on
+`fix/rna-splice-aware-counting` (battery 5bc8f47 red → 56e703b green; not yet
+pushed/PR'd).** The rule: a read testifies only through aligned bases (or a D
+op) at the discriminating positions; N over all of them → neither + excluded
+from DP/DPF (splice_skip_triage + covers_locus, mirrored binned/legacy/
+per-transcript); D-vs-N never flips the call; post-N anchor/windowed
+inspection via helpers shared with the M-arm; Phase 3 never scores across a
+splice; FragmentEvidence::resolve counts structural ALT at qual 0 (BAQ
+stacking made ad>0/adf=0 diverge); SPLICE_SKIP_DOMINANT(n) diagnostic for
+STAR's N-represented large deletions. 19-agent adversarial review: 15
+confirmed findings all fixed or deliberately accepted+documented. Validated:
+b37 dedup RNA (DP drop pysam-exact) and FORTE hg38 GAPDH junction smoke
+(intronic DP 826→2; use `~/Downloads/pipeline_resources/gunzip_gtf/
+Homo_sapiens.GRCh38.111.gtf` for FORTE — Ensembl contigs, found 2026-09-18).
+
+**Next: #94 cluster B** — D6 consensus-splicing coordinate integrity is now
+the blocking defect: the spliced ref_context has no coordinate map, so every
+`pos - ref_context_start` indexer right of a snipped intron is off; its
+Phase-3 consumer is unreachable (extraction refuses N-crossing reads) and it
+actively breaks windowed S3 near junctions. RED TEST ALREADY COMMITTED:
+`test_windowed_deletion_after_junction_in_repeat_rna` (xfail-strict) pins the
+repro. Then: repeat_span recompute post-splice, per-transcript/ASJD spliced
+context + partial_alt parity, strandedness gating decision, RNA-BAQ
+measurement (junction-adjacent inserted bases are BAQ-unverifiable without
+--gtf suppression — pinned in the insertion contract test). PR after B.
+
 **Issue #91 — wrong-length pure-indel fix: MERGED to develop (#93, 75062d6);
 issue closed.** Ships with the next minor release — the release branch cuts
 **6.4.0** per the CHANGELOG [Unreleased] callout. Three-regime taxonomy
