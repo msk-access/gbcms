@@ -79,7 +79,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
   
   
     
@@ -2038,7 +2038,7 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
    <code>ALT</code> is a single base) but the anchor base also changes (e.g., <code>GC→T</code>, <code>AG→T</code>), it is a
    <strong>complex Del+SNV</strong> routed to <code>check_complex</code>, not <code>check_deletion</code>.
    Use <code>--trace</code> logging to confirm:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"check_complex\|check_deletion"</span>
 </code></pre></div>
    See <a href="../../reference/complex-indels/">Complex Indels</a> for detailed case studies.
@@ -2058,7 +2058,8 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
 </li>
 <li>
 <p><strong>Verbose per-read trace</strong> — most diagnostic tool:
-   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"7579309"</span><span class="w">  </span><span class="c1"># Filter to specific position</span>
+   </p><div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Per-read trace lines print 0-BASED positions; variant-level lines are 1-based.</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"7579308|7579309"</span><span class="w">  </span><span class="c1"># 0-based and 1-based</span>
 </code></pre></div>
 </li>
 </ol>
@@ -2071,18 +2072,19 @@ in <code>check_complex</code> classifies these as REF.</p>
 <p>If <code>ref = 0</code>, check:
 - The variant was normalized correctly (M-block REF fallback only applies in <code>check_complex</code>)
 - The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the anchor position (<code>samtools depth -a sample.bam -r chr22:30038094-30038095</code>)
-- The deletion is ≥50bp (interior REF guard applies; smaller deletions use the normal path)</p>
+- Reads actually <strong>span the anchor</strong>: reads mapping entirely inside a large deleted span
+  carry no information about the variant and count as neither, not REF</p>
 <p>See <a href="../../reference/complex-indels/#case-2-nf2-large-deletion-ref-reads-invisible">NF2 Case Study</a>.</p>
 </details>
 <details class="question">
 <summary><code>alt_count</code> is lower than expected for a deletion ≥5bp</summary>
 <p><abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment can shift the anchor further left than where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> appears.
-The <code>has_nearby_length_match</code> Phase 3 fallback handles this for deletions ≥5bp.</p>
+The <code>has_shifted_same_length</code> Phase 3 fallback handles this for deletions ≥5bp.</p>
 <p>For deletions &lt;5bp failing S3 sequence validation, <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF is used — this is
 intentional. A 1-4bp deletion in the wrong reference context is almost certainly spurious noise,
 not a left-alignment artifact.</p>
 <p>To diagnose deletion ≥5bp still returning low alt:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"has_nearby_length_match\|S3.*fail"</span>
+</p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>...<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"S3 reject\|falling back to phase3_classify"</span>
 </code></pre></div>
 </details>
 <details class="question">
@@ -2276,20 +2278,22 @@ genuinely has nothing to count.</p>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Verbose: see per-variant decisions</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="nv">RUST_LOG</span><span class="o">=</span>info<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--verbose<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--verbose<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tee<span class="w"> </span>debug.log
 <a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="c1"># Trace: per-read detail (slow — run on small BAMs or specific regions)</span>
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="nv">RUST_LOG</span><span class="o">=</span>trace<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"7579309"</span><span class="w"> </span>&gt;<span class="w"> </span>tp53_trace.log
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="c1"># Trace: per-read detail (slow — run on small BAMs or specific regions).</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="c1"># Per-read trace lines print 0-BASED positions; variant-level lines are 1-based,</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1"># so grep both spellings of the coordinate.</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"7579308|7579309"</span><span class="w"> </span>&gt;<span class="w"> </span>tp53_trace.log
 </code></pre></div>
 <h3 id="inspecting-genomic-bin-construction">Inspecting Genomic Bin Construction<a class="headerlink" href="#inspecting-genomic-bin-construction" title="Permanent link">¶</a></h3>
-<p>gbcms groups variants into <strong>~10kb genomic bins</strong> before <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> traversal to reduce <code>bam.fetch()</code> calls (see <a href="../../reference/architecture/#genomic-binning">Architecture → Genomic Binning</a>). Enable <code>RUST_LOG=info</code> to observe bin construction:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nv">RUST_LOG</span><span class="o">=</span>info<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
+<p>gbcms groups variants into <strong>~10kb genomic bins</strong> before <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> traversal to reduce <code>bam.fetch()</code> calls (see <a href="../../reference/architecture/#genomic-binning">Architecture → Genomic Binning</a>). Bin construction is logged at INFO by default:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/out/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">"bin"</span>
-<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="c1"># Example:</span>
-<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="c1"># [INFO  gbcms] Built 42 genomic bins from 1247 variants (window=10000bp, max_per_bin=200)</span>
-<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="c1"># [INFO  gbcms] Bin chr17:7571720-7579309 → 83 variants (1 fetch)</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="c1"># Example (INFO):</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="c1">#   Built 42 genomic bins from 1247 variants (window=10000bp)</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="c1"># Per-bin detail (read counts, filter breakdown) is DEBUG-level — add --verbose.</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Expected bin counts</p>
@@ -2333,7 +2337,7 @@ genuinely has nothing to count.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="July 1, 2026 15:57:53 UTC"><span class="timeago" datetime="2026-07-01T15:57:53+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="July 1, 2026 15:57:53 UTC">2026-07-01</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 17, 2026 22:43:38 UTC"><span class="timeago" datetime="2026-09-17T22:43:38+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 17, 2026 22:43:38 UTC">2026-09-17</span>
   </span>
 
     

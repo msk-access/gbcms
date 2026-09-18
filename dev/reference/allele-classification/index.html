@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -616,10 +616,10 @@
 <nav aria-label="Algorithm" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-a-cigar-based-strict-reciprocal-overlap-detection">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-band-detection">
 <span class="md-ellipsis">
       
-        Part A — CIGAR-Based Strict + Reciprocal-Overlap Detection
+        Part A — CIGAR-Based Strict + Band Detection
       
     </span>
 </a>
@@ -634,10 +634,10 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-c-evaluation-interior-ref-guard">
+<a class="md-nav__link" href="#part-c-evaluation">
 <span class="md-ellipsis">
       
-        Part C — Evaluation + Interior REF Guard
+        Part C — Evaluation
       
     </span>
 </a>
@@ -659,6 +659,46 @@
 <span class="md-ellipsis">
       
         Visual Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#wrong-length-pure-indels-partial_alt">
+<span class="md-ellipsis">
+      
+        Wrong-Length Pure Indels (partial_alt)
+      
+    </span>
+</a>
+<nav aria-label="Wrong-Length Pure Indels (partial_alt)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-rule">
+<span class="md-ellipsis">
+      
+        The rule
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-the-50bp-gate">
+<span class="md-ellipsis">
+      
+        Why the 50bp gate
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reading-the-output">
+<span class="md-ellipsis">
+      
+        Reading the output
       
     </span>
 </a>
@@ -845,10 +885,10 @@
 </nav>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#dynamic-sw-gap-penalties">
+<a class="md-nav__link" href="#sw-gap-penalties">
 <span class="md-ellipsis">
       
-        Dynamic SW Gap Penalties
+        SW Gap Penalties
       
     </span>
 </a>
@@ -1210,10 +1250,10 @@
 <nav aria-label="Algorithm" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-a-cigar-based-strict-reciprocal-overlap-detection">
+<a class="md-nav__link" href="#part-a-cigar-based-strict-band-detection">
 <span class="md-ellipsis">
       
-        Part A — CIGAR-Based Strict + Reciprocal-Overlap Detection
+        Part A — CIGAR-Based Strict + Band Detection
       
     </span>
 </a>
@@ -1228,10 +1268,10 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#part-c-evaluation-interior-ref-guard">
+<a class="md-nav__link" href="#part-c-evaluation">
 <span class="md-ellipsis">
       
-        Part C — Evaluation + Interior REF Guard
+        Part C — Evaluation
       
     </span>
 </a>
@@ -1253,6 +1293,46 @@
 <span class="md-ellipsis">
       
         Visual Example
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#wrong-length-pure-indels-partial_alt">
+<span class="md-ellipsis">
+      
+        Wrong-Length Pure Indels (partial_alt)
+      
+    </span>
+</a>
+<nav aria-label="Wrong-Length Pure Indels (partial_alt)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-rule">
+<span class="md-ellipsis">
+      
+        The rule
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-the-50bp-gate">
+<span class="md-ellipsis">
+      
+        Why the 50bp gate
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reading-the-output">
+<span class="md-ellipsis">
+      
+        Reading the output
       
     </span>
 </a>
@@ -1439,10 +1519,10 @@
 </nav>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#dynamic-sw-gap-penalties">
+<a class="md-nav__link" href="#sw-gap-penalties">
 <span class="md-ellipsis">
       
-        Dynamic SW Gap Penalties
+        SW Gap Penalties
       
     </span>
 </a>
@@ -1553,7 +1633,7 @@ Use mouse to pan and zoom
 <li><strong>Pure deletion</strong> (<code>alt[0] == ref[0]</code>) → <code>check_deletion</code> — e.g., <code>AC→A</code> where anchor A is preserved</li>
 <li><strong>Complex Del+SNV</strong> (<code>alt[0] ≠ ref[0]</code>) → <code>check_complex</code> — e.g., <code>GC→T</code> where anchor G also substitutes to T</li>
 </ul>
-<p>This distinction is critical: <code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. <code>check_complex</code> handles these via Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> haplotype alignment.</p>
+<p>This distinction is critical: <code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. <code>check_complex</code> handles these via Phase 3 haplotype alignment (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under the default backend).</p>
 <p><code>check_deletion</code> also falls back to <code>check_complex</code> for large deletions (≥5bp) where S3 sequence validation fails due to <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifting the anchor position (see <a href="#windowed-scan-safeguards-1">Deletion — Windowed Safeguards</a>).</p>
 </div>
 <hr>
@@ -1713,18 +1793,52 @@ Use mouse to pan and zoom
     Fwd --&gt;|No| RefCov["Mark ref coverage"]
     Fwd --&gt;|Yes| Next{"Next op = Ins?"}
     Next --&gt;|No| RefCov
-    Next --&gt;|Yes| StrictMatch{"Length + seq match?\n(quality-masked)"}
-    StrictMatch --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
-    StrictMatch --&gt;|No| RefCov
+    Next --&gt;|Yes| LenQ{"Length matches?"}
+    LenQ --&gt;|Yes| SeqQ{"Seq matches?\n(quality-masked)"}
+    SeqQ --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
+    SeqQ --&gt;|"Confident mismatch"| Third(["⚪ Neither + partial\n(third allele)"]):::partial
+    SeqQ --&gt;|"All bases &lt; min_baseq\nor insert past read end"| FlagSL["Flag has_shifted_same_length"]:::fallback
+    LenQ --&gt;|No| Trunc{"Truncation of expected insert?\n(≥4bp, ≥90% identity,\nboth non-low-complexity)"}
+    Trunc --&gt;|Yes| TruncAlt(["🔴 ALT — truncated same event"]):::alt
+    Trunc --&gt;|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
+    FlagSL --&gt; RefCov
     RefCov --&gt; WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef partial fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
+</div>
+<div class="admonition important">
+<p class="admonition-title">Wrong-Length and Wrong-Sequence Insertions at the Anchor</p>
+<p>An I op at the exact anchor that does <strong>not</strong> verify against the expected insert is never
+silently REF and never the queried ALT:</p>
+<ul>
+<li><strong>Wrong length, truncation of the expected insert</strong> — sequencers lose bases from long
+  insertions, so reads carry shorter I ops whose bases match a slice of the expected
+  insert. Gates: observed ≥4bp and strictly shorter than expected, ≥90% identity to the
+  best-matching window, and <strong>both</strong> sequences non-low-complexity (in a repeat tract every
+  wrong-length insert matches trivially, and there different lengths are distinct slippage
+  alleles). Passing all gates → <strong>ALT</strong> (same event).</li>
+<li><strong>Wrong length, anything else</strong> — a <strong>distinct allele</strong> in the same tract (the +A vs +AA
+  slippage ladder) → neither + <code>partial_alt</code>. Phase 3 must not arbitrate: its haplotype
+  window is length-blind inside repeat tracts.</li>
+<li><strong>Right length, confident base mismatch</strong> (mismatches on ≥<code>--min-baseq</code> bases) — a
+  same-length <strong>third allele</strong> → neither + <code>partial_alt</code>. Phase 3 must not arbitrate here
+  either: alignment scoring promotes a wrong-sequence insert to ALT because it still beats
+  the gapped REF alignment.</li>
+<li><strong>Right length, unverifiable bases</strong> (every inserted base below <code>--min-baseq</code>, or the
+  insert runs past the read end) — flag <code>has_shifted_same_length</code> for post-walk <strong>Phase-3
+  arbitration</strong> (BQ-aware), honoring the cross-backend quality contract; partial evidence
+  is propagated when Phase 3 does not confirm ALT.</li>
+</ul>
+<p>See <a href="#wrong-length-pure-indels-partial_alt">Wrong-Length Pure Indels</a> for the full rule and
+its validation.</p>
 </div>
 <h4 id="part-b-windowed-scan-s1s2s3-safeguards">Part B — Windowed Scan + S1/S2/S3 Safeguards<a class="headerlink" href="#part-b-windowed-scan-s1s2s3-safeguards" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
@@ -1748,31 +1862,39 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within ±5bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within window?\n(±max(5, repeat_span+2))"}
     CheckWin --&gt;|No| Continue["Continue CIGAR walk"]
-    CheckWin --&gt;|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
+    CheckWin --&gt;|Yes| SameLen{"Same length?"}
+    SameLen --&gt;|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
     S1 --&gt;|Yes| S3{"S3: Anchor base\nmatches ref?"}
     S3 --&gt;|No| Continue
     S3 --&gt;|Yes| S2["S2: Track closest match"]
     S2 --&gt; Continue
-    S1 --&gt;|No| LenMatch{"Same length?"}
-    LenMatch --&gt;|Yes| FlagP3["Flag has_nearby_length_match"]:::fallback
-    LenMatch --&gt;|No| Continue
-    FlagP3 --&gt; Continue
+    S1 --&gt;|No| FlagSL["Flag has_shifted_same_length"]:::fallback
+    SameLen --&gt;|No| FlagWL["Flag has_wrong_length_nearby\n(any size)"]:::partialflag
+    FlagSL --&gt; Continue
+    FlagWL --&gt; Continue
     Continue --&gt; MoreOps{"More CIGAR ops?"}
     MoreOps --&gt;|Yes| CheckWin
     MoreOps --&gt;|No| Eval{"Windowed candidate found?"}
     Eval --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
-    Eval --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check --&gt;|Yes| CPX(["🔄 check_complex"]):::fallback
-    P3Check --&gt;|No| HasRef{"Read covered anchor?"}
+    Eval --&gt;|No| SLCheck{"has_shifted_same_length\nAND ref coverage?"}
+    SLCheck --&gt;|Yes| CPX(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
+    SLCheck --&gt;|No| WLCheck{"has_wrong_length_nearby\nAND ref coverage?"}
+    WLCheck --&gt;|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
+    WLCheck --&gt;|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
+    WLCheck --&gt;|No| HasRef{"Anchor covered by M?"}
     HasRef --&gt;|Yes| Ref(["✅ REF"]):::ref
-    HasRef --&gt;|No| Neither(["⧯ Neither"]):::neither
+    HasRef --&gt;|No| AnchorSpan{"Read spans anchor?\n(e.g. soft-clip at anchor)"}
+    AnchorSpan --&gt;|Yes| CPXA(["🔄 Phase 3"]):::fallback
+    AnchorSpan --&gt;|No| Neither(["⧯ Neither"]):::neither
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef partial fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
+    classDef partialflag fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
@@ -1808,31 +1930,43 @@ Use mouse to pan and zoom
 </tbody>
 </table>
 <div class="admonition note">
-<p class="admonition-title">Phase 3 Haplotype Fallback (has_nearby_length_match)</p>
-<p>When the windowed scan finds an insertion that matches in <strong>length</strong> but not <strong>sequence</strong> (e.g., aligner represents the biological event with shifted bases in a repeat), the engine flags <code>has_nearby_length_match</code> and falls back to <code>check_complex</code> for <strong>Phase 3 <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> arbitration</strong>. This ensures ambiguous cases are resolved by haplotype comparison rather than strict sequence matching.</p>
+<p class="admonition-title">Two Windowed Flags with Different Outcomes</p>
+<ul>
+<li><strong><code>has_shifted_same_length</code></strong> — the windowed scan found an insertion of the <strong>right
+  length</strong> whose bases failed the sequence check (an aligner may represent the same event
+  with shifted bases in a repeat). Resolved by <strong>Phase-3 arbitration</strong> (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under
+  the default backend); <code>partial_alt</code> evidence is propagated when Phase 3 does not confirm
+  ALT.</li>
+<li><strong><code>has_wrong_length_nearby</code></strong> — the windowed scan found an insertion of the <strong>wrong
+  length</strong> (flagged at any size, so REF can never silently absorb it). Resolved without
+  Phase 3: inside a repeat tract (<code>repeat_span ≥ 2</code>) it is a distinct slippage allele →
+  neither + <code>partial_alt</code>; in unique context the anchor-covering M is definitive REF and
+  the stray insertion is surfaced as <code>partial_alt</code> alongside <code>rd</code>.</li>
+</ul>
 </div>
 <h3 id="visual-example_1">Visual Example<a class="headerlink" href="#visual-example_1" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>Variant: chr1:100 A→ATG (insertion of TG after anchor A)
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>Variant: chr1:100 G→GTG (insertion of TG after anchor G, inside a TG repeat)
 <a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>
-<a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>Reference:     5'─ ...C  G  A ── C  G  T  A... ─3'
-<a href="#__codelineno-1-4" id="__codelineno-1-4" name="__codelineno-1-4"></a>                          99 100  101 102
-<a href="#__codelineno-1-5" id="__codelineno-1-5" name="__codelineno-1-5"></a>                               ▲
-<a href="#__codelineno-1-6" id="__codelineno-1-6" name="__codelineno-1-6"></a>                          anchor pos
+<a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>Reference:     5'─ ...A  T  G  T  G  T  G  C... ─3'
+<a href="#__codelineno-1-4" id="__codelineno-1-4" name="__codelineno-1-4"></a>                          99 100 101 102 103 104 105
+<a href="#__codelineno-1-5" id="__codelineno-1-5" name="__codelineno-1-5"></a>                              ▲
+<a href="#__codelineno-1-6" id="__codelineno-1-6" name="__codelineno-1-6"></a>                          anchor pos (repeat context — shifted placements stay equivalent)
 <a href="#__codelineno-1-7" id="__codelineno-1-7" name="__codelineno-1-7"></a>
 <a href="#__codelineno-1-8" id="__codelineno-1-8" name="__codelineno-1-8"></a>Read 1 (ALT, strict):  CIGAR = 5M 2I 5M
-<a href="#__codelineno-1-9" id="__codelineno-1-9" name="__codelineno-1-9"></a>               5'─ ...C  G  A [T  G] C  G  T  A... ─3'
+<a href="#__codelineno-1-9" id="__codelineno-1-9" name="__codelineno-1-9"></a>               5'─ ...A  T  G [T  G] T  G  T  G  C... ─3'
 <a href="#__codelineno-1-10" id="__codelineno-1-10" name="__codelineno-1-10"></a>                               └──┘
 <a href="#__codelineno-1-11" id="__codelineno-1-11" name="__codelineno-1-11"></a>                          inserted bases at anchor → ALT ✅ (strict)
 <a href="#__codelineno-1-12" id="__codelineno-1-12" name="__codelineno-1-12"></a>
 <a href="#__codelineno-1-13" id="__codelineno-1-13" name="__codelineno-1-13"></a>Read 2 (ALT, windowed): CIGAR = 7M 2I 3M
-<a href="#__codelineno-1-14" id="__codelineno-1-14" name="__codelineno-1-14"></a>               5'─ ...C  G  A  C  G [T  G] T  A... ─3'
-<a href="#__codelineno-1-15" id="__codelineno-1-15" name="__codelineno-1-15"></a>                                          └──┘
-<a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>                    insertion shifted +2bp, same seq → ALT ✅ (windowed)
-<a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>
-<a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>Read 3 (REF):  CIGAR = 10M
-<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>               5'─ ...C  G  A  C  G  T  A... ─3'
-<a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>                               ↑
-<a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>                          no insertion after anchor → REF ✅
+<a href="#__codelineno-1-14" id="__codelineno-1-14" name="__codelineno-1-14"></a>               5'─ ...A  T  G  T  G [T  G] T  G  C... ─3'
+<a href="#__codelineno-1-15" id="__codelineno-1-15" name="__codelineno-1-15"></a>                                         └──┘
+<a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>                    insertion shifted +2bp (one repeat unit): S1 seq matches,
+<a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>                    S3 shifted anchor (pos 102 = G) matches original anchor G → ALT ✅ (windowed)
+<a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>
+<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>Read 3 (REF):  CIGAR = 10M
+<a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>               5'─ ...A  T  G  T  G  T  G  C... ─3'
+<a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>                              ↑
+<a href="#__codelineno-1-22" id="__codelineno-1-22" name="__codelineno-1-22"></a>                          no insertion after anchor → REF ✅
 </code></pre></div>
 <hr>
 <h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">¶</a></h2>
@@ -1863,7 +1997,7 @@ Use mouse to pan and zoom
 <p class="admonition-title">Complex Del+SNV: Routed to <code>check_complex</code></p>
 <p>When <code>len(REF) &gt; 1 &amp;&amp; len(ALT) == 1</code> but the anchor base <strong>also substitutes</strong> (<code>alt[0] ≠ ref[0]</code>), the variant is a <strong>complex Del+SNV</strong> and is routed directly to <code>check_complex</code> — not <code>check_deletion</code>. This handles variants such as:</p>
 <ul>
-<li><strong>SOX9</strong> <code>GC→T</code>: anchor G substitutes to T, C is deleted. D(1) reads classified as ALT via Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr>.</li>
+<li><strong>SOX9</strong> <code>GC→T</code>: anchor G substitutes to T, C is deleted. D(1) reads classified as ALT via Phase 3 haplotype alignment.</li>
 <li><strong>ABL1</strong> <code>AG→T</code>: anchor A substitutes to T, G is deleted.</li>
 </ul>
 <p><code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards compare anchor bases assuming the anchor is preserved. For these variants, the anchor changes — feeding them to <code>check_deletion</code> would incorrectly classify all DEL reads as REF (alt=0).</p>
@@ -1872,22 +2006,40 @@ Use mouse to pan and zoom
 <p>Same single-walk strategy as insertion, with four additional features:</p>
 <ol>
 <li>
-<p><strong>Reciprocal overlap matching</strong> — For large deletions (≥50bp), if the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> shows a deletion at the anchor but with a different length, gbcms accepts it if the reciprocal overlap is ≥50% (SV-caller standard, used by SURVIVOR):</p>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a>reciprocal_overlap = min(expected, found) / max(expected, found)
-<a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>Accept if expected_del ≥ 50bp AND reciprocal_overlap ≥ 0.50
-</code></pre></div>
+<p><strong>Placement-aware large-deletion band</strong> — For large deletions (≥50bp), a wrong-length D at
+   the anchor still counts as the annotated event when the read deletes essentially the whole
+   expected span: at most 3 expected-span bases retained, and at most 3 bases deleted/inserted
+   outside the span (within the scan region). This accepts single-op breakpoint wobble AND
+   split representations (<code>D(60)+2M+D(40)</code> for a ~100bp deletion) in pure <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> space, while
+   rejecting net-matching but <em>displaced</em> deletions whose M ops across the span prove the event
+   is absent. The 50bp threshold is an <strong>artifact-size prior</strong>: slippage/stutter/alignment
+   artifacts are small, so an observed ≥50bp D op is essentially always a real deletion in that
+   molecule — the band only decides <em>which</em> event it belongs to. (Validated pure large
+   deletions, 12–539bp, all align as a single exact-length D at the anchor, so the ≤3bp slop is
+   insurance, not an observed need.)</p>
 </li>
 <li>
-<p><strong>Interior REF guard</strong> — For large deletions (≥50bp), reads that start <em>inside</em> the deleted region are classified as REF directly, without falling back to Smith-Waterman. This prevents overcounting caused by the <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> aligner's bias toward shorter ALT haplotypes.</p>
+<p><strong>Wrong-length rule</strong> — A wrong-length D at the anchor that fails the band is a <strong>distinct
+   allele</strong> in the same tract → neither + <code>partial_alt</code>, never Phase 3. See
+   <a href="#wrong-length-pure-indels-partial_alt">Wrong-Length Pure Indels</a>.</p>
 </li>
 <li>
-<p><strong>Left-alignment Phase 3 fallback</strong> — For large deletions (≥5bp) where the windowed scan finds a matching-length Del but S3 sequence validation fails (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifted the anchor further left than the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position), the engine flags <code>has_nearby_length_match</code> and routes to <code>check_complex</code> for Phase 3 arbitration. Short deletions (&lt;5bp) with failed S3 remain <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF — they are almost certainly unrelated spurious deletions, not left-alignment artifacts. See <a href="../complex-indels/#case-3-tp53-12bp-left-alignment-shifted-deletion">Case 3 in the Complex Indels guide</a>.</p>
+<p><strong>Left-alignment Phase 3 fallback</strong> — For deletions ≥5bp where the windowed scan finds a
+   matching-length (or in-band) Del but S3 sequence validation fails (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment
+   shifted the anchor further left than the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position), the engine flags
+   <code>has_shifted_same_length</code> and routes to Phase-3 arbitration. Short deletions (&lt;5bp) with
+   failed S3 remain <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF — they are almost certainly unrelated spurious
+   deletions, not left-alignment artifacts. See <a href="../complex-indels/#case-3-tp53-12bp-left-alignment-shifted-deletion">Case 3 in the Complex Indels guide</a>.</p>
 </li>
 <li>
-<p><strong>Haplotype fallback</strong> — When no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found and the read doesn't cover the anchor, falls back to <code>check_complex</code> for haplotype-based comparison.</p>
+<p><strong>Haplotype fallback</strong> — When no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> match is found and the read doesn't cover the anchor
+   with a Match op (e.g., a soft-clip at the anchor), falls back to Phase 3 for
+   haplotype-based comparison — but only when the read actually spans the anchor position.
+   Reads mapping entirely inside a large deleted span carry no information about the variant
+   and are classified neither.</p>
 </li>
 </ol>
-<h4 id="part-a-cigar-based-strict-reciprocal-overlap-detection">Part A — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict + Reciprocal-Overlap Detection<a class="headerlink" href="#part-a-cigar-based-strict-reciprocal-overlap-detection" title="Permanent link">¶</a></h4>
+<h4 id="part-a-cigar-based-strict-band-detection">Part A — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-Based Strict + Band Detection<a class="headerlink" href="#part-a-cigar-based-strict-band-detection" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1918,15 +2070,15 @@ Use mouse to pan and zoom
     NextDel --&gt;|No| RefCov
     NextDel --&gt;|Yes| LenMatch{"Length matches exactly?"}
     LenMatch --&gt;|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
-    LenMatch --&gt;|No| Recip{"≥50bp AND\noverlap ≥50%?"}
-    Recip --&gt;|Yes| TolAlt(["🔴 ALT — tolerant SV"]):::alt
-    Recip --&gt;|No| CPX(["🔄 check_complex"]):::fallback
+    LenMatch --&gt;|No| Band{"≥50bp AND read deletes\nthe expected span?\n(≤3 retained, ≤3 outside)"}
+    Band --&gt;|Yes| BandAlt(["🔴 ALT — in-band\n(wobble / split representation)"]):::alt
+    Band --&gt;|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
     RefCov --&gt; WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
-    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef partial fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
@@ -1954,18 +2106,18 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Del within ±5bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Del within window?\n(±max(5, repeat_span+2))"}
     CheckWin --&gt;|No| Continue["Continue walk"]
     CheckWin --&gt;|Yes| S1{"S1: Length check"}
-    S1 --&gt;|"Exact match"| S3{"S3: Ref bases match?"}
-    S1 --&gt;|"≥50bp + overlap ≥50%"| S2Track["S2: Track closest (SV)"]  
-    S1 --&gt;|"No match"| Continue
+    S1 --&gt;|"Exact match, or\n≥50bp with |Δlen| ≤ 3"| S3{"S3: Ref bases match?\n(overlapping span)"}
+    S1 --&gt;|"Wrong length, ≥5bp"| FlagWL["Flag has_wrong_length_nearby"]:::partialflag
+    S1 --&gt;|"Wrong length, &lt;5bp"| Continue
     S3 --&gt;|Yes| S2["S2: Track closest"]
-    S3 --&gt;|"No, del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 --&gt;|"No, del_len ≥ 5"| FlagSL["Flag has_shifted_same_length"]:::fallback
     S3 --&gt;|"No, del_len &lt; 5"| Continue
-    S2Track --&gt; Continue
     S2 --&gt; Continue
-    FlagP3 --&gt; Continue
+    FlagSL --&gt; Continue
+    FlagWL --&gt; Continue
     Continue --&gt; MoreOps{"More ops?"}
     MoreOps --&gt;|Yes| CheckWin
     MoreOps --&gt;|No| Eval(["→ Evaluation"]):::next
@@ -1973,12 +2125,13 @@ Use mouse to pan and zoom
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef partialflag fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
 Use mouse to pan and zoom
 </div>
 </div>
-<h4 id="part-c-evaluation-interior-ref-guard">Part C — Evaluation + Interior REF Guard<a class="headerlink" href="#part-c-evaluation-interior-ref-guard" title="Permanent link">¶</a></h4>
+<h4 id="part-c-evaluation">Part C — Evaluation<a class="headerlink" href="#part-c-evaluation" title="Permanent link">¶</a></h4>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -2002,17 +2155,22 @@ Use mouse to pan and zoom
 <pre class="mermaid"><code>flowchart TD
     EvalIn(["→ from windowed scan"]):::entry --&gt; Win{"Windowed match found?"}
     Win --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
-    Win --&gt;|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check --&gt;|Yes| CPX(["🔄 check_complex"]):::fallback
-    P3Check --&gt;|No| Interior{"Interior read?\n(≧50bp del, read starts inside span)"}
-    Interior --&gt;|Yes| IntRef(["✅ REF — interior guard"]):::ref
-    Interior --&gt;|No| HasRef{"Anchor covered?"}
-    HasRef --&gt;|Yes| Ref(["✅ REF"]):::ref
-    HasRef --&gt;|No| CPX
+    Win --&gt;|No| Spans{"Ref coverage at anchor?"}
+    Spans --&gt;|No| AnchorSpan{"Read spans anchor?\n(e.g. soft-clip at anchor)"}
+    AnchorSpan --&gt;|Yes| CPX(["🔄 Phase 3"]):::fallback
+    AnchorSpan --&gt;|No| Neither(["⧯ Neither\n(no variant information)"]):::neither
+    Spans --&gt;|Yes| SLCheck{"has_shifted_same_length?"}
+    SLCheck --&gt;|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
+    SLCheck --&gt;|No| WLCheck{"has_wrong_length_nearby?"}
+    WLCheck --&gt;|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
+    WLCheck --&gt;|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
+    WLCheck --&gt;|No| Ref(["✅ REF"]):::ref
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef partial fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 </code></pre>
 <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
@@ -2032,8 +2190,8 @@ Use mouse to pan and zoom
 <tbody>
 <tr>
 <td style="text-align: left;"><strong>S1</strong></td>
-<td style="text-align: left;">Deleted length matches expected <code>ref_len − 1</code> (or reciprocal overlap ≥50% for large dels)</td>
-<td style="text-align: left;">Prevents matching wrong-length deletions</td>
+<td style="text-align: left;">Deleted length matches expected <code>ref_len − 1</code> exactly, or is within the ≥50bp ±3bp band</td>
+<td style="text-align: left;">Wrong-length deletions never match; ≥5bp ones flag <code>has_wrong_length_nearby</code> (distinct-allele candidates), &lt;5bp ones are alignment noise (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>S2</strong></td>
@@ -2042,49 +2200,119 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><strong>S3</strong></td>
-<td style="text-align: left;">Reference bases at the shifted deletion position match expected deleted sequence</td>
+<td style="text-align: left;">Reference bases at the shifted deletion position match expected deleted sequence (overlapping span for in-band lengths)</td>
 <td style="text-align: left;">Verifies the shifted Del is biologically the same event</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>del_len ≥ 5 guard</strong></td>
-<td style="text-align: left;">Only flag <code>has_nearby_length_match</code> for Dels ≥5bp that fail S3</td>
+<td style="text-align: left;">Only flag <code>has_shifted_same_length</code> for Dels ≥5bp that fail S3</td>
 <td style="text-align: left;">Short (1–4bp) Dels failing S3 are almost certainly spurious noise — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> remains definitive. Longer Dels can fail S3 due to <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifting the anchor away from the actual <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position</td>
 </tr>
 </tbody>
 </table>
 <div class="admonition note">
-<p class="admonition-title">has_nearby_length_match Phase 3 Fallback</p>
-<p>When the windowed scan finds a deletion that matches in <strong>length</strong> (≥5bp) but S3 sequence validation fails (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifted the anchor further left than where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> appears), the engine flags <code>has_nearby_length_match</code> and falls back to <code>check_complex</code> for Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> haplotype arbitration.</p>
+<p class="admonition-title">has_shifted_same_length Phase 3 Fallback</p>
+<p>When the windowed scan finds a deletion that matches in <strong>length</strong> (≥5bp) but S3 sequence validation fails (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifted the anchor further left than where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> appears), the engine flags <code>has_shifted_same_length</code> and routes to Phase-3 haplotype arbitration (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under the default backend), propagating <code>partial_alt</code> evidence when Phase 3 does not confirm ALT.</p>
 <p>Example: <strong>TP53 <code>GACCGTGCAAGT→-</code> (12bp)</strong> — left-alignment moves the anchor 3bp left of the actual <code>D(12)</code> position in reads. S3 compares the wrong reference slice and fails. Phase 3 correctly classifies these as ALT.</p>
 <p>Short deletions (1–4bp) failing S3 use <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF: a 1bp Del in the wrong reference context is almost certainly an unrelated noise deletion, not a left-alignment artifact.</p>
 </div>
 <div class="admonition warning">
-<p class="admonition-title">Interior REF Guard</p>
-<p>For deletions &gt;50bp, reads that fall <strong>entirely within</strong> the deleted region would be incorrectly classified as ALT by Smith-Waterman (because the short ALT haplotype aligns better than the long REF haplotype). The interior REF guard catches these reads early and classifies them as REF before they reach Phase 3.</p>
+<p class="admonition-title">No Interior REF for Large Deletions</p>
+<p>Reads that map <strong>entirely within</strong> a large deleted span never see the anchor junction and carry no information about whether the deletion is present. They are classified <strong>neither</strong> — an earlier interior-REF shortcut was removed because it massively inflated <code>rd</code> (claiming thousands of interior reads as REF evidence for a ~1kb deletion). Only reads spanning the anchor position contribute to any count.</p>
 </div>
 <h3 id="visual-example_2">Visual Example<a class="headerlink" href="#visual-example_2" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>Variant: chr1:100 ACG→A (deletion of CG after anchor A)
-<a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a>
-<a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a>Reference:     5'─ ...T  G  A  C  G  T  A  C... ─3'
-<a href="#__codelineno-3-4" id="__codelineno-3-4" name="__codelineno-3-4"></a>                          99 100 101 102
-<a href="#__codelineno-3-5" id="__codelineno-3-5" name="__codelineno-3-5"></a>                               ▲
-<a href="#__codelineno-3-6" id="__codelineno-3-6" name="__codelineno-3-6"></a>                          anchor pos
-<a href="#__codelineno-3-7" id="__codelineno-3-7" name="__codelineno-3-7"></a>
-<a href="#__codelineno-3-8" id="__codelineno-3-8" name="__codelineno-3-8"></a>Read 1 (ALT, strict):  CIGAR = 5M 2D 5M
-<a href="#__codelineno-3-9" id="__codelineno-3-9" name="__codelineno-3-9"></a>               5'─ ...T  G  A  ──  ──  T  A  C... ─3'
-<a href="#__codelineno-3-10" id="__codelineno-3-10" name="__codelineno-3-10"></a>                               └─────┘
-<a href="#__codelineno-3-11" id="__codelineno-3-11" name="__codelineno-3-11"></a>                          2bp deletion at anchor → ALT ✅ (strict)
-<a href="#__codelineno-3-12" id="__codelineno-3-12" name="__codelineno-3-12"></a>
-<a href="#__codelineno-3-13" id="__codelineno-3-13" name="__codelineno-3-13"></a>Read 2 (ALT, windowed): CIGAR = 7M 2D 3M
-<a href="#__codelineno-3-14" id="__codelineno-3-14" name="__codelineno-3-14"></a>               5'─ ...T  G  A  C  G  T  ──  ──  A  C... ─3'
-<a href="#__codelineno-3-15" id="__codelineno-3-15" name="__codelineno-3-15"></a>                                              └─────┘
-<a href="#__codelineno-3-16" id="__codelineno-3-16" name="__codelineno-3-16"></a>                  deletion shifted +2bp, same length, ref matches → ALT ✅ (windowed)
-<a href="#__codelineno-3-17" id="__codelineno-3-17" name="__codelineno-3-17"></a>
-<a href="#__codelineno-3-18" id="__codelineno-3-18" name="__codelineno-3-18"></a>Read 3 (REF):  CIGAR = 12M
-<a href="#__codelineno-3-19" id="__codelineno-3-19" name="__codelineno-3-19"></a>               5'─ ...T  G  A  C  G  T  A  C... ─3'
-<a href="#__codelineno-3-20" id="__codelineno-3-20" name="__codelineno-3-20"></a>                               ↑
-<a href="#__codelineno-3-21" id="__codelineno-3-21" name="__codelineno-3-21"></a>                          no deletion after anchor → REF ✅
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a>Variant: chr1:100 GTG→G (deletion of TG after anchor G, inside a TG repeat)
+<a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>
+<a href="#__codelineno-2-3" id="__codelineno-2-3" name="__codelineno-2-3"></a>Reference:     5'─ ...A  T  G  T  G  T  G  C... ─3'
+<a href="#__codelineno-2-4" id="__codelineno-2-4" name="__codelineno-2-4"></a>                          99 100 101 102 103 104 105
+<a href="#__codelineno-2-5" id="__codelineno-2-5" name="__codelineno-2-5"></a>                              ▲
+<a href="#__codelineno-2-6" id="__codelineno-2-6" name="__codelineno-2-6"></a>                          anchor pos (repeat context — shifted placements stay equivalent)
+<a href="#__codelineno-2-7" id="__codelineno-2-7" name="__codelineno-2-7"></a>
+<a href="#__codelineno-2-8" id="__codelineno-2-8" name="__codelineno-2-8"></a>Read 1 (ALT, strict):  CIGAR = 5M 2D 5M
+<a href="#__codelineno-2-9" id="__codelineno-2-9" name="__codelineno-2-9"></a>               5'─ ...A  T  G  ──  ──  T  G  C... ─3'
+<a href="#__codelineno-2-10" id="__codelineno-2-10" name="__codelineno-2-10"></a>                               └─────┘
+<a href="#__codelineno-2-11" id="__codelineno-2-11" name="__codelineno-2-11"></a>                          2bp deletion at anchor → ALT ✅ (strict)
+<a href="#__codelineno-2-12" id="__codelineno-2-12" name="__codelineno-2-12"></a>
+<a href="#__codelineno-2-13" id="__codelineno-2-13" name="__codelineno-2-13"></a>Read 2 (ALT, windowed): CIGAR = 7M 2D 3M
+<a href="#__codelineno-2-14" id="__codelineno-2-14" name="__codelineno-2-14"></a>               5'─ ...A  T  G  T  G  ──  ──  C... ─3'
+<a href="#__codelineno-2-15" id="__codelineno-2-15" name="__codelineno-2-15"></a>                                        └─────┘
+<a href="#__codelineno-2-16" id="__codelineno-2-16" name="__codelineno-2-16"></a>                  deletion shifted +2bp (one repeat unit): S1 length matches,
+<a href="#__codelineno-2-17" id="__codelineno-2-17" name="__codelineno-2-17"></a>                  S3 ref bases at shifted position (TG) match expected TG → ALT ✅ (windowed)
+<a href="#__codelineno-2-18" id="__codelineno-2-18" name="__codelineno-2-18"></a>
+<a href="#__codelineno-2-19" id="__codelineno-2-19" name="__codelineno-2-19"></a>Read 3 (REF):  CIGAR = 12M
+<a href="#__codelineno-2-20" id="__codelineno-2-20" name="__codelineno-2-20"></a>               5'─ ...A  T  G  T  G  T  G  C... ─3'
+<a href="#__codelineno-2-21" id="__codelineno-2-21" name="__codelineno-2-21"></a>                              ↑
+<a href="#__codelineno-2-22" id="__codelineno-2-22" name="__codelineno-2-22"></a>                          no deletion after anchor → REF ✅
 </code></pre></div>
+<hr>
+<h2 id="wrong-length-pure-indels-partial_alt">Wrong-Length Pure Indels (partial_alt)<a class="headerlink" href="#wrong-length-pure-indels-partial_alt" title="Permanent link">¶</a></h2>
+<p>A read whose <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> proves a <strong>pure indel of a different length</strong> at the variant anchor is
+evidence of a <strong>different allele</strong> — never definitive REF, and never the queried ALT. This is
+the load-bearing rule for repeat-tract loci, where coexisting distinct-length populations are
+distinct slippage alleles (a 1bp germline slippage allele coexisting with an annotated 2bp
+somatic deletion; a trinucleotide-repeat deletion ladder). Counting every tract-touching indel
+as the annotated event inflated <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> several-fold at such loci.</p>
+<h3 id="the-rule">The rule<a class="headerlink" href="#the-rule" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Evidence at/near the anchor</th>
+<th style="text-align: left;">Classification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Exact-length, sequence-verified indel</td>
+<td style="text-align: left;"><strong>ALT</strong> (structural)</td>
+</tr>
+<tr>
+<td style="text-align: left;">≥50bp deletion within the placement-aware band (≤3 span bases retained, ≤3 changed outside — covers breakpoint wobble and split <code>D+M+D</code> representations)</td>
+<td style="text-align: left;"><strong>ALT</strong> (structural)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Insertion that is a truncation of the expected insert (≥4bp, ≥90% identity, both sequences non-low-complexity)</td>
+<td style="text-align: left;"><strong>ALT</strong> (structural)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Any other wrong-length pure indel at the anchor</td>
+<td style="text-align: left;"><strong>Neither + <code>partial_alt</code></strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">Same-length insertion with confidently mismatching bases</td>
+<td style="text-align: left;"><strong>Neither + <code>partial_alt</code></strong> (third allele)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Same-length candidate with unverifiable bases (all below <code>--min-baseq</code>) or a shifted same-length candidate failing S3</td>
+<td style="text-align: left;"><strong>Phase-3 arbitration</strong>, <code>partial_alt</code> propagated on non-ALT</td>
+</tr>
+<tr>
+<td style="text-align: left;">Windowed wrong-length op, repeat tract</td>
+<td style="text-align: left;"><strong>Neither + <code>partial_alt</code></strong> (deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Windowed wrong-length op, unique context</td>
+<td style="text-align: left;"><strong>REF + <code>partial_alt</code></strong> (same size gate; anchor M is definitive REF, the stray op is surfaced)</td>
+</tr>
+</tbody>
+</table>
+<p>Phase 3 deliberately does <strong>not</strong> arbitrate the definitive wrong-length/wrong-sequence cases:
+its haplotype window is length-blind inside repeat tracts, and alignment scoring promotes a
+wrong-sequence insert to ALT because it still beats the gapped REF alignment. Delins/complex
+variants are unaffected — they route to <code>check_complex</code>, whose Phase-3 realignment correctly
+resolves split and mismatch-absorbed representations of one event.</p>
+<h3 id="why-the-50bp-gate">Why the 50bp gate<a class="headerlink" href="#why-the-50bp-gate" title="Permanent link">¶</a></h3>
+<p>The gate is an <strong>artifact-size prior</strong>, not an event-rarity claim: slippage, stutter, and
+alignment artifacts produce small spurious indel ops, while a read essentially never acquires a
+≥50bp deletion by artifact. Above the gate, an observed big D op is trusted as a <em>real</em> deletion
+in that molecule and the band decides whether it is the annotated event; below it, wrong-length
+ops are artifacts or genuine distinct slippage alleles, so no length tolerance is extended.</p>
+<h3 id="reading-the-output">Reading the output<a class="headerlink" href="#reading-the-output" title="Permanent link">¶</a></h3>
+<p>At an affected locus, <code>alt_count</code> reflects only exact-support reads, and the distinct-allele
+evidence appears in <code>partial_alt</code>/<code>any_alt</code>. When partial evidence dominates
+(<code>partial_alt &gt; alt_count</code>), the variant is flagged <strong><code>PARTIAL_DOMINANT</code></strong> in
+<code>gbcms_diagnostic</code> — at pure-indel loci this usually means the locus carries a coexisting
+allele the annotation does not describe (at ≥50bp deletion loci, a real different large
+event). Per-read indel lengths are visible with <code>--trace</code>.</p>
 <hr>
 <h2 id="mnp-multi-nucleotide-polymorphism"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (Multi-Nucleotide Polymorphism)<a class="headerlink" href="#mnp-multi-nucleotide-polymorphism" title="Permanent link">¶</a></h2>
 <p>Multiple adjacent bases substituted simultaneously.</p>
@@ -2159,7 +2387,7 @@ Use mouse to pan and zoom
     MorePos --&gt;|No| Classify
 
     Classify{"All unmasked = 0?"}
-    Classify --&gt;|Yes| LowQ(["⬜ LowQuality\n→ check_complex"]):::fallback
+    Classify --&gt;|Yes| LowQ(["⬜ LowQuality\nNeither + partial tracked"]):::neither
     Classify --&gt;|No| AllAlt{"All unmasked\nmatch ALT?"}
     AllAlt --&gt;|Yes| Alt(["🔴 ALT"]):::alt
     AllAlt --&gt;|No| AllRef{"All unmasked\nmatch REF?"}
@@ -2218,13 +2446,13 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;">Mixed unmasked (some ALT, some REF/other)</td>
-<td style="text-align: left;"><strong>ThirdAllele</strong> → check_complex</td>
+<td style="text-align: left;"><strong>ThirdAllele</strong> → Neither (terminal)</td>
 <td style="text-align: left;"><code>positions_matching_alt</code></td>
 <td style="text-align: left;">true if any N at discrim. pos</td>
 </tr>
 <tr>
 <td style="text-align: left;">All discriminating positions masked</td>
-<td style="text-align: left;"><strong>LowQuality</strong> → check_complex</td>
+<td style="text-align: left;"><strong>LowQuality</strong> → Neither (terminal)</td>
 <td style="text-align: left;"><code>positions_matching_alt</code></td>
 <td style="text-align: left;">true if any N at discrim. pos</td>
 </tr>
@@ -2244,14 +2472,17 @@ Use mouse to pan and zoom
 <p>The contiguity check is performed <strong>first</strong> (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> base — if the distance doesn't equal <code>len - 1</code>, an indel exists within the block and the read is routed to <code>check_complex</code> for haplotype-based resolution.</p>
 <div class="admonition warning">
 <p class="admonition-title">Phase 3 Fallback Conditions</p>
-<p><code>check_complex</code> is invoked for both <strong>structural</strong> issues and <strong>quality</strong> issues:</p>
+<p><code>check_complex</code> is invoked only for <strong>structural</strong> issues:</p>
 <ul>
 <li>Read position not found in <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk</li>
 <li>Read doesn't cover the entire <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> region</li>
 <li>Indel detected within the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> block (contiguity check)</li>
-<li><strong>All discriminating positions masked</strong> — Phase 2/3 haplotype-based classification may still resolve the read</li>
 </ul>
-<p>The first three indicate a complex variant misannotated as an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>; the last leverages haplotype reconstruction to rescue reads that per-position evaluation cannot classify.</p>
+<p>These indicate a complex variant misannotated as an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>. <strong>LowQuality</strong> and
+<strong>ThirdAllele</strong> results are terminal: they return neither with <code>partial_alt</code>
+tracking and are deliberately NOT routed to <code>check_complex</code> (matching the C++
+<code>baseCountDNP</code> no-fallback behavior) — haplotype alignment cannot manufacture
+confidence about positions the quality mask rejected.</p>
 </div>
 <hr>
 <h2 id="complex-indel-substitution">Complex (Indel + Substitution)<a class="headerlink" href="#complex-indel-substitution" title="Permanent link">¶</a></h2>
@@ -2280,7 +2511,7 @@ Use mouse to pan and zoom
 </table>
 <div class="admonition note">
 <p class="admonition-title">REF Fallback for Large Deletion-Direction Variants</p>
-<p>When <code>check_complex</code> is invoked for a deletion-direction variant (<code>ref_len &gt; alt_len</code>) and <code>is_worth_realignment()</code> returns <code>false</code> (the read has a clean M-only <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> with no indels in the variant window), Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> is skipped. Instead, gbcms checks whether <strong>any M-block covers the anchor position</strong>. If yes, the read is classified as <strong>REF</strong>.</p>
+<p>When <code>check_complex</code> is invoked for a deletion-direction variant (<code>ref_len &gt; alt_len</code>) and <code>is_worth_realignment()</code> returns <code>false</code> (the read has a clean M-only <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> with no indels in the variant window), Phase 3 is skipped. Instead, gbcms checks whether <strong>any M-block covers the anchor position</strong> AND the anchor base quality meets <code>--min-baseq</code>. If both hold, the read is classified as <strong>REF</strong>; an M-covered anchor with a low-quality base returns neither.</p>
 <p>Without this fallback, REF reads for large deletions (e.g., <strong>NF2 ~100bp DEL</strong>) would be misclassified as 'neither' — clean REF reads naturally have no <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence warranting realignment, so skipping Phase 3 without a REF fallback silently drops all REF counts.</p>
 <p>See <a href="../complex-indels/#case-2-nf2-large-deletion-ref-reads-invisible">Case 2 in the Complex Indels guide</a> for the full worked example.</p>
 </div>
@@ -2317,10 +2548,12 @@ Use mouse to pan and zoom
     Phase1 --&gt; Phase2 : always
     Phase2 --&gt; REF : exact REF match
     Phase2 --&gt; ALT : exact ALT match
-    Phase2 --&gt; Phase25 : ambiguous / no match
+    Phase2 --&gt; Neither : ambiguous, or partial ALT bases
+    Phase2 --&gt; Phase25 : recon matches NEITHER allele length
+    Phase2 --&gt; Phase3 : case mismatch (no partial) / skip guards
     Phase25 --&gt; REF : edit dist REF wins (&gt;1 margin)
     Phase25 --&gt; ALT : edit dist ALT wins (&gt;1 margin)
-    Phase25 --&gt; Phase3 : tied or large-del skip
+    Phase25 --&gt; Phase3 : tied or guard-skipped
     Phase3 --&gt; REF : confident REF call
     Phase3 --&gt; ALT : confident ALT call
     Phase3 --&gt; Neither : below threshold
@@ -2373,31 +2606,33 @@ Use mouse to pan and zoom
     LoopBack --&gt; |"done"| Guards
 
     Guards["Post-reconstruction guards"]
-    Guards --&gt; LargeGuard{"ref_len &gt; 50 AND<br>recon &lt; 10% of ref?"}
-    LargeGuard --&gt;|Yes| P25(["→ Phase 2.5"]):::next
-    LargeGuard --&gt;|No| LenRatio{"ref_len &gt; 2 × alt_len?"}
+    Guards --&gt; LargeGuard{"ref_len &gt; max(50, read_len/3)<br>AND recon &lt; 10% of ref?"}
+    LargeGuard --&gt;|Yes| P3Skip(["→ Phase 3 directly"]):::next
+    LargeGuard --&gt;|No| LenRatio{"ref_len &gt; 2 × alt_len AND<br>recon matches ALT length only?"}
     LenRatio --&gt;|Yes| P3Direct(["→ Phase 3 directly"]):::next
     LenRatio --&gt;|No| LenCheck{"Recon length matches?"}
 
     LenCheck --&gt;|"ALT and REF"| CaseA["Case A: Dual compare<br>+ ambiguity detection"]
     LenCheck --&gt;|"ALT only"| CaseB["Case B: ALT-only compare"]
     LenCheck --&gt;|"REF only"| CaseC["Case C: REF-only compare"]
-    LenCheck --&gt;|"Neither"| P25
+    LenCheck --&gt;|"Neither"| P25(["→ Phase 2.5"]):::next
 
     CaseA --&gt; Ambig{"Reliable bases<br>match BOTH?"}
     Ambig --&gt;|Yes| Neither1(["⚪ Neither — ambiguous"]):::neither
     Ambig --&gt;|No| Matches{"Which allele?"}
     Matches --&gt;|ALT| Alt1(["🔴 ALT"]):::alt
     Matches --&gt;|REF| Ref1(["✅ REF"]):::ref
-    Matches --&gt;|Neither| P25
+    Matches --&gt;|"Neither, some reliable<br>ALT-matching bases"| NeitherP(["⚪ Neither + partial"]):::neither
+    Matches --&gt;|"Neither, none"| P3F(["→ Phase 3"]):::next
 
     CaseB --&gt; AltMatch{"0 mismatches on<br>reliable bases?"}
     AltMatch --&gt;|Yes| Alt2(["🔴 ALT"]):::alt
-    AltMatch --&gt;|No| P25
+    AltMatch --&gt;|"No, some reliable<br>ALT-matching bases"| NeitherP
+    AltMatch --&gt;|"No, none"| P3F
 
     CaseC --&gt; RefMatch{"0 mismatches on<br>reliable bases?"}
     RefMatch --&gt;|Yes| Ref2(["✅ REF"]):::ref
-    RefMatch --&gt;|No| P25
+    RefMatch --&gt;|No| P3F
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
@@ -2431,10 +2666,12 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    P25in(["→ from Phase 2"]):::entry
+    P25in(["→ from Phase 2<br>(recon matches NEITHER allele length)"]):::entry
     P25in --&gt; ReconLen{"recon_len ≥ 2?"}
     ReconLen --&gt;|No| P3(["→ Phase 3"]):::next
-    ReconLen --&gt;|Yes| RatioGuard{"ref_len &gt; 2 × alt_len?"}
+    ReconLen --&gt;|Yes| SizeGuard{"REF ≤ 50bp AND ALT ≤ 50bp?"}
+    SizeGuard --&gt;|No| P3
+    SizeGuard --&gt;|Yes| RatioGuard{"ref_len &gt; 2 × alt_len?"}
     RatioGuard --&gt;|Yes| P3
     RatioGuard --&gt;|No| EditDist["Compute Levenshtein distance<br>to REF and ALT alleles"]
     EditDist --&gt; EDMargin{"&gt; 1 edit margin?"}
@@ -2586,10 +2823,10 @@ Use mouse to pan and zoom
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Large-REF Guard</p>
-<p>For variants with REF &gt;50bp, if the reconstruction is &lt;10% of the REF length (e.g., 1bp recon for a 1024bp deletion), Phase 2 is skipped entirely. A tiny reconstruction would trivially match a short ALT allele, causing overcounting. Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> handles these correctly.</p>
+<p>For variants with REF longer than <code>max(50, read_len/3)</code>, if the (non-empty) reconstruction is &lt;10% of the REF length (e.g., 1bp recon for a 1024bp deletion), Phase 2 is skipped entirely and the read goes straight to Phase 3. A tiny reconstruction would trivially match a short ALT allele, causing overcounting.</p>
 </div>
 <h3 id="phase-25-edit-distance">Phase 2.5: Edit Distance<a class="headerlink" href="#phase-25-edit-distance" title="Permanent link">¶</a></h3>
-<p>When Phase 2's strict length comparison fails (Case A/B/C don't match), gbcms measures the <strong>Levenshtein edit distance</strong> between the reconstruction and each allele. This catches cases where the reconstruction is off by 1-2 bases due to an incomplete variant definition:</p>
+<p>When the reconstruction's length matches <strong>neither</strong> allele (so no Case A/B/C comparison is possible), gbcms measures the <strong>Levenshtein edit distance</strong> between the reconstruction and each allele. It runs only for small alleles (REF and ALT both ≤50bp, <code>ref_len ≤ 2×alt_len</code>). A failed Case A/B comparison never reaches this phase — it returns Neither (with <code>partial_alt</code> when reliable ALT-matching bases exist) or falls to Phase 3. This catches cases where the reconstruction is off by 1-2 bases due to an incomplete variant definition:</p>
 <table>
 <thead>
 <tr>
@@ -2698,7 +2935,7 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <p>When <strong>either</strong> trigger fires, the engine retries with <strong>local alignment</strong> (<code>Aligner::local()</code>), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side.</p>
 <div class="admonition tip">
 <p class="admonition-title">Performance: Aligner Reuse</p>
-<p><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> aligners are created <strong>once per variant</strong> in <code>count_single_variant()</code> and reused for all reads. The <code>bio::alignment::pairwise::Aligner</code> reuses internal <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> buffers, avoiding repeated heap allocation.</p>
+<p><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> aligners are created <strong>once per variant</strong> (in every counting path) and reused for all of its reads. The <code>bio::alignment::pairwise::Aligner</code> reuses internal <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> buffers, avoiding repeated heap allocation.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Raw Read Window Extraction</p>
@@ -2718,39 +2955,38 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <p class="admonition-title">This prevents systematic REF inflation at multi-allelic loci, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> estimation.</p>
 </div>
 <hr>
-<h2 id="dynamic-sw-gap-penalties">Dynamic <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> Gap Penalties<a class="headerlink" href="#dynamic-sw-gap-penalties" title="Permanent link">¶</a></h2>
-<p>Phase 3's Smith-Waterman aligners use <strong>adaptive affine gap penalties</strong> tuned by the local repeat context:</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: left;">Context</th>
-<th style="text-align: left;"><code>gap_extend</code></th>
-<th style="text-align: left;">Rationale</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: left;">Stable DNA (<code>repeat_span &lt; 10bp</code>)</td>
-<td style="text-align: left;">-1</td>
-<td style="text-align: left;">Standard penalty — prevents spurious gap extension</td>
-</tr>
-<tr>
-<td style="text-align: left;">Tandem repeat (<code>repeat_span ≥ 10bp</code>)</td>
-<td style="text-align: left;">0 (free)</td>
-<td style="text-align: left;">Absorbs polymerase slippage noise — prevents undercounting in <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr> regions</td>
-</tr>
-</tbody>
-</table>
-<p>The <code>repeat_span</code> is computed during normalization using <code>find_tandem_repeat()</code> and stored on the <code>Variant</code> struct. <code>gap_open</code> remains fixed at -5 in all cases.</p>
+<h2 id="sw-gap-penalties"><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> Gap Penalties<a class="headerlink" href="#sw-gap-penalties" title="Permanent link">¶</a></h2>
+<p>Phase 3's Smith-Waterman aligners use affine gap penalties: <code>gap_open = -5</code>,
+<code>gap_extend = dynamic_sw_gap_extend(repeat_span)</code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">The 'dynamic' <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> gap extend is currently a constant −1</p>
+<p><code>dynamic_sw_gap_extend</code> maps a logistic repeat curve to an integer penalty by rounding —
+but the curve is capped at 0.5, so the pre-round value stays within <code>(-0.9, -0.5]</code> and
+<strong>rounds to −1 for every <code>repeat_span</code></strong>. The intended tight→free relaxation for deep
+repeat tracts never engages; in practice every <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment runs with <code>gap_extend = -1</code>.
+Making the relaxation real (or removing the inert machinery) is tracked in issue #92 —
+it changes <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment scores and needs its own validation pass.</p>
+<p>The mapping also always uses the <em>default</em> <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap-extend curve: overriding the
+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap flags retunes <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> probabilities but never the <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> penalty. Under the
+default <code>pairhmm</code> backend both points are low-stakes (<abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> runs only when the pangenomic
+haplotype matrix cannot be built, and <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>'s own repeat-scaled gap blending <strong>is</strong>
+active); under <code>--alignment-backend sw</code>, these fixed constants are the <strong>primary</strong>
+Phase-3 engine and there are no <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> gap flags at all.</p>
+</div>
+<p>The <code>repeat_span</code> is computed during normalization using <code>find_tandem_repeat()</code> <strong>at the
+first changed base</strong> of the alleles (not the shared anchor, which sits one base left of a
+left-aligned tract) and stored on the <code>Variant</code> struct. It actively drives the <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap
+blending, the windowed-scan width, and adaptive context padding — the inert consumer is only
+the <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> integer penalty.</p>
 <div class="admonition tip">
 <p class="admonition-title"><abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-High Tumors</p>
-<p>In microsatellite-unstable tumors, insertions/deletions within long homopolymer or dinucleotide repeats are common. The free gap extension ensures these slippage-like variants get correctly classified rather than artificially rejected by high gap penalties.</p>
+<p>In microsatellite-unstable tumors, insertions/deletions within long homopolymer or dinucleotide repeats are common. Under the default <code>pairhmm</code> backend, repeat tolerance comes from <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>'s repeat-scaled gap probabilities and from the wrong-length rule's tract-aware handling — not from the <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> gap penalty, which is constant (see above).</p>
 </div>
 <hr>
 <h2 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">¶</a></h2>
 <ol>
 <li>
-<p><strong>Windowed scan range</strong> — Indels shifted beyond the context padding from their expected position won't be detected by the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-based check. Phase 3 <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> can catch some of these via <code>ref_context</code>, but only if the read shows evidence (indels/clips) near the variant. <a href="../variant-normalization/#adaptive-context-padding">Adaptive context padding</a> (enabled by default) utilizes a multi-anchor footprint sweep to dramatically widen the padded detection bounds natively for INDEL clusters.</p>
+<p><strong>Windowed scan range</strong> — Indels shifted beyond the context padding from their expected position won't be detected by the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-based check. Phase 3 can catch some of these via <code>ref_context</code>, but only if the read shows evidence (indels/clips) near the variant. <a href="../variant-normalization/#adaptive-context-padding">Adaptive context padding</a> (enabled by default) utilizes a multi-anchor footprint sweep to dramatically widen the padded detection bounds natively for INDEL clusters.</p>
 </li>
 <li>
 <p><strong>Score margin ≥ 2</strong> — The <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> margin is fixed at 2 points to prevent ambiguous calls. Reads failing to achieve definitive spacing are routed to <strong>neither</strong> — they contribute to <code>DP</code> but not to <code>RD</code> or <code>AD</code>, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>.</p>
@@ -2759,7 +2995,7 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <p><strong>Soft-clip recovery</strong> — Phase 1 includes soft-clipped bases that overlap the variant window, but only when <code>ref_pos</code> is within the variant region. Soft clips at the edge of reads far from the variant are not considered.</p>
 </li>
 <li>
-<p><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> strict matching</strong> — <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> strict matching is all-or-nothing, but inconclusive reads fall back to the complex variant classification chain (Phase 2 → 2.5 → 3). The fallback rescues reads with low-quality bases or partial matches that strict matching would reject.</p>
+<p><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> strict matching</strong> — <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> evaluation is per-position and terminal: LowQuality and ThirdAllele results return neither (with <code>partial_alt</code> tracking) and are deliberately not rescued by the complex chain. Only structural issues (no coverage, indel inside the block) fall back to <code>check_complex</code>.</p>
 </li>
 <li>
 <p><strong>Incomplete variant definitions</strong> — When the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> represents a complex event incompletely (e.g., <code>TCC→CT</code> omitting an adjacent SNV), reads may carry a different <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> signature than expected. The dual-trigger local fallback in Phase 3 mitigates this by soft-clipping "frameshifted flanks" caused by the definition mismatch.</p>
@@ -2781,7 +3017,7 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 10, 2026 20:19:24 UTC"><span class="timeago" datetime="2026-05-10T20:19:24+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 10, 2026 20:19:24 UTC">2026-05-10</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 17, 2026 22:43:38 UTC"><span class="timeago" datetime="2026-09-17T22:43:38+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 17, 2026 22:43:38 UTC">2026-09-17</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
