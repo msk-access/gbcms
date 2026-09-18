@@ -6,10 +6,21 @@
 _Last updated: 2026-09-17_
 
 ## Now
-**Issue #91 — wrong-length pure-indel fix** (`fix/wrong-length-indel-partial`).
-Full plan + evidence in the issue; three-regime taxonomy validated on internal
-data (local pointers: gitignored `user-local-validation-data` memory; baselines:
-`~/Downloads/gbcms_test/wrong_length_baselines/`).
+**Issue #91 — wrong-length pure-indel fix: MERGED to develop (#93, 75062d6);
+issue closed.** Ships with the next minor release — the release branch cuts
+**6.4.0** per the CHANGELOG [Unreleased] callout. Three-regime taxonomy
+validated on internal data (local pointers: gitignored
+`user-local-validation-data` memory; baselines:
+`~/Downloads/gbcms_test/wrong_length_baselines/` — keep for #92 validation).
+
+**Next up: issue #92** (audit follow-ups, 12 items + enhancement). Start with
+the class-1 xfail-strict battery (encode every deterministic repro as a
+failing test first: _zero_counts crash, --bam-list fail-fast, OSError swallow,
+duplicate samples, MafWriter collisions, merge coercion, ragged rows, traceback
+logging), then fix red→green on one branch. Class 2 (measured, count-affecting:
+error-tolerant exact-length insert band; inert dynamic_sw_gap_extend decision)
+and class 3 (UMI warn, per-transcript BAQ suppression question) each get their
+own branch + validation round.
 
 - **Phase 0 DONE:** target-contract battery `tests/test_wrong_length_contract.py`;
   baselines captured; MAF/VCF input equivalence confirmed on the bug case.
