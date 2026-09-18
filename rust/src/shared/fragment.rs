@@ -227,7 +227,15 @@ impl FragmentEvidence {
     /// are probabilistic, and quality arbitration is appropriate for them.
     pub fn resolve(&self, qual_diff_threshold: u8) -> (bool, bool) {
         let has_ref = self.best_ref_qual > 0;
-        let has_alt = self.best_alt_qual > 0;
+        // Structural ALT evidence exists independently of base quality: the
+        // CIGAR I/D op is the discriminating signal, and the quality carried
+        // with it is an anchor/adjacent base, not indel confidence (see the
+        // structural-priority doc above). Gating existence on qual > 0 made a
+        // structural ALT observation vanish from consensus whenever that base
+        // was quality-zero — e.g. BAQ stacking splice-junction and indel
+        // penalties on the first exon base after an M-N-D-M junction, which
+        // reported ad > 0 with adf = 0 at the same locus.
+        let has_alt = self.best_alt_qual > 0 || self.has_structural_alt;
 
         match (has_ref, has_alt) {
             (true, false) => (true, false),   // Only REF evidence
@@ -445,6 +453,30 @@ mod tests {
         // (filtered upstream), but the function handles it gracefully.
         let ev = FragmentEvidence::new();
         assert_eq!(ev.resolve(10), (false, false), "no evidence → neither");
+    }
+
+    #[test]
+    fn resolve_structural_alt_with_zero_qual_still_counts() {
+        // A structural ALT observation whose carried base quality is 0 (e.g.
+        // BAQ stacked splice + indel penalties on the first exon base after
+        // an M-N-D-M junction) is still CIGAR evidence — the fragment must
+        // resolve ALT, not vanish into dpf-only.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(false, true, 0, true, true, 200, false, true, TEST_MAPQ);
+        assert_eq!(
+            ev.resolve(10),
+            (false, true),
+            "structural ALT with qual 0 must resolve ALT"
+        );
+    }
+
+    #[test]
+    fn resolve_zero_qual_non_structural_alt_stays_neither() {
+        // Without the structural flag, a qual-0 ALT observation carries no
+        // usable evidence — unchanged behavior.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(false, true, 0, true, true, 200, false, false, TEST_MAPQ);
+        assert_eq!(ev.resolve(10), (false, false));
     }
 
     // ── observe() structural flag tests ──────────────────────────────

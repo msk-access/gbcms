@@ -16,6 +16,54 @@ Read:        ...EXON1=====XX                        YYYY=====EXON2...
                      may be misaligned          may be misaligned
 ```
 
+## The Evidence Rule: What a RefSkip Means
+
+Before any artifact handling, gbcms applies one semantic rule to every
+spliced read: **a read testifies about a variant only through aligned
+bases (or a `D` op) at the discriminating positions.** A CIGAR `N`
+asserts spliced-out reference — unlike `D`, it is not a claim that the
+molecule lacks those bases; it is a claim that the read observes
+nothing there (samtools pileup reports zero coverage inside an N gap).
+
+Concretely (`splice_skip_triage` in `variant_checks.rs`, applied before
+per-type classification):
+
+- A read whose `N` spans **every** discriminating position — the
+  deleted span of a deletion, both junction flanks of an insertion,
+  every REF base of an SNV/MNP/complex — classifies **neither** and is
+  **excluded from DP and fragment depth entirely**. It is not "neither
+  at the locus"; it is not at the locus. An intronic position inside a
+  spliced-out intron therefore gets depth only from pre-mRNA reads,
+  matching pileup. (At an anchor-preserved deletion this is deliberately
+  stricter than pileup depth at POS — the anchor base may be aligned,
+  but the event is still unobserved, and an unobservant read in DP only
+  deflates VAF.) One caveat this creates: RNA aligners represent large
+  deletions as splices (STAR writes any deletion ≥ `alignIntronMin`,
+  default 21bp, as `N`), so genuine large-deletion carriers can arrive
+  N-represented and be excluded. Deletion loci where such exclusions
+  exceed confirmed ALT are flagged `SPLICE_SKIP_DOMINANT(n)` in
+  `gbcms_diagnostic` — inspect them in IGV before trusting `AD=0`.
+- A `D` op remains deletion evidence; an `N` op never is. The same
+  100bp gap counts ALT when the aligner writes `D(100)` and counts
+  nothing when it writes `N(100)` — the call must not flip on the
+  aligner's representation choice. (Pre-rule, the N form fell through
+  the anchor fast path as definitive REF.)
+- An indel op **directly after** a splice `N` (`M-N-D-M`, `M-N-I-M` —
+  an event at an exon boundary reached through the junction) gets the
+  same anchor/windowed inspection as an op after an `M` block. The
+  anchor base itself may be spliced out; the evidence is attributed to
+  the nearest aligned or inserted base.
+- Phase 3 never scores across a splice: `extract_raw_read_window`
+  refuses windows that an `N` overlaps (a contiguous slice would stitch
+  the exon arms into a junction-chimeric sequence in which the missing
+  intron reads as deletion evidence), and `check_complex`'s
+  reconstruction classifies such reads neither instead of
+  string-comparing them.
+
+Reads without `N` ops never enter this triage — DNA-mode classification
+is untouched. Per-variant exclusion counts are logged at debug level in
+the `Phase stats` line (`splice_skip_excluded=`).
+
 ## Community Approach: GATK SplitNCigarReads
 
 GATK addresses this by **physically modifying the BAM** before variant

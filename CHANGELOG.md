@@ -7,8 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> The changes below alter reported counts at wrong-length indel loci and warrant a
-> **minor version bump** on release.
+> The changes below alter reported counts at wrong-length indel loci and at
+> spliced RNA positions, and warrant a **minor version bump** on release.
+
+### ⚠️ Changed — splice-aware evidence in RNA counting (user-visible)
+
+- **Reads spliced over a variant no longer count depth or REF.** A CIGAR `N`
+  spanning every discriminating position (a deletion's deleted span, an
+  insertion's junction flanks, an SNV/MNP's REF bases) is asserted splicing —
+  no observation — so the read classifies neither AND is excluded from
+  DP/fragment depth, matching samtools pileup's zero coverage inside an N gap.
+  Previously such reads counted definitive REF (deletions) or inflated DP with
+  zero aligned bases (intronic positions): on a junction-dense real RNA locus,
+  DP at an intronic SNV drops from ~826 span-overlapping reads to the 2 with
+  aligned bases there. Excluded totals are logged per variant at debug level
+  (`Phase stats … splice_skip_excluded=`).
+- **The REF/ALT call no longer flips on the aligner's D-vs-N representation
+  choice.** A `D(100)` at the expected span is deletion evidence (ALT); the
+  same gap as `N(100)` is splicing (excluded).
+- **Indels directly after a splice junction are now examined.** An indel op
+  whose only neighbor is a splice `N` (`M-N-D-M` / `M-N-I-M` — an event at an
+  exon boundary reached through the junction) was structurally invisible to the
+  strict and windowed CIGAR scans; carriers now classify through the same
+  anchor/windowed inspection as `M`-adjacent ops (evidence attributed to the
+  nearest aligned/inserted base when the anchor itself is spliced out).
+- **Phase 3 no longer scores across a splice.** Raw-window extraction refuses
+  windows that an `N` overlaps, and `check_complex`'s reconstruction classifies
+  such reads neither instead of stitching exon arms into a junction-chimeric
+  sequence in which the missing intron reads as deletion evidence.
+- **The exclusion is not silent.** Deletion-type loci where splice-skip
+  exclusions exceed confirmed ALT are flagged `SPLICE_SKIP_DOMINANT(n)` in
+  `gbcms_diagnostic` — RNA aligners write large deletions as splices (STAR:
+  ≥ `alignIntronMin`, default 21bp), so `alt_count`=0 there may mean the
+  carriers exist as junction reads. Per-variant totals also appear in the
+  debug-level `Phase stats` line (`splice_skip_excluded=`).
+- **Shifted representations across a junction stay in classification.** A
+  read whose N covers the annotated span but which carries an I/D op inside
+  the scan window (repeat-tract shift) is deferred to the windowed scans
+  instead of being excluded.
+- **Fragment consensus recognizes structural ALT independent of base
+  quality.** BAQ can stack splice and indel penalties to quality 0 on the
+  base carried with a junction-adjacent I/D op; `FragmentEvidence::resolve`
+  previously treated qual-0 ALT evidence as no evidence, reporting `ad > 0`
+  with `adf = 0` at the same locus.
+- **`check_complex` refuses string comparison for structurally anomalous
+  junction reads** (splice N inside the context window): with the indel
+  shifted outside the variant span, the span reconstruction is clean REF
+  sequence and Phase 2 would absorb an ALT carrier into `rd`.
+- ASJD junction tallies at intronic splice-region variants now reflect only
+  allele-informative reads (spliced reads with no observation at the locus
+  no longer contribute fabricated REF junctions); expect `LOW_REF_JUNC`
+  where the REF tally was previously fed by such reads.
+- Contract battery: `tests/test_rna_splice_contract.py` (13 cases incl. a
+  legacy-parity case with N-CIGAR reads and one strict xfail pinning the
+  known D6 ref_context coordinate corruption for the cluster-B fix).
+  DNA-mode classification is untouched (reads without `N` ops never enter
+  the triage), and the legacy parity oracle mirrors every engine-loop
+  change.
 
 ### ⚠️ Changed — orchestration fail-fast (user-visible)
 

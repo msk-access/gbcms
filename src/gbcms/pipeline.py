@@ -642,6 +642,11 @@ class Pipeline:
             NON_DISCRIMINATING_LOCUS: a sibling combination reconstructs the
                 reference haplotype, so REF and ALT are sequence-indistinguishable
                 and reads tie to NEITHER (explains a zeroed RD/AD at a covered locus).
+            SPLICE_SKIP_DOMINANT(n): deletion-type locus where more reads
+                asserted splicing over the deleted span (CIGAR N, excluded from
+                DP as no-observation) than confirmed ALT. RNA aligners represent
+                large deletions as splices (STAR: ≥ alignIntronMin, default
+                21bp), so AD=0 here may mean carriers exist as junction reads.
         """
         flag_counts: dict[str, int] = {}
 
@@ -685,6 +690,17 @@ class Pipeline:
             # reads tie to NEITHER — surfaces an otherwise-silent zeroed RD/AD.
             if getattr(counts, "non_discriminating_locus", False):
                 flags.append("NON_DISCRIMINATING_LOCUS")
+
+            # SPLICE_SKIP_DOMINANT: at a deletion-type locus, more reads
+            # asserted splicing over the deleted span (CIGAR N — excluded
+            # from DP as no-observation) than confirmed ALT. RNA aligners
+            # write large deletions as splices (STAR: any deletion ≥
+            # alignIntronMin, default 21bp, becomes N), so a zeroed AD here
+            # can mean the carriers exist but are represented as junctions —
+            # inspect the locus in IGV before trusting AD=0.
+            excluded = getattr(counts, "splice_skip_excluded", 0)
+            if len(ref_allele) > len(alt_allele) and excluded > counts.ad:
+                flags.append(f"SPLICE_SKIP_DOMINANT({excluded})")
 
             # Populate the diagnostic field
             diagnostic = ";".join(flags)

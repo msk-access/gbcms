@@ -61,6 +61,9 @@ flowchart TD
 !!! info "Anchor Overlap Standard"
     DP gating uses **single-position** anchor overlap: `read_start ≤ variant.pos`. This matches the depth definition used by Mutect2, VarDictJava, and `samtools mpileup` — depth is measured at the variant position, not across the entire REF allele span. Reads fetched from the wider ±5bp window that don't overlap the anchor are excluded from DP unless classified as REF/ALT via shifted indel detection.
 
+!!! info "Splice-Skip Exclusion (RNA)"
+    A read whose CIGAR `N` (RefSkip) spans **every discriminating position** of a variant observes nothing there, so it is excluded from DP and fragment depth entirely, even when its genomic span (which includes the N) crosses the anchor. At skipped positions this matches samtools pileup's zero coverage exactly (an intronic locus in a spliced-out intron gets depth only from pre-mRNA reads). At an **anchor-preserved deletion** it is deliberately *stricter* than pileup depth at POS: a read whose M ends on the anchor base and splices over the deleted span would be counted by pileup at the anchor, but it carries no information about the event, and keeping it in DP would deflate VAF with unobservant reads. Either way the REF/ALT ledger stays independent of the aligner's D-vs-N representation choice. See [RNA Splice-Junction Handling](rna-splice-handling.md) for the full evidence rule. Per-variant exclusion totals appear in the debug-level `Phase stats` log line (`splice_skip_excluded=`), and deletion-type loci where exclusions exceed confirmed ALT are flagged `SPLICE_SKIP_DOMINANT(n)` in `gbcms_diagnostic`.
+
 ### Read Metrics
 
 | Metric | Description |

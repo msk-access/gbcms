@@ -48,7 +48,7 @@ use bio::alignment::pairwise::Aligner;
 
 use super::fragment::{FragmentEvidence, hash_qname, hash_molecule};
 use super::pairhmm::dynamic_sw_gap_extend;
-use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, MnpResult};
+use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, MnpResult};
 use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
@@ -1587,6 +1587,16 @@ fn count_variant_from_cache(
     //
     // Uses Cow to avoid cloning Variant when no introns are found
     // (common case: >80% of variants have no overlapping introns).
+    //
+    // KNOWN GAP (issue #94 cluster B): the spliced context's designed
+    // consumer — Phase-3 alignment of junction-spanning reads against the
+    // mature-mRNA haplotype — is currently unreachable, because raw-window
+    // extraction refuses N-crossing reads (no coordinate map exists to make
+    // the spliced context safe: splicing shrinks ref_context while
+    // ref_context_start stays genomic, so every `pos - ref_context_start`
+    // indexer right of the first snipped intron is off). Until the D6
+    // rework adds that map, the spliced context only affects N-free reads
+    // and the splice-aware evidence rule carries junction reads instead.
     let effective_variant: Cow<'_, Variant>;
     if mode == "rna" {
         if let Some(ref ctx) = variant.ref_context {
@@ -1705,6 +1715,21 @@ fn count_variant_from_cache(
             record, variant, sibling_variants, effective_quals, min_baseq,
             &mut alt_aligner, &mut ref_aligner, backend,
         );
+        // ── SPLICE-SKIP EXCLUSION: covers_locus=false means the read's
+        // CIGAR N spans every discriminating position — it observes nothing
+        // here, so it contributes to neither DP nor fragment depth, and it
+        // is not a classification (kept out of phase_counts). At skipped
+        // positions this matches samtools pileup's zero coverage; at an
+        // anchor-preserved deletion it is deliberately stricter than pileup
+        // at POS (the anchor base may be aligned) — an unobservant read in
+        // DP would only deflate VAF. Must run before the anchor-overlap
+        // gate below, which is span-based (read_ref_end includes N) and
+        // would otherwise admit these reads.
+        if !result.covers_locus {
+            counts.splice_skip_excluded += 1;
+            continue;
+        }
+
         let is_ref = result.is_ref;
         let is_alt = result.is_alt;
         let base_qual = result.qual;
@@ -2063,9 +2088,10 @@ fn count_variant_from_cache(
 
     // Log per-phase classification breakdown + reads considered
     debug!(
-        "Phase stats {}:{} {}→{}: P0={} P1={} P2={} P2.5={} P3={} ({} backend, {} reads from cache)",
+        "Phase stats {}:{} {}→{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} ({} backend, {} reads from cache)",
         variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
+        counts.splice_skip_excluded,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2239,6 +2265,21 @@ fn count_single_variant(
         let result = check_allele_with_qual(
             &record, variant, sibling_variants, effective_quals, min_baseq, &mut alt_aligner, &mut ref_aligner, backend,
         );
+        // ── SPLICE-SKIP EXCLUSION: covers_locus=false means the read's
+        // CIGAR N spans every discriminating position — no observation at
+        // this locus, so it contributes to neither DP nor fragment depth,
+        // and it is not a classification (kept out of phase_counts). At an
+        // anchor-preserved deletion this is deliberately stricter than
+        // pileup depth at POS (the anchor base may be aligned; the event is
+        // still unobserved). Mirrors count_variant_from_cache so binned and
+        // legacy stay in parity; must run before the span-based anchor gate
+        // below, which would otherwise admit these reads (read_ref_end
+        // includes N).
+        if !result.covers_locus {
+            counts.splice_skip_excluded += 1;
+            continue;
+        }
+
         let is_ref = result.is_ref;
         let is_alt = result.is_alt;
         let base_qual = result.qual;
@@ -2529,9 +2570,10 @@ fn count_single_variant(
 
     // Log per-phase classification breakdown
     debug!(
-        "Phase stats {}:{} {}→{}: P0(Structural)={} P1(CigarRecon)={} P2(Masked)={} P2.5(Lev)={} P3(Align)={} ({} backend)",
+        "Phase stats {}:{} {}→{}: P0(Structural)={} P1(CigarRecon)={} P2(Masked)={} P2.5(Lev)={} P3(Align)={} splice_skip_excluded={} ({} backend)",
         variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
+        counts.splice_skip_excluded,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2566,6 +2608,17 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
+    // Splice-skip triage first: a read whose CIGAR N spans every
+    // discriminating position observes nothing at this locus and must not
+    // testify for either allele (or count depth — the engine skips
+    // covers_locus=false reads entirely). Checked before dispatch so no
+    // checker's anchor-based fast path can read an asserted splice as REF.
+    // Reads without N ops return None immediately, so DNA classification
+    // pays one CIGAR-flag scan and nothing else.
+    if let Some(result) = splice_skip_triage(record, variant) {
+        return result;
+    }
+
     // Dispatch based on allele lengths rather than the variant_type string.
     // This is more robust than relying on upstream type labels, which can be
     // inconsistent (e.g., a caller emitting "COMPLEX" for what is really a
@@ -2828,6 +2881,13 @@ fn count_per_transcript(
                 record, variant, sibling_variants, effective_quals, min_baseq,
                 &mut alt_aligner, &mut ref_aligner, backend,
             );
+
+            // ── Splice-skip exclusion (same as main counting): a read whose
+            // N spans every discriminating position observes nothing here —
+            // no tx_dp, no fragment evidence.
+            if !result.covers_locus {
+                continue;
+            }
 
             // ── Anchor overlap check (same as main counting)
             let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;

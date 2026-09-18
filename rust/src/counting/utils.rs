@@ -103,19 +103,31 @@ pub struct ClassifyResult {
     /// REF, the structural ALT wins unconditionally — the quality comparison
     /// is meaningless because both measure anchor BQ, not INDEL confidence.
     pub is_structural: bool,
+    /// Whether the read observes the locus at all. `false` only from the
+    /// splice-skip triage: a CIGAR `N` (RefSkip) asserts spliced-out
+    /// reference over the variant's discriminating span, so the read has no
+    /// aligned bases there and cannot distinguish REF from ALT. The engine
+    /// excludes such reads from DP and fragment depth entirely (they are not
+    /// "neither at the locus"; they are not at the locus). At skipped
+    /// positions this matches samtools pileup's zero coverage exactly; at an
+    /// anchor-preserved deletion it is deliberately stricter — a read whose
+    /// M ends on the anchor base and splices over the deleted span WOULD be
+    /// counted by pileup at POS, but it carries no information about the
+    /// event, and keeping it in DP would deflate VAF with unobservant reads.
+    pub covers_locus: bool,
 }
 
 impl ClassifyResult {
     /// Create a new ClassifyResult with no partial match evidence.
     #[inline]
     pub fn new(is_ref: bool, is_alt: bool, qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref, is_alt, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false }
+        Self { is_ref, is_alt, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false, covers_locus: true }
     }
 
     /// Neither REF nor ALT — read didn't classify (e.g., no coverage, low quality).
     #[inline]
     pub fn neither(phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false, covers_locus: true }
     }
 
     /// Neither REF nor ALT, and the read carried an N base at the variant position.
@@ -123,7 +135,7 @@ impl ClassifyResult {
     /// third-allele or low-BQ reads for diagnostic counting (BaseCounts::n_count).
     #[inline]
     pub fn neither_n(phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: true, has_nearby_evidence: false, is_structural: false }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: true, has_nearby_evidence: false, is_structural: false, covers_locus: true }
     }
 
     /// Neither REF nor ALT, but with partial ALT evidence at some positions.
@@ -132,7 +144,7 @@ impl ClassifyResult {
     /// `has_n`: true if the read had N at ≥1 discriminating position.
     #[inline]
     pub fn neither_with_partial(phase: ClassifyPhase, partial_count: u8, has_n: bool) -> Self {
-        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: partial_count, has_n_base: has_n, has_nearby_evidence: false, is_structural: false }
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: partial_count, has_n_base: has_n, has_nearby_evidence: false, is_structural: false, covers_locus: true }
     }
 
     /// Neither REF nor ALT, with structural nearby evidence: the CIGAR proved
@@ -146,19 +158,19 @@ impl ClassifyResult {
     /// qual of neither results.
     #[inline]
     pub fn neither_with_nearby(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: true, is_structural: false }
+        Self { is_ref: false, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: true, is_structural: false, covers_locus: true }
     }
 
     /// Shorthand for REF classification.
     #[inline]
     pub fn is_ref(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: true, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false }
+        Self { is_ref: true, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false, covers_locus: true }
     }
 
     /// Shorthand for ALT classification.
     #[inline]
     pub fn is_alt(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false }
+        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false, covers_locus: true }
     }
 
     /// Shorthand for structural ALT classification (CIGAR I/D op match).
@@ -169,7 +181,18 @@ impl ClassifyResult {
     /// evidence over base-quality comparisons.
     #[inline]
     pub fn is_alt_structural(qual: u8, phase: ClassifyPhase) -> Self {
-        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: true }
+        Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: true, covers_locus: true }
+    }
+
+    /// The read does not observe this locus: a CIGAR `N` (RefSkip) spans the
+    /// variant's discriminating positions with no aligned base and no D op
+    /// there. The aligner asserts splicing — no evidence for REF or ALT —
+    /// and the engine excludes the read from DP/DPF entirely, matching
+    /// samtools pileup's zero coverage at skipped positions. Only the
+    /// splice-skip triage returns this.
+    #[inline]
+    pub fn no_coverage(phase: ClassifyPhase) -> Self {
+        Self { is_ref: false, is_alt: false, qual: 0, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: false, covers_locus: false }
     }
 
 }
