@@ -61,6 +61,16 @@ pub struct FragmentEvidence {
     /// Set by `observe()` when `is_structural=true && is_alt=true`.
     /// Follows the same sticky-flag pattern as `has_n_base`.
     pub has_structural_alt: bool,
+    /// Sticky flag: some read in this fragment carried structural
+    /// (coverage-based) REF evidence — currently only span-aligned REF
+    /// testimony at a spliced deletion locus, where the read's M ops cover
+    /// the entire deleted span while the anchor sits inside its splice N.
+    /// Like `has_structural_alt`, this evidence exists independently of
+    /// base quality: the carried qual is the first span base, which BAQ can
+    /// legitimately zero right after a junction, and a zero there must not
+    /// make the observation vanish from consensus (rd>0 with rdf=0 was the
+    /// exact ALT-side failure fixed above).
+    pub has_structural_ref: bool,
 
     // ── Mapping confidence ──────────────────────────────────────────────────────────
     /// Worst (minimum) MAPQ among the reads that contributed evidence to this fragment.
@@ -88,6 +98,7 @@ impl FragmentEvidence {
             insert_size: None,
             has_n_base: false,
             has_structural_alt: false,
+            has_structural_ref: false,
             min_mapq: u8::MAX,
         }
     }
@@ -173,6 +184,9 @@ impl FragmentEvidence {
         if is_structural && is_alt {
             self.has_structural_alt = true;
         }
+        if is_structural && is_ref {
+            self.has_structural_ref = true;
+        }
 
         // mFSD: capture physical insert size — keep the MOST corrected value
         // across both reads. For deletions, the read carrying the D op gives a
@@ -236,6 +250,12 @@ impl FragmentEvidence {
         // penalties on the first exon base after an M-N-D-M junction, which
         // reported ad > 0 with adf = 0 at the same locus.
         let has_alt = self.best_alt_qual > 0 || self.has_structural_alt;
+        // Same existence rule for structural REF: span-aligned coverage is
+        // the evidence, not the (possibly BAQ-zeroed) base quality carried
+        // with it. Conflict priority is unchanged — a structural ALT in the
+        // same fragment still wins below (a D op is direct event evidence;
+        // span coverage is its absence-side counterpart).
+        let has_ref = has_ref || self.has_structural_ref;
 
         match (has_ref, has_alt) {
             (true, false) => (true, false),   // Only REF evidence
@@ -495,14 +515,36 @@ mod tests {
     }
 
     #[test]
-    fn observe_structural_ref_does_not_set_flag() {
-        // is_structural=true on a REF observation should NOT set the flag.
-        // This guards against a hypothetical bug where someone passes
-        // is_structural=true with is_ref=true (shouldn't happen, but
-        // defensive programming).
+    fn observe_structural_ref_sets_ref_flag_only() {
+        // is_structural=true with is_ref=true is a real case now:
+        // span-aligned REF testimony at a spliced deletion locus. It sets
+        // the REF flag and never the ALT flag.
         let mut ev = FragmentEvidence::new();
         ev.observe(true, false, 50, true, true, 200, false, true, TEST_MAPQ);
-        assert!(!ev.has_structural_alt, "REF obs should not set structural ALT flag");
+        assert!(!ev.has_structural_alt, "REF obs must not set structural ALT flag");
+        assert!(ev.has_structural_ref, "structural REF obs must set the REF flag");
+    }
+
+    #[test]
+    fn resolve_structural_ref_with_zero_qual_still_counts() {
+        // Span-aligned REF whose carried qual BAQ zeroed (first exon base
+        // after the junction): the coverage evidence must still resolve
+        // REF, not vanish into dpf-only — the mirror of the structural-ALT
+        // rule above.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ);
+        assert_eq!(ev.resolve(10), (true, false));
+    }
+
+    #[test]
+    fn resolve_structural_conflict_alt_still_wins() {
+        // One mate shows span-aligned REF, the other carries the D op:
+        // structural ALT keeps its unconditional priority (direct event
+        // evidence beats absence-side coverage).
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ);
+        ev.observe(false, true, 0, false, false, 200, false, true, TEST_MAPQ);
+        assert_eq!(ev.resolve(10), (false, true));
     }
 
     #[test]

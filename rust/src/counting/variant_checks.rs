@@ -2297,6 +2297,9 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
         return ClassifyResult::neither(ClassifyPhase::Structural);
     }
     let anchor_pos = variant.pos;
+    // Deleted-span bounds for span-aligned REF testimony (0-based, half-open)
+    let span_start = anchor_pos + 1;
+    let span_end = anchor_pos + variant.ref_allele.len() as i64;
 
     // Windowed scan parameters — scales with repeat_span for MSI regions
     let window: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
@@ -2315,7 +2318,13 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     // distinct-allele candidate, resolved after the walk (partial, or
     // Phase 3 for split representations).
     let mut has_wrong_length_nearby = false;
-
+    // Span-aligned REF testimony state: whether the anchor base sits inside
+    // a splice N of THIS read, how many deleted-span positions its M ops
+    // cover, and the read index of the first covered span base (quality
+    // attribution when there is no anchor base to read).
+    let mut anchor_in_refskip = false;
+    let mut span_aligned: i64 = 0;
+    let mut span_first_read_pos: Option<usize> = None;
 
     for (i, op) in cigar_view.iter().enumerate() {
         match op {
@@ -2327,6 +2336,18 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                 if anchor_pos >= ref_pos && anchor_pos < block_end {
                     let offset = (anchor_pos - ref_pos) as usize;
                     anchor_read_pos = Some(read_pos + offset);
+                }
+
+                // Track aligned coverage of the deleted span (for span-aligned
+                // REF testimony when the anchor itself is spliced out).
+                let ov_start = ref_pos.max(span_start);
+                let ov_end = block_end.min(span_end);
+                if ov_start < ov_end {
+                    span_aligned += ov_end - ov_start;
+                    if span_first_read_pos.is_none() {
+                        span_first_read_pos =
+                            Some(read_pos + (ov_start - ref_pos) as usize);
+                    }
                 }
 
                 // --- Strict fast path ---
@@ -2372,6 +2393,12 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
             }
             Cigar::RefSkip(len) => {
                 let n_end = ref_pos + *len as i64;
+                // The anchor base inside this read's splice N: the read
+                // cannot show it (span-aligned REF testimony may still apply
+                // after the walk).
+                if *len > 0 && anchor_pos >= ref_pos && anchor_pos < n_end {
+                    anchor_in_refskip = true;
+                }
                 // --- Post-N inspection: a D op directly after a splice N
                 // starts at genomic position n_end and gets the same
                 // inspection every M arm gives its following op. Without
@@ -2434,6 +2461,44 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     // counted. With the SW swap fix (Issue #1), Phase 3 correctly handles large
     // deletions: the read (pattern) slides along the longer haplotype (text)
     // without gap penalty, so false ALT calls no longer occur.
+
+    // Span-aligned REF testimony: the anchor base is inside this read's
+    // splice N (asserted splicing — the read cannot show it), but every
+    // deleted-span base is covered by aligned M ops: the annotated deletion
+    // is demonstrably absent from this read. The span, not the anchor, is
+    // the discriminating fact for a pure deletion, so this is REF — the
+    // same coverage-based standard the anchor fast path applies (presence,
+    // not per-base identity; base mismatches inside the span are SNV-level
+    // signal, not deletion evidence). Quality is attributed to the first
+    // aligned span base (there is no anchor base to read). Guards: the FULL
+    // span must be aligned (partial coverage cannot rule the deletion out),
+    // and any competing indel candidate on this read (shifted same-length,
+    // wrong-length nearby) keeps its existing arbitration path. Typical
+    // population: exon-anchored deletion annotations left-aligned to the
+    // last intronic base — at a validated FORTE acceptor locus, 823 of the
+    // 824 anchor-spliced junction reads convert (the residual covers only
+    // part of the span and stays neither).
+    if !found_ref_coverage
+        && anchor_in_refskip
+        && !has_shifted_same_length
+        && !has_wrong_length_nearby
+        && span_aligned == span_end - span_start
+    {
+        let qual = span_first_read_pos
+            .filter(|&p| p < quals.len())
+            .map(|p| quals[p])
+            .unwrap_or(0);
+        trace!(
+            "check_deletion: anchor {} spliced out but deleted span [{}, {}) fully \
+             aligned — span-aligned REF testimony, qual={}",
+            anchor_pos, span_start, span_end, qual
+        );
+        // Structural: the coverage is the evidence. The carried qual is the
+        // first span base — right after the junction, where BAQ can zero it
+        // — and fragment consensus must not let a zero erase the
+        // observation (has_structural_ref mirrors the ALT-side rule).
+        return ClassifyResult::is_ref_structural(qual, ClassifyPhase::Structural);
+    }
 
     // P0-3: Haplotype fallback — when strict/windowed CIGAR matching found no
     // deletion match and the read doesn't cover the anchor, try check_complex

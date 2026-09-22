@@ -511,7 +511,11 @@ splice `N` (`M-N-D-M`) get the same anchor/windowed inspection as ops
 after an `M` block, and Phase 3 never scores across a splice (window
 extraction and `check_complex` reconstruction both refuse N-crossing
 windows rather than stitch exon arms into a junction-chimeric
-sequence). Details: [RNA Splice-Junction
+sequence). At a pure-deletion locus whose anchor is spliced out, a
+junction read covering the **entire deleted span** with aligned bases
+counts REF (span-aligned REF testimony — the deletion is demonstrably
+absent); partial coverage or competing indel evidence keeps the read on
+its existing path. Details: [RNA Splice-Junction
 Handling](rna-splice-handling.md#the-evidence-rule-what-a-refskip-means).
 
 ---

@@ -90,12 +90,15 @@ pub struct ClassifyResult {
     ///
     /// Consumed by engine to increment `partial_alt`/`any_alt`.
     pub has_nearby_evidence: bool,
-    /// Whether this classification came from a direct CIGAR I/D op match.
+    /// Whether this classification came from structural CIGAR evidence.
     ///
     /// Set `true` on ALT returns from `check_insertion` (I op found) and
-    /// `check_deletion` (D op found). NOT set on REF returns (absence of
-    /// I/D op is the aligner's default, not counter-evidence) or Phase 3
-    /// alignment returns (probabilistic, not direct CIGAR).
+    /// `check_deletion` (D op found), and on `check_deletion`'s
+    /// span-aligned REF testimony (full deleted span covered by M ops with
+    /// the anchor spliced out — coverage IS the evidence there). NOT set on
+    /// ordinary REF returns (absence of an I/D op is the aligner's default,
+    /// not counter-evidence) or Phase 3 alignment returns (probabilistic,
+    /// not direct CIGAR).
     ///
     /// Used by `FragmentEvidence::resolve()` to prioritize structural
     /// INDEL evidence over base-quality comparisons. When one read in a
@@ -182,6 +185,16 @@ impl ClassifyResult {
     #[inline]
     pub fn is_alt_structural(qual: u8, phase: ClassifyPhase) -> Self {
         Self { is_ref: false, is_alt: true, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: true, covers_locus: true }
+    }
+
+    /// Structural REF: span-aligned REF testimony at a spliced deletion
+    /// locus. The evidence is M-op coverage of the entire deleted span, not
+    /// the carried base quality (which BAQ can zero right after the
+    /// junction) — `FragmentEvidence` keeps the observation alive in
+    /// consensus through `has_structural_ref`.
+    #[inline]
+    pub fn is_ref_structural(qual: u8, phase: ClassifyPhase) -> Self {
+        Self { is_ref: true, is_alt: false, qual, phase, partial_match_count: 0, has_n_base: false, has_nearby_evidence: false, is_structural: true, covers_locus: true }
     }
 
     /// The read does not observe this locus: a CIGAR `N` (RefSkip) spans the

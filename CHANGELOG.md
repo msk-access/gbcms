@@ -10,6 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The changes below alter reported counts at wrong-length indel loci and at
 > spliced RNA positions, and warrant a **minor version bump** on release.
 
+### ⚠️ Changed — span-aligned REF testimony at spliced deletion loci (user-visible)
+
+- **Structural REF evidence survives fragment consensus at quality zero.**
+  Span-aligned REF's carried quality is the first exon base after the
+  junction — exactly where BAQ can zero it — and `FragmentEvidence` gated
+  REF existence on quality > 0, silently dropping such fragments from
+  `rdf` (the mirror of the structural-ALT divergence fixed in the
+  splice-aware change below). Span-REF observations now carry a structural
+  flag that keeps them alive in consensus; a structural ALT in the same
+  fragment still wins. On the FORTE locus this recovers one real fragment
+  (`rdf` 726→727 = `dpf`).
+
+- **Junction reads that observe every deleted-span base now count REF** at a
+  pure-deletion locus whose anchor base is spliced out (typical for deletion
+  annotations left-aligned onto the last intronic base at an acceptor). The
+  anchor base is not the discriminating fact for a deletion — the span is —
+  and these reads demonstrate the span is present. Previously they counted
+  DP as neither (conservative cluster-A behavior): at a validated FORTE
+  acceptor locus, 823 of the 824 anchor-spliced junction reads convert
+  (`rd` 24→847 of `dp` 848, fragment `rdf` 23→727 of `dpf` 727, DP
+  unchanged); the one
+  residual read's exon2 alignment covers only one of the two deleted-span
+  bases (`95M92N1M`) and honestly stays neither. Guards: the FULL span
+  must be aligned (partial coverage stays neither), and reads carrying a
+  competing shifted/wrong-length indel candidate keep their existing
+  arbitration paths. Read- and fragment-level, mirrored in both engine
+  paths via the shared checker.
+
 ### ⚠️ Changed — consensus intron snipping of ref_context removed (user-visible)
 
 - **`ref_context` is always genomic now.** The RNA-mode step that drained

@@ -53,6 +53,17 @@ per-type classification):
   same anchor/windowed inspection as an op after an `M` block. The
   anchor base itself may be spliced out; the evidence is attributed to
   the nearest aligned or inserted base.
+- **Span-aligned REF testimony**: at a pure-deletion locus whose anchor
+  base is spliced out, a junction read whose aligned bases cover the
+  **entire deleted span** demonstrates the deletion is absent — it counts
+  REF (the span, not the anchor, is the discriminating fact; presence,
+  not per-base identity, same coverage standard as the anchor fast
+  path). Partial span coverage stays neither, and a read carrying a
+  competing indel candidate in the scan window keeps its arbitration
+  path. Typical population: deletion annotations left-aligned to the
+  last intronic base at an acceptor — at a validated FORTE locus this
+  reclassifies 823 of 824 anchor-spliced junction reads to REF (the one
+  residual covers only part of the span and stays neither).
 - Phase 3 never scores across a splice: `extract_raw_read_window`
   refuses windows that an `N` overlaps (a contiguous slice would stitch
   the exon arms into a junction-chimeric sequence in which the missing

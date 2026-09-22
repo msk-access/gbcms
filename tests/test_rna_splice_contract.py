@@ -30,7 +30,6 @@ import glob
 import random
 
 import pysam
-import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
@@ -245,11 +244,6 @@ def test_gap_representation_does_not_flip_the_call(tmp_path):
     assert "SPLICE_SKIP_DOMINANT(5)" in r["gbcms_diagnostic"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2a span-aligned REF testimony: fix pending — REF-side junction "
-    "reads observe every deleted-span base aligned and must count REF",
-)
 def test_indel_across_junction_is_examined(tmp_path):
     """M-N-D-M: the deletion op sits directly after the splice N, at the
     genomic position the variant expects (anchor = last intronic base).
@@ -522,11 +516,6 @@ def test_spliced_over_delins_carries_no_information(tmp_path):
     ), f"spliced-over delins reads must not count DP, got dp={r['total_count']}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2a span-aligned REF testimony: fix pending (mirrored in both "
-    "paths by the shared checker)",
-)
 def test_legacy_parity_with_spliced_reads(tmp_path):
     """The binned↔legacy parity oracle holds for N-CIGAR reads: the
     splice-skip exclusion, the post-N deletion evidence, and span-aligned
@@ -758,16 +747,13 @@ def test_span_ref_testimony_requires_full_span(tmp_path):
     rows_v = [(anchor + 1, ref[anchor : anchor + 1 + DEL_LEN], ref[anchor])]  # span [320,322)
     e2 = intron_start + gap
     partial = []
-    for i in range(3):
-        # exon1 M sized so exactly ONE aligned base lands in the span
-        s = intron_start - (READ_LEN - 1) + i
+    for i, rl in enumerate((READ_LEN, READ_LEN - 1)):
+        # exon2 M is exactly ONE base: the read covers span base 320 but
+        # ends before 321 — genuinely partial span coverage
+        s = intron_start - (rl - 1)
         left = intron_start - s
-        right = READ_LEN - left  # 1, 2, 3 aligned exon2 bases... keep only i=0 partial
-        seq = ref[s:intron_start] + ref[e2 : e2 + right]
-        partial.append(make_read(f"pp{i}", seq, s, ((0, left), (3, gap), (0, right))))
-    # right = 1, 2 for i=0,1 → cover 1 of 2 span bases (partial); i=2 → right=3
-    # covers the full span. Keep the first two as partial, drop the third.
-    partial = partial[:2]
+        seq = ref[s:intron_start] + ref[e2 : e2 + 1]
+        partial.append(make_read(f"pp{i}", seq, s, ((0, left), (3, gap), (0, 1))))
     refs = _exonic_reads(ref, anchor, 3, prefix="pre")
     rows = _run(
         tmp_path,
@@ -816,4 +802,78 @@ def test_span_ref_testimony_yields_to_competing_indel(tmp_path):
     assert (
         int(r["ref_count"]) == 3
     ), f"competing-indel junction reads must not count REF, got rd={r['ref_count']}"
+    assert int(r["total_count"]) == 5
+
+
+def test_span_ref_survives_zero_quality_consensus(tmp_path):
+    """Span-aligned REF is coverage evidence, not base-quality evidence: the
+    attributed qual is the first exon base after the junction, which BAQ
+    legitimately zeroes when the raw quality is ≤20. The fragment layer must
+    still resolve REF (rd>0 with rdf=0 was the exact ALT-side divergence
+    fixed earlier — this pins its REF mirror)."""
+    ref = _mk_ref()
+    intron_start, gap = 280, 40
+    anchor = intron_start + gap - 1  # 319, spliced out; span [320, 322)
+    rows_v = [(anchor + 1, ref[anchor : anchor + 1 + DEL_LEN], ref[anchor])]
+    e2 = intron_start + gap
+    juncs = []
+    for i in range(3):  # junction REF reads with raw Q15 → BAQ-zeroed near the N
+        s = intron_start - 40 - i
+        left = intron_start - s
+        right = READ_LEN - left
+        seq = ref[s:intron_start] + ref[e2 : e2 + right]
+        juncs.append(
+            make_read(
+                f"zq{i}",
+                seq,
+                s,
+                ((0, left), (3, gap), (0, right)),
+                quals=[15] * READ_LEN,
+            )
+        )
+    refs = _exonic_reads(ref, anchor, 2, prefix="pre")
+    rows = _run(
+        tmp_path,
+        _vcf(tmp_path, rows_v),
+        _bam(tmp_path, ref, juncs + refs),
+        _fasta(tmp_path, ref),
+    )
+    r = rows[0]
+    assert int(r["ref_count"]) == 5
+    assert (
+        int(r["ref_count_fragment"]) == 5
+    ), f"BAQ-zeroed span-REF must survive fragment consensus, got rdf={r['ref_count_fragment']}"
+    assert int(r["total_count_fragment"]) == 5
+
+
+def test_span_ref_testimony_excludes_deleted_span_coverage(tmp_path):
+    """Guard: a junction read whose span coverage is MIXED — one span base
+    aligned, the other carried by a real D op — is not full span-aligned
+    coverage (and the 1bp D is windowed noise by the existing <5bp rule):
+    the read stays neither. Green before and after the rule."""
+    ref = _mk_ref()
+    intron_start, gap = 280, 40
+    anchor = intron_start + gap - 1  # 319; span [320, 322)
+    rows_v = [(anchor + 1, ref[anchor : anchor + 1 + DEL_LEN], ref[anchor])]
+    e2 = intron_start + gap
+    mixed = []
+    for i in range(2):
+        s = intron_start - 40 - i
+        left = intron_start - s
+        right = READ_LEN - left - 1
+        # M(1) covers span base 320, D(1) deletes 321, M continues at 322
+        seq = ref[s:intron_start] + ref[e2 : e2 + 1] + ref[e2 + 2 : e2 + 2 + right]
+        mixed.append(make_read(f"mx{i}", seq, s, ((0, left), (3, gap), (0, 1), (2, 1), (0, right))))
+    refs = _exonic_reads(ref, anchor, 3, prefix="pre")
+    rows = _run(
+        tmp_path,
+        _vcf(tmp_path, rows_v),
+        _bam(tmp_path, ref, mixed + refs),
+        _fasta(tmp_path, ref),
+    )
+    r = rows[0]
+    assert int(r["alt_count"]) == 0
+    assert (
+        int(r["ref_count"]) == 3
+    ), f"mixed M/D span coverage must not count REF, got rd={r['ref_count']}"
     assert int(r["total_count"]) == 5

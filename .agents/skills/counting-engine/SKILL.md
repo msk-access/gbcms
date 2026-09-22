@@ -64,6 +64,9 @@ helpers `resolve_anchor_{deletion,insertion}_candidate` /
 `scan_windowed_*_candidate` — M-arm and N-arm must never diverge). Phase 3
 never scores across a splice: `extract_raw_read_window` → `None` on N-crossing
 windows; `check_complex` reconstruction → neither.
+**Span-aligned REF testimony** (pure deletions only): anchor spliced out
+(inside the read's N) + FULL deleted span covered by M ops + no competing
+indel flags → REF, qual from the first span base. Partial span → neither.
 Contract battery: `tests/test_rna_splice_contract.py`.
 
 ## Multi-Allelic Handling
