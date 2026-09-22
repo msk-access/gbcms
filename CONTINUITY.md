@@ -20,6 +20,25 @@ b37 dedup RNA (DP drop pysam-exact) and FORTE hg38 GAPDH junction smoke
 (intronic DP 826→2; use `~/Downloads/pipeline_resources/gunzip_gtf/
 Homo_sapiens.GRCh38.111.gtf` for FORTE — Ensembl contigs, found 2026-09-18).
 
+**#94 B2a — DONE (same branch): span-aligned REF testimony** at
+pure-deletion loci whose anchor is spliced out: full deleted-span M
+coverage → REF (read + fragment level; is_ref_structural /
+has_structural_ref keep BAQ-zeroed span quals alive in consensus — the
+review caught the rdf mirror of the old adf bug pre-ship). FORTE: 823/824
+junction reads convert (rd 24→847/848, rdf 23→727=dpf; residual 95M92N1M
+covers 1 of 2 span bases → neither). Guards pinned: partial span, mixed
+M/D span, competing indels. 20-case battery. B2b (coordinate-mapped
+spliced haplotypes, delins-carrier tail only) stays gated on the FORTE
+sign-out MAF; pre-mRNA/intron-retention reads must stay genomic.
+
+**NOW → release 6.4.0:** push branch → PR → develop → cut release/6.4.0
+(version bump, CHANGELOG cut) → build container → run the 56-sample
+IMPACT harness (user's 6.3.1 baseline run of 2026-09-18, exact-flag
+mirror staged at ~/test/gbcms/dev_regression/ on HPC — repoint it at the
+rc container) + RNA smokes against the rc → acceptance: SNVs byte-identical
+to 6.3.1, indels move only in documented #91 directions → tag, main,
+publish. C++ GBCMS 1.2.4/1.2.5 found on HPC for the 6.5.0 head-to-head.
+
 **#94 cluster B1 — DONE (same branch, uncommitted→committed today):**
 consensus splicing of ref_context REMOVED (no coordinate map = corruption;
 its Phase-3 consumer unreachable; exon-contained reads mis-scored).
