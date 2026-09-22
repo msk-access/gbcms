@@ -30,6 +30,7 @@ import glob
 import random
 
 import pysam
+import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
@@ -244,12 +245,19 @@ def test_gap_representation_does_not_flip_the_call(tmp_path):
     assert "SPLICE_SKIP_DOMINANT(5)" in r["gbcms_diagnostic"]
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="B2a span-aligned REF testimony: fix pending — REF-side junction "
+    "reads observe every deleted-span base aligned and must count REF",
+)
 def test_indel_across_junction_is_examined(tmp_path):
     """M-N-D-M: the deletion op sits directly after the splice N, at the
     genomic position the variant expects (anchor = last intronic base).
-    Pre-fix the scans inspect only ops following an M block, so the D is
-    structurally invisible. Fixed: a candidate after an N gets the same
-    windowed inspection, and these carriers count ALT."""
+    Carriers count ALT through the post-N inspection; the REF-side spliced
+    reads observe EVERY deleted-span base aligned (exon2 M), so they count
+    REF — the span, not the spliced-out anchor, is the discriminating
+    fact. (They were pinned neither during the conservative cluster-A
+    phase.)"""
     ref = _mk_ref()
     intron_start, gap = 280, 40
     anchor = intron_start + gap - 1  # last intronic base, 0-based 319
@@ -274,9 +282,11 @@ def test_indel_across_junction_is_examined(tmp_path):
     assert (
         int(r["alt_count"]) == 4
     ), f"junction-adjacent D carriers must count ALT, got ad={r['alt_count']}"
-    # REF-side spliced reads observe the deleted span (aligned exon2 bases)
-    # but not the anchor: neither, still in DP. Nothing counts REF.
-    assert (int(r["ref_count"]), int(r["total_count"])) == (0, 9)
+    # REF-side spliced reads observe every deleted-span base aligned:
+    # span-aligned REF testimony (the anchor base is spliced out, but the
+    # annotated deletion is demonstrably absent from these reads).
+    assert (int(r["ref_count"]), int(r["total_count"])) == (5, 9)
+    assert int(r["ref_count_fragment"]) == 5
     # Fragment layer must agree: the carriers' structural evidence survives
     # consensus even though BAQ zeroes the first exon base after the N+D
     # (ad>0 with adf=0 was a live divergence before FragmentEvidence::resolve
@@ -512,10 +522,16 @@ def test_spliced_over_delins_carries_no_information(tmp_path):
     ), f"spliced-over delins reads must not count DP, got dp={r['total_count']}"
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="B2a span-aligned REF testimony: fix pending (mirrored in both "
+    "paths by the shared checker)",
+)
 def test_legacy_parity_with_spliced_reads(tmp_path):
     """The binned↔legacy parity oracle holds for N-CIGAR reads: the
-    splice-skip exclusion and the post-N deletion evidence are mirrored in
-    the legacy count_bam path (count_both asserts every parity field)."""
+    splice-skip exclusion, the post-N deletion evidence, and span-aligned
+    REF testimony all live in the shared checker (count_both asserts every
+    parity field)."""
     from helpers import build_bam, count_both
 
     from gbcms._rs import Variant
@@ -559,7 +575,7 @@ def test_legacy_parity_with_spliced_reads(tmp_path):
     assert c.rd == c.rd_fwd + c.rd_rev
     assert c.ad == c.ad_fwd + c.ad_rev
     assert c.ad == 4, f"M-N-D-M carriers must count ALT in both paths, got ad={c.ad}"
-    assert c.rd == 3, f"only base-covering pre-mRNA reads count REF, got rd={c.rd}"
+    assert c.rd == 8, f"pre-mRNA reads AND span-aligned junction reads count REF, got rd={c.rd}"
 
 
 def test_mq0_tracking_precedes_strandedness_filter(tmp_path):
@@ -730,3 +746,74 @@ def test_phase3_matrix_mode_equivalence_near_junction(tmp_path):
     assert rna.ad == 4, f"delins carriers must count ALT, got ad={rna.ad}"
     assert rna.rd == 5, f"span-aligned spliced reads must count REF, got rd={rna.rd}"
     assert rna.dp >= rna.rd + rna.ad
+
+
+def test_span_ref_testimony_requires_full_span(tmp_path):
+    """Guard for span-aligned REF testimony: a junction read whose exon2 M
+    covers only PART of the deleted span cannot rule the deletion out —
+    it stays neither (in DP, no allele). Green before and after the rule."""
+    ref = _mk_ref()
+    intron_start, gap = 280, 40
+    anchor = intron_start + gap - 1  # 319, spliced out
+    rows_v = [(anchor + 1, ref[anchor : anchor + 1 + DEL_LEN], ref[anchor])]  # span [320,322)
+    e2 = intron_start + gap
+    partial = []
+    for i in range(3):
+        # exon1 M sized so exactly ONE aligned base lands in the span
+        s = intron_start - (READ_LEN - 1) + i
+        left = intron_start - s
+        right = READ_LEN - left  # 1, 2, 3 aligned exon2 bases... keep only i=0 partial
+        seq = ref[s:intron_start] + ref[e2 : e2 + right]
+        partial.append(make_read(f"pp{i}", seq, s, ((0, left), (3, gap), (0, right))))
+    # right = 1, 2 for i=0,1 → cover 1 of 2 span bases (partial); i=2 → right=3
+    # covers the full span. Keep the first two as partial, drop the third.
+    partial = partial[:2]
+    refs = _exonic_reads(ref, anchor, 3, prefix="pre")
+    rows = _run(
+        tmp_path,
+        _vcf(tmp_path, rows_v),
+        _bam(tmp_path, ref, partial + refs),
+        _fasta(tmp_path, ref),
+    )
+    r = rows[0]
+    assert int(r["alt_count"]) == 0
+    assert (
+        int(r["ref_count"]) == 3
+    ), f"partial-span junction reads must not count REF, got rd={r['ref_count']}"
+    assert int(r["total_count"]) == 5  # 3 exonic + 2 partial (in DP, neither)
+
+
+def test_span_ref_testimony_yields_to_competing_indel(tmp_path):
+    """Guard: a junction read with full aligned span coverage but a
+    wrong-length D elsewhere in the scan window carries competing indel
+    evidence — the existing distinct-allele/arbitration paths own it, not
+    span-REF testimony. Green before and after the rule."""
+    ref = _mk_ref()
+    intron_start, gap = 280, 40
+    anchor = intron_start + gap - 1  # 319
+    rows_v = [(anchor + 1, ref[anchor : anchor + 1 + DEL_LEN], ref[anchor])]  # span [320,322)
+    e2 = intron_start + gap
+    competing = []
+    for i in range(2):
+        s = intron_start - 40 - i
+        left = intron_start - s
+        # M(2) covers the span, then D(5) at 322 (in-window, wrong length),
+        # then M for the rest
+        right = READ_LEN - left - 2
+        seq = ref[s:intron_start] + ref[e2 : e2 + 2] + ref[e2 + 2 + 5 : e2 + 2 + 5 + right]
+        competing.append(
+            make_read(f"cw{i}", seq, s, ((0, left), (3, gap), (0, 2), (2, 5), (0, right)))
+        )
+    refs = _exonic_reads(ref, anchor, 3, prefix="pre")
+    rows = _run(
+        tmp_path,
+        _vcf(tmp_path, rows_v),
+        _bam(tmp_path, ref, competing + refs),
+        _fasta(tmp_path, ref),
+    )
+    r = rows[0]
+    assert int(r["alt_count"]) == 0
+    assert (
+        int(r["ref_count"]) == 3
+    ), f"competing-indel junction reads must not count REF, got rd={r['ref_count']}"
+    assert int(r["total_count"]) == 5
