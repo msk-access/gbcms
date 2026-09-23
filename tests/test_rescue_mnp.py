@@ -34,6 +34,7 @@ import re
 import types
 
 import pysam
+import pytest
 from helpers import make_read
 from typer.testing import CliRunner
 
@@ -242,8 +243,8 @@ MNP_ROW = ("chr1", BLOCK_START + 1, REF_BLOCK, ALT_BLOCK)
 SNV_AT_BLOCK_START = ("chr1", BLOCK_START + 1, "G", "A")
 
 
-def _run(tmp_path, bams, vcf_rows, rescue=True):
-    """Run ``gbcms dna`` on named BAMs; return {sample: [MAF rows]} in VCF order."""
+def _invoke(tmp_path, bams, vcf_rows, rescue, fmt):
+    """Run ``gbcms dna`` on named BAMs; return (output dir, captured CLI output)."""
     fasta = tmp_path / "ref.fasta"
     fasta.write_text(">chr1\n" + REF + "\n")
     pysam.faidx(str(fasta))
@@ -253,15 +254,20 @@ def _run(tmp_path, bams, vcf_rows, rescue=True):
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
         + "".join(f"{c}\t{p}\t.\t{r}\t{a}\t.\t.\t.\n" for c, p, r, a in vcf_rows)
     )
-    outdir = tmp_path / ("out_rescue" if rescue else "out_plain")
-    args = ["dna", "-v", str(vcf), "-f", str(fasta), "-o", str(outdir), "--format", "maf"]
+    outdir = tmp_path / f"out_{'rescue' if rescue else 'plain'}_{fmt}"
+    args = ["dna", "-v", str(vcf), "-f", str(fasta), "-o", str(outdir), "--format", fmt]
     for name, reads in bams.items():
         args += ["-b", f"{name}:{_write_bam(tmp_path, name, reads)}"]
     if rescue:
         args.append("--rescue-mnp")
     result = runner.invoke(app, args)
     assert result.exit_code == 0, result.output
+    return outdir, result.output
 
+
+def _run(tmp_path, bams, vcf_rows, rescue=True):
+    """Run ``gbcms dna`` to MAF; return {sample: [MAF rows]} in VCF order."""
+    outdir, _ = _invoke(tmp_path, bams, vcf_rows, rescue, "maf")
     rows = {}
     for name in bams:
         (path,) = glob.glob(str(outdir / f"{name}.maf"))
@@ -286,6 +292,7 @@ def _audit(row):
     return dict(part.split("=", 1) for part in row["gbcms_rescue"].split(";"))
 
 
+@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
 def test_component_carriers_rescued_as_one_coherent_genotype(tmp_path):
     rows = _run(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW])
     (row,) = rows["S"]
@@ -312,12 +319,16 @@ def test_component_carriers_rescued_as_one_coherent_genotype(tmp_path):
     # The stray's other discriminating base was masked: nothing showed the haplotype.
     assert audit["original_confirmed"] == "0"
     assert re.fullmatch(r"(chr)?1:201\(G>A\)", audit["adopted"]), audit["adopted"]
-    assert re.fullmatch(r"(chr)?1:201\(G>A\):10,(chr)?1:205\(G>A\):0", audit["positions"]), audit[
+    assert re.fullmatch(r"(chr)?1:201\(G>A\):10\+(chr)?1:205\(G>A\):0", audit["positions"]), audit[
         "positions"
     ]
 
-    # Diagnostics describe the written row, not the pre-rescue MNP counts.
-    assert row["gbcms_diagnostic"] == "MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE"
+    # Diagnostics describe the written row, not the pre-rescue MNP counts, and
+    # say that the row reports a component.
+    assert re.fullmatch(
+        r"MNP_DISC_RATIO\(2/5\);MNP_RESCUE_ELIGIBLE;RESCUED_COMPONENT\((chr)?1:201:G>A\)",
+        row["gbcms_diagnostic"],
+    ), row["gbcms_diagnostic"]
 
 
 def test_flag_off_reports_engine_counts_without_rescue_column(tmp_path):
@@ -355,6 +366,7 @@ def test_grouped_mnp_is_skipped_and_keeps_exclusive_assignment(tmp_path):
     assert {c: snv[c] for c in count_cols} == {c: plain[1][c] for c in count_cols}
 
 
+@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
 def test_indel_partial_evidence_is_declined_not_rescued(tmp_path):
     plain = _run(tmp_path, {"S": _indel_disrupted_reads()}, [MNP_ROW], rescue=False)["S"][0]
     (row,) = _run(tmp_path, {"S": _indel_disrupted_reads()}, [MNP_ROW])["S"]
@@ -366,7 +378,7 @@ def test_indel_partial_evidence_is_declined_not_rescued(tmp_path):
     audit = _audit(row)
     assert audit["outcome"] == "no_improvement"
     assert "adopted" not in audit
-    assert re.fullmatch(r"(chr)?1:201\(G>A\):0,(chr)?1:205\(G>A\):0", audit["positions"])
+    assert re.fullmatch(r"(chr)?1:201\(G>A\):0\+(chr)?1:205\(G>A\):0", audit["positions"])
     _assert_counting_invariants(row)
 
 
@@ -392,6 +404,28 @@ def test_error_level_confirmed_reads_do_not_block_rescue(tmp_path):
     assert audit["original_confirmed"] == "1"  # within ceil(200 x 1%) = 2
     assert int(row["alt_count"]) == 201
     _assert_counting_invariants(row)
+
+
+@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
+def test_vcf_and_maf_carry_the_same_rescue(tmp_path):
+    (maf,) = _run(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW])["S"]
+    outdir, _ = _invoke(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW], True, "vcf")
+    (rec,) = list(pysam.VariantFile(str(outdir / "S.vcf")))
+    sample = rec.samples["S"]
+
+    assert sample["AD"] == (int(maf["ref_count"]), int(maf["alt_count"]))
+    assert sample["FAD"] == (int(maf["ref_count_fragment"]), int(maf["alt_count_fragment"]))
+    assert rec.info["GD"] == maf["gbcms_diagnostic"].replace(";", "|")
+    # GR must parse as ONE value: a comma inside it is split by VCF parsers.
+    assert rec.info["GR"] == maf["gbcms_rescue"].replace(";", "|")
+
+
+@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
+def test_each_rescued_row_logs_a_warning(tmp_path):
+    _, output = _invoke(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW], True, "maf")
+    log = " ".join(output.split())  # the console handler wraps long lines
+    assert "rescued rows report a component" in log
+    assert "now reports component" in log
 
 
 def test_rescue_audit_does_not_leak_into_later_samples(tmp_path):
@@ -420,6 +454,7 @@ def test_resolve_reports_when_no_component_could_be_counted():
     assert _resolve_mnp_rescue(0, [None, None]) == ("ref_validation_failed", None)
 
 
+@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
 def test_audit_format():
     original = types.SimpleNamespace(rd=486, ad=1, partial_alt=88, mnp_confirmed_alt=0)
     assert _format_rescue_audit("skipped_grouped", original) == (
@@ -434,7 +469,7 @@ def test_audit_format():
     ) == (
         "method=decomposed;outcome=rescued;original_ref=486;original_alt=1;"
         "original_partial=88;original_confirmed=0;adopted=5:1295250(G>A);"
-        "positions=5:1295250(G>A):87,5:1295254(G>A):ref_fail"
+        "positions=5:1295250(G>A):87+5:1295254(G>A):ref_fail"
     )
 
 
