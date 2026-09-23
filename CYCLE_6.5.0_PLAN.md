@@ -348,6 +348,11 @@ reviewed behavior-neutral and the full suite is unchanged.
     - Tests: VCF-format end-to-end on the rescued geometry — FORMAT AD/FAD
       equal the MAF run's counts, `GD` carries the flag, `GR` round-trips
       through pysam intact.
+    - *Result (2026-09-23):* a8484143 (red) → a21f8f0e (fix) → 9699828f
+      (docs); the enable-time message moved from two duplicated CLI INFO
+      lines into one pipeline WARNING. Real-data check on a rescued TERT row:
+      MAF and VCF identical (AD 342/890, GD with RESCUED_COMPONENT, GR parsed
+      as one string); both warnings logged.
 
 **Files.** `src/gbcms/pipeline.py` (`_rescue_mnp_pass`, per-sample reset,
 diagnostics recompute for rescued rows); `rust/src/types.rs` + `_rs.pyi`
