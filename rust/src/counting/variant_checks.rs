@@ -637,6 +637,120 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
 /// Check if a read supports a complex variant (indel + substitution).
 ///
 /// Uses **haplotype reconstruction**: walks the CIGAR to rebuild what the read
+/// A read's CIGAR-projected reconstruction over a genomic span.
+pub(crate) struct SpanRecon {
+    /// The bases the read shows for [start_pos, end_pos), with insertions at
+    /// or inside the span included (trailing insertions deliberately so —
+    /// see the Ins branch) and deletions consuming reference silently.
+    pub seq: Vec<u8>,
+    /// Per-base qualities aligned with `seq`.
+    pub quals: Vec<u8>,
+    /// A CIGAR `N` (RefSkip) overlapped the span: the reconstruction would
+    /// stitch exon arms together and masquerade as deletion evidence, so
+    /// callers must refuse to string-compare when this is set.
+    pub splice_skip: bool,
+}
+
+/// Walk the CIGAR and reconstruct what the read shows for [start_pos,
+/// end_pos). Shared by `check_complex` Phase 1 and the engine's
+/// multi-allelic AD-claiming contest (span-explanation cost).
+pub(crate) fn reconstruct_span(
+    record: &Record,
+    quals: &[u8],
+    start_pos: i64,
+    end_pos: i64,
+) -> SpanRecon {
+    let cigar = record.cigar();
+    let mut ref_pos = record.pos();
+    let mut read_pos: usize = 0;
+    let seq = record.seq();
+    let mut reconstructed_seq: Vec<u8> = Vec::with_capacity(seq.len());
+    let mut quals_per_base: Vec<u8> = Vec::with_capacity(seq.len());
+    let mut splice_skip_in_window = false;
+    for op in cigar.iter() {
+        match op {
+            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) => {
+                let len_i64 = *len as i64;
+                let len_usize = *len as usize;
+
+                // Intersection of [ref_pos, ref_pos + len) and [start_pos, end_pos)
+                let overlap_start = std::cmp::max(ref_pos, start_pos);
+                let overlap_end = std::cmp::min(ref_pos + len_i64, end_pos);
+
+                if overlap_start < overlap_end {
+                    let offset_in_op = (overlap_start - ref_pos) as usize;
+                    let overlap_len = (overlap_end - overlap_start) as usize;
+                    let current_read_pos = read_pos + offset_in_op;
+
+                    for i in 0..overlap_len {
+                        let p = current_read_pos + i;
+                        if p >= seq.len() {
+                            break;
+                        }
+                        reconstructed_seq.push(seq[p]);
+                        quals_per_base.push(quals[p]);
+                    }
+                }
+                ref_pos += len_i64;
+                read_pos += len_usize;
+            }
+            Cigar::Ins(len) => {
+                let len_usize = *len as usize;
+                // Inclusive of end_pos (deliberately, unlike the Match/SoftClip
+                // branches): an insertion at the exclusive REF end is a *trailing
+                // insertion* that belongs to the ALT haplotype (e.g. REF=AB, ALT=ABC).
+                // Capturing it lets the reconstruction reach alt_len and match the
+                // ALT; excluding it would reconstruct only the REF span and
+                // misclassify such reads as REF. A read whose reconstruction equals
+                // the ALT genuinely IS ALT evidence — Phase 2 still requires the
+                // inserted bases to match the ALT exactly, so this cannot manufacture
+                // a false ALT. (Soft-clips differ: clipped bases are unaligned and
+                // uncertain, so that branch stays exclusive.)
+                if ref_pos >= start_pos && ref_pos <= end_pos {
+                    for i in 0..len_usize {
+                        let p = read_pos + i;
+                        if p >= seq.len() {
+                            break;
+                        }
+                        reconstructed_seq.push(seq[p]);
+                        quals_per_base.push(quals[p]);
+                    }
+                }
+                read_pos += len_usize;
+            }
+            Cigar::Del(len) => {
+                ref_pos += *len as i64;
+            }
+            Cigar::RefSkip(len) => {
+                let block_end = ref_pos + *len as i64;
+                // Zero-length N: empty interval, observes/skips nothing.
+                if *len > 0 && ref_pos < end_pos && block_end > start_pos {
+                    splice_skip_in_window = true;
+                }
+                ref_pos = block_end;
+            }
+            Cigar::SoftClip(len) => {
+                let len_usize = *len as usize;
+                // P1-2: Include soft-clipped bases that overlap the variant window.
+                // Soft clips don't consume reference, so ref_pos is unchanged.
+                // This recovers evidence from reads where the aligner clipped
+                // the variant-supporting bases (inspired by VarDict's approach).
+                if ref_pos >= start_pos && ref_pos < end_pos {
+                    for i in 0..len_usize {
+                        let p = read_pos + i;
+                        if p >= seq.len() { break; }
+                        reconstructed_seq.push(seq[p]);
+                        quals_per_base.push(quals[p]);
+                    }
+                }
+                read_pos += len_usize;
+            }
+            Cigar::HardClip(_) | Cigar::Pad(_) => {}
+        }
+    }
+    SpanRecon { seq: reconstructed_seq, quals: quals_per_base, splice_skip: splice_skip_in_window }
+}
+
 /// shows for the genomic region covered by REF, then compares the reconstructed
 /// sequence to both REF and ALT using **quality-aware masked comparison**.
 ///
@@ -668,17 +782,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     let start_pos = variant.pos;
     let end_pos = variant.pos + variant.ref_allele.len() as i64; // exclusive
 
-    let cigar = record.cigar();
-    let mut ref_pos = record.pos();
-    let mut read_pos: usize = 0;
-    let seq = record.seq();
     // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
-
-    // Pre-allocate reconstruction buffers for performance
-    let capacity = seq.len();
-    let mut reconstructed_seq: Vec<u8> = Vec::with_capacity(capacity);
-    let mut quals_per_base: Vec<u8> = Vec::with_capacity(capacity);
-
     trace!(
         "check_complex start: pos={} ref={} alt={}",
         start_pos, variant.ref_allele, variant.alt_allele
@@ -762,98 +866,13 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     }
 
     // --- Phase 1: Haplotype Reconstruction ---
-    // Walk the CIGAR to reconstruct what the read shows for [start_pos, end_pos).
-    // A splice N overlapping the window poisons the reconstruction: treating
-    // it like a D stitches the exon arms together, and the exon-joined string
-    // is exactly what a deletion allele looks like — so a read that merely
-    // splices over part of the variant span would masquerade as ALT evidence.
-    // Track it and refuse to string-compare such reads (see below).
-    let mut splice_skip_in_window = false;
-    for op in cigar.iter() {
-        match op {
-            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) => {
-                let len_i64 = *len as i64;
-                let len_usize = *len as usize;
-
-                // Intersection of [ref_pos, ref_pos + len) and [start_pos, end_pos)
-                let overlap_start = std::cmp::max(ref_pos, start_pos);
-                let overlap_end = std::cmp::min(ref_pos + len_i64, end_pos);
-
-                if overlap_start < overlap_end {
-                    let offset_in_op = (overlap_start - ref_pos) as usize;
-                    let overlap_len = (overlap_end - overlap_start) as usize;
-                    let current_read_pos = read_pos + offset_in_op;
-
-                    for i in 0..overlap_len {
-                        let p = current_read_pos + i;
-                        if p >= seq.len() {
-                            break;
-                        }
-                        reconstructed_seq.push(seq[p]);
-                        quals_per_base.push(quals[p]);
-                    }
-                }
-                ref_pos += len_i64;
-                read_pos += len_usize;
-            }
-            Cigar::Ins(len) => {
-                let len_usize = *len as usize;
-                // Inclusive of end_pos (deliberately, unlike the Match/SoftClip
-                // branches): an insertion at the exclusive REF end is a *trailing
-                // insertion* that belongs to the ALT haplotype (e.g. REF=AB, ALT=ABC).
-                // Capturing it lets the reconstruction reach alt_len and match the
-                // ALT; excluding it would reconstruct only the REF span and
-                // misclassify such reads as REF. A read whose reconstruction equals
-                // the ALT genuinely IS ALT evidence — Phase 2 still requires the
-                // inserted bases to match the ALT exactly, so this cannot manufacture
-                // a false ALT. (Soft-clips differ: clipped bases are unaligned and
-                // uncertain, so that branch stays exclusive.)
-                if ref_pos >= start_pos && ref_pos <= end_pos {
-                    for i in 0..len_usize {
-                        let p = read_pos + i;
-                        if p >= seq.len() {
-                            break;
-                        }
-                        reconstructed_seq.push(seq[p]);
-                        quals_per_base.push(quals[p]);
-                    }
-                }
-                read_pos += len_usize;
-            }
-            Cigar::Del(len) => {
-                ref_pos += *len as i64;
-            }
-            Cigar::RefSkip(len) => {
-                let block_end = ref_pos + *len as i64;
-                // Zero-length N: empty interval, observes/skips nothing.
-                if *len > 0 && ref_pos < end_pos && block_end > start_pos {
-                    splice_skip_in_window = true;
-                }
-                ref_pos = block_end;
-            }
-            Cigar::SoftClip(len) => {
-                let len_usize = *len as usize;
-                // P1-2: Include soft-clipped bases that overlap the variant window.
-                // Soft clips don't consume reference, so ref_pos is unchanged.
-                // This recovers evidence from reads where the aligner clipped
-                // the variant-supporting bases (inspired by VarDict's approach).
-                if ref_pos >= start_pos && ref_pos < end_pos {
-                    for i in 0..len_usize {
-                        let p = read_pos + i;
-                        if p >= seq.len() { break; }
-                        reconstructed_seq.push(seq[p]);
-                        quals_per_base.push(quals[p]);
-                    }
-                }
-                read_pos += len_usize;
-            }
-            Cigar::HardClip(_) | Cigar::Pad(_) => {}
-        }
-    }
-
-    if splice_skip_in_window {
+    // Walk the CIGAR to reconstruct what the read shows for [start_pos,
+    // end_pos) (reconstruct_span — shared with the engine's multi-allelic
+    // AD-claiming contest).
+    let recon = reconstruct_span(record, quals, start_pos, end_pos);
+    if recon.splice_skip {
         // The read asserts splicing over part of [start_pos, end_pos): the
-        // reconstruction above joined bases across the N gap, so comparing it
+        // reconstruction joined bases across the N gap, so comparing it
         // against the alleles would read exon-stitching as deletion evidence.
         // No clean string comparison exists for such a read — classify
         // neither. (Reads whose N covers EVERY discriminating position never
@@ -868,6 +887,8 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         );
         return ClassifyResult::neither(ClassifyPhase::CigarRecon);
     }
+    let reconstructed_seq = recon.seq;
+    let quals_per_base = recon.quals;
 
     let reconstructed_str = String::from_utf8_lossy(&reconstructed_seq);
     trace!(
@@ -920,7 +941,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     // > 2*5=10 and skips to Phase 3.
     let ref_len = ref_bytes.len();
     let alt_len = alt_bytes.len();
-    let read_len = seq.len();
+    let read_len = record.seq_len();
     let large_ref_threshold = std::cmp::max(50, read_len / 3);
 
     let skip_phase2 = if ref_len > large_ref_threshold && recon_len > 0 && recon_len < ref_len / 10 {

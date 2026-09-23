@@ -254,6 +254,53 @@ def test_shifted_self_representation_still_rescued(tmp_path):
     ), f"shifted SELF representations must stay ALT: {res}"
 
 
+# ── Insertion tract cluster ──────────────────────────────────────────────
+# Two co-annotated insertions of the SAME bases at nearby, canonically
+# distinct positions. A cross carrier's I op S3-matches the other row's
+# windowed scan pre-fix; post-fix the true row (span-explanation cost 0)
+# claims it and the other row records partial evidence.
+INS_PLANT_POS = 298
+INS_PLANT = "GTCGACTGTC"  # ensures ins "CA" is canonically stable at both sites
+INS_A = 301  # 0-based: insertion between ref[300] and ref[301]
+INS_B = 307
+
+
+def _ins_reads(ref, p0, ins, n, prefix):
+    out = []
+    for i in range(n):
+        s = p0 - 35 - (i % 5)
+        left = p0 - s
+        seq = ref[s:p0] + ins + ref[p0 : p0 + (READ_LEN - left - len(ins))]
+        out.append(
+            make_read(
+                f"{prefix}{i}", seq, s, ((0, left), (1, len(ins)), (0, READ_LEN - left - len(ins)))
+            )
+        )
+    return out
+
+
+def test_insertion_cluster_exclusive_assignment(tmp_path):
+    """INS twin of the deletion cluster: each row keeps exactly its own
+    carriers; cross carriers surface as partial, never full ALT."""
+    ref = _mk_ref(plants=((INS_PLANT_POS, INS_PLANT),))
+    ins = "CA"
+    for p in (INS_A, INS_B):  # meta-guard: canonically stable annotations
+        assert ref[p - 1] != ins[-1], f"ins at {p} would left-align — geometry broken"
+    rows = [
+        (p, ref[p - 1], ref[p - 1] + ins) for p in (INS_A, INS_B)
+    ]  # 1-based POS p, anchor ref[p-1]
+    reads = (
+        _ins_reads(ref, INS_A, ins, 7, "ia")
+        + _ins_reads(ref, INS_B, ins, 4, "ib")
+        + _ref_reads(ref, INS_A, 6)
+    )
+    res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
+    r_a, r_b = res[INS_A], res[INS_B]
+    assert int(r_a["alt_count"]) == 7, f"row A must keep only its own carriers: {r_a['alt_count']}"
+    assert int(r_b["alt_count"]) == 4, f"row B must keep only its own carriers: {r_b['alt_count']}"
+    assert int(r_a["alt_count"]) + int(r_b["alt_count"]) <= 11
+
+
 # ── Complex (delins) sibling — the key cross-type case ───────────────────
 # Plant at 298:  G T A G T C A G T T
 #                298     302     306

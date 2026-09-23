@@ -30,16 +30,22 @@ comparison to an engine-level sibling contest that covers delins).**
    intersection → `MULTI_ALLELIC`, window-only membership → `TRACT_CLUSTER`.
    Existing sibling plumbing (`sibling_variants`) carries the wider groups —
    zero new FFI.
-2. *AD-claiming guard (Rust engine, `sibling_claims_windowed_alt`):* a read
-   classified ALT via the **windowed** reconstruction (Phase 1, CigarRecon)
-   and only that phase — exact structural matches and alignment calls are
-   never contested — is re-classified against each sibling (empty sibling
-   list, no recursion). If any sibling returns ALT (any phase, so a delins
-   sibling resolved via masked compare / alignment also claims), the read
-   belongs to the sibling: downgraded at classification time (before
-   fragment evidence), so AD **and ADF** exclude it consistently; it
-   surfaces as `partial_alt`/`any_alt`. Both-windowed ambiguity → partial on
-   both rows (honest). Applied at binned, legacy, and per-transcript sites.
+2. *AD-claiming guard (Rust engine, `sibling_claims_alt`):* contested by
+   **span-explanation cost** — Levenshtein between the read's
+   CIGAR-projected reconstruction of a candidate's REF span
+   (`reconstruct_span`, factored out of check_complex Phase 1) and that
+   candidate's ALT allele. Anchor-exact evidence (Phase 0 structural op /
+   direct SNP base) is never contested; otherwise a sibling that also calls
+   the read ALT and explains it at cost <= the row's own cost claims it
+   (ties demote both rows — honest ambiguity). Chosen over a phase-rank
+   gate after real-data measurement: ABRA-realigned consensus reads
+   cross-attribute via Phase 3 PairHMM (P1≈0 at the BRCA2 cluster), and
+   rank inverts on delins whose own carriers legitimately resolve at
+   Phase 3. Downgrade happens at classification time (before fragment
+   evidence), so AD **and ADF** exclude claimed reads consistently; they
+   surface as `partial_alt`/`any_alt`. Applied at binned, legacy, and
+   per-transcript sites (the per-transcript site also gains the REF-side
+   sibling guard for symmetry).
 3. *REF-side guard symmetry:* sibling-claimed reads dropped from `rd` now
    surface as `partial_alt` too (distinct-allele evidence, same category as
    the wrong-length rule) instead of vanishing silently.

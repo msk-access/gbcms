@@ -214,54 +214,81 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
         }
 
         let chrom = variants[idx].variant.chrom.clone();
-        let seed = &variants[idx].variant;
-        // Group reach under each criterion. `span_end` grows with member
-        // spans; `window_reach` additionally carries each length-changing
-        // member's pad.
-        let mut span_end = seed.pos + seed.ref_allele.len() as i64;
-        let mut window_reach = if is_length_changing(seed) {
-            span_end + window_pad(seed)
-        } else {
-            i64::MIN
-        };
-        let mut group_members: Vec<usize> = vec![idx];
-
-        let mut j = i + 1;
-        while j < indices.len() {
-            let jdx = indices[j];
-            let vj = &variants[jdx].variant;
-            if vj.chrom != chrom {
-                break;
-            }
-            // Sorted by pos, and no candidate's own pad exceeds
-            // max_candidate_pad: once a variant starts past every possible
-            // reach, all later ones do too.
-            if vj.pos >= span_end.max(window_reach) + max_candidate_pad {
-                break;
-            }
-            if assigned[jdx] || variants[jdx].gbcms_status != "PASS" {
-                j += 1;
-                continue;
-            }
-            let joins_span = vj.pos < span_end;
-            let joins_window = is_length_changing(vj)
-                && window_reach != i64::MIN
-                && vj.pos - window_pad(vj) < window_reach;
-            if joins_span || joins_window {
-                let vj_end = vj.pos + vj.ref_allele.len() as i64;
-                span_end = span_end.max(vj_end);
-                if is_length_changing(vj) {
-                    window_reach = window_reach.max(vj_end + window_pad(vj));
-                }
-                group_members.push(jdx);
-                assigned[jdx] = true;
-            }
-            j += 1;
+        // Contiguous run of same-chromosome candidates in the sorted index
+        // (the seed sits inside it). Each fixed-point pass re-scans this
+        // whole run: a late joiner's window can extend LEFT past candidates
+        // already skipped, and pads differ per variant, so a single forward
+        // pass misses transitive joins in both directions.
+        let mut c_start = i;
+        while c_start > 0 && variants[indices[c_start - 1]].variant.chrom == chrom {
+            c_start -= 1;
+        }
+        let mut c_end = i + 1;
+        while c_end < indices.len() && variants[indices[c_end]].variant.chrom == chrom {
+            c_end += 1;
         }
 
-        if group_members.len() > 1 {
+        let seed = &variants[idx].variant;
+        // Group reach as bounding boxes per criterion (matching the
+        // pre-widening sweep's bounding-box semantics for spans):
+        // [span_lo, span_hi) unions member spans; [win_lo, win_hi) unions
+        // length-changing members' padded windows (empty when none).
+        let mut span_lo = seed.pos;
+        let mut span_hi = seed.pos + seed.ref_allele.len() as i64;
+        let (mut win_lo, mut win_hi) = if is_length_changing(seed) {
+            (span_lo - window_pad(seed), span_hi + window_pad(seed))
+        } else {
+            (i64::MAX, i64::MIN)
+        };
+        let mut group_members: Vec<usize> = vec![idx];
+        assigned[idx] = true;
+
+        // Fixed point: keep re-scanning while the group grows. Terminates
+        // because each pass either adds >=1 member or stops; member count is
+        // bounded by the run length.
+        loop {
+            let mut grew = false;
+            for &jdx in &indices[c_start..c_end] {
+                if assigned[jdx] || variants[jdx].gbcms_status != "PASS" {
+                    continue;
+                }
+                let vj = &variants[jdx].variant;
+                // Cheap reject: outside every possible reach of this group.
+                let reach_hi = span_hi.max(win_hi) + max_candidate_pad;
+                let reach_lo = span_lo.min(win_lo).saturating_sub(max_candidate_pad);
+                if vj.pos >= reach_hi || vj.pos + (vj.ref_allele.len() as i64) <= reach_lo {
+                    continue;
+                }
+                let vj_end = vj.pos + vj.ref_allele.len() as i64;
+                let joins_span = vj.pos < span_hi && span_lo < vj_end;
+                let joins_window = is_length_changing(vj) && {
+                    let pad = window_pad(vj);
+                    vj.pos - pad < win_hi && win_lo < vj_end + pad
+                };
+                if joins_span || joins_window {
+                    span_lo = span_lo.min(vj.pos);
+                    span_hi = span_hi.max(vj_end);
+                    if is_length_changing(vj) {
+                        let pad = window_pad(vj);
+                        win_lo = win_lo.min(vj.pos - pad);
+                        win_hi = win_hi.max(vj_end + pad);
+                    }
+                    group_members.push(jdx);
+                    assigned[jdx] = true;
+                    grew = true;
+                }
+            }
+            if !grew {
+                break;
+            }
+        }
+
+        if group_members.len() == 1 {
+            // Singleton: release the seed so a later seed's group whose
+            // window reaches back over it can still absorb it.
+            assigned[idx] = false;
+        } else {
             group_id += 1;
-            assigned[idx] = true;
             // Honest reason tags: MULTI_ALLELIC only when a member's span
             // truly intersects another member's; window-only membership is
             // TRACT_CLUSTER. Computed pairwise post-hoc (order-independent).
@@ -287,13 +314,14 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
                 }
             }
             debug!(
-                "Co-annotation group {}: {} variants at {}:{} (span reach {}, window reach {})",
+                "Co-annotation group {}: {} variants at {}:{}-{} (window [{}, {}))",
                 group_id,
                 group_members.len(),
                 chrom,
-                variants[group_members[0]].variant.pos + 1,
-                span_end,
-                if window_reach == i64::MIN { span_end } else { window_reach },
+                span_lo + 1,
+                span_hi,
+                if win_lo == i64::MAX { span_lo } else { win_lo },
+                if win_hi == i64::MIN { span_hi } else { win_hi },
             );
         }
     }

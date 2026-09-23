@@ -47,7 +47,8 @@ use bio::alignment::pairwise::Aligner;
 
 use super::fragment::{FragmentEvidence, hash_qname, hash_molecule};
 use super::pairhmm::dynamic_sw_gap_extend;
-use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, MnpResult};
+use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, reconstruct_span, MnpResult};
+use bio::alignment::distance::levenshtein;
 use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
@@ -1697,13 +1698,13 @@ fn count_variant_from_cache(
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
 
-        // ── MULTI-ALLELIC AD-CLAIMING GUARD: a windowed (Phase 1) ALT match
-        // won by a co-annotated sibling is the sibling's molecule. Downgrade
+        // ── MULTI-ALLELIC AD-CLAIMING GUARD: an ALT match contested and won
+        // by a co-annotated sibling is the sibling's molecule. Downgrade
         // it here — before distance tracking, fragment evidence, and
         // read-level counting — so AD and ADF exclude it consistently. The
         // read still counts toward DP/DPF and is recorded as
         // partial_alt/any_alt below.
-        let claimed_by_sibling = sibling_claims_windowed_alt(
+        let claimed_by_sibling = sibling_claims_alt(
             record, variant, &result, sibling_variants, effective_quals, min_baseq,
             &mut alt_aligner, &mut ref_aligner, backend,
         );
@@ -1833,7 +1834,7 @@ fn count_variant_from_cache(
         // sequences (e.g., PAX5 A>CCC) that were previously lost as silent REF calls.
         if !is_ref && !is_alt {
             // Check for partial ALT evidence before skipping. A read whose
-            // windowed ALT match was claimed by a sibling is partial evidence
+            // ALT match was claimed by a sibling is partial evidence
             // for this row: the molecule carries a variant in this tract but
             // belongs to the sibling's representation.
             if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
@@ -2274,12 +2275,12 @@ fn count_single_variant(
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
 
-        // ── MULTI-ALLELIC AD-CLAIMING GUARD: mirrors the binned path — a
-        // windowed (Phase 1) ALT match won by a co-annotated sibling is
+        // ── MULTI-ALLELIC AD-CLAIMING GUARD: mirrors the binned path — an
+        // ALT match contested and won by a co-annotated sibling is
         // downgraded before fragment evidence and read-level counting so AD
         // and ADF exclude it consistently; it is recorded as
         // partial_alt/any_alt below.
-        let claimed_by_sibling = sibling_claims_windowed_alt(
+        let claimed_by_sibling = sibling_claims_alt(
             &record, variant, &result, sibling_variants, effective_quals, min_baseq,
             &mut alt_aligner, &mut ref_aligner, backend,
         );
@@ -2387,8 +2388,8 @@ fn count_single_variant(
         // - Neither/REF with no evidence: no any_alt/partial_alt change
         if !is_ref && !is_alt {
             // Check for partial ALT evidence before skipping. A sibling-claimed
-            // windowed ALT match is partial evidence for this row (see the
-            // binned path).
+            // ALT match is partial evidence for this row (see the binned
+            // path).
             if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
@@ -2596,29 +2597,49 @@ fn count_single_variant(
 }
 
 
-/// Multi-allelic AD-claiming guard: decide whether a windowed ALT
-/// classification really belongs to a co-annotated sibling variant.
+/// Mismatch cost of explaining `record` with `variant`'s ALT allele over
+/// the variant's REF span: Levenshtein distance between the read's
+/// CIGAR-projected reconstruction of `[pos, pos + ref_len)` and the ALT
+/// allele. 0 = the read shows exactly the ALT there (an exact carrier);
+/// higher = worse explanation. Scored worst (u32::MAX) when the span is
+/// splice-poisoned or the read shows nothing there.
+fn alt_explanation_cost(record: &Record, quals: &[u8], v: &Variant) -> u32 {
+    let recon = reconstruct_span(record, quals, v.pos, v.pos + v.ref_allele.len() as i64);
+    if recon.splice_skip || recon.seq.is_empty() {
+        return u32::MAX;
+    }
+    levenshtein(&recon.seq, v.alt_allele.as_bytes())
+}
+
+/// Multi-allelic AD-claiming guard: decide whether an ALT classification
+/// really belongs to a co-annotated sibling variant.
 ///
-/// The windowed scan (Phase 1, CigarRecon) lets one physical indel satisfy
-/// several co-annotated representations in the same tract, so without this
-/// guard every member of a cluster counts the same molecule as full AD and
-/// the per-locus AD sum exceeds the number of distinct ALT molecules. A read
-/// is contested only when its own classification came from the windowed
-/// reconstruction; exact structural matches (Phase 0) and probabilistic
-/// alignment calls are never contested — a read carrying a variant's own
-/// representation always keeps its AD. If any sibling classifies the read as
-/// ALT — any phase, so a delins sibling resolved via masked comparison or
-/// alignment also claims — the read belongs to the sibling. The caller must
-/// then treat the read as partial evidence (any_alt/partial_alt) instead of
-/// AD, for both read-level and fragment-level counting. When two windowed
-/// representations contest the same read, each side's claim succeeds against
-/// the other and the read surfaces as partial on both rows — honest
-/// ambiguity rather than double-counted certainty.
+/// Representation-tolerant matching (windowed S3 shifts, BQ-masked
+/// comparison, PairHMM alignment) lets one physical event satisfy several
+/// co-annotated rows in the same tract, so without this guard every member
+/// of a cluster counts the same molecule as full AD and the per-locus AD sum
+/// exceeds the number of distinct ALT molecules (measured 2-5x at a real
+/// hypermutation cluster; sign-out uses exclusive assignment).
 ///
-/// Siblings are classified with an empty sibling list (no recursion),
-/// mirroring the REF-side multi-allelic guard.
+/// Contest rule — which allele explains the read best, by span-explanation
+/// cost (`alt_explanation_cost`):
+/// - Anchor-exact evidence (Phase 0: a structural CIGAR op at the annotated
+///   left-aligned position, or a direct SNP base observation) is never
+///   contested. A molecule genuinely carrying two anchor-exact ops counts
+///   full AD on both rows.
+/// - Otherwise the read is demoted iff some sibling classifies it as ALT
+///   with a span-explanation cost <= this row's own cost. A delins carrier
+///   costs 0 on the delins row and >0 on a windowed pure-del row, so the
+///   delins keeps it and the del row demotes it; ties (two representations
+///   explaining the read equally well) demote both rows — honest ambiguity
+///   surfaces as partial, not double-counted certainty.
+///
+/// The caller treats a demoted read as partial evidence
+/// (any_alt/partial_alt) instead of AD, for both read-level and
+/// fragment-level counting. Siblings are classified with an empty sibling
+/// list (no recursion), mirroring the REF-side multi-allelic guard.
 #[allow(clippy::too_many_arguments)]
-fn sibling_claims_windowed_alt<F: Fn(u8, u8) -> i32>(
+fn sibling_claims_alt<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
     result: &ClassifyResult,
@@ -2629,24 +2650,33 @@ fn sibling_claims_windowed_alt<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> bool {
-    if !result.is_alt
-        || result.phase != ClassifyPhase::CigarRecon
-        || sibling_variants.is_empty()
-    {
+    if !result.is_alt || sibling_variants.is_empty() {
         return false;
     }
+    if result.phase == ClassifyPhase::Structural {
+        return false;
+    }
+    let own_cost = alt_explanation_cost(record, quals, variant);
     for sib in sibling_variants {
         let sib_result = check_allele_with_qual(
             record, sib, &[], quals, min_baseq, alt_aligner, ref_aligner, backend,
         );
-        if sib_result.is_alt {
+        if !sib_result.is_alt {
+            continue;
+        }
+        let sib_cost = if sib_result.phase == ClassifyPhase::Structural {
+            0 // anchor-exact op: the sibling explains the read exactly
+        } else {
+            alt_explanation_cost(record, quals, sib)
+        };
+        if sib_cost <= own_cost {
             trace!(
-                "AD-claiming guard: windowed ALT for {}>{} at {}:{} is ALT for \
-                 sibling {}>{} at {}:{} — counting as partial_alt, not ad",
+                "AD-claiming guard: ALT for {}>{} at {}:{} (cost {}) claimed by \
+                 sibling {}>{} at {}:{} (cost {}) — counting as partial_alt, not ad",
                 variant.ref_allele, variant.alt_allele,
-                variant.chrom, variant.pos + 1,
+                variant.chrom, variant.pos + 1, own_cost,
                 sib.ref_allele, sib.alt_allele,
-                sib.chrom, sib.pos + 1,
+                sib.chrom, sib.pos + 1, sib_cost,
             );
             return true;
         }
@@ -2994,20 +3024,36 @@ fn count_per_transcript(
                 mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
             }
 
-            // ── Multi-allelic AD-claiming guard (same rule as the main
-            // engine): a windowed ALT match won by a sibling is excluded from
-            // tx_ad and from ALT fragment evidence; it still counts tx_dp.
-            let claimed_by_sibling = sibling_claims_windowed_alt(
+            // ── Multi-allelic guards (same rules as the main engine): an
+            // ALT match won by a sibling is excluded from tx_ad and from
+            // ALT fragment evidence; a REF-classified read that is ALT for
+            // a sibling is excluded from tx_rd (its ALT lies outside this
+            // variant's span, so REF testimony here is vacuous). Both still
+            // count tx_dp.
+            let claimed_by_sibling = sibling_claims_alt(
                 record, variant, &result, sibling_variants, effective_quals, min_baseq,
                 &mut alt_aligner, &mut ref_aligner, backend,
             );
             let is_alt = result.is_alt && !claimed_by_sibling;
+            let mut is_ref = result.is_ref;
+            if is_ref && !sibling_variants.is_empty() {
+                for sib in sibling_variants {
+                    let sib_result = check_allele_with_qual(
+                        record, sib, &[], effective_quals, min_baseq,
+                        &mut alt_aligner, &mut ref_aligner, backend,
+                    );
+                    if sib_result.is_alt {
+                        is_ref = false;
+                        break;
+                    }
+                }
+            }
 
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-            evidence.observe(result.is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+            evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
 
             if first_class {
-                if result.is_ref {
+                if is_ref {
                     tx_rd += 1;
                 } else if is_alt {
                     tx_ad += 1;

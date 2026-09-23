@@ -247,6 +247,16 @@ pub fn build_haplotype_matrix(
     valid_siblings.sort_by_key(|sib| (sib.pos - variant.pos).unsigned_abs());
 
     let max_sibs = valid_siblings.len().min(MAX_SIBS);
+    if valid_siblings.len() > MAX_SIBS {
+        // Routine for widened tract-cluster groups: the combination matrix
+        // keeps only the nearest MAX_SIBS siblings; farther co-annotations
+        // are not modeled as haplotypes here (the engine's AD-claiming guard
+        // still contests them individually).
+        debug!(
+            "build_haplotype_matrix: {} valid siblings at {}:{} exceed MAX_SIBS={} — keeping the {} nearest",
+            valid_siblings.len(), variant.chrom, variant.pos + 1, MAX_SIBS, MAX_SIBS,
+        );
+    }
 
     // === H0 (pure REF) and H1 (test ALT only) — always at positions 0 and 1 ===
     let h0 = ref_context.to_vec();
