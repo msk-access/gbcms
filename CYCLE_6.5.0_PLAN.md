@@ -45,7 +45,12 @@ comparison to an engine-level sibling contest that covers delins).**
    evidence), so AD **and ADF** exclude claimed reads consistently; they
    surface as `partial_alt`/`any_alt`. Applied at binned, legacy, and
    per-transcript sites (the per-transcript site also gains the REF-side
-   sibling guard for symmetry).
+   sibling guard for symmetry). Additionally, in a contested tract a
+   Phase 3 (alignment) ALT whose own span reconstruction does not confirm
+   the allele exactly (cost > 0) is demoted to partial even without a
+   sibling win: measured clusters carry unannotated ladder ops that no
+   sibling can claim, and PairHMM LLR absorbs them (BRCA2 33bp row: 76 vs
+   sign-out 22 before this rule).
 3. *REF-side guard symmetry:* sibling-claimed reads dropped from `rd` now
    surface as `partial_alt` too (distinct-allele evidence, same category as
    the wrong-length rule) instead of vanishing silently.

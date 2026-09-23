@@ -2657,6 +2657,23 @@ fn sibling_claims_alt<F: Fn(u8, u8) -> i32>(
         return false;
     }
     let own_cost = alt_explanation_cost(record, quals, variant);
+    // In a contested tract, a probabilistic (Phase 3) ALT call that the
+    // read's own span reconstruction does not confirm exactly is ambiguity,
+    // not AD: the locus carries multiple real events (annotated siblings
+    // and, in measured hypermutation clusters, unannotated ladder ops that
+    // no sibling can claim), and PairHMM LLR happily absorbs them. Sign-out
+    // uses exclusive exact assignment at such loci; demote to partial
+    // without requiring a sibling to win the read.
+    if result.phase == ClassifyPhase::Alignment && own_cost > 0 {
+        trace!(
+            "AD-claiming guard: alignment-phase ALT for {}>{} at {}:{} with \
+             span-explanation cost {} in a co-annotated cluster — counting as \
+             partial_alt, not ad",
+            variant.ref_allele, variant.alt_allele,
+            variant.chrom, variant.pos + 1, own_cost,
+        );
+        return true;
+    }
     for sib in sibling_variants {
         let sib_result = check_allele_with_qual(
             record, sib, &[], quals, min_baseq, alt_aligner, ref_aligner, backend,
