@@ -1,0 +1,20 @@
+/* gbcms custom theme colors - Teal palette */
+:root {
+  --md-primary-fg-color: #009688;
+  --md-primary-fg-color--light: #4DB6AC;
+  --md-primary-fg-color--dark: #00796B;
+  --md-accent-fg-color: #009688;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #4DB6AC;
+  --md-primary-fg-color--light: #80CBC4;
+  --md-primary-fg-color--dark: #00796B;
+  --md-accent-fg-color: #4DB6AC;
+}
+
+/* Abbreviation tooltip styling */
+abbr[title] {
+  text-decoration: underline dotted;
+  cursor: help;
+}
