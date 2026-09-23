@@ -22,7 +22,6 @@ import glob
 import random
 
 import pysam
-import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
@@ -30,7 +29,6 @@ from gbcms.cli import app
 
 runner = CliRunner()
 
-XFAIL = pytest.mark.xfail(strict=True, reason="cluster exclusive assignment: fix pending")
 
 BAM_CONTIG = "1"
 READ_LEN = 100
@@ -181,7 +179,6 @@ def test_cluster_alleles_are_canonically_distinct(tmp_path):
     assert len(forms) == 4, forms
 
 
-@XFAIL
 def test_cluster_rows_count_only_their_own_molecules(tmp_path):
     """Each co-annotated row counts exactly its own carriers as ALT; every
     tract-mate carrier appears as partial evidence at most."""
@@ -191,7 +188,6 @@ def test_cluster_rows_count_only_their_own_molecules(tmp_path):
     assert ads == {D_A: 8, D_B: 6, D_C: 4, D_D: 3}, f"per-row ad must be own carriers only: {ads}"
 
 
-@XFAIL
 def test_cluster_sum_bounded_by_distinct_molecules(tmp_path):
     """Invariant: sum of per-row ad across a co-annotated cluster never
     exceeds the number of distinct ALT-carrying molecules (18 here)."""
@@ -201,7 +197,6 @@ def test_cluster_sum_bounded_by_distinct_molecules(tmp_path):
     assert total <= 21, f"sum(ad)={total} exceeds 21 distinct ALT molecules"
 
 
-@XFAIL
 def test_tract_mate_carriers_surface_as_partial(tmp_path):
     """A tract-mate's carriers are structural indel evidence of a DIFFERENT
     allele: they must surface in partial_alt (not vanish, not count REF)."""
@@ -295,7 +290,6 @@ def _complex_vcf(tmp_path, ref):
     )
 
 
-@XFAIL
 def test_complex_sibling_claims_windowed_carrier(tmp_path):
     """The key cross-type case: a delins tract-mate's carriers S3-match the
     pure-del row's windowed scan pre-fix. Post-fix the delins sibling claims
@@ -306,7 +300,9 @@ def test_complex_sibling_claims_windowed_carrier(tmp_path):
         tmp_path, _complex_vcf(tmp_path, ref), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref)
     )
     r_del = res[CPLX_DEL + 1]
-    r_x = res[CPLX_X + 1]
+    # The writer re-synthesizes VCF-sourced delins coordinates (DEL-style
+    # representation), so the delins row is found by exclusion, not by POS.
+    r_x = next(r for pos, r in res.items() if pos != CPLX_DEL + 1)
     assert int(r_x["alt_count"]) == 5, f"delins row must keep its own carriers: {r_x['alt_count']}"
     assert (
         int(r_del["alt_count"]) == 6

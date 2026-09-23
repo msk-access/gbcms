@@ -1694,9 +1694,20 @@ fn count_variant_from_cache(
         }
 
         let is_ref = result.is_ref;
-        let is_alt = result.is_alt;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
+
+        // ── MULTI-ALLELIC AD-CLAIMING GUARD: a windowed (Phase 1) ALT match
+        // won by a co-annotated sibling is the sibling's molecule. Downgrade
+        // it here — before distance tracking, fragment evidence, and
+        // read-level counting — so AD and ADF exclude it consistently. The
+        // read still counts toward DP/DPF and is recorded as
+        // partial_alt/any_alt below.
+        let claimed_by_sibling = sibling_claims_windowed_alt(
+            record, variant, &result, sibling_variants, effective_quals, min_baseq,
+            &mut alt_aligner, &mut ref_aligner, backend,
+        );
+        let is_alt = result.is_alt && !claimed_by_sibling;
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends
@@ -1821,12 +1832,15 @@ fn count_variant_from_cache(
         // and alignment backends. This captures reads with right-length INDELs but wrong
         // sequences (e.g., PAX5 A>CCC) that were previously lost as silent REF calls.
         if !is_ref && !is_alt {
-            // Check for partial ALT evidence before skipping
-            if result.partial_match_count > 0 || result.has_nearby_evidence {
+            // Check for partial ALT evidence before skipping. A read whose
+            // windowed ALT match was claimed by a sibling is partial evidence
+            // for this row: the molecule carries a variant in this tract but
+            // belongs to the sibling's representation.
+            if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
-                trace!("partial_alt++: partial_match={} nearby_evidence={} (any_alt={}, partial_alt={})",
-                    result.partial_match_count, result.has_nearby_evidence,
+                trace!("partial_alt++: partial_match={} nearby_evidence={} sibling_claimed={} (any_alt={}, partial_alt={})",
+                    result.partial_match_count, result.has_nearby_evidence, claimed_by_sibling,
                     counts.any_alt, counts.partial_alt);
             }
             continue;
@@ -1869,6 +1883,15 @@ fn count_variant_from_cache(
                     }
                 }
                 if is_sibling_alt {
+                    // The molecule carries a sibling's allele in this tract:
+                    // structural evidence of a DIFFERENT allele, same category
+                    // as the wrong-length rule — surface it as partial_alt
+                    // rather than dropping it silently (it stays out of rd).
+                    // Skip if the nearby-evidence block above already counted it.
+                    if !result.has_nearby_evidence {
+                        counts.any_alt += 1;
+                        counts.partial_alt += 1;
+                    }
                     continue;
                 }
             }
@@ -2248,9 +2271,19 @@ fn count_single_variant(
         }
 
         let is_ref = result.is_ref;
-        let is_alt = result.is_alt;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
+
+        // ── MULTI-ALLELIC AD-CLAIMING GUARD: mirrors the binned path — a
+        // windowed (Phase 1) ALT match won by a co-annotated sibling is
+        // downgraded before fragment evidence and read-level counting so AD
+        // and ADF exclude it consistently; it is recorded as
+        // partial_alt/any_alt below.
+        let claimed_by_sibling = sibling_claims_windowed_alt(
+            &record, variant, &result, sibling_variants, effective_quals, min_baseq,
+            &mut alt_aligner, &mut ref_aligner, backend,
+        );
+        let is_alt = result.is_alt && !claimed_by_sibling;
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends
@@ -2330,7 +2363,10 @@ fn count_single_variant(
         // is_n_base: a fragment is in the N class when the base at the variant
         // position was 'N' — proxied by base_qual==0 with no REF or ALT call.
         let tlen = mfsd::calc_physical_insert_size(&record);
-        let is_n_base = base_qual == 0 && !is_ref && !is_alt;
+        // N heuristic uses the read's own classification (result.is_alt), not
+        // the sibling-downgraded is_alt: a claimed ALT read observed the
+        // locus and is not N-class.
+        let is_n_base = base_qual == 0 && !is_ref && !result.is_alt;
 
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq());
 
@@ -2350,8 +2386,10 @@ fn count_single_variant(
         // - Nearby evidence (right-length INDEL, close alignment score): any_alt++, partial_alt++
         // - Neither/REF with no evidence: no any_alt/partial_alt change
         if !is_ref && !is_alt {
-            // Check for partial ALT evidence before skipping
-            if result.partial_match_count > 0 || result.has_nearby_evidence {
+            // Check for partial ALT evidence before skipping. A sibling-claimed
+            // windowed ALT match is partial evidence for this row (see the
+            // binned path).
+            if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
             }
@@ -2391,7 +2429,14 @@ fn count_single_variant(
                     }
                 }
                 if is_sibling_alt {
-                    continue; // Skip REF counting — this read belongs to a sibling
+                    // Distinct-allele evidence (see binned path): out of rd,
+                    // surfaced as partial rather than dropped silently —
+                    // unless the nearby-evidence block already counted it.
+                    if !result.has_nearby_evidence {
+                        counts.any_alt += 1;
+                        counts.partial_alt += 1;
+                    }
+                    continue;
                 }
             }
             counts.rd += 1;
@@ -2550,6 +2595,64 @@ fn count_single_variant(
     Ok(counts)
 }
 
+
+/// Multi-allelic AD-claiming guard: decide whether a windowed ALT
+/// classification really belongs to a co-annotated sibling variant.
+///
+/// The windowed scan (Phase 1, CigarRecon) lets one physical indel satisfy
+/// several co-annotated representations in the same tract, so without this
+/// guard every member of a cluster counts the same molecule as full AD and
+/// the per-locus AD sum exceeds the number of distinct ALT molecules. A read
+/// is contested only when its own classification came from the windowed
+/// reconstruction; exact structural matches (Phase 0) and probabilistic
+/// alignment calls are never contested — a read carrying a variant's own
+/// representation always keeps its AD. If any sibling classifies the read as
+/// ALT — any phase, so a delins sibling resolved via masked comparison or
+/// alignment also claims — the read belongs to the sibling. The caller must
+/// then treat the read as partial evidence (any_alt/partial_alt) instead of
+/// AD, for both read-level and fragment-level counting. When two windowed
+/// representations contest the same read, each side's claim succeeds against
+/// the other and the read surfaces as partial on both rows — honest
+/// ambiguity rather than double-counted certainty.
+///
+/// Siblings are classified with an empty sibling list (no recursion),
+/// mirroring the REF-side multi-allelic guard.
+#[allow(clippy::too_many_arguments)]
+fn sibling_claims_windowed_alt<F: Fn(u8, u8) -> i32>(
+    record: &Record,
+    variant: &Variant,
+    result: &ClassifyResult,
+    sibling_variants: &[Variant],
+    quals: &[u8],
+    min_baseq: u8,
+    alt_aligner: &mut Aligner<F>,
+    ref_aligner: &mut Aligner<F>,
+    backend: &AlignmentBackend,
+) -> bool {
+    if !result.is_alt
+        || result.phase != ClassifyPhase::CigarRecon
+        || sibling_variants.is_empty()
+    {
+        return false;
+    }
+    for sib in sibling_variants {
+        let sib_result = check_allele_with_qual(
+            record, sib, &[], quals, min_baseq, alt_aligner, ref_aligner, backend,
+        );
+        if sib_result.is_alt {
+            trace!(
+                "AD-claiming guard: windowed ALT for {}>{} at {}:{} is ALT for \
+                 sibling {}>{} at {}:{} — counting as partial_alt, not ad",
+                variant.ref_allele, variant.alt_allele,
+                variant.chrom, variant.pos + 1,
+                sib.ref_allele, sib.alt_allele,
+                sib.chrom, sib.pos + 1,
+            );
+            return true;
+        }
+    }
+    false
+}
 
 /// Check if a read supports the reference or alternate allele.
 /// Returns `ClassifyResult` containing (is_ref, is_alt, base_quality, phase)
@@ -2891,13 +2994,22 @@ fn count_per_transcript(
                 mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
             }
 
+            // ── Multi-allelic AD-claiming guard (same rule as the main
+            // engine): a windowed ALT match won by a sibling is excluded from
+            // tx_ad and from ALT fragment evidence; it still counts tx_dp.
+            let claimed_by_sibling = sibling_claims_windowed_alt(
+                record, variant, &result, sibling_variants, effective_quals, min_baseq,
+                &mut alt_aligner, &mut ref_aligner, backend,
+            );
+            let is_alt = result.is_alt && !claimed_by_sibling;
+
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-            evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+            evidence.observe(result.is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
 
             if first_class {
                 if result.is_ref {
                     tx_rd += 1;
-                } else if result.is_alt {
+                } else if is_alt {
                     tx_ad += 1;
                 }
             }

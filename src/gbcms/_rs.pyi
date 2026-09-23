@@ -171,7 +171,7 @@ class PreparedVariant:
     original_alt: str
     gbcms_status: str  # verdict: "PASS" or "FAIL"
     # Status reason tags, '|'-separated; empty when a clean PASS.
-    # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC.
+    # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC, TRACT_CLUSTER.
     # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, ALT_CONTAINS_N.
     gbcms_status_reason: str
     # Post-counting diagnostic flags (set by pipeline._compute_diagnostics).

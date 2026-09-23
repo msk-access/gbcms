@@ -115,7 +115,14 @@ pub fn prepare_variants(
             let n_anchor = r.iter().filter(|p| p.was_anchor_resolved).count();
             let n_left = r.iter().filter(|p| p.was_left_aligned).count();
             let n_total = r.iter().filter(|p| p.was_normalized()).count();
-            let multi_allelic = r.iter().filter(|p| p.multi_allelic_group.is_some()).count();
+            let multi_allelic = r
+                .iter()
+                .filter(|p| p.gbcms_status_reason.contains("MULTI_ALLELIC"))
+                .count();
+            let tract_cluster = r
+                .iter()
+                .filter(|p| p.gbcms_status_reason.contains("TRACT_CLUSTER"))
+                .count();
             // Count MNPs: same-length multi-base substitutions excluded from
             // indel normalization (left-alignment + ref_context fetch).
             let n_mnp = r.iter().filter(|p| {
@@ -124,13 +131,14 @@ pub fn prepare_variants(
                 ref_len == alt_len && ref_len > 1
             }).count();
             info!(
-                "prepare_variants complete: {}/{} valid, {} normalized ({} anchor-resolved, {} left-aligned), {} multi-allelic, {} MNPs (normalization bypassed)",
+                "prepare_variants complete: {}/{} valid, {} normalized ({} anchor-resolved, {} left-aligned), {} multi-allelic, {} tract-clustered, {} MNPs (normalization bypassed)",
                 valid,
                 r.len(),
                 n_total,
                 n_anchor,
                 n_left,
                 multi_allelic,
+                tract_cluster,
                 n_mnp,
             );
             Ok(r)
@@ -142,18 +150,45 @@ pub fn prepare_variants(
     }
 }
 
-/// Assign group IDs to variants that overlap at the same genomic locus.
+/// Scan-window pad for tract-cluster grouping — the engine's own windowed-scan
+/// formula (uncapped, like the classification scan), so grouping reach and
+/// classification reach cannot drift apart.
+fn window_pad(v: &Variant) -> i64 {
+    std::cmp::max(5, v.repeat_span as i64 + 2)
+}
+
+/// Whether a variant changes sequence length (pure indel or delins). Only
+/// length-changing variants participate in window-based (tract-cluster)
+/// grouping: an SNV near an indel must NOT become its sibling, or the
+/// engine's sibling-ALT guard would drain rd at every locus with a nearby
+/// annotated SNV.
+fn is_length_changing(v: &Variant) -> bool {
+    v.ref_allele.len() != v.alt_allele.len()
+}
+
+/// Assign group IDs to co-annotated variants so the engine can evaluate them
+/// jointly (sibling exclusion + exclusive assignment).
 ///
-/// Two variants overlap if they share the same chromosome and their REF spans
-/// (pos..pos+ref_len) intersect. Uses a sweep-line algorithm: sort by position,
-/// then extend the current group while new variants overlap the group's footprint.
+/// Two membership criteria, transitively closed per chromosome:
+/// 1. **Span overlap** (any variant types): REF spans `pos..pos+ref_len`
+///    intersect — the original multi-allelic rule; members are tagged
+///    `MULTI_ALLELIC` when their span truly intersects another member's.
+/// 2. **Window overlap** (length-changing variants only): scan windows —
+///    spans padded by `window_pad` on each side — intersect. This chains
+///    tract clusters (co-annotated indels/delins in one repeat
+///    neighborhood) whose spans never touch; window-only members are
+///    tagged `TRACT_CLUSTER`.
+///
+/// Groups may be non-contiguous in position order (an SNV can sit between
+/// two window-joined deletions without joining), so the sweep marks
+/// assigned indices instead of consuming a contiguous run.
 fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
     if variants.len() < 2 {
         return;
     }
 
-    // Build index sorted by (chrom, pos) — we sort indices, not the array itself,
-    // to avoid disrupting input order (which must match the output row order).
+    // Index sorted by (chrom, pos) — sort indices, not the array, to keep
+    // input order (which must match the output row order).
     let mut indices: Vec<usize> = (0..variants.len()).collect();
     indices.sort_by(|&a, &b| {
         let va = &variants[a].variant;
@@ -161,72 +196,106 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
         va.chrom.cmp(&vb.chrom).then(va.pos.cmp(&vb.pos))
     });
 
+    let mut assigned = vec![false; variants.len()];
     let mut group_id: u32 = 0;
-    let mut i = 0;
+    // Widest pad any candidate can carry: bounds how far past a group's
+    // reach the sweep must look before it may stop. Derived from the input
+    // (repeat_span is uncapped), never a hard-coded constant.
+    let max_candidate_pad = variants
+        .iter()
+        .map(|p| window_pad(&p.variant))
+        .max()
+        .unwrap_or(5);
 
-    while i < indices.len() {
+    for i in 0..indices.len() {
         let idx = indices[i];
-        // Skip non-PASS variants
-        if variants[idx].gbcms_status != "PASS" {
-            i += 1;
+        if assigned[idx] || variants[idx].gbcms_status != "PASS" {
             continue;
         }
 
-        let chrom = &variants[idx].variant.chrom.clone();
-        let mut group_end = variants[idx].variant.pos
-            + variants[idx].variant.ref_allele.len() as i64;
+        let chrom = variants[idx].variant.chrom.clone();
+        let seed = &variants[idx].variant;
+        // Group reach under each criterion. `span_end` grows with member
+        // spans; `window_reach` additionally carries each length-changing
+        // member's pad.
+        let mut span_end = seed.pos + seed.ref_allele.len() as i64;
+        let mut window_reach = if is_length_changing(seed) {
+            span_end + window_pad(seed)
+        } else {
+            i64::MIN
+        };
         let mut group_members: Vec<usize> = vec![idx];
 
-        // Sweep forward: extend group while variants overlap
         let mut j = i + 1;
         while j < indices.len() {
             let jdx = indices[j];
             let vj = &variants[jdx].variant;
-
-            if &vj.chrom != chrom {
-                break; // Different chromosome
+            if vj.chrom != chrom {
+                break;
             }
-            if variants[jdx].gbcms_status != "PASS" {
+            // Sorted by pos, and no candidate's own pad exceeds
+            // max_candidate_pad: once a variant starts past every possible
+            // reach, all later ones do too.
+            if vj.pos >= span_end.max(window_reach) + max_candidate_pad {
+                break;
+            }
+            if assigned[jdx] || variants[jdx].gbcms_status != "PASS" {
                 j += 1;
                 continue;
             }
-            if vj.pos < group_end {
-                // Overlaps — extend the group footprint
+            let joins_span = vj.pos < span_end;
+            let joins_window = is_length_changing(vj)
+                && window_reach != i64::MIN
+                && vj.pos - window_pad(vj) < window_reach;
+            if joins_span || joins_window {
                 let vj_end = vj.pos + vj.ref_allele.len() as i64;
-                group_end = group_end.max(vj_end);
+                span_end = span_end.max(vj_end);
+                if is_length_changing(vj) {
+                    window_reach = window_reach.max(vj_end + window_pad(vj));
+                }
                 group_members.push(jdx);
-                j += 1;
-            } else {
-                break; // No overlap
+                assigned[jdx] = true;
             }
+            j += 1;
         }
 
-        // Only assign group ID if there are 2+ overlapping variants
         if group_members.len() > 1 {
             group_id += 1;
-            for &member_idx in &group_members {
+            assigned[idx] = true;
+            // Honest reason tags: MULTI_ALLELIC only when a member's span
+            // truly intersects another member's; window-only membership is
+            // TRACT_CLUSTER. Computed pairwise post-hoc (order-independent).
+            for (mi, &member_idx) in group_members.iter().enumerate() {
+                let vm = &variants[member_idx].variant;
+                let m_start = vm.pos;
+                let m_end = vm.pos + vm.ref_allele.len() as i64;
+                let span_overlaps_other = group_members.iter().enumerate().any(|(oi, &o)| {
+                    if oi == mi {
+                        return false;
+                    }
+                    let vo = &variants[o].variant;
+                    m_start < vo.pos + vo.ref_allele.len() as i64 && vo.pos < m_end
+                });
                 variants[member_idx].multi_allelic_group = Some(group_id);
-                // Append MULTI_ALLELIC to the reason list (|-separated) so it surfaces
-                // in the gbcms_status_reason column / GSR INFO. The verdict stays PASS.
+                let tag = if span_overlaps_other { "MULTI_ALLELIC" } else { "TRACT_CLUSTER" };
                 let reason = &mut variants[member_idx].gbcms_status_reason;
-                if !reason.contains("MULTI_ALLELIC") {
+                if !reason.contains(tag) {
                     if !reason.is_empty() {
                         reason.push('|');
                     }
-                    reason.push_str("MULTI_ALLELIC");
+                    reason.push_str(tag);
                 }
             }
             debug!(
-                "Multi-allelic group {}: {} variants at {}:{}-{}",
+                "Co-annotation group {}: {} variants at {}:{} (span reach {}, window reach {})",
                 group_id,
                 group_members.len(),
                 chrom,
                 variants[group_members[0]].variant.pos + 1,
-                group_end,
+                span_end,
+                if window_reach == i64::MIN { span_end } else { window_reach },
             );
         }
-
-        i = j;
     }
 }
 
