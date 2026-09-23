@@ -22,6 +22,8 @@ Covers:
 10. Outcome resolution: tie-break, no_improvement, and ref_validation_failed
     (a component SNV failing preparation — not reachable through a BAM)
 11. Audit format
+12. Confirmed haplotype (reads carrying every change, all read) → not rescued;
+    error-level confirmed reads within the base-quality allowance → rescued
 """
 
 import csv
@@ -32,6 +34,7 @@ import re
 import types
 
 import pysam
+import pytest
 from helpers import make_read
 from typer.testing import CliRunner
 
@@ -194,6 +197,25 @@ def _cis_carrier_reads():
     return reads
 
 
+def _germline_component_reads():
+    """20 REF + 30 reads carrying only the first change (a heterozygous
+    germline SNP merged into the annotation) + 10 carrying both changes (the
+    real somatic MNP, every discriminating base read)."""
+    reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
+    reads += [_read(f"germ_{i}", "AAGGG", i) for i in range(30)]
+    reads += [_read(f"cis_{i}", ALT_BLOCK, i) for i in range(10)]
+    return reads
+
+
+def _component_reads_with_error_level_cis():
+    """20 REF + 200 first-change-only carriers + 1 fully read full-haplotype
+    read — the level a sequencing error at the second position produces."""
+    reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
+    reads += [_read(f"comp_{i}", "AAGGG", i) for i in range(200)]
+    reads.append(_read("err_cis", ALT_BLOCK, 0))
+    return reads
+
+
 def _indel_disrupted_reads():
     """20 REF + 10 reads carrying a 1bp insertion inside the block and REF
     bases otherwise: no component of the MNP, but the complex path counts them
@@ -347,6 +369,32 @@ def test_indel_partial_evidence_is_declined_not_rescued(tmp_path):
     _assert_counting_invariants(row)
 
 
+@pytest.mark.xfail(strict=True, reason="T7 item 10: confirmed-haplotype gate")
+def test_confirmed_haplotype_is_not_rescued(tmp_path):
+    plain = _run(tmp_path, {"S": _germline_component_reads()}, [MNP_ROW], rescue=False)["S"][0]
+    (row,) = _run(tmp_path, {"S": _germline_component_reads()}, [MNP_ROW])["S"]
+
+    assert (int(row["alt_count"]), int(row["partial_alt"])) == (10, 30)  # a partial-dominant row
+    count_cols = ("ref_count", "alt_count", "partial_alt", "alt_count_fragment", "total_count")
+    assert {c: row[c] for c in count_cols} == {c: plain[c] for c in count_cols}
+    assert row["gbcms_diagnostic"] == plain["gbcms_diagnostic"]
+    audit = _audit(row)
+    assert audit["outcome"] == "haplotype_confirmed"
+    assert audit["original_confirmed"] == "10"
+    assert "positions" not in audit  # no component re-count was run
+    _assert_counting_invariants(row)
+
+
+@pytest.mark.xfail(strict=True, reason="T7 item 10: confirmed-haplotype gate")
+def test_error_level_confirmed_reads_do_not_block_rescue(tmp_path):
+    (row,) = _run(tmp_path, {"S": _component_reads_with_error_level_cis()}, [MNP_ROW])["S"]
+    audit = _audit(row)
+    assert audit["outcome"] == "rescued"
+    assert audit["original_confirmed"] == "1"  # within ceil(200 x 1%) = 2
+    assert int(row["alt_count"]) == 201
+    _assert_counting_invariants(row)
+
+
 def test_rescue_audit_does_not_leak_into_later_samples(tmp_path):
     rows = _run(tmp_path, {"A": _component_carrier_reads(), "B": _cis_carrier_reads()}, [MNP_ROW])
     assert _audit(rows["A"][0])["outcome"] == "rescued"
@@ -389,3 +437,14 @@ def test_audit_format():
         "original_partial=88;adopted=5:1295250(G>A);"
         "positions=5:1295250(G>A):87,5:1295254(G>A):ref_fail"
     )
+
+
+@pytest.mark.xfail(strict=True, reason="T7 item 10: confirmed-haplotype gate")
+def test_confirmed_error_allowance_follows_the_base_quality_threshold():
+    from gbcms.pipeline import _confirmed_error_allowance
+
+    assert _confirmed_error_allowance(850, 20) == 9  # 8.5 at Q20 (1% error)
+    assert _confirmed_error_allowance(238, 20) == 3
+    assert _confirmed_error_allowance(100, 30) == 1  # 0.1 at Q30, rounded up
+    assert _confirmed_error_allowance(0, 20) == 0
+    assert _confirmed_error_allowance(100, 0) == 100  # no quality gate: any base may be wrong

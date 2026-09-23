@@ -12,7 +12,7 @@ exercise the specific edge cases identified in the TERT/BRCA2 analysis.
 """
 
 import pytest
-from helpers import build_bam, count_both, make_read
+from helpers import build_bam, count_both, count_one, make_read
 
 from gbcms import _rs as gbcms_rs
 
@@ -232,6 +232,40 @@ class TestONPCarrierShapes:
         assert counts.dpf >= counts.rdf + counts.adf
         assert counts.rd == counts.rd_fwd + counts.rd_rev
         assert counts.ad == counts.ad_fwd + counts.ad_rev
+
+    @pytest.mark.xfail(strict=True, reason="T7 item 10: mnp_confirmed_alt counter")
+    @pytest.mark.parametrize(
+        "block, low_bq_offset, expected_confirmed",
+        [
+            ("AAGGA", None, 10),  # every discriminating base read as ALT
+            ("AAGGA", 2, 10),  # interior base is not discriminating
+            ("AAGGA", 4, 0),  # ALT on one read base only: not confirmed
+            ("AAGGG", None, 0),  # partial, never ALT
+        ],
+    )
+    def test_confirmed_alt_counts_fully_read_carriers_only(
+        self, tmp_path, block, low_bq_offset, expected_confirmed
+    ):
+        quals = None
+        if low_bq_offset is not None:
+            quals = [30] * 45
+            quals[len(self.LEFT) + low_bq_offset] = 5
+        bam = self._bam(tmp_path, block, quals)
+        variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "ONP")
+        counts = count_both(bam, [variant])[0]
+        legacy = count_one(bam, variant)
+
+        assert counts.mnp_confirmed_alt == expected_confirmed
+        assert legacy.mnp_confirmed_alt == expected_confirmed
+        assert counts.mnp_confirmed_alt <= counts.ad
+
+    @pytest.mark.xfail(strict=True, reason="T7 item 10: mnp_confirmed_alt counter")
+    def test_confirmed_alt_is_zero_for_non_mnp_variants(self, tmp_path):
+        bam = self._bam(tmp_path, "AAGGA")
+        snv = gbcms_rs.Variant("chr1", 100, "G", "A", "SNP")
+        counts = count_both(bam, [snv])[0]
+        assert counts.ad == 10
+        assert counts.mnp_confirmed_alt == 0
 
 
 # ── DNP Tests (all-discriminating) ───────────────────────────────────────
