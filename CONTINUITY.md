@@ -3,9 +3,21 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-18_
+_Last updated: 2026-09-22_
 
 ## Now
+**6.4.0 RELEASE IN FLIGHT:** #96 merged to develop (0523206);
+`release/6.4.0` cut (version bumps + CHANGELOG) → PR #98 → main, gated on:
+container build+push (user) → HPC 56-sample matrix vs the 2026-09-18 6.3.1
+baseline (script staged at ~/test/gbcms/dev_regression/, repoint at the rc
+container) + RNA smokes → tag v6.4.0 → merge main → back-merge develop.
+
+**6.5.0 cycle plan: `CYCLE_6.5.0_PLAN.md`** (T1 cluster exclusive
+assignment — count-affecting, BRCA2 adjudication table is acceptance; T2
+ASJD-2 #97; T3 CLIP_CANDIDATES; T4 UMI warn; T5 gap-extend cleanup; T6
+per-transcript BAQ decision). All measurement evidence on #92/#94/#97.
+
+
 **Issue #94 clusters A + B1 — DONE on `fix/rna-splice-aware-counting`
 (battery 5bc8f47 red → 56e703b green → B1 commit; not yet pushed/PR'd).** The rule: a read testifies only through aligned bases (or a D
 op) at the discriminating positions; N over all of them → neither + excluded
