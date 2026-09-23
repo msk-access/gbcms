@@ -275,13 +275,23 @@ RNA mode uses the **same filter defaults** as DNA mode — duplicates, secondary
 | `--filter-qc-failed` | on | on (same) |
 
 !!! caution "Known Limitation: Variants at Exon-Intron Boundaries"
-    For variants positioned very close to a splice junction, the D6 consensus intron-snipping step (which removes introns from the `ref_context` before Phase 3 alignment) requires **>50% of local reads to carry a CIGAR `N` op** at the same position. If the variant sits at a boundary where only ~40% of reads span the junction with an `N` op — e.g., because many soft-clipped reads end just before the junction — the intron is **not snipped**.
+    Junction-spanning reads are handled by the [splice-aware evidence
+    rule](../reference/rna-splice-handling.md#the-evidence-rule-what-a-refskip-means):
+    an indel op directly after the splice `N` is examined structurally, but a
+    junction read that would need **alignment-based** (Phase 3) scoring — e.g.
+    a delins carrier whose ops sit across the junction — classifies `neither`
+    rather than being scored against a stitched sequence. (An earlier
+    consensus intron-snipping step that spliced `ref_context` for Phase 3 was
+    removed: it had no coordinate map, so it corrupted sequence verification
+    near junctions and mis-scored exon-contained reads.) This is conservative:
+    such reads count `dp` but neither allele. Deletion loci where reads
+    asserting splicing over the span outnumber confirmed ALT are flagged
+    `SPLICE_SKIP_DOMINANT(n)` in `gbcms_diagnostic`.
 
-    In this case Phase 3 aligns the read against an unspliced (intron-containing) reference context. The alignment score is lower than it would be against the mature mRNA sequence, and the read may fall back to `neither` rather than being classified as REF or ALT. This affects `dp` (depth) but not correctness for reads that *do* span the junction cleanly.
-
-    **Workaround:** Use `--trace` logging and grep for `D6 splice` to confirm whether intron snipping fired for the variant of interest:
+    **Inspection:** `--trace` logs every per-read decision; the debug-level
+    `Phase stats` line reports `splice_skip_excluded=` per variant:
     ```bash
-    gbcms rna --trace ... 2>&1 | grep "D6 splice\|<chrom>:<pos>"
+    gbcms rna --trace ... 2>&1 | grep "splice\|<chrom>:<pos>"
     ```
 
 ---

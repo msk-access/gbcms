@@ -48,6 +48,27 @@ size): repeat tract → neither+partial; unique context → REF+partial.
 Delins stay `check_complex` (Phase-3 realignment is CORRECT for them).
 Contract battery: `tests/test_wrong_length_contract.py` (parity-oracle).
 
+## Splice-aware evidence (issue #94 cluster A — load-bearing)
+
+A read testifies only through **aligned bases (or a D op) at the
+discriminating positions**. CIGAR `N` = asserted splicing = no observation:
+`splice_skip_triage` (runs before every checker) returns
+`ClassifyResult::no_coverage` (`covers_locus=false`) when the N spans ALL of
+them — deletion span `[pos+1, pos+ref_len)`, insertion flanks `[pos, pos+2)`,
+else `[pos, pos+ref_len)` — and the engine **excludes the read from DP/DPF
+entirely** (samtools-pileup semantics; mirrored binned + legacy + per-transcript;
+`splice_skip_excluded=` in the Phase-stats debug line). `D` is deletion
+evidence, `N` never is (no D-vs-N representation flip). Indel ops directly
+after an N get the same anchor/windowed inspection as after an M (shared
+helpers `resolve_anchor_{deletion,insertion}_candidate` /
+`scan_windowed_*_candidate` — M-arm and N-arm must never diverge). Phase 3
+never scores across a splice: `extract_raw_read_window` → `None` on N-crossing
+windows; `check_complex` reconstruction → neither.
+**Span-aligned REF testimony** (pure deletions only): anchor spliced out
+(inside the read's N) + FULL deleted span covered by M ops + no competing
+indel flags → REF, qual from the first span base. Partial span → neither.
+Contract battery: `tests/test_rna_splice_contract.py`.
+
 ## Multi-Allelic Handling
 
 At overlapping loci, sibling ALT alleles are excluded from each other's counting.

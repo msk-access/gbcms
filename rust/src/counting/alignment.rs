@@ -94,8 +94,28 @@ pub fn extract_raw_read_window(
                 }
                 read_pos += len_usize;
             }
-            Cigar::Del(len) | Cigar::RefSkip(len) => {
+            Cigar::Del(len) => {
                 ref_pos += *len as i64;
+            }
+            Cigar::RefSkip(len) => {
+                let skip_end = ref_pos + *len as i64;
+                // A splice N inside the window means part of the window is
+                // unobserved: the contiguous slice below would stitch the two
+                // exon arms into a junction-chimeric sequence, which Phase 3
+                // then scores against a contiguous genomic haplotype — where
+                // the missing intron reads as deletion evidence. No faithful
+                // extraction exists for such a read; refuse it and let the
+                // caller fall back (check_complex classifies it neither via
+                // its own splice guard).
+                if *len > 0 && ref_pos < win_end && skip_end > win_start {
+                    trace!(
+                        "extract_raw_read_window: splice N [{}, {}) overlaps window \
+                         [{}, {}) — no faithful contiguous extraction, returning None",
+                        ref_pos, skip_end, win_start, win_end
+                    );
+                    return None;
+                }
+                ref_pos = skip_end;
             }
             Cigar::SoftClip(len) => {
                 let len_usize = *len as usize;

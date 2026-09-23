@@ -111,6 +111,9 @@ class BaseCounts:
     antisense_strand_alt_count: int
     rna_editing_site_overlap: bool
     splice_spanning_count: int
+    # Reads excluded by the splice-skip triage (CIGAR N over every
+    # discriminating position — no observation, no DP/DPF). Diagnostic only.
+    splice_skip_excluded: int
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # P4b: Per-transcript counts (empty string when no GTF or no overlap)

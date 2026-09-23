@@ -5,10 +5,8 @@
 //! - [`is_valid_rna_alignment`] — STAR/HISAT2 MAPQ filter with NH:i:1 rescue
 //! - [`is_sense_strand`] — dUTP strand-specific filter
 //! - [`build_rna_editing_set`] — REDIportal A-to-I editing site loader
-//! - [`apply_consensus_splicing`] — Consensus intron snipping from local CIGAR N ops
 //! - [`has_splice_junction`] — Check if a read spans a splice junction (CIGAR N)
 
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::BufRead;
 
@@ -315,116 +313,6 @@ pub fn build_rna_editing_set(db_path: &str) -> anyhow::Result<HashSet<(String, i
 }
 
 
-/// Apply consensus intron snipping to a reference context.
-///
-/// Examines the CIGAR strings of local reads to find the most common
-/// RefSkip (N) operations — these represent splice junctions. The
-/// intronic bases are physically removed from the reference context
-/// to produce a mature mRNA-like reference for alignment.
-///
-/// This is critical for RNA-seq allele classification: without intron
-/// snipping, the reference haplotype contains intronic sequence that
-/// doesn't exist in the mRNA, causing systematic misalignment.
-///
-/// ## Algorithm
-///
-/// 1. Collect all N (RefSkip) operations from local reads
-/// 2. Map N ops to reference context coordinates
-/// 3. Find consensus introns (present in >50% of reads with N ops)
-/// 4. Remove consensus intronic bases from ref_ctx
-///
-/// ## Parameters
-///
-/// - `ref_ctx`: reference context bytes
-/// - `local_reads`: reads overlapping the variant region
-/// - `ref_start`: genomic start position of ref_ctx
-///
-/// ## Returns
-///
-/// A new `Vec<u8>` with intronic bases removed. If no consensus introns
-/// are found, returns a copy of the original ref_ctx.
-pub fn apply_consensus_splicing(
-    ref_ctx: &[u8],
-    local_reads: &[&Record],
-    ref_start: i64,
-) -> Vec<u8> {
-    let ref_end = ref_start + ref_ctx.len() as i64;
-
-    // Collect intron positions from reads (genomic coords)
-    let mut intron_counts: HashMap<(i64, i64), usize> = HashMap::new();
-    let mut reads_with_n = 0usize;
-
-    for record in local_reads {
-        let mut has_n = false;
-        let mut rpos = record.pos();
-        for op in record.cigar().iter() {
-            match op {
-                Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) | Cigar::Del(len) => {
-                    rpos += *len as i64;
-                }
-                Cigar::RefSkip(len) => {
-                    let intron_start = rpos;
-                    let intron_end = rpos + *len as i64;
-                    has_n = true;
-
-                    // Only count introns that overlap the ref_ctx window
-                    if intron_start < ref_end && intron_end > ref_start {
-                        *intron_counts.entry((intron_start, intron_end)).or_insert(0) += 1;
-                    }
-                    rpos += *len as i64;
-                }
-                Cigar::Ins(_) | Cigar::SoftClip(_) | Cigar::HardClip(_) | Cigar::Pad(_) => {}
-            }
-        }
-        if has_n {
-            reads_with_n += 1;
-        }
-    }
-
-    if reads_with_n == 0 || intron_counts.is_empty() {
-        return ref_ctx.to_vec();
-    }
-
-    // Find consensus introns (present in >50% of reads with N ops)
-    let threshold = reads_with_n / 2;
-    let mut consensus_introns: Vec<(i64, i64)> = intron_counts
-        .into_iter()
-        .filter(|&(_, count)| count > threshold)
-        .map(|(coords, _)| coords)
-        .collect();
-
-    if consensus_introns.is_empty() {
-        return ref_ctx.to_vec();
-    }
-
-    // Sort by start position (descending) so we can remove from right to left
-    // without invalidating earlier indices
-    consensus_introns.sort_by_key(|b| std::cmp::Reverse(b.0));
-
-    let mut result = ref_ctx.to_vec();
-    for (intron_start, intron_end) in &consensus_introns {
-        // Map genomic coordinates to ref_ctx indices
-        let ctx_start = (*intron_start - ref_start).max(0) as usize;
-        let ctx_end = ((*intron_end - ref_start) as usize).min(result.len());
-
-        if ctx_start < ctx_end && ctx_start < result.len() {
-            trace!(
-                "apply_consensus_splicing: removing intron [{}, {}) from context (ctx indices [{}, {}))",
-                intron_start, intron_end, ctx_start, ctx_end,
-            );
-            result.drain(ctx_start..ctx_end);
-        }
-    }
-
-    debug!(
-        "apply_consensus_splicing: snipped {} introns, context {} → {} bases",
-        consensus_introns.len(),
-        ref_ctx.len(),
-        result.len(),
-    );
-
-    result
-}
 
 
 #[cfg(test)]
@@ -669,34 +557,4 @@ mod tests {
         assert!(!has_splice_junction(&record));
     }
 
-    // ── apply_consensus_splicing tests ──
-
-    #[test]
-    fn test_splicing_no_introns() {
-        let cigar = CigarString(vec![Cigar::Match(10)]);
-        let record = build_record(&[b'A'; 10], &[30u8; 10], cigar, 0);
-        let reads: Vec<&Record> = vec![&record];
-        let result = apply_consensus_splicing(b"AAAAAGGGGG", &reads, 0);
-        assert_eq!(result, b"AAAAAGGGGG");
-    }
-
-    #[test]
-    fn test_splicing_consensus_intron() {
-        // 3 reads all have the same N op: skip bases 5-7 (genomic)
-        let cigar = CigarString(vec![
-            Cigar::Match(5),
-            Cigar::RefSkip(3),
-            Cigar::Match(2),
-        ]);
-        let r1 = build_record(&[b'A'; 7], &[30u8; 7], cigar.clone(), 0);
-        let r2 = build_record(&[b'A'; 7], &[30u8; 7], cigar.clone(), 0);
-        let r3 = build_record(&[b'A'; 7], &[30u8; 7], cigar, 0);
-        let reads: Vec<&Record> = vec![&r1, &r2, &r3];
-
-        // ref_ctx: 0123456789 (10 bases), intron at [5,8)
-        let ref_ctx = b"AAAAAXYZGG";
-        let result = apply_consensus_splicing(ref_ctx, &reads, 0);
-        // Should remove bases at positions 5,6,7 (XYZ)
-        assert_eq!(result, b"AAAAAGG");
-    }
 }

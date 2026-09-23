@@ -498,6 +498,28 @@ event). Per-read indel lengths are visible with `--trace`.
 
 ---
 
+## Splice-Aware Evidence (RNA) { #splice-aware-evidence }
+
+Spliced reads (CIGAR `N`) pass through a triage **before** any of the
+per-type checkers: a read testifies only through aligned bases (or a `D`
+op) at the discriminating positions, and an `N` spanning all of them
+means the read observes nothing there — it classifies neither AND is
+excluded from DP/fragment depth (samtools-pileup semantics). `D` is
+deletion evidence; `N` never is, so the call cannot flip on the
+aligner's D-vs-N representation choice. Indel ops directly after a
+splice `N` (`M-N-D-M`) get the same anchor/windowed inspection as ops
+after an `M` block, and Phase 3 never scores across a splice (window
+extraction and `check_complex` reconstruction both refuse N-crossing
+windows rather than stitch exon arms into a junction-chimeric
+sequence). At a pure-deletion locus whose anchor is spliced out, a
+junction read covering the **entire deleted span** with aligned bases
+counts REF (span-aligned REF testimony — the deletion is demonstrably
+absent); partial coverage or competing indel evidence keeps the read on
+its existing path. Details: [RNA Splice-Junction
+Handling](rna-splice-handling.md#the-evidence-rule-what-a-refskip-means).
+
+---
+
 ## MNP (Multi-Nucleotide Polymorphism)
 
 Multiple adjacent bases substituted simultaneously.

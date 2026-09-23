@@ -337,6 +337,15 @@ pub struct BaseCounts {
     /// Reads supporting ALT that span a splice junction — CIGAR N (SPL in VCF).
     #[pyo3(get)]
     pub splice_spanning_count: u32,
+    /// Reads excluded by the splice-skip triage: their CIGAR N spans every
+    /// discriminating position, so they observe nothing at this locus and
+    /// count toward neither DP nor DPF. Diagnostic only (feeds the
+    /// SPLICE_SKIP_DOMINANT flag); not an output column. At deletion loci a
+    /// large value with ad == 0 can mean the aligner represented a genuine
+    /// large deletion as a splice (STAR writes deletions ≥ alignIntronMin,
+    /// default 21bp, as N).
+    #[pyo3(get)]
+    pub splice_skip_excluded: u32,
 
     // ── GTF-informed annotation (None when no GTF provided) ──────────────
     /// Distance (bp) to nearest annotated exon boundary (EBD in VCF).

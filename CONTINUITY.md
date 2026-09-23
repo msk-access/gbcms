@@ -3,9 +3,66 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-17_
+_Last updated: 2026-09-18_
 
 ## Now
+**Issue #94 clusters A + B1 — DONE on `fix/rna-splice-aware-counting`
+(battery 5bc8f47 red → 56e703b green → B1 commit; not yet pushed/PR'd).** The rule: a read testifies only through aligned bases (or a D
+op) at the discriminating positions; N over all of them → neither + excluded
+from DP/DPF (splice_skip_triage + covers_locus, mirrored binned/legacy/
+per-transcript); D-vs-N never flips the call; post-N anchor/windowed
+inspection via helpers shared with the M-arm; Phase 3 never scores across a
+splice; FragmentEvidence::resolve counts structural ALT at qual 0 (BAQ
+stacking made ad>0/adf=0 diverge); SPLICE_SKIP_DOMINANT(n) diagnostic for
+STAR's N-represented large deletions. 19-agent adversarial review: 15
+confirmed findings all fixed or deliberately accepted+documented. Validated:
+b37 dedup RNA (DP drop pysam-exact) and FORTE hg38 GAPDH junction smoke
+(intronic DP 826→2; use `~/Downloads/pipeline_resources/gunzip_gtf/
+Homo_sapiens.GRCh38.111.gtf` for FORTE — Ensembl contigs, found 2026-09-18).
+
+**#94 B2a — DONE (same branch): span-aligned REF testimony** at
+pure-deletion loci whose anchor is spliced out: full deleted-span M
+coverage → REF (read + fragment level; is_ref_structural /
+has_structural_ref keep BAQ-zeroed span quals alive in consensus — the
+review caught the rdf mirror of the old adf bug pre-ship). FORTE: 823/824
+junction reads convert (rd 24→847/848, rdf 23→727=dpf; residual 95M92N1M
+covers 1 of 2 span bases → neither). Guards pinned: partial span, mixed
+M/D span, competing indels. 20-case battery. B2b (coordinate-mapped
+spliced haplotypes, delins-carrier tail only) stays gated on the FORTE
+sign-out MAF; pre-mRNA/intron-retention reads must stay genomic.
+
+**NOW → release 6.4.0:** push branch → PR → develop → cut release/6.4.0
+(version bump, CHANGELOG cut) → build container → run the 56-sample
+IMPACT harness (user's 6.3.1 baseline run of 2026-09-18, exact-flag
+mirror staged at ~/test/gbcms/dev_regression/ on HPC — repoint it at the
+rc container) + RNA smokes against the rc → acceptance: SNVs byte-identical
+to 6.3.1, indels move only in documented #91 directions → tag, main,
+publish. C++ GBCMS 1.2.4/1.2.5 found on HPC for the 6.5.0 head-to-head.
+
+**#94 cluster B1 — DONE (same branch, uncommitted→committed today):**
+consensus splicing of ref_context REMOVED (no coordinate map = corruption;
+its Phase-3 consumer unreachable; exon-contained reads mis-scored).
+ref_context is always genomic; the xfail flipped green; mq0_count now
+tallied before the strandedness filter in binned (matches legacy); two new
+regression pins (≥50bp band guard near junction; Phase-3 pangenome
+variant+sibling matrix DNA↔RNA mode-equivalence). Sonnet-model adversarial
+review (Fable subagents hit the monthly spend cap — model override in the
+workflow script is the mechanism): all confirmed findings fixed. Real data:
+b37 + FORTE counts unchanged.
+
+**Next: #94 B2 (evidence-gated) + remaining items** — measurement on FORTE
+GAPDH acceptor deletion: 824 junction reads end `neither` via the splice
+guards, and they observe the deleted span WITH ALIGNED BASES → the dominant
+recoverable population needs only a STRUCTURAL rule (span-aligned REF
+testimony at deletion loci whose anchor is spliced out), NOT the
+coordinate-mapped spliced-haplotype machinery (B2b, delins-carrier tail
+only; must keep pre-mRNA/intron-retention reads genomically scored). Then:
+strandedness gating decision remains open (order now consistent for mq0);
+RNA-BAQ measurement (junction-adjacent inserted bases are BAQ-unverifiable
+without --gtf suppression — pinned in the insertion contract test);
+per-transcript partial_alt is locus-level-only by design (no new columns).
+PR after B2a decision.
+
 **Issue #91 — wrong-length pure-indel fix: MERGED to develop (#93, 75062d6);
 issue closed.** Ships with the next minor release — the release branch cuts
 **6.4.0** per the CHANGELOG [Unreleased] callout. Three-regime taxonomy

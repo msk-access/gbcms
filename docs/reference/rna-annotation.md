@@ -221,5 +221,5 @@ counts are **per fragment** (a molecule's R1 and R2 are deduped to one vote):
 
 - [RNA Command](../cli/rna.md) — `--gtf` CLI option
 - [Output Formats](output-formats.md) — GTF-aware column reference
-- [RNA Splice Handling](rna-splice-handling.md) — BAQ and consensus intron snipping
+- [RNA Splice Handling](rna-splice-handling.md) — the splice-aware evidence rule and BAQ
 - [Architecture](architecture.md) — System overview with annotation layer
