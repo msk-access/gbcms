@@ -206,6 +206,38 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
         .map(|p| window_pad(&p.variant))
         .max()
         .unwrap_or(5);
+    // Widest candidate extent (span + pad): how far LEFT of a group's box a
+    // candidate's start can sit while still reaching it.
+    let max_candidate_extent = variants
+        .iter()
+        .map(|p| {
+            let len = p.variant.ref_allele.len() as i64;
+            len + if is_length_changing(&p.variant) { window_pad(&p.variant) } else { 0 }
+        })
+        .max()
+        .unwrap_or(1);
+    // Chromosome runs over the sorted index, computed ONCE, plus a parallel
+    // position array for binary-searching each pass's scan bounds — an
+    // isolated seed then costs O(log run) instead of O(run).
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    {
+        let mut rs = 0;
+        for k in 1..=indices.len() {
+            if k == indices.len()
+                || variants[indices[k]].variant.chrom != variants[indices[rs]].variant.chrom
+            {
+                runs.push((rs, k));
+                rs = k;
+            }
+        }
+    }
+    let mut run_of = vec![0usize; indices.len()];
+    for (ri, &(a, b)) in runs.iter().enumerate() {
+        for r in run_of.iter_mut().take(b).skip(a) {
+            *r = ri;
+        }
+    }
+    let pos_of: Vec<i64> = indices.iter().map(|&ix| variants[ix].variant.pos).collect();
 
     for i in 0..indices.len() {
         let idx = indices[i];
@@ -213,20 +245,12 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
             continue;
         }
 
-        let chrom = variants[idx].variant.chrom.clone();
-        // Contiguous run of same-chromosome candidates in the sorted index
-        // (the seed sits inside it). Each fixed-point pass re-scans this
-        // whole run: a late joiner's window can extend LEFT past candidates
-        // already skipped, and pads differ per variant, so a single forward
-        // pass misses transitive joins in both directions.
-        let mut c_start = i;
-        while c_start > 0 && variants[indices[c_start - 1]].variant.chrom == chrom {
-            c_start -= 1;
-        }
-        let mut c_end = i + 1;
-        while c_end < indices.len() && variants[indices[c_end]].variant.chrom == chrom {
-            c_end += 1;
-        }
+        // Same-chromosome run holding the seed (precomputed). Each
+        // fixed-point pass re-scans the box-reachable slice of it: a late
+        // joiner's window can extend LEFT past candidates already skipped,
+        // and pads differ per variant, so a single forward pass misses
+        // transitive joins in both directions.
+        let (c_start, c_end) = runs[run_of[i]];
 
         let seed = &variants[idx].variant;
         // Group reach as bounding boxes per criterion (matching the
@@ -248,7 +272,14 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
         // bounded by the run length.
         loop {
             let mut grew = false;
-            for &jdx in &indices[c_start..c_end] {
+            // Scan only the slice of the run whose positions could reach the
+            // current boxes (binary-searched; the cheap reject below stays
+            // exact for boundary cases).
+            let lo_bound = span_lo.min(win_lo).saturating_sub(max_candidate_extent);
+            let hi_bound = span_hi.max(win_hi).saturating_add(max_candidate_pad);
+            let k0 = c_start + pos_of[c_start..c_end].partition_point(|&p| p < lo_bound);
+            let k1 = c_start + pos_of[c_start..c_end].partition_point(|&p| p < hi_bound);
+            for &jdx in &indices[k0..k1] {
                 if assigned[jdx] || variants[jdx].gbcms_status != "PASS" {
                     continue;
                 }
@@ -317,7 +348,7 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
                 "Co-annotation group {}: {} variants at {}:{}-{} (window [{}, {}))",
                 group_id,
                 group_members.len(),
-                chrom,
+                variants[group_members[0]].variant.chrom,
                 span_lo + 1,
                 span_hi,
                 if win_lo == i64::MAX { span_lo } else { win_lo },

@@ -1705,7 +1705,7 @@ fn count_variant_from_cache(
         // read still counts toward DP/DPF and is recorded as
         // partial_alt/any_alt below.
         let claimed_by_sibling = sibling_claims_alt(
-            record, variant, &result, sibling_variants, effective_quals,
+            record, variant, &result, sibling_variants, effective_quals, min_baseq,
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
 
@@ -2280,7 +2280,7 @@ fn count_single_variant(
         // and ADF exclude it consistently; it is recorded as
         // partial_alt/any_alt below.
         let claimed_by_sibling = sibling_claims_alt(
-            &record, variant, &result, sibling_variants, effective_quals,
+            &record, variant, &result, sibling_variants, effective_quals, min_baseq,
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
 
@@ -2362,10 +2362,10 @@ fn count_single_variant(
         // is_n_base: a fragment is in the N class when the base at the variant
         // position was 'N' — proxied by base_qual==0 with no REF or ALT call.
         let tlen = mfsd::calc_physical_insert_size(&record);
-        // N heuristic uses the read's own classification (result.is_alt), not
-        // the sibling-downgraded is_alt: a claimed ALT read observed the
-        // locus and is not N-class.
-        let is_n_base = base_qual == 0 && !is_ref && !result.is_alt;
+        // Same explicit N flag as the binned path (set by the checkers when
+        // an N sits at a discriminating position); the old qual-0 heuristic
+        // mis-classified true third-allele reads as N-class.
+        let is_n_base = result.has_n_base;
 
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq());
 
@@ -2658,12 +2658,26 @@ fn window_haplotypes(v: &Variant, w_lo: i64, w_hi: i64) -> Option<(Vec<u8>, Vec<
 /// excluded from AD and ADF (the caller downgrades before fragment
 /// evidence). Reads that do not fully span the event, or splice-poisoned
 /// windows, keep their classification. Isolated variants are untouched.
+/// Mask sub-threshold and N bases to a sentinel byte that matches no
+/// haplotype base: the contest then charges them equally against every
+/// candidate instead of letting sequencing noise coincidentally vote for
+/// one — the same bases the BQ-aware classification masked (cross-backend
+/// quality contract).
+fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
+    for (b, &q) in seq.iter_mut().zip(quals.iter()) {
+        if q < min_baseq || *b == b'N' || *b == b'n' {
+            *b = 0;
+        }
+    }
+}
+
 fn sibling_claims_alt(
     record: &Record,
     variant: &Variant,
     result: &ClassifyResult,
     sibling_variants: &[Variant],
     quals: &[u8],
+    min_baseq: u8,
 ) -> bool {
     if !result.is_alt || sibling_variants.is_empty() {
         return false;
@@ -2684,10 +2698,12 @@ fn sibling_claims_alt(
         Some(h) => h,
         None => return false,
     };
-    let recon = reconstruct_span(record, quals, w_lo, w_hi);
+    let mut recon = reconstruct_span(record, quals, w_lo, w_hi);
     if recon.splice_skip || recon.seq.is_empty() {
         return false;
     }
+    let recon_quals = std::mem::take(&mut recon.quals);
+    mask_low_qual(&mut recon.seq, &recon_quals, min_baseq);
     let cost_alt = levenshtein(&recon.seq, &alt_hap);
     let cost_ref = levenshtein(&recon.seq, &ref_hap);
     if cost_alt >= cost_ref {
@@ -2700,7 +2716,12 @@ fn sibling_claims_alt(
         return true;
     }
 
-    // Test 2: probabilistic call on a pure indel row. Pure = anchor-preserved
+    // Test 2: probabilistic call on a pure indel row. Known tradeoff: a true
+    // carrier whose only evidence is soft-clipped (no I/D op anywhere) is
+    // also demoted here — measured to be a rare sensitivity tail (clip
+    // survey: 12/12 ITD loci I-op-dominant), it stays visible as
+    // partial_alt, and clip rescue is tracked separately (CLIP_CANDIDATES).
+    // Pure = anchor-preserved
     // deletion/insertion; a delins that merely has a 1-base side (e.g.
     // CAG>T) is complex and exempt (Phase 3 is its carriers' normal path).
     let ref_al = variant.ref_allele.as_bytes();
@@ -2734,10 +2755,12 @@ fn sibling_claims_alt(
         let recon_s = if (s_lo, s_hi) == (w_lo, w_hi) {
             recon.seq.clone()
         } else {
-            let r = reconstruct_span(record, quals, s_lo, s_hi);
+            let mut r = reconstruct_span(record, quals, s_lo, s_hi);
             if r.splice_skip || r.seq.is_empty() {
                 continue;
             }
+            let rq = std::mem::take(&mut r.quals);
+            mask_low_qual(&mut r.seq, &rq, min_baseq);
             r.seq
         };
         let own_c = levenshtein(&recon_s, &own_hap_s);
@@ -3104,7 +3127,7 @@ fn count_per_transcript(
             // variant's span, so REF testimony here is vacuous). Both still
             // count tx_dp.
             let claimed_by_sibling = sibling_claims_alt(
-                record, variant, &result, sibling_variants, effective_quals,
+                record, variant, &result, sibling_variants, effective_quals, min_baseq,
             );
             let is_alt = result.is_alt && !claimed_by_sibling;
             let mut is_ref = result.is_ref;
