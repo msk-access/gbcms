@@ -258,6 +258,7 @@ string is byte-identical in the MAF and the VCF.
 | `PASS` | `WARN_REF_CORRECTED` | REF ≥90% match; corrected to FASTA REF | ✅ |
 | `PASS` | `WARN_HOMOPOLYMER_DECOMP` | Passed, but the corrected/decomposed allele was used | ✅ |
 | `PASS` | `MULTI_ALLELIC` | Passed; overlaps a sibling variant at the same locus (sibling-ALT exclusion active) | ✅ |
+| `PASS` | `TRACT_CLUSTER` | Passed; shares a repeat-tract scan window with a co-annotated length-changing variant (exclusive AD assignment active) | ✅ |
 | `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
 | `FAIL` | `FETCH_FAILED` | Could not fetch the reference region | ❌ |
 | `FAIL` | `EMPTY_ALLELE` | Empty REF or ALT (malformed / non-left-anchored indel) | ❌ |

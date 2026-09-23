@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Changed — exclusive assignment at co-annotated tract clusters (user-visible)
+
+- **Tract-cluster grouping.** `assign_multi_allelic_groups` gains a second
+  membership criterion: length-changing variants (indels/delins — never
+  SNV/MNP) whose scan windows (`max(5, repeat_span+2)` each side) overlap
+  join a group transitively, even when their REF spans never touch. Members
+  whose spans truly intersect keep the `MULTI_ALLELIC` reason tag;
+  window-only members get the new `TRACT_CLUSTER` tag.
+- **AD-claiming contest.** In a group, an ALT read is demoted to
+  `partial_alt`/`any_alt` (excluded from AD *and* ADF) when a co-annotated
+  sibling explains it at least as well, by span-explanation cost
+  (Levenshtein of the read's CIGAR-projected span reconstruction vs each
+  candidate's ALT allele). Anchor-exact Phase 0 evidence is never
+  contested. Additionally, an alignment-phase (Phase 3) ALT whose own span
+  reconstruction does not confirm the allele exactly is demoted in a
+  contested tract — measured clusters carry unannotated ladder events that
+  probabilistic scoring otherwise absorbs.
+- **REF-side symmetry.** Sibling-claimed reads excluded from RD (all
+  paths, now including per-transcript) surface as `partial_alt` instead of
+  vanishing silently.
+- Validated against a signed-out ACCESS hypermutation cluster: per-row
+  fragment ALT counts land exactly on (or within counting-basis of)
+  sign-out where the previous windowed counting over-attributed 2–5×;
+  panels without co-annotated clusters are byte-identical.
+
 ## [6.4.0] - 2026-09-22
 
 > The changes below alter reported counts at wrong-length indel loci and at

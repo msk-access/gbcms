@@ -66,6 +66,7 @@ Status is two fields: `gbcms_status` (verdict `PASS`/`FAIL`) and `gbcms_status_r
 | **PASS** | **WARN_REF_CORRECTED** | REF allele ≥90% match; corrected to FASTA REF |
 | **PASS** | **WARN_HOMOPOLYMER_DECOMP** | Variant spans a homopolymer; dual-counted with corrected allele (corrected won) |
 | **PASS** | **MULTI_ALLELIC** | Variant overlaps another variant at the same locus; sibling ALT exclusion active |
+| **PASS** | **TRACT_CLUSTER** | Variant shares a repeat-tract scan window with a co-annotated length-changing variant (spans need not touch); sibling exclusion and exclusive AD assignment active |
 | **FAIL** | **REF_MISMATCH** | REF allele does not match the reference genome at the stated position |
 | **FAIL** | **FETCH_FAILED** | Could not fetch the reference region (chromosome not found, etc.) |
 
