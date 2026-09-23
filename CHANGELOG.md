@@ -61,7 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hand back reads that exclusive assignment gave a co-annotated sibling.
 - **Fixed: rescue audit leaked across samples.** In a multi-BAM run a later
   sample's row could show an earlier sample's `gbcms_rescue`.
-- Per-sample INFO outcome summary; warnings for anomalous outcomes.
+- Per-sample INFO outcome summary; warnings for anomalies (a component SNV
+  failing preparation). With `--mfsd-parquet`, a rescued row's record keeps
+  the MNP's coordinates but carries the adopted component's fragment sizes
+  (logged per sample).
 - `BaseCounts.with_ad()` removed from the Python bindings (no remaining
   callers).
 - Default runs (`--rescue-mnp` off) are unchanged.

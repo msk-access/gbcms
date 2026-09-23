@@ -237,14 +237,23 @@ BAMs):
   grouped MNP loses every read (ad 0).
 - **Audit hard-codes `original_alt=0`.**
 
-**Design (Python-only — no Rust, no FFI, no stub change).**
+**Status (2026-09-23).** Implemented on `feature/mnp-rescue-gate`: red battery
+041c733 → fix 3844052 → docs 3a06dc0. Real-data acceptance (below) pending.
+
+**Design (Python orchestration; the only Rust/stub change deletes
+`BaseCounts.with_ad`, which has no callers left).**
 1. *Gate:* candidate when PASS, MNP, `MNP_RESCUE_ELIGIBLE`, and
    `partial_alt > ad` (the existing `PARTIAL_DOMINANT` condition), replacing
    `ad == 0`. Population comparison, no tuned rate; ad 0 with partial > 0 is
    still covered.
 2. *Replace only if the component beats the haplotype:* best SNV `ad > ad`,
-   else record `outcome=haplotype_dominant` and keep the MNP counts (masked
-   full carriers can make a single position's SNV count lower than MNP ad).
+   else `outcome=no_improvement` and keep the MNP counts. The masked-full-
+   carrier case needs partial ≤ ad, so the gate excludes it — but review
+   found (and a synthetic battery confirmed) another source: reads with an
+   indel inside the block go to the complex path, count REF with
+   nearby-indel evidence (`partial_alt`), and no single-base count calls
+   them ALT. Legitimate decline, logged at DEBUG; decision logic lives in
+   the pure `_resolve_mnp_rescue` (unit-tested).
 3. *Adopt the winning SNV's whole `BaseCounts`,* not an ALT-side graft. Every
    count, fragment, strand, strand-bias, mFSD and RNA column then comes from
    one real counting pass, so all four counting invariants hold on rescued
@@ -257,8 +266,11 @@ BAMs):
    another component count REF at the winning position; reads covering the
    position but not the whole block count in dp).
 4. *Audit carries the MNP forensics* (they no longer live in the count
-   columns): `method=decomposed;original_ref=R;original_alt=A;original_partial=P;positions=chr:pos(R>A):n,...`
-   — `original_alt` keeps its key (now the true value, not 0).
+   columns): `method=decomposed;outcome=O;original_ref=R;original_alt=A;original_partial=P[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>,...]`
+   with outcomes rescued / skipped_grouped / no_improvement /
+   ref_validation_failed — `original_alt` keeps its key (now the true value,
+   not 0); a component whose synthetic SNV fails preparation reads
+   `ref_fail` (was a silent 0).
 5. *Diagnostics describe the row as written:* recompute `gbcms_diagnostic`
    for rescued rows from the adopted counts (keeps `MNP_DISC_RATIO`/
    `MNP_RESCUE_ELIGIBLE`); a non-empty `gbcms_rescue` is the record of why.
@@ -266,10 +278,20 @@ BAMs):
 6. *Skip grouped rows* (`multi_allelic_group` set): `outcome=skipped_grouped`;
    exclusive assignment owns those reads.
 7. *Reset `gbcms_rescue` per sample* before candidate selection (fixes the
-   leak; may land first as a standalone fix — a task was filed for it).
+   leak).
+8. *mFSD Parquet (found in review):* a rescued row's `--mfsd-parquet`
+   record keeps the MNP's coordinates with the adopted component's
+   fragment sizes (consistent with the row's mFSD columns; no new column —
+   documented and logged per sample, join to `gbcms_rescue`).
+9. *Found in pre-implementation review:* both count calls now share
+   `_engine_kwargs()` (the component re-count had a verbatim copy of the
+   main call's ~25 engine settings); diagnostics split into per-row
+   `_diagnostic_flags` so rescued rows reuse the same code; unused `snp_map`
+   and the quadratic per-position index lookup removed.
 
 **Files.** `src/gbcms/pipeline.py` (`_rescue_mnp_pass`, per-sample reset,
-diagnostics recompute for rescued rows); `cli.py` help + `models/core.py`
+diagnostics recompute for rescued rows); `rust/src/types.rs` + `_rs.pyi`
+(`with_ad` removed); `cli.py` help + `models/core.py`
 field descriptions (both commands); tests; docs `cli/dna.md`,
 `nextflow/parameters.md`, `reference/architecture.md` (candidate table,
 invariant-impact table → "invariants hold"), `reference/output-formats.md`
@@ -281,7 +303,9 @@ format change for downstream parsers).
 (a) component carriers + one masked stray full read → rescued, row equals
 the winning SNV's counts, four invariants asserted on the written row,
 audit carries original ref/alt/partial; (b) cis carriers (ad > partial) →
-untouched; (c) best SNV ≤ ad → `haplotype_dominant`, counts untouched;
+untouched; (c) indel-disrupted carriers (1bp insertion inside the block)
+→ `no_improvement`, counts untouched, plus outcome-resolution unit tests
+(ref_validation_failed and leftmost tie-break are unreachable through a BAM);
 (d) grouped MNP → `skipped_grouped`; (e) two BAMs in one run → second
 sample's `gbcms_rescue` reflects only itself; (f) rescue off → output
 byte-identical to today. Replace `test_rescue_skips_nonzero_ad` with the

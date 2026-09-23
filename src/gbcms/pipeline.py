@@ -222,12 +222,13 @@ def _resolve_mnp_rescue(
     Returns ``(outcome, index of the adopted component)``:
       - ``rescued``: the best component (highest ad; leftmost on ties) beats
         the haplotype's ``ad``.
-      - ``no_improvement``: no counted component beats ``ad``. For consistent
-        counts the candidate gate (``partial_alt > ad``) rules this out — every
-        partial read matches ALT at an unmasked discriminating position, so the
-        best component holds at least ``(partial_alt + ad) / 2`` reads — so the
-        caller treats it as an anomaly.
-      - ``ref_validation_failed``: no position could be counted.
+      - ``no_improvement``: no counted component beats ``ad``. The partial
+        evidence was not component carriers — e.g. reads with an indel inside
+        the block, which the complex path counts as REF with nearby-indel
+        evidence (``partial_alt``) and no single-base count calls ALT. The
+        row correctly keeps the MNP's counts.
+      - ``ref_validation_failed``: no component SNV survived preparation. The
+        MNP itself passed REF validation, so the caller logs this as an anomaly.
     """
     counted = [(ad, idx) for idx, ad in enumerate(component_ads) if ad is not None]
     if not counted:
@@ -876,7 +877,8 @@ class Pipeline:
             outcomes[outcome] += 1
             if best is None:
                 pv.gbcms_rescue = _format_rescue_audit(outcome, original, entries)
-                logger.warning(
+                logger.log(
+                    logging.WARNING if outcome == "ref_validation_failed" else logging.DEBUG,
                     "MNP rescue: %s:%d %s>%s not rescued (%s) — MNP ad=%d partial_alt=%d, "
                     "components %s; counts left as the MNP evaluation",
                     v.chrom,
@@ -920,6 +922,13 @@ class Pipeline:
             logger.info(
                 "Observations Parquet for %s records the MNP evaluation of %d rescued row(s); "
                 "their written counts are the adopted component's (see gbcms_rescue)",
+                sample_name,
+                outcomes["rescued"],
+            )
+        if outcomes["rescued"] and self.config.output.mfsd_parquet:
+            logger.info(
+                "mFSD Parquet for %s: %d rescued row(s) keep the MNP's coordinates but carry "
+                "the adopted component's fragment sizes (see gbcms_rescue in the MAF/VCF)",
                 sample_name,
                 outcomes["rescued"],
             )

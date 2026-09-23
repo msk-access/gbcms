@@ -26,8 +26,11 @@ calls share `_engine_kwargs()` so components classify reads exactly like the mai
 ## `gbcms_rescue` (built only by `_format_rescue_audit`)
 `method=decomposed;outcome=<rescued|skipped_grouped|no_improvement|ref_validation_failed>;original_ref=R;original_alt=A;original_partial=P[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>,...]`
 - Reset for every sample (the prepared list is shared across BAMs).
-- `no_improvement` is unreachable for consistent counts (best component ≥
-  (partial_alt + ad)/2) → logged WARNING; so is `ref_validation_failed`.
+- `no_improvement` is legitimate: partial evidence from indel-disrupted reads
+  (complex path: REF + nearby-indel evidence) that no single-base count calls ALT.
+  `ref_validation_failed` is an anomaly → WARNING. `ref_fail` marks a failed position.
+- `--observations-parquet` keeps the MNP evaluation and `--mfsd-parquet` keeps the MNP's
+  coordinates for rescued rows (both logged per sample).
 
 ## Threshold (`--rescue-mnp-threshold`, 0.0–1.0)
 `MNP_RESCUE_ELIGIBLE` when disc/len ≤ threshold. 1.0 (default) = all MNPs; 0.5 = sparse

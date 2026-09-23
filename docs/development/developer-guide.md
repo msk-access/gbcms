@@ -238,7 +238,8 @@ gbcms dna --verbose --rescue-mnp --variants input.maf --bam sample:sample.bam --
 # INFO    — "MNP rescue for SAMPLE: rescued=2, skipped_grouped=1 (0.342s)"   (per-sample outcome summary)
 # DEBUG   — "MNP rescue: 5:1295250 GAGGG>AAGGA rescued — adopted 5:1295250(G>A) (ad 1 → 88, rd 486 → 487)"
 # DEBUG   — "MNP rescue: ... skipped — co-annotated group 3 owns its reads"
-# WARNING — "MNP rescue: ... not rescued (no_improvement|ref_validation_failed) ..."  (anomaly: investigate)
+# DEBUG   — "MNP rescue: ... not rescued (no_improvement) ..."  (partial evidence was not component carriers)
+# WARNING — "MNP rescue: ... not rescued (ref_validation_failed) ..."  (anomaly: investigate)
 # WARNING — "MNP rescue: synthetic SNV ... failed preparation (...) — reported as ref_fail"
 ```
 

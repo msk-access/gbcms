@@ -432,6 +432,9 @@ Consequences to keep in mind when reading a rescued row:
   germline VAF. `gbcms_rescue` shows the per-position split.
 - With `--observations-parquet`, the Parquet records the MNP evaluation; a rescued row's
   counts come from the adopted component (logged per sample).
+- With `--mfsd-parquet`, a rescued row's record keeps the MNP's coordinates but carries the
+  adopted component's fragment sizes — consistent with the row's mFSD columns; join to the
+  MAF/VCF `gbcms_rescue` to tell rescued rows apart (logged per sample).
 
 ### Audit Trail (`gbcms_rescue`)
 
@@ -442,8 +445,8 @@ variant list is shared across the BAMs of a run). For candidates:
 |:--------|:--------|:---------------|
 | `rescued` | Best component beats the MNP's `ad` | Adopted component's |
 | `skipped_grouped` | MNP is in a co-annotated group | MNP's |
-| `no_improvement` | No component beats the MNP's `ad` — unreachable for consistent counts (every partial read matches ALT at an unmasked discriminating position, so the best component holds ≥ (partial_alt + ad)/2 reads); logged as a warning | MNP's |
-| `ref_validation_failed` | No component SNV survived preparation; logged as a warning | MNP's |
+| `no_improvement` | No component beats the MNP's `ad`: the partial evidence was not component carriers — e.g. reads with an indel inside the block, which the complex path counts as REF with nearby-indel evidence and no single-base count calls ALT. Rescue correctly declines | MNP's |
+| `ref_validation_failed` | No component SNV survived preparation — an anomaly (the MNP itself passed REF validation); logged as a warning | MNP's |
 
 `original_ref` / `original_alt` / `original_partial` always carry the MNP's own counts.
 A position whose synthetic SNV failed preparation is listed as `…:ref_fail`, never `0`.

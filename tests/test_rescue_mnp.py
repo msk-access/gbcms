@@ -17,9 +17,11 @@ Covers:
 6.  MNP in a co-annotated group → skipped, exclusive assignment untouched
 7.  Two BAMs in one run → a sample's audit never leaks into the next sample
 8.  Flag off → MNP counts as the engine produced them, no rescue column
-9.  Outcome resolution: tie-break, and the defensive no_improvement /
-    ref_validation_failed outcomes no consistent BAM can reach
-10. Audit format
+9.  Indel-disrupted partial evidence (no component carriers) → no_improvement,
+    counts and diagnostics untouched
+10. Outcome resolution: tie-break, no_improvement, and ref_validation_failed
+    (a component SNV failing preparation — not reachable through a BAM)
+11. Audit format
 """
 
 import csv
@@ -161,14 +163,18 @@ def _reference_sequence():
 REF = _reference_sequence()
 
 
-def _read(name, block, i, low_bq_block_offset=None):
-    """A 100bp forward/reverse-alternating read carrying ``block`` at the locus."""
+def _read(name, block, i, low_bq_block_offset=None, block_cigar=((0, 5),)):
+    """A forward/reverse-alternating read carrying ``block`` (aligned as
+    ``block_cigar``) in place of the reference block, with 40-44bp of left
+    flank and flank to 100 reference bases on the right."""
     start = BLOCK_START - 40 - (i % 5)
-    seq = REF[start:BLOCK_START] + block + REF[BLOCK_START + 5 : start + READ_LEN]
-    quals = [30] * READ_LEN
+    left = REF[start:BLOCK_START]
+    right = REF[BLOCK_START + 5 : start + READ_LEN]
+    quals = [30] * (len(left) + len(block) + len(right))
     if low_bq_block_offset is not None:
-        quals[BLOCK_START - start + low_bq_block_offset] = 5
-    return make_read(name, seq, start, ((0, READ_LEN),), flag=16 if i % 2 else 0, quals=quals)
+        quals[len(left) + low_bq_block_offset] = 5
+    cigar = ((0, len(left)),) + tuple(block_cigar) + ((0, len(right)),)
+    return make_read(name, left + block + right, start, cigar, flag=16 if i % 2 else 0, quals=quals)
 
 
 def _component_carrier_reads():
@@ -185,6 +191,17 @@ def _cis_carrier_reads():
     """20 REF + 10 full-haplotype carriers."""
     reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
     reads += [_read(f"cis_{i}", ALT_BLOCK, i) for i in range(10)]
+    return reads
+
+
+def _indel_disrupted_reads():
+    """20 REF + 10 reads carrying a 1bp insertion inside the block and REF
+    bases otherwise: no component of the MNP, but the complex path counts them
+    REF with nearby-indel evidence, so partial_alt dominates ad."""
+    reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
+    reads += [
+        _read(f"ins_{i}", "GAGTGG", i, block_cigar=((0, 3), (1, 1), (0, 2))) for i in range(10)
+    ]
     return reads
 
 
@@ -313,6 +330,21 @@ def test_grouped_mnp_is_skipped_and_keeps_exclusive_assignment(tmp_path):
     snv = rescued[1]
     assert snv["gbcms_rescue"] == ""
     assert {c: snv[c] for c in count_cols} == {c: plain[1][c] for c in count_cols}
+
+
+def test_indel_partial_evidence_is_declined_not_rescued(tmp_path):
+    plain = _run(tmp_path, {"S": _indel_disrupted_reads()}, [MNP_ROW], rescue=False)["S"][0]
+    (row,) = _run(tmp_path, {"S": _indel_disrupted_reads()}, [MNP_ROW])["S"]
+
+    assert int(row["partial_alt"]) > int(row["alt_count"])  # a candidate
+    count_cols = ("ref_count", "alt_count", "partial_alt", "alt_count_fragment", "total_count")
+    assert {c: row[c] for c in count_cols} == {c: plain[c] for c in count_cols}
+    assert row["gbcms_diagnostic"] == plain["gbcms_diagnostic"]
+    audit = _audit(row)
+    assert audit["outcome"] == "no_improvement"
+    assert "adopted" not in audit
+    assert re.fullmatch(r"(chr)?1:201\(G>A\):0,(chr)?1:205\(G>A\):0", audit["positions"])
+    _assert_counting_invariants(row)
 
 
 def test_rescue_audit_does_not_leak_into_later_samples(tmp_path):
