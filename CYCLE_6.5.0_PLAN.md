@@ -104,9 +104,13 @@ RECQL acceptor SNV 63 / 303 (annotated 206; anchored novel exon-skip 50+36);
 B2M exon-removing 360bp deletion 8,262 / 42 (dominant excluded junction is
 the novel E1→E3 skip, 41).
 1. *Gate (shared):* the variant's REF span reaches within two bases of an
-   annotated exon boundary (`splice_site_in_range(s-1, e+1)`). Replaces the
-   planned `exon_boundary_dist ≤ 2`: B2M's deletion starts 17bp from a
-   boundary but contains both of exon 2's splice sites.
+   annotated intron boundary on the gene's strand
+   (`intron_boundary_in_range(s-1, e+1, gene_strand)` — true donor/acceptor
+   sites only; review found the first cut's `splice_sites` lookup admitted
+   transcript termini and antisense genes' sites). Replaces the planned
+   `exon_boundary_dist ≤ 2`: B2M's deletion starts 17bp from a boundary but
+   contains both of exon 2's splice sites. Both markers also speak only above
+   ASJD's own junction-evidence floors (10 REF-side / 5 ALT-side fragments).
 2. *`RETENTION_DOMINANT(n)`:* excluded fragments > classified fragments AND
    classified fragments mostly junction-free. Describes observability (the
    genotyping reads are the retention population; `vaf` is retention-VAF),

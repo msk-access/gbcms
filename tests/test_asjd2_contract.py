@@ -414,3 +414,61 @@ def test_markers_absent_without_gtf(tmp_path):
     assert result.exit_code == 0, result.output
     (r,) = list(read_maf_output(glob.glob(str(outdir / "*.maf"))[0]))
     assert "asjd_diagnostic" not in r
+
+
+def test_markers_need_junction_evidence_floors(tmp_path):
+    """Guard: 3 spliced-over fragments vs 1 classified, and a 2-fragment
+    anchored novel junction vs 0 ALT, are too little evidence to speak on.
+    Both markers stay silent below ASJD's own junction floors (10 REF-side
+    fragments for the spliced population, 5 ALT-side for a novel junction)."""
+    ref = _mk_ref()
+    rows = [(DONOR_SNV + 1, "G", "A")]
+    reads = (
+        _through(ref, DONOR_SNV, "G", 1, "ret")
+        + _spliced(ref, E1[1], E2[0], 3, "wt")
+        + _spliced(ref, E1[1], E3[0], 2, "skip")
+    )
+    res = _run(
+        tmp_path,
+        _vcf(tmp_path, rows),
+        _bam(tmp_path, ref, reads),
+        _fasta(tmp_path, ref),
+        _gtf(tmp_path),
+    )
+    (r,) = res
+    flags = _flags(r)
+    assert not any(
+        f.startswith(("RETENTION_DOMINANT", "NOVEL_JUNC_AT_SPLICE_LOSS")) for f in flags
+    ), flags
+
+
+def _pair(reads_r1, reads_r2):
+    """Give mate pairs a shared QNAME and proper-pair flags. R1 is
+    reverse-strand and R2 forward: both sense for a '+' gene under dUTP."""
+    for i, (a, b) in enumerate(zip(reads_r1, reads_r2, strict=True)):
+        name = f"{a.query_name}_frag{i}"
+        a.query_name, b.query_name = name, name
+        a.flag = 1 | 2 | 16 | 64  # paired, proper, reverse, read1
+        b.flag = 1 | 2 | 32 | 128  # paired, proper, mate reverse, read2
+    return reads_r1 + reads_r2
+
+
+def test_marker_counts_are_per_fragment(tmp_path):
+    """Both mates of every fragment carry the same evidence: 12 fragments
+    spliced over the donor (24 reads) and 8 retained ALT fragments (16
+    reads). The marker count is fragments, not reads: RETENTION_DOMINANT(12)."""
+    ref = _mk_ref()
+    rows = [(DONOR_SNV + 1, "G", "A")]
+    wt = _pair(_spliced(ref, E1[1], E2[0], 12, "wt1"), _spliced(ref, E1[1], E2[0], 12, "wt2"))
+    ret = _pair(_through(ref, DONOR_SNV, "A", 8, "ra1"), _through(ref, DONOR_SNV, "A", 8, "ra2"))
+    res = _run(
+        tmp_path,
+        _vcf(tmp_path, rows),
+        _bam(tmp_path, ref, wt + ret),
+        _fasta(tmp_path, ref),
+        _gtf(tmp_path),
+    )
+    (r,) = res
+    assert int(r["alt_count"]) == 16, "read-level ALT counts both mates"
+    assert int(r["alt_count_fragment"]) == 8
+    assert "RETENTION_DOMINANT(12)" in _flags(r), r["asjd_diagnostic"]

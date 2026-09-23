@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `asjd_diagnostic` gains two markers that read the population the
   splice-aware evidence rule excludes — fragments whose CIGAR `N` spans the
-  variant — at variants within two bases of an annotated exon boundary:
+  variant — at variants within two bases of an annotated intron boundary
+  on the gene's strand, above ASJD's own junction-evidence floors:
   `RETENTION_DOMINANT(n)` (spliced-over fragments dominate a junction-free
   classified population, so `vaf` is the retention-population VAF) and
   `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` (an anchored, unannotated junction

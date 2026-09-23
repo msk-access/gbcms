@@ -20,6 +20,7 @@
 //!           ├── exon_trees: HashMap<u32, COITree>  (interval queries)
 //!           ├── splice_sites: HashMap<u32, Vec<i32>>  (sorted boundary positions)
 //!           ├── transcript_introns: HashMap<String, Vec<(i32, i32)>>
+//!           ├── intron_boundaries: HashMap<u32, Vec<(i32, char)>>  (derived: donor/acceptor sites + strand)
 //!           └── chrom_map: HashMap<String, u32>
 //! ```
 //!
@@ -101,6 +102,12 @@ pub struct AnnotationIndex {
     /// Used by per-transcript compatibility and ASJD.
     transcript_introns: HashMap<String, TranscriptIntrons>,
 
+    /// Chromosome → sorted (position, strand) of every annotated intron
+    /// boundary: true donor/acceptor sites only (no transcript termini).
+    /// Derived in `new()` from `transcript_introns` + exon strands — never
+    /// serialized, so the GTF cache format is unaffected.
+    intron_boundaries: HashMap<u32, Vec<(i32, char)>>,
+
     /// Chromosome name → numeric ID mapping (e.g., "1" → 0, "X" → 22).
     /// Normalized: no "chr" prefix.
     chrom_map: HashMap<String, u32>,
@@ -127,6 +134,31 @@ pub(crate) fn build_exon_trees(exons: &[ExonRecord]) -> HashMap<u32, COITree<usi
         .collect()
 }
 
+/// Per-chromosome sorted, deduplicated (position, strand) list of annotated
+/// intron boundaries (each intron's start and exclusive end), with each
+/// transcript's strand taken from its exons ('.' when unstranded or unknown).
+fn derive_intron_boundaries(
+    exons: &[ExonRecord],
+    transcript_introns: &HashMap<String, TranscriptIntrons>,
+) -> HashMap<u32, Vec<(i32, char)>> {
+    let strand_of: HashMap<&str, char> =
+        exons.iter().map(|e| (e.transcript_id.as_str(), e.strand)).collect();
+    let mut out: HashMap<u32, Vec<(i32, char)>> = HashMap::new();
+    for ti in transcript_introns.values() {
+        let strand = strand_of.get(ti.transcript_id.as_str()).copied().unwrap_or('.');
+        let v = out.entry(ti.chrom_id).or_default();
+        for &(a, b) in &ti.introns {
+            v.push((a, strand));
+            v.push((b, strand));
+        }
+    }
+    for v in out.values_mut() {
+        v.sort_unstable();
+        v.dedup();
+    }
+    out
+}
+
 impl AnnotationIndex {
     /// Create a new AnnotationIndex from pre-parsed components.
     ///
@@ -141,15 +173,20 @@ impl AnnotationIndex {
         let n_chroms = exon_trees.len();
         let n_exons = exons.len();
         let n_transcripts = transcript_introns.len();
+        let intron_boundaries = derive_intron_boundaries(&exons, &transcript_introns);
         debug!(
-            "AnnotationIndex built: {} chromosomes, {} exons, {} transcripts",
-            n_chroms, n_exons, n_transcripts,
+            "AnnotationIndex built: {} chromosomes, {} exons, {} transcripts, {} intron boundaries",
+            n_chroms,
+            n_exons,
+            n_transcripts,
+            intron_boundaries.values().map(|v| v.len()).sum::<usize>(),
         );
         Self {
             exon_trees,
             exons,
             splice_sites,
             transcript_introns,
+            intron_boundaries,
             chrom_map,
         }
     }
@@ -208,22 +245,30 @@ impl AnnotationIndex {
         }
     }
 
-    /// Whether any annotated exon boundary lies in `[lo, hi]` (inclusive,
-    /// 0-based boundary coordinates as stored in `splice_sites`: an exon's
-    /// start and its exclusive end). Binary search — O(log n).
-    ///
-    /// `splice_sites` also holds transcript termini (first exon start, last
-    /// exon end). Callers that need true splice sites combine this with
-    /// evidence that reads actually splice at the locus.
-    pub fn splice_site_in_range(&self, chrom: &str, lo: i64, hi: i64) -> bool {
-        let sites = match self.chrom_map.get(chrom).and_then(|id| self.splice_sites.get(id)) {
+    /// Whether an annotated intron boundary (a true donor/acceptor site —
+    /// transcript termini excluded) lies in `[lo, hi]` (inclusive, 0-based:
+    /// an intron's first base or its exclusive end). With `strand` given,
+    /// only boundaries of transcripts on that strand (or unstranded ones)
+    /// count, so an antisense gene's splice sites cannot stand in for the
+    /// variant's own. Binary search to the range, then a short scan.
+    pub fn intron_boundary_in_range(
+        &self,
+        chrom: &str,
+        lo: i64,
+        hi: i64,
+        strand: Option<char>,
+    ) -> bool {
+        let sites = match self.chrom_map.get(chrom).and_then(|id| self.intron_boundaries.get(id)) {
             Some(s) => s,
             None => return false,
         };
         let lo = lo.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
         let hi = hi.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
-        let idx = sites.partition_point(|&s| s < lo);
-        idx < sites.len() && sites[idx] <= hi
+        let idx = sites.partition_point(|&(p, _)| p < lo);
+        sites[idx..]
+            .iter()
+            .take_while(|&&(p, _)| p <= hi)
+            .any(|&(_, s)| strand.is_none_or(|want| s == want || s == '.'))
     }
 
     // ─── Per-Transcript Counting ─────────────────────────────────────────────
@@ -486,16 +531,18 @@ mod tests {
     // ── nearest_splice_distance tests ──
 
     #[test]
-    fn test_splice_site_in_range() {
-        let idx = build_test_index(); // sites 100, 200, 300, 400
-        assert!(idx.splice_site_in_range("1", 200, 200), "exact site, degenerate range");
-        assert!(idx.splice_site_in_range("1", 198, 201), "site inside range");
-        assert!(idx.splice_site_in_range("1", 150, 200), "site at inclusive upper end");
-        assert!(idx.splice_site_in_range("1", 300, 350), "site at inclusive lower end");
-        assert!(!idx.splice_site_in_range("1", 201, 299), "between sites");
-        assert!(!idx.splice_site_in_range("1", 401, 900), "past the last site");
-        assert!(!idx.splice_site_in_range("1", 0, 99), "before the first site");
-        assert!(!idx.splice_site_in_range("2", 0, 1000), "unannotated chromosome");
+    fn test_intron_boundary_in_range() {
+        // build_test_index: exons [100,200) [300,400) on '+' → intron [200,300).
+        // splice_sites also holds termini 100 and 400; intron boundaries must not.
+        let idx = build_test_index();
+        assert!(idx.intron_boundary_in_range("1", 200, 200, None), "donor boundary, degenerate range");
+        assert!(idx.intron_boundary_in_range("1", 298, 301, None), "acceptor boundary inside range");
+        assert!(idx.intron_boundary_in_range("1", 150, 200, Some('+')), "same strand, inclusive upper end");
+        assert!(!idx.intron_boundary_in_range("1", 150, 200, Some('-')), "antisense query ignores '+' introns");
+        assert!(!idx.intron_boundary_in_range("1", 95, 105, None), "transcript start is not a splice site");
+        assert!(!idx.intron_boundary_in_range("1", 395, 405, None), "transcript end is not a splice site");
+        assert!(!idx.intron_boundary_in_range("1", 201, 299, None), "inside the intron, no boundary");
+        assert!(!idx.intron_boundary_in_range("2", 0, 1000, None), "unannotated chromosome");
     }
 
     #[test]
