@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — ASJD-2 splice-disruption markers (RNA + GTF)
+
+- `asjd_diagnostic` gains two markers that read the population the
+  splice-aware evidence rule excludes — fragments whose CIGAR `N` spans the
+  variant — at variants within two bases of an annotated intron boundary
+  on the gene's strand, above ASJD's own junction-evidence floors:
+  `RETENTION_DOMINANT(n)` (spliced-over fragments dominate a junction-free
+  classified population, so `vaf` is the retention-population VAF) and
+  `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` (an anchored, unannotated junction
+  on those fragments outnumbers confirmed ALT — the mutant allele's exon-skip
+  or alternative-site outcome). Both are population comparisons with no tuned
+  rates; they previously surfaced only as `LOW_REF_JUNC;LOW_ALT_JUNC`
+  (issue #97). No new columns.
+- Docs now state the `asjd_*_junction` coordinate convention (0-based,
+  half-open intron).
+
 ### ⚠️ Changed — exclusive assignment at co-annotated tract clusters (user-visible)
 
 - **Tract-cluster grouping.** `assign_multi_allelic_groups` gains a second

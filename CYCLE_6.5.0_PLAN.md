@@ -93,22 +93,38 @@ variant's effect is total: (a) allele-specific intron retention (TP53 case:
 (b) splice-destroying deletions expressed as novel junctions (B2M 360bp del
 → 41-read exon-2-skip junction among excluded reads).
 
-**Design (diagnostic strings only, structural rules).**
-1. *Retention-dominant marker* — at variants within splice regions
-   (`exon_boundary_dist ≤ 2`, GTF-gated): if allele-classified reads with a
-   junction = 0 while `splice_skip_excluded > dp` (excluded-spliced
-   population dominates the classified one), append
-   `RETENTION_DOMINANT(n_excluded)` to `asjd_diagnostic`. Population
-   comparison, no tuned rate.
-2. *Novel-junction marker* — deletion-type loci where
-   `splice_skip_excluded > ad`: collect the junction spectrum of the
-   excluded reads (the engine already walks their CIGARs in triage; add a
-   bounded per-variant junction counter behind the existing GTF gate),
-   test top junctions against `AnnotationIndex.splice_sites`; if a
-   non-annotated junction with depth > ad exists whose donor or acceptor
-   falls inside/adjacent to the deleted span, append
-   `NOVEL_JUNC_AT_SPLICE_LOSS(n@donor-acceptor)`.
-3. Both markers RNA+GTF only; absent otherwise (column gating rule).
+**Design (as implemented — revised by measuring the excluded populations
+on the three FORTE cases before coding).** Both markers live in
+`detect_asjd` (it already re-classifies every read in the window), reading
+a new excluded-population tally (reusing `JunctionTally`, fragment-deduped,
+junctions over the locus only) — no new BaseCounts fields, no columns.
+Measured populations (classified / excluded fragments): TP53 donor SNV
+372 / 1,466 (dominant excluded junction annotated; 27 anchored novel);
+RECQL acceptor SNV 63 / 303 (annotated 206; anchored novel exon-skip 50+36);
+B2M exon-removing 360bp deletion 8,262 / 42 (dominant excluded junction is
+the novel E1→E3 skip, 41).
+1. *Gate (shared):* the variant's REF span reaches within two bases of an
+   annotated intron boundary on the gene's strand
+   (`intron_boundary_in_range(s-1, e+1, gene_strand)` — true donor/acceptor
+   sites only; review found the first cut's `splice_sites` lookup admitted
+   transcript termini and antisense genes' sites). Replaces the planned
+   `exon_boundary_dist ≤ 2`: B2M's deletion starts 17bp from a boundary but
+   contains both of exon 2's splice sites. Both markers also speak only above
+   ASJD's own junction-evidence floors (10 REF-side / 5 ALT-side fragments).
+2. *`RETENTION_DOMINANT(n)`:* excluded fragments > classified fragments AND
+   classified fragments mostly junction-free. Describes observability (the
+   genotyping reads are the retention population; `vaf` is retention-VAF),
+   not causation — allele specificity is read from `vaf` (TP53 99%, RECQL
+   53%).
+3. *`NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)`:* applies to any variant type
+   at the gate, not only deletions (the RECQL SNV shows the same exon-skip
+   signal). Top unannotated junction on the excluded fragments that is
+   anchored to an annotated site (±`JUNCTION_TOLERANCE`) and is not the
+   deletion itself written as a splice (same length, at the locus) must be
+   carried by more fragments than confirm ALT. The plan's "donor/acceptor
+   inside the deleted span" test was dropped: an exon skip's endpoints lie
+   outside the deletion by construction.
+4. Both computed before ASJD's no-junction early return; RNA+GTF only.
 
 **Files.** `rust/src/counting/engine.rs` (triage-adjacent junction counter;
 ASJD assembly at the `detect_asjd` call site), `annotation/` lookup,
