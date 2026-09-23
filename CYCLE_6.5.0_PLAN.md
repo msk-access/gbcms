@@ -238,7 +238,13 @@ BAMs):
 - **Audit hard-codes `original_alt=0`.**
 
 **Status (2026-09-23).** Implemented on `feature/mnp-rescue-gate`: red battery
-041c733 → fix 3844052 → docs 3a06dc0. Real-data acceptance (below) pending.
+041c733 → fix 3844052 → docs 3a06dc0 → review fixes 9ec1373. Real-data
+acceptance met on the IMPACT harness sample: TERT GAGGG>AAGGA rescue OFF
+486/1/88 (ref/alt/partial) → ON 483/93/0 vs sign-out 484/93, audit
+`positions=5:1295250(G>A):93,5:1295254(G>A):1`; the sample's seven
+dinucleotide MNPs identical OFF vs ON. Flag-off harness reruns (complex-cluster,
+ACCESS, FLT3/MSI/FORTE) not repeated — the default-path refactors were
+reviewed behavior-neutral and the full suite is unchanged.
 
 **Design (Python orchestration; the only Rust/stub change deletes
 `BaseCounts.with_ad`, which has no callers left).**
