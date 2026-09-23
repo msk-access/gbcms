@@ -70,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hand back reads that exclusive assignment gave a co-annotated sibling.
 - **Fixed: rescue audit leaked across samples.** In a multi-BAM run a later
   sample's row could show an earlier sample's `gbcms_rescue`.
+- **Rescued rows say so:** `gbcms_diagnostic` (MAF column, VCF `GD`) gains
+  `RESCUED_COMPONENT(chrom:pos:REF>ALT)` on every rescued row, each rescue
+  logs a WARNING (the component and the MNP's own counts), and enabling
+  `--rescue-mnp` logs a WARNING that rescued rows report a component.
+- **Fixed: VCF `GR` was split by parsers.** The audit's positions list was
+  comma-separated and VCF parsers (htslib/pysam) split a comma-bearing
+  Number=1 INFO value, silently truncating the audit. Positions are now
+  joined with `+`; the MAF column and VCF `GR` carry identical content.
 - Per-sample INFO outcome summary; warnings for anomalies (a component SNV
   failing preparation). With `--mfsd-parquet`, a rescued row's record keeps
   the MNP's coordinates but carries the adopted component's fragment sizes

@@ -30,8 +30,11 @@ Best component (highest `ad`, leftmost on ties) must beat the MNP's `ad`; its wh
 calls share `_engine_kwargs()` so components classify reads exactly like the main count.
 
 ## `gbcms_rescue` (built only by `_format_rescue_audit`)
-`method=decomposed;outcome=<rescued|skipped_grouped|haplotype_confirmed|no_improvement|ref_validation_failed>;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>,...]`
-- Reset for every sample (the prepared list is shared across BAMs).
+`method=decomposed;outcome=<rescued|skipped_grouped|haplotype_confirmed|no_improvement|ref_validation_failed>;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>+...]`
+- Reset for every sample (the prepared list is shared across BAMs). Positions join with `+`,
+  never `,` — VCF emits it as the Number=1 `GR` INFO and parsers split commas.
+- Rescued rows: `RESCUED_COMPONENT(chrom:pos:REF>ALT)` appended to `gbcms_diagnostic`, a
+  WARNING per row, and a WARNING when `--rescue-mnp` is enabled (counts are replaced — opt-in).
 - `no_improvement` is legitimate: partial evidence from indel-disrupted reads
   (complex path: REF + nearby-indel evidence) that no single-base count calls ALT.
   `ref_validation_failed` is an anomaly → WARNING. `ref_fail` marks a failed position.

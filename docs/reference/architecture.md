@@ -414,7 +414,7 @@ Best component beats the MNP's ad (88 > 1) → the row reports the 5:1295250 G>A
 BaseCounts wholesale.
 gbcms_rescue: method=decomposed;outcome=rescued;original_ref=486;original_alt=1;
               original_partial=88;original_confirmed=0;adopted=5:1295250(G>A);
-              positions=5:1295250(G>A):88,5:1295254(G>A):1
+              positions=5:1295250(G>A):88+5:1295254(G>A):1
 ```
 
 Ties go to the leftmost position. Adopting the component's **whole** `BaseCounts` (not
@@ -444,7 +444,7 @@ variant list is shared across the BAMs of a run). For candidates:
 
 | Outcome | Meaning | Counts written |
 |:--------|:--------|:---------------|
-| `rescued` | Best component beats the MNP's `ad` | Adopted component's |
+| `rescued` | Best component beats the MNP's `ad`; `gbcms_diagnostic` gains `RESCUED_COMPONENT(chrom:pos:REF>ALT)` and a warning is logged | Adopted component's |
 | `skipped_grouped` | MNP is in a co-annotated group | MNP's |
 | `haplotype_confirmed` | More reads show the whole haplotype than sequencing error explains — the annotated allele is present | MNP's |
 | `no_improvement` | No component beats the MNP's `ad`: the partial evidence was not component carriers — e.g. reads with an indel inside the block, which the complex path counts as REF with nearby-indel evidence and no single-base count calls ALT. Rescue correctly declines | MNP's |
@@ -453,6 +453,9 @@ variant list is shared across the BAMs of a run). For candidates:
 `original_ref` / `original_alt` / `original_partial` / `original_confirmed` always carry the
 MNP's own counts (`original_confirmed` is its `mnp_confirmed_alt`).
 A position whose synthetic SNV failed preparation is listed as `…:ref_fail`, never `0`.
+Positions are joined with `+`, never `,`: the VCF carries this string as the Number=1 `GR`
+INFO value (with `;` written as `|`), and VCF parsers split values at commas. The MAF
+column and the VCF `GR`/`GD` values carry identical content.
 
 ## Comparison with Original GBCMS
 

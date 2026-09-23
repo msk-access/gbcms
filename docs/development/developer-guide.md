@@ -235,8 +235,9 @@ count_bam_binned() → _merge_counts() → _compute_diagnostics() → _rescue_mn
 gbcms dna --verbose --rescue-mnp --variants input.maf --bam sample:sample.bam --fasta ref.fa --format maf --output-dir out/
 
 # Rescue log lines:
+# WARNING — "MNP rescue enabled (--rescue-mnp, threshold=1.00): rescued rows report a component SNV's counts ..."  (once per run)
 # INFO    — "MNP rescue for SAMPLE: rescued=2, skipped_grouped=1 (0.342s)"   (per-sample outcome summary)
-# DEBUG   — "MNP rescue: 5:1295250 GAGGG>AAGGA rescued — adopted 5:1295250(G>A) (ad 1 → 88, rd 486 → 487)"
+# WARNING — "MNP rescue: 5:1295250 GAGGG>AAGGA now reports component 5:1295250(G>A) (ALT 88, REF 487); the MNP itself had ALT 1 (0 showing the whole haplotype), partial 88"
 # DEBUG   — "MNP rescue: ... skipped — co-annotated group 3 owns its reads"
 # DEBUG   — "MNP rescue: ... kept — 36 read(s) show the whole haplotype (error allowance 3 at Q20)"
 # DEBUG   — "MNP rescue: ... not rescued (no_improvement) ..."  (partial evidence was not component carriers)
