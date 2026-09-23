@@ -35,6 +35,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sign-out where the previous windowed counting over-attributed 2–5×;
   panels without co-annotated clusters are byte-identical.
 
+### ⚠️ Changed — MNP rescue reports a coherent component genotype (opt-in `--rescue-mnp`)
+
+- **Candidate gate is partial dominance.** Rescue now considers PASS
+  `MNP_RESCUE_ELIGIBLE` MNPs with `partial_alt > alt_count` instead of only
+  `alt_count == 0`. Masked per-position evaluation counts a component carrier
+  whose other discriminating base is low-BQ as full ALT, so a single such
+  read blocked rescue of MNPs whose carriers hold only one component (a
+  TERT promoter GAGGG>AAGGA row sat at alt 1 / partial 88).
+- **Rescued rows adopt the component's full counts.** Previously only
+  `alt_count` (and read VAF) changed, leaving strand, fragment, strand-bias,
+  mFSD and diagnostic columns at MNP values and breaking
+  `alt_count = alt_count_forward + alt_count_reverse` in the output. A rescued
+  row now carries the winning component SNV's counts in every column (all
+  counting invariants hold, including `any_alt = ad + partial_alt`), and
+  `gbcms_diagnostic` is recomputed from them. Fragment-level consumers
+  (ACCESS, `gbcms merge --add-combined`) now see rescued counts.
+- **`gbcms_rescue` format** (downstream parsers): every entry has
+  `outcome=` (`rescued`, `skipped_grouped`, `no_improvement`,
+  `ref_validation_failed`) and the MNP's own `original_ref`/`original_alt`/
+  `original_partial` (`original_alt` was hard-coded `0`); rescued rows add
+  `adopted=`. A position whose synthetic SNV failed preparation reads
+  `ref_fail` instead of a silent `0`. `outcome=no_signal` is gone.
+- **Grouped MNPs are skipped** (`outcome=skipped_grouped`) so rescue cannot
+  hand back reads that exclusive assignment gave a co-annotated sibling.
+- **Fixed: rescue audit leaked across samples.** In a multi-BAM run a later
+  sample's row could show an earlier sample's `gbcms_rescue`.
+- Per-sample INFO outcome summary; warnings for anomalous outcomes.
+- `BaseCounts.with_ad()` removed from the Python bindings (no remaining
+  callers).
+- Default runs (`--rescue-mnp` off) are unchanged.
+
 ## [6.4.0] - 2026-09-22
 
 > The changes below alter reported counts at wrong-length indel loci and at

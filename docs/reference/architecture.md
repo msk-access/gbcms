@@ -322,7 +322,7 @@ sequenceDiagram
             Pipeline->>Pipeline: _rescue_mnp_pass() — identify candidates
             Pipeline->>Rust: count_bam_binned(synthetic SNPs)
             Rust-->>Pipeline: Vec[BaseCounts] for SNPs
-            Pipeline->>Pipeline: Update ad, populate gbcms_rescue
+            Pipeline->>Pipeline: Adopt best component's BaseCounts, populate gbcms_rescue
         end
     end
 
@@ -333,8 +333,12 @@ sequenceDiagram
 
 ## MNP Rescue Pass (`--rescue-mnp`, v4.3.0)
 
-The rescue pass recovers `alt_count` for MNP variants where `ad == 0` by decomposing
-the MNP into individual SNP positions and re-counting each one independently.
+Rescue is for annotated MNPs whose carriers hold only a **component** of the haplotype —
+typically SNVs on different molecules (trans, separate subclones, or a merged-SNV
+annotation). The MNP check correctly reports such a haplotype as absent: each carrier
+matches ALT at some discriminating positions and REF at others, so it lands in
+`partial_alt`. Rescue re-counts every discriminating position as an SNV and reports the
+best-supported component.
 
 ### Why Python, Not Rust?
 
@@ -345,9 +349,9 @@ deliberate architectural decision:
 ```mermaid
 flowchart LR
     subgraph Python ["🐍 Python — Orchestration"]
-        Filter["Filter candidates\n(PASS + ad==0 + MNP_RESCUE_ELIGIBLE)"]
+        Filter["Filter candidates\n(PASS + MNP_RESCUE_ELIGIBLE\n+ partial_alt > ad, ungrouped)"]
         Build["Build synthetic SNPs\nfrom disc positions"]
-        Map["Map counts back\npick best rescue"]
+        Map["Map counts back\nadopt best component"]
         Audit["Populate gbcms_rescue\naudit trail"]
     end
 
@@ -385,45 +389,64 @@ flowchart LR
 
 ### Rescue Candidate Criteria
 
-A variant qualifies for rescue when **all four** conditions are met:
+A variant is a rescue candidate when **all** conditions are met:
 
 | # | Condition | Rationale |
 |:--|:----------|:----------|
-| 1 | `gbcms_status` starts with `PASS` | FAIL variants have unreliable coordinates |
-| 2 | `ad == 0` | Variants with confirmed ALT reads don't need rescue |
-| 3 | `MNP_RESCUE_ELIGIBLE` in `gbcms_diagnostic` | Disc/len ratio ≤ `--rescue-mnp-threshold` (default 1.0 = all MNPs). Set to 0.5 for conservative sparse-only mode. |
-| 4 | `ref_len == alt_len > 1` (MNP) | SNPs and INDELs are never MNP rescue candidates |
+| 1 | `gbcms_status` is `PASS` | FAIL variants have unreliable coordinates |
+| 2 | `MNP_RESCUE_ELIGIBLE` in `gbcms_diagnostic` | Emitted only for MNPs (`ref_len == alt_len > 1`) with disc/len ≤ `--rescue-mnp-threshold` (default 1.0 = all MNPs; 0.5 = conservative sparse-only mode). |
+| 3 | `partial_alt > ad` | The haplotype is dominated by component evidence. Not `ad == 0`: masked per-position evaluation counts a component carrier whose other discriminating base is low-BQ as full ALT, and one such read must not block rescue. |
+| 4 | Not in a co-annotated group (`multi_allelic_group` unset) | Grouped reads are exclusively assigned against siblings; a sibling-free component re-count would hand contested reads back. Such rows get `outcome=skipped_grouped`. |
 
-### Rescue Strategy: Decomposed SNP Counting
+### Rescue Strategy: Adopt the Best Component
 
 ```
-MNP:  GAGGG → AAGGA  (5bp, positions 0-4)
-Disc: pos 0 (G→A) ✓, pos 4 (G→A) ✓  → 2/5 discriminating
+MNP:  GAGGG → AAGGA  (5bp; discriminating offsets 0 and 4 → 2/5)
+MNP evaluation: ref 486, alt 1, partial_alt 88   (carriers hold only the first G>A;
+                                                   counts illustrative, TERT-shaped)
 
-Decompose into:
-  SNP₁: G→A at chr5:1295250  → count_bam_binned() → ad=108
-  SNP₂: G→A at chr5:1295254  → count_bam_binned() → ad=0
+Components, counted as SNVs with the sample's own settings:
+  5:1295250 G>A  → ad=88
+  5:1295254 G>A  → ad=1
 
-Best rescue: ad=108 (from SNP₁)
-Audit: method=decomposed;original_alt=0;positions=chr5:1295251(G>A):108,chr5:1295255(G>A):0
+Best component beats the MNP's ad (88 > 1) → the row reports the 5:1295250 G>A SNV's
+BaseCounts wholesale.
+gbcms_rescue: method=decomposed;outcome=rescued;original_ref=486;original_alt=1;
+              original_partial=88;adopted=5:1295250(G>A);
+              positions=5:1295250(G>A):88,5:1295254(G>A):1
 ```
 
-### Invariant Impact
+Ties go to the leftmost position. Adopting the component's **whole** `BaseCounts` (not
+just its `ad`) keeps the row one coherent genotype: every count, fragment, strand,
+strand-bias, mFSD and RNA column comes from one counting pass, so all counting invariants
+hold, and `gbcms_diagnostic` is recomputed from the adopted counts. Grafting only the ALT
+side onto the MNP record would mix two classifications — fragment consensus lets a
+neither-read abstain, so one fragment can be MNP-REF and component-ALT at once.
 
-After rescue, **Invariant 1** (`any_alt = ad + partial_alt`) intentionally breaks:
+Consequences to keep in mind when reading a rescued row:
 
-| Field | Before Rescue | After Rescue | Source |
-|:------|:-------------|:-------------|:-------|
-| `ad` (alt_count) | 0 | **108** (updated) | Rescue engine |
-| `partial_alt` | 108 | 108 (unchanged) | Original MNP check — forensic evidence |
-| `any_alt` | 108 | 108 (unchanged) | Original MNP check — forensic evidence |
-| `gbcms_rescue` | _(empty)_ | `method=decomposed;original_alt=0;...` | Rescue audit trail |
+- `ref_count` / `total_count` are the component's: reads carrying only *another*
+  component count as REF at the adopted position, and reads covering that position
+  without spanning the whole block count toward depth.
+- A component can be a germline SNP merged into a somatic MNP; its VAF is then the
+  germline VAF. `gbcms_rescue` shows the per-position split.
+- With `--observations-parquet`, the Parquet records the MNP evaluation; a rescued row's
+  counts come from the adopted component (logged per sample).
 
-The `gbcms_rescue` audit trail preserves the `original_alt=0` value and documents
-the rescue provenance, enabling downstream users to reconcile the invariant breakage.
+### Audit Trail (`gbcms_rescue`)
 
+`gbcms_rescue` is empty for non-candidates and is reset for every sample (the prepared
+variant list is shared across the BAMs of a run). For candidates:
 
----
+| Outcome | Meaning | Counts written |
+|:--------|:--------|:---------------|
+| `rescued` | Best component beats the MNP's `ad` | Adopted component's |
+| `skipped_grouped` | MNP is in a co-annotated group | MNP's |
+| `no_improvement` | No component beats the MNP's `ad` — unreachable for consistent counts (every partial read matches ALT at an unmasked discriminating position, so the best component holds ≥ (partial_alt + ad)/2 reads); logged as a warning | MNP's |
+| `ref_validation_failed` | No component SNV survived preparation; logged as a warning | MNP's |
+
+`original_ref` / `original_alt` / `original_partial` always carry the MNP's own counts.
+A position whose synthetic SNV failed preparation is listed as `…:ref_fail`, never `0`.
 
 ## Comparison with Original GBCMS
 

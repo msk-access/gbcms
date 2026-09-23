@@ -373,17 +373,14 @@ class GbcmsBaseConfig(BaseModel):
         description="Add normalization columns showing left-aligned coordinates to output.",
     )
 
-    # MNP rescue pass (v4.3.0 — design §2)
     rescue_mnp: bool = Field(
         default=False,
         description=(
-            "Enable MNP rescue pass for multi-base substitutions. "
-            "When ad=0, decomposes the MNP into individual SNP positions "
-            "and re-counts using the best discriminating position. "
-            "Controlled by --rescue-mnp-threshold for eligibility gating. "
-            "Populates gbcms_rescue with a structured audit trail. "
-            "Intentionally breaks Invariant 1 (any_alt = ad + partial_alt) "
-            "for rescued variants."
+            "Enable the MNP rescue pass. Candidates: PASS MNPs flagged "
+            "MNP_RESCUE_ELIGIBLE (--rescue-mnp-threshold) with partial_alt > ad, "
+            "outside co-annotated groups. Each discriminating position is re-counted "
+            "as an SNV; when the best component beats the MNP's ad, its full counts "
+            "replace the row's and the MNP's own counts go to gbcms_rescue."
         ),
     )
     rescue_mnp_threshold: float = Field(

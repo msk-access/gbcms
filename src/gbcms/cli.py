@@ -61,6 +61,17 @@ _COMPRESSED_VCF_SUFFIXES: tuple[str, ...] = (".vcf.gz", ".vcf.bgz")
 # Column-prefix charset: only letters, digits, underscores
 _COLUMN_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]*$")
 
+# Shared by the dna and rna commands.
+_RESCUE_MNP_HELP = (
+    "Enable the MNP rescue pass, for annotated MNPs whose carriers hold only a "
+    "component of the haplotype. When partial_alt > alt_count (MNP_RESCUE_ELIGIBLE "
+    "MNPs outside co-annotated groups), each discriminating position is re-counted "
+    "as an SNV and the best component's counts replace the row's; the MNP's own "
+    "counts and the per-position split go to gbcms_rescue. A component can be a "
+    "germline SNP merged into a somatic MNP — check gbcms_rescue before trusting "
+    "a rescued VAF."
+)
+
 app = typer.Typer(help="gbcms: Get Base Counts Multi-Sample")
 
 
@@ -299,12 +310,7 @@ def dna(
     rescue_mnp: bool = typer.Option(
         False,
         "--rescue-mnp",
-        help=(
-            "Enable MNP rescue pass for multi-base substitutions. "
-            "When alt_count=0, decomposes the MNP into individual SNPs "
-            "and re-counts using the best discriminating position. "
-            "Populates gbcms_rescue with a structured audit trail."
-        ),
+        help=_RESCUE_MNP_HELP,
     ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
@@ -703,12 +709,7 @@ def rna(
     rescue_mnp: bool = typer.Option(
         False,
         "--rescue-mnp",
-        help=(
-            "Enable MNP rescue pass for multi-base substitutions. "
-            "When alt_count=0, decomposes the MNP into individual SNPs "
-            "and re-counts using the best discriminating position. "
-            "Populates gbcms_rescue with a structured audit trail."
-        ),
+        help=_RESCUE_MNP_HELP,
     ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
