@@ -13,6 +13,7 @@ This module handles:
 import logging
 import time
 import types
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -194,6 +195,77 @@ def read_variant_file(path: Path) -> list[Variant]:
     return variants
 
 
+def _is_mnp(ref_allele: str, alt_allele: str) -> bool:
+    """Same-length multi-base substitution — what the engine dispatches to check_mnp."""
+    return len(ref_allele) == len(alt_allele) > 1
+
+
+def _mnp_discriminating_positions(variant: Any) -> list[tuple[int, str, str]]:
+    """``(0-based pos, REF base, ALT base)`` for each MNP offset where REF and ALT differ."""
+    return [
+        (variant.pos + offset, ref_base, alt_base)
+        for offset, (ref_base, alt_base) in enumerate(
+            zip(variant.ref_allele, variant.alt_allele, strict=True)
+        )
+        if ref_base != alt_base
+    ]
+
+
+def _resolve_mnp_rescue(
+    original_ad: int, component_ads: list[int | None]
+) -> tuple[str, int | None]:
+    """Decide a rescue candidate's outcome from its components' ALT counts.
+
+    ``component_ads`` holds, per discriminating position, the synthetic SNV's
+    ``ad`` — or ``None`` where that SNV failed REF validation and was not counted.
+
+    Returns ``(outcome, index of the adopted component)``:
+      - ``rescued``: the best component (highest ad; leftmost on ties) beats
+        the haplotype's ``ad``.
+      - ``no_improvement``: no counted component beats ``ad``. For consistent
+        counts the candidate gate (``partial_alt > ad``) rules this out — every
+        partial read matches ALT at an unmasked discriminating position, so the
+        best component holds at least ``(partial_alt + ad) / 2`` reads — so the
+        caller treats it as an anomaly.
+      - ``ref_validation_failed``: no position could be counted.
+    """
+    counted = [(ad, idx) for idx, ad in enumerate(component_ads) if ad is not None]
+    if not counted:
+        return "ref_validation_failed", None
+    best_ad, best_idx = max(counted, key=lambda pair: (pair[0], -pair[1]))
+    if best_ad <= original_ad:
+        return "no_improvement", None
+    return "rescued", best_idx
+
+
+def _format_rescue_audit(
+    outcome: str,
+    original: Any,
+    positions: list[str] | None = None,
+    adopted: str | None = None,
+) -> str:
+    """Build the ``gbcms_rescue`` value.
+
+    Format: ``method=decomposed;outcome=<outcome>;original_ref=R;original_alt=A;
+    original_partial=P[;adopted=<label>][;positions=<label>:<ad|ref_fail>,...]``
+    where a label is ``chrom:pos(REF>ALT)`` (1-based). ``original_*`` are the
+    MNP's own counts — for a rescued row the only record of its evaluation,
+    because the count columns then carry the adopted component's counts.
+    """
+    parts = [
+        "method=decomposed",
+        f"outcome={outcome}",
+        f"original_ref={original.rd}",
+        f"original_alt={original.ad}",
+        f"original_partial={original.partial_alt}",
+    ]
+    if adopted is not None:
+        parts.append(f"adopted={adopted}")
+    if positions:
+        parts.append("positions=" + ",".join(positions))
+    return ";".join(parts)
+
+
 class Pipeline:
     """Main pipeline for processing BAM files and counting bases at variant positions."""
 
@@ -336,7 +408,7 @@ class Pipeline:
             alt_len = len(v.alt_allele)
             if ref_len == 1 and alt_len == 1:
                 vtype = "SNP"
-            elif ref_len == alt_len and ref_len > 1:
+            elif _is_mnp(v.ref_allele, v.alt_allele):
                 subtypes = {2: "DNP", 3: "TNP"}
                 vtype = subtypes.get(ref_len, f"ONP({ref_len}bp)")
                 mnp_count += 1
@@ -489,9 +561,8 @@ class Pipeline:
                     sibling_variants.append([])
 
             rust_start = time.perf_counter()
-            align_cfg = self.config.alignment
-            if align_cfg.backend != "sw":
-                logger.info("Using alignment backend: %s", align_cfg.backend)
+            if self.config.alignment.backend != "sw":
+                logger.info("Using alignment backend: %s", self.config.alignment.backend)
             # One pass either way: when observations are requested, the same core also
             # writes the per-molecule rows straight to Parquet from Rust, so counts are
             # identical and the rows never cross the FFI boundary (flat memory at panel
@@ -508,46 +579,8 @@ class Pipeline:
                 str(bam_path),
                 rs_variants,
                 decomposed,
-                min_mapq=self.config.quality.min_mapping_quality,
-                min_baseq=self.config.quality.min_base_quality,
-                filter_duplicates=self.config.filters.duplicates,
-                filter_secondary=self.config.filters.secondary,
-                filter_supplementary=self.config.filters.supplementary,
-                filter_qc_failed=self.config.filters.qc_failed,
-                filter_improper_pair=self.config.filters.improper_pair,
-                filter_indel=self.config.filters.indel,
-                threads=self.config.threads,
-                fragment_qual_threshold=self.config.quality.fragment_qual_threshold,
                 sibling_variants=sibling_variants,
-                alignment_backend=align_cfg.backend,
-                hmm_llr_threshold=align_cfg.hmm_llr_threshold,
-                hmm_gap_open=align_cfg.hmm_gap_open,
-                hmm_gap_extend=align_cfg.hmm_gap_extend,
-                hmm_gap_open_repeat=align_cfg.hmm_gap_open_repeat,
-                hmm_gap_extend_repeat=align_cfg.hmm_gap_extend_repeat,
-                apply_baq=self.config.apply_baq,
-                umi_tag=self.config.umi_tag,
-                mode=self.config.mode,
-                enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
-                strandedness=getattr(self.config, "strandedness", "reverse"),
-                mfsd=self.config.output.mfsd,
-                rna_editing_db=(
-                    str(self.config.rna_editing_db)  # type: ignore[attr-defined]
-                    if getattr(self.config, "rna_editing_db", None)
-                    else None
-                ),
-                gtf_path=(
-                    str(self.config.gtf)  # type: ignore[attr-defined]
-                    if getattr(self.config, "gtf", None)
-                    else None
-                ),
-                gtf_cache_dir=(
-                    str(self.config.gtf_cache_dir)  # type: ignore[attr-defined]
-                    if getattr(self.config, "gtf_cache_dir", None)
-                    else None
-                ),
-                reference_fasta=str(self.config.reference_fasta),
-                library_type=getattr(self.config, "library_type", "capture"),
+                **self._engine_kwargs(),
                 **({"observations_path": _obs_path} if _obs_path else {}),
             )
             # The observations entry point returns (counts, rows); rows are empty because
@@ -596,6 +629,55 @@ class Pipeline:
             logger.exception("Error processing sample %s", sample_name)
             self._failed_samples.append({"name": sample_name, "error": f"{type(e).__name__}: {e}"})
 
+    def _engine_kwargs(self) -> dict[str, Any]:
+        """Counting-engine settings shared by every ``count_bam_binned`` call for a sample.
+
+        The main count and the MNP rescue's component re-count must classify
+        reads identically, so both take their settings from here.
+        """
+        align_cfg = self.config.alignment
+        return {
+            "min_mapq": self.config.quality.min_mapping_quality,
+            "min_baseq": self.config.quality.min_base_quality,
+            "filter_duplicates": self.config.filters.duplicates,
+            "filter_secondary": self.config.filters.secondary,
+            "filter_supplementary": self.config.filters.supplementary,
+            "filter_qc_failed": self.config.filters.qc_failed,
+            "filter_improper_pair": self.config.filters.improper_pair,
+            "filter_indel": self.config.filters.indel,
+            "threads": self.config.threads,
+            "fragment_qual_threshold": self.config.quality.fragment_qual_threshold,
+            "alignment_backend": align_cfg.backend,
+            "hmm_llr_threshold": align_cfg.hmm_llr_threshold,
+            "hmm_gap_open": align_cfg.hmm_gap_open,
+            "hmm_gap_extend": align_cfg.hmm_gap_extend,
+            "hmm_gap_open_repeat": align_cfg.hmm_gap_open_repeat,
+            "hmm_gap_extend_repeat": align_cfg.hmm_gap_extend_repeat,
+            "apply_baq": self.config.apply_baq,
+            "umi_tag": self.config.umi_tag,
+            "mode": self.config.mode,
+            "enforce_strandedness": getattr(self.config, "enforce_strandedness", False),
+            "strandedness": getattr(self.config, "strandedness", "reverse"),
+            "mfsd": self.config.output.mfsd,
+            "rna_editing_db": (
+                str(self.config.rna_editing_db)  # type: ignore[attr-defined]
+                if getattr(self.config, "rna_editing_db", None)
+                else None
+            ),
+            "gtf_path": (
+                str(self.config.gtf)  # type: ignore[attr-defined]
+                if getattr(self.config, "gtf", None)
+                else None
+            ),
+            "gtf_cache_dir": (
+                str(self.config.gtf_cache_dir)  # type: ignore[attr-defined]
+                if getattr(self.config, "gtf_cache_dir", None)
+                else None
+            ),
+            "reference_fasta": str(self.config.reference_fasta),
+            "library_type": getattr(self.config, "library_type", "capture"),
+        }
+
     @staticmethod
     def _merge_counts(
         prepared: list,
@@ -619,13 +701,33 @@ class Pipeline:
         return merged
 
     def _compute_diagnostics(self, prepared: list, full_counts: list) -> None:
-        """Compute post-counting diagnostic flags and populate gbcms_diagnostic.
+        """Populate gbcms_diagnostic (semicolon-separated) for every PASS variant.
 
-        Diagnostic flags are semicolon-separated and stored in each
-        PreparedVariant's gbcms_diagnostic field. Only PASS variants receive
-        diagnostics; FAIL variants keep gbcms_diagnostic empty.
+        FAIL variants keep gbcms_diagnostic empty. Logs the per-sample flag
+        distribution. Flag definitions: :meth:`_diagnostic_flags`.
+        """
+        flag_counts: dict[str, int] = {}
 
-        Flags (per design §3):
+        for pv, counts in zip(prepared, full_counts, strict=True):
+            if pv.gbcms_status != "PASS":
+                continue
+            flags = self._diagnostic_flags(pv.variant, counts)
+            pv.gbcms_diagnostic = ";".join(flags)
+            for flag_name in flags:
+                # Parametric flags (e.g. MNP_DISC_RATIO(2/5)) count under their base name
+                base_flag = flag_name.split("(")[0]
+                flag_counts[base_flag] = flag_counts.get(base_flag, 0) + 1
+
+        if flag_counts:
+            summary = ", ".join(f"{flag}={count}" for flag, count in sorted(flag_counts.items()))
+            logger.info("Diagnostic flags: %s", summary)
+        else:
+            logger.debug("No diagnostic flags triggered")
+
+    def _diagnostic_flags(self, variant: Any, counts: Any) -> list[str]:
+        """Diagnostic flags for one counted PASS variant, in output order.
+
+        Flags:
             ZERO_ALT: ad == 0 and variant was successfully counted.
             PARTIAL_DOMINANT: partial_alt > ad (more structural evidence
                 than confirmed ALT calls). For pure indels partial_alt
@@ -648,76 +750,50 @@ class Pipeline:
                 large deletions as splices (STAR: ≥ alignIntronMin, default
                 21bp), so AD=0 here may mean carriers exist as junction reads.
         """
-        flag_counts: dict[str, int] = {}
+        flags: list[str] = []
 
-        for pv, counts in zip(prepared, full_counts, strict=True):
-            # Only PASS variants get diagnostics; FAIL variants are not counted
-            if pv.gbcms_status != "PASS":
-                continue
+        # ZERO_ALT: no confirmed ALT reads despite successful counting
+        if counts.ad == 0:
+            flags.append("ZERO_ALT")
 
-            flags: list[str] = []
+        # PARTIAL_DOMINANT: more structural/partial evidence than confirmed ALT
+        if counts.partial_alt > counts.ad:
+            flags.append("PARTIAL_DOMINANT")
 
-            # ZERO_ALT: no confirmed ALT reads despite successful counting
-            if counts.ad == 0:
-                flags.append("ZERO_ALT")
+        # MNP_DISC_RATIO: for MNPs, always emit discriminating position ratio
+        # as a diagnostic signal. Additionally, mark rescue eligibility
+        # based on the configurable --rescue-mnp-threshold.
+        ref_allele = variant.ref_allele
+        alt_allele = variant.alt_allele
+        if _is_mnp(ref_allele, alt_allele):
+            disc = len(_mnp_discriminating_positions(variant))
+            flags.append(f"MNP_DISC_RATIO({disc}/{len(ref_allele)})")
+            if disc / len(ref_allele) <= self.config.rescue_mnp_threshold:
+                flags.append("MNP_RESCUE_ELIGIBLE")
 
-            # PARTIAL_DOMINANT: more structural/partial evidence than confirmed ALT
-            if counts.partial_alt > counts.ad:
-                flags.append("PARTIAL_DOMINANT")
+        # HIGH_N_FRACTION: high rate of N-bases at discriminating positions
+        if counts.dp > 0 and counts.n_count / counts.dp > 0.05:
+            frac = counts.n_count / counts.dp
+            flags.append(f"HIGH_N_FRACTION({frac:.2f})")
 
-            # MNP_DISC_RATIO: for MNPs, always emit discriminating position ratio
-            # as a diagnostic signal. Additionally, mark rescue eligibility
-            # based on the configurable --rescue-mnp-threshold.
-            ref_allele = pv.variant.ref_allele
-            alt_allele = pv.variant.alt_allele
-            ref_len = len(ref_allele)
-            alt_len = len(alt_allele)
-            if ref_len == alt_len and ref_len > 1:
-                # Count positions where ref != alt (discriminating positions)
-                disc = sum(1 for r, a in zip(ref_allele, alt_allele, strict=False) if r != a)
-                ratio = disc / ref_len if ref_len > 0 else 0.0
-                flags.append(f"MNP_DISC_RATIO({disc}/{ref_len})")
-                if ratio <= self.config.rescue_mnp_threshold:
-                    flags.append("MNP_RESCUE_ELIGIBLE")
+        # NON_DISCRIMINATING_LOCUS: a sibling combination reconstructs the
+        # reference haplotype, so REF and ALT are sequence-indistinguishable and
+        # reads tie to NEITHER — surfaces an otherwise-silent zeroed RD/AD.
+        if getattr(counts, "non_discriminating_locus", False):
+            flags.append("NON_DISCRIMINATING_LOCUS")
 
-            # HIGH_N_FRACTION: high rate of N-bases at discriminating positions
-            if counts.dp > 0 and counts.n_count / counts.dp > 0.05:
-                frac = counts.n_count / counts.dp
-                flags.append(f"HIGH_N_FRACTION({frac:.2f})")
+        # SPLICE_SKIP_DOMINANT: at a deletion-type locus, more reads
+        # asserted splicing over the deleted span (CIGAR N — excluded
+        # from DP as no-observation) than confirmed ALT. RNA aligners
+        # write large deletions as splices (STAR: any deletion ≥
+        # alignIntronMin, default 21bp, becomes N), so a zeroed AD here
+        # can mean the carriers exist but are represented as junctions —
+        # inspect the locus in IGV before trusting AD=0.
+        excluded = getattr(counts, "splice_skip_excluded", 0)
+        if len(ref_allele) > len(alt_allele) and excluded > counts.ad:
+            flags.append(f"SPLICE_SKIP_DOMINANT({excluded})")
 
-            # NON_DISCRIMINATING_LOCUS: a sibling combination reconstructs the
-            # reference haplotype, so REF and ALT are sequence-indistinguishable and
-            # reads tie to NEITHER — surfaces an otherwise-silent zeroed RD/AD.
-            if getattr(counts, "non_discriminating_locus", False):
-                flags.append("NON_DISCRIMINATING_LOCUS")
-
-            # SPLICE_SKIP_DOMINANT: at a deletion-type locus, more reads
-            # asserted splicing over the deleted span (CIGAR N — excluded
-            # from DP as no-observation) than confirmed ALT. RNA aligners
-            # write large deletions as splices (STAR: any deletion ≥
-            # alignIntronMin, default 21bp, becomes N), so a zeroed AD here
-            # can mean the carriers exist but are represented as junctions —
-            # inspect the locus in IGV before trusting AD=0.
-            excluded = getattr(counts, "splice_skip_excluded", 0)
-            if len(ref_allele) > len(alt_allele) and excluded > counts.ad:
-                flags.append(f"SPLICE_SKIP_DOMINANT({excluded})")
-
-            # Populate the diagnostic field
-            diagnostic = ";".join(flags)
-            pv.gbcms_diagnostic = diagnostic
-
-            # Track flag counts for logging
-            for flag_name in flags:
-                # Normalize parametric flags for counting
-                base_flag = flag_name.split("(")[0]
-                flag_counts[base_flag] = flag_counts.get(base_flag, 0) + 1
-
-        # Log diagnostic summary
-        if flag_counts:
-            summary = ", ".join(f"{flag}={count}" for flag, count in sorted(flag_counts.items()))
-            logger.info("Diagnostic flags: %s", summary)
-        else:
-            logger.debug("No diagnostic flags triggered")
+        return flags
 
     def _rescue_mnp_pass(
         self,
@@ -726,227 +802,187 @@ class Pipeline:
         bam_path: Path,
         sample_name: str,
     ) -> None:
-        """MNP rescue pass: decompose MNPs into individual SNPs and re-count.
+        """Report the best-supported component of MNPs whose haplotype is dominated.
 
-        For each PASS variant where:
-          - ad == 0 (no confirmed ALT reads)
-          - variant is MNP (ref_len == alt_len > 1)
-          - MNP_RESCUE_ELIGIBLE is flagged (disc/len ≤ rescue_mnp_threshold)
+        Rescue is for MNPs whose carriers hold only a component of the annotated
+        haplotype (e.g. SNVs on different molecules annotated as one MNP): the
+        engine correctly reports the haplotype as absent and those carriers as
+        ``partial_alt``, and rescue reports the best-supported component instead.
 
-        The method creates synthetic SNP variants at each discriminating position,
-        prepares and counts them via the Rust engine, and takes the best (highest
-        alt_count) as the rescued value.
+        Candidates are PASS MNPs flagged ``MNP_RESCUE_ELIGIBLE`` with
+        ``partial_alt > ad``. The gate is dominance, not ``ad == 0``: a component
+        carrier whose other discriminating base is masked counts as full ALT, and
+        one such read must not block rescue.
 
-        After rescue, Invariant 1 (any_alt = ad + partial_alt) intentionally breaks.
-        The original any_alt and partial_alt are forensic evidence from the original
-        MNP check; only ad is updated with the rescued value.
+        Each candidate's discriminating positions are re-counted as synthetic
+        SNVs with the sample's own settings. When the best component beats the
+        MNP's ``ad``, its BaseCounts replace the row's wholesale — every count,
+        fragment, strand, strand-bias, mFSD and RNA column then comes from one
+        counting pass, so the counting invariants hold on the written row — and
+        the row's diagnostics are recomputed from them. The MNP's own counts
+        survive in ``gbcms_rescue`` (format: :func:`_format_rescue_audit`;
+        outcomes: :func:`_resolve_mnp_rescue`).
 
-        Design reference: validation_status_design.md §2, §5.
+        Grouped MNPs are skipped (``outcome=skipped_grouped``): their reads are
+        exclusively assigned against co-annotated siblings, and a sibling-free
+        component re-count would hand contested reads back.
 
-        Args:
-            prepared: Full list of PreparedVariant objects.
-            full_counts: Merged counts (one per variant).
-            bam_path: Path to BAM file for re-counting.
-            sample_name: Sample name for logging.
+        ``gbcms_rescue`` is reset for every variant first: ``prepared`` is shared
+        by all samples of a run, so a value set for an earlier sample would
+        otherwise be written on this sample's rows.
         """
-        rescue_start = time.perf_counter()
-        rs = _get_rs()
+        for pv in prepared:
+            pv.gbcms_rescue = ""
 
-        # 1. Identify rescue candidates
+        rescue_start = time.perf_counter()
+        outcomes: Counter[str] = Counter()
         candidates: list[tuple[int, list[tuple[int, str, str]]]] = []
         for i, (pv, counts) in enumerate(zip(prepared, full_counts, strict=True)):
-            if pv.gbcms_status != "PASS":
+            if (
+                pv.gbcms_status != "PASS"
+                or "MNP_RESCUE_ELIGIBLE" not in pv.gbcms_diagnostic.split(";")
+                or counts.partial_alt <= counts.ad
+            ):
                 continue
-            if counts.ad != 0:
+            v = pv.variant
+            if pv.multi_allelic_group is not None:
+                pv.gbcms_rescue = _format_rescue_audit("skipped_grouped", counts)
+                outcomes["skipped_grouped"] += 1
+                logger.debug(
+                    "MNP rescue: %s:%d %s>%s skipped — co-annotated group %d owns its reads",
+                    v.chrom,
+                    v.pos + 1,
+                    v.ref_allele,
+                    v.alt_allele,
+                    pv.multi_allelic_group,
+                )
                 continue
-            if "MNP_RESCUE_ELIGIBLE" not in pv.gbcms_diagnostic:
+            candidates.append((i, _mnp_discriminating_positions(v)))
+
+        component_counts = (
+            self._count_mnp_components(prepared, candidates, bam_path) if candidates else []
+        )
+        for (i, positions), components in zip(candidates, component_counts, strict=True):
+            pv, original = prepared[i], full_counts[i]
+            v = pv.variant
+            labels = [f"{v.chrom}:{pos + 1}({ref}>{alt})" for pos, ref, alt in positions]
+            entries = [
+                f"{label}:{'ref_fail' if c is None else c.ad}"
+                for label, c in zip(labels, components, strict=True)
+            ]
+            outcome, best = _resolve_mnp_rescue(
+                original.ad, [None if c is None else c.ad for c in components]
+            )
+            outcomes[outcome] += 1
+            if best is None:
+                pv.gbcms_rescue = _format_rescue_audit(outcome, original, entries)
+                logger.warning(
+                    "MNP rescue: %s:%d %s>%s not rescued (%s) — MNP ad=%d partial_alt=%d, "
+                    "components %s; counts left as the MNP evaluation",
+                    v.chrom,
+                    v.pos + 1,
+                    v.ref_allele,
+                    v.alt_allele,
+                    outcome,
+                    original.ad,
+                    original.partial_alt,
+                    ",".join(entries),
+                )
                 continue
+            adopted = components[best]
+            assert adopted is not None, "_resolve_mnp_rescue adopts only counted components"
+            full_counts[i] = adopted
+            pv.gbcms_diagnostic = ";".join(self._diagnostic_flags(v, adopted))
+            pv.gbcms_rescue = _format_rescue_audit(outcome, original, entries, labels[best])
+            logger.debug(
+                "MNP rescue: %s:%d %s>%s rescued — adopted %s (ad %d → %d, rd %d → %d)",
+                v.chrom,
+                v.pos + 1,
+                v.ref_allele,
+                v.alt_allele,
+                labels[best],
+                original.ad,
+                adopted.ad,
+                original.rd,
+                adopted.rd,
+            )
 
-            ref_allele = pv.variant.ref_allele
-            alt_allele = pv.variant.alt_allele
-            ref_len = len(ref_allele)
-            alt_len = len(alt_allele)
-            if ref_len != alt_len or ref_len <= 1:
-                continue
-
-            # Extract discriminating positions (where ref != alt)
-            disc_positions: list[tuple[int, str, str]] = []
-            for offset in range(ref_len):
-                if ref_allele[offset] != alt_allele[offset]:
-                    abs_pos = pv.variant.pos + offset
-                    disc_positions.append((abs_pos, ref_allele[offset], alt_allele[offset]))
-
-            if disc_positions:
-                candidates.append((i, disc_positions))
-
-        if not candidates:
-            logger.debug("MNP rescue: no candidates found for %s", sample_name)
+        if not outcomes:
+            logger.debug("MNP rescue for %s: no candidates", sample_name)
             return
+        logger.info(
+            "MNP rescue for %s: %s (%.3fs)",
+            sample_name,
+            ", ".join(f"{name}={n}" for name, n in sorted(outcomes.items())),
+            time.perf_counter() - rescue_start,
+        )
+        if outcomes["rescued"] and self.config.output.observations_parquet:
+            logger.info(
+                "Observations Parquet for %s records the MNP evaluation of %d rescued row(s); "
+                "their written counts are the adopted component's (see gbcms_rescue)",
+                sample_name,
+                outcomes["rescued"],
+            )
 
-        logger.info("MNP rescue: %d candidate(s) for %s", len(candidates), sample_name)
+    def _count_mnp_components(
+        self,
+        prepared: list,
+        candidates: list[tuple[int, list[tuple[int, str, str]]]],
+        bam_path: Path,
+    ) -> list[list[Any | None]]:
+        """Count every candidate's discriminating positions as synthetic SNVs.
 
-        # 2. Build synthetic SNP variants for all candidates (batched)
-        snp_variants: list = []
-        snp_map: list[tuple[int, int]] = []  # (candidate_idx, disc_idx)
-
-        for cand_idx, (pv_idx, disc_positions) in enumerate(candidates):
-            pv = prepared[pv_idx]
-            for disc_idx, (abs_pos, ref_base, alt_base) in enumerate(disc_positions):
-                snp_v = rs.Variant(pv.variant.chrom, abs_pos, ref_base, alt_base, "SNP")
-                snp_variants.append(snp_v)
-                snp_map.append((cand_idx, disc_idx))
-
-        # 3. Prepare synthetic SNPs (REF validation + ref_context)
-        snp_prepared = rs.prepare_variants(
-            snp_variants,
+        One batched prepare + count call. Returns, per candidate, one entry per
+        position: the SNV's BaseCounts, or ``None`` where the synthetic SNV
+        failed preparation. The MNP itself passed REF validation, so a failing
+        component is an inconsistency — each one is logged as a warning.
+        """
+        rs = _get_rs()
+        snvs = [
+            rs.Variant(prepared[i].variant.chrom, pos, ref, alt, "SNP")
+            for i, positions in candidates
+            for pos, ref, alt in positions
+        ]
+        snv_prepared = rs.prepare_variants(
+            snvs,
             str(self.config.reference_fasta),
             self.config.quality.context_padding,
-            False,  # is_maf=False — these are synthetic
+            False,  # is_maf: synthetic 0-based coordinates, no MAF anchor handling
             self.config.threads,
             self.config.quality.adaptive_context,
         )
+        valid = [sp for sp in snv_prepared if sp.gbcms_status == "PASS"]
+        for sp in snv_prepared:
+            if sp.gbcms_status != "PASS":
+                logger.warning(
+                    "MNP rescue: synthetic SNV %s:%d %s>%s failed preparation (%s) — "
+                    "reported as ref_fail",
+                    sp.variant.chrom,
+                    sp.variant.pos + 1,
+                    sp.variant.ref_allele,
+                    sp.variant.alt_allele,
+                    sp.gbcms_status_reason or sp.gbcms_status,
+                )
 
-        # Filter to only valid SNPs
-        valid_snp_indices = [j for j, sp in enumerate(snp_prepared) if sp.gbcms_status == "PASS"]
-        valid_snp_variants = [snp_prepared[j].variant for j in valid_snp_indices]
-
-        if not valid_snp_variants:
-            logger.warning(
-                "MNP rescue: all synthetic SNPs failed REF validation for %s",
-                sample_name,
+        counted = iter(
+            rs.count_bam_binned(
+                str(bam_path),
+                [sp.variant for sp in valid],
+                [None] * len(valid),
+                sibling_variants=[[] for _ in valid],
+                **self._engine_kwargs(),
             )
-            # Mark all candidates as failed rescue
-            for _cand_idx, (pv_idx, _disc_positions) in enumerate(candidates):
-                pv = prepared[pv_idx]
-                pv.gbcms_rescue = "method=decomposed;original_alt=0;outcome=ref_validation_failed"
-            return
-
-        # 4. Count synthetic SNPs against the BAM
-        # No decomposed variants or siblings for simple SNPs
-        snp_decomposed = [None] * len(valid_snp_variants)
-        snp_siblings: list[list] = [[] for _ in valid_snp_variants]
-
-        align_cfg = self.config.alignment
-        snp_counts = rs.count_bam_binned(
-            str(bam_path),
-            valid_snp_variants,
-            snp_decomposed,
-            min_mapq=self.config.quality.min_mapping_quality,
-            min_baseq=self.config.quality.min_base_quality,
-            filter_duplicates=self.config.filters.duplicates,
-            filter_secondary=self.config.filters.secondary,
-            filter_supplementary=self.config.filters.supplementary,
-            filter_qc_failed=self.config.filters.qc_failed,
-            filter_improper_pair=self.config.filters.improper_pair,
-            filter_indel=self.config.filters.indel,
-            threads=self.config.threads,
-            fragment_qual_threshold=self.config.quality.fragment_qual_threshold,
-            sibling_variants=snp_siblings,
-            alignment_backend=align_cfg.backend,
-            hmm_llr_threshold=align_cfg.hmm_llr_threshold,
-            hmm_gap_open=align_cfg.hmm_gap_open,
-            hmm_gap_extend=align_cfg.hmm_gap_extend,
-            hmm_gap_open_repeat=align_cfg.hmm_gap_open_repeat,
-            hmm_gap_extend_repeat=align_cfg.hmm_gap_extend_repeat,
-            apply_baq=self.config.apply_baq,
-            umi_tag=self.config.umi_tag,
-            mode=self.config.mode,
-            enforce_strandedness=getattr(self.config, "enforce_strandedness", False),
-            strandedness=getattr(self.config, "strandedness", "reverse"),
-            mfsd=self.config.output.mfsd,
-            rna_editing_db=(
-                str(self.config.rna_editing_db)  # type: ignore[attr-defined]
-                if getattr(self.config, "rna_editing_db", None)
-                else None
-            ),
-            gtf_path=(
-                str(self.config.gtf)  # type: ignore[attr-defined]
-                if getattr(self.config, "gtf", None)
-                else None
-            ),
-            gtf_cache_dir=(
-                str(self.config.gtf_cache_dir)  # type: ignore[attr-defined]
-                if getattr(self.config, "gtf_cache_dir", None)
-                else None
-            ),
-            reference_fasta=str(self.config.reference_fasta),
-            library_type=getattr(self.config, "library_type", "capture"),
+            if valid
+            else []
         )
+        flat = [next(counted) if sp.gbcms_status == "PASS" else None for sp in snv_prepared]
 
-        # 5. Map counts back to valid SNP indices
-        # Build a full-index → count map for valid SNPs
-        snp_count_by_idx: dict[int, Any] = {}
-        for offset, j in enumerate(valid_snp_indices):
-            snp_count_by_idx[j] = snp_counts[offset]
-
-        # 6. For each candidate, find the best rescue position
-        rescued_count = 0
-        attempted_count = len(candidates)
-
-        for cand_idx, (pv_idx, disc_positions) in enumerate(candidates):
-            pv = prepared[pv_idx]
-            counts = full_counts[pv_idx]
-
-            best_alt = 0
-            positions_str_parts: list[str] = []
-
-            for disc_idx, (abs_pos, ref_base, alt_base) in enumerate(disc_positions):
-                # Find the global SNP index for this disc position
-                global_snp_idx = sum(len(candidates[c][1]) for c in range(cand_idx)) + disc_idx
-
-                snp_alt = 0
-                if global_snp_idx in snp_count_by_idx:
-                    snp_alt = snp_count_by_idx[global_snp_idx].ad
-
-                positions_str_parts.append(
-                    f"{pv.variant.chrom}:{abs_pos + 1}({ref_base}>{alt_base}):{snp_alt}"
-                )
-
-                if snp_alt > best_alt:
-                    best_alt = snp_alt
-
-            positions_str = ",".join(positions_str_parts)
-
-            if best_alt > 0:
-                # Successful rescue: replace counts with a copy carrying the
-                # best decomposed SNP alt_count.  BaseCounts is a frozen PyO3
-                # struct (#[pyo3(get)] only), so we use copy-on-write via
-                # with_ad() rather than direct field mutation.
-                full_counts[pv_idx] = counts.with_ad(best_alt)
-                pv.gbcms_rescue = f"method=decomposed;original_alt=0;positions={positions_str}"
-                rescued_count += 1
-                logger.debug(
-                    "MNP rescue: %s:%d %s>%s → rescued alt=%d via decomposed SNPs",
-                    pv.variant.chrom,
-                    pv.variant.pos + 1,
-                    pv.variant.ref_allele,
-                    pv.variant.alt_allele,
-                    best_alt,
-                )
-            else:
-                # Failed rescue: no signal at any disc position
-                pv.gbcms_rescue = (
-                    f"method=decomposed;original_alt=0;outcome=no_signal;"
-                    f"positions={positions_str}"
-                )
-                logger.debug(
-                    "MNP rescue: %s:%d %s>%s → no signal at any disc position",
-                    pv.variant.chrom,
-                    pv.variant.pos + 1,
-                    pv.variant.ref_allele,
-                    pv.variant.alt_allele,
-                )
-
-        rescue_time = time.perf_counter() - rescue_start
-        failed_count = attempted_count - rescued_count
-        logger.info(
-            "MNP rescue: %d/%d rescued, %d failed (%.3fs) for %s",
-            rescued_count,
-            attempted_count,
-            failed_count,
-            rescue_time,
-            sample_name,
-        )
+        per_candidate: list[list[Any | None]] = []
+        offset = 0
+        for _, positions in candidates:
+            per_candidate.append(flat[offset : offset + len(positions)])
+            offset += len(positions)
+        return per_candidate
 
     def _load_variants(self) -> list[Variant]:
         """Load variants based on file extension.

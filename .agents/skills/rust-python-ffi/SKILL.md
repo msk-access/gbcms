@@ -23,7 +23,8 @@ will be absent and the parity tests will fail (expected).
 
 - Rust structs with `#[pyclass]` expose fields via `#[pyo3(get)]` or `#[pyo3(get, set)]`
 - Type stubs (`_rs.pyi`) must exactly match `#[pyo3(get)]` fields
-- `BaseCounts` is frozen from Python — mutations use `with_ad()` copy-on-write
+- `BaseCounts` is frozen from Python (get-only fields, no mutators) — Python replaces a whole
+  record rather than editing one (e.g. MNP rescue adopts the component SNV's `BaseCounts`)
 - `src/gbcms/_rs.pyi` is the single stub for `gbcms._rs` — update it when fields/signatures change
 
 ## Platform-Portable Code

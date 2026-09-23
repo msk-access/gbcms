@@ -17,6 +17,9 @@ Covers:
 6.  MNP in a co-annotated group → skipped, exclusive assignment untouched
 7.  Two BAMs in one run → a sample's audit never leaks into the next sample
 8.  Flag off → MNP counts as the engine produced them, no rescue column
+9.  Outcome resolution: tie-break, and the defensive no_improvement /
+    ref_validation_failed outcomes no consistent BAM can reach
+10. Audit format
 """
 
 import csv
@@ -24,15 +27,16 @@ import glob
 import io
 import random
 import re
+import types
 
 import pysam
-import pytest
 from helpers import make_read
 from typer.testing import CliRunner
 
 from gbcms.cli import app
 from gbcms.io.output import MafWriter, VcfWriter
 from gbcms.models.core import GbcmsBaseConfig
+from gbcms.pipeline import _format_rescue_audit, _resolve_mnp_rescue
 
 runner = CliRunner()
 
@@ -244,9 +248,6 @@ def _audit(row):
     return dict(part.split("=", 1) for part in row["gbcms_rescue"].split(";"))
 
 
-@pytest.mark.xfail(
-    strict=True, reason="T7: rescue gate, coherent adoption, grouping skip, per-sample reset"
-)
 def test_component_carriers_rescued_as_one_coherent_genotype(tmp_path):
     rows = _run(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW])
     (row,) = rows["S"]
@@ -296,9 +297,6 @@ def test_cis_carriers_are_not_candidates(tmp_path):
     _assert_counting_invariants(row)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="T7: rescue gate, coherent adoption, grouping skip, per-sample reset"
-)
 def test_grouped_mnp_is_skipped_and_keeps_exclusive_assignment(tmp_path):
     variants = [MNP_ROW, SNV_AT_BLOCK_START]
     plain = _run(tmp_path, {"S": _component_carrier_reads()}, variants, rescue=False)["S"]
@@ -317,11 +315,45 @@ def test_grouped_mnp_is_skipped_and_keeps_exclusive_assignment(tmp_path):
     assert {c: snv[c] for c in count_cols} == {c: plain[1][c] for c in count_cols}
 
 
-@pytest.mark.xfail(
-    strict=True, reason="T7: rescue gate, coherent adoption, grouping skip, per-sample reset"
-)
 def test_rescue_audit_does_not_leak_into_later_samples(tmp_path):
     rows = _run(tmp_path, {"A": _component_carrier_reads(), "B": _cis_carrier_reads()}, [MNP_ROW])
     assert _audit(rows["A"][0])["outcome"] == "rescued"
     assert rows["B"][0]["gbcms_rescue"] == ""
     assert int(rows["B"][0]["alt_count"]) == 10
+
+
+# ── Outcome resolution and audit format (pure helpers) ──────────────────────
+
+
+def test_resolve_adopts_best_component_leftmost_on_ties():
+    assert _resolve_mnp_rescue(1, [10, 0]) == ("rescued", 0)
+    assert _resolve_mnp_rescue(1, [3, 7]) == ("rescued", 1)
+    assert _resolve_mnp_rescue(0, [5, 5]) == ("rescued", 0)
+    assert _resolve_mnp_rescue(0, [None, 4]) == ("rescued", 1)
+
+
+def test_resolve_never_adopts_a_component_that_does_not_beat_the_haplotype():
+    assert _resolve_mnp_rescue(8, [4, 8]) == ("no_improvement", None)
+    assert _resolve_mnp_rescue(0, [0, None]) == ("no_improvement", None)
+
+
+def test_resolve_reports_when_no_component_could_be_counted():
+    assert _resolve_mnp_rescue(0, [None, None]) == ("ref_validation_failed", None)
+
+
+def test_audit_format():
+    original = types.SimpleNamespace(rd=486, ad=1, partial_alt=88)
+    assert _format_rescue_audit("skipped_grouped", original) == (
+        "method=decomposed;outcome=skipped_grouped;"
+        "original_ref=486;original_alt=1;original_partial=88"
+    )
+    assert _format_rescue_audit(
+        "rescued",
+        original,
+        ["5:1295250(G>A):87", "5:1295254(G>A):ref_fail"],
+        "5:1295250(G>A)",
+    ) == (
+        "method=decomposed;outcome=rescued;original_ref=486;original_alt=1;"
+        "original_partial=88;adopted=5:1295250(G>A);"
+        "positions=5:1295250(G>A):87,5:1295254(G>A):ref_fail"
+    )

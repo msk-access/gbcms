@@ -35,9 +35,9 @@ pub struct PreparedVariant {
     #[pyo3(get, set)]
     pub gbcms_diagnostic: String,
 
-    /// Rescue audit trail. Semicolon-separated key=value pairs.
-    /// Contains original_alt=N when rescue was attempted.
-    /// Empty string = no rescue. Only populated with --rescue-mnp (P1).
+    /// Rescue audit trail, set by the Python MNP rescue pass (`--rescue-mnp`):
+    /// semicolon-separated key=value pairs recording the outcome and the MNP's
+    /// own counts. Empty string for variants that were not rescue candidates.
     #[pyo3(get, set)]
     pub gbcms_rescue: String,
 

@@ -137,10 +137,6 @@ class BaseCounts:
     # NON_DISCRIMINATING_LOCUS marker: a sibling combo reconstructs REF, so REF/ALT
     # are sequence-indistinguishable (PairHMM backend) and reads tie to NEITHER.
     non_discriminating_locus: bool
-    # Copy-on-write method for MNP rescue pass (BaseCounts is frozen from Python)
-    def with_ad(self, new_ad: int) -> BaseCounts:
-        """Return a copy with `ad` replaced by `new_ad`."""
-        ...
 
 class Observation:
     """One molecule's resolved allele at one variant (see `count_bam_binned_observations`).
@@ -178,9 +174,9 @@ class PreparedVariant:
     # Semicolon-separated. Empty string when no diagnostics.
     # Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
     gbcms_diagnostic: str
-    # Rescue audit trail (set by pipeline._rescue_mnp_pass).
-    # Semicolon-separated key=value pairs. Empty string when no rescue attempted.
-    # Only populated when --rescue-mnp is enabled.
+    # Rescue audit trail (set by pipeline._rescue_mnp_pass; format in
+    # pipeline._format_rescue_audit). Semicolon-separated key=value pairs, reset
+    # per sample. Empty string for non-candidates and when --rescue-mnp is off.
     gbcms_rescue: str
     was_anchor_resolved: bool
     was_left_aligned: bool
