@@ -396,12 +396,6 @@ def dna(
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
     logger.info("Running gbcms v%s in DNA mode", __version__)
-    if rescue_mnp:
-        logger.info(
-            "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
-            rescue_mnp_threshold,
-        )
-
     # ── 2. Pre-model validation (semantic + cross-option checks) ───────────────
 
     # GAP 12: Reject unsupported variant file extensions before any I/O.
@@ -795,12 +789,6 @@ def rna(
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
     logger.info("Running gbcms v%s in RNA mode", __version__)
-    if rescue_mnp:
-        logger.info(
-            "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
-            rescue_mnp_threshold,
-        )
-
     # ── 2. Pre-model validation ──
     _is_vcf_gz = _is_compressed_vcf(variant_file)
     _ext = variant_file.suffix.lower()

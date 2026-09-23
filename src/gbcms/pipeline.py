@@ -263,8 +263,10 @@ def _format_rescue_audit(
 
     Format: ``method=decomposed;outcome=<outcome>;original_ref=R;original_alt=A;
     original_partial=P;original_confirmed=C[;adopted=<label>]
-    [;positions=<label>:<ad|ref_fail>,...]`` where a label is
-    ``chrom:pos(REF>ALT)`` (1-based). ``original_*`` are the MNP's own counts —
+    [;positions=<label>:<ad|ref_fail>+...]`` where a label is
+    ``chrom:pos(REF>ALT)`` (1-based). Positions are joined with ``+``, never
+    ``,``: the VCF writer emits this string as the Number=1 ``GR`` INFO value,
+    which VCF parsers split at commas. ``original_*`` are the MNP's own counts —
     for a rescued row the only record of its evaluation, because the count
     columns then carry the adopted component's counts. ``original_confirmed``
     is the MNP's ``mnp_confirmed_alt``: reads that showed the whole haplotype.
@@ -280,7 +282,7 @@ def _format_rescue_audit(
     if adopted is not None:
         parts.append(f"adopted={adopted}")
     if positions:
-        parts.append("positions=" + ",".join(positions))
+        parts.append("positions=" + "+".join(positions))
     return ";".join(parts)
 
 
@@ -356,6 +358,13 @@ class Pipeline:
             self.config.rescue_mnp,
             self.config.output.mfsd,
         )
+        if self.config.rescue_mnp:
+            logger.warning(
+                "MNP rescue enabled (--rescue-mnp, threshold=%.2f): rescued rows report a "
+                "component SNV's counts under the MNP's coordinates — each is flagged "
+                "RESCUED_COMPONENT(...) in gbcms_diagnostic and explained in gbcms_rescue",
+                self.config.rescue_mnp_threshold,
+            )
 
         # 1. Load Variants (raw MAF/VCF coords)
         logger.debug("Loading variants from %s", self.config.variant_file)
@@ -837,7 +846,9 @@ class Pipeline:
         MNP's ``ad``, its BaseCounts replace the row's wholesale — every count,
         fragment, strand, strand-bias, mFSD and RNA column then comes from one
         counting pass, so the counting invariants hold on the written row — and
-        the row's diagnostics are recomputed from them. The MNP's own counts
+        the row's diagnostics are recomputed from them, plus
+        ``RESCUED_COMPONENT(chrom:pos:REF>ALT)`` naming the adopted component,
+        and a warning is logged. The MNP's own counts
         survive in ``gbcms_rescue`` (format: :func:`_format_rescue_audit`;
         outcomes: :func:`_resolve_mnp_rescue`).
 
@@ -934,19 +945,27 @@ class Pipeline:
             adopted = components[best]
             assert adopted is not None, "_resolve_mnp_rescue adopts only counted components"
             full_counts[i] = adopted
-            pv.gbcms_diagnostic = ";".join(self._diagnostic_flags(v, adopted))
+            best_pos, best_ref, best_alt = positions[best]
+            pv.gbcms_diagnostic = ";".join(
+                [
+                    *self._diagnostic_flags(v, adopted),
+                    f"RESCUED_COMPONENT({v.chrom}:{best_pos + 1}:{best_ref}>{best_alt})",
+                ]
+            )
             pv.gbcms_rescue = _format_rescue_audit(outcome, original, entries, labels[best])
-            logger.debug(
-                "MNP rescue: %s:%d %s>%s rescued — adopted %s (ad %d → %d, rd %d → %d)",
+            logger.warning(
+                "MNP rescue: %s:%d %s>%s now reports component %s (ALT %d, REF %d); the MNP "
+                "itself had ALT %d (%d showing the whole haplotype), partial %d",
                 v.chrom,
                 v.pos + 1,
                 v.ref_allele,
                 v.alt_allele,
                 labels[best],
-                original.ad,
                 adopted.ad,
-                original.rd,
                 adopted.rd,
+                original.ad,
+                original.mnp_confirmed_alt,
+                original.partial_alt,
             )
 
         if not outcomes:

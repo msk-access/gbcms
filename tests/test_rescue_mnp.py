@@ -34,7 +34,6 @@ import re
 import types
 
 import pysam
-import pytest
 from helpers import make_read
 from typer.testing import CliRunner
 
@@ -292,7 +291,6 @@ def _audit(row):
     return dict(part.split("=", 1) for part in row["gbcms_rescue"].split(";"))
 
 
-@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
 def test_component_carriers_rescued_as_one_coherent_genotype(tmp_path):
     rows = _run(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW])
     (row,) = rows["S"]
@@ -366,7 +364,6 @@ def test_grouped_mnp_is_skipped_and_keeps_exclusive_assignment(tmp_path):
     assert {c: snv[c] for c in count_cols} == {c: plain[1][c] for c in count_cols}
 
 
-@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
 def test_indel_partial_evidence_is_declined_not_rescued(tmp_path):
     plain = _run(tmp_path, {"S": _indel_disrupted_reads()}, [MNP_ROW], rescue=False)["S"][0]
     (row,) = _run(tmp_path, {"S": _indel_disrupted_reads()}, [MNP_ROW])["S"]
@@ -406,7 +403,6 @@ def test_error_level_confirmed_reads_do_not_block_rescue(tmp_path):
     _assert_counting_invariants(row)
 
 
-@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
 def test_vcf_and_maf_carry_the_same_rescue(tmp_path):
     (maf,) = _run(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW])["S"]
     outdir, _ = _invoke(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW], True, "vcf")
@@ -420,7 +416,6 @@ def test_vcf_and_maf_carry_the_same_rescue(tmp_path):
     assert rec.info["GR"] == maf["gbcms_rescue"].replace(";", "|")
 
 
-@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
 def test_each_rescued_row_logs_a_warning(tmp_path):
     _, output = _invoke(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW], True, "maf")
     log = " ".join(output.split())  # the console handler wraps long lines
@@ -454,7 +449,6 @@ def test_resolve_reports_when_no_component_could_be_counted():
     assert _resolve_mnp_rescue(0, [None, None]) == ("ref_validation_failed", None)
 
 
-@pytest.mark.xfail(strict=True, reason="T7 item 11: rescued-row warnings and VCF-safe audit")
 def test_audit_format():
     original = types.SimpleNamespace(rd=486, ad=1, partial_alt=88, mnp_confirmed_alt=0)
     assert _format_rescue_audit("skipped_grouped", original) == (
