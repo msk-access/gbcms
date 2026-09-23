@@ -19,7 +19,7 @@ gbcms dna [OPTIONS] --variants <FILE> --bam <NAME:PATH>... --fasta <FILE>
 | `--bam`, `-b` | BAM or CRAM file path (can repeat). Optionally prefix with `name:` for sample naming, e.g. `--bam tumor:tumor.bam`. If no name given, the filename stem is used. |
 | `--bam-list`, `-L` | File containing BAM/CRAM paths (one per line, optionally `sample_name path`). Alternative to repeated `--bam`. |
 | `--fasta`, `-f` | Reference FASTA file (with .fai index). **Required** for all runs; also used for CRAM decoding. |
-| `--lenient-bam` | Skip missing `--bam` paths and continue with remaining samples (default: exit immediately on first missing BAM/CRAM). Note: a missing `--bam-list` file always fails regardless. |
+| `--lenient-bam` | Skip missing `--bam` paths and missing `--bam-list` entries, continuing with the remaining samples (default: all missing paths are reported and the run exits non-zero). A missing or unreadable `--bam-list` file, or a duplicate sample name, always fails regardless. |
 
 !!! tip "CRAM Support (v5.3.0+)"
     `--bam` accepts both BAM (`.bam`) and CRAM (`.cram`) files transparently.

@@ -34,9 +34,11 @@ def setup_logging(verbose: bool = False, trace: bool = False, log_file: str | No
     Args:
         verbose: If True, set log level to DEBUG. Otherwise INFO.
         trace: If True, enable Rust per-read trace logging (slow).
-            Implies verbose. Sets the ``gbcms_rs`` Python logger to
-            level 5 (TRACE) so pyo3-log forwards Rust ``trace!()``
-            calls through the GIL.
+            Implies verbose. Sets the ``_rs`` Python logger to level 5
+            (TRACE) so pyo3-log forwards Rust ``trace!()`` calls through
+            the GIL. (pyo3-log names loggers after the extension module's
+            lib name ``_rs``, e.g. ``_rs.counting.variant_checks`` — not
+            the crate name ``gbcms_rs``.)
         log_file: Optional path to write logs to file.
     """
     if trace:
@@ -70,11 +72,23 @@ def setup_logging(verbose: bool = False, trace: bool = False, log_file: str | No
     # Enable Rust trace-level logs when --trace is active.
     # pyo3-log maps Rust trace!() to Python level 5 (below DEBUG=10).
     # By default, pyo3-log caches that level 5 is disabled and
-    # short-circuits all trace!() calls in Rust with zero GIL cost.
+    # short-circuits all trace!() calls in Rust with near-zero GIL cost.
     # Setting the logger to level 5 lets them through (slow but
-    # comprehensive per-read diagnostics).
+    # comprehensive per-read diagnostics). The logger is "_rs" — pyo3-log
+    # derives logger names from the extension lib name (_rs.counting.…),
+    # not the crate name; setting "gbcms_rs" here silently did nothing.
     if trace:
-        logging.getLogger("gbcms_rs").setLevel(5)  # TRACE level
+        logging.getLogger("_rs").setLevel(5)  # TRACE level
+        # pyo3-log caches each Rust target's effective level at its first
+        # record; if any Rust code already logged in this process (library
+        # use), the level change above would be silently ignored for those
+        # targets. Reset the cache so trace takes effect now.
+        try:
+            from gbcms._rs import reset_log_caching
+
+            reset_log_caching()
+        except ImportError:  # pragma: no cover - extension not built yet
+            pass
 
 
 def get_logger(name: str) -> logging.Logger:

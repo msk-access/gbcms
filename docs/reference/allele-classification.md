@@ -41,7 +41,7 @@ flowchart LR
     - **Pure deletion** (`alt[0] == ref[0]`) → `check_deletion` — e.g., `AC→A` where anchor A is preserved
     - **Complex Del+SNV** (`alt[0] ≠ ref[0]`) → `check_complex` — e.g., `GC→T` where anchor G also substitutes to T
 
-    This distinction is critical: `check_deletion`'s CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. `check_complex` handles these via Phase 3 SW haplotype alignment.
+    This distinction is critical: `check_deletion`'s CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. `check_complex` handles these via Phase 3 haplotype alignment (WFA+PairHMM under the default backend).
 
     `check_deletion` also falls back to `check_complex` for large deletions (≥5bp) where S3 sequence validation fails due to BWA left-alignment shifting the anchor position (see [Deletion — Windowed Safeguards](#windowed-scan-safeguards-1)).
 
@@ -141,45 +141,86 @@ flowchart LR
     Fwd -->|No| RefCov["Mark ref coverage"]
     Fwd -->|Yes| Next{"Next op = Ins?"}
     Next -->|No| RefCov
-    Next -->|Yes| StrictMatch{"Length + seq match?\n(quality-masked)"}
-    StrictMatch -->|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
-    StrictMatch -->|No| RefCov
+    Next -->|Yes| LenQ{"Length matches?"}
+    LenQ -->|Yes| SeqQ{"Seq matches?\n(quality-masked)"}
+    SeqQ -->|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
+    SeqQ -->|"Confident mismatch"| Third(["⚪ Neither + partial\n(third allele)"]):::partial
+    SeqQ -->|"All bases < min_baseq\nor insert past read end"| FlagSL["Flag has_shifted_same_length"]:::fallback
+    LenQ -->|No| Trunc{"Truncation of expected insert?\n(≥4bp, ≥90% identity,\nboth non-low-complexity)"}
+    Trunc -->|Yes| TruncAlt(["🔴 ALT — truncated same event"]):::alt
+    Trunc -->|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
+    FlagSL --> RefCov
     RefCov --> WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef partial fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
+    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
+
+!!! important "Wrong-Length and Wrong-Sequence Insertions at the Anchor"
+    An I op at the exact anchor that does **not** verify against the expected insert is never
+    silently REF and never the queried ALT:
+
+    - **Wrong length, truncation of the expected insert** — sequencers lose bases from long
+      insertions, so reads carry shorter I ops whose bases match a slice of the expected
+      insert. Gates: observed ≥4bp and strictly shorter than expected, ≥90% identity to the
+      best-matching window, and **both** sequences non-low-complexity (in a repeat tract every
+      wrong-length insert matches trivially, and there different lengths are distinct slippage
+      alleles). Passing all gates → **ALT** (same event).
+    - **Wrong length, anything else** — a **distinct allele** in the same tract (the +A vs +AA
+      slippage ladder) → neither + `partial_alt`. Phase 3 must not arbitrate: its haplotype
+      window is length-blind inside repeat tracts.
+    - **Right length, confident base mismatch** (mismatches on ≥`--min-baseq` bases) — a
+      same-length **third allele** → neither + `partial_alt`. Phase 3 must not arbitrate here
+      either: alignment scoring promotes a wrong-sequence insert to ALT because it still beats
+      the gapped REF alignment.
+    - **Right length, unverifiable bases** (every inserted base below `--min-baseq`, or the
+      insert runs past the read end) — flag `has_shifted_same_length` for post-walk **Phase-3
+      arbitration** (BQ-aware), honoring the cross-backend quality contract; partial evidence
+      is propagated when Phase 3 does not confirm ALT.
+
+    See [Wrong-Length Pure Indels](#wrong-length-pure-indels-partial_alt) for the full rule and
+    its validation.
 
 #### Part B — Windowed Scan + S1/S2/S3 Safeguards
 
 ```mermaid
 flowchart TD
-    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Ins within ±5bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Ins within window?\n(±max(5, repeat_span+2))"}
     CheckWin -->|No| Continue["Continue CIGAR walk"]
-    CheckWin -->|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
+    CheckWin -->|Yes| SameLen{"Same length?"}
+    SameLen -->|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
     S1 -->|Yes| S3{"S3: Anchor base\nmatches ref?"}
     S3 -->|No| Continue
     S3 -->|Yes| S2["S2: Track closest match"]
     S2 --> Continue
-    S1 -->|No| LenMatch{"Same length?"}
-    LenMatch -->|Yes| FlagP3["Flag has_nearby_length_match"]:::fallback
-    LenMatch -->|No| Continue
-    FlagP3 --> Continue
+    S1 -->|No| FlagSL["Flag has_shifted_same_length"]:::fallback
+    SameLen -->|No| FlagWL["Flag has_wrong_length_nearby\n(any size)"]:::partialflag
+    FlagSL --> Continue
+    FlagWL --> Continue
     Continue --> MoreOps{"More CIGAR ops?"}
     MoreOps -->|Yes| CheckWin
     MoreOps -->|No| Eval{"Windowed candidate found?"}
     Eval -->|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
-    Eval -->|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check -->|Yes| CPX(["🔄 check_complex"]):::fallback
-    P3Check -->|No| HasRef{"Read covered anchor?"}
+    Eval -->|No| SLCheck{"has_shifted_same_length\nAND ref coverage?"}
+    SLCheck -->|Yes| CPX(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
+    SLCheck -->|No| WLCheck{"has_wrong_length_nearby\nAND ref coverage?"}
+    WLCheck -->|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
+    WLCheck -->|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
+    WLCheck -->|No| HasRef{"Anchor covered by M?"}
     HasRef -->|Yes| Ref(["✅ REF"]):::ref
-    HasRef -->|No| Neither(["⧯ Neither"]):::neither
+    HasRef -->|No| AnchorSpan{"Read spans anchor?\n(e.g. soft-clip at anchor)"}
+    AnchorSpan -->|Yes| CPXA(["🔄 Phase 3"]):::fallback
+    AnchorSpan -->|No| Neither(["⧯ Neither"]):::neither
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
     classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef partial fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
+    classDef partialflag fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
 
@@ -193,32 +234,42 @@ Three layers of validation prevent false-positive windowed matches:
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
 | **S3** | Reference base at shifted anchor matches original anchor base | Ensures the shifted position is biologically equivalent |
 
-!!! note "Phase 3 Haplotype Fallback (has_nearby_length_match)"
-    When the windowed scan finds an insertion that matches in **length** but not **sequence** (e.g., aligner represents the biological event with shifted bases in a repeat), the engine flags `has_nearby_length_match` and falls back to `check_complex` for **Phase 3 WFA+PairHMM arbitration**. This ensures ambiguous cases are resolved by haplotype comparison rather than strict sequence matching.
+!!! note "Two Windowed Flags with Different Outcomes"
+    - **`has_shifted_same_length`** — the windowed scan found an insertion of the **right
+      length** whose bases failed the sequence check (an aligner may represent the same event
+      with shifted bases in a repeat). Resolved by **Phase-3 arbitration** (WFA+PairHMM under
+      the default backend); `partial_alt` evidence is propagated when Phase 3 does not confirm
+      ALT.
+    - **`has_wrong_length_nearby`** — the windowed scan found an insertion of the **wrong
+      length** (flagged at any size, so REF can never silently absorb it). Resolved without
+      Phase 3: inside a repeat tract (`repeat_span ≥ 2`) it is a distinct slippage allele →
+      neither + `partial_alt`; in unique context the anchor-covering M is definitive REF and
+      the stray insertion is surfaced as `partial_alt` alongside `rd`.
 
 ### Visual Example
 
 ```
-Variant: chr1:100 A→ATG (insertion of TG after anchor A)
+Variant: chr1:100 G→GTG (insertion of TG after anchor G, inside a TG repeat)
 
-Reference:     5'─ ...C  G  A ── C  G  T  A... ─3'
-                          99 100  101 102
-                               ▲
-                          anchor pos
+Reference:     5'─ ...A  T  G  T  G  T  G  C... ─3'
+                          99 100 101 102 103 104 105
+                              ▲
+                          anchor pos (repeat context — shifted placements stay equivalent)
 
 Read 1 (ALT, strict):  CIGAR = 5M 2I 5M
-               5'─ ...C  G  A [T  G] C  G  T  A... ─3'
+               5'─ ...A  T  G [T  G] T  G  T  G  C... ─3'
                                └──┘
                           inserted bases at anchor → ALT ✅ (strict)
 
 Read 2 (ALT, windowed): CIGAR = 7M 2I 3M
-               5'─ ...C  G  A  C  G [T  G] T  A... ─3'
-                                          └──┘
-                    insertion shifted +2bp, same seq → ALT ✅ (windowed)
+               5'─ ...A  T  G  T  G [T  G] T  G  C... ─3'
+                                         └──┘
+                    insertion shifted +2bp (one repeat unit): S1 seq matches,
+                    S3 shifted anchor (pos 102 = G) matches original anchor G → ALT ✅ (windowed)
 
 Read 3 (REF):  CIGAR = 10M
-               5'─ ...C  G  A  C  G  T  A... ─3'
-                               ↑
+               5'─ ...A  T  G  T  G  T  G  C... ─3'
+                              ↑
                           no insertion after anchor → REF ✅
 ```
 
@@ -237,7 +288,7 @@ Bases deleted after an **anchor** position. Mirrors insertion but looks for `Del
 !!! warning "Complex Del+SNV: Routed to `check_complex`"
     When `len(REF) > 1 && len(ALT) == 1` but the anchor base **also substitutes** (`alt[0] ≠ ref[0]`), the variant is a **complex Del+SNV** and is routed directly to `check_complex` — not `check_deletion`. This handles variants such as:
 
-    - **SOX9** `GC→T`: anchor G substitutes to T, C is deleted. D(1) reads classified as ALT via Phase 3 SW.
+    - **SOX9** `GC→T`: anchor G substitutes to T, C is deleted. D(1) reads classified as ALT via Phase 3 haplotype alignment.
     - **ABL1** `AG→T`: anchor A substitutes to T, G is deleted.
 
     `check_deletion`'s CIGAR safeguards compare anchor bases assuming the anchor is preserved. For these variants, the anchor changes — feeding them to `check_deletion` would incorrectly classify all DEL reads as REF (alt=0).
@@ -246,20 +297,36 @@ Bases deleted after an **anchor** position. Mirrors insertion but looks for `Del
 
 Same single-walk strategy as insertion, with four additional features:
 
-1. **Reciprocal overlap matching** — For large deletions (≥50bp), if the CIGAR shows a deletion at the anchor but with a different length, gbcms accepts it if the reciprocal overlap is ≥50% (SV-caller standard, used by SURVIVOR):
+1. **Placement-aware large-deletion band** — For large deletions (≥50bp), a wrong-length D at
+   the anchor still counts as the annotated event when the read deletes essentially the whole
+   expected span: at most 3 expected-span bases retained, and at most 3 bases deleted/inserted
+   outside the span (within the scan region). This accepts single-op breakpoint wobble AND
+   split representations (`D(60)+2M+D(40)` for a ~100bp deletion) in pure CIGAR space, while
+   rejecting net-matching but *displaced* deletions whose M ops across the span prove the event
+   is absent. The 50bp threshold is an **artifact-size prior**: slippage/stutter/alignment
+   artifacts are small, so an observed ≥50bp D op is essentially always a real deletion in that
+   molecule — the band only decides *which* event it belongs to. (Validated pure large
+   deletions, 12–539bp, all align as a single exact-length D at the anchor, so the ≤3bp slop is
+   insurance, not an observed need.)
 
-    ```
-    reciprocal_overlap = min(expected, found) / max(expected, found)
-    Accept if expected_del ≥ 50bp AND reciprocal_overlap ≥ 0.50
-    ```
+2. **Wrong-length rule** — A wrong-length D at the anchor that fails the band is a **distinct
+   allele** in the same tract → neither + `partial_alt`, never Phase 3. See
+   [Wrong-Length Pure Indels](#wrong-length-pure-indels-partial_alt).
 
-2. **Interior REF guard** — For large deletions (≥50bp), reads that start *inside* the deleted region are classified as REF directly, without falling back to Smith-Waterman. This prevents overcounting caused by the SW aligner's bias toward shorter ALT haplotypes.
+3. **Left-alignment Phase 3 fallback** — For deletions ≥5bp where the windowed scan finds a
+   matching-length (or in-band) Del but S3 sequence validation fails (BWA left-alignment
+   shifted the anchor further left than the CIGAR `D` position), the engine flags
+   `has_shifted_same_length` and routes to Phase-3 arbitration. Short deletions (<5bp) with
+   failed S3 remain CIGAR-definitive REF — they are almost certainly unrelated spurious
+   deletions, not left-alignment artifacts. See [Case 3 in the Complex Indels guide](complex-indels.md#case-3-tp53-12bp-left-alignment-shifted-deletion).
 
-3. **Left-alignment Phase 3 fallback** — For large deletions (≥5bp) where the windowed scan finds a matching-length Del but S3 sequence validation fails (BWA left-alignment shifted the anchor further left than the CIGAR `D` position), the engine flags `has_nearby_length_match` and routes to `check_complex` for Phase 3 arbitration. Short deletions (<5bp) with failed S3 remain CIGAR-definitive REF — they are almost certainly unrelated spurious deletions, not left-alignment artifacts. See [Case 3 in the Complex Indels guide](complex-indels.md#case-3-tp53-12bp-left-alignment-shifted-deletion).
+4. **Haplotype fallback** — When no CIGAR match is found and the read doesn't cover the anchor
+   with a Match op (e.g., a soft-clip at the anchor), falls back to Phase 3 for
+   haplotype-based comparison — but only when the read actually spans the anchor position.
+   Reads mapping entirely inside a large deleted span carry no information about the variant
+   and are classified neither.
 
-4. **Haplotype fallback** — When no CIGAR match is found and the read doesn't cover the anchor, falls back to `check_complex` for haplotype-based comparison.
-
-#### Part A — CIGAR-Based Strict + Reciprocal-Overlap Detection
+#### Part A — CIGAR-Based Strict + Band Detection
 
 ```mermaid
 flowchart LR
@@ -272,33 +339,33 @@ flowchart LR
     NextDel -->|No| RefCov
     NextDel -->|Yes| LenMatch{"Length matches exactly?"}
     LenMatch -->|Yes| StrictAlt(["🔴 ALT — strict"]):::alt
-    LenMatch -->|No| Recip{"≥50bp AND\noverlap ≥50%?"}
-    Recip -->|Yes| TolAlt(["🔴 ALT — tolerant SV"]):::alt
-    Recip -->|No| CPX(["🔄 check_complex"]):::fallback
+    LenMatch -->|No| Band{"≥50bp AND read deletes\nthe expected span?\n(≤3 retained, ≤3 outside)"}
+    Band -->|Yes| BandAlt(["🔴 ALT — in-band\n(wobble / split representation)"]):::alt
+    Band -->|No| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
     RefCov --> WinCheck
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
-    classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef partial fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
 ```
 
 #### Part B — Windowed Scan + S1/S2/S3 Safeguards
 
 ```mermaid
 flowchart TD
-    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Del within ±5bp window?"}
+    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Del within window?\n(±max(5, repeat_span+2))"}
     CheckWin -->|No| Continue["Continue walk"]
     CheckWin -->|Yes| S1{"S1: Length check"}
-    S1 -->|"Exact match"| S3{"S3: Ref bases match?"}
-    S1 -->|"≥50bp + overlap ≥50%"| S2Track["S2: Track closest (SV)"]  
-    S1 -->|"No match"| Continue
+    S1 -->|"Exact match, or\n≥50bp with |Δlen| ≤ 3"| S3{"S3: Ref bases match?\n(overlapping span)"}
+    S1 -->|"Wrong length, ≥5bp"| FlagWL["Flag has_wrong_length_nearby"]:::partialflag
+    S1 -->|"Wrong length, <5bp"| Continue
     S3 -->|Yes| S2["S2: Track closest"]
-    S3 -->|"No, del_len ≥ 5"| FlagP3["Flag has_nearby_length_match"]:::fallback
+    S3 -->|"No, del_len ≥ 5"| FlagSL["Flag has_shifted_same_length"]:::fallback
     S3 -->|"No, del_len < 5"| Continue
-    S2Track --> Continue
     S2 --> Continue
-    FlagP3 --> Continue
+    FlagSL --> Continue
+    FlagWL --> Continue
     Continue --> MoreOps{"More ops?"}
     MoreOps -->|Yes| CheckWin
     MoreOps -->|No| Eval(["→ Evaluation"]):::next
@@ -306,25 +373,31 @@ flowchart TD
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
+    classDef partialflag fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
 ```
 
-#### Part C — Evaluation + Interior REF Guard
+#### Part C — Evaluation
 
 ```mermaid
 flowchart TD
     EvalIn(["→ from windowed scan"]):::entry --> Win{"Windowed match found?"}
     Win -->|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
-    Win -->|No| P3Check{"has_nearby_length_match\nAND ref coverage?"}
-    P3Check -->|Yes| CPX(["🔄 check_complex"]):::fallback
-    P3Check -->|No| Interior{"Interior read?\n(≧50bp del, read starts inside span)"}
-    Interior -->|Yes| IntRef(["✅ REF — interior guard"]):::ref
-    Interior -->|No| HasRef{"Anchor covered?"}
-    HasRef -->|Yes| Ref(["✅ REF"]):::ref
-    HasRef -->|No| CPX
+    Win -->|No| Spans{"Ref coverage at anchor?"}
+    Spans -->|No| AnchorSpan{"Read spans anchor?\n(e.g. soft-clip at anchor)"}
+    AnchorSpan -->|Yes| CPX(["🔄 Phase 3"]):::fallback
+    AnchorSpan -->|No| Neither(["⧯ Neither\n(no variant information)"]):::neither
+    Spans -->|Yes| SLCheck{"has_shifted_same_length?"}
+    SLCheck -->|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
+    SLCheck -->|No| WLCheck{"has_wrong_length_nearby?"}
+    WLCheck -->|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
+    WLCheck -->|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
+    WLCheck -->|No| Ref(["✅ REF"]):::ref
 
     classDef entry fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
     classDef ref fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
     classDef alt fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
+    classDef neither fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
+    classDef partial fill:#8e44ad,color:#fff,stroke:#6c3483,stroke-width:2px;
     classDef fallback fill:#f39c12,color:#fff,stroke:#d68910,stroke-width:2px;
 ```
 
@@ -334,46 +407,116 @@ Three layers of validation prevent false-positive windowed matches:
 
 | Safeguard | Check | Purpose |
 |:----------|:------|:--------|
-| **S1** | Deleted length matches expected `ref_len − 1` (or reciprocal overlap ≥50% for large dels) | Prevents matching wrong-length deletions |
+| **S1** | Deleted length matches expected `ref_len − 1` exactly, or is within the ≥50bp ±3bp band | Wrong-length deletions never match; ≥5bp ones flag `has_wrong_length_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
-| **S3** | Reference bases at the shifted deletion position match expected deleted sequence | Verifies the shifted Del is biologically the same event |
-| **del_len ≥ 5 guard** | Only flag `has_nearby_length_match` for Dels ≥5bp that fail S3 | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. Longer Dels can fail S3 due to BWA left-alignment shifting the anchor away from the actual CIGAR `D` position |
+| **S3** | Reference bases at the shifted deletion position match expected deleted sequence (overlapping span for in-band lengths) | Verifies the shifted Del is biologically the same event |
+| **del_len ≥ 5 guard** | Only flag `has_shifted_same_length` for Dels ≥5bp that fail S3 | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. Longer Dels can fail S3 due to BWA left-alignment shifting the anchor away from the actual CIGAR `D` position |
 
-!!! note "has_nearby_length_match Phase 3 Fallback"
-    When the windowed scan finds a deletion that matches in **length** (≥5bp) but S3 sequence validation fails (BWA left-alignment shifted the anchor further left than where the CIGAR `D` appears), the engine flags `has_nearby_length_match` and falls back to `check_complex` for Phase 3 SW haplotype arbitration.
+!!! note "has_shifted_same_length Phase 3 Fallback"
+    When the windowed scan finds a deletion that matches in **length** (≥5bp) but S3 sequence validation fails (BWA left-alignment shifted the anchor further left than where the CIGAR `D` appears), the engine flags `has_shifted_same_length` and routes to Phase-3 haplotype arbitration (WFA+PairHMM under the default backend), propagating `partial_alt` evidence when Phase 3 does not confirm ALT.
 
     Example: **TP53 `GACCGTGCAAGT→-` (12bp)** — left-alignment moves the anchor 3bp left of the actual `D(12)` position in reads. S3 compares the wrong reference slice and fails. Phase 3 correctly classifies these as ALT.
 
     Short deletions (1–4bp) failing S3 use CIGAR-definitive REF: a 1bp Del in the wrong reference context is almost certainly an unrelated noise deletion, not a left-alignment artifact.
 
-!!! warning "Interior REF Guard"
-    For deletions >50bp, reads that fall **entirely within** the deleted region would be incorrectly classified as ALT by Smith-Waterman (because the short ALT haplotype aligns better than the long REF haplotype). The interior REF guard catches these reads early and classifies them as REF before they reach Phase 3.
+!!! warning "No Interior REF for Large Deletions"
+    Reads that map **entirely within** a large deleted span never see the anchor junction and carry no information about whether the deletion is present. They are classified **neither** — an earlier interior-REF shortcut was removed because it massively inflated `rd` (claiming thousands of interior reads as REF evidence for a ~1kb deletion). Only reads spanning the anchor position contribute to any count.
 
 ### Visual Example
 
 ```
-Variant: chr1:100 ACG→A (deletion of CG after anchor A)
+Variant: chr1:100 GTG→G (deletion of TG after anchor G, inside a TG repeat)
 
-Reference:     5'─ ...T  G  A  C  G  T  A  C... ─3'
-                          99 100 101 102
-                               ▲
-                          anchor pos
+Reference:     5'─ ...A  T  G  T  G  T  G  C... ─3'
+                          99 100 101 102 103 104 105
+                              ▲
+                          anchor pos (repeat context — shifted placements stay equivalent)
 
 Read 1 (ALT, strict):  CIGAR = 5M 2D 5M
-               5'─ ...T  G  A  ──  ──  T  A  C... ─3'
+               5'─ ...A  T  G  ──  ──  T  G  C... ─3'
                                └─────┘
                           2bp deletion at anchor → ALT ✅ (strict)
 
 Read 2 (ALT, windowed): CIGAR = 7M 2D 3M
-               5'─ ...T  G  A  C  G  T  ──  ──  A  C... ─3'
-                                              └─────┘
-                  deletion shifted +2bp, same length, ref matches → ALT ✅ (windowed)
+               5'─ ...A  T  G  T  G  ──  ──  C... ─3'
+                                        └─────┘
+                  deletion shifted +2bp (one repeat unit): S1 length matches,
+                  S3 ref bases at shifted position (TG) match expected TG → ALT ✅ (windowed)
 
 Read 3 (REF):  CIGAR = 12M
-               5'─ ...T  G  A  C  G  T  A  C... ─3'
-                               ↑
+               5'─ ...A  T  G  T  G  T  G  C... ─3'
+                              ↑
                           no deletion after anchor → REF ✅
 ```
+
+---
+
+## Wrong-Length Pure Indels (partial_alt) { #wrong-length-pure-indels-partial_alt }
+
+A read whose CIGAR proves a **pure indel of a different length** at the variant anchor is
+evidence of a **different allele** — never definitive REF, and never the queried ALT. This is
+the load-bearing rule for repeat-tract loci, where coexisting distinct-length populations are
+distinct slippage alleles (a 1bp germline slippage allele coexisting with an annotated 2bp
+somatic deletion; a trinucleotide-repeat deletion ladder). Counting every tract-touching indel
+as the annotated event inflated VAF several-fold at such loci.
+
+### The rule
+
+| Evidence at/near the anchor | Classification |
+|:----------------------------|:---------------|
+| Exact-length, sequence-verified indel | **ALT** (structural) |
+| ≥50bp deletion within the placement-aware band (≤3 span bases retained, ≤3 changed outside — covers breakpoint wobble and split `D+M+D` representations) | **ALT** (structural) |
+| Insertion that is a truncation of the expected insert (≥4bp, ≥90% identity, both sequences non-low-complexity) | **ALT** (structural) |
+| Any other wrong-length pure indel at the anchor | **Neither + `partial_alt`** |
+| Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
+| Same-length candidate with unverifiable bases (all below `--min-baseq`) or a shifted same-length candidate failing S3 | **Phase-3 arbitration**, `partial_alt` propagated on non-ALT |
+| Windowed wrong-length op, repeat tract | **Neither + `partial_alt`** (deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
+| Windowed wrong-length op, unique context | **REF + `partial_alt`** (same size gate; anchor M is definitive REF, the stray op is surfaced) |
+
+Phase 3 deliberately does **not** arbitrate the definitive wrong-length/wrong-sequence cases:
+its haplotype window is length-blind inside repeat tracts, and alignment scoring promotes a
+wrong-sequence insert to ALT because it still beats the gapped REF alignment. Delins/complex
+variants are unaffected — they route to `check_complex`, whose Phase-3 realignment correctly
+resolves split and mismatch-absorbed representations of one event.
+
+### Why the 50bp gate
+
+The gate is an **artifact-size prior**, not an event-rarity claim: slippage, stutter, and
+alignment artifacts produce small spurious indel ops, while a read essentially never acquires a
+≥50bp deletion by artifact. Above the gate, an observed big D op is trusted as a *real* deletion
+in that molecule and the band decides whether it is the annotated event; below it, wrong-length
+ops are artifacts or genuine distinct slippage alleles, so no length tolerance is extended.
+
+### Reading the output
+
+At an affected locus, `alt_count` reflects only exact-support reads, and the distinct-allele
+evidence appears in `partial_alt`/`any_alt`. When partial evidence dominates
+(`partial_alt > alt_count`), the variant is flagged **`PARTIAL_DOMINANT`** in
+`gbcms_diagnostic` — at pure-indel loci this usually means the locus carries a coexisting
+allele the annotation does not describe (at ≥50bp deletion loci, a real different large
+event). Per-read indel lengths are visible with `--trace`.
+
+---
+
+## Splice-Aware Evidence (RNA) { #splice-aware-evidence }
+
+Spliced reads (CIGAR `N`) pass through a triage **before** any of the
+per-type checkers: a read testifies only through aligned bases (or a `D`
+op) at the discriminating positions, and an `N` spanning all of them
+means the read observes nothing there — it classifies neither AND is
+excluded from DP/fragment depth (samtools-pileup semantics). `D` is
+deletion evidence; `N` never is, so the call cannot flip on the
+aligner's D-vs-N representation choice. Indel ops directly after a
+splice `N` (`M-N-D-M`) get the same anchor/windowed inspection as ops
+after an `M` block, and Phase 3 never scores across a splice (window
+extraction and `check_complex` reconstruction both refuse N-crossing
+windows rather than stitch exon arms into a junction-chimeric
+sequence). At a pure-deletion locus whose anchor is spliced out, a
+junction read covering the **entire deleted span** with aligned bases
+counts REF (span-aligned REF testimony — the deletion is demonstrably
+absent); partial coverage or competing indel evidence keeps the read on
+its existing path. Details: [RNA Splice-Junction
+Handling](rna-splice-handling.md#the-evidence-rule-what-a-refskip-means).
 
 ---
 
@@ -419,7 +562,7 @@ flowchart TD
     MorePos -->|No| Classify
 
     Classify{"All unmasked = 0?"}
-    Classify -->|Yes| LowQ(["⬜ LowQuality\n→ check_complex"]):::fallback
+    Classify -->|Yes| LowQ(["⬜ LowQuality\nNeither + partial tracked"]):::neither
     Classify -->|No| AllAlt{"All unmasked\nmatch ALT?"}
     AllAlt -->|Yes| Alt(["🔴 ALT"]):::alt
     AllAlt -->|No| AllRef{"All unmasked\nmatch REF?"}
@@ -455,8 +598,8 @@ flowchart TD
 |:----------|:-------|:------------|:-----------|
 | All unmasked match ALT | **ALT** | 0 | true if any N at discrim. pos |
 | All unmasked match REF | **REF** | 0 | true if any N at discrim. pos |
-| Mixed unmasked (some ALT, some REF/other) | **ThirdAllele** → check_complex | `positions_matching_alt` | true if any N at discrim. pos |
-| All discriminating positions masked | **LowQuality** → check_complex | `positions_matching_alt` | true if any N at discrim. pos |
+| Mixed unmasked (some ALT, some REF/other) | **ThirdAllele** → Neither (terminal) | `positions_matching_alt` | true if any N at discrim. pos |
+| All discriminating positions masked | **LowQuality** → Neither (terminal) | `positions_matching_alt` | true if any N at discrim. pos |
 | Read doesn't cover / has indel in block | **Structural** → check_complex | 0 | false |
 
 !!! note "Partial ALT Tracking"
@@ -467,14 +610,17 @@ flowchart TD
 The contiguity check is performed **first** (before quality or sequence comparison) as a fail-fast for structural issues. gbcms compares the read positions of the first and last MNP base — if the distance doesn't equal `len - 1`, an indel exists within the block and the read is routed to `check_complex` for haplotype-based resolution.
 
 !!! warning "Phase 3 Fallback Conditions"
-    `check_complex` is invoked for both **structural** issues and **quality** issues:
+    `check_complex` is invoked only for **structural** issues:
 
     - Read position not found in CIGAR walk
     - Read doesn't cover the entire MNP region
     - Indel detected within the MNP block (contiguity check)
-    - **All discriminating positions masked** — Phase 2/3 haplotype-based classification may still resolve the read
 
-    The first three indicate a complex variant misannotated as an MNP; the last leverages haplotype reconstruction to rescue reads that per-position evaluation cannot classify.
+    These indicate a complex variant misannotated as an MNP. **LowQuality** and
+    **ThirdAllele** results are terminal: they return neither with `partial_alt`
+    tracking and are deliberately NOT routed to `check_complex` (matching the C++
+    `baseCountDNP` no-fallback behavior) — haplotype alignment cannot manufacture
+    confidence about positions the quality mask rejected.
 
 
 ---
@@ -490,7 +636,7 @@ Variants where REF and ALT differ in both sequence **and** length. Also used for
 | Quality check | Masked comparison — bases below `--min-baseq` are masked |
 
 !!! note "REF Fallback for Large Deletion-Direction Variants"
-    When `check_complex` is invoked for a deletion-direction variant (`ref_len > alt_len`) and `is_worth_realignment()` returns `false` (the read has a clean M-only CIGAR with no indels in the variant window), Phase 3 SW is skipped. Instead, gbcms checks whether **any M-block covers the anchor position**. If yes, the read is classified as **REF**.
+    When `check_complex` is invoked for a deletion-direction variant (`ref_len > alt_len`) and `is_worth_realignment()` returns `false` (the read has a clean M-only CIGAR with no indels in the variant window), Phase 3 is skipped. Instead, gbcms checks whether **any M-block covers the anchor position** AND the anchor base quality meets `--min-baseq`. If both hold, the read is classified as **REF**; an M-covered anchor with a low-quality base returns neither.
 
     Without this fallback, REF reads for large deletions (e.g., **NF2 ~100bp DEL**) would be misclassified as 'neither' — clean REF reads naturally have no CIGAR evidence warranting realignment, so skipping Phase 3 without a REF fallback silently drops all REF counts.
 
@@ -511,10 +657,12 @@ stateDiagram-v2
     Phase1 --> Phase2 : always
     Phase2 --> REF : exact REF match
     Phase2 --> ALT : exact ALT match
-    Phase2 --> Phase25 : ambiguous / no match
+    Phase2 --> Neither : ambiguous, or partial ALT bases
+    Phase2 --> Phase25 : recon matches NEITHER allele length
+    Phase2 --> Phase3 : case mismatch (no partial) / skip guards
     Phase25 --> REF : edit dist REF wins (>1 margin)
     Phase25 --> ALT : edit dist ALT wins (>1 margin)
-    Phase25 --> Phase3 : tied or large-del skip
+    Phase25 --> Phase3 : tied or guard-skipped
     Phase3 --> REF : confident REF call
     Phase3 --> ALT : confident ALT call
     Phase3 --> Neither : below threshold
@@ -546,31 +694,33 @@ flowchart TD
     LoopBack --> |"done"| Guards
 
     Guards["Post-reconstruction guards"]
-    Guards --> LargeGuard{"ref_len > 50 AND<br/>recon < 10% of ref?"}
-    LargeGuard -->|Yes| P25(["→ Phase 2.5"]):::next
-    LargeGuard -->|No| LenRatio{"ref_len > 2 × alt_len?"}
+    Guards --> LargeGuard{"ref_len > max(50, read_len/3)<br/>AND recon < 10% of ref?"}
+    LargeGuard -->|Yes| P3Skip(["→ Phase 3 directly"]):::next
+    LargeGuard -->|No| LenRatio{"ref_len > 2 × alt_len AND<br/>recon matches ALT length only?"}
     LenRatio -->|Yes| P3Direct(["→ Phase 3 directly"]):::next
     LenRatio -->|No| LenCheck{"Recon length matches?"}
 
     LenCheck -->|"ALT and REF"| CaseA["Case A: Dual compare<br/>+ ambiguity detection"]
     LenCheck -->|"ALT only"| CaseB["Case B: ALT-only compare"]
     LenCheck -->|"REF only"| CaseC["Case C: REF-only compare"]
-    LenCheck -->|"Neither"| P25
+    LenCheck -->|"Neither"| P25(["→ Phase 2.5"]):::next
 
     CaseA --> Ambig{"Reliable bases<br/>match BOTH?"}
     Ambig -->|Yes| Neither1(["⚪ Neither — ambiguous"]):::neither
     Ambig -->|No| Matches{"Which allele?"}
     Matches -->|ALT| Alt1(["🔴 ALT"]):::alt
     Matches -->|REF| Ref1(["✅ REF"]):::ref
-    Matches -->|Neither| P25
+    Matches -->|"Neither, some reliable<br/>ALT-matching bases"| NeitherP(["⚪ Neither + partial"]):::neither
+    Matches -->|"Neither, none"| P3F(["→ Phase 3"]):::next
 
     CaseB --> AltMatch{"0 mismatches on<br/>reliable bases?"}
     AltMatch -->|Yes| Alt2(["🔴 ALT"]):::alt
-    AltMatch -->|No| P25
+    AltMatch -->|"No, some reliable<br/>ALT-matching bases"| NeitherP
+    AltMatch -->|"No, none"| P3F
 
     CaseC --> RefMatch{"0 mismatches on<br/>reliable bases?"}
     RefMatch -->|Yes| Ref2(["✅ REF"]):::ref
-    RefMatch -->|No| P25
+    RefMatch -->|No| P3F
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef next fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
@@ -583,10 +733,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    P25in(["→ from Phase 2"]):::entry
+    P25in(["→ from Phase 2<br/>(recon matches NEITHER allele length)"]):::entry
     P25in --> ReconLen{"recon_len ≥ 2?"}
     ReconLen -->|No| P3(["→ Phase 3"]):::next
-    ReconLen -->|Yes| RatioGuard{"ref_len > 2 × alt_len?"}
+    ReconLen -->|Yes| SizeGuard{"REF ≤ 50bp AND ALT ≤ 50bp?"}
+    SizeGuard -->|No| P3
+    SizeGuard -->|Yes| RatioGuard{"ref_len > 2 × alt_len?"}
     RatioGuard -->|Yes| P3
     RatioGuard -->|No| EditDist["Compute Levenshtein distance<br/>to REF and ALT alleles"]
     EditDist --> EDMargin{"> 1 edit margin?"}
@@ -668,11 +820,11 @@ Instead of exact matching, bases with quality below `--min-baseq` **or N bases**
     When reliable bases match **both** REF and ALT (possible when they differ only at masked positions), the read is discarded rather than guessed. This prevents false calls at positions where low-quality bases happen to match one allele.
 
 !!! warning "Large-REF Guard"
-    For variants with REF >50bp, if the reconstruction is <10% of the REF length (e.g., 1bp recon for a 1024bp deletion), Phase 2 is skipped entirely. A tiny reconstruction would trivially match a short ALT allele, causing overcounting. Phase 3 SW handles these correctly.
+    For variants with REF longer than `max(50, read_len/3)`, if the (non-empty) reconstruction is <10% of the REF length (e.g., 1bp recon for a 1024bp deletion), Phase 2 is skipped entirely and the read goes straight to Phase 3. A tiny reconstruction would trivially match a short ALT allele, causing overcounting.
 
 ### Phase 2.5: Edit Distance
 
-When Phase 2's strict length comparison fails (Case A/B/C don't match), gbcms measures the **Levenshtein edit distance** between the reconstruction and each allele. This catches cases where the reconstruction is off by 1-2 bases due to an incomplete variant definition:
+When the reconstruction's length matches **neither** allele (so no Case A/B/C comparison is possible), gbcms measures the **Levenshtein edit distance** between the reconstruction and each allele. It runs only for small alleles (REF and ALT both ≤50bp, `ref_len ≤ 2×alt_len`). A failed Case A/B comparison never reaches this phase — it returns Neither (with `partial_alt` when reliable ALT-matching bases exist) or falls to Phase 3. This catches cases where the reconstruction is off by 1-2 bases due to an incomplete variant definition:
 
 | Parameter | Value | Rationale |
 |:----------|:------|:----------|
@@ -729,7 +881,7 @@ Two conditions detect low-confidence semiglobal results:
 When **either** trigger fires, the engine retries with **local alignment** (`Aligner::local()`), which soft-clips the bad flank and finds the best matching substring without penalizing overhangs on either side.
 
 !!! tip "Performance: Aligner Reuse"
-    SW aligners are created **once per variant** in `count_single_variant()` and reused for all reads. The `bio::alignment::pairwise::Aligner` reuses internal DP buffers, avoiding repeated heap allocation.
+    SW aligners are created **once per variant** (in every counting path) and reused for all of its reads. The `bio::alignment::pairwise::Aligner` reuses internal DP buffers, avoiding repeated heap allocation.
 
 !!! note "Raw Read Window Extraction"
     Phase 3 uses `extract_raw_read_window()` instead of CIGAR-projected extraction. For complex variants (e.g., `TCC→CT` represented as `DEL+INS` in CIGAR), CIGAR projection produces a hybrid sequence matching neither haplotype. Raw extraction returns the contiguous read bases that SW can correctly classify.
@@ -758,31 +910,46 @@ During counting, reads classified as **REF** for a variant are additionally chec
 
 ---
 
-## Dynamic SW Gap Penalties
+## SW Gap Penalties
 
-Phase 3's Smith-Waterman aligners use **adaptive affine gap penalties** tuned by the local repeat context:
+Phase 3's Smith-Waterman aligners use affine gap penalties: `gap_open = -5`,
+`gap_extend = dynamic_sw_gap_extend(repeat_span)`.
 
-| Context | `gap_extend` | Rationale |
-|:--------|:------------|:----------|
-| Stable DNA (`repeat_span < 10bp`) | -1 | Standard penalty — prevents spurious gap extension |
-| Tandem repeat (`repeat_span ≥ 10bp`) | 0 (free) | Absorbs polymerase slippage noise — prevents undercounting in MSI regions |
+!!! warning "The 'dynamic' SW gap extend is currently a constant −1"
+    `dynamic_sw_gap_extend` maps a logistic repeat curve to an integer penalty by rounding —
+    but the curve is capped at 0.5, so the pre-round value stays within `(-0.9, -0.5]` and
+    **rounds to −1 for every `repeat_span`**. The intended tight→free relaxation for deep
+    repeat tracts never engages; in practice every SW alignment runs with `gap_extend = -1`.
+    Making the relaxation real (or removing the inert machinery) is tracked in issue #92 —
+    it changes SW alignment scores and needs its own validation pass.
 
-The `repeat_span` is computed during normalization using `find_tandem_repeat()` and stored on the `Variant` struct. `gap_open` remains fixed at -5 in all cases.
+    The mapping also always uses the *default* PairHMM gap-extend curve: overriding the
+    PairHMM gap flags retunes PairHMM probabilities but never the SW penalty. Under the
+    default `pairhmm` backend both points are low-stakes (SW runs only when the pangenomic
+    haplotype matrix cannot be built, and PairHMM's own repeat-scaled gap blending **is**
+    active); under `--alignment-backend sw`, these fixed constants are the **primary**
+    Phase-3 engine and there are no SW gap flags at all.
+
+The `repeat_span` is computed during normalization using `find_tandem_repeat()` **at the
+first changed base** of the alleles (not the shared anchor, which sits one base left of a
+left-aligned tract) and stored on the `Variant` struct. It actively drives the PairHMM gap
+blending, the windowed-scan width, and adaptive context padding — the inert consumer is only
+the SW integer penalty.
 
 !!! tip "MSI-High Tumors"
-    In microsatellite-unstable tumors, insertions/deletions within long homopolymer or dinucleotide repeats are common. The free gap extension ensures these slippage-like variants get correctly classified rather than artificially rejected by high gap penalties.
+    In microsatellite-unstable tumors, insertions/deletions within long homopolymer or dinucleotide repeats are common. Under the default `pairhmm` backend, repeat tolerance comes from PairHMM's repeat-scaled gap probabilities and from the wrong-length rule's tract-aware handling — not from the SW gap penalty, which is constant (see above).
 
 ---
 
 ## Limitations
 
-1. **Windowed scan range** — Indels shifted beyond the context padding from their expected position won't be detected by the CIGAR-based check. Phase 3 SW can catch some of these via `ref_context`, but only if the read shows evidence (indels/clips) near the variant. [Adaptive context padding](variant-normalization.md#adaptive-context-padding) (enabled by default) utilizes a multi-anchor footprint sweep to dramatically widen the padded detection bounds natively for INDEL clusters.
+1. **Windowed scan range** — Indels shifted beyond the context padding from their expected position won't be detected by the CIGAR-based check. Phase 3 can catch some of these via `ref_context`, but only if the read shows evidence (indels/clips) near the variant. [Adaptive context padding](variant-normalization.md#adaptive-context-padding) (enabled by default) utilizes a multi-anchor footprint sweep to dramatically widen the padded detection bounds natively for INDEL clusters.
 
 2. **Score margin ≥ 2** — The SW margin is fixed at 2 points to prevent ambiguous calls. Reads failing to achieve definitive spacing are routed to **neither** — they contribute to `DP` but not to `RD` or `AD`, preserving unbiased VAF.
 
 3. **Soft-clip recovery** — Phase 1 includes soft-clipped bases that overlap the variant window, but only when `ref_pos` is within the variant region. Soft clips at the edge of reads far from the variant are not considered.
 
-4. **MNP strict matching** — MNP strict matching is all-or-nothing, but inconclusive reads fall back to the complex variant classification chain (Phase 2 → 2.5 → 3). The fallback rescues reads with low-quality bases or partial matches that strict matching would reject.
+4. **MNP strict matching** — MNP evaluation is per-position and terminal: LowQuality and ThirdAllele results return neither (with `partial_alt` tracking) and are deliberately not rescued by the complex chain. Only structural issues (no coverage, indel inside the block) fall back to `check_complex`.
 
 5. **Incomplete variant definitions** — When the MAF/VCF represents a complex event incompletely (e.g., `TCC→CT` omitting an adjacent SNV), reads may carry a different CIGAR signature than expected. The dual-trigger local fallback in Phase 3 mitigates this by soft-clipping "frameshifted flanks" caused by the definition mismatch.
 

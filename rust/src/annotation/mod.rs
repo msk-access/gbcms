@@ -4,7 +4,8 @@
 //! built from a GTF file. Used by:
 //!
 //! - **Splice mask** (`counting/engine.rs`): suppress BAQ penalties near known
-//!   exon boundaries, even at low coverage where consensus splicing fails.
+//!   exon boundaries — the GTF gives authoritative junction positions
+//!   independent of read coverage.
 //! - **Per-transcript counting** (`counting/engine.rs`): filter reads by
 //!   splice-junction compatibility per transcript.
 //! - **ASJD detection** (`counting/engine.rs`): compare junction usage between

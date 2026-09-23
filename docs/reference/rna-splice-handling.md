@@ -16,6 +16,65 @@ Read:        ...EXON1=====XX                        YYYY=====EXON2...
                      may be misaligned          may be misaligned
 ```
 
+## The Evidence Rule: What a RefSkip Means
+
+Before any artifact handling, gbcms applies one semantic rule to every
+spliced read: **a read testifies about a variant only through aligned
+bases (or a `D` op) at the discriminating positions.** A CIGAR `N`
+asserts spliced-out reference — unlike `D`, it is not a claim that the
+molecule lacks those bases; it is a claim that the read observes
+nothing there (samtools pileup reports zero coverage inside an N gap).
+
+Concretely (`splice_skip_triage` in `variant_checks.rs`, applied before
+per-type classification):
+
+- A read whose `N` spans **every** discriminating position — the
+  deleted span of a deletion, both junction flanks of an insertion,
+  every REF base of an SNV/MNP/complex — classifies **neither** and is
+  **excluded from DP and fragment depth entirely**. It is not "neither
+  at the locus"; it is not at the locus. An intronic position inside a
+  spliced-out intron therefore gets depth only from pre-mRNA reads,
+  matching pileup. (At an anchor-preserved deletion this is deliberately
+  stricter than pileup depth at POS — the anchor base may be aligned,
+  but the event is still unobserved, and an unobservant read in DP only
+  deflates VAF.) One caveat this creates: RNA aligners represent large
+  deletions as splices (STAR writes any deletion ≥ `alignIntronMin`,
+  default 21bp, as `N`), so genuine large-deletion carriers can arrive
+  N-represented and be excluded. Deletion loci where such exclusions
+  exceed confirmed ALT are flagged `SPLICE_SKIP_DOMINANT(n)` in
+  `gbcms_diagnostic` — inspect them in IGV before trusting `AD=0`.
+- A `D` op remains deletion evidence; an `N` op never is. The same
+  100bp gap counts ALT when the aligner writes `D(100)` and counts
+  nothing when it writes `N(100)` — the call must not flip on the
+  aligner's representation choice. (Pre-rule, the N form fell through
+  the anchor fast path as definitive REF.)
+- An indel op **directly after** a splice `N` (`M-N-D-M`, `M-N-I-M` —
+  an event at an exon boundary reached through the junction) gets the
+  same anchor/windowed inspection as an op after an `M` block. The
+  anchor base itself may be spliced out; the evidence is attributed to
+  the nearest aligned or inserted base.
+- **Span-aligned REF testimony**: at a pure-deletion locus whose anchor
+  base is spliced out, a junction read whose aligned bases cover the
+  **entire deleted span** demonstrates the deletion is absent — it counts
+  REF (the span, not the anchor, is the discriminating fact; presence,
+  not per-base identity, same coverage standard as the anchor fast
+  path). Partial span coverage stays neither, and a read carrying a
+  competing indel candidate in the scan window keeps its arbitration
+  path. Typical population: deletion annotations left-aligned to the
+  last intronic base at an acceptor — at a validated FORTE locus this
+  reclassifies 823 of 824 anchor-spliced junction reads to REF (the one
+  residual covers only part of the span and stays neither).
+- Phase 3 never scores across a splice: `extract_raw_read_window`
+  refuses windows that an `N` overlaps (a contiguous slice would stitch
+  the exon arms into a junction-chimeric sequence in which the missing
+  intron reads as deletion evidence), and `check_complex`'s
+  reconstruction classifies such reads neither instead of
+  string-comparing them.
+
+Reads without `N` ops never enter this triage — DNA-mode classification
+is untouched. Per-variant exclusion counts are logged at debug level in
+the `Phase stats` line (`splice_skip_excluded=`).
+
 ## Community Approach: GATK SplitNCigarReads
 
 GATK addresses this by **physically modifying the BAM** before variant
@@ -31,25 +90,29 @@ calling:
 This produces a clean BAM where no read contains `N` operators, at the
 cost of losing the original read structure.
 
-## gbcms Approach: Dual-Mechanism (No BAM Modification)
+## gbcms Approach (No BAM Modification)
 
-gbcms handles splice-junction artifacts **without modifying the BAM**,
-using two complementary mechanisms:
+gbcms handles splice-junction artifacts **without modifying the BAM**:
+the evidence rule above governs what a spliced read may testify to, and
+heuristic BAQ handles overhang misalignment.
 
-### 1. Consensus Intron Snipping (automatic in RNA mode)
+!!! note "Removed: consensus intron snipping of `ref_context`"
+    An earlier step drained consensus introns from `ref_context` in place
+    so Phase 3 could score junction reads against a mature-mRNA haplotype.
+    It had no coordinate map — the context shrank while
+    `ref_context_start` stayed genomic — so every position-indexed check
+    right of a snipped intron (shifted-deletion sequence verification, the
+    large-deletion band's context guard, haplotype offsets) read garbage,
+    so exon-contained reads were scored against haplotypes whose offsets
+    no longer matched their genomic coordinates, and pre-mRNA /
+    intron-retention reads against a haplotype missing bases their
+    sequence genuinely contains. It was removed; `ref_context` is always
+    genomic.
+    Splice-aware Phase-3 scoring, if real-data measurement shows it is
+    needed, requires an explicit genomic→spliced coordinate map with
+    junction-compatible extraction (tracked in issue #94).
 
-`apply_consensus_splicing()` in `rna.rs` modifies the *reference
-haplotype*, not the reads:
-
-- Examines local read pileup for consensus introns (>50% threshold)
-- Removes intronic bases from the reference haplotype used by PairHMM
-- PairHMM then evaluates reads against a mature mRNA-like reference
-
-This is arguably more elegant than SplitNCigarReads because reads
-retain their original structure while the reference adapts to the
-biology.
-
-### 2. Heuristic BAQ Near Splice Junctions (`--apply-baq`)
+### Heuristic BAQ Near Splice Junctions (`--apply-baq`)
 
 `apply_heuristic_baq()` in `baq.rs` penalizes base qualities within
 5bp of CIGAR `N`/RefSkip operations:

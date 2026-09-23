@@ -7,6 +7,213 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.4.0] - 2026-09-22
+
+> The changes below alter reported counts at wrong-length indel loci and at
+> spliced RNA positions — the minor version bump this release delivers.
+
+### ⚠️ Changed — span-aligned REF testimony at spliced deletion loci (user-visible)
+
+- **Structural REF evidence survives fragment consensus at quality zero.**
+  Span-aligned REF's carried quality is the first exon base after the
+  junction — exactly where BAQ can zero it — and `FragmentEvidence` gated
+  REF existence on quality > 0, silently dropping such fragments from
+  `rdf` (the mirror of the structural-ALT divergence fixed in the
+  splice-aware change below). Span-REF observations now carry a structural
+  flag that keeps them alive in consensus; a structural ALT in the same
+  fragment still wins. On the FORTE locus this recovers one real fragment
+  (`rdf` 726→727 = `dpf`).
+
+- **Junction reads that observe every deleted-span base now count REF** at a
+  pure-deletion locus whose anchor base is spliced out (typical for deletion
+  annotations left-aligned onto the last intronic base at an acceptor). The
+  anchor base is not the discriminating fact for a deletion — the span is —
+  and these reads demonstrate the span is present. Previously they counted
+  DP as neither (conservative cluster-A behavior): at a validated FORTE
+  acceptor locus, 823 of the 824 anchor-spliced junction reads convert
+  (`rd` 24→847 of `dp` 848, fragment `rdf` 23→727 of `dpf` 727, DP
+  unchanged); the one
+  residual read's exon2 alignment covers only one of the two deleted-span
+  bases (`95M92N1M`) and honestly stays neither. Guards: the FULL span
+  must be aligned (partial coverage stays neither), and reads carrying a
+  competing shifted/wrong-length indel candidate keep their existing
+  arbitration paths. Read- and fragment-level, mirrored in both engine
+  paths via the shared checker.
+
+### ⚠️ Changed — consensus intron snipping of ref_context removed (user-visible)
+
+- **`ref_context` is always genomic now.** The RNA-mode step that drained
+  consensus introns from the variant's reference context before Phase 3 had
+  no coordinate map: the context shrank while `ref_context_start` stayed
+  genomic, so shifted-indel sequence verification, the large-deletion band's
+  context guard, and haplotype offsets all read garbage right of a snipped
+  intron — so exon-contained reads were scored against haplotypes whose
+  offsets no longer matched their genomic coordinates, and pre-mRNA /
+  intron-retention reads against a haplotype missing bases their sequence
+  genuinely contains. Removing it
+  fixes windowed shifted-deletion matching near acceptors (contract test
+  `test_windowed_deletion_after_junction_in_repeat_rna`, committed red) and
+  erases the binned-vs-legacy RNA divergence around it; junction reads
+  needing alignment-based scoring stay conservatively `neither` under the
+  splice-aware evidence rule. Re-validated on local (non-repo) clinical RNA
+  data — the b37 dedup and FORTE hg38 smoke loci report unchanged counts. A
+  coordinate-mapped spliced-haplotype rework remains tracked in issue #94,
+  gated on real-data measurement; it must keep pre-mRNA / intron-retention
+  reads genomically scored.
+- **`mq0_count` now tallies before the RNA strandedness filter in the binned
+  path**, matching the legacy path: an antisense MAPQ-0 read is still a
+  physical read at the locus, and the two paths previously diverged on this
+  diagnostic in stranded RNA mode.
+
+### ⚠️ Changed — splice-aware evidence in RNA counting (user-visible)
+
+- **Reads spliced over a variant no longer count depth or REF.** A CIGAR `N`
+  spanning every discriminating position (a deletion's deleted span, an
+  insertion's junction flanks, an SNV/MNP's REF bases) is asserted splicing —
+  no observation — so the read classifies neither AND is excluded from
+  DP/fragment depth, matching samtools pileup's zero coverage inside an N gap.
+  Previously such reads counted definitive REF (deletions) or inflated DP with
+  zero aligned bases (intronic positions): on a junction-dense real RNA locus,
+  DP at an intronic SNV drops from ~826 span-overlapping reads to the 2 with
+  aligned bases there. Excluded totals are logged per variant at debug level
+  (`Phase stats … splice_skip_excluded=`).
+- **The REF/ALT call no longer flips on the aligner's D-vs-N representation
+  choice.** A `D(100)` at the expected span is deletion evidence (ALT); the
+  same gap as `N(100)` is splicing (excluded).
+- **Indels directly after a splice junction are now examined.** An indel op
+  whose only neighbor is a splice `N` (`M-N-D-M` / `M-N-I-M` — an event at an
+  exon boundary reached through the junction) was structurally invisible to the
+  strict and windowed CIGAR scans; carriers now classify through the same
+  anchor/windowed inspection as `M`-adjacent ops (evidence attributed to the
+  nearest aligned/inserted base when the anchor itself is spliced out).
+- **Phase 3 no longer scores across a splice.** Raw-window extraction refuses
+  windows that an `N` overlaps, and `check_complex`'s reconstruction classifies
+  such reads neither instead of stitching exon arms into a junction-chimeric
+  sequence in which the missing intron reads as deletion evidence.
+- **The exclusion is not silent.** Deletion-type loci where splice-skip
+  exclusions exceed confirmed ALT are flagged `SPLICE_SKIP_DOMINANT(n)` in
+  `gbcms_diagnostic` — RNA aligners write large deletions as splices (STAR:
+  ≥ `alignIntronMin`, default 21bp), so `alt_count`=0 there may mean the
+  carriers exist as junction reads. Per-variant totals also appear in the
+  debug-level `Phase stats` line (`splice_skip_excluded=`).
+- **Shifted representations across a junction stay in classification.** A
+  read whose N covers the annotated span but which carries an I/D op inside
+  the scan window (repeat-tract shift) is deferred to the windowed scans
+  instead of being excluded.
+- **Fragment consensus recognizes structural ALT independent of base
+  quality.** BAQ can stack splice and indel penalties to quality 0 on the
+  base carried with a junction-adjacent I/D op; `FragmentEvidence::resolve`
+  previously treated qual-0 ALT evidence as no evidence, reporting `ad > 0`
+  with `adf = 0` at the same locus.
+- **`check_complex` refuses string comparison for structurally anomalous
+  junction reads** (splice N inside the context window): with the indel
+  shifted outside the variant span, the span reconstruction is clean REF
+  sequence and Phase 2 would absorb an ALT carrier into `rd`.
+- ASJD junction tallies at intronic splice-region variants now reflect only
+  allele-informative reads (spliced reads with no observation at the locus
+  no longer contribute fabricated REF junctions); expect `LOW_REF_JUNC`
+  where the REF tally was previously fed by such reads.
+- Contract battery: `tests/test_rna_splice_contract.py` (13 cases incl. a
+  legacy-parity case with N-CIGAR reads and one strict xfail pinning the
+  known D6 ref_context coordinate corruption for the cluster-B fix).
+  DNA-mode classification is untouched (reads without `N` ops never enter
+  the triage), and the legacy parity oracle mirrors every engine-loop
+  change.
+
+### ⚠️ Changed — orchestration fail-fast (user-visible)
+
+- **`--bam-list` entries that do not exist now fail the run** (exit 1) unless
+  `--lenient-bam` is given — matching the long-documented fail-fast promise. An
+  unreadable list file is equally fatal: previously both cases silently ran a
+  partial sample set and exited 0.
+- **Duplicate sample names are now a hard error** (from `--bam`, `--bam-list`, or
+  a mix): the later BAM silently replaced the earlier one, which was then never
+  processed. Use `sample_id:path` (or two-column list entries) to disambiguate
+  deliberate same-stem inputs.
+- **Ragged MAF rows now raise in the batch readers** (`gbcms merge` inputs)
+  instead of having their overflow fields silently truncated — the gbcms count
+  columns are the trailing columns, exactly what truncation dropped.
+
+### 🔧 Fixed
+
+- **A rejected (FAIL) variant no longer crashes `--mfsd`, RNA `--gtf`, or
+  `--mfsd-parquet` runs**: the zero-count stub now carries every column the
+  writers read (mFSD q-value and nucleosomal fractions, RNA/GTF annotation and
+  ASJD fields), and the mFSD Parquet excludes rejected variants (they have no
+  fragment data) with the exclusion logged.
+- **`gbcms merge` no longer coerces float-formatted count strings to 0**: a
+  pandas/R round-trip renders integers as `12.0`, which the combined-column sums
+  silently nulled to 0; genuinely non-numeric values (e.g. `NA`) are counted and
+  warned about per column.
+- **Re-genotyping warns about replaced columns**: an input MAF already carrying
+  gbcms output column names (e.g. `ref_count` from a previous run) has those
+  values refreshed — now with a warning naming every colliding column, and the
+  writer's docstring no longer claims originals are never overwritten.
+- **Failed-sample reports name the exception type and log the traceback**
+  (`KeyError: some_key` instead of a bare `'some_key'`).
+
+### ⚠️ Changed — wrong-length pure-indel evidence is a distinct allele (issue #91)
+
+- **A read whose CIGAR proves a pure indel of a DIFFERENT length at the variant anchor now
+  counts as `partial_alt`, never as REF or the queried ALT.** In repeat tracts, coexisting
+  distinct-length indel populations are distinct slippage alleles; the previous behavior
+  routed them to the length-blind Phase-3 haplotype window, which promoted them to ALT and
+  inflated VAF several-fold at tract loci (a homopolymer locus with 7 true-ALT reads
+  reported 259). `alt_count` now reflects exact support; the distinct-allele evidence
+  surfaces in `partial_alt`/`any_alt`, and `PARTIAL_DOMINANT` flags loci where it dominates.
+- **Placement-aware ≥50bp deletion band** replaces the reciprocal-overlap tier: a
+  wrong-length D at the anchor is the annotated event only when the read deletes essentially
+  the whole expected span (≤3 retained bases, ≤3 changed outside) — accepting breakpoint
+  wobble and split `D+M+D` representations while rejecting displaced net-matches. The old
+  ≥50% overlap rule accepted any deletion sharing half the annotated length (its sequence
+  check compared reference against reference, identically true by construction).
+- **Insertion truncation containment**: a shorter insert that is a ≥90%-identity slice of a
+  non-low-complexity expected insert still counts as ALT (sequencer truncation smear of long
+  insertions); both sequences must be non-low-complexity so repeat-tract slippage is never
+  mistaken for truncation.
+- **Same-length insertions with confidently mismatching bases** (≥`--min-baseq`) are a
+  third allele → `partial_alt`; they were previously absorbed into `ref_count` with no
+  signal. Unverifiable cases (all inserted bases low-quality) go to Phase-3 arbitration.
+- **Windowed wrong-length ops** (deletions ≥5bp — 1–4bp windowed Ds remain
+  CIGAR-definitive alignment noise; insertions at any size): repeat tract → `partial_alt`;
+  unique context → REF with the stray op surfaced as `partial_alt`. Same-length S3-fail candidates keep the Phase-3
+  left-alignment rescue (TP53-class), now via the split `has_shifted_same_length` flag.
+- **Repeat scan anchors at the first changed base** (not the shared VCF anchor, which sits
+  one base left of a left-aligned tract), and adaptive context padding covers the whole
+  tract plus flank — Phase-3 haplotype windows in repeat regions are no longer too narrow
+  to distinguish tract lengths.
+- Delins/complex variants are unaffected: they route to `check_complex`, whose Phase-3
+  realignment correctly resolves split and mismatch-absorbed representations of one event.
+
+### 🔧 Fixed
+
+- **`--trace` never emitted a single per-read Rust trace line**: pyo3-log's default filter
+  capped forwarding at DEBUG, and the Python side configured a logger name (`gbcms_rs`)
+  that pyo3-log never uses (`_rs.…`). Both fixed; `_rs.reset_log_caching()` exposed so
+  enabling trace after Rust code has logged is not silently ignored.
+- **Left-alignment failures are loud**: wide-window FASTA fetch failure warns with the
+  error (reachable near contig ends) instead of silently skipping normalization; the
+  2500bp expansion cap binding without convergence warns; non-UTF-8 alleles from a corrupt
+  reference keep the variant fully unnormalized instead of emitting a shifted position with
+  reverted alleles; a stray `println!` on ref_context fetch failure removed.
+- **`--enforce-strandedness` warns when variants have no resolved gene strand** (no GTF,
+  uncovered locus, contig mismatch) instead of silently not enforcing.
+- **GTF annotation warns per variant chromosome with zero loaded exons**, on both the
+  text-parse and the `--gtf-cache-dir` cache-hit paths (a warm cohort cache previously
+  silenced the warning after the first sample).
+- Per-read `debug!` diagnostics demoted to `trace!` (WFA router, marginalized PairHMM).
+
+### ✨ Added
+
+- Wrong-length contract battery (`tests/test_wrong_length_contract.py`, 20 tests through
+  the binned↔legacy parity oracle) and an end-to-end `PARTIAL_DOMINANT` reporting-chain
+  test driving the full CLI.
+- Documentation: "Wrong-Length Pure Indels" rule reference in
+  `docs/reference/allele-classification.md` and a worked case study (Case 4 in
+  `docs/reference/complex-indels.md`);
+  `partial_alt` semantics updated in output docs; fictional `RUST_LOG`/`GBCMS_LOG_LEVEL`
+  controls removed from docs (logging is `--verbose`/`--trace`).
+
 ## [6.3.1] - 2026-08-25
 
 ### 🔧 Fixed

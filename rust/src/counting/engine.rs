@@ -26,7 +26,6 @@
 use pyo3::prelude::*;
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::{self, Read, Record};
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use crate::annotation::AnnotationIndex;
@@ -48,7 +47,7 @@ use bio::alignment::pairwise::Aligner;
 
 use super::fragment::{FragmentEvidence, hash_qname, hash_molecule};
 use super::pairhmm::dynamic_sw_gap_extend;
-use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, MnpResult};
+use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, MnpResult};
 use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
@@ -705,6 +704,27 @@ fn count_bam_binned_core(
             "Resolved gene strand from the annotation for {}/{} variants",
             resolved, variants.len(),
         );
+    }
+    // Strandedness enforcement needs a gene strand per variant; variants left
+    // without one (no GTF, intergenic locus, or a GTF/variant contig mismatch)
+    // pass every read as sense — the antisense artifacts the flag exists to
+    // remove are counted. Say so once, loudly, instead of enforcing nothing
+    // while the run banner claims enforce_strandedness=true.
+    if enforce_strandedness {
+        let unresolved = variants.iter().filter(|v| v.gene_strand.is_none()).count();
+        if unresolved > 0 {
+            warn!(
+                "--enforce-strandedness: {}/{} variants have no gene strand ({}) — \
+                 strandedness is NOT enforced for them and antisense reads are counted",
+                unresolved,
+                variants.len(),
+                if annotation.is_some() {
+                    "locus not covered by the GTF, or contig naming mismatch"
+                } else {
+                    "no --gtf provided"
+                },
+            );
+        }
     }
 
     // Store FASTA path for thread-local readers (used by ASJD motif classification)
@@ -1554,54 +1574,25 @@ fn count_variant_from_cache(
     let v_start = (variant.pos - window_pad).max(0);
     let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
 
-    // ── D6: RNA CONSENSUS SPLICING ──────────────────────────────────────
-    // For RNA mode, snip consensus introns from the variant's ref_context
-    // so that haplotype alignment in Phase 3 uses a mature-mRNA-like
-    // reference instead of genomic (intron-containing) sequence.
-    //
-    // The read cache provides local reads — only reads overlapping this
-    // variant's window contribute their CIGAR N ops for intron discovery.
-    // apply_consensus_splicing uses >50% consensus threshold to filter
-    // alignment artifacts and rare alternative splicing.
-    //
-    // Uses Cow to avoid cloning Variant when no introns are found
-    // (common case: >80% of variants have no overlapping introns).
-    let effective_variant: Cow<'_, Variant>;
-    if mode == "rna" {
-        if let Some(ref ctx) = variant.ref_context {
-            let local_reads: Vec<&Record> = read_cache.iter()
-                .filter(|r| r.pos() < v_end && read_ref_end(r) > v_start)
-                .collect();
-
-            let spliced_ctx = rna::apply_consensus_splicing(
-                ctx.as_bytes(), &local_reads, variant.ref_context_start,
-            );
-
-            if spliced_ctx.len() != ctx.len() {
-                // Introns were snipped — create a modified variant copy
-                let mut v2 = variant.clone();
-                v2.ref_context = Some(String::from_utf8_lossy(&spliced_ctx).into_owned());
-                debug!(
-                    "D6 splice: {}:{} ref_context {} → {} bases ({} intron bases removed)",
-                    variant.chrom, variant.pos + 1,
-                    ctx.len(), spliced_ctx.len(),
-                    ctx.len() - spliced_ctx.len(),
-                );
-                effective_variant = Cow::Owned(v2);
-            } else {
-                effective_variant = Cow::Borrowed(variant);
-            }
-        } else {
-            effective_variant = Cow::Borrowed(variant);
-        }
-    } else {
-        effective_variant = Cow::Borrowed(variant);
-    }
-    // Shadow `variant` with the potentially-spliced version.
-    // All downstream code (Phase 3 classification, haplotype matrix
-    // construction) automatically uses the mature mRNA ref_context.
-    let variant = effective_variant.as_ref();
-
+    // ── NO CONSENSUS SPLICING OF ref_context (removed, issue #94 cluster B).
+    // An earlier step ("D6") drained consensus introns from ref_context in
+    // place so Phase 3 could score junction reads against a mature-mRNA
+    // haplotype. It had no coordinate map: splicing shrank the context while
+    // ref_context_start stayed genomic, so every `pos - ref_context_start`
+    // indexer right of a snipped intron — S3 sequence verification, the
+    // large-deletion band's context guard, haplotype offsets — read garbage,
+    // so exon-contained reads were scored against haplotypes whose offsets
+    // no longer matched their genomic coordinates (and pre-mRNA /
+    // intron-retention reads, whose bases genuinely include intron sequence,
+    // against a haplotype missing those bases — such reads must stay
+    // genomically scored in any future spliced-haplotype rework).
+    // Meanwhile its intended consumer became unreachable: the
+    // splice-aware evidence rule refuses to extract or string-compare across
+    // an N, so junction-spanning reads never reach Phase 3 scoring at all.
+    // ref_context is therefore ALWAYS genomic. Splice-aware Phase-3 scoring,
+    // if real-data measurement shows it is needed, requires an explicit
+    // genomic→spliced coordinate map with junction-compatible extraction
+    // and translated variant/sibling offsets — tracked in issue #94.
     let mut reads_considered = 0u32;
 
     for record in read_cache {
@@ -1635,18 +1626,21 @@ fn count_variant_from_cache(
             reads_considered += 1;
         }
 
-        // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
-        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness) {
-            continue;
-        }
-
-        // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE any MAPQ-based skip.
+        // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE any MAPQ-based skip
+        // AND before the strandedness filter — an antisense MAPQ-0 read is
+        // still a physical read at the locus, and the legacy path counts it
+        // (the two paths previously diverged on this diagnostic in RNA mode).
         // Mirrors GATK's MappingQualityZero annotation — a high MQ0 count
         // is a locus-level red flag for regions with high homology or
         // pseudogenes, even when those reads are filtered for classification.
         // Read-level, so first-class records only (see `first_class` above).
         if first_class && record.mapq() == 0 {
             counts.mq0_count += 1;
+        }
+
+        // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
+        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness) {
+            continue;
         }
 
         // ── MAPQ SKIP (Phase 1): MAPQ=0 reads were kept in the cache
@@ -1684,6 +1678,21 @@ fn count_variant_from_cache(
             record, variant, sibling_variants, effective_quals, min_baseq,
             &mut alt_aligner, &mut ref_aligner, backend,
         );
+        // ── SPLICE-SKIP EXCLUSION: covers_locus=false means the read's
+        // CIGAR N spans every discriminating position — it observes nothing
+        // here, so it contributes to neither DP nor fragment depth, and it
+        // is not a classification (kept out of phase_counts). At skipped
+        // positions this matches samtools pileup's zero coverage; at an
+        // anchor-preserved deletion it is deliberately stricter than pileup
+        // at POS (the anchor base may be aligned) — an unobservant read in
+        // DP would only deflate VAF. Must run before the anchor-overlap
+        // gate below, which is span-based (read_ref_end includes N) and
+        // would otherwise admit these reads.
+        if !result.covers_locus {
+            counts.splice_skip_excluded += 1;
+            continue;
+        }
+
         let is_ref = result.is_ref;
         let is_alt = result.is_alt;
         let base_qual = result.qual;
@@ -1693,7 +1702,7 @@ fn count_variant_from_cache(
         // base is to the nearest end of the read. Bases near read ends
         // have higher error rates and misalignment probability.
         // Stored per-allele for median computation after the loop.
-        if is_ref || is_alt {
+        if first_class && (is_ref || is_alt) {
             if let Some(read_idx) = find_read_pos(record, variant.pos) {
                 let read_len = record.seq_len();
                 let dist = std::cmp::min(read_idx, read_len.saturating_sub(1 + read_idx)) as u32;
@@ -1778,6 +1787,16 @@ fn count_variant_from_cache(
         // true third-allele reads with qual=0 as N-class fragments.
         let tlen = mfsd::calc_physical_insert_size(record);
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+
+        // Secondary/supplementary records end here: they are fragment evidence
+        // only. Every counter below (n_count, any_alt/partial_alt, RD/AD,
+        // sense/antisense depth, splice-spanning) is read-level and defined over
+        // the same first-class read set as DP — counting these records there
+        // broke DP >= RD+AD whenever the secondary or supplementary filter was
+        // disabled.
+        if !first_class {
+            continue;
+        }
 
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
@@ -2032,9 +2051,10 @@ fn count_variant_from_cache(
 
     // Log per-phase classification breakdown + reads considered
     debug!(
-        "Phase stats {}:{} {}→{}: P0={} P1={} P2={} P2.5={} P3={} ({} backend, {} reads from cache)",
+        "Phase stats {}:{} {}→{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} ({} backend, {} reads from cache)",
         variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
+        counts.splice_skip_excluded,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2051,9 +2071,13 @@ fn count_variant_from_cache(
 // count_bam_binned uses count_bin_shared/count_variant_from_cache instead.
 // Do NOT remove until count_bam itself is removed (D8b cleanup).
 //
-// NOTE: Consensus splicing (D6) is NOT applied in this legacy path because
-// it requires buffered reads (two-pass). D6 is only available via
-// count_bam_binned which has the D10 read cache.
+// NOTE: ref_context is always genomic in BOTH paths — consensus splicing of
+// the context was removed (see the note in count_variant_from_cache). Two
+// RNA behavioral divergences remain, both binned-only because they need
+// inputs this legacy path never receives (RNA features are exempt from the
+// parity oracle per AGENTS.md invariant #1): exon-boundary BAQ suppression
+// (suppress when exon_boundary_dist <= 5; needs the GTF annotation) and
+// rna_editing_site_overlap (needs the REDIportal editing-sites set).
 #[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 fn count_single_variant(
@@ -2120,10 +2144,9 @@ fn count_single_variant(
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
     // ALT + REF: Same affine gap penalties for fair comparison.
-    // Continuous gap_extend: uses logistic sigmoid to smoothly transition
-    // from tight (-1) to free (0) as repeat_span increases.
-    // Replaces the previous rigid `repeat_span >= 10` binary threshold
-    // to prevent boundary artifacts at the transition point.
+    // NOTE: dynamic_sw_gap_extend is currently a constant -1 for every
+    // repeat_span — the intended tight-to-free relaxation never engages
+    // with the fixed default curve (see its doc; issue #92).
     let gap_open: i32 = -5;
     let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
     let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
@@ -2209,6 +2232,21 @@ fn count_single_variant(
         let result = check_allele_with_qual(
             &record, variant, sibling_variants, effective_quals, min_baseq, &mut alt_aligner, &mut ref_aligner, backend,
         );
+        // ── SPLICE-SKIP EXCLUSION: covers_locus=false means the read's
+        // CIGAR N spans every discriminating position — no observation at
+        // this locus, so it contributes to neither DP nor fragment depth,
+        // and it is not a classification (kept out of phase_counts). At an
+        // anchor-preserved deletion this is deliberately stricter than
+        // pileup depth at POS (the anchor base may be aligned; the event is
+        // still unobserved). Mirrors count_variant_from_cache so binned and
+        // legacy stay in parity; must run before the span-based anchor gate
+        // below, which would otherwise admit these reads (read_ref_end
+        // includes N).
+        if !result.covers_locus {
+            counts.splice_skip_excluded += 1;
+            continue;
+        }
+
         let is_ref = result.is_ref;
         let is_alt = result.is_alt;
         let base_qual = result.qual;
@@ -2295,6 +2333,13 @@ fn count_single_variant(
         let is_n_base = base_qual == 0 && !is_ref && !is_alt;
 
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq());
+
+        // Secondary/supplementary records end here: fragment evidence only —
+        // read-level counters below are defined over the first-class read set
+        // (same as DP). Mirrors the identical gate in the binned path.
+        if !first_class {
+            continue;
+        }
 
         // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
         // DP and DPF are already recorded above.
@@ -2492,9 +2537,10 @@ fn count_single_variant(
 
     // Log per-phase classification breakdown
     debug!(
-        "Phase stats {}:{} {}→{}: P0(Structural)={} P1(CigarRecon)={} P2(Masked)={} P2.5(Lev)={} P3(Align)={} ({} backend)",
+        "Phase stats {}:{} {}→{}: P0(Structural)={} P1(CigarRecon)={} P2(Masked)={} P2.5(Lev)={} P3(Align)={} splice_skip_excluded={} ({} backend)",
         variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
+        counts.splice_skip_excluded,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2529,6 +2575,17 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
+    // Splice-skip triage first: a read whose CIGAR N spans every
+    // discriminating position observes nothing at this locus and must not
+    // testify for either allele (or count depth — the engine skips
+    // covers_locus=false reads entirely). Checked before dispatch so no
+    // checker's anchor-based fast path can read an asserted splice as REF.
+    // Reads without N ops return None immediately, so DNA classification
+    // pays one CIGAR-flag scan and nothing else.
+    if let Some(result) = splice_skip_triage(record, variant) {
+        return result;
+    }
+
     // Dispatch based on allele lengths rather than the variant_type string.
     // This is more robust than relying on upstream type labels, which can be
     // inconsistent (e.g., a caller emitting "COMPLEX" for what is really a
@@ -2770,7 +2827,12 @@ fn count_per_transcript(
                 continue; // Incompatible junctions → skip for this transcript
             }
 
-            // ── BAQ (same suppression logic as main counting)
+            // ── BAQ. NOTE: unlike the main counting path, this applies BAQ
+            // unconditionally — the exon-boundary suppression (skip BAQ within
+            // 5bp of an annotated boundary, where it would penalize legitimate
+            // junction-spanning reads) is NOT applied here or in detect_asjd.
+            // Per-transcript counts near exon boundaries can therefore be
+            // slightly more conservative than the main counts.
             let baq_adjusted = if apply_baq {
                 apply_heuristic_baq(record)
             } else {
@@ -2787,14 +2849,26 @@ fn count_per_transcript(
                 &mut alt_aligner, &mut ref_aligner, backend,
             );
 
+            // ── Splice-skip exclusion (same as main counting): a read whose
+            // N spans every discriminating position observes nothing here —
+            // no tx_dp, no fragment evidence.
+            if !result.covers_locus {
+                continue;
+            }
+
             // ── Anchor overlap check (same as main counting)
             let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;
             if !overlaps_anchor {
                 continue;
             }
 
-            // ── Count reads
-            tx_dp += 1;
+            // ── Count reads (first-class only, same rule as the main engine:
+            // secondary/supplementary records feed fragment evidence but never
+            // read-level tx_dp/tx_rd/tx_ad)
+            let first_class = !(record.is_supplementary() || record.is_secondary());
+            if first_class {
+                tx_dp += 1;
+            }
 
             // ── Fragment tracking
             let mut mol_hash = if let Some(tag) = umi_tag {
@@ -2820,10 +2894,12 @@ fn count_per_transcript(
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
             evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
 
-            if result.is_ref {
-                tx_rd += 1;
-            } else if result.is_alt {
-                tx_ad += 1;
+            if first_class {
+                if result.is_ref {
+                    tx_rd += 1;
+                } else if result.is_alt {
+                    tx_ad += 1;
+                }
             }
         }
 
@@ -4376,11 +4452,14 @@ mod tests {
             "check_complex with no N in reconstructed haplotype should have has_n_base=false");
     }
 
-    // ── INDEL Phase 3 fallback tests ──
+    // ── INDEL wrong-length / nearby-evidence tests ──
     //
-    // These tests verify the wrong-length INDEL Phase 3 fallback paths
-    // added to fix PAX5-class discordances. Each test documents which
-    // code path in check_insertion/check_deletion it exercises.
+    // These tests verify the wrong-length INDEL handling added to fix
+    // PAX5-class discordances (originally Phase-3 fallbacks; now the
+    // wrong-length rule resolves lone ops directly as neither + partial
+    // evidence, with Phase 3 kept for split representations and shifted
+    // same-length candidates). Each test documents which code path in
+    // check_insertion/check_deletion it exercises.
 
     // Aligner construction is inlined in each test below because:
     // 1. Rust's impl Trait creates distinct opaque types per call site
@@ -4468,11 +4547,10 @@ mod tests {
     #[test]
     fn test_insertion_wrong_length_at_anchor() {
         // PAX5-class test: read has I(1) at strict anchor but expected I(2).
-        // Expected path: Step 1.1 → wrong-length else clause → phase3_classify.
-        // Phase 3 (SW) compares read haplotype against REF/ALT and may return
-        // REF (since the read doesn't carry the expected ALT). In that case,
-        // has_nearby_evidence must be set because I(1) at the anchor is
-        // structural evidence of a third allele.
+        // Expected path: strict wrong-length rule — no truncation (observed
+        // 1bp is below the containment floor), no split ops → lone wrong-
+        // length I → neither + has_nearby_evidence, because I(1) at the
+        // anchor is structural evidence of a third allele.
         //
         // Geometry:
         //   Ref:  ...GGGGA---GGGGG...   (anchor A at pos 14)
@@ -4515,41 +4593,20 @@ mod tests {
 
     #[test]
     fn test_insertion_same_length_wrong_sequence() {
-        // Read has I(2) at anchor but with wrong bases ("TT" vs expected "CC").
-        // Expected path: strict fast path → length matches → seq mismatch →
-        //   falls through to windowed scan or post-walk → has_nearby_length_match.
+        // Read has I(2) at anchor but with wrong bases ("TT" vs expected "CC")
+        // on confident (≥min_baseq) bases: a same-length THIRD allele.
         //
         // Geometry:
         //   Ref:  ...GGGGA---GGGGG...
         //   Read: ...GGGGATTGGGGG       (I(2) = "TT" instead of "CC")
         //   CIGAR: 5M 2I 5M
         //
-        // The strict path rejects because sequence doesn't match. Since the
-        // insertion is at the anchor position, the windowed scan also sees it
-        // (but skips it as the strict position). The post-walk handler should
-        // not trigger has_nearby_length_match for strict-position mismatches
-        // because found_ref_coverage is false (anchor is at end of M block,
-        // and the next op is I, not M). Actually: anchor is at pos 14, which
-        // is 10+5-1=14 (end of M block) → strict path fires → seq doesn't
-        // match → falls through → found_ref_coverage = true (set at line 1176
-        // "Anchor at end but no insertion at all") — wait, the I(2) exists so
-        // line 1175 fires. Let me re-check.
-        //
-        // Actually: strict path at anchor_pos == block_end - 1: gets
-        // Cigar::Ins(2) → ins_len_usize == expected_ins_len → sequence check
-        // fails → does NOT return → falls to line 1175 "Anchor at end but
-        // no insertion at all → found_ref_coverage = true". But wait, there
-        // IS an insertion (just wrong seq). The code currently falls through
-        // to found_ref_coverage = true because the if-chain doesn't have a
-        // separate seq-mismatch branch. Then the post-walk check doesn't
-        // fire (has_nearby_length_match is false). Result: REF.
-        //
-        // This is actually the existing behavior for same-length wrong-seq
-        // at the strict position — it's handled by Phase 3 via the windowed
-        // scan's seq-mismatch path if the insertion is also visible there.
-        // For strict-only, it falls through to REF.
-        //
-        // Let's verify this is at least not classified as ALT.
+        // Expected path: strict fast path → length matches → confident seq
+        // mismatch → neither + has_nearby_evidence. Not REF (rd must not
+        // absorb a read that provably carries an insertion), not ALT (the
+        // bases are provably not the queried insert), and not Phase 3 —
+        // alignment scoring would promote the wrong-sequence insert to ALT
+        // because it still beats the gapped REF alignment.
         let seq = b"GGGGATTGGGGG";
         let qual = &[35_u8; 12];
         let cigar = CigarString(vec![Cigar::Match(5), Cigar::Ins(2), Cigar::Match(5)]);
@@ -4571,9 +4628,14 @@ mod tests {
             &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
         );
 
-        // Must NOT be classified as ALT with wrong sequence
+        // A confident wrong-sequence insertion is a distinct allele:
+        // neither REF nor ALT, with partial evidence for any_alt/partial_alt.
         assert!(!result.is_alt,
-            "Same-length insertion with wrong sequence should not be ALT");
+            "Same-length insertion with wrong sequence must not be ALT");
+        assert!(!result.is_ref,
+            "Same-length insertion with wrong sequence must not be absorbed into REF");
+        assert!(result.has_nearby_evidence,
+            "Same-length wrong-sequence insertion must carry partial evidence");
     }
 
     #[test]
