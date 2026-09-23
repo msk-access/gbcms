@@ -294,10 +294,41 @@ reviewed behavior-neutral and the full suite is unchanged.
    main call's ~25 engine settings); diagnostics split into per-row
    `_diagnostic_flags` so rescued rows reuse the same code; unused `snp_map`
    and the quadratic per-position index lookup removed.
+10. *Confirmed-haplotype gate (added after cohort validation, 2026-09-23).*
+    Truth is the BAM; sign-out is another result. The 28-sample / 63-MNP
+    cohort (matched normals) rescued 7 rows: 5 TERT C250T-shaped rows and
+    TP53 17:7577558 GG>AA read-verified as component carriers, and one wrong
+    — GRIN2A 16:9916204 CC>GT, where 36 reads carry BOTH changes (the real
+    somatic MNP, sign-out 35) and 238 carry only a germline het C>G (normal
+    274 alt); rescue adopted the germline SNP (36 → 276, 6% → 47% VAF). TP53
+    also has 264 reads carrying both changes, so its annotated DNP is real at
+    264. Rescue must fire only when the BAM says the annotated haplotype is
+    absent.
+    - *Engine:* new internal `BaseCounts.mnp_confirmed_alt` (not an output
+      column; `_rs.pyi` updated) — reads counted ALT by the MNP check with
+      every discriminating base read (none masked for BQ, none N). Set only
+      by check_mnp (via a `ClassifyResult` flag, default false); SNV,
+      indel, complex and MNP-structural (complex-path) ALT calls are never
+      confirmed. Incremented where `ad` is, after the exclusive-assignment
+      contest; invariant `mnp_confirmed_alt ≤ ad` checked with the others.
+      Mirrored in the legacy path.
+    - *Gate:* a candidate additionally needs
+      `mnp_confirmed_alt ≤ ceil(partial_alt × 10^(−min_baseq/10))` — the
+      number of single-change carriers a sequencing error at another
+      discriminating base could turn into a confirmed read, derived from the
+      base-quality threshold (1% at the default Q20), not tuned. Otherwise
+      `outcome=haplotype_confirmed`, counts stay the MNP's, and no component
+      re-count is run.
+    - *Audit:* every entry gains `original_confirmed=C`.
+    - *Expected on the cohort:* TERT ×5 still rescued; GRIN2A stays 36;
+      TP53 stays 264 (the true count of the annotated DNP); all other rows
+      unchanged.
 
 **Files.** `src/gbcms/pipeline.py` (`_rescue_mnp_pass`, per-sample reset,
 diagnostics recompute for rescued rows); `rust/src/types.rs` + `_rs.pyi`
-(`with_ad` removed); `cli.py` help + `models/core.py`
+(`with_ad` removed; `mnp_confirmed_alt` added); `rust/src/counting/`
+`{utils,variant_checks,engine}.rs` (confirmed flag + counter, binned and
+legacy); `cli.py` help + `models/core.py`
 field descriptions (both commands); tests; docs `cli/dna.md`,
 `nextflow/parameters.md`, `reference/architecture.md` (candidate table,
 invariant-impact table → "invariants hold"), `reference/output-formats.md`
@@ -314,10 +345,19 @@ untouched; (c) indel-disrupted carriers (1bp insertion inside the block)
 (ref_validation_failed and leftmost tie-break are unreachable through a BAM);
 (d) grouped MNP → `skipped_grouped`; (e) two BAMs in one run → second
 sample's `gbcms_rescue` reflects only itself; (f) rescue off → output
-byte-identical to today. Replace `test_rescue_skips_nonzero_ad` with the
+byte-identical to today; (g) germline-component geometry (component-only
+reads + a population carrying both changes) → `haplotype_confirmed`,
+counts untouched; (h) component carriers plus error-level confirmed reads
+within the allowance → still rescued; engine pin that `mnp_confirmed_alt`
+counts only fully-read MNP ALT reads. Replace `test_rescue_skips_nonzero_ad` with the
 new gate's pin. Carrier-shape engine pin already written
 (`TestONPCarrierShapes`, test_mnp_concordance.py). Parity oracle unaffected
 (Python post-pass).
+
+**Acceptance (item 10).** Rerun Tier 1 (flag-off parity, 35 recorded runs —
+must stay identical) and the Tier 2 cohort (same seed): GRIN2A and TP53 not
+rescued, the five TERT rows still rescued, nothing else moves; Tier 3 trace
+of every touched row.
 
 **Acceptance.** TERT row with `--rescue-mnp`: alt ≈ 88–90 vs sign-out 93,
 audit shows the 1295250/1295254 split; the sample's seven dinucleotide MNPs
