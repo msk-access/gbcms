@@ -140,7 +140,7 @@ structural bound from the insert's own length). If count ≥ 2, append
 **Tests.** Red-first: the 30bp clip-only geometry (clips at duplication
 boundary, zero I ops) → flag with n; guards: I-dominant locus (no flag even
 with stray clips), SNV locus (never), `ad>0` locus (never). Real-data
-acceptance: the P-0098981-T08 locus flags; the 12 survey loci do not.
+acceptance: the clip-only ZERO_ALT ITD locus (t_alt=7) flags; the 12 survey loci do not.
 
 ## T4 — UMI-tag warn
 
@@ -201,10 +201,113 @@ material → small fix: thread `exon_boundary_dist` into
 `count_per_transcript`'s BAQ call, mirroring the main loop, with a red
 tx-count pin first.
 
+## T7 — MNP rescue: gate matches intent, rescued row is one coherent genotype (opt-in path only)
+
+**Intent (v4.3.0, unchanged).** `--rescue-mnp` exists for sign-out MNPs
+whose carriers hold only a component of the annotated haplotype: gbcms
+correctly reports the annotated allele as absent (carriers land in
+`partial_alt`), sign-out reports the component count. Rescue re-counts each
+discriminating position as an SNV and reports the best component — the
+architecture doc's worked example is the TERT promoter GAGGG>AAGGA itself.
+Opt-in; the flag's contract *is* component counting.
+
+**Problem (measured, T1 acceptance).** Isolated TERT GAGGG>AAGGA
+(disc 2/5): ad 1, partial 88, rd 486 vs sign-out t_alt 93 / t_ref 484.
+Read-verified: 90 reads carry only the first G>A (C250T), 1 only the second,
+0 the full haplotype — engine exact (pinned: `TestONPCarrierShapes`). Rescue
+did not fire because the gate is `ad == 0`, and masked per-position
+evaluation makes that brittle: one C250T read with BQ<20 at the second
+position votes on the first alone → full ALT → ad 1. Gate intent is
+"haplotype effectively absent"; code implements "exactly zero".
+
+Four further defects in the rescue pass (verified end-to-end on synthetic
+BAMs):
+- **Stale row.** `with_ad()` replaces `ad` only. A rescued row reported
+  alt_count 9 beside alt_count_forward/reverse 0, alt_count_fragment 0,
+  `ZERO_ALT` — violating `ad == ad_fwd + ad_rev` in the written output; VCF
+  AD/VAF move while ADF/ADR/FAD/FAF, strand bias, mFSD, any_alt/partial_alt
+  stay at MNP values. Fragment columns are never rescued, so ACCESS
+  (scored on fragments) and `merge --add-combined` never see rescue.
+- **Cross-sample leak.** `prepared` is shared across all BAMs of a run and
+  `gbcms_rescue` is never reset: a later sample with 10 genuine full-haplotype
+  reads printed the earlier sample's rescue string.
+- **T1 bypass.** Synthetic SNVs are counted with no siblings; a grouped MNP
+  that lost reads to a sibling (now surfaced as `partial_alt`) would get them
+  back — breaks Σ per-row ad ≤ distinct ALT molecules. Reachable today when a
+  grouped MNP loses every read (ad 0).
+- **Audit hard-codes `original_alt=0`.**
+
+**Design (Python-only — no Rust, no FFI, no stub change).**
+1. *Gate:* candidate when PASS, MNP, `MNP_RESCUE_ELIGIBLE`, and
+   `partial_alt > ad` (the existing `PARTIAL_DOMINANT` condition), replacing
+   `ad == 0`. Population comparison, no tuned rate; ad 0 with partial > 0 is
+   still covered.
+2. *Replace only if the component beats the haplotype:* best SNV `ad > ad`,
+   else record `outcome=haplotype_dominant` and keep the MNP counts (masked
+   full carriers can make a single position's SNV count lower than MNP ad).
+3. *Adopt the winning SNV's whole `BaseCounts`,* not an ALT-side graft. Every
+   count, fragment, strand, strand-bias, mFSD and RNA column then comes from
+   one real counting pass, so all four counting invariants hold on rescued
+   rows by construction and Invariant-1 breakage disappears. Rejected
+   alternative — graft ALT fields onto the MNP record (needs a Rust copy
+   method + stats recompute): mixes two classifications, and fragment
+   consensus lets a neither-read abstain, so an R1-partial/R2-masked-REF
+   fragment is MNP-REF *and* SNV-ALT → can break `dpf ≥ rdf + adf`.
+   Consequence to document: rescued rd/dp are the SNV's (reads carrying only
+   another component count REF at the winning position; reads covering the
+   position but not the whole block count in dp).
+4. *Audit carries the MNP forensics* (they no longer live in the count
+   columns): `method=decomposed;original_ref=R;original_alt=A;original_partial=P;positions=chr:pos(R>A):n,...`
+   — `original_alt` keeps its key (now the true value, not 0).
+5. *Diagnostics describe the row as written:* recompute `gbcms_diagnostic`
+   for rescued rows from the adopted counts (keeps `MNP_DISC_RATIO`/
+   `MNP_RESCUE_ELIGIBLE`); a non-empty `gbcms_rescue` is the record of why.
+   Removes the ZERO_ALT-beside-alt_count>0 contradiction.
+6. *Skip grouped rows* (`multi_allelic_group` set): `outcome=skipped_grouped`;
+   exclusive assignment owns those reads.
+7. *Reset `gbcms_rescue` per sample* before candidate selection (fixes the
+   leak; may land first as a standalone fix — a task was filed for it).
+
+**Files.** `src/gbcms/pipeline.py` (`_rescue_mnp_pass`, per-sample reset,
+diagnostics recompute for rescued rows); `cli.py` help + `models/core.py`
+field descriptions (both commands); tests; docs `cli/dna.md`,
+`nextflow/parameters.md`, `reference/architecture.md` (candidate table,
+invariant-impact table → "invariants hold"), `reference/output-formats.md`
+(`gbcms_rescue` format), `development/developer-guide.md`; `mnp-rescue`
+skill; CHANGELOG (behavior change on the opt-in path + `gbcms_rescue`
+format change for downstream parsers).
+
+**Tests (red-first).** Battery on the TERT geometry via the CLI:
+(a) component carriers + one masked stray full read → rescued, row equals
+the winning SNV's counts, four invariants asserted on the written row,
+audit carries original ref/alt/partial; (b) cis carriers (ad > partial) →
+untouched; (c) best SNV ≤ ad → `haplotype_dominant`, counts untouched;
+(d) grouped MNP → `skipped_grouped`; (e) two BAMs in one run → second
+sample's `gbcms_rescue` reflects only itself; (f) rescue off → output
+byte-identical to today. Replace `test_rescue_skips_nonzero_ad` with the
+new gate's pin. Carrier-shape engine pin already written
+(`TestONPCarrierShapes`, test_mnp_concordance.py). Parity oracle unaffected
+(Python post-pass).
+
+**Acceptance.** TERT row with `--rescue-mnp`: alt ≈ 88–90 vs sign-out 93,
+audit shows the 1295250/1295254 split; the sample's seven dinucleotide MNPs
+unchanged (ad > partial); complex-cluster, ACCESS, FLT3/MSI/FORTE harnesses
+byte-identical with the flag off, and with it on change only rows whose audit
+says rescued.
+
+**Risks.** Germline-component MNPs (somatic change merged with a het SNP)
+report the germline component — inherent to the flag since v4.3.0, now
+reachable in tumors where the haplotype is present but dominated; document
+in the flag help. `PARTIAL_DOMINANT` for MNPs also counts third-allele
+reads that match ALT at ≥1 position — noise-level at real depth, and item 2
+still requires the component to beat the haplotype.
+
 ## Order & discipline
 
 T1 (own branch, own review) → T2 (own branch; needs the FORTE geometries) →
 T3+T4+T5 (one observability/cleanup branch) → T6 (measurement decides).
+T7 is independent (Python-only, opt-in path) — own small branch
+(`feature/mnp-rescue-gate`), can land anytime; its leak fix may go first.
 Each branch: battery red → implement → suites + clippy + lint gate →
 sonnet adversarial review → real-data acceptance named above → merge to
 develop. 6.5.0 cut only after T1's ACCESS rerun and T2's cohort recheck.
