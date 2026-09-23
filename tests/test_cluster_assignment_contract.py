@@ -98,7 +98,10 @@ def _run(tmp_path, vcf, bam, fasta, outname="out"):
     for r in rows:
         assert int(r["total_count"]) >= int(r["ref_count"]) + int(r["alt_count"])
         assert int(r["any_alt"]) == int(r["alt_count"]) + int(r["partial_alt"])
-    return {(r["Chromosome"], r["vcf_pos"]): r for r in rows}
+    # Key on the normalized OUTPUT Start_Position so the MAF and VCF input
+    # paths index identically (vcf_pos exists only for VCF input, and the
+    # chromosome label is passed through differently per input format).
+    return {int(r["Start_Position"]): r for r in rows}
 
 
 def _del_reads(ref, p0, length, n, prefix):
@@ -184,7 +187,7 @@ def test_cluster_rows_count_only_their_own_molecules(tmp_path):
     tract-mate carrier appears as partial evidence at most."""
     ref, rows, reads = _cluster_setup(tmp_path)
     res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
-    ads = {pos: int(res[("1", str(pos))]["alt_count"]) for pos, _, _ in rows}
+    ads = {pos: int(res[pos + 1]["alt_count"]) for pos, _, _ in rows}
     assert ads == {D_A: 8, D_B: 6, D_C: 4, D_D: 3}, f"per-row ad must be own carriers only: {ads}"
 
 
@@ -194,7 +197,7 @@ def test_cluster_sum_bounded_by_distinct_molecules(tmp_path):
     exceeds the number of distinct ALT-carrying molecules (18 here)."""
     ref, rows, reads = _cluster_setup(tmp_path)
     res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
-    total = sum(int(res[("1", str(pos))]["alt_count"]) for pos, _, _ in rows)
+    total = sum(int(res[pos + 1]["alt_count"]) for pos, _, _ in rows)
     assert total <= 21, f"sum(ad)={total} exceeds 21 distinct ALT molecules"
 
 
@@ -204,7 +207,7 @@ def test_tract_mate_carriers_surface_as_partial(tmp_path):
     allele: they must surface in partial_alt (not vanish, not count REF)."""
     ref, rows, reads = _cluster_setup(tmp_path)
     res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
-    r_a = res[("1", str(D_A))]
+    r_a = res[D_A + 1]
     # carriers of B and C (6+4) are distinct-allele evidence for row A
     assert (
         int(r_a["partial_alt"]) >= 10
@@ -229,8 +232,8 @@ def test_distant_same_alleles_unaffected(tmp_path):
         + _ref_reads(ref, d_far, 4, "w2")
     )
     res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
-    assert int(res[("1", str(D_C))]["alt_count"]) == 5
-    assert int(res[("1", str(d_far))]["alt_count"]) == 7
+    assert int(res[D_C + 1]["alt_count"]) == 5
+    assert int(res[d_far + 1]["alt_count"]) == 7
 
 
 def test_shifted_self_representation_still_rescued(tmp_path):
@@ -252,5 +255,121 @@ def test_shifted_self_representation_still_rescued(tmp_path):
     reads += _ref_reads(ref, anchor, 4)
     res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
     assert (
-        int(res[("1", str(anchor + 1))]["alt_count"]) == 5
+        int(res[anchor + 2]["alt_count"]) == 5
     ), f"shifted SELF representations must stay ALT: {res}"
+
+
+# ── Complex (delins) sibling — the key cross-type case ───────────────────
+# Plant at 298:  G T A G T C A G T T
+#                298     302     306
+#   A: pure del AG @[300,302)      (anchor 299 'T' — already canonical)
+#   X: delins CAG@[303,306) -> T   (anchor-substituted -> check_complex)
+# A delins carrier aligns as (mismatch C->T)(D2 deleting AG@[304,306)):
+# its D2's deleted bases 'AG' S3-match row A's expected 'AG' at a windowed
+# position -> pre-fix the pure-del row counts delins carriers as ALT.
+CPLX_PLANT_POS = 298
+CPLX_PLANT = "GTAGTCAGTT"
+CPLX_DEL = 300  # 0-based first deleted base of the pure del
+CPLX_X = 303  # 0-based first ref base of the delins
+
+
+def _complex_setup(tmp_path, n_del=6, n_x=5, n_wt=8):
+    ref = _mk_ref(plants=((CPLX_PLANT_POS, CPLX_PLANT),))
+    reads = _del_reads(ref, CPLX_DEL, 2, n_del, "pd")
+    for i in range(n_x):  # delins carriers: M(..mismatch at 303)-D2-M
+        s = CPLX_X - 35 - (i % 5)
+        left = CPLX_X - s
+        seq = ref[s:CPLX_X] + "T" + ref[CPLX_X + 3 : CPLX_X + 3 + (READ_LEN - left - 1)]
+        reads.append(make_read(f"xc{i}", seq, s, ((0, left + 1), (2, 2), (0, READ_LEN - left - 1))))
+    reads += _ref_reads(ref, CPLX_DEL, n_wt)
+    return ref, reads
+
+
+def _complex_vcf(tmp_path, ref):
+    return _vcf(
+        tmp_path,
+        [
+            (CPLX_DEL, ref[CPLX_DEL - 1 : CPLX_DEL + 2], ref[CPLX_DEL - 1]),
+            (CPLX_X + 1, ref[CPLX_X : CPLX_X + 3], "T"),  # CAG>T, 1-based POS 304
+        ],
+    )
+
+
+@XFAIL
+def test_complex_sibling_claims_windowed_carrier(tmp_path):
+    """The key cross-type case: a delins tract-mate's carriers S3-match the
+    pure-del row's windowed scan pre-fix. Post-fix the delins sibling claims
+    them (full-ALT for the complex row beats a windowed match), and the
+    pure-del row records them as partial evidence."""
+    ref, reads = _complex_setup(tmp_path)
+    res = _run(
+        tmp_path, _complex_vcf(tmp_path, ref), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref)
+    )
+    r_del = res[CPLX_DEL + 1]
+    r_x = res[CPLX_X + 1]
+    assert int(r_x["alt_count"]) == 5, f"delins row must keep its own carriers: {r_x['alt_count']}"
+    assert (
+        int(r_del["alt_count"]) == 6
+    ), f"pure-del row must not absorb delins carriers, got ad={r_del['alt_count']}"
+    assert (
+        int(r_del["partial_alt"]) >= 5
+    ), f"claimed delins carriers must surface as partial, got {r_del['partial_alt']}"
+
+
+def _cluster_maf(tmp_path, ref, rows):
+    """MAF twin of _vcf for deletion rows: Start = first deleted base
+    (1-based), REF = deleted bases, ALT = '-'."""
+    maf = tmp_path / "variants.maf"
+    lines = [
+        "Hugo_Symbol\tChromosome\tStart_Position\tEnd_Position\t"
+        "Reference_Allele\tTumor_Seq_Allele2\tTumor_Sample_Barcode"
+    ]
+    for pos1, ref_al, alt_al in rows:
+        if len(alt_al) == 1 and len(ref_al) > 1 and ref_al[0] == alt_al:
+            # pure deletion (VCF anchor form: anchor base preserved)
+            deleted = ref_al[1:]
+            start = pos1 + 1
+            lines.append(f"GENE\tchr1\t{start}\t{start + len(deleted) - 1}\t{deleted}\t-\tS")
+        else:  # complex delins: identical representation in MAF (no '-')
+            lines.append(f"GENE\tchr1\t{pos1}\t{pos1 + len(ref_al) - 1}\t{ref_al}\t{alt_al}\tS")
+    maf.write_text("\n".join(lines) + "\n")
+    return maf
+
+
+def test_cluster_maf_and_vcf_paths_agree(tmp_path):
+    """Guard (green now, green after): the cluster counts identically through
+    the MAF input path and the VCF input path — whatever the assignment
+    semantics, the two front doors must agree."""
+    ref, rows, reads = _cluster_setup(tmp_path)
+    bam = _bam(tmp_path, ref, reads)
+    fasta = _fasta(tmp_path, ref)
+    res_v = _run(tmp_path, _vcf(tmp_path, rows), bam, fasta, outname="out_v")
+    res_m = _run(tmp_path, _cluster_maf(tmp_path, ref, rows), bam, fasta, outname="out_m")
+    for pos, _, _ in rows:
+        rv, rm = res_v[pos + 1], res_m[pos + 1]
+        for col in ("total_count", "ref_count", "alt_count", "partial_alt", "any_alt"):
+            assert rv[col] == rm[col], f"{col} differs at {pos}: vcf={rv[col]} maf={rm[col]}"
+
+
+def test_complex_cluster_maf_and_vcf_paths_agree(tmp_path):
+    """Guard: same MAF/VCF agreement for the delins-bearing cluster (the MAF
+    complex representation carries no '-' alleles and its own coordinate
+    conventions)."""
+    ref, reads = _complex_setup(tmp_path)
+    bam = _bam(tmp_path, ref, reads)
+    fasta = _fasta(tmp_path, ref)
+    rows = [
+        (CPLX_DEL, ref[CPLX_DEL - 1 : CPLX_DEL + 2], ref[CPLX_DEL - 1]),
+        (CPLX_X + 1, ref[CPLX_X : CPLX_X + 3], "T"),
+    ]
+    res_v = _run(tmp_path, _complex_vcf(tmp_path, ref), bam, fasta, outname="out_v")
+    res_m = _run(tmp_path, _cluster_maf(tmp_path, ref, rows), bam, fasta, outname="out_m")
+    # The writer renders VCF-sourced complex rows differently from
+    # MAF-sourced ones (re-synthesized vs original coordinates), so pair
+    # rows by sorted position and compare COUNTS only.
+    assert len(res_v) == len(res_m) == 2
+    for kv, km in zip(sorted(res_v), sorted(res_m), strict=True):
+        for col in ("total_count", "ref_count", "alt_count", "partial_alt", "any_alt"):
+            assert (
+                res_v[kv][col] == res_m[km][col]
+            ), f"{col} differs at {kv}/{km}: vcf={res_v[kv][col]} maf={res_m[km][col]}"
