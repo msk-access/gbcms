@@ -11,6 +11,7 @@ This module handles:
 """
 
 import logging
+import math
 import time
 import types
 from collections import Counter
@@ -240,6 +241,18 @@ def _resolve_mnp_rescue(
     return "rescued", best_idx
 
 
+def _confirmed_error_allowance(partial_alt: int, min_baseq: int) -> int:
+    """Confirmed full-haplotype reads that sequencing error alone can explain.
+
+    A single-change carrier reads as confirmed only if an error at another
+    discriminating base produces exactly the ALT base there. At the base
+    quality threshold the per-base error rate is at most ``10^(-min_baseq/10)``
+    (1% at the default Q20), so at most that fraction of ``partial_alt`` reads
+    can turn into error-made confirmed reads — rounded up.
+    """
+    return math.ceil(partial_alt * 10 ** (-min_baseq / 10))
+
+
 def _format_rescue_audit(
     outcome: str,
     original: Any,
@@ -249,10 +262,12 @@ def _format_rescue_audit(
     """Build the ``gbcms_rescue`` value.
 
     Format: ``method=decomposed;outcome=<outcome>;original_ref=R;original_alt=A;
-    original_partial=P[;adopted=<label>][;positions=<label>:<ad|ref_fail>,...]``
-    where a label is ``chrom:pos(REF>ALT)`` (1-based). ``original_*`` are the
-    MNP's own counts — for a rescued row the only record of its evaluation,
-    because the count columns then carry the adopted component's counts.
+    original_partial=P;original_confirmed=C[;adopted=<label>]
+    [;positions=<label>:<ad|ref_fail>,...]`` where a label is
+    ``chrom:pos(REF>ALT)`` (1-based). ``original_*`` are the MNP's own counts —
+    for a rescued row the only record of its evaluation, because the count
+    columns then carry the adopted component's counts. ``original_confirmed``
+    is the MNP's ``mnp_confirmed_alt``: reads that showed the whole haplotype.
     """
     parts = [
         "method=decomposed",
@@ -260,6 +275,7 @@ def _format_rescue_audit(
         f"original_ref={original.rd}",
         f"original_alt={original.ad}",
         f"original_partial={original.partial_alt}",
+        f"original_confirmed={original.mnp_confirmed_alt}",
     ]
     if adopted is not None:
         parts.append(f"adopted={adopted}")
@@ -829,6 +845,12 @@ class Pipeline:
         exclusively assigned against co-annotated siblings, and a sibling-free
         component re-count would hand contested reads back.
 
+        MNPs whose haplotype the BAM shows are kept (``outcome=haplotype_confirmed``,
+        no re-count): when more reads show every changed base (``mnp_confirmed_alt``)
+        than sequencing error can explain (:func:`_confirmed_error_allowance`),
+        the annotated allele is present — e.g. a somatic change on top of a germline
+        SNP — and adopting a component would report the other allele instead.
+
         ``gbcms_rescue`` is reset for every variant first: ``prepared`` is shared
         by all samples of a run, so a value set for an earlier sample would
         otherwise be written on this sample's rows.
@@ -837,6 +859,7 @@ class Pipeline:
             pv.gbcms_rescue = ""
 
         rescue_start = time.perf_counter()
+        min_baseq = self.config.quality.min_base_quality
         outcomes: Counter[str] = Counter()
         candidates: list[tuple[int, list[tuple[int, str, str]]]] = []
         for i, (pv, counts) in enumerate(zip(prepared, full_counts, strict=True)):
@@ -857,6 +880,22 @@ class Pipeline:
                     v.ref_allele,
                     v.alt_allele,
                     pv.multi_allelic_group,
+                )
+                continue
+            allowance = _confirmed_error_allowance(counts.partial_alt, min_baseq)
+            if counts.mnp_confirmed_alt > allowance:
+                pv.gbcms_rescue = _format_rescue_audit("haplotype_confirmed", counts)
+                outcomes["haplotype_confirmed"] += 1
+                logger.debug(
+                    "MNP rescue: %s:%d %s>%s kept — %d read(s) show the whole haplotype "
+                    "(error allowance %d at Q%d)",
+                    v.chrom,
+                    v.pos + 1,
+                    v.ref_allele,
+                    v.alt_allele,
+                    counts.mnp_confirmed_alt,
+                    allowance,
+                    min_baseq,
                 )
                 continue
             candidates.append((i, _mnp_discriminating_positions(v)))

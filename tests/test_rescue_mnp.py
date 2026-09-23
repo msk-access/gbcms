@@ -34,7 +34,6 @@ import re
 import types
 
 import pysam
-import pytest
 from helpers import make_read
 from typer.testing import CliRunner
 
@@ -310,6 +309,8 @@ def test_component_carriers_rescued_as_one_coherent_genotype(tmp_path):
         "1",
         "9",
     )
+    # The stray's other discriminating base was masked: nothing showed the haplotype.
+    assert audit["original_confirmed"] == "0"
     assert re.fullmatch(r"(chr)?1:201\(G>A\)", audit["adopted"]), audit["adopted"]
     assert re.fullmatch(r"(chr)?1:201\(G>A\):10,(chr)?1:205\(G>A\):0", audit["positions"]), audit[
         "positions"
@@ -369,7 +370,6 @@ def test_indel_partial_evidence_is_declined_not_rescued(tmp_path):
     _assert_counting_invariants(row)
 
 
-@pytest.mark.xfail(strict=True, reason="T7 item 10: confirmed-haplotype gate")
 def test_confirmed_haplotype_is_not_rescued(tmp_path):
     plain = _run(tmp_path, {"S": _germline_component_reads()}, [MNP_ROW], rescue=False)["S"][0]
     (row,) = _run(tmp_path, {"S": _germline_component_reads()}, [MNP_ROW])["S"]
@@ -385,7 +385,6 @@ def test_confirmed_haplotype_is_not_rescued(tmp_path):
     _assert_counting_invariants(row)
 
 
-@pytest.mark.xfail(strict=True, reason="T7 item 10: confirmed-haplotype gate")
 def test_error_level_confirmed_reads_do_not_block_rescue(tmp_path):
     (row,) = _run(tmp_path, {"S": _component_reads_with_error_level_cis()}, [MNP_ROW])["S"]
     audit = _audit(row)
@@ -422,10 +421,10 @@ def test_resolve_reports_when_no_component_could_be_counted():
 
 
 def test_audit_format():
-    original = types.SimpleNamespace(rd=486, ad=1, partial_alt=88)
+    original = types.SimpleNamespace(rd=486, ad=1, partial_alt=88, mnp_confirmed_alt=0)
     assert _format_rescue_audit("skipped_grouped", original) == (
         "method=decomposed;outcome=skipped_grouped;"
-        "original_ref=486;original_alt=1;original_partial=88"
+        "original_ref=486;original_alt=1;original_partial=88;original_confirmed=0"
     )
     assert _format_rescue_audit(
         "rescued",
@@ -434,17 +433,17 @@ def test_audit_format():
         "5:1295250(G>A)",
     ) == (
         "method=decomposed;outcome=rescued;original_ref=486;original_alt=1;"
-        "original_partial=88;adopted=5:1295250(G>A);"
+        "original_partial=88;original_confirmed=0;adopted=5:1295250(G>A);"
         "positions=5:1295250(G>A):87,5:1295254(G>A):ref_fail"
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T7 item 10: confirmed-haplotype gate")
 def test_confirmed_error_allowance_follows_the_base_quality_threshold():
     from gbcms.pipeline import _confirmed_error_allowance
 
     assert _confirmed_error_allowance(850, 20) == 9  # 8.5 at Q20 (1% error)
     assert _confirmed_error_allowance(238, 20) == 3
+    assert _confirmed_error_allowance(200, 20) == 2
     assert _confirmed_error_allowance(100, 30) == 1  # 0.1 at Q30, rounded up
     assert _confirmed_error_allowance(0, 20) == 0
     assert _confirmed_error_allowance(100, 0) == 100  # no quality gate: any base may be wrong
