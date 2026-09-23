@@ -166,6 +166,74 @@ class TestONPSelectiveQualityGate:
         assert counts.rd_fwd == 5, f"Expected rd_fwd=5, got {counts.rd_fwd}"
 
 
+class TestONPCarrierShapes:
+    """Which carrier reads a sparse ONP counts as full ALT vs partial.
+
+    GAGGG>AAGGA discriminates only at positions 0 and 4; the interior GG (and
+    the A at position 1) match both alleles. A read carrying the whole
+    haplotype is full ALT whatever the interior quality. A read carrying only
+    ONE of the two G>A changes is partial — it does not carry the annotated
+    allele. A sign-out row reporting many more ALT reads than gbcms AD, with
+    the gap sitting in partial_alt, therefore means the carriers hold the two
+    changes on different molecules (trans / subclonal / merged-SNV annotation),
+    not that the masked comparison drops cis carriers.
+    """
+
+    LEFT = "TTACCGTACGCATTCACGTA"  # 80..99
+    RIGHT = "CTACGTTGCAACGTTACGAT"  # 105..124
+
+    def _bam(self, tmp_path, carrier_block, carrier_quals=None):
+        reads = [
+            make_read(
+                f"ref_{i}",
+                self.LEFT + "GAGGG" + self.RIGHT,
+                start=80,
+                cigar=((0, 45),),
+                flag=16 if i % 2 else 0,
+            )
+            for i in range(20)
+        ]
+        reads += [
+            make_read(
+                f"carrier_{i}",
+                self.LEFT + carrier_block + self.RIGHT,
+                start=80,
+                cigar=((0, 45),),
+                flag=16 if i % 2 else 0,
+                quals=carrier_quals,
+            )
+            for i in range(10)
+        ]
+        return build_bam(tmp_path, reads, "onp_shapes.bam")
+
+    @pytest.mark.parametrize(
+        "block, low_bq_offset, expected_ad, expected_partial",
+        [
+            ("AAGGA", None, 10, 0),  # cis carrier
+            ("AAGGA", 2, 10, 0),  # low-BQ interior base cannot vote
+            ("AAGGA", 4, 10, 0),  # masked discriminating base, other still votes
+            ("AAGGG", None, 0, 10),  # only the first G>A
+            ("GAGGA", None, 0, 10),  # only the second G>A
+        ],
+    )
+    def test_carrier_shape(self, tmp_path, block, low_bq_offset, expected_ad, expected_partial):
+        quals = None
+        if low_bq_offset is not None:
+            quals = [30] * 45
+            quals[len(self.LEFT) + low_bq_offset] = 5
+        bam = self._bam(tmp_path, block, quals)
+        variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "ONP")
+        counts = count_both(bam, [variant])[0]
+
+        assert counts.rd == 20
+        assert counts.ad == expected_ad
+        assert counts.partial_alt == expected_partial
+        assert counts.dp >= counts.rd + counts.ad
+        assert counts.dpf >= counts.rdf + counts.adf
+        assert counts.rd == counts.rd_fwd + counts.rd_rev
+        assert counts.ad == counts.ad_fwd + counts.ad_rev
+
+
 # ── DNP Tests (all-discriminating) ───────────────────────────────────────
 
 

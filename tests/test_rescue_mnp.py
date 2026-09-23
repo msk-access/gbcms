@@ -1,128 +1,40 @@
-"""Tests for the MNP rescue pass (--rescue-mnp, v4.3.0).
+"""Tests for the MNP rescue pass (--rescue-mnp).
+
+Rescue exists for sign-out MNPs whose carriers hold only a component of the
+annotated haplotype: the engine correctly reports the haplotype as absent
+(carriers land in ``partial_alt``), and rescue reports the best-supported
+component instead. The end-to-end battery drives the real CLI on a synthetic
+TERT-shaped geometry (GAGGG>AAGGA, discriminating at block positions 0 and 4).
 
 Covers:
 1.  Default config: rescue_mnp is False
-2.  MAF output: gbcms_rescue column absent without flag
-3.  MNP_DISC_RATIO always emitted, MNP_RESCUE_ELIGIBLE based on threshold
-4.  HIGH_N_FRACTION(f) flag fires when n_count/dp > 0.05
-5.  Multi-flag combination (ZERO_ALT + MNP_DISC_RATIO + MNP_RESCUE_ELIGIBLE)
-6.  Rescue fires for MNP (ad=0, MNP_RESCUE_ELIGIBLE)
-7.  Rescue skips non-MNP variants
-8.  Rescue skips variants with non-zero ad
-9.  Rescue skips FAIL variants
-10. Rescue audit trail format validation
-11. Rescue no-signal case (all SNPs have ad=0)
-12. Column count with rescue_mnp=True
-13. Invariant breakage after rescue (design §2)
+2.  MAF column / VCF GR header present only with the flag
+3.  Column count with rescue_mnp=True
+4.  Component carriers + one masked stray full read → rescued; the row is the
+    winning component's own counts (counting invariants hold), the audit keeps
+    the MNP forensics, diagnostics describe the written row
+5.  Cis carriers (haplotype dominates) → not a candidate
+6.  MNP in a co-annotated group → skipped, exclusive assignment untouched
+7.  Two BAMs in one run → a sample's audit never leaks into the next sample
+8.  Flag off → MNP counts as the engine produced them, no rescue column
 """
 
-import types
+import csv
+import glob
+import io
+import random
+import re
 
+import pysam
+import pytest
+from helpers import make_read
+from typer.testing import CliRunner
+
+from gbcms.cli import app
 from gbcms.io.output import MafWriter, VcfWriter
 from gbcms.models.core import GbcmsBaseConfig
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-
-def _mock_prepared_variant(
-    *,
-    chrom: str = "chr5",
-    pos: int = 1295227,  # 0-based
-    ref_allele: str = "CCCCC",
-    alt_allele: str = "CTCCC",
-    gbcms_status: str = "PASS",
-    gbcms_status_reason: str = "",
-    gbcms_diagnostic: str = "",
-    gbcms_rescue: str = "",
-):
-    """Create a mock PreparedVariant for unit tests."""
-    variant = types.SimpleNamespace(
-        chrom=chrom,
-        pos=pos,
-        ref_allele=ref_allele,
-        alt_allele=alt_allele,
-    )
-    return types.SimpleNamespace(
-        variant=variant,
-        gbcms_status=gbcms_status,
-        gbcms_status_reason=gbcms_status_reason,
-        gbcms_diagnostic=gbcms_diagnostic,
-        gbcms_rescue=gbcms_rescue,
-        was_anchor_resolved=False,
-        was_left_aligned=False,
-        was_normalized=False,
-        original_pos=pos,
-        original_ref=ref_allele,
-        original_alt=alt_allele,
-        decomposed_variant=None,
-        multi_allelic_group=None,
-    )
-
-
-def _mock_counts(
-    *,
-    dp: int = 100,
-    rd: int = 100,
-    ad: int = 0,
-    any_alt: int = 0,
-    partial_alt: int = 0,
-    n_count: int = 0,
-):
-    """Create a minimal mock counts object."""
-    _nan = float("nan")
-    return types.SimpleNamespace(
-        dp=dp,
-        rd=rd,
-        ad=ad,
-        rd_fwd=50,
-        rd_rev=50,
-        ad_fwd=0,
-        ad_rev=0,
-        dpf=50,
-        rdf=50,
-        adf=0,
-        rdf_fwd=25,
-        rdf_rev=25,
-        adf_fwd=0,
-        adf_rev=0,
-        sb_pval=1.0,
-        sb_or=1.0,
-        fsb_pval=1.0,
-        fsb_or=1.0,
-        used_decomposed=False,
-        any_alt=any_alt,
-        partial_alt=partial_alt,
-        n_count=n_count,
-        mfsd_ref_count=0,
-        mfsd_alt_count=0,
-        mfsd_nonref_count=0,
-        mfsd_n_count=0,
-        mfsd_ref_mean=_nan,
-        mfsd_alt_mean=_nan,
-        mfsd_nonref_mean=_nan,
-        mfsd_n_mean=_nan,
-        mfsd_alt_llr=_nan,
-        mfsd_ref_llr=_nan,
-        mfsd_delta_alt_ref=_nan,
-        mfsd_ks_alt_ref=_nan,
-        mfsd_pval_alt_ref=_nan,
-        mfsd_delta_alt_nonref=_nan,
-        mfsd_ks_alt_nonref=_nan,
-        mfsd_pval_alt_nonref=_nan,
-        mfsd_delta_ref_nonref=_nan,
-        mfsd_ks_ref_nonref=_nan,
-        mfsd_pval_ref_nonref=_nan,
-        mfsd_delta_alt_n=_nan,
-        mfsd_ks_alt_n=_nan,
-        mfsd_pval_alt_n=_nan,
-        mfsd_delta_ref_n=_nan,
-        mfsd_ks_ref_n=_nan,
-        mfsd_pval_ref_n=_nan,
-        mfsd_delta_nonref_n=_nan,
-        mfsd_ks_nonref_n=_nan,
-        mfsd_pval_nonref_n=_nan,
-    )
-
+runner = CliRunner()
 
 # ── Test 1: Default config ──────────────────────────────────────────────────
 
@@ -195,165 +107,7 @@ def test_vcf_gr_present_with_flag(tmp_path):
     assert "ID=GR," in header_text, "GR INFO header should appear with --rescue-mnp"
 
 
-# ── Test 6: Rescue fires for sparse MNP ──────────────────────────────────────
-
-
-def test_rescue_candidate_identification():
-    """_rescue_mnp_pass identifies candidates: PASS + ad==0 + MNP_RESCUE_ELIGIBLE."""
-    # Create a sparse MNP: 5bp, only 1 discriminating position
-    pv = _mock_prepared_variant(
-        ref_allele="CCCCC",
-        alt_allele="CTCCC",  # only position 1 differs
-        gbcms_status="PASS",
-        gbcms_diagnostic="ZERO_ALT;MNP_DISC_RATIO(1/5);MNP_RESCUE_ELIGIBLE",
-    )
-    counts = _mock_counts(ad=0, any_alt=0, partial_alt=0)
-
-    # Build the candidate identification portion of the rescue logic
-    # (testing the filtering criteria, not the full BAM counting)
-    prepared = [pv]
-    full_counts = [counts]
-
-    candidates = []
-    for i, (p, c) in enumerate(zip(prepared, full_counts, strict=True)):
-        if p.gbcms_status != "PASS":
-            continue
-        if c.ad != 0:
-            continue
-        if "MNP_RESCUE_ELIGIBLE" not in p.gbcms_diagnostic:
-            continue
-
-        ref_allele = p.variant.ref_allele
-        alt_allele = p.variant.alt_allele
-        if len(ref_allele) == len(alt_allele) and len(ref_allele) > 1:
-            disc_positions = [
-                (p.variant.pos + offset, ref_allele[offset], alt_allele[offset])
-                for offset in range(len(ref_allele))
-                if ref_allele[offset] != alt_allele[offset]
-            ]
-            if disc_positions:
-                candidates.append((i, disc_positions))
-
-    assert len(candidates) == 1, f"Expected 1 candidate, got {len(candidates)}"
-    assert candidates[0][0] == 0  # index 0
-    assert len(candidates[0][1]) == 1  # 1 discriminating position
-    pos, ref_base, alt_base = candidates[0][1][0]
-    assert ref_base == "C" and alt_base == "T"
-
-
-# ── Test 7: Rescue skips non-MNP variants ─────────────────────────────────────
-
-
-def test_rescue_skips_non_mnp():
-    """SNP and INDEL variants are never rescue candidates."""
-    # SNP
-    snp = _mock_prepared_variant(
-        ref_allele="A",
-        alt_allele="T",
-        gbcms_status="PASS",
-        gbcms_diagnostic="ZERO_ALT",
-    )
-    snp_counts = _mock_counts(ad=0)
-
-    # Indel
-    indel = _mock_prepared_variant(
-        ref_allele="AC",
-        alt_allele="A",
-        gbcms_status="PASS",
-        gbcms_diagnostic="ZERO_ALT",
-    )
-    indel_counts = _mock_counts(ad=0)
-
-    for pv, _c in [(snp, snp_counts), (indel, indel_counts)]:
-        is_mnp = (
-            len(pv.variant.ref_allele) == len(pv.variant.alt_allele)
-            and len(pv.variant.ref_allele) > 1
-        )
-        assert not is_mnp or "MNP_RESCUE_ELIGIBLE" not in pv.gbcms_diagnostic
-
-
-# ── Test 8: Rescue skips non-zero ad ──────────────────────────────────────────
-
-
-def test_rescue_skips_nonzero_ad():
-    """MNP with ad > 0 should not be a rescue candidate."""
-    _mock_prepared_variant(
-        ref_allele="CCCCC",
-        alt_allele="CTCCC",
-        gbcms_status="PASS",
-        gbcms_diagnostic="MNP_DISC_RATIO(1/5);MNP_RESCUE_ELIGIBLE",
-    )
-    counts = _mock_counts(ad=3)  # non-zero
-
-    # Should not be a candidate
-    assert counts.ad != 0, "Variant with ad>0 should not be rescued"
-
-
-# ── Test 9: Rescue skips FAIL variants ────────────────────────────────────────
-
-
-def test_rescue_skips_fail():
-    """FAIL variants are never rescue candidates."""
-    pv = _mock_prepared_variant(
-        ref_allele="CCCCC",
-        alt_allele="CTCCC",
-        gbcms_status="FAIL",
-        gbcms_status_reason="REF_MISMATCH",
-        gbcms_diagnostic="",
-    )
-    _mock_counts(ad=0)
-
-    # Should not be a candidate
-    assert pv.gbcms_status != "PASS"
-
-
-# ── Test 10: Rescue audit trail format ────────────────────────────────────────
-
-
-def test_rescue_audit_trail_format():
-    """gbcms_rescue audit trail has the correct structured format."""
-    # Simulate a successful rescue
-    pv = _mock_prepared_variant()
-    rescue_str = "method=decomposed;original_alt=0;positions=chr5:1295229(C>T):3"
-    pv.gbcms_rescue = rescue_str
-
-    # Parse and validate structure
-    parts = pv.gbcms_rescue.split(";")
-    kv = {p.split("=", 1)[0]: p.split("=", 1)[1] for p in parts}
-
-    assert kv["method"] == "decomposed"
-    assert kv["original_alt"] == "0"
-    assert "positions" in kv
-    # Positions format: chrom:pos(ref>alt):count
-    positions = kv["positions"].split(",")
-    assert len(positions) >= 1
-    for pos_entry in positions:
-        assert ":" in pos_entry
-        assert ">" in pos_entry
-
-
-# ── Test 11: Rescue no-signal case ────────────────────────────────────────────
-
-
-def test_rescue_no_signal_format():
-    """Failed rescue (all SNPs ad=0) should have outcome=no_signal."""
-    rescue_str = (
-        "method=decomposed;original_alt=0;outcome=no_signal;" "positions=chr5:1295229(C>T):0"
-    )
-
-    parts = rescue_str.split(";")
-    kv = {p.split("=", 1)[0]: p.split("=", 1)[1] for p in parts}
-
-    assert kv["outcome"] == "no_signal"
-    assert kv["original_alt"] == "0"
-    # All positions should have count=0
-    positions = kv["positions"].split(",")
-    for pos_entry in positions:
-        count = pos_entry.rsplit(":", 1)[1]
-        assert count == "0", f"Expected count=0 in no-signal rescue, got {count}"
-
-
-# ── Test 12: Column count with rescue ────────────────────────────────────────
+# ── Test 6: Column count with rescue ────────────────────────────────────────
 
 
 def test_column_count_with_rescue():
@@ -370,31 +124,204 @@ def test_column_count_with_rescue():
     assert cols[3] == "gbcms_rescue", f"gbcms_rescue should be the 4th column, got {cols[3]}"
 
 
-# ── Test 13: Invariant breakage after rescue ─────────────────────────────────
+# ── End-to-end battery: TERT-shaped sparse ONP ──────────────────────────────
+#
+# Harness conventions follow test_e2e_partial_dominant.py: FASTA/VCF use
+# ``chr1``, the BAM header uses the normalized name ``1``, reads are MAPQ 60 /
+# Q30 so default gates pass. Reads are unpaired, so each read is its own
+# fragment. The block GAGGG sits at 0-based 200..204; REF and ALT differ only
+# at block offsets 0 and 4 (1-based 201 and 205).
+
+BAM_CONTIG = "1"
+BLOCK_START = 200
+REF_BLOCK = "GAGGG"
+ALT_BLOCK = "AAGGA"
+READ_LEN = 100
+N_REF = 20
 
 
-def test_invariant_breakage_after_rescue():
-    """After rescue, Invariant 1 (any_alt = ad + partial_alt) intentionally breaks.
+def _reference_sequence():
+    """600bp seeded-random contig with the pinned GAGGG block at 200..204.
 
-    This is by design: ad is updated with the best decomposed SNP count while
-    any_alt and partial_alt retain original MNP-level values as forensic evidence.
-    See validation_status_design.md §2 for the TERT example.
+    The flanking bases are pinned to C so no flank base can extend or mimic a
+    block allele.
     """
-    # Simulate the TERT-like case: before rescue
-    counts = _mock_counts(ad=0, any_alt=108, partial_alt=108)
+    rng = random.Random(7)
+    seq = [rng.choice("ACGT") for _ in range(600)]
+    seq[BLOCK_START - 1] = "C"
+    seq[BLOCK_START : BLOCK_START + 5] = list(REF_BLOCK)
+    seq[BLOCK_START + 5] = "C"
+    return "".join(seq)
 
-    # Invariant holds before rescue
-    assert counts.any_alt == counts.ad + counts.partial_alt, "Invariant 1 should hold before rescue"
 
-    # Simulate rescue: ad is updated to best decomposed SNP count
-    counts.ad = 108  # rescued
+REF = _reference_sequence()
 
-    # Invariant intentionally breaks after rescue
-    assert counts.any_alt != counts.ad + counts.partial_alt, (
-        "Invariant 1 should break after rescue: "
-        f"any_alt({counts.any_alt}) != ad({counts.ad}) + partial_alt({counts.partial_alt})"
+
+def _read(name, block, i, low_bq_block_offset=None):
+    """A 100bp forward/reverse-alternating read carrying ``block`` at the locus."""
+    start = BLOCK_START - 40 - (i % 5)
+    seq = REF[start:BLOCK_START] + block + REF[BLOCK_START + 5 : start + READ_LEN]
+    quals = [30] * READ_LEN
+    if low_bq_block_offset is not None:
+        quals[BLOCK_START - start + low_bq_block_offset] = 5
+    return make_read(name, seq, start, ((0, READ_LEN),), flag=16 if i % 2 else 0, quals=quals)
+
+
+def _component_carrier_reads():
+    """20 REF + 9 first-change-only carriers + 1 carrier whose second
+    discriminating base is BQ 5 (masked, so the engine counts it full ALT —
+    the stray ``ad = 1`` that the old ``ad == 0`` gate tripped on)."""
+    reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
+    reads += [_read(f"comp_{i}", "AAGGG", i) for i in range(9)]
+    reads.append(_read("stray_masked", "AAGGG", 9, low_bq_block_offset=4))
+    return reads
+
+
+def _cis_carrier_reads():
+    """20 REF + 10 full-haplotype carriers."""
+    reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
+    reads += [_read(f"cis_{i}", ALT_BLOCK, i) for i in range(10)]
+    return reads
+
+
+def _write_bam(tmp_path, name, reads):
+    unsorted = tmp_path / f"{name}.unsorted.bam"
+    header = {"HD": {"VN": "1.0", "SO": "coordinate"}, "SQ": [{"LN": 600, "SN": BAM_CONTIG}]}
+    with pysam.AlignmentFile(unsorted, "wb", header=header) as outf:
+        for r in sorted(reads, key=lambda a: a.reference_start):
+            outf.write(r)
+    sorted_bam = tmp_path / f"{name}.bam"
+    pysam.sort("-o", str(sorted_bam), str(unsorted))
+    pysam.index(str(sorted_bam))
+    return sorted_bam
+
+
+MNP_ROW = ("chr1", BLOCK_START + 1, REF_BLOCK, ALT_BLOCK)
+SNV_AT_BLOCK_START = ("chr1", BLOCK_START + 1, "G", "A")
+
+
+def _run(tmp_path, bams, vcf_rows, rescue=True):
+    """Run ``gbcms dna`` on named BAMs; return {sample: [MAF rows]} in VCF order."""
+    fasta = tmp_path / "ref.fasta"
+    fasta.write_text(">chr1\n" + REF + "\n")
+    pysam.faidx(str(fasta))
+    vcf = tmp_path / "variants.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=600>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        + "".join(f"{c}\t{p}\t.\t{r}\t{a}\t.\t.\t.\n" for c, p, r, a in vcf_rows)
     )
-    # Verify the expected broken state
-    assert counts.ad == 108
-    assert counts.partial_alt == 108  # unchanged — forensic evidence
-    assert counts.any_alt == 108  # unchanged — forensic evidence
+    outdir = tmp_path / ("out_rescue" if rescue else "out_plain")
+    args = ["dna", "-v", str(vcf), "-f", str(fasta), "-o", str(outdir), "--format", "maf"]
+    for name, reads in bams.items():
+        args += ["-b", f"{name}:{_write_bam(tmp_path, name, reads)}"]
+    if rescue:
+        args.append("--rescue-mnp")
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+
+    rows = {}
+    for name in bams:
+        (path,) = glob.glob(str(outdir / f"{name}.maf"))
+        with open(path) as f:
+            body = "".join(line for line in f if not line.startswith("#"))
+        rows[name] = list(csv.DictReader(io.StringIO(body), delimiter="\t"))
+    return rows
+
+
+def _assert_counting_invariants(row):
+    """The four AGENTS.md counting invariants, on the row as written."""
+    rd, ad = int(row["ref_count"]), int(row["alt_count"])
+    assert int(row["total_count"]) >= rd + ad
+    assert int(row["total_count_fragment"]) >= int(row["ref_count_fragment"]) + int(
+        row["alt_count_fragment"]
+    )
+    assert rd == int(row["ref_count_forward"]) + int(row["ref_count_reverse"])
+    assert ad == int(row["alt_count_forward"]) + int(row["alt_count_reverse"])
+
+
+def _audit(row):
+    return dict(part.split("=", 1) for part in row["gbcms_rescue"].split(";"))
+
+
+@pytest.mark.xfail(
+    strict=True, reason="T7: rescue gate, coherent adoption, grouping skip, per-sample reset"
+)
+def test_component_carriers_rescued_as_one_coherent_genotype(tmp_path):
+    rows = _run(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW])
+    (row,) = rows["S"]
+
+    # The row is the winning component (block offset 0, G>A at 201) counted
+    # as an SNV: every ALT-derived column moves together.
+    assert int(row["ref_count"]) == N_REF
+    assert int(row["alt_count"]) == 10
+    assert int(row["alt_count_fragment"]) == 10
+    assert int(row["partial_alt"]) == 0
+    assert int(row["any_alt"]) == 10
+    _assert_counting_invariants(row)
+
+    audit = _audit(row)
+    assert audit["method"] == "decomposed"
+    assert audit["outcome"] == "rescued"
+    # The MNP's own evaluation survives only here: 20 REF, the one masked
+    # stray counted full ALT, the nine single-change carriers as partial.
+    assert (audit["original_ref"], audit["original_alt"], audit["original_partial"]) == (
+        "20",
+        "1",
+        "9",
+    )
+    assert re.fullmatch(r"(chr)?1:201\(G>A\)", audit["adopted"]), audit["adopted"]
+    assert re.fullmatch(r"(chr)?1:201\(G>A\):10,(chr)?1:205\(G>A\):0", audit["positions"]), audit[
+        "positions"
+    ]
+
+    # Diagnostics describe the written row, not the pre-rescue MNP counts.
+    assert row["gbcms_diagnostic"] == "MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE"
+
+
+def test_flag_off_reports_engine_counts_without_rescue_column(tmp_path):
+    rows = _run(tmp_path, {"S": _component_carrier_reads()}, [MNP_ROW], rescue=False)
+    (row,) = rows["S"]
+    assert "gbcms_rescue" not in row
+    assert (int(row["ref_count"]), int(row["alt_count"]), int(row["partial_alt"])) == (20, 1, 9)
+    assert "PARTIAL_DOMINANT" in row["gbcms_diagnostic"].split(";")
+    _assert_counting_invariants(row)
+
+
+def test_cis_carriers_are_not_candidates(tmp_path):
+    rows = _run(tmp_path, {"S": _cis_carrier_reads()}, [MNP_ROW])
+    (row,) = rows["S"]
+    assert row["gbcms_rescue"] == ""
+    assert (int(row["ref_count"]), int(row["alt_count"]), int(row["partial_alt"])) == (20, 10, 0)
+    _assert_counting_invariants(row)
+
+
+@pytest.mark.xfail(
+    strict=True, reason="T7: rescue gate, coherent adoption, grouping skip, per-sample reset"
+)
+def test_grouped_mnp_is_skipped_and_keeps_exclusive_assignment(tmp_path):
+    variants = [MNP_ROW, SNV_AT_BLOCK_START]
+    plain = _run(tmp_path, {"S": _component_carrier_reads()}, variants, rescue=False)["S"]
+    rescued = _run(tmp_path, {"S": _component_carrier_reads()}, variants)["S"]
+
+    mnp_plain, mnp = plain[0], rescued[0]
+    count_cols = ("ref_count", "alt_count", "partial_alt", "alt_count_fragment")
+    assert {c: mnp[c] for c in count_cols} == {c: mnp_plain[c] for c in count_cols}
+    audit = _audit(mnp)
+    assert audit["outcome"] == "skipped_grouped"
+    assert "positions" not in audit
+    assert audit["original_alt"] == mnp_plain["alt_count"]
+
+    snv = rescued[1]
+    assert snv["gbcms_rescue"] == ""
+    assert {c: snv[c] for c in count_cols} == {c: plain[1][c] for c in count_cols}
+
+
+@pytest.mark.xfail(
+    strict=True, reason="T7: rescue gate, coherent adoption, grouping skip, per-sample reset"
+)
+def test_rescue_audit_does_not_leak_into_later_samples(tmp_path):
+    rows = _run(tmp_path, {"A": _component_carrier_reads(), "B": _cis_carrier_reads()}, [MNP_ROW])
+    assert _audit(rows["A"][0])["outcome"] == "rescued"
+    assert rows["B"][0]["gbcms_rescue"] == ""
+    assert int(rows["B"][0]["alt_count"]) == 10
