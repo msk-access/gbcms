@@ -332,6 +332,22 @@ reviewed behavior-neutral and the full suite is unchanged.
       vs 3) moved, both to `haplotype_confirmed`; the five TERT rows stay
       rescued to sign-out (confirmed 0); 56 non-candidates unchanged; no
       germline adoption. Tier 3 traces agree read-class by read-class.
+11. *Rescued rows say so; VCF and MAF carry the same audit (operator decision
+    2026-09-23: keep count replacement — rescue is opt-in — but add
+    warnings).* A rescued row keeps the MNP's coordinates while reporting a
+    component's counts, so:
+    - `gbcms_diagnostic` (MAF column, VCF `GD`) gains
+      `RESCUED_COMPONENT(chrom:pos:REF>ALT)` on every rescued row;
+    - each rescue logs a WARNING (component, its ALT count, and the MNP's own
+      ALT/confirmed counts) instead of DEBUG; enabling `--rescue-mnp` logs a
+      WARNING stating that rescued rows report a component, not the MNP;
+    - *VCF defect found:* the audit's positions list is comma-separated, and
+      htslib splits a comma-bearing `GR` (Number=1) into two values — a VCF
+      consumer silently gets a truncated audit. Positions are now joined with
+      `+`, so `GR` (the MAF value with `;`→`|`) parses as one string.
+    - Tests: VCF-format end-to-end on the rescued geometry — FORMAT AD/FAD
+      equal the MAF run's counts, `GD` carries the flag, `GR` round-trips
+      through pysam intact.
 
 **Files.** `src/gbcms/pipeline.py` (`_rescue_mnp_pass`, per-sample reset,
 diagnostics recompute for rescued rows); `rust/src/types.rs` + `_rs.pyi`
