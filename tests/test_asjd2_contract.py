@@ -22,22 +22,19 @@ Geometries mirror three signed-out RNA cases measured locally: a donor SNV
 with allele-specific retention, an acceptor SNV expressed partly as exon
 skipping, and an exon-removing deletion expressed as an exon skip. Both
 variant input paths (VCF and MAF) are exercised. Committed red
-(xfail-strict) before the implementation.
+(xfail-strict) before the implementation; flipped green with it.
 """
 
 import glob
 import random
 
 import pysam
-import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
 from gbcms.cli import app
 
 runner = CliRunner()
-
-XFAIL = pytest.mark.xfail(strict=True, reason="ASJD-2 markers: implementation pending")
 
 BAM_CONTIG = "1"
 READ_LEN = 100
@@ -202,7 +199,6 @@ def _retention_setup(ref):
     return rows, reads
 
 
-@XFAIL
 def test_donor_snv_retention_marker(tmp_path):
     """The allele-classified reads are all intron-retaining (junction-free)
     while 65 spliced fragments skip the locus: RETENTION_DOMINANT(65)."""
@@ -243,7 +239,6 @@ def test_minority_novel_junction_below_alt_is_silent(tmp_path):
 ACCEPTOR_SNV = 499  # 0-based, the G of intron-1's AG acceptor
 
 
-@XFAIL
 def test_acceptor_snv_skip_and_retention_markers(tmp_path):
     """Acceptor SNV: 5 ALT + 5 REF retained reads, 40 normally spliced and
     12 exon-2-skip fragments spanning the locus. The anchored novel skip
@@ -286,7 +281,6 @@ def _exon_del_reads(ref):
     )
 
 
-@XFAIL
 def test_exon_deletion_expressed_as_skip(tmp_path):
     """The deletion leaves ad=0 honestly (its carriers splice over the
     locus), but the excluded population's anchored novel E1->E3 junction

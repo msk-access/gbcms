@@ -1,8 +1,11 @@
 ---
 name: black-version-skew-venv-vs-ci
-description: Lint tools are stale locally vs CI (black AND clippy) — run CI's versions or you get false "clean" / phantom "drift".
+description: "Lint tools are stale locally vs CI (black AND clippy) — run CI's versions or you get false \"clean\" / phantom \"drift\"."
 metadata:
+  node_type: memory
   type: feedback
+  originSessionId: 890ffab2-2fbd-474b-915c-62b9807e66d3
+  modified: 2026-09-23T14:09:15.934Z
 ---
 
 Local lint tools here lag CI, so a locally-clean run can still fail CI (and vice-versa).
@@ -15,7 +18,8 @@ multiline `plotly_calls.append(f"""...""")` in `mfsd_report.py`: 25.9.0 wants a 
 26.5.1 (CI) considers the original clean → trusting the venv black once produced a phantom
 "drift" and a near-miss "fix" that would have *broken* CI.
 
-**clippy** — local `rustup` stable lagged (rustc 1.91 / clippy 0.1.91) while CI's
+**clippy** — (as of 2026-09-23 local stable is rustc 1.96 = CI; re-check `rustc --version`
+before assuming skew) local `rustup` stable lagged (rustc 1.91 / clippy 0.1.91) while CI's
 `dtolnay/rust-toolchain@stable` was 1.96. The newer clippy flags lints the old one misses
 (e.g. `clippy::unnecessary_sort_by` at `rna.rs:402`), so a locally-clean `cargo clippy`
 failed CI once `-D warnings` was enabled.

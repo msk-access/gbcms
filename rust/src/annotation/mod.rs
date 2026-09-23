@@ -208,6 +208,24 @@ impl AnnotationIndex {
         }
     }
 
+    /// Whether any annotated exon boundary lies in `[lo, hi]` (inclusive,
+    /// 0-based boundary coordinates as stored in `splice_sites`: an exon's
+    /// start and its exclusive end). Binary search — O(log n).
+    ///
+    /// `splice_sites` also holds transcript termini (first exon start, last
+    /// exon end). Callers that need true splice sites combine this with
+    /// evidence that reads actually splice at the locus.
+    pub fn splice_site_in_range(&self, chrom: &str, lo: i64, hi: i64) -> bool {
+        let sites = match self.chrom_map.get(chrom).and_then(|id| self.splice_sites.get(id)) {
+            Some(s) => s,
+            None => return false,
+        };
+        let lo = lo.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let hi = hi.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let idx = sites.partition_point(|&s| s < lo);
+        idx < sites.len() && sites[idx] <= hi
+    }
+
     // ─── Per-Transcript Counting ─────────────────────────────────────────────
 
     /// Get transcript IDs whose exons overlap the given position.
@@ -466,6 +484,19 @@ mod tests {
     }
 
     // ── nearest_splice_distance tests ──
+
+    #[test]
+    fn test_splice_site_in_range() {
+        let idx = build_test_index(); // sites 100, 200, 300, 400
+        assert!(idx.splice_site_in_range("1", 200, 200), "exact site, degenerate range");
+        assert!(idx.splice_site_in_range("1", 198, 201), "site inside range");
+        assert!(idx.splice_site_in_range("1", 150, 200), "site at inclusive upper end");
+        assert!(idx.splice_site_in_range("1", 300, 350), "site at inclusive lower end");
+        assert!(!idx.splice_site_in_range("1", 201, 299), "between sites");
+        assert!(!idx.splice_site_in_range("1", 401, 900), "past the last site");
+        assert!(!idx.splice_site_in_range("1", 0, 99), "before the first site");
+        assert!(!idx.splice_site_in_range("2", 0, 1000), "unannotated chromosome");
+    }
 
     #[test]
     fn test_at_exon_boundary() {
