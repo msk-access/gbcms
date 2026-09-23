@@ -900,7 +900,7 @@ When multiple variants have overlapping REF spans at the same locus, reads carry
 
 ### Phase 1: Annotation
 
-During normalization, `assign_multi_allelic_groups()` identifies overlapping variants using a **sweep-line algorithm** over sorted `(chrom, pos)` coordinates. Variants whose REF spans intersect receive a shared `multi_allelic_group` ID, and `MULTI_ALLELIC` is appended to their `gbcms_status_reason` (the verdict stays `PASS`).
+During normalization, `assign_multi_allelic_groups()` groups co-annotated variants with a fixed-point sweep over sorted `(chrom, pos)` coordinates, under two criteria: variants whose REF spans intersect (any types — tagged `MULTI_ALLELIC`), and length-changing variants whose scan windows (`max(5, repeat_span+2)` each side) overlap (tagged `TRACT_CLUSTER` when window-only). Groups close transitively and may be non-contiguous in position order; members share a `multi_allelic_group` ID and the tag is appended to `gbcms_status_reason` (the verdict stays `PASS`). Within a group the engine assigns AD exclusively: a read's ALT call is demoted to `partial_alt` when a sibling explains it at least as well by span-explanation cost, and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact CIGAR evidence is never contested.
 
 ### Phase 2: Sibling ALT Exclusion
 

@@ -47,7 +47,8 @@ use bio::alignment::pairwise::Aligner;
 
 use super::fragment::{FragmentEvidence, hash_qname, hash_molecule};
 use super::pairhmm::dynamic_sw_gap_extend;
-use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, MnpResult};
+use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, reconstruct_span, MnpResult};
+use bio::alignment::distance::levenshtein;
 use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
@@ -1694,9 +1695,19 @@ fn count_variant_from_cache(
         }
 
         let is_ref = result.is_ref;
-        let is_alt = result.is_alt;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
+
+        // ── MULTI-ALLELIC AD-CLAIMING GUARD: an ALT match contested and won
+        // by a co-annotated sibling is the sibling's molecule. Downgrade
+        // it here — before distance tracking, fragment evidence, and
+        // read-level counting — so AD and ADF exclude it consistently. The
+        // read still counts toward DP/DPF and is recorded as
+        // partial_alt/any_alt below.
+        let claimed_by_sibling = sibling_claims_alt(
+            record, variant, &result, sibling_variants, effective_quals, min_baseq,
+        );
+        let is_alt = result.is_alt && !claimed_by_sibling;
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends
@@ -1821,12 +1832,15 @@ fn count_variant_from_cache(
         // and alignment backends. This captures reads with right-length INDELs but wrong
         // sequences (e.g., PAX5 A>CCC) that were previously lost as silent REF calls.
         if !is_ref && !is_alt {
-            // Check for partial ALT evidence before skipping
-            if result.partial_match_count > 0 || result.has_nearby_evidence {
+            // Check for partial ALT evidence before skipping. A read whose
+            // ALT match was claimed by a sibling is partial evidence
+            // for this row: the molecule carries a variant in this tract but
+            // belongs to the sibling's representation.
+            if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
-                trace!("partial_alt++: partial_match={} nearby_evidence={} (any_alt={}, partial_alt={})",
-                    result.partial_match_count, result.has_nearby_evidence,
+                trace!("partial_alt++: partial_match={} nearby_evidence={} sibling_claimed={} (any_alt={}, partial_alt={})",
+                    result.partial_match_count, result.has_nearby_evidence, claimed_by_sibling,
                     counts.any_alt, counts.partial_alt);
             }
             continue;
@@ -1869,6 +1883,15 @@ fn count_variant_from_cache(
                     }
                 }
                 if is_sibling_alt {
+                    // The molecule carries a sibling's allele in this tract:
+                    // structural evidence of a DIFFERENT allele, same category
+                    // as the wrong-length rule — surface it as partial_alt
+                    // rather than dropping it silently (it stays out of rd).
+                    // Skip if the nearby-evidence block above already counted it.
+                    if !result.has_nearby_evidence {
+                        counts.any_alt += 1;
+                        counts.partial_alt += 1;
+                    }
                     continue;
                 }
             }
@@ -2248,9 +2271,18 @@ fn count_single_variant(
         }
 
         let is_ref = result.is_ref;
-        let is_alt = result.is_alt;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
+
+        // ── MULTI-ALLELIC AD-CLAIMING GUARD: mirrors the binned path — an
+        // ALT match contested and won by a co-annotated sibling is
+        // downgraded before fragment evidence and read-level counting so AD
+        // and ADF exclude it consistently; it is recorded as
+        // partial_alt/any_alt below.
+        let claimed_by_sibling = sibling_claims_alt(
+            &record, variant, &result, sibling_variants, effective_quals, min_baseq,
+        );
+        let is_alt = result.is_alt && !claimed_by_sibling;
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends
@@ -2330,7 +2362,10 @@ fn count_single_variant(
         // is_n_base: a fragment is in the N class when the base at the variant
         // position was 'N' — proxied by base_qual==0 with no REF or ALT call.
         let tlen = mfsd::calc_physical_insert_size(&record);
-        let is_n_base = base_qual == 0 && !is_ref && !is_alt;
+        // Same explicit N flag as the binned path (set by the checkers when
+        // an N sits at a discriminating position); the old qual-0 heuristic
+        // mis-classified true third-allele reads as N-class.
+        let is_n_base = result.has_n_base;
 
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq());
 
@@ -2350,8 +2385,10 @@ fn count_single_variant(
         // - Nearby evidence (right-length INDEL, close alignment score): any_alt++, partial_alt++
         // - Neither/REF with no evidence: no any_alt/partial_alt change
         if !is_ref && !is_alt {
-            // Check for partial ALT evidence before skipping
-            if result.partial_match_count > 0 || result.has_nearby_evidence {
+            // Check for partial ALT evidence before skipping. A sibling-claimed
+            // ALT match is partial evidence for this row (see the binned
+            // path).
+            if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
             }
@@ -2391,7 +2428,14 @@ fn count_single_variant(
                     }
                 }
                 if is_sibling_alt {
-                    continue; // Skip REF counting — this read belongs to a sibling
+                    // Distinct-allele evidence (see binned path): out of rd,
+                    // surfaced as partial rather than dropped silently —
+                    // unless the nearby-evidence block already counted it.
+                    if !result.has_nearby_evidence {
+                        counts.any_alt += 1;
+                        counts.partial_alt += 1;
+                    }
+                    continue;
                 }
             }
             counts.rd += 1;
@@ -2550,6 +2594,191 @@ fn count_single_variant(
     Ok(counts)
 }
 
+
+/// Build the REF and ALT haplotypes of `v` restricted to the genomic
+/// window `[w_lo, w_hi)`. Requires the variant's (genomic) ref_context to
+/// cover the window and the window to contain the full event span —
+/// otherwise the comparison would be lopsided and the caller keeps the
+/// read's classification.
+fn window_haplotypes(v: &Variant, w_lo: i64, w_hi: i64) -> Option<(Vec<u8>, Vec<u8>)> {
+    let ctx = v.ref_context.as_ref()?.as_bytes();
+    let cs = v.ref_context_start;
+    let ce = cs + ctx.len() as i64;
+    let span_end = v.pos + v.ref_allele.len() as i64;
+    if w_lo < cs || w_hi > ce || w_lo > v.pos || w_hi < span_end {
+        return None;
+    }
+    let left = &ctx[(w_lo - cs) as usize..(v.pos - cs) as usize];
+    let right = &ctx[(span_end - cs) as usize..(w_hi - cs) as usize];
+    let mut ref_hap = Vec::with_capacity(left.len() + v.ref_allele.len() + right.len());
+    ref_hap.extend_from_slice(left);
+    ref_hap.extend_from_slice(v.ref_allele.as_bytes());
+    ref_hap.extend_from_slice(right);
+    let mut alt_hap = Vec::with_capacity(left.len() + v.alt_allele.len() + right.len());
+    alt_hap.extend_from_slice(left);
+    alt_hap.extend_from_slice(v.alt_allele.as_bytes());
+    alt_hap.extend_from_slice(right);
+    Some((ref_hap, alt_hap))
+}
+
+/// Multi-allelic AD-claiming guard: decide whether a representation-tolerant
+/// ALT classification really belongs to this row at a co-annotated locus.
+///
+/// Representation-tolerant matching (windowed S3 shifts, BQ-masked
+/// comparison, PairHMM alignment) lets one physical event satisfy several
+/// co-annotated rows in the same tract — and lets unannotated same-tract
+/// ladder events be absorbed as ALT — so without this guard the per-locus
+/// AD sum exceeds the number of distinct ALT molecules (measured 2-5x at a
+/// real hypermutation cluster; sign-out uses exclusive assignment).
+///
+/// Anchor-exact evidence (Phase 0: a structural CIGAR op at the annotated
+/// left-aligned position, or a direct SNP base observation) is never
+/// contested — a molecule genuinely carrying two anchor-exact ops counts
+/// full AD on both rows. Everything else faces three demotion tests, each
+/// decisive for a distinct failure mode measured on signed-out data:
+///
+/// 1. **REF test** (foreign events): over the read-covered slice of this
+///    variant's genomic context, the read's reconstruction must explain
+///    strictly better with the row's ALT haplotype than its REF haplotype
+///    (Levenshtein). A read carrying only an event in the flanks ties or
+///    favors REF → demote.
+/// 2. **Probabilistic pure indel** (unannotated ladders): an
+///    Alignment-phase (Phase 3) ALT on a *pure* indel row carries no
+///    matching structural op at any position — in a contested tract that
+///    is ambiguity (PairHMM absorbs D11 into a D14 row because 3 edits
+///    beat 11), so demote. Complex/MNP rows are exempt: Phase 3 is their
+///    own carriers' normal resolution path.
+/// 3. **Strictly-better sibling** (same-tract competitors): over a window
+///    covering both spans, a sibling whose ALT haplotype explains the
+///    read at strictly lower cost claims it. Equal cost means equivalent
+///    representations of the same event (e.g. a delins double-annotated
+///    as an insertion) — both rows keep the read rather than zeroing one.
+///
+/// Demoted reads surface as partial evidence (any_alt/partial_alt) and are
+/// excluded from AD and ADF (the caller downgrades before fragment
+/// evidence). Reads that do not fully span the event, or splice-poisoned
+/// windows, keep their classification. Isolated variants are untouched.
+/// Mask sub-threshold and N bases to a sentinel byte that matches no
+/// haplotype base: the contest then charges them equally against every
+/// candidate instead of letting sequencing noise coincidentally vote for
+/// one — the same bases the BQ-aware classification masked (cross-backend
+/// quality contract).
+fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
+    for (b, &q) in seq.iter_mut().zip(quals.iter()) {
+        if q < min_baseq || *b == b'N' || *b == b'n' {
+            *b = 0;
+        }
+    }
+}
+
+fn sibling_claims_alt(
+    record: &Record,
+    variant: &Variant,
+    result: &ClassifyResult,
+    sibling_variants: &[Variant],
+    quals: &[u8],
+    min_baseq: u8,
+) -> bool {
+    if !result.is_alt || sibling_variants.is_empty() {
+        return false;
+    }
+    if result.phase == ClassifyPhase::Structural {
+        return false;
+    }
+
+    let read_lo = record.pos();
+    let read_hi = read_ref_end(record);
+    let own_ctx_end = variant.ref_context_start
+        + variant.ref_context.as_ref().map_or(0, |c| c.len() as i64);
+    let w_lo = read_lo.max(variant.ref_context_start);
+    let w_hi = read_hi.min(own_ctx_end);
+
+    // Test 1: the read's window must favor ALT strictly over REF.
+    let (ref_hap, alt_hap) = match window_haplotypes(variant, w_lo, w_hi) {
+        Some(h) => h,
+        None => return false,
+    };
+    let mut recon = reconstruct_span(record, quals, w_lo, w_hi);
+    if recon.splice_skip || recon.seq.is_empty() {
+        return false;
+    }
+    let recon_quals = std::mem::take(&mut recon.quals);
+    mask_low_qual(&mut recon.seq, &recon_quals, min_baseq);
+    let cost_alt = levenshtein(&recon.seq, &alt_hap);
+    let cost_ref = levenshtein(&recon.seq, &ref_hap);
+    if cost_alt >= cost_ref {
+        trace!(
+            "AD-claiming guard: ALT for {}>{} at {}:{} not favored over REF \
+             (ALT cost {} vs REF cost {}) — partial_alt, not ad",
+            variant.ref_allele, variant.alt_allele,
+            variant.chrom, variant.pos + 1, cost_alt, cost_ref,
+        );
+        return true;
+    }
+
+    // Test 2: probabilistic call on a pure indel row. Known tradeoff: a true
+    // carrier whose only evidence is soft-clipped (no I/D op anywhere) is
+    // also demoted here — measured to be a rare sensitivity tail (clip
+    // survey: 12/12 ITD loci I-op-dominant), it stays visible as
+    // partial_alt, and clip rescue is tracked separately (CLIP_CANDIDATES).
+    // Pure = anchor-preserved
+    // deletion/insertion; a delins that merely has a 1-base side (e.g.
+    // CAG>T) is complex and exempt (Phase 3 is its carriers' normal path).
+    let ref_al = variant.ref_allele.as_bytes();
+    let alt_al = variant.alt_allele.as_bytes();
+    let pure_indel = (alt_al.len() == 1 && ref_al.len() > 1 && ref_al[0] == alt_al[0])
+        || (ref_al.len() == 1 && alt_al.len() > 1 && alt_al[0] == ref_al[0]);
+    if result.phase == ClassifyPhase::Alignment && pure_indel {
+        trace!(
+            "AD-claiming guard: alignment-phase ALT on pure indel {}>{} at {}:{} \
+             in a co-annotated cluster (no structural op) — partial_alt, not ad",
+            variant.ref_allele, variant.alt_allele,
+            variant.chrom, variant.pos + 1,
+        );
+        return true;
+    }
+
+    // Test 3: a sibling that explains the read strictly better claims it.
+    for sib in sibling_variants {
+        let sib_ctx_end = sib.ref_context_start
+            + sib.ref_context.as_ref().map_or(0, |c| c.len() as i64);
+        let s_lo = w_lo.max(sib.ref_context_start);
+        let s_hi = w_hi.min(sib_ctx_end);
+        let own_hap_s = match window_haplotypes(variant, s_lo, s_hi) {
+            Some((_, a)) => a,
+            None => continue,
+        };
+        let sib_hap_s = match window_haplotypes(sib, s_lo, s_hi) {
+            Some((_, a)) => a,
+            None => continue,
+        };
+        let recon_s = if (s_lo, s_hi) == (w_lo, w_hi) {
+            recon.seq.clone()
+        } else {
+            let mut r = reconstruct_span(record, quals, s_lo, s_hi);
+            if r.splice_skip || r.seq.is_empty() {
+                continue;
+            }
+            let rq = std::mem::take(&mut r.quals);
+            mask_low_qual(&mut r.seq, &rq, min_baseq);
+            r.seq
+        };
+        let own_c = levenshtein(&recon_s, &own_hap_s);
+        let sib_c = levenshtein(&recon_s, &sib_hap_s);
+        if sib_c < own_c {
+            trace!(
+                "AD-claiming guard: ALT for {}>{} at {}:{} (cost {}) claimed by \
+                 sibling {}>{} at {}:{} (cost {}) — partial_alt, not ad",
+                variant.ref_allele, variant.alt_allele,
+                variant.chrom, variant.pos + 1, own_c,
+                sib.ref_allele, sib.alt_allele,
+                sib.chrom, sib.pos + 1, sib_c,
+            );
+            return true;
+        }
+    }
+    false
+}
 
 /// Check if a read supports the reference or alternate allele.
 /// Returns `ClassifyResult` containing (is_ref, is_alt, base_quality, phase)
@@ -2891,13 +3120,37 @@ fn count_per_transcript(
                 mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
             }
 
+            // ── Multi-allelic guards (same rules as the main engine): an
+            // ALT match won by a sibling is excluded from tx_ad and from
+            // ALT fragment evidence; a REF-classified read that is ALT for
+            // a sibling is excluded from tx_rd (its ALT lies outside this
+            // variant's span, so REF testimony here is vacuous). Both still
+            // count tx_dp.
+            let claimed_by_sibling = sibling_claims_alt(
+                record, variant, &result, sibling_variants, effective_quals, min_baseq,
+            );
+            let is_alt = result.is_alt && !claimed_by_sibling;
+            let mut is_ref = result.is_ref;
+            if is_ref && !sibling_variants.is_empty() {
+                for sib in sibling_variants {
+                    let sib_result = check_allele_with_qual(
+                        record, sib, &[], effective_quals, min_baseq,
+                        &mut alt_aligner, &mut ref_aligner, backend,
+                    );
+                    if sib_result.is_alt {
+                        is_ref = false;
+                        break;
+                    }
+                }
+            }
+
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-            evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+            evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
 
             if first_class {
-                if result.is_ref {
+                if is_ref {
                     tx_rd += 1;
-                } else if result.is_alt {
+                } else if is_alt {
                     tx_ad += 1;
                 }
             }

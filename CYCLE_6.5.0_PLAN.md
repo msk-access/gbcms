@@ -17,40 +17,63 @@ counts *compatible* molecules, not *assigned* ones (BRCA2 cluster: per-row
 Adjudication proved exclusive canonical assignment reproduces sign-out
 (28/28, 32/32, 21/21 exact; #92 comment of 2026-09-22).
 
-**Design.**
-1. *Grouping (prep, Python):* extend sibling detection with a second
-   criterion — same-type variants whose scan windows overlap (window =
-   `max(5, repeat_span+2)` each side, the engine's own formula). Groups are
-   transitive closures. Emit group id into the existing sibling plumbing
-   (`sibling_variants` already flows binned+legacy).
-2. *Claiming (Rust, shared checker):* when a variant has same-type
-   tract-mates, canonicalize each CIGAR indel candidate (left-align op
-   against ref_context — same loop `normalize` uses) and compare canonical
-   (pos, deleted-bases | inserted-bases) against the variant's own canonical
-   form AND each tract-mate's:
-   - matches self → structural ALT (unchanged);
-   - matches a tract-mate → this read is that allele: for the current row it
-     falls under the existing distinct-allele rule (`neither +
-     has_nearby_evidence`, never REF, never ALT);
-   - matches neither → current wrong-length / windowed logic unchanged.
-   Windowed S3 shift-tolerance is therefore *scoped*: it may only rescue
-   representations that canonicalize to SELF.
-3. *No cross-variant runtime state needed* — each row decides from its own
-   read walk plus the (already-passed) sibling list; binned/legacy parity
-   holds by construction (shared checker).
+**Design (as implemented — revised in-session; complex-variant support is
+the key improvement, so claiming moved from a checker-level canonical
+comparison to an engine-level sibling contest that covers delins).**
+1. *Grouping (Rust prep, `assign_multi_allelic_groups`):* second membership
+   criterion — **length-changing** variants (ref_len ≠ alt_len; never
+   SNV/MNP, which would drain rd via the REF-side guard) whose scan windows
+   overlap (window = `max(5, repeat_span+2)` each side, uncapped — the
+   engine's own formula). Groups are transitive closures and may be
+   non-contiguous in position order (visited-marker sweep; look-ahead bound
+   derived from the input's max pad). Honest reason tags: true span
+   intersection → `MULTI_ALLELIC`, window-only membership → `TRACT_CLUSTER`.
+   Existing sibling plumbing (`sibling_variants`) carries the wider groups —
+   zero new FFI.
+2. *AD-claiming guard (Rust engine, `sibling_claims_alt`):* at a grouped
+   locus, anchor-exact Phase 0 evidence is never contested; every other
+   ALT faces three demotion tests, each decisive for a measured failure
+   mode (haplotypes/reconstructions via `window_haplotypes` +
+   `reconstruct_span`, the latter factored out of check_complex Phase 1):
+   **(1) REF test** — over the read-covered context window the read must
+   explain strictly better with the row's ALT haplotype than its REF
+   haplotype (catches foreign flank events); **(2) probabilistic pure
+   indel** — a Phase 3 ALT on an anchor-preserved pure indel row has no
+   matching structural op anywhere and is ambiguity in a tract (catches
+   unannotated ladder absorption: PairHMM prefers D14 over REF for a D11
+   read); complex/MNP rows are exempt because Phase 3 is their carriers'
+   normal path; **(3) strictly-better sibling** — over a window covering
+   both spans, a sibling ALT haplotype with strictly lower cost claims
+   the read; equal cost = equivalent representations (e.g. a delins
+   double-annotated as an insertion) and both rows keep it. Earlier
+   iterations falsified by real data: phase-rank gate (cross-attribution
+   is Phase 3 on ABRA consensus reads; rank inverts on delins),
+   per-sibling span-cost with tie-demote (anchor-exact siblings stole
+   delins carriers — complex rows zeroed), ALT-vs-REF alone (same-tract
+   same-length dels and ladders both beat REF). No sibling
+   re-classification calls remain. Downgrade happens at classification
+   time (before fragment evidence), so AD **and ADF** exclude demoted
+   reads consistently; they surface as `partial_alt`/`any_alt`. Applied
+   at binned, legacy, and per-transcript sites (the per-transcript site
+   also gains the REF-side sibling guard). Reads not fully spanning the
+   event, or splice-poisoned windows, keep their classification;
+   isolated variants are untouched.
+3. *REF-side guard symmetry:* sibling-claimed reads dropped from `rd` now
+   surface as `partial_alt` too (distinct-allele evidence, same category as
+   the wrong-length rule) instead of vanishing silently.
 
-**Files.** `src/gbcms/prep.py`/sibling grouping site; `rust/src/counting/
-variant_checks.rs` (canonical helper + claiming in
-`resolve_anchor_*_candidate` / `scan_windowed_*_candidate`);
-`rust/src/normalize/` (reuse left-align); tests.
+**Files.** `rust/src/normalize/engine.rs` (grouping rewrite + summary log);
+`rust/src/counting/engine.rs` (claiming helper + 3 sites + REF-guard
+partial); `src/gbcms/_rs.pyi` (reason-tag docs); tests.
 
-**Tests (red-first).** Synthetic BRCA2-like cluster: 3×D2 (AG/AC/AG) + D33 +
-D14 interleaved in an AG tract, reads per allele → xfail-strict pins:
-per-row ad = own molecules only; Σad ≤ distinct ALT molecules; tract-mate
-carriers appear as `partial_alt`. Green guards: two *distant* same-length
-dels (no window overlap) unaffected; a genuinely shifted representation of
-SELF still rescued by S3; INS twin of the cluster. Parity case via
-`count_both` with sibling groups (both paths).
+**Tests (red-first, committed 81a761d/510ac71, flipped green).** Synthetic
+four-deletion tract cluster (already-canonical, canonically distinct; D is
+the window-only probe) + complex twin (pure del + delins CAG>T): pins
+per-row ad = own molecules; Σad ≤ distinct ALT molecules; tract-mate
+carriers surface as partial; delins sibling claims windowed carriers. Green
+guards: distant same-sequence dels unaffected; shifted SELF representation
+still rescued; MAF and VCF front-door agreement for both geometries (parity
+oracle not used — siblings are parity-exempt).
 
 **Acceptance.** Battery green; real-data: ACCESS harness rerun — BRCA2
 cluster rows within a few molecules of sign-out (table from #92), all other
