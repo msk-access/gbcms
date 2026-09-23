@@ -301,6 +301,41 @@ def test_insertion_cluster_exclusive_assignment(tmp_path):
     assert int(r_a["alt_count"]) + int(r_b["alt_count"]) <= 11
 
 
+# ── Equivalent double-annotation guard ───────────────────────────────────
+def test_equivalent_representations_both_keep_carriers(tmp_path):
+    """Guard (adjudicated on real double-annotated data): when two
+    co-annotated rows are equivalent representations of the SAME event —
+    a delins TT>GTC and (T>G mismatch + ins C) describing one haplotype —
+    the contest's equal-cost tie must NOT zero either row. Carriers whose
+    reads literally show the shared haplotype count on both rows."""
+    ref = _mk_ref(plants=((298, "ACTTGAC"),))
+    p0 = 300  # 0-based: ref TT at [300, 302)
+    assert ref[300:302] == "TT"
+    rows = [
+        (p0 + 1, "TT", "GTC"),  # complex representation, 1-based POS 301
+        (p0 + 2, ref[p0 + 1], ref[p0 + 1] + "C"),  # ins C after 302 (anchor T)
+    ]
+    reads = []
+    for i in range(6):  # carriers show G T C: mismatch at 300, ins C after 301
+        s0 = p0 - 35 - i
+        left = p0 - s0
+        seq = ref[s0:p0] + "GT" + "C" + ref[p0 + 2 : p0 + 2 + (READ_LEN - left - 3)]
+        reads.append(
+            make_read(f"eq{i}", seq, s0, ((0, left + 2), (1, 1), (0, READ_LEN - left - 3)))
+        )
+    reads += _ref_reads(ref, p0, 5)
+    res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
+    ads = sorted(int(r["alt_count"]) for r in res.values())
+    # Neither row may be zeroed; the exact split (both-full for true
+    # equivalence, or exclusive when representations differ) is engine
+    # policy, but carriers must be visible as ad or partial on every row.
+    for r in res.values():
+        assert (
+            int(r["alt_count"]) + int(r["partial_alt"]) >= 6
+        ), f"carriers vanished from a row: ad={r['alt_count']} partial={r['partial_alt']}"
+    assert max(ads) >= 6, f"no row kept the carriers as full AD: {ads}"
+
+
 # ── Complex (delins) sibling — the key cross-type case ───────────────────
 # Plant at 298:  G T A G T C A G T T
 #                298     302     306
