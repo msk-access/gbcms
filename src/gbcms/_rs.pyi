@@ -101,6 +101,9 @@ class BaseCounts:
     # Invariant: any_alt = ad + partial_alt
     any_alt: int
     partial_alt: int
+    # MNP ALT reads whose every discriminating base was read (none masked, none N);
+    # a subset of ad, 0 for non-MNP variants. Internal — not an output column.
+    mnp_confirmed_alt: int
     # N-base diagnostic: reads with N at ≥1 discriminating position (NAD in VCF).
     # Tracks duplex masking burden for QC. Follows bam-readcount N:count model.
     n_count: int

@@ -125,6 +125,7 @@ def _zero_counts():
         # Decomposed ALT counting (invariant: any_alt = ad + partial_alt)
         any_alt=0,
         partial_alt=0,
+        mnp_confirmed_alt=0,
         # N-base diagnostic (duplex masking QC)
         n_count=0,
         # RNA-specific (zeroed in DNA mode)

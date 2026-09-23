@@ -306,6 +306,14 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub partial_alt: u32,
 
+    /// MNP ALT reads whose every discriminating base was read (none masked
+    /// for base quality, none N): reads that show the whole haplotype rather
+    /// than inferring it from an unmasked subset. A subset of `ad`; always 0
+    /// for non-MNP variants. Not an output column — the MNP rescue pass uses
+    /// it to tell a present haplotype from one only its components carry.
+    #[pyo3(get)]
+    pub mnp_confirmed_alt: u32,
+
     /// Reads with N base at ≥1 discriminating position (NAD in VCF).
     /// N bases arise from duplex collapsing (fgbio masks disagreeing bases)
     /// or sequencer failure. These reads are uninformative (neither REF nor

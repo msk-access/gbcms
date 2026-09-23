@@ -233,7 +233,6 @@ class TestONPCarrierShapes:
         assert counts.rd == counts.rd_fwd + counts.rd_rev
         assert counts.ad == counts.ad_fwd + counts.ad_rev
 
-    @pytest.mark.xfail(strict=True, reason="T7 item 10: mnp_confirmed_alt counter")
     @pytest.mark.parametrize(
         "block, low_bq_offset, expected_confirmed",
         [
@@ -259,7 +258,6 @@ class TestONPCarrierShapes:
         assert legacy.mnp_confirmed_alt == expected_confirmed
         assert counts.mnp_confirmed_alt <= counts.ad
 
-    @pytest.mark.xfail(strict=True, reason="T7 item 10: mnp_confirmed_alt counter")
     def test_confirmed_alt_is_zero_for_non_mnp_variants(self, tmp_path):
         bam = self._bam(tmp_path, "AAGGA")
         snv = gbcms_rs.Variant("chr1", 100, "G", "A", "SNP")
