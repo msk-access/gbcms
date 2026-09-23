@@ -506,8 +506,8 @@ These columns are **always** appended regardless of input format.
 | `asjd_flag` | Boolean | `True` when allele-specific junction divergence is detected (Fisher p < 0.05) |
 | `asjd_pval` | Float | Raw Fisher exact test p-value comparing REF vs ALT junction usage |
 | `asjd_qval` | Float | Benjamini-Hochberg corrected q-value (FDR control across all variants) |
-| `asjd_ref_junction` | String | Dominant REF junction coordinates (`start-end`), empty if no junction |
-| `asjd_alt_junction` | String | Dominant ALT junction coordinates (`start-end`), empty if no junction |
+| `asjd_ref_junction` | String | Dominant REF junction coordinates (`start-end`: 0-based, half-open intron — `start` is the first intron base, `end` the first base of the downstream exon), empty if no junction |
+| `asjd_alt_junction` | String | Dominant ALT junction coordinates (`start-end`: 0-based, half-open intron — `start` is the first intron base, `end` the first base of the downstream exon), empty if no junction |
 | `asjd_ref_motif` | String | Splice motif at REF junction: `GT-AG`, `GC-AG`, `AT-AC`, `OTHER`, or `UNKNOWN` |
 | `asjd_alt_motif` | String | Splice motif at ALT junction (same categories) |
 | `asjd_ref_known` | Boolean | `True` if the REF dominant junction matches a GTF-annotated intron |
@@ -530,6 +530,8 @@ All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one
 | `NON_CANONICAL_MOTIF` | ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
 | `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. Disabled for `--strandedness unstranded` (no transcript strand). |
 | `MULTI_JUNCTION` | ALT fragments use > 2 distinct junctions | Complex splicing event |
+| `RETENTION_DOMINANT(n)` | Variant's REF span reaches within 2bp of an annotated exon boundary; `n` fragments splice over the locus (CIGAR `N` spans it — excluded as no-observation) and outnumber the allele-classified fragments, which are mostly junction-free | The reads that genotype this locus are the intron-retaining minority: `vaf` is the VAF *within that population*, not allelic balance. An allele-specific retention shows a very high `vaf` here; a neutral splice-site variant shows roughly the allelic fraction of the unspliced reads. Explains `LOW_REF_JUNC;LOW_ALT_JUNC` at such loci — the junction evidence exists but is on the excluded reads. |
+| `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` | Same splice-site gate; the top unannotated junction on the spliced-over fragments is anchored to an annotated splice site (±5bp), is not the deletion itself written as a splice (same length, at the locus), and is carried by `n` fragments — more than confirm ALT | The mutant allele's splicing outcome (an exon skip or alternative-site junction) is visible while `alt_count` is not — typically a splice-destroying variant whose carriers splice around the locus. `start-end` is a 0-based, half-open intron interval (the `asjd_*_junction` convention). |
 
 ---
 
