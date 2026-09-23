@@ -273,8 +273,8 @@ reviewed behavior-neutral and the full suite is unchanged.
    position but not the whole block count in dp).
 4. *Audit carries the MNP forensics* (they no longer live in the count
    columns): `method=decomposed;outcome=O;original_ref=R;original_alt=A;original_partial=P[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>,...]`
-   with outcomes rescued / skipped_grouped / no_improvement /
-   ref_validation_failed — `original_alt` keeps its key (now the true value,
+   with outcomes rescued / skipped_grouped / haplotype_confirmed (item 10) /
+   no_improvement / ref_validation_failed — `original_alt` keeps its key (now the true value,
    not 0); a component whose synthetic SNV fails preparation reads
    `ref_fail` (was a silent 0).
 5. *Diagnostics describe the row as written:* recompute `gbcms_diagnostic`
@@ -323,6 +323,15 @@ reviewed behavior-neutral and the full suite is unchanged.
     - *Expected on the cohort:* TERT ×5 still rescued; GRIN2A stays 36;
       TP53 stays 264 (the true count of the annotated DNP); all other rows
       unchanged.
+    - *Result (2026-09-23, met exactly):* implemented 188cfdc8 (red) →
+      87669061 (engine) → 35179306 (gate) → d13fcb77 (docs); adversarial
+      review found no defects. Tier 1 flag-off parity 35/35 runs identical
+      (FLT3 replayed on frozen variant copies — the source directory was
+      being rewritten by another session). Tier 2 same-seed cohort: only
+      GRIN2A (36, confirmed 33 vs allowance 3) and TP53 (264, confirmed 253
+      vs 3) moved, both to `haplotype_confirmed`; the five TERT rows stay
+      rescued to sign-out (confirmed 0); 56 non-candidates unchanged; no
+      germline adoption. Tier 3 traces agree read-class by read-class.
 
 **Files.** `src/gbcms/pipeline.py` (`_rescue_mnp_pass`, per-sample reset,
 diagnostics recompute for rescued rows); `rust/src/types.rs` + `_rs.pyi`
