@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -720,9 +720,38 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-exclusive-assignment-at-co-annotated-tract-clusters-user-visible">⚠️ Changed — exclusive assignment at co-annotated tract clusters (user-visible)<a class="headerlink" href="#changed-exclusive-assignment-at-co-annotated-tract-clusters-user-visible" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Tract-cluster grouping.</strong> <code>assign_multi_allelic_groups</code> gains a second
+  membership criterion: length-changing variants (indels/delins — never
+  SNV/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>) whose scan windows (<code>max(5, repeat_span+2)</code> each side) overlap
+  join a group transitively, even when their REF spans never touch. Members
+  whose spans truly intersect keep the <code>MULTI_ALLELIC</code> reason tag;
+  window-only members get the new <code>TRACT_CLUSTER</code> tag.</li>
+<li><strong><abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>-claiming contest.</strong> At a grouped locus, anchor-exact (Phase 0)
+  evidence is never contested; every other ALT read is demoted to
+  <code>partial_alt</code>/<code>any_alt</code> (excluded from <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> <em>and</em> <abbr title="Alternate Fragment Depth - Fragments resolved to alternate allele">ADF</abbr>) when any of three
+  tests fires: the read's window does not favor the row's ALT haplotype
+  strictly over its REF haplotype (foreign flank events); the call is
+  alignment-phase on an anchor-preserved pure indel (no matching
+  structural op anywhere — unannotated ladder absorption in tracts;
+  complex/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rows exempt); or a co-annotated sibling's ALT haplotype
+  explains the read strictly better over a window covering both spans
+  (equal cost = equivalent representations, both rows keep the read).
+  True carriers — pure indels, delins/complex, shifted self
+  representations, noisy but real reads — keep <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>.</li>
+<li><strong>REF-side symmetry.</strong> Sibling-claimed reads excluded from <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> (all
+  paths, now including per-transcript) surface as <code>partial_alt</code> instead of
+  vanishing silently.</li>
+<li>Validated against a signed-out ACCESS hypermutation cluster: per-row
+  fragment ALT counts land exactly on (or within counting-basis of)
+  sign-out where the previous windowed counting over-attributed 2–5×;
+  panels without co-annotated clusters are byte-identical.</li>
+</ul>
+<h2 id="640-2026-09-22">[6.4.0] - 2026-09-22<a class="headerlink" href="#640-2026-09-22" title="Permanent link">¶</a></h2>
 <blockquote>
 <p>The changes below alter reported counts at wrong-length indel loci and at
-spliced RNA positions, and warrant a <strong>minor version bump</strong> on release.</p>
+spliced RNA positions — the minor version bump this release delivers.</p>
 </blockquote>
 <h3 id="changed-span-aligned-ref-testimony-at-spliced-deletion-loci-user-visible">⚠️ Changed — span-aligned REF testimony at spliced deletion loci (user-visible)<a class="headerlink" href="#changed-span-aligned-ref-testimony-at-spliced-deletion-loci-user-visible" title="Permanent link">¶</a></h3>
 <ul>
