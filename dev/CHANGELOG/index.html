@@ -698,6 +698,15 @@
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#added-asjd-2-splice-disruption-markers-rna-gtf">
+<span class="md-ellipsis">
+      
+        Added — ASJD-2 splice-disruption markers (RNA + GTF)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#changed-exclusive-assignment-at-co-annotated-tract-clusters-user-visible">
 <span class="md-ellipsis">
       
@@ -2262,6 +2271,22 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="added-asjd-2-splice-disruption-markers-rna-gtf">Added — ASJD-2 splice-disruption markers (RNA + GTF)<a class="headerlink" href="#added-asjd-2-splice-disruption-markers-rna-gtf" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>asjd_diagnostic</code> gains two markers that read the population the
+  splice-aware evidence rule excludes — fragments whose <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> spans the
+  variant — at variants within two bases of an annotated intron boundary
+  on the gene's strand, above ASJD's own junction-evidence floors:
+  <code>RETENTION_DOMINANT(n)</code> (spliced-over fragments dominate a junction-free
+  classified population, so <code>vaf</code> is the retention-population <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>) and
+  <code>NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)</code> (an anchored, unannotated junction
+  on those fragments outnumbers confirmed ALT — the mutant allele's exon-skip
+  or alternative-site outcome). Both are population comparisons with no tuned
+  rates; they previously surfaced only as <code>LOW_REF_JUNC;LOW_ALT_JUNC</code>
+  (issue #97). No new columns.</li>
+<li>Docs now state the <code>asjd_*_junction</code> coordinate convention (0-based,
+  half-open intron).</li>
+</ul>
 <h3 id="changed-exclusive-assignment-at-co-annotated-tract-clusters-user-visible">⚠️ Changed — exclusive assignment at co-annotated tract clusters (user-visible)<a class="headerlink" href="#changed-exclusive-assignment-at-co-annotated-tract-clusters-user-visible" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Tract-cluster grouping.</strong> <code>assign_multi_allelic_groups</code> gains a second

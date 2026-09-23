@@ -7877,12 +7877,12 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>asjd_ref_junction</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Dominant REF junction coordinates (<code>start-end</code>), empty if no junction</td>
+<td style="text-align: left;">Dominant REF junction coordinates (<code>start-end</code>: 0-based, half-open intron — <code>start</code> is the first intron base, <code>end</code> the first base of the downstream exon), empty if no junction</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>asjd_alt_junction</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Dominant ALT junction coordinates (<code>start-end</code>), empty if no junction</td>
+<td style="text-align: left;">Dominant ALT junction coordinates (<code>start-end</code>: 0-based, half-open intron — <code>start</code> is the first intron base, <code>end</code> the first base of the downstream exon), empty if no junction</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>asjd_ref_motif</code></td>
@@ -7972,8 +7972,19 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <td style="text-align: left;">ALT fragments use &gt; 2 distinct junctions</td>
 <td style="text-align: left;">Complex splicing event</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>RETENTION_DOMINANT(n)</code></td>
+<td style="text-align: left;">Variant's REF span reaches within 2bp of an annotated intron boundary (a donor/acceptor site of a transcript on the variant's gene strand — transcript termini and antisense genes excluded); <code>n ≥ 10</code> fragments splice over the locus (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> spans it — excluded as no-observation) and outnumber the allele-classified fragments, which are mostly junction-free</td>
+<td style="text-align: left;">The reads that genotype this locus are the intron-retaining minority: <code>vaf</code> is the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> <em>within that population</em>, not allelic balance. An allele-specific retention shows a very high <code>vaf</code> here; a neutral splice-site variant shows roughly the allelic fraction of the unspliced reads. Explains <code>LOW_REF_JUNC;LOW_ALT_JUNC</code> at such loci — the junction evidence exists but is on the excluded reads.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)</code></td>
+<td style="text-align: left;">Same splice-site gate; the top unannotated junction on the spliced-over fragments is anchored (±5bp) to an annotated intron boundary on the gene strand, is not the deletion itself written as a splice (same length, at the locus), and is carried by <code>n ≥ 5</code> fragments — more than confirm ALT</td>
+<td style="text-align: left;">The mutant allele's splicing outcome (an exon skip or alternative-site junction) is visible while <code>alt_count</code> is not — typically a splice-destroying variant whose carriers splice around the locus. <code>start-end</code> is a 0-based, half-open intron interval (the <code>asjd_*_junction</code> convention).</td>
+</tr>
 </tbody>
 </table>
+<p>The floors are ASJD's own junction-evidence minimums (<code>LOW_REF_JUNC</code> / <code>LOW_ALT_JUNC</code>). When <code>RETENTION_DOMINANT</code> is present, any junction flags alongside it (<code>NOVEL_ALT_JUNC</code>, <code>MULTI_JUNCTION</code>, …) describe the allele-classified reads — by the marker's own condition the junction-bearing minority of an intron-retaining population — not the spliced majority, which only the ASJD-2 markers report.</p>
 <hr>
 <h3 id="reference-output-formats-library-type-behavioral-note-v500">Library Type Behavioral Note (v5.0.0)<a class="headerlink" href="#reference-output-formats-library-type-behavioral-note-v500" title="Permanent link">¶</a></h3>
 <div class="admonition warning">
@@ -9433,6 +9444,15 @@ per-type classification):</p>
   N-represented and be excluded. Deletion loci where such exclusions
   exceed confirmed ALT are flagged <code>SPLICE_SKIP_DOMINANT(n)</code> in
   <code>gbcms_diagnostic</code> — inspect them in IGV before trusting <code>AD=0</code>.</li>
+<li>The excluded population is not discarded silently. With <code>--gtf</code>, ASJD
+  reads it at splice-site variants and reports what it shows in
+  <code>asjd_diagnostic</code>: <code>RETENTION_DOMINANT(n)</code> when spliced-over fragments
+  dominate a junction-free classified population (the counts then describe
+  intron-retaining reads only — <code>vaf</code> is the retention-population <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>), and
+  <code>NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)</code> when an anchored, unannotated
+  junction on those reads outnumbers confirmed ALT (the mutant allele's
+  exon-skip or alternative-site outcome). See
+  <a href="#reference-rna-annotation-diagnostic-flags">RNA Annotation → Diagnostic Flags</a>.</li>
 <li>A <code>D</code> op remains deletion evidence; an <code>N</code> op never is. The same
   100bp gap counts ALT when the aligner writes <code>D(100)</code> and counts
   nothing when it writes <code>N(100)</code> — the call must not flip on the
@@ -9984,8 +10004,19 @@ counts are <strong>per fragment</strong> (a molecule's R1 and R2 are deduped to 
 <td style="text-align: left;">ALT fragments use &gt; 2 distinct junctions</td>
 <td style="text-align: left;">Complex splicing event</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>RETENTION_DOMINANT(n)</code></td>
+<td style="text-align: left;">Variant's REF span reaches within 2bp of an annotated intron boundary (a donor/acceptor site of a transcript on the variant's gene strand — transcript termini and antisense genes excluded); <code>n ≥ 10</code> fragments splice over the locus (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> spans it — excluded as no-observation) and outnumber the allele-classified fragments, which are mostly junction-free</td>
+<td style="text-align: left;">The reads that genotype this locus are the intron-retaining minority: <code>vaf</code> is the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> <em>within that population</em>, not allelic balance. An allele-specific retention shows a very high <code>vaf</code> here; a neutral splice-site variant shows roughly the allelic fraction of the unspliced reads. Explains <code>LOW_REF_JUNC;LOW_ALT_JUNC</code> at such loci — the junction evidence exists but is on the excluded reads.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)</code></td>
+<td style="text-align: left;">Same splice-site gate; the top unannotated junction on the spliced-over fragments is anchored (±5bp) to an annotated intron boundary on the gene strand, is not the deletion itself written as a splice (same length, at the locus), and is carried by <code>n ≥ 5</code> fragments — more than confirm ALT</td>
+<td style="text-align: left;">The mutant allele's splicing outcome (an exon skip or alternative-site junction) is visible while <code>alt_count</code> is not — typically a splice-destroying variant whose carriers splice around the locus. <code>start-end</code> is a 0-based, half-open intron interval (the <code>asjd_*_junction</code> convention).</td>
+</tr>
 </tbody>
 </table>
+<p>The floors are ASJD's own junction-evidence minimums (<code>LOW_REF_JUNC</code> / <code>LOW_ALT_JUNC</code>). When <code>RETENTION_DOMINANT</code> is present, any junction flags alongside it (<code>NOVEL_ALT_JUNC</code>, <code>MULTI_JUNCTION</code>, …) describe the allele-classified reads — by the marker's own condition the junction-bearing minority of an intron-retaining population — not the spliced majority, which only the ASJD-2 markers report.</p>
 <hr>
 <h2 id="reference-rna-annotation-performance-and-memory">Performance and Memory<a class="headerlink" href="#reference-rna-annotation-performance-and-memory" title="Permanent link">¶</a></h2>
 <h3 id="reference-rna-annotation-memory">Memory<a class="headerlink" href="#reference-rna-annotation-memory" title="Permanent link">¶</a></h3>
@@ -15538,6 +15569,22 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-added-asjd-2-splice-disruption-markers-rna-gtf">Added — ASJD-2 splice-disruption markers (RNA + GTF)<a class="headerlink" href="#development-changelog-added-asjd-2-splice-disruption-markers-rna-gtf" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>asjd_diagnostic</code> gains two markers that read the population the
+  splice-aware evidence rule excludes — fragments whose <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> spans the
+  variant — at variants within two bases of an annotated intron boundary
+  on the gene's strand, above ASJD's own junction-evidence floors:
+  <code>RETENTION_DOMINANT(n)</code> (spliced-over fragments dominate a junction-free
+  classified population, so <code>vaf</code> is the retention-population <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>) and
+  <code>NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)</code> (an anchored, unannotated junction
+  on those fragments outnumbers confirmed ALT — the mutant allele's exon-skip
+  or alternative-site outcome). Both are population comparisons with no tuned
+  rates; they previously surfaced only as <code>LOW_REF_JUNC;LOW_ALT_JUNC</code>
+  (issue #97). No new columns.</li>
+<li>Docs now state the <code>asjd_*_junction</code> coordinate convention (0-based,
+  half-open intron).</li>
+</ul>
 <h3 id="development-changelog-changed-exclusive-assignment-at-co-annotated-tract-clusters-user-visible">⚠️ Changed — exclusive assignment at co-annotated tract clusters (user-visible)<a class="headerlink" href="#development-changelog-changed-exclusive-assignment-at-co-annotated-tract-clusters-user-visible" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Tract-cluster grouping.</strong> <code>assign_multi_allelic_groups</code> gains a second

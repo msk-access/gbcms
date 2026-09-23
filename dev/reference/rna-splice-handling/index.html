@@ -2138,6 +2138,15 @@ per-type classification):</p>
   N-represented and be excluded. Deletion loci where such exclusions
   exceed confirmed ALT are flagged <code>SPLICE_SKIP_DOMINANT(n)</code> in
   <code>gbcms_diagnostic</code> — inspect them in IGV before trusting <code>AD=0</code>.</li>
+<li>The excluded population is not discarded silently. With <code>--gtf</code>, ASJD
+  reads it at splice-site variants and reports what it shows in
+  <code>asjd_diagnostic</code>: <code>RETENTION_DOMINANT(n)</code> when spliced-over fragments
+  dominate a junction-free classified population (the counts then describe
+  intron-retaining reads only — <code>vaf</code> is the retention-population <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>), and
+  <code>NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)</code> when an anchored, unannotated
+  junction on those reads outnumbers confirmed ALT (the mutant allele's
+  exon-skip or alternative-site outcome). See
+  <a href="../rna-annotation/#diagnostic-flags">RNA Annotation → Diagnostic Flags</a>.</li>
 <li>A <code>D</code> op remains deletion evidence; an <code>N</code> op never is. The same
   100bp gap counts ALT when the aligner writes <code>D(100)</code> and counts
   nothing when it writes <code>N(100)</code> — the call must not flip on the
@@ -2395,7 +2404,7 @@ position, which is exceptionally unlikely for a 2–3 base overhang.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 22, 2026 13:50:59 UTC"><span class="timeago" datetime="2026-09-22T13:50:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 22, 2026 13:50:59 UTC">2026-09-22</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 23, 2026 20:29:51 UTC"><span class="timeago" datetime="2026-09-23T20:29:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 23, 2026 20:29:51 UTC">2026-09-23</span>
   </span>
 
     
