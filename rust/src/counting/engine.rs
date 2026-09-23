@@ -3327,6 +3327,131 @@ impl JunctionTally {
     }
 }
 
+/// Coordinate tolerance (bp) for matching an observed junction endpoint to an
+/// annotated one — shared by ASJD's known-junction test and the ASJD-2
+/// anchoring test so the two cannot disagree about what "annotated" means.
+const JUNCTION_TOLERANCE: i32 = 5;
+
+/// Minimum fragments of REF-side junction evidence ASJD speaks on (below it:
+/// `LOW_REF_JUNC`). Also the floor for `RETENTION_DOMINANT`, whose count is
+/// the spliced (overwhelmingly wild-type) population — REF-side evidence.
+const ASJD_MIN_REF_JUNC: u32 = 10;
+
+/// Minimum fragments of ALT-side junction evidence ASJD speaks on (below it:
+/// `LOW_ALT_JUNC`). Also the floor for `NOVEL_JUNC_AT_SPLICE_LOSS`, whose
+/// count is the mutant allele's splicing outcome — ALT-side evidence.
+const ASJD_MIN_ALT_JUNC: u32 = 5;
+
+/// ASJD-2 splice-disruption markers for `asjd_diagnostic` (issue #97).
+///
+/// ASJD's tallies only see allele-classified reads, but at a splice-site
+/// variant the informative reads are often the ones the splice-aware
+/// evidence rule excludes: reads whose CIGAR N spans the variant observe
+/// nothing there. Both markers read that excluded population, and both are
+/// population comparisons — no tuned rates:
+///
+/// - `RETENTION_DOMINANT(n)`: spliced-over fragments (`n`) outnumber the
+///   allele-classified ones, and the classified fragments are mostly
+///   junction-free. The reads that genotype this locus are then the
+///   intron-retaining minority, so `vaf` is the VAF *within that
+///   population*, not allelic balance (an allele-specific retention reads as
+///   a very high `vaf`).
+/// - `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)`: the excluded population's
+///   top unannotated junction — anchored to an annotated splice site (an
+///   exon-skip or alternative-site event in the gene's splice graph, not
+///   aligner noise) and not the deletion itself written as a splice — is
+///   carried by more fragments than confirm ALT: the mutant allele's
+///   splicing outcome is visible here while `ad` is not. Coordinates follow
+///   the `asjd_*_junction` convention (0-based, half-open intron).
+///
+/// Both require the variant's REF span to reach within two bases of an
+/// annotated intron boundary of a transcript on the variant's gene strand
+/// (the canonical splice dinucleotide and the adjacent exonic bases;
+/// transcript termini and antisense genes' sites do not count), and both
+/// speak only above ASJD's own junction-evidence floors
+/// (`ASJD_MIN_REF_JUNC` for the spliced population, `ASJD_MIN_ALT_JUNC` for
+/// the novel junction). Returns the markers to append, possibly empty.
+#[allow(clippy::too_many_arguments)]
+fn splice_disruption_markers(
+    annotation: &AnnotationIndex,
+    chrom: &str,
+    variant: &Variant,
+    window_pad: i64,
+    excluded: &JunctionTally,
+    classified_frags: &std::collections::HashSet<u64>,
+    classified_with_junc: usize,
+    n_alt_frags: usize,
+) -> Vec<String> {
+    let span_start = variant.pos;
+    let span_end = variant.pos + variant.ref_allele.len() as i64;
+    // Span [s, e) intersects a boundary B's window [B-2, B+2) iff B lies in [s-1, e+1].
+    if !annotation.intron_boundary_in_range(chrom, span_start - 1, span_end + 1, variant.gene_strand) {
+        return Vec::new();
+    }
+
+    let mut markers = Vec::new();
+    // A fragment with one classified mate is classified, not excluded.
+    let n_excluded = excluded
+        .frag_seen
+        .iter()
+        .filter(|qh| !classified_frags.contains(qh))
+        .count();
+    let n_classified = classified_frags.len();
+    let junction_free = n_classified.saturating_sub(classified_with_junc);
+
+    if n_excluded >= ASJD_MIN_REF_JUNC as usize
+        && n_excluded > n_classified
+        && junction_free > classified_with_junc
+    {
+        debug!(
+            "ASJD-2 RETENTION_DOMINANT at {}:{}: {} spliced-over fragments vs {} classified \
+             ({} junction-free)",
+            variant.chrom, variant.pos + 1, n_excluded, n_classified, junction_free,
+        );
+        markers.push(format!("RETENTION_DOMINANT({})", n_excluded));
+    }
+
+    let del_len = variant.ref_allele.len().saturating_sub(variant.alt_allele.len()) as i64;
+    let tol = JUNCTION_TOLERANCE as i64;
+    let anchored = |x: i64| {
+        annotation.intron_boundary_in_range(chrom, x - tol, x + tol, variant.gene_strand)
+    };
+    let top_novel = excluded
+        .counts
+        .iter()
+        .filter(|(&(a, b), _)| {
+            // The deletion itself, written by the aligner as a splice of the
+            // same length at the locus, is the ALT carriers — not a splicing
+            // consequence (SPLICE_SKIP_DOMINANT covers that representation).
+            let is_deletion_as_splice = del_len > 0
+                && b - a == del_len
+                && (a - (span_start + 1)).abs() <= window_pad;
+            !is_deletion_as_splice
+                && !annotation.is_junction_known(chrom, a, b, JUNCTION_TOLERANCE)
+                && (anchored(a) || anchored(b))
+        })
+        .map(|(&j, sc)| (sc.total(), j))
+        // Highest depth first; ties broken by leftmost coordinates (deterministic).
+        .max_by(|x, y| x.0.cmp(&y.0).then_with(|| y.1.cmp(&x.1)));
+    if let Some((n, (a, b))) = top_novel {
+        if n >= ASJD_MIN_ALT_JUNC && n as usize > n_alt_frags {
+            debug!(
+                "ASJD-2 NOVEL_JUNC_AT_SPLICE_LOSS at {}:{}: junction {}-{} on {} excluded \
+                 fragments vs {} ALT fragments",
+                variant.chrom, variant.pos + 1, a, b, n, n_alt_frags,
+            );
+            markers.push(format!("NOVEL_JUNC_AT_SPLICE_LOSS({}@{}-{})", n, a, b));
+        } else {
+            trace!(
+                "ASJD-2: top anchored novel junction {}-{} ({} fragments) at {}:{} is below \
+                 the ALT-evidence floor ({}) or does not exceed {} ALT fragments — no marker",
+                a, b, n, variant.chrom, variant.pos + 1, ASJD_MIN_ALT_JUNC, n_alt_frags,
+            );
+        }
+    }
+    markers
+}
+
 /// Detect allele-specific junction divergence at a variant site.
 /// Classify the splice motif at a junction by reading donor/acceptor dinucleotides
 /// from the reference FASTA.
@@ -3483,6 +3608,14 @@ fn detect_asjd(
     // strand — verified 0/319k disagreements on real RNA — so first-seen wins).
     let mut ref_tally = JunctionTally::default();
     let mut alt_tally = JunctionTally::default();
+    // Splice-disruption populations (ASJD-2): fragments whose CIGAR N spans
+    // the variant (excluded from counting as no-observation) with the
+    // junctions they carry over the locus, and the allele-classified
+    // fragments split by whether they carry any junction.
+    let mut excluded_tally = JunctionTally::default();
+    let mut classified_frags: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let mut alt_frags: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let var_span = (variant.pos, variant.pos + variant.ref_allele.len() as i64);
 
     for record in read_cache {
         let r_start = record.pos();
@@ -3516,6 +3649,14 @@ fn detect_asjd(
             &mut alt_aligner, &mut ref_aligner, backend,
         );
 
+        let qh = crate::shared::fragment::hash_qname(record.qname());
+        if result.is_ref || result.is_alt {
+            classified_frags.insert(qh);
+            if result.is_alt {
+                alt_frags.insert(qh);
+            }
+        }
+
         // Only interested in reads with splice junctions
         let junctions = super::rna::extract_splice_junctions(record);
         if junctions.is_empty() {
@@ -3531,11 +3672,21 @@ fn detect_asjd(
         let tx_minus = super::rna::read_transcript_strand(record, strandedness) == Some('-');
 
         // Dedup by fragment (QNAME hash): vote once per allele-total and per junction.
-        let qh = crate::shared::fragment::hash_qname(record.qname());
         if result.is_ref {
             ref_tally.add(qh, &junctions, tx_minus);
         } else if result.is_alt {
             alt_tally.add(qh, &junctions, tx_minus);
+        } else if !result.covers_locus {
+            // Spliced over the locus: keep only the junction(s) spanning the
+            // variant — the ones that explain why the read saw nothing here.
+            let over_locus: Vec<(i64, i64)> = junctions
+                .iter()
+                .copied()
+                .filter(|&(a, b)| a < var_span.1 && var_span.0 < b)
+                .collect();
+            if !over_locus.is_empty() {
+                excluded_tally.add(qh, &over_locus, tx_minus);
+            }
         }
     }
 
@@ -3554,14 +3705,33 @@ fn detect_asjd(
     }
 
     // Step 2: Check minimum evidence thresholds
-    let mut diag_flags: Vec<&str> = Vec::new();
+    let mut diag_flags: Vec<String> = Vec::new();
 
-    if n_ref_total < 10 {
-        diag_flags.push("LOW_REF_JUNC");
+    if n_ref_total < ASJD_MIN_REF_JUNC {
+        diag_flags.push("LOW_REF_JUNC".to_string());
     }
-    if n_alt_total < 5 {
-        diag_flags.push("LOW_ALT_JUNC");
+    if n_alt_total < ASJD_MIN_ALT_JUNC {
+        diag_flags.push("LOW_ALT_JUNC".to_string());
     }
+
+    // Step 2b: splice-disruption markers (ASJD-2). Computed before the
+    // no-junction early return below: they explain exactly the loci where
+    // the classified reads carry no junctions (LOW_*_JUNC).
+    let classified_with_junc = ref_tally
+        .frag_seen
+        .union(&alt_tally.frag_seen)
+        .filter(|qh| classified_frags.contains(qh))
+        .count();
+    diag_flags.extend(splice_disruption_markers(
+        annotation,
+        chrom,
+        variant,
+        window_pad,
+        &excluded_tally,
+        &classified_frags,
+        classified_with_junc,
+        alt_frags.len(),
+    ));
 
     // If either partition has no junction reads, no divergence can be detected
     if ref_junction_counts.is_empty() || alt_junction_counts.is_empty() {
@@ -3591,12 +3761,12 @@ fn detect_asjd(
     // Check for multi-junction in ALT reads
     let alt_distinct_junctions = alt_junction_counts.len();
     if alt_distinct_junctions > 2 {
-        diag_flags.push("MULTI_JUNCTION");
+        diag_flags.push("MULTI_JUNCTION".to_string());
     }
 
     // Step 4: Compare dominant junctions
-    let same_junction = (ref_dom_junc.0 - alt_dom_junc.0).abs() <= 5
-        && (ref_dom_junc.1 - alt_dom_junc.1).abs() <= 5;
+    let same_junction = (ref_dom_junc.0 - alt_dom_junc.0).abs() <= JUNCTION_TOLERANCE as i64
+        && (ref_dom_junc.1 - alt_dom_junc.1).abs() <= JUNCTION_TOLERANCE as i64;
 
     let (pval, flag) = if same_junction {
         // Same dominant junction → no divergence
@@ -3614,15 +3784,15 @@ fn detect_asjd(
             alt_on_ref_junc, alt_on_alt_junc,
         );
 
-        (p, p < 0.05 && n_alt_junc >= 5 && n_ref_junc >= 10)
+        (p, p < 0.05 && n_alt_junc >= ASJD_MIN_ALT_JUNC && n_ref_junc >= ASJD_MIN_REF_JUNC)
     };
 
     // Step 5: Classify splice motifs and GTF annotation
-    let ref_known = annotation.is_junction_known(chrom, ref_dom_junc.0, ref_dom_junc.1, 5);
-    let alt_known = annotation.is_junction_known(chrom, alt_dom_junc.0, alt_dom_junc.1, 5);
+    let ref_known = annotation.is_junction_known(chrom, ref_dom_junc.0, ref_dom_junc.1, JUNCTION_TOLERANCE);
+    let alt_known = annotation.is_junction_known(chrom, alt_dom_junc.0, alt_dom_junc.1, JUNCTION_TOLERANCE);
 
     if !alt_known && !same_junction {
-        diag_flags.push("NOVEL_ALT_JUNC");
+        diag_flags.push("NOVEL_ALT_JUNC".to_string());
     }
 
     let ref_junction_str = format!("{}-{}", ref_dom_junc.0, ref_dom_junc.1);
@@ -3642,7 +3812,7 @@ fn detect_asjd(
 
     // NON_CANONICAL_MOTIF diagnostic flag
     if !same_junction && alt_motif == "OTHER" {
-        diag_flags.push("NON_CANONICAL_MOTIF");
+        diag_flags.push("NON_CANONICAL_MOTIF".to_string());
     }
 
     // Step 5c: Strand discordance detection on the dominant ALT junction.
@@ -3653,10 +3823,10 @@ fn detect_asjd(
     let alt_minority_frac = alt_dom_strand_info.minority_strand_fraction();
     if strandedness != rna::Strandedness::Unstranded
         && !same_junction
-        && n_alt_junc >= 5
+        && n_alt_junc >= ASJD_MIN_ALT_JUNC
         && alt_minority_frac >= 0.30
     {
-        diag_flags.push("STRAND_DISCORDANT");
+        diag_flags.push("STRAND_DISCORDANT".to_string());
         debug!(
             "STRAND_DISCORDANT: {}:{} alt_junc={}-{} tx+={} tx-={} minority_frac={:.2}",
             variant.chrom, variant.pos + 1,

@@ -43,6 +43,15 @@ per-type classification):
   N-represented and be excluded. Deletion loci where such exclusions
   exceed confirmed ALT are flagged `SPLICE_SKIP_DOMINANT(n)` in
   `gbcms_diagnostic` — inspect them in IGV before trusting `AD=0`.
+- The excluded population is not discarded silently. With `--gtf`, ASJD
+  reads it at splice-site variants and reports what it shows in
+  `asjd_diagnostic`: `RETENTION_DOMINANT(n)` when spliced-over fragments
+  dominate a junction-free classified population (the counts then describe
+  intron-retaining reads only — `vaf` is the retention-population VAF), and
+  `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` when an anchored, unannotated
+  junction on those reads outnumbers confirmed ALT (the mutant allele's
+  exon-skip or alternative-site outcome). See
+  [RNA Annotation → Diagnostic Flags](rna-annotation.md#diagnostic-flags).
 - A `D` op remains deletion evidence; an `N` op never is. The same
   100bp gap counts ALT when the aligner writes `D(100)` and counts
   nothing when it writes `N(100)` — the call must not flip on the
