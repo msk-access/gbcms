@@ -30,27 +30,34 @@ comparison to an engine-level sibling contest that covers delins).**
    intersection → `MULTI_ALLELIC`, window-only membership → `TRACT_CLUSTER`.
    Existing sibling plumbing (`sibling_variants`) carries the wider groups —
    zero new FFI.
-2. *AD-claiming guard (Rust engine, `sibling_claims_alt`):* contested by
-   **span-explanation cost** — Levenshtein between the read's
-   CIGAR-projected reconstruction of a candidate's REF span
-   (`reconstruct_span`, factored out of check_complex Phase 1) and that
-   candidate's ALT allele. Anchor-exact evidence (Phase 0 structural op /
-   direct SNP base) is never contested; otherwise a sibling that also calls
-   the read ALT and explains it at cost <= the row's own cost claims it
-   (ties demote both rows — honest ambiguity). Chosen over a phase-rank
-   gate after real-data measurement: ABRA-realigned consensus reads
-   cross-attribute via Phase 3 PairHMM (P1≈0 at the BRCA2 cluster), and
-   rank inverts on delins whose own carriers legitimately resolve at
-   Phase 3. Downgrade happens at classification time (before fragment
-   evidence), so AD **and ADF** exclude claimed reads consistently; they
-   surface as `partial_alt`/`any_alt`. Applied at binned, legacy, and
-   per-transcript sites (the per-transcript site also gains the REF-side
-   sibling guard for symmetry). Additionally, in a contested tract a
-   Phase 3 (alignment) ALT whose own span reconstruction does not confirm
-   the allele exactly (cost > 0) is demoted to partial even without a
-   sibling win: measured clusters carry unannotated ladder ops that no
-   sibling can claim, and PairHMM LLR absorbs them (BRCA2 33bp row: 76 vs
-   sign-out 22 before this rule).
+2. *AD-claiming guard (Rust engine, `sibling_claims_alt`):* at a grouped
+   locus, anchor-exact Phase 0 evidence is never contested; every other
+   ALT faces three demotion tests, each decisive for a measured failure
+   mode (haplotypes/reconstructions via `window_haplotypes` +
+   `reconstruct_span`, the latter factored out of check_complex Phase 1):
+   **(1) REF test** — over the read-covered context window the read must
+   explain strictly better with the row's ALT haplotype than its REF
+   haplotype (catches foreign flank events); **(2) probabilistic pure
+   indel** — a Phase 3 ALT on an anchor-preserved pure indel row has no
+   matching structural op anywhere and is ambiguity in a tract (catches
+   unannotated ladder absorption: PairHMM prefers D14 over REF for a D11
+   read); complex/MNP rows are exempt because Phase 3 is their carriers'
+   normal path; **(3) strictly-better sibling** — over a window covering
+   both spans, a sibling ALT haplotype with strictly lower cost claims
+   the read; equal cost = equivalent representations (e.g. a delins
+   double-annotated as an insertion) and both rows keep it. Earlier
+   iterations falsified by real data: phase-rank gate (cross-attribution
+   is Phase 3 on ABRA consensus reads; rank inverts on delins),
+   per-sibling span-cost with tie-demote (anchor-exact siblings stole
+   delins carriers — complex rows zeroed), ALT-vs-REF alone (same-tract
+   same-length dels and ladders both beat REF). No sibling
+   re-classification calls remain. Downgrade happens at classification
+   time (before fragment evidence), so AD **and ADF** exclude demoted
+   reads consistently; they surface as `partial_alt`/`any_alt`. Applied
+   at binned, legacy, and per-transcript sites (the per-transcript site
+   also gains the REF-side sibling guard). Reads not fully spanning the
+   event, or splice-poisoned windows, keep their classification;
+   isolated variants are untouched.
 3. *REF-side guard symmetry:* sibling-claimed reads dropped from `rd` now
    surface as `partial_alt` too (distinct-allele evidence, same category as
    the wrong-length rule) instead of vanishing silently.

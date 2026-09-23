@@ -15,15 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   join a group transitively, even when their REF spans never touch. Members
   whose spans truly intersect keep the `MULTI_ALLELIC` reason tag;
   window-only members get the new `TRACT_CLUSTER` tag.
-- **AD-claiming contest.** In a group, an ALT read is demoted to
-  `partial_alt`/`any_alt` (excluded from AD *and* ADF) when a co-annotated
-  sibling explains it at least as well, by span-explanation cost
-  (Levenshtein of the read's CIGAR-projected span reconstruction vs each
-  candidate's ALT allele). Anchor-exact Phase 0 evidence is never
-  contested. Additionally, an alignment-phase (Phase 3) ALT whose own span
-  reconstruction does not confirm the allele exactly is demoted in a
-  contested tract — measured clusters carry unannotated ladder events that
-  probabilistic scoring otherwise absorbs.
+- **AD-claiming contest.** At a grouped locus, anchor-exact (Phase 0)
+  evidence is never contested; every other ALT read is demoted to
+  `partial_alt`/`any_alt` (excluded from AD *and* ADF) when any of three
+  tests fires: the read's window does not favor the row's ALT haplotype
+  strictly over its REF haplotype (foreign flank events); the call is
+  alignment-phase on an anchor-preserved pure indel (no matching
+  structural op anywhere — unannotated ladder absorption in tracts;
+  complex/MNP rows exempt); or a co-annotated sibling's ALT haplotype
+  explains the read strictly better over a window covering both spans
+  (equal cost = equivalent representations, both rows keep the read).
+  True carriers — pure indels, delins/complex, shifted self
+  representations, noisy but real reads — keep AD.
 - **REF-side symmetry.** Sibling-claimed reads excluded from RD (all
   paths, now including per-transcript) surface as `partial_alt` instead of
   vanishing silently.

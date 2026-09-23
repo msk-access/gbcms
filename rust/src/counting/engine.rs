@@ -1705,8 +1705,7 @@ fn count_variant_from_cache(
         // read still counts toward DP/DPF and is recorded as
         // partial_alt/any_alt below.
         let claimed_by_sibling = sibling_claims_alt(
-            record, variant, &result, sibling_variants, effective_quals, min_baseq,
-            &mut alt_aligner, &mut ref_aligner, backend,
+            record, variant, &result, sibling_variants, effective_quals,
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
 
@@ -2281,8 +2280,7 @@ fn count_single_variant(
         // and ADF exclude it consistently; it is recorded as
         // partial_alt/any_alt below.
         let claimed_by_sibling = sibling_claims_alt(
-            &record, variant, &result, sibling_variants, effective_quals, min_baseq,
-            &mut alt_aligner, &mut ref_aligner, backend,
+            &record, variant, &result, sibling_variants, effective_quals,
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
 
@@ -2597,58 +2595,75 @@ fn count_single_variant(
 }
 
 
-/// Mismatch cost of explaining `record` with `variant`'s ALT allele over
-/// the variant's REF span: Levenshtein distance between the read's
-/// CIGAR-projected reconstruction of `[pos, pos + ref_len)` and the ALT
-/// allele. 0 = the read shows exactly the ALT there (an exact carrier);
-/// higher = worse explanation. Scored worst (u32::MAX) when the span is
-/// splice-poisoned or the read shows nothing there.
-fn alt_explanation_cost(record: &Record, quals: &[u8], v: &Variant) -> u32 {
-    let recon = reconstruct_span(record, quals, v.pos, v.pos + v.ref_allele.len() as i64);
-    if recon.splice_skip || recon.seq.is_empty() {
-        return u32::MAX;
+/// Build the REF and ALT haplotypes of `v` restricted to the genomic
+/// window `[w_lo, w_hi)`. Requires the variant's (genomic) ref_context to
+/// cover the window and the window to contain the full event span —
+/// otherwise the comparison would be lopsided and the caller keeps the
+/// read's classification.
+fn window_haplotypes(v: &Variant, w_lo: i64, w_hi: i64) -> Option<(Vec<u8>, Vec<u8>)> {
+    let ctx = v.ref_context.as_ref()?.as_bytes();
+    let cs = v.ref_context_start;
+    let ce = cs + ctx.len() as i64;
+    let span_end = v.pos + v.ref_allele.len() as i64;
+    if w_lo < cs || w_hi > ce || w_lo > v.pos || w_hi < span_end {
+        return None;
     }
-    levenshtein(&recon.seq, v.alt_allele.as_bytes())
+    let left = &ctx[(w_lo - cs) as usize..(v.pos - cs) as usize];
+    let right = &ctx[(span_end - cs) as usize..(w_hi - cs) as usize];
+    let mut ref_hap = Vec::with_capacity(left.len() + v.ref_allele.len() + right.len());
+    ref_hap.extend_from_slice(left);
+    ref_hap.extend_from_slice(v.ref_allele.as_bytes());
+    ref_hap.extend_from_slice(right);
+    let mut alt_hap = Vec::with_capacity(left.len() + v.alt_allele.len() + right.len());
+    alt_hap.extend_from_slice(left);
+    alt_hap.extend_from_slice(v.alt_allele.as_bytes());
+    alt_hap.extend_from_slice(right);
+    Some((ref_hap, alt_hap))
 }
 
-/// Multi-allelic AD-claiming guard: decide whether an ALT classification
-/// really belongs to a co-annotated sibling variant.
+/// Multi-allelic AD-claiming guard: decide whether a representation-tolerant
+/// ALT classification really belongs to this row at a co-annotated locus.
 ///
 /// Representation-tolerant matching (windowed S3 shifts, BQ-masked
 /// comparison, PairHMM alignment) lets one physical event satisfy several
-/// co-annotated rows in the same tract, so without this guard every member
-/// of a cluster counts the same molecule as full AD and the per-locus AD sum
-/// exceeds the number of distinct ALT molecules (measured 2-5x at a real
-/// hypermutation cluster; sign-out uses exclusive assignment).
+/// co-annotated rows in the same tract — and lets unannotated same-tract
+/// ladder events be absorbed as ALT — so without this guard the per-locus
+/// AD sum exceeds the number of distinct ALT molecules (measured 2-5x at a
+/// real hypermutation cluster; sign-out uses exclusive assignment).
 ///
-/// Contest rule — which allele explains the read best, by span-explanation
-/// cost (`alt_explanation_cost`):
-/// - Anchor-exact evidence (Phase 0: a structural CIGAR op at the annotated
-///   left-aligned position, or a direct SNP base observation) is never
-///   contested. A molecule genuinely carrying two anchor-exact ops counts
-///   full AD on both rows.
-/// - Otherwise the read is demoted iff some sibling classifies it as ALT
-///   with a span-explanation cost <= this row's own cost. A delins carrier
-///   costs 0 on the delins row and >0 on a windowed pure-del row, so the
-///   delins keeps it and the del row demotes it; ties (two representations
-///   explaining the read equally well) demote both rows — honest ambiguity
-///   surfaces as partial, not double-counted certainty.
+/// Anchor-exact evidence (Phase 0: a structural CIGAR op at the annotated
+/// left-aligned position, or a direct SNP base observation) is never
+/// contested — a molecule genuinely carrying two anchor-exact ops counts
+/// full AD on both rows. Everything else faces three demotion tests, each
+/// decisive for a distinct failure mode measured on signed-out data:
 ///
-/// The caller treats a demoted read as partial evidence
-/// (any_alt/partial_alt) instead of AD, for both read-level and
-/// fragment-level counting. Siblings are classified with an empty sibling
-/// list (no recursion), mirroring the REF-side multi-allelic guard.
-#[allow(clippy::too_many_arguments)]
-fn sibling_claims_alt<F: Fn(u8, u8) -> i32>(
+/// 1. **REF test** (foreign events): over the read-covered slice of this
+///    variant's genomic context, the read's reconstruction must explain
+///    strictly better with the row's ALT haplotype than its REF haplotype
+///    (Levenshtein). A read carrying only an event in the flanks ties or
+///    favors REF → demote.
+/// 2. **Probabilistic pure indel** (unannotated ladders): an
+///    Alignment-phase (Phase 3) ALT on a *pure* indel row carries no
+///    matching structural op at any position — in a contested tract that
+///    is ambiguity (PairHMM absorbs D11 into a D14 row because 3 edits
+///    beat 11), so demote. Complex/MNP rows are exempt: Phase 3 is their
+///    own carriers' normal resolution path.
+/// 3. **Strictly-better sibling** (same-tract competitors): over a window
+///    covering both spans, a sibling whose ALT haplotype explains the
+///    read at strictly lower cost claims it. Equal cost means equivalent
+///    representations of the same event (e.g. a delins double-annotated
+///    as an insertion) — both rows keep the read rather than zeroing one.
+///
+/// Demoted reads surface as partial evidence (any_alt/partial_alt) and are
+/// excluded from AD and ADF (the caller downgrades before fragment
+/// evidence). Reads that do not fully span the event, or splice-poisoned
+/// windows, keep their classification. Isolated variants are untouched.
+fn sibling_claims_alt(
     record: &Record,
     variant: &Variant,
     result: &ClassifyResult,
     sibling_variants: &[Variant],
     quals: &[u8],
-    min_baseq: u8,
-    alt_aligner: &mut Aligner<F>,
-    ref_aligner: &mut Aligner<F>,
-    backend: &AlignmentBackend,
 ) -> bool {
     if !result.is_alt || sibling_variants.is_empty() {
         return false;
@@ -2656,44 +2671,85 @@ fn sibling_claims_alt<F: Fn(u8, u8) -> i32>(
     if result.phase == ClassifyPhase::Structural {
         return false;
     }
-    let own_cost = alt_explanation_cost(record, quals, variant);
-    // In a contested tract, a probabilistic (Phase 3) ALT call that the
-    // read's own span reconstruction does not confirm exactly is ambiguity,
-    // not AD: the locus carries multiple real events (annotated siblings
-    // and, in measured hypermutation clusters, unannotated ladder ops that
-    // no sibling can claim), and PairHMM LLR happily absorbs them. Sign-out
-    // uses exclusive exact assignment at such loci; demote to partial
-    // without requiring a sibling to win the read.
-    if result.phase == ClassifyPhase::Alignment && own_cost > 0 {
+
+    let read_lo = record.pos();
+    let read_hi = read_ref_end(record);
+    let own_ctx_end = variant.ref_context_start
+        + variant.ref_context.as_ref().map_or(0, |c| c.len() as i64);
+    let w_lo = read_lo.max(variant.ref_context_start);
+    let w_hi = read_hi.min(own_ctx_end);
+
+    // Test 1: the read's window must favor ALT strictly over REF.
+    let (ref_hap, alt_hap) = match window_haplotypes(variant, w_lo, w_hi) {
+        Some(h) => h,
+        None => return false,
+    };
+    let recon = reconstruct_span(record, quals, w_lo, w_hi);
+    if recon.splice_skip || recon.seq.is_empty() {
+        return false;
+    }
+    let cost_alt = levenshtein(&recon.seq, &alt_hap);
+    let cost_ref = levenshtein(&recon.seq, &ref_hap);
+    if cost_alt >= cost_ref {
         trace!(
-            "AD-claiming guard: alignment-phase ALT for {}>{} at {}:{} with \
-             span-explanation cost {} in a co-annotated cluster — counting as \
-             partial_alt, not ad",
+            "AD-claiming guard: ALT for {}>{} at {}:{} not favored over REF \
+             (ALT cost {} vs REF cost {}) — partial_alt, not ad",
             variant.ref_allele, variant.alt_allele,
-            variant.chrom, variant.pos + 1, own_cost,
+            variant.chrom, variant.pos + 1, cost_alt, cost_ref,
         );
         return true;
     }
-    for sib in sibling_variants {
-        let sib_result = check_allele_with_qual(
-            record, sib, &[], quals, min_baseq, alt_aligner, ref_aligner, backend,
+
+    // Test 2: probabilistic call on a pure indel row. Pure = anchor-preserved
+    // deletion/insertion; a delins that merely has a 1-base side (e.g.
+    // CAG>T) is complex and exempt (Phase 3 is its carriers' normal path).
+    let ref_al = variant.ref_allele.as_bytes();
+    let alt_al = variant.alt_allele.as_bytes();
+    let pure_indel = (alt_al.len() == 1 && ref_al.len() > 1 && ref_al[0] == alt_al[0])
+        || (ref_al.len() == 1 && alt_al.len() > 1 && alt_al[0] == ref_al[0]);
+    if result.phase == ClassifyPhase::Alignment && pure_indel {
+        trace!(
+            "AD-claiming guard: alignment-phase ALT on pure indel {}>{} at {}:{} \
+             in a co-annotated cluster (no structural op) — partial_alt, not ad",
+            variant.ref_allele, variant.alt_allele,
+            variant.chrom, variant.pos + 1,
         );
-        if !sib_result.is_alt {
-            continue;
-        }
-        let sib_cost = if sib_result.phase == ClassifyPhase::Structural {
-            0 // anchor-exact op: the sibling explains the read exactly
-        } else {
-            alt_explanation_cost(record, quals, sib)
+        return true;
+    }
+
+    // Test 3: a sibling that explains the read strictly better claims it.
+    for sib in sibling_variants {
+        let sib_ctx_end = sib.ref_context_start
+            + sib.ref_context.as_ref().map_or(0, |c| c.len() as i64);
+        let s_lo = w_lo.max(sib.ref_context_start);
+        let s_hi = w_hi.min(sib_ctx_end);
+        let own_hap_s = match window_haplotypes(variant, s_lo, s_hi) {
+            Some((_, a)) => a,
+            None => continue,
         };
-        if sib_cost <= own_cost {
+        let sib_hap_s = match window_haplotypes(sib, s_lo, s_hi) {
+            Some((_, a)) => a,
+            None => continue,
+        };
+        let recon_s = if (s_lo, s_hi) == (w_lo, w_hi) {
+            recon.seq.clone()
+        } else {
+            let r = reconstruct_span(record, quals, s_lo, s_hi);
+            if r.splice_skip || r.seq.is_empty() {
+                continue;
+            }
+            r.seq
+        };
+        let own_c = levenshtein(&recon_s, &own_hap_s);
+        let sib_c = levenshtein(&recon_s, &sib_hap_s);
+        if sib_c < own_c {
             trace!(
                 "AD-claiming guard: ALT for {}>{} at {}:{} (cost {}) claimed by \
-                 sibling {}>{} at {}:{} (cost {}) — counting as partial_alt, not ad",
+                 sibling {}>{} at {}:{} (cost {}) — partial_alt, not ad",
                 variant.ref_allele, variant.alt_allele,
-                variant.chrom, variant.pos + 1, own_cost,
+                variant.chrom, variant.pos + 1, own_c,
                 sib.ref_allele, sib.alt_allele,
-                sib.chrom, sib.pos + 1, sib_cost,
+                sib.chrom, sib.pos + 1, sib_c,
             );
             return true;
         }
@@ -3048,8 +3104,7 @@ fn count_per_transcript(
             // variant's span, so REF testimony here is vacuous). Both still
             // count tx_dp.
             let claimed_by_sibling = sibling_claims_alt(
-                record, variant, &result, sibling_variants, effective_quals, min_baseq,
-                &mut alt_aligner, &mut ref_aligner, backend,
+                record, variant, &result, sibling_variants, effective_quals,
             );
             let is_alt = result.is_alt && !claimed_by_sibling;
             let mut is_ref = result.is_ref;
