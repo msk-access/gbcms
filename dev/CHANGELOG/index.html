@@ -698,6 +698,33 @@
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#changed-span-aligned-ref-testimony-at-spliced-deletion-loci-user-visible">
+<span class="md-ellipsis">
+      
+        ⚠️ Changed — span-aligned REF testimony at spliced deletion loci (user-visible)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#changed-consensus-intron-snipping-of-ref_context-removed-user-visible">
+<span class="md-ellipsis">
+      
+        ⚠️ Changed — consensus intron snipping of ref_context removed (user-visible)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#changed-splice-aware-evidence-in-rna-counting-user-visible">
+<span class="md-ellipsis">
+      
+        ⚠️ Changed — splice-aware evidence in RNA counting (user-visible)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#changed-orchestration-fail-fast-user-visible">
 <span class="md-ellipsis">
       
@@ -2214,9 +2241,120 @@
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
 <blockquote>
-<p>The changes below alter reported counts at wrong-length indel loci and warrant a
-<strong>minor version bump</strong> on release.</p>
+<p>The changes below alter reported counts at wrong-length indel loci and at
+spliced RNA positions, and warrant a <strong>minor version bump</strong> on release.</p>
 </blockquote>
+<h3 id="changed-span-aligned-ref-testimony-at-spliced-deletion-loci-user-visible">⚠️ Changed — span-aligned REF testimony at spliced deletion loci (user-visible)<a class="headerlink" href="#changed-span-aligned-ref-testimony-at-spliced-deletion-loci-user-visible" title="Permanent link">¶</a></h3>
+<ul>
+<li>
+<p><strong>Structural REF evidence survives fragment consensus at quality zero.</strong>
+  Span-aligned REF's carried quality is the first exon base after the
+  junction — exactly where <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> can zero it — and <code>FragmentEvidence</code> gated
+  REF existence on quality &gt; 0, silently dropping such fragments from
+  <code>rdf</code> (the mirror of the structural-ALT divergence fixed in the
+  splice-aware change below). Span-REF observations now carry a structural
+  flag that keeps them alive in consensus; a structural ALT in the same
+  fragment still wins. On the FORTE locus this recovers one real fragment
+  (<code>rdf</code> 726→727 = <code>dpf</code>).</p>
+</li>
+<li>
+<p><strong>Junction reads that observe every deleted-span base now count REF</strong> at a
+  pure-deletion locus whose anchor base is spliced out (typical for deletion
+  annotations left-aligned onto the last intronic base at an acceptor). The
+  anchor base is not the discriminating fact for a deletion — the span is —
+  and these reads demonstrate the span is present. Previously they counted
+  <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> as neither (conservative cluster-A behavior): at a validated FORTE
+  acceptor locus, 823 of the 824 anchor-spliced junction reads convert
+  (<code>rd</code> 24→847 of <code>dp</code> 848, fragment <code>rdf</code> 23→727 of <code>dpf</code> 727, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>
+  unchanged); the one
+  residual read's exon2 alignment covers only one of the two deleted-span
+  bases (<code>95M92N1M</code>) and honestly stays neither. Guards: the FULL span
+  must be aligned (partial coverage stays neither), and reads carrying a
+  competing shifted/wrong-length indel candidate keep their existing
+  arbitration paths. Read- and fragment-level, mirrored in both engine
+  paths via the shared checker.</p>
+</li>
+</ul>
+<h3 id="changed-consensus-intron-snipping-of-ref_context-removed-user-visible">⚠️ Changed — consensus intron snipping of ref_context removed (user-visible)<a class="headerlink" href="#changed-consensus-intron-snipping-of-ref_context-removed-user-visible" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>ref_context</code> is always genomic now.</strong> The RNA-mode step that drained
+  consensus introns from the variant's reference context before Phase 3 had
+  no coordinate map: the context shrank while <code>ref_context_start</code> stayed
+  genomic, so shifted-indel sequence verification, the large-deletion band's
+  context guard, and haplotype offsets all read garbage right of a snipped
+  intron — so exon-contained reads were scored against haplotypes whose
+  offsets no longer matched their genomic coordinates, and pre-mRNA /
+  intron-retention reads against a haplotype missing bases their sequence
+  genuinely contains. Removing it
+  fixes windowed shifted-deletion matching near acceptors (contract test
+  <code>test_windowed_deletion_after_junction_in_repeat_rna</code>, committed red) and
+  erases the binned-vs-legacy RNA divergence around it; junction reads
+  needing alignment-based scoring stay conservatively <code>neither</code> under the
+  splice-aware evidence rule. Re-validated on local (non-repo) clinical RNA
+  data — the b37 dedup and FORTE hg38 smoke loci report unchanged counts. A
+  coordinate-mapped spliced-haplotype rework remains tracked in issue #94,
+  gated on real-data measurement; it must keep pre-mRNA / intron-retention
+  reads genomically scored.</li>
+<li><strong><code>mq0_count</code> now tallies before the RNA strandedness filter in the binned
+  path</strong>, matching the legacy path: an antisense <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-0 read is still a
+  physical read at the locus, and the two paths previously diverged on this
+  diagnostic in stranded RNA mode.</li>
+</ul>
+<h3 id="changed-splice-aware-evidence-in-rna-counting-user-visible">⚠️ Changed — splice-aware evidence in RNA counting (user-visible)<a class="headerlink" href="#changed-splice-aware-evidence-in-rna-counting-user-visible" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Reads spliced over a variant no longer count depth or REF.</strong> A <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>
+  spanning every discriminating position (a deletion's deleted span, an
+  insertion's junction flanks, an SNV/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s REF bases) is asserted splicing —
+  no observation — so the read classifies neither AND is excluded from
+  <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/fragment depth, matching samtools pileup's zero coverage inside an N gap.
+  Previously such reads counted definitive REF (deletions) or inflated <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> with
+  zero aligned bases (intronic positions): on a junction-dense real RNA locus,
+  <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> at an intronic SNV drops from ~826 span-overlapping reads to the 2 with
+  aligned bases there. Excluded totals are logged per variant at debug level
+  (<code>Phase stats … splice_skip_excluded=</code>).</li>
+<li><strong>The REF/ALT call no longer flips on the aligner's D-vs-N representation
+  choice.</strong> A <code>D(100)</code> at the expected span is deletion evidence (ALT); the
+  same gap as <code>N(100)</code> is splicing (excluded).</li>
+<li><strong>Indels directly after a splice junction are now examined.</strong> An indel op
+  whose only neighbor is a splice <code>N</code> (<code>M-N-D-M</code> / <code>M-N-I-M</code> — an event at an
+  exon boundary reached through the junction) was structurally invisible to the
+  strict and windowed <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> scans; carriers now classify through the same
+  anchor/windowed inspection as <code>M</code>-adjacent ops (evidence attributed to the
+  nearest aligned/inserted base when the anchor itself is spliced out).</li>
+<li><strong>Phase 3 no longer scores across a splice.</strong> Raw-window extraction refuses
+  windows that an <code>N</code> overlaps, and <code>check_complex</code>'s reconstruction classifies
+  such reads neither instead of stitching exon arms into a junction-chimeric
+  sequence in which the missing intron reads as deletion evidence.</li>
+<li><strong>The exclusion is not silent.</strong> Deletion-type loci where splice-skip
+  exclusions exceed confirmed ALT are flagged <code>SPLICE_SKIP_DOMINANT(n)</code> in
+  <code>gbcms_diagnostic</code> — RNA aligners write large deletions as splices (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>:
+  ≥ <code>alignIntronMin</code>, default 21bp), so <code>alt_count</code>=0 there may mean the
+  carriers exist as junction reads. Per-variant totals also appear in the
+  debug-level <code>Phase stats</code> line (<code>splice_skip_excluded=</code>).</li>
+<li><strong>Shifted representations across a junction stay in classification.</strong> A
+  read whose N covers the annotated span but which carries an I/D op inside
+  the scan window (repeat-tract shift) is deferred to the windowed scans
+  instead of being excluded.</li>
+<li><strong>Fragment consensus recognizes structural ALT independent of base
+  quality.</strong> <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> can stack splice and indel penalties to quality 0 on the
+  base carried with a junction-adjacent I/D op; <code>FragmentEvidence::resolve</code>
+  previously treated qual-0 ALT evidence as no evidence, reporting <code>ad &gt; 0</code>
+  with <code>adf = 0</code> at the same locus.</li>
+<li><strong><code>check_complex</code> refuses string comparison for structurally anomalous
+  junction reads</strong> (splice N inside the context window): with the indel
+  shifted outside the variant span, the span reconstruction is clean REF
+  sequence and Phase 2 would absorb an ALT carrier into <code>rd</code>.</li>
+<li>ASJD junction tallies at intronic splice-region variants now reflect only
+  allele-informative reads (spliced reads with no observation at the locus
+  no longer contribute fabricated REF junctions); expect <code>LOW_REF_JUNC</code>
+  where the REF tally was previously fed by such reads.</li>
+<li>Contract battery: <code>tests/test_rna_splice_contract.py</code> (13 cases incl. a
+  legacy-parity case with N-<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> reads and one strict xfail pinning the
+  known D6 ref_context coordinate corruption for the cluster-B fix).
+  DNA-mode classification is untouched (reads without <code>N</code> ops never enter
+  the triage), and the legacy parity oracle mirrors every engine-loop
+  change.</li>
+</ul>
 <h3 id="changed-orchestration-fail-fast-user-visible">⚠️ Changed — orchestration fail-fast (user-visible)<a class="headerlink" href="#changed-orchestration-fail-fast-user-visible" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--bam-list</code> entries that do not exist now fail the run</strong> (exit 1) unless

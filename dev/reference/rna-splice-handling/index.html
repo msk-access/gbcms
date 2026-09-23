@@ -1104,6 +1104,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-evidence-rule-what-a-refskip-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Evidence Rule: What a RefSkip Means
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#community-approach-gatk-splitncigarreads" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1115,33 +1126,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#gbcms-approach-dual-mechanism-no-bam-modification" class="md-nav__link">
+  <a href="#gbcms-approach-no-bam-modification" class="md-nav__link">
     <span class="md-ellipsis">
       
-        gbcms Approach: Dual-Mechanism (No BAM Modification)
+        gbcms Approach (No BAM Modification)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="gbcms Approach: Dual-Mechanism (No BAM Modification)">
+    <nav class="md-nav" aria-label="gbcms Approach (No BAM Modification)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-consensus-intron-snipping-automatic-in-rna-mode" class="md-nav__link">
+  <a href="#heuristic-baq-near-splice-junctions-apply-baq" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Consensus Intron Snipping (automatic in RNA mode)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-heuristic-baq-near-splice-junctions-apply-baq" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. Heuristic BAQ Near Splice Junctions (--apply-baq)
+        Heuristic BAQ Near Splice Junctions (--apply-baq)
       
     </span>
   </a>
@@ -1861,6 +1861,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-evidence-rule-what-a-refskip-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Evidence Rule: What a RefSkip Means
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#community-approach-gatk-splitncigarreads" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1872,33 +1883,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#gbcms-approach-dual-mechanism-no-bam-modification" class="md-nav__link">
+  <a href="#gbcms-approach-no-bam-modification" class="md-nav__link">
     <span class="md-ellipsis">
       
-        gbcms Approach: Dual-Mechanism (No BAM Modification)
+        gbcms Approach (No BAM Modification)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="gbcms Approach: Dual-Mechanism (No BAM Modification)">
+    <nav class="md-nav" aria-label="gbcms Approach (No BAM Modification)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-consensus-intron-snipping-automatic-in-rna-mode" class="md-nav__link">
+  <a href="#heuristic-baq-near-splice-junctions-apply-baq" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Consensus Intron Snipping (automatic in RNA mode)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-heuristic-baq-near-splice-junctions-apply-baq" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. Heuristic BAQ Near Splice Junctions (--apply-baq)
+        Heuristic BAQ Near Splice Junctions (--apply-baq)
       
     </span>
   </a>
@@ -2113,6 +2113,62 @@ boundaries.</p>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>                     overhang (2bp)             overhang (4bp)
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>                     may be misaligned          may be misaligned
 </code></pre></div>
+<h2 id="the-evidence-rule-what-a-refskip-means">The Evidence Rule: What a RefSkip Means<a class="headerlink" href="#the-evidence-rule-what-a-refskip-means" title="Permanent link">¶</a></h2>
+<p>Before any artifact handling, gbcms applies one semantic rule to every
+spliced read: <strong>a read testifies about a variant only through aligned
+bases (or a <code>D</code> op) at the discriminating positions.</strong> A <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>
+asserts spliced-out reference — unlike <code>D</code>, it is not a claim that the
+molecule lacks those bases; it is a claim that the read observes
+nothing there (samtools pileup reports zero coverage inside an N gap).</p>
+<p>Concretely (<code>splice_skip_triage</code> in <code>variant_checks.rs</code>, applied before
+per-type classification):</p>
+<ul>
+<li>A read whose <code>N</code> spans <strong>every</strong> discriminating position — the
+  deleted span of a deletion, both junction flanks of an insertion,
+  every REF base of an SNV/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/complex — classifies <strong>neither</strong> and is
+  <strong>excluded from <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> and fragment depth entirely</strong>. It is not "neither
+  at the locus"; it is not at the locus. An intronic position inside a
+  spliced-out intron therefore gets depth only from pre-mRNA reads,
+  matching pileup. (At an anchor-preserved deletion this is deliberately
+  stricter than pileup depth at POS — the anchor base may be aligned,
+  but the event is still unobserved, and an unobservant read in <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> only
+  deflates <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>.) One caveat this creates: RNA aligners represent large
+  deletions as splices (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> writes any deletion ≥ <code>alignIntronMin</code>,
+  default 21bp, as <code>N</code>), so genuine large-deletion carriers can arrive
+  N-represented and be excluded. Deletion loci where such exclusions
+  exceed confirmed ALT are flagged <code>SPLICE_SKIP_DOMINANT(n)</code> in
+  <code>gbcms_diagnostic</code> — inspect them in IGV before trusting <code>AD=0</code>.</li>
+<li>A <code>D</code> op remains deletion evidence; an <code>N</code> op never is. The same
+  100bp gap counts ALT when the aligner writes <code>D(100)</code> and counts
+  nothing when it writes <code>N(100)</code> — the call must not flip on the
+  aligner's representation choice. (Pre-rule, the N form fell through
+  the anchor fast path as definitive REF.)</li>
+<li>An indel op <strong>directly after</strong> a splice <code>N</code> (<code>M-N-D-M</code>, <code>M-N-I-M</code> —
+  an event at an exon boundary reached through the junction) gets the
+  same anchor/windowed inspection as an op after an <code>M</code> block. The
+  anchor base itself may be spliced out; the evidence is attributed to
+  the nearest aligned or inserted base.</li>
+<li><strong>Span-aligned REF testimony</strong>: at a pure-deletion locus whose anchor
+  base is spliced out, a junction read whose aligned bases cover the
+  <strong>entire deleted span</strong> demonstrates the deletion is absent — it counts
+  REF (the span, not the anchor, is the discriminating fact; presence,
+  not per-base identity, same coverage standard as the anchor fast
+  path). Partial span coverage stays neither, and a read carrying a
+  competing indel candidate in the scan window keeps its arbitration
+  path. Typical population: deletion annotations left-aligned to the
+  last intronic base at an acceptor — at a validated FORTE locus this
+  reclassifies 823 of 824 anchor-spliced junction reads to REF (the one
+  residual covers only part of the span and stays neither).</li>
+<li>Phase 3 never scores across a splice: <code>extract_raw_read_window</code>
+  refuses windows that an <code>N</code> overlaps (a contiguous slice would stitch
+  the exon arms into a junction-chimeric sequence in which the missing
+  intron reads as deletion evidence), and <code>check_complex</code>'s
+  reconstruction classifies such reads neither instead of
+  string-comparing them.</li>
+</ul>
+<p>Reads without <code>N</code> ops never enter this triage — DNA-mode classification
+is untouched. Per-variant exclusion counts are logged at debug level in
+the <code>Phase stats</code> line (<code>splice_skip_excluded=</code>).</p>
 <h2 id="community-approach-gatk-splitncigarreads">Community Approach: GATK SplitNCigarReads<a class="headerlink" href="#community-approach-gatk-splitncigarreads" title="Permanent link">¶</a></h2>
 <p>GATK addresses this by <strong>physically modifying the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> before variant
 calling:</p>
@@ -2126,21 +2182,28 @@ calling:</p>
 </ol>
 <p>This produces a clean <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> where no read contains <code>N</code> operators, at the
 cost of losing the original read structure.</p>
-<h2 id="gbcms-approach-dual-mechanism-no-bam-modification">gbcms Approach: Dual-Mechanism (No <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Modification)<a class="headerlink" href="#gbcms-approach-dual-mechanism-no-bam-modification" title="Permanent link">¶</a></h2>
-<p>gbcms handles splice-junction artifacts <strong>without modifying the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong>,
-using two complementary mechanisms:</p>
-<h3 id="1-consensus-intron-snipping-automatic-in-rna-mode">1. Consensus Intron Snipping (automatic in RNA mode)<a class="headerlink" href="#1-consensus-intron-snipping-automatic-in-rna-mode" title="Permanent link">¶</a></h3>
-<p><code>apply_consensus_splicing()</code> in <code>rna.rs</code> modifies the <em>reference
-haplotype</em>, not the reads:</p>
-<ul>
-<li>Examines local read pileup for consensus introns (&gt;50% threshold)</li>
-<li>Removes intronic bases from the reference haplotype used by <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr></li>
-<li><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> then evaluates reads against a mature mRNA-like reference</li>
-</ul>
-<p>This is arguably more elegant than SplitNCigarReads because reads
-retain their original structure while the reference adapts to the
-biology.</p>
-<h3 id="2-heuristic-baq-near-splice-junctions-apply-baq">2. Heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Near Splice Junctions (<code>--apply-baq</code>)<a class="headerlink" href="#2-heuristic-baq-near-splice-junctions-apply-baq" title="Permanent link">¶</a></h3>
+<h2 id="gbcms-approach-no-bam-modification">gbcms Approach (No <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> Modification)<a class="headerlink" href="#gbcms-approach-no-bam-modification" title="Permanent link">¶</a></h2>
+<p>gbcms handles splice-junction artifacts <strong>without modifying the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong>:
+the evidence rule above governs what a spliced read may testify to, and
+heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> handles overhang misalignment.</p>
+<div class="admonition note">
+<p class="admonition-title">Removed: consensus intron snipping of <code>ref_context</code></p>
+<p>An earlier step drained consensus introns from <code>ref_context</code> in place
+so Phase 3 could score junction reads against a mature-mRNA haplotype.
+It had no coordinate map — the context shrank while
+<code>ref_context_start</code> stayed genomic — so every position-indexed check
+right of a snipped intron (shifted-deletion sequence verification, the
+large-deletion band's context guard, haplotype offsets) read garbage,
+so exon-contained reads were scored against haplotypes whose offsets
+no longer matched their genomic coordinates, and pre-mRNA /
+intron-retention reads against a haplotype missing bases their
+sequence genuinely contains. It was removed; <code>ref_context</code> is always
+genomic.
+Splice-aware Phase-3 scoring, if real-data measurement shows it is
+needed, requires an explicit genomic→spliced coordinate map with
+junction-compatible extraction (tracked in issue #94).</p>
+</div>
+<h3 id="heuristic-baq-near-splice-junctions-apply-baq">Heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> Near Splice Junctions (<code>--apply-baq</code>)<a class="headerlink" href="#heuristic-baq-near-splice-junctions-apply-baq" title="Permanent link">¶</a></h3>
 <p><code>apply_heuristic_baq()</code> in <code>baq.rs</code> penalizes base qualities within
 5bp of <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>/RefSkip operations:</p>
 <ul>
@@ -2332,7 +2395,7 @@ position, which is exceptionally unlikely for a 2–3 base overhang.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="May 4, 2026 17:17:14 UTC"><span class="timeago" datetime="2026-05-04T17:17:14+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="May 4, 2026 17:17:14 UTC">2026-05-04</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 22, 2026 13:50:59 UTC"><span class="timeago" datetime="2026-09-22T13:50:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 22, 2026 13:50:59 UTC">2026-09-22</span>
   </span>
 
     
