@@ -130,16 +130,39 @@ fail (mixed-BAM workflows legitimate).
 **Tests.** BAM without RX + `--umi-tag RX` → warning in caplog, counts
 unchanged; BAM with RX → no warning.
 
-## T5 — dynamic_sw_gap_extend cleanup
+## T5 — SW-under-PairHMM: keep-but-warn + diagnostic, and gap-extend cleanup
 
-**Evidence.** SW fallback fired zero times on traced real runs (ACCESS
-duplex, MSI-high); function is arithmetically constant (−1).
+**Evidence.** SW has two roles: the explicit `--alignment-backend sw`
+backend (kept — concordance tests and the cross-backend quality contract
+depend on it), and a silent last-resort fallback under the PairHMM backend
+when the pangenomic matrix cannot be built. The fallback fired zero times
+on traced real runs (ACCESS duplex, MSI-high): prep always supplies
+ref_context and post-B1 it is always genomic, so matrix construction cannot
+fail on well-formed input. `dynamic_sw_gap_extend` is arithmetically
+constant (−1).
 
-**Design.** Delete `dynamic_sw_gap_extend`; use a named constant
-`SW_GAP_EXTEND: i32 = -1` with a doc comment recording the measurement and
-that CLI gap flags intentionally do not reach SW. Update
-allele-classification.md SW-gap section + counting-engine skill. No
-behavior change; clippy/tests must stay green untouched.
+**Design (operator decision 2026-09-22: keep-but-warn, log AND flag).**
+1. The under-PairHMM fallback is retained but made loud: when it fires,
+   (a) WARN once per variant naming the matrix-build failure reason
+   (missing ref_context / offset out of bounds), and (b) count fallback
+   reads in a new internal `BaseCounts::sw_fallback_reads` (threaded like
+   `splice_skip_excluded`; NOT an output column; mirrored binned+legacy;
+   `_rs.pyi` updated).
+2. `_compute_diagnostics` appends `SW_FALLBACK(n)` to `gbcms_diagnostic`
+   when `sw_fallback_reads > 0` — the row itself tells the analyst these
+   counts came partly from a different scorer and upstream input was
+   malformed.
+3. Delete `dynamic_sw_gap_extend`; named constant `SW_GAP_EXTEND: i32 = -1`
+   with a doc comment recording the measurement, the two SW roles, and that
+   CLI gap flags intentionally do not reach SW. Update
+   allele-classification.md SW-gap section + counting-engine skill.
+
+**Tests.** Red-first: a variant engineered with broken context (e.g.
+ref_context absent via direct `_rs` call) under the PairHMM backend →
+`SW_FALLBACK(n)` flag + caplog WARN, counts still produced; guards: normal
+variants never flag (whole existing battery doubles as the guard); explicit
+SW backend never flags (it is chosen, not fallen into). Parity: flag counter
+equal via both paths on the synthetic case.
 
 ## T6 — Per-transcript BAQ decision
 
