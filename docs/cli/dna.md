@@ -143,7 +143,7 @@ for the full design.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--rescue-mnp` | `false` | Enable the rescue pass. Candidates are PASS MNPs flagged `MNP_RESCUE_ELIGIBLE` with `partial_alt > alt_count`, outside co-annotated groups. When the best component beats the MNP's `alt_count`, that component's full counts (every count, fragment, strand and mFSD column) replace the row's; the MNP's own counts and the per-position split go to `gbcms_rescue`. |
+| `--rescue-mnp` | `false` | Enable the rescue pass. Candidates are PASS MNPs flagged `MNP_RESCUE_ELIGIBLE` with `partial_alt > alt_count`, outside co-annotated groups, and whose full haplotype is not shown by more reads than sequencing error explains. When the best component beats the MNP's `alt_count`, that component's full counts (every count, fragment, strand and mFSD column) replace the row's; the MNP's own counts and the per-position split go to `gbcms_rescue`. |
 | `--rescue-mnp-threshold` | `1.0` | Maximum discriminating/length ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs are eligible (C++ gbcms compatible, default). `0.5` = conservative sparse-only mode (≤50% discriminating positions). `0.0` = disable rescue eligibility (MNP_DISC_RATIO diagnostics are still emitted). Only used when `--rescue-mnp` is enabled. |
 
 !!! info "Diagnostic Flags"
@@ -153,9 +153,11 @@ for the full design.
     - **`MNP_RESCUE_ELIGIBLE`** — Emitted only when disc/len ≤ `--rescue-mnp-threshold`. Marks the variant as eligible; rescue additionally requires `partial_alt > alt_count`.
 
 !!! warning "A rescued row reports a component, not the annotated MNP"
-    If a component is a germline SNP merged into a somatic MNP, the rescued VAF is the
-    germline VAF. Read `gbcms_rescue` (outcome, original counts, per-position split) before
-    interpreting a rescued row.
+    When reads show the whole MNP (e.g. a somatic change on top of a germline SNP), rescue
+    keeps the MNP's counts (`outcome=haplotype_confirmed`). But where the MNP itself is
+    absent — typically a fillout of other timepoints or normals — a germline SNP component
+    can still be adopted, and the rescued VAF is then the germline VAF. Read `gbcms_rescue`
+    (outcome, original counts, per-position split) before interpreting a rescued row.
 
 !!! tip "Choosing the threshold"
     ```bash

@@ -207,8 +207,8 @@ Key invariants to check:
 !!! info "Rescued rows keep every counting invariant"
     A rescued row carries the adopted component SNV's `BaseCounts` wholesale, so all
     counting invariants (including `any_alt = ad + partial_alt`) hold on it. The MNP's own
-    `rd`/`ad`/`partial_alt` live only in the `gbcms_rescue` audit trail
-    (`original_ref`/`original_alt`/`original_partial`).
+    `rd`/`ad`/`partial_alt`/`mnp_confirmed_alt` live only in the `gbcms_rescue` audit trail
+    (`original_ref`/`original_alt`/`original_partial`/`original_confirmed`).
 
 **Architecture**: The rescue engine is implemented in **Python** (`pipeline.py::_rescue_mnp_pass()`)
 calling the existing **Rust** counting engine (`count_bam_binned()`). This was a deliberate choice:
@@ -238,6 +238,7 @@ gbcms dna --verbose --rescue-mnp --variants input.maf --bam sample:sample.bam --
 # INFO    — "MNP rescue for SAMPLE: rescued=2, skipped_grouped=1 (0.342s)"   (per-sample outcome summary)
 # DEBUG   — "MNP rescue: 5:1295250 GAGGG>AAGGA rescued — adopted 5:1295250(G>A) (ad 1 → 88, rd 486 → 487)"
 # DEBUG   — "MNP rescue: ... skipped — co-annotated group 3 owns its reads"
+# DEBUG   — "MNP rescue: ... kept — 36 read(s) show the whole haplotype (error allowance 3 at Q20)"
 # DEBUG   — "MNP rescue: ... not rescued (no_improvement) ..."  (partial evidence was not component carriers)
 # WARNING — "MNP rescue: ... not rescued (ref_validation_failed) ..."  (anomaly: investigate)
 # WARNING — "MNP rescue: synthetic SNV ... failed preparation (...) — reported as ref_fail"

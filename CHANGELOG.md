@@ -52,11 +52,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `gbcms_diagnostic` is recomputed from them. Fragment-level consumers
   (ACCESS, `gbcms merge --add-combined`) now see rescued counts.
 - **`gbcms_rescue` format** (downstream parsers): every entry has
-  `outcome=` (`rescued`, `skipped_grouped`, `no_improvement`,
+  `outcome=` (`rescued`, `skipped_grouped`, `haplotype_confirmed`, `no_improvement`,
   `ref_validation_failed`) and the MNP's own `original_ref`/`original_alt`/
   `original_partial` (`original_alt` was hard-coded `0`); rescued rows add
   `adopted=`. A position whose synthetic SNV failed preparation reads
   `ref_fail` instead of a silent `0`. `outcome=no_signal` is gone.
+- **MNPs whose haplotype the BAM shows are kept** (`outcome=haplotype_confirmed`,
+  no re-count): the engine now counts MNP ALT reads in which every
+  discriminating base was read (internal `BaseCounts.mnp_confirmed_alt`, not an
+  output column), and rescue requires that count to stay within what
+  sequencing error at the base-quality threshold explains,
+  `ceil(partial_alt × 10^(−min_baseq/10))`. A 28-sample validation with matched
+  normals found rescue adopting a germline het SNP where 36 reads carried the
+  real somatic MNP; such rows now keep the MNP's counts. The audit gains
+  `original_confirmed`.
 - **Grouped MNPs are skipped** (`outcome=skipped_grouped`) so rescue cannot
   hand back reads that exclusive assignment gave a co-annotated sibling.
 - **Fixed: rescue audit leaked across samples.** In a multi-BAM run a later

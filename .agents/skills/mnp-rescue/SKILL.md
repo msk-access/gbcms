@@ -12,10 +12,16 @@ reports the best-supported component instead. Opt-in (`--rescue-mnp`) — the fl
 contract is component counting.
 
 ## Candidate gate (`pipeline._rescue_mnp_pass`)
-PASS + `MNP_RESCUE_ELIGIBLE` + `partial_alt > ad` + not in a `multi_allelic_group`.
+PASS + `MNP_RESCUE_ELIGIBLE` + `partial_alt > ad` + not in a `multi_allelic_group` +
+haplotype not confirmed: `mnp_confirmed_alt ≤ ceil(partial_alt × 10^(−min_baseq/10))`.
 - Not `ad == 0`: masked per-position evaluation counts a component carrier whose other
   discriminating base is low-BQ as full ALT; one such read must not block rescue.
 - Grouped rows → `outcome=skipped_grouped` (exclusive assignment owns their reads).
+- `mnp_confirmed_alt` (engine, internal): MNP ALT reads with every discriminating base read
+  (none masked, none N); set only via check_mnp's `Alt(.., confirmed)`. Above the error
+  allowance the BAM shows the annotated allele → `outcome=haplotype_confirmed`, no re-count.
+  Guards against adopting a germline SNP merged into a somatic MNP; cannot help where the
+  MNP is absent (fillout of other timepoints/normals).
 
 ## Adoption
 Best component (highest `ad`, leftmost on ties) must beat the MNP's `ad`; its whole
@@ -24,7 +30,7 @@ Best component (highest `ad`, leftmost on ties) must beat the MNP's `ad`; its wh
 calls share `_engine_kwargs()` so components classify reads exactly like the main count.
 
 ## `gbcms_rescue` (built only by `_format_rescue_audit`)
-`method=decomposed;outcome=<rescued|skipped_grouped|no_improvement|ref_validation_failed>;original_ref=R;original_alt=A;original_partial=P[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>,...]`
+`method=decomposed;outcome=<rescued|skipped_grouped|haplotype_confirmed|no_improvement|ref_validation_failed>;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>,...]`
 - Reset for every sample (the prepared list is shared across BAMs).
 - `no_improvement` is legitimate: partial evidence from indel-disrupted reads
   (complex path: REF + nearby-indel evidence) that no single-base count calls ALT.

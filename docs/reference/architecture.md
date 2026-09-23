@@ -349,7 +349,7 @@ deliberate architectural decision:
 ```mermaid
 flowchart LR
     subgraph Python ["🐍 Python — Orchestration"]
-        Filter["Filter candidates\n(PASS + MNP_RESCUE_ELIGIBLE\n+ partial_alt > ad, ungrouped)"]
+        Filter["Filter candidates\n(PASS + MNP_RESCUE_ELIGIBLE\n+ partial_alt > ad, ungrouped,\nhaplotype not confirmed)"]
         Build["Build synthetic SNPs\nfrom disc positions"]
         Map["Map counts back\nadopt best component"]
         Audit["Populate gbcms_rescue\naudit trail"]
@@ -397,6 +397,7 @@ A variant is a rescue candidate when **all** conditions are met:
 | 2 | `MNP_RESCUE_ELIGIBLE` in `gbcms_diagnostic` | Emitted only for MNPs (`ref_len == alt_len > 1`) with disc/len ≤ `--rescue-mnp-threshold` (default 1.0 = all MNPs; 0.5 = conservative sparse-only mode). |
 | 3 | `partial_alt > ad` | The haplotype is dominated by component evidence. Not `ad == 0`: masked per-position evaluation counts a component carrier whose other discriminating base is low-BQ as full ALT, and one such read must not block rescue. |
 | 4 | Not in a co-annotated group (`multi_allelic_group` unset) | Grouped reads are exclusively assigned against siblings; a sibling-free component re-count would hand contested reads back. Such rows get `outcome=skipped_grouped`. |
+| 5 | `mnp_confirmed_alt ≤ ⌈partial_alt × 10^(−min_baseq/10)⌉` | `mnp_confirmed_alt` counts MNP ALT reads in which every discriminating base was read (none masked, none N) — reads that *show* the whole haplotype. A single-change carrier only looks confirmed if a sequencing error at another discriminating base gives exactly the ALT base, at most `10^(−min_baseq/10)` of them (1% at Q20). More confirmed reads than that means the BAM shows the annotated allele — e.g. a somatic change on a germline SNP's haplotype — and adopting a component would report the other allele. Such rows get `outcome=haplotype_confirmed`, with no re-count. |
 
 ### Rescue Strategy: Adopt the Best Component
 
@@ -412,7 +413,7 @@ Components, counted as SNVs with the sample's own settings:
 Best component beats the MNP's ad (88 > 1) → the row reports the 5:1295250 G>A SNV's
 BaseCounts wholesale.
 gbcms_rescue: method=decomposed;outcome=rescued;original_ref=486;original_alt=1;
-              original_partial=88;adopted=5:1295250(G>A);
+              original_partial=88;original_confirmed=0;adopted=5:1295250(G>A);
               positions=5:1295250(G>A):88,5:1295254(G>A):1
 ```
 
@@ -445,10 +446,12 @@ variant list is shared across the BAMs of a run). For candidates:
 |:--------|:--------|:---------------|
 | `rescued` | Best component beats the MNP's `ad` | Adopted component's |
 | `skipped_grouped` | MNP is in a co-annotated group | MNP's |
+| `haplotype_confirmed` | More reads show the whole haplotype than sequencing error explains — the annotated allele is present | MNP's |
 | `no_improvement` | No component beats the MNP's `ad`: the partial evidence was not component carriers — e.g. reads with an indel inside the block, which the complex path counts as REF with nearby-indel evidence and no single-base count calls ALT. Rescue correctly declines | MNP's |
 | `ref_validation_failed` | No component SNV survived preparation — an anomaly (the MNP itself passed REF validation); logged as a warning | MNP's |
 
-`original_ref` / `original_alt` / `original_partial` always carry the MNP's own counts.
+`original_ref` / `original_alt` / `original_partial` / `original_confirmed` always carry the
+MNP's own counts (`original_confirmed` is its `mnp_confirmed_alt`).
 A position whose synthetic SNV failed preparation is listed as `…:ref_fail`, never `0`.
 
 ## Comparison with Original GBCMS
