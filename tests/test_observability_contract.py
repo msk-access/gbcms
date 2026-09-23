@@ -16,7 +16,7 @@ Three signals that were silent become visible, without new output columns:
   BAM (fragment grouping silently fell back to QNAME).
 
 Both variant input paths (VCF and MAF) are exercised for the CLI geometry.
-Committed red (xfail-strict) before the implementation.
+Committed red (xfail-strict) before the implementation; flipped green with it.
 """
 
 import glob
@@ -25,7 +25,6 @@ import random
 import types
 
 import pysam
-import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
@@ -34,8 +33,6 @@ from gbcms.cli import app
 from gbcms.pipeline import Pipeline
 
 runner = CliRunner()
-
-XFAIL = pytest.mark.xfail(strict=True, reason="observability bundle: implementation pending")
 
 READ_LEN = 100
 ENGINE_LOGGER = "_rs.counting.engine"
@@ -100,7 +97,6 @@ def _sw_setup(tmp_path):
     return bam, variant(270, 300), variant(270, 320)
 
 
-@XFAIL
 def test_sw_fallback_is_counted_and_warned(tmp_path, caplog):
     bam, misplaced, _ = _sw_setup(tmp_path)
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
@@ -111,7 +107,6 @@ def test_sw_fallback_is_counted_and_warned(tmp_path, caplog):
     assert "1:301" in warns[0].message and "6" in warns[0].message
 
 
-@XFAIL
 def test_explicit_sw_backend_is_never_a_fallback(tmp_path):
     """SW chosen via --alignment-backend sw is the primary scorer, not a fallback."""
     bam, misplaced, _ = _sw_setup(tmp_path)
@@ -119,14 +114,12 @@ def test_explicit_sw_backend_is_never_a_fallback(tmp_path):
     assert c.sw_fallback_reads == 0
 
 
-@XFAIL
 def test_well_formed_context_never_falls_back(tmp_path):
     bam, _, good = _sw_setup(tmp_path)
     (c,) = _binned(bam, [good])
     assert c.sw_fallback_reads == 0
 
 
-@XFAIL
 def test_sw_fallback_counter_parity_with_legacy(tmp_path):
     bam, misplaced, _ = _sw_setup(tmp_path)
     (b,) = _binned(bam, [misplaced])
@@ -151,7 +144,6 @@ def _diag(counts_kwargs, ref_allele="GGG", alt_allele="T"):
     return pv.gbcms_diagnostic.split(";") if pv.gbcms_diagnostic else []
 
 
-@XFAIL
 def test_sw_fallback_flag():
     assert "SW_FALLBACK(6)" in _diag({"sw_fallback_reads": 6})
 
@@ -275,7 +267,6 @@ def _diag_flags(row):
     return [f for f in row["gbcms_diagnostic"].split(";") if f]
 
 
-@XFAIL
 def test_clip_only_insertion_carriers_are_flagged(tmp_path):
     ref = _itd_ref()
     bam = _bam(tmp_path, ref, _clip_carriers(ref) + _wt(ref, ANCHOR, 10))
@@ -349,7 +340,6 @@ def _umi_setup(tmp_path, with_tag):
     return bam, v
 
 
-@XFAIL
 def test_umi_tag_never_seen_warns_once(tmp_path, caplog):
     bam, v = _umi_setup(tmp_path, with_tag=False)
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):

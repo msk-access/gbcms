@@ -912,29 +912,35 @@ During counting, reads classified as **REF** for a variant are additionally chec
 
 ## SW Gap Penalties
 
-Phase 3's Smith-Waterman aligners use affine gap penalties: `gap_open = -5`,
-`gap_extend = dynamic_sw_gap_extend(repeat_span)`.
+Phase 3's Smith-Waterman aligners use fixed affine gap penalties:
+`SW_GAP_OPEN = -5`, `SW_GAP_EXTEND = -1` (match +1, mismatch −1, N scores 0).
+They are documented constants, not tuned per locus: an earlier
+`dynamic_sw_gap_extend` logistic curve rounded to −1 for every `repeat_span`,
+and traced real runs (ACCESS duplex, MSI-high) confirmed SW scores nothing
+under the default backend on well-formed input, so the curve was removed
+(issue #92).
 
-!!! warning "The 'dynamic' SW gap extend is currently a constant −1"
-    `dynamic_sw_gap_extend` maps a logistic repeat curve to an integer penalty by rounding —
-    but the curve is capped at 0.5, so the pre-round value stays within `(-0.9, -0.5]` and
-    **rounds to −1 for every `repeat_span`**. The intended tight→free relaxation for deep
-    repeat tracts never engages; in practice every SW alignment runs with `gap_extend = -1`.
-    Making the relaxation real (or removing the inert machinery) is tracked in issue #92 —
-    it changes SW alignment scores and needs its own validation pass.
+Smith-Waterman has two roles:
 
-    The mapping also always uses the *default* PairHMM gap-extend curve: overriding the
-    PairHMM gap flags retunes PairHMM probabilities but never the SW penalty. Under the
-    default `pairhmm` backend both points are low-stakes (SW runs only when the pangenomic
-    haplotype matrix cannot be built, and PairHMM's own repeat-scaled gap blending **is**
-    active); under `--alignment-backend sw`, these fixed constants are the **primary**
-    Phase-3 engine and there are no SW gap flags at all.
+- **The explicit scorer** under `--alignment-backend sw` — the primary Phase-3
+  engine there, kept for cross-backend concordance. There are no SW gap flags.
+- **A last-resort fallback under the default `pairhmm` backend**, used only
+  when the pangenomic haplotype matrix cannot be built for a variant (its
+  reference context does not contain it, or the ALT haplotype cannot be
+  constructed) — i.e. upstream input was malformed. The fallback is kept but
+  never silent: each affected variant logs one WARN naming the reason, and the
+  row carries `SW_FALLBACK(n)` in `gbcms_diagnostic` (n = reads scored this
+  way). If SW cannot build its haplotypes either, those reads end as NEITHER —
+  the flag is how that loss becomes visible.
+
+The PairHMM gap flags retune PairHMM probabilities only; they never reach the
+SW penalties.
 
 The `repeat_span` is computed during normalization using `find_tandem_repeat()` **at the
 first changed base** of the alleles (not the shared anchor, which sits one base left of a
-left-aligned tract) and stored on the `Variant` struct. It actively drives the PairHMM gap
-blending, the windowed-scan width, and adaptive context padding — the inert consumer is only
-the SW integer penalty.
+left-aligned tract) and stored on the `Variant` struct. It drives the PairHMM gap
+blending, the windowed-scan width, and adaptive context padding (the SW penalties are
+constants and do not use it).
 
 !!! tip "MSI-High Tumors"
     In microsatellite-unstable tumors, insertions/deletions within long homopolymer or dinucleotide repeats are common. Under the default `pairhmm` backend, repeat tolerance comes from PairHMM's repeat-scaled gap probabilities and from the wrong-length rule's tract-aware handling — not from the SW gap penalty, which is constant (see above).

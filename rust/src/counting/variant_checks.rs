@@ -853,10 +853,12 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                                     "check_complex: Phase 0 pangenomic failed, SW fallback at {}:{}",
                                     variant.chrom, variant.pos + 1,
                                 );
-                                classify_by_alignment(
+                                let mut r = classify_by_alignment(
                                     &sub_seq, &sub_quals, variant, min_baseq,
                                     alt_aligner, ref_aligner,
-                                )
+                                );
+                                r.sw_fallback = true;
+                                r
                             })
                         }
                     };
@@ -1266,10 +1268,12 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                                 "check_complex: Phase 3 pangenomic failed, SW fallback at {}:{}",
                                 variant.chrom, variant.pos + 1,
                             );
-                            classify_by_alignment(
+                            let mut r = classify_by_alignment(
                                 &sub_seq, &sub_quals, variant, min_baseq,
                                 alt_aligner, ref_aligner,
-                            )
+                            );
+                            r.sw_fallback = true;
+                            r
                         })
                     }
                 };

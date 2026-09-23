@@ -114,6 +114,12 @@ class BaseCounts:
     # Reads excluded by the splice-skip triage (CIGAR N over every
     # discriminating position — no observation, no DP/DPF). Diagnostic only.
     splice_skip_excluded: int
+    # Reads scored by the Smith-Waterman fallback under the PairHMM backend
+    # (haplotype matrix unbuildable). Diagnostic only (SW_FALLBACK flag).
+    sw_fallback_reads: int
+    # Insertion loci: reads with a >= 8bp soft clip whose boundary lies within
+    # the insert's duplication reach. Diagnostic only (CLIP_CANDIDATES flag).
+    clip_candidates: int
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # P4b: Per-transcript counts (empty string when no GTF or no overlap)

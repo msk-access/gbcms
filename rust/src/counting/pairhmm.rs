@@ -262,47 +262,6 @@ pub fn dynamic_gap_extend(repeat_span: usize, p_base: f64, p_max: f64) -> f64 {
 }
 
 
-/// Convert the continuous logistic gap_extend to an integer SW penalty.
-///
-/// Smith-Waterman uses integer gap penalties. This maps the logistic curve
-/// to i32 by rounding:
-///
-/// ```text
-///   sw_gap_extend = round(-1.0 * (1.0 - logistic(repeat_span)))
-/// ```
-///
-/// ## In practice this is a CONSTANT −1 for every repeat_span
-///
-/// With the fixed defaults below (`p_base=0.1`, `p_max=0.5`) the logistic is
-/// capped at 0.5, so the pre-round value lies in `(-0.9, -0.5]` — and Rust's
-/// `round` (half away from zero) maps that entire range to −1:
-///
-/// - repeat_span=0  → round(-0.893) = -1
-/// - repeat_span=12 → round(-0.608) = -1
-/// - repeat_span→∞  → round(-0.500) = -1
-///
-/// The intended tight→free relaxation for deep repeats never engages; SW
-/// always runs with gap_extend = −1. Whether to make the relaxation real
-/// (map the curve so large spans reach 0) or delete the inert machinery is
-/// tracked in issue #92 — changing it alters SW alignment scores and needs
-/// its own validation pass.
-///
-/// ## Fixed constants — CLI gap overrides do NOT reach this function
-///
-/// The logistic here always uses 0.1/0.5, the *defaults* of the PairHMM
-/// gap-extend flags. Overriding those flags retunes the PairHMM
-/// probabilities but never this SW penalty. Low-stakes under the default
-/// PairHMM backend, where SW runs only when the pangenomic haplotype matrix
-/// cannot be built (variant outside the ref_context window, or haplotype >
-/// MAX_HAP_LEN). Under `--alignment-backend sw`, these fixed-constant
-/// aligners ARE the primary Phase-3 engine and there are no SW gap CLI
-/// flags at all.
-pub fn dynamic_sw_gap_extend(repeat_span: usize) -> i32 {
-    let logistic = dynamic_gap_extend(repeat_span, 0.1, 0.5);
-    (-(1.0 - logistic)).round() as i32
-}
-
-
 /// Semiglobal alignment mode for read-vs-haplotype comparison.
 ///
 /// Allows free start/end gaps in x (the read) so the haplotype can

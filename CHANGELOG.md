@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — observability for silent fallbacks (no count changes)
+
+- `SW_FALLBACK(n)` in `gbcms_diagnostic`, plus one WARN per affected variant
+  naming the reason: under the default `pairhmm` backend, n reads were scored by
+  the Smith-Waterman fallback because the pangenomic haplotype matrix could not
+  be built (a malformed reference context upstream). Measured to never fire on
+  well-formed input; when SW cannot run either, those reads end as NEITHER and
+  the flag is the only trace. Never set under `--alignment-backend sw`.
+- `CLIP_CANDIDATES(n)` in `gbcms_diagnostic`: an insertion with no confirmed
+  ALT where n (≥ 2) reads carry a ≥ 8bp soft clip within the insert's
+  duplication reach — clip-represented carriers (typically a tandem-duplication
+  ITD) the engine cannot claim.
+- `--umi-tag TAG` that no processed read carries now logs one WARN per BAM:
+  fragment grouping silently fell back to read names.
+
+### Changed — Smith-Waterman gap-extend is a documented constant
+
+- `dynamic_sw_gap_extend` rounded to −1 for every repeat span, so its repeat
+  relaxation never engaged. It is replaced by `SW_GAP_OPEN = -5` /
+  `SW_GAP_EXTEND = -1` constants; alignment scores are unchanged.
+
 ### Added — ASJD-2 splice-disruption markers (RNA + GTF)
 
 - `asjd_diagnostic` gains two markers that read the population the
