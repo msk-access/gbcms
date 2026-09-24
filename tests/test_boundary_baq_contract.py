@@ -162,37 +162,64 @@ IN_INTRON1 = 450  # an unrelated acceptor left of E2's (sorts first)
 IN_INTRON2 = 700  # an unrelated acceptor between E2 and E3
 
 # (REF groups, ALT groups) as (acceptor, fragments, prefix), then the expected
-# (REF junction, ALT junction, divergence tested).
+# (REF junction, ALT junction, divergence tested, asjd_flag).
 TIE_CASES = {
     # ALT tied between REF's junction and an exon skip: shared, no test.
     "alt_tie": (
         [(E2[0], 30, "ref")],
         [(E2[0], 6, "alt_inc"), (E3[0], 6, "alt_skip")],
-        (_j(E2[0]), _j(E2[0]), False),
+        (_j(E2[0]), _j(E2[0]), False, "False"),
     ),
     # REF tied; ALT uses one of REF's tied junctions: shared, no test.
     "ref_tie": (
         [(E2[0], 15, "ref_inc"), (E3[0], 15, "ref_skip")],
         [(E3[0], 8, "alt_skip")],
-        (_j(E3[0]), _j(E3[0]), False),
+        (_j(E3[0]), _j(E3[0]), False, "False"),
     ),
     # ALT tied between REF's junction placed 2bp off and an unrelated one that
     # sorts first: within tolerance it is REF's junction, so no test.
     "near_tie": (
         [(E2[0], 30, "ref")],
         [(IN_INTRON1, 6, "alt_far"), (NEAR_E2, 6, "alt_near")],
-        (_j(E2[0]), _j(NEAR_E2), False),
+        (_j(E2[0]), _j(NEAR_E2), False, "False"),
     ),
-    # ALT tied between two junctions REF does not use: the leftmost, tested.
+    # ALT tied between two junctions REF supports equally (not at all): the
+    # leftmost, tested.
     "alt_only_tie": (
         [(E2[0], 30, "ref")],
         [(IN_INTRON2, 6, "alt_a"), (E3[0], 6, "alt_b")],
-        (_j(E2[0]), _j(IN_INTRON2), True),
+        (_j(E2[0]), _j(IN_INTRON2), True, "True"),
+    ),
+    # REF tied between a junction ALT never uses (sorts first) and one ALT
+    # uses: REF reports the one ALT supports (the least divergent reading of
+    # the tie), so the verdict follows the reads, not the coordinates.
+    # Fisher [[10, 2], [4, 5]]: p = 0.16, no flag (leftmost gave p = 0.003).
+    "ref_tie_by_evidence": (
+        [(IN_INTRON1, 10, "ref_a"), (E2[0], 10, "ref_inc"), (E3[0], 2, "ref_skip")],
+        [(E3[0], 5, "alt_skip"), (E2[0], 4, "alt_inc")],
+        (_j(E2[0]), _j(E3[0]), True, "False"),
+    ),
+    # ALT tied between a junction REF never uses (sorts first) and one REF
+    # uses: ALT reports the one REF supports.
+    "alt_tie_by_evidence": (
+        [(E2[0], 30, "ref_inc"), (E3[0], 3, "ref_skip")],
+        [(IN_INTRON1, 6, "alt_a"), (E3[0], 6, "alt_skip")],
+        (_j(E2[0]), _j(E3[0]), True, "True"),
     ),
 }
 
 
-@pytest.mark.parametrize("case", sorted(TIE_CASES))
+@pytest.mark.parametrize(
+    "case",
+    [
+        (
+            pytest.param(c, marks=pytest.mark.xfail(strict=True, reason="tie broken by coordinate"))
+            if c.endswith("_by_evidence")
+            else c
+        )
+        for c in sorted(TIE_CASES)
+    ],
+)
 def test_asjd_dominant_junction_ties(tmp_path, case):
     ref_groups, alt_groups, expected = TIE_CASES[case]
     ref, alt = _REF, _alt(_REF, MID_SNV)
@@ -203,7 +230,14 @@ def test_asjd_dominant_junction_ties(tmp_path, case):
     seen = set()
     for k in range(REPEATS):
         row = _one(tmp_path, MID_SNV, reads, outname=f"run{k}")
-        seen.add((row["asjd_ref_junction"], row["asjd_alt_junction"], row["asjd_pval"] != ""))
+        seen.add(
+            (
+                row["asjd_ref_junction"],
+                row["asjd_alt_junction"],
+                row["asjd_pval"] != "",
+                row["asjd_flag"],
+            )
+        )
     assert seen == {expected}, seen
 
 
