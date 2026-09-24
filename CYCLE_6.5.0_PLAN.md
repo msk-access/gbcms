@@ -221,6 +221,28 @@ material → small fix: thread `exon_boundary_dist` into
 `count_per_transcript`'s BAQ call, mirroring the main loop, with a red
 tx-count pin first.
 
+**Measured (material → fixed).** 3 junction-rich RNA samples, 2010 probes
+0–4bp inside annotated exon edges plus 397 at 25bp, two builds of one commit:
+- Main counts: identical.
+- Per-transcript RD: +3.0% at edge probes (up to 3x for single pairs).
+- Median gap between best-transcript RD and main RD: 2.5% → 0.05%
+  (p90: 6.4% → 1.45%).
+- The recovered reads' mismatch rate is ~Q30, and the best-transcript
+  mismatch rate afterwards equals the main counts'.
+- ASJD: 5800 rows changed. Some edge variants had whole known junctions,
+  thousands of fragments, invisible.
+
+**As implemented.**
+- One rule, `baq_applies` (+ `BAQ_BOUNDARY_SUPPRESS_BP`). The main counts
+  resolve it once per variant. The per-transcript and ASJD passes resolve it at
+  their own variant's position and receive it as `use_baq`.
+- A DEBUG line names each skipped variant.
+- The measurement surfaced a second defect: ASJD took each partition's
+  dominant junction in hash order. Ties flipped junction and p-value between
+  runs of the same input, which also moved 4 "control" probes. Now
+  `top_junctions` breaks ties: when REF's and ALT's tied-top sets overlap,
+  both report the shared junction and no test is run; otherwise the leftmost.
+
 ## T7 — MNP rescue (`--rescue-mnp`, opt-in): report only what the BAM shows
 
 **Principle (operator, 2026-09-23).** The BAM is the truth; sign-out is one

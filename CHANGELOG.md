@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — one BAQ rule across RNA views; deterministic ASJD junctions
+
+- Per-transcript counts and ASJD now apply the main counts' exon-boundary BAQ
+  exception: BAQ is skipped at variants within 5bp of an annotated exon boundary,
+  where its CIGAR-N penalty lands on exactly the reads that splice there.
+  Before, both applied BAQ regardless. Measured on three junction-rich RNA
+  samples at 2010 exon-edge probes:
+  - per-transcript REF counts were ~3% low overall, and some transcripts lost
+    all their spliced REF reads. The median gap to the main counts drops from
+    2.5% to 0.05%, and the per-transcript mismatch rate now equals the main
+    counts';
+  - ASJD saw no junction at some edge variants, including known junctions
+    carried by thousands of fragments.
+
+  Main counts are unchanged. Probes away from a boundary are unaffected, apart
+  from `asjd_qval`, which is corrected across the sample.
+- ASJD's dominant junction no longer depends on hash order. On a tie, the same
+  input could report a significant divergence on one run and none on the next.
+  A tie is now not a divergence: when REF's and ALT's tied-top junctions
+  overlap, both report the shared junction and no test is run. Otherwise the
+  leftmost top junction is reported.
+
 ### Added — observability for silent fallbacks (no count changes)
 
 - `SW_FALLBACK(n)` in `gbcms_diagnostic`, plus one WARN per affected variant

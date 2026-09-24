@@ -130,6 +130,11 @@ overlaps multiple transcripts with different exon structures.
    - A read's CIGAR `N` operations (splice junctions) are compared
      against the transcript's annotated splice sites.
    - Reads with matching splice junctions are counted toward that transcript.
+4. Alleles are classified under the same base-quality rules as the main
+   counts, including the exon-boundary BAQ exception
+   ([RNA Splice-Junction Handling](rna-splice-handling.md)). For the
+   transcript every read is compatible with, the per-transcript counts equal
+   the variant's counts.
 
 ### Output Columns
 
@@ -170,6 +175,14 @@ For each variant:
 5. Counts are deduped **per fragment** (by QNAME): a molecule whose R1 and R2 both
    span the same junction votes once, so the junction totals and the strand-discordance
    test reflect independent fragments, not mates.
+6. Each allele's **dominant junction** is the one with the most fragments. A tie
+   is not a divergence: when REF's and ALT's tied-top junctions overlap, both
+   report the shared junction and no test is run. Otherwise each reports its
+   leftmost top junction, and Fisher's exact test compares the two. The choice
+   is deterministic: the same input always gives the same junctions and p-value.
+7. Alleles are classified under the main counts' base-quality rules, including
+   the exon-boundary BAQ exception, so the spliced reads at an exon-edge
+   variant are ASJD evidence rather than masked.
 
 ### Output Columns (14 ASJD)
 

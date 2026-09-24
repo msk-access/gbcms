@@ -1397,10 +1397,16 @@ fn count_bin_shared(
         // are compatible with that transcript's intron structure. Reuses the
         // same read cache — no additional BAM I/O.
         if let Some(ref annot) = *annotation {
+            // The main counts' BAQ rule, resolved at this variant's position
+            // (a decomposed winner may sit elsewhere, so not final_counts').
+            let use_baq = baq_applies(
+                apply_baq,
+                Some(annot.nearest_splice_distance(&variant.chrom, variant.pos)),
+            );
             let (read_cts, frag_cts) = count_per_transcript(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
-                backend, apply_baq, umi_tag, enforce_strandedness, strandedness,
+                backend, use_baq, umi_tag, enforce_strandedness, strandedness,
                 amplicon_mode,
             );
             final_counts.transcript_read_counts = read_cts;
@@ -1412,7 +1418,7 @@ fn count_bin_shared(
             // via benjamini_hochberg() in count_bam_binned().
             let asjd = detect_asjd(
                 &read_cache, variant, siblings, annot,
-                min_mapq, min_baseq, backend, apply_baq, enforce_strandedness, strandedness,
+                min_mapq, min_baseq, backend, use_baq, enforce_strandedness, strandedness,
                 fasta_reader,
             );
             final_counts.asjd_flag = asjd.flag;
@@ -1564,6 +1570,13 @@ fn count_variant_from_cache(
         annot.nearest_splice_distance(&variant.chrom, variant.pos)
     });
     counts.exon_boundary_dist = exon_boundary_dist;
+    let use_baq = baq_applies(apply_baq, exon_boundary_dist);
+    if apply_baq && !use_baq {
+        debug!(
+            "BAQ skipped at {}:{}: {}bp from an annotated exon boundary",
+            variant.chrom, variant.pos + 1, exon_boundary_dist.unwrap_or_default(),
+        );
+    }
 
     // Fragment tracking: QNAME hash -> FragmentEvidence
     let mut fragments: HashMap<u64, FragmentEvidence> = HashMap::new();
@@ -1675,13 +1688,9 @@ fn count_variant_from_cache(
         // ── HEURISTIC BAQ: resolve adjusted qualities for classification.
         // When BAQ is enabled, bases near indels and splice junctions
         // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
-        // on for RNA (no upstream BQ recalibration).
-        // ── GTF-informed BAQ suppression ──
-        // At annotated splice boundaries (within 5bp), BAQ downgrade
-        // would incorrectly penalize reads that legitimately span the
-        // exon junction. Suppress BAQ when exon_boundary_dist <= 5.
-        let suppress_baq = matches!(exon_boundary_dist, Some(d) if d <= 5);
-        let baq_adjusted = if apply_baq && !suppress_baq {
+        // on for RNA (no upstream BQ recalibration). Skipped at exon edges:
+        // `use_baq` is `baq_applies`, resolved once per variant above.
+        let baq_adjusted = if use_baq {
             apply_heuristic_baq(record)
         } else {
             None
@@ -2129,7 +2138,7 @@ fn count_variant_from_cache(
 // RNA behavioral divergences remain, both binned-only because they need
 // inputs this legacy path never receives (RNA features are exempt from the
 // parity oracle per AGENTS.md invariant #1): exon-boundary BAQ suppression
-// (suppress when exon_boundary_dist <= 5; needs the GTF annotation) and
+// (`baq_applies`; needs the GTF annotation) and
 // rna_editing_site_overlap (needs the REDIportal editing-sites set).
 #[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
@@ -3067,6 +3076,9 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
 /// - Typical gene loci have 1–3 overlapping transcripts
 /// - RNA-seq depth is modest (50–200×)
 /// - No additional BAM I/O — reuses the existing read cache
+///
+/// `use_baq`: whether heuristic BAQ applies at this variant, as resolved by
+/// `baq_applies` (the main counts' rule).
 #[allow(clippy::too_many_arguments)]
 fn count_per_transcript(
     read_cache: &[Record],
@@ -3077,7 +3089,7 @@ fn count_per_transcript(
     min_baseq: u8,
     fragment_qual_threshold: u8,
     backend: &AlignmentBackend,
-    apply_baq: bool,
+    use_baq: bool,
     umi_tag: Option<[u8; 2]>,
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
@@ -3159,13 +3171,9 @@ fn count_per_transcript(
                 continue; // Incompatible junctions → skip for this transcript
             }
 
-            // ── BAQ. NOTE: unlike the main counting path, this applies BAQ
-            // unconditionally — the exon-boundary suppression (skip BAQ within
-            // 5bp of an annotated boundary, where it would penalize legitimate
-            // junction-spanning reads) is NOT applied here or in detect_asjd.
-            // Per-transcript counts near exon boundaries can therefore be
-            // slightly more conservative than the main counts.
-            let baq_adjusted = if apply_baq {
+            // ── BAQ under the main counts' rule (`use_baq`), so the spliced
+            // reads at an exon edge count here as they do in the main counts.
+            let baq_adjusted = if use_baq {
                 apply_heuristic_baq(record)
             } else {
                 None
@@ -3430,6 +3438,20 @@ impl JunctionTally {
 /// anchoring test so the two cannot disagree about what "annotated" means.
 const JUNCTION_TOLERANCE: i32 = 5;
 
+/// Heuristic BAQ is skipped at variants within this distance (bp) of an
+/// annotated exon boundary: its CIGAR-N penalty would land on exactly the
+/// reads that splice there, which are the evidence at an exon edge.
+const BAQ_BOUNDARY_SUPPRESS_BP: i32 = 5;
+
+/// Whether heuristic BAQ applies at a variant. The one rule every view that
+/// classifies alleles uses (main counts, per-transcript counts, ASJD), so a
+/// transcript's counts decompose the main counts: BAQ was requested, and the
+/// variant is not within `BAQ_BOUNDARY_SUPPRESS_BP` of an annotated exon
+/// boundary (`exon_boundary_dist`; None without a GTF).
+fn baq_applies(apply_baq: bool, exon_boundary_dist: Option<i32>) -> bool {
+    apply_baq && !matches!(exon_boundary_dist, Some(d) if d <= BAQ_BOUNDARY_SUPPRESS_BP)
+}
+
 /// Minimum fragments of REF-side junction evidence ASJD speaks on (below it:
 /// `LOW_REF_JUNC`). Also the floor for `RETENTION_DOMINANT`, whose count is
 /// the spliced (overwhelmingly wild-type) population — REF-side evidence.
@@ -3637,6 +3659,16 @@ fn canonical_motif(donor: [u8; 2], acceptor: [u8; 2]) -> Option<&'static str> {
     }
 }
 
+/// The junctions tied for the most fragments in one ASJD partition, leftmost
+/// first. Empty for an empty partition.
+fn top_junctions(counts: &HashMap<(i64, i64), JunctionStrandCounts>) -> Vec<(i64, i64)> {
+    let max = counts.values().map(|sc| sc.total()).max().unwrap_or(0);
+    let mut top: Vec<(i64, i64)> =
+        counts.iter().filter(|(_, sc)| sc.total() == max).map(|(j, _)| *j).collect();
+    top.sort_unstable();
+    top
+}
+
 /// Canonical motif name, or `"OTHER"` when non-canonical.
 fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
     canonical_motif(donor, acceptor).unwrap_or("OTHER").to_string()
@@ -3663,6 +3695,8 @@ fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
 /// - `sibling_variants`: Multi-allelic sibling variants at the same locus
 /// - `annotation`: The GTF annotation index
 /// - `min_mapq`, `min_baseq`, etc.: Standard counting parameters
+/// - `use_baq`: whether heuristic BAQ applies at this variant, as resolved by
+///   `baq_applies` (the main counts' rule)
 #[allow(clippy::too_many_arguments)]
 fn detect_asjd(
     read_cache: &[Record],
@@ -3672,7 +3706,7 @@ fn detect_asjd(
     min_mapq: u8,
     min_baseq: u8,
     backend: &AlignmentBackend,
-    apply_baq: bool,
+    use_baq: bool,
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
@@ -3728,8 +3762,9 @@ fn detect_asjd(
             continue;
         }
 
-        // BAQ
-        let baq_adjusted = if apply_baq {
+        // BAQ under the main counts' rule (`use_baq`): at an exon edge the
+        // spliced reads are exactly ASJD's evidence.
+        let baq_adjusted = if use_baq {
             apply_heuristic_baq(record)
         } else {
             None
@@ -3839,19 +3874,19 @@ fn detect_asjd(
         };
     }
 
-    // Step 3: Find dominant junction in each partition (by total reads across both strands)
-    let (ref_dom_junc, ref_dom_strand_info) = ref_junction_counts
-        .iter()
-        .max_by_key(|(_, sc)| sc.total())
-        .map(|(j, sc)| (*j, sc))
-        .unwrap(); // safe: checked non-empty above
+    // Step 3: Find dominant junction in each partition (by total fragments across
+    // both strands). A tie is not a divergence: when the partitions' tied-top
+    // junctions overlap, both report the shared one; otherwise each reports its
+    // leftmost top junction. Never hash order, which varies run to run.
+    let ref_top = top_junctions(&ref_junction_counts);
+    let alt_top = top_junctions(&alt_junction_counts);
+    let (ref_dom_junc, alt_dom_junc) = match ref_top.iter().find(|j| alt_top.contains(j)) {
+        Some(&shared) => (shared, shared),
+        None => (ref_top[0], alt_top[0]), // safe: both partitions checked non-empty above
+    };
+    let ref_dom_strand_info = &ref_junction_counts[&ref_dom_junc];
     let n_ref_junc = ref_dom_strand_info.total();
-
-    let (alt_dom_junc, alt_dom_strand_info) = alt_junction_counts
-        .iter()
-        .max_by_key(|(_, sc)| sc.total())
-        .map(|(j, sc)| (*j, sc))
-        .unwrap(); // safe: checked non-empty above
+    let alt_dom_strand_info = &alt_junction_counts[&alt_dom_junc];
     let n_alt_junc = alt_dom_strand_info.total();
 
     // Check for multi-junction in ALT reads

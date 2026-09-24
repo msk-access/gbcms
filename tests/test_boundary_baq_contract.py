@@ -81,7 +81,6 @@ _REF = _mk_ref()
 
 
 # ── Per-transcript counts follow the main counts' BAQ rule ─────────────────
-@pytest.mark.xfail(strict=True, reason="per-transcript counts apply BAQ at exon edges")
 def test_per_transcript_matches_main_at_exon_edge(tmp_path):
     ref, alt = _REF, _alt(_REF, EDGE_SNV)
     reads = _spliced(ref, E1[1], E2[0], 30, "ref") + _spliced(
@@ -115,7 +114,6 @@ def test_baq_still_applies_away_from_exon_edges(tmp_path):
 
 
 # ── ASJD sees junction evidence at exon edges ──────────────────────────────
-@pytest.mark.xfail(strict=True, reason="ASJD applies BAQ at exon edges")
 def test_asjd_sees_junctions_at_exon_edge(tmp_path):
     """REF splices E1->E2, ALT skips E2 (E1->E3): the classic splice-disrupting
     geometry, at a variant 2bp from the donor."""
@@ -147,7 +145,6 @@ TIE_CASES = {
 }
 
 
-@pytest.mark.xfail(strict=True, reason="dominant junction taken in hash order")
 @pytest.mark.parametrize("case", sorted(TIE_CASES))
 def test_asjd_tie_is_shared_junction_not_divergence(tmp_path, case):
     ref_groups, alt_groups, shared = TIE_CASES[case]
