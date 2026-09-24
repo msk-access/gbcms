@@ -56,6 +56,9 @@ def _get_rs():
 
 logger = logging.getLogger(__name__)
 
+# Status reason for a row whose homopolymer-decomposed allele won the dual-count.
+DECOMP_REASON = "WARN_HOMOPOLYMER_DECOMP"
+
 __all__ = ["Pipeline"]
 
 
@@ -650,18 +653,17 @@ class Pipeline:
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 
-            # Append WARN_HOMOPOLYMER_DECOMP where the decomposed allele won.
-            # Append (not overwrite) so a co-occurring WARN_REF_CORRECTED / MULTI_ALLELIC
-            # survives; the verdict stays PASS. Reasons are '|'-separated.
+            # WARN_HOMOPOLYMER_DECOMP where this sample's decomposed allele won.
+            # `prepared` is shared by every sample of a run, so the flag is re-derived
+            # per sample (a previous sample's flag is dropped first); co-occurring
+            # reasons (WARN_REF_CORRECTED, MULTI_ALLELIC) survive. The verdict stays
+            # PASS. Reasons are '|'-separated.
             for idx, counts in zip(valid_indices, counts_list, strict=True):
+                pv = prepared[idx]
+                reasons = [r for r in pv.gbcms_status_reason.split("|") if r and r != DECOMP_REASON]
                 if counts.used_decomposed:
-                    pv = prepared[idx]
-                    if "WARN_HOMOPOLYMER_DECOMP" not in pv.gbcms_status_reason:
-                        pv.gbcms_status_reason = (
-                            f"{pv.gbcms_status_reason}|WARN_HOMOPOLYMER_DECOMP"
-                            if pv.gbcms_status_reason
-                            else "WARN_HOMOPOLYMER_DECOMP"
-                        )
+                    reasons.append(DECOMP_REASON)
+                pv.gbcms_status_reason = "|".join(reasons)
 
             # Merge counts back into full variant list
             # Valid variants get real counts; rejected variants get zero counts.

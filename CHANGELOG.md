@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — homopolymer-decomposed twin: strand and per-sample flag (#107)
+
+- `WARN_HOMOPOLYMER_DECOMP` is per sample again. The prepared variants are
+  shared by every sample of a run, so once one sample's corrected allele won,
+  every *later* sample's row carried the flag, whatever its reads showed.
+  Output depended on sample order.
+- In RNA with a GTF, the corrected allele takes its original's gene strand, so
+  `--enforce-strandedness` applies to it. Before, where it won, its counts
+  included antisense reads (measured: 0.065% of its depth at synthetic
+  probes).
+- The docs describe the corrected allele as built: the run with its last base
+  replaced, the same length as REF (`CCCCCC→CCCCCT`). They had described a 1bp
+  deletion plus the change (`CCCCCT` was written `CCCCT`). The SOX2 example's
+  chromosome is corrected to 3.
+
 ### Fixed — output keeps the input's contig naming (#103)
 
 - `chr`-named input (e.g. hg38 with UCSC names) no longer loses its naming in the

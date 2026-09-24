@@ -169,7 +169,7 @@ Adaptive padding=13: GCTTAAAAA... + REF/ALT + ...AAAAATTGAC  (anchored)
 
 ## Step 5: Homopolymer Decomposition Detection
 
-Some variant callers merge nearby events (e.g., a 1bp deletion + SNV in a homopolymer) into a single complex variant with an inflated deletion size. For example, `CCCCCC→T` when the reads actually show `CCCCCC→CCCCT` (a D(1) + C→T).
+Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. `CCCCCC→T` where the reads show a smaller change at the run's end. For such calls gbcms also counts a **corrected allele** and reports whichever of the two more reads support.
 
 ### Detection Criteria
 
@@ -200,14 +200,14 @@ flowchart LR
 
 ### Corrected Allele Construction
 
-When detected, a **corrected ALT allele** is built by keeping most of the homopolymer intact and appending the SNV base:
+When detected, a **corrected ALT allele** is built by keeping every base of the run but the last and replacing that last base with the base that follows the run. The corrected allele has the same length as REF:
 
 ```
 Example:  REF = CCCCCC, ALT = T, next_ref_base = T
 
 Step 1: homopolymer base = C
 Step 2: Confirmed: alt_last (T) == next_ref_base (T), T ≠ C
-Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCT
+Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCCT
 ```
 
 ### Dual-Counting Flow
@@ -221,7 +221,7 @@ flowchart TD
     Input -->|"in parallel"| CountDecomp
 
     CountOrig["count_bam(original: CCCCCC→T)"]
-    CountDecomp["count_bam(corrected: CCCCCC→CCCCT)"]
+    CountDecomp["count_bam(corrected: CCCCCC→CCCCCT)"]
 
     CountOrig --> Compare
     CountDecomp --> Compare
@@ -234,12 +234,14 @@ flowchart TD
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 ```
 
-!!! info "Self-Validating"
-    The warning flag only appears when reads *actually* support the decomposed representation better. If the original variant gets more ALT support, it's used as-is with a normal `PASS` status. This makes the approach safe — it never blindly corrects variants.
+The corrected allele is scored as unique sequence (`repeat_span` 0). In RNA with a GTF it takes the original's gene strand, so `--enforce-strandedness` applies to it as to the original. `WARN_HOMOPOLYMER_DECOMP` is set **per sample**: a row carries it only when that sample's corrected allele won.
+
+!!! warning "A heuristic arbitration"
+    The flag appears only when the corrected allele got more ALT support than the called one. If the original gets more, it is used as-is with a normal `PASS` status. The comparison is not an exact haplotype match, though. Reads at real loci carry several forms: the called delins, the corrected allele, a 1bp deletion plus the change, or other alleles of the run. Both classifiers can claim reads of forms neither describes exactly. Inspect the reads at flagged loci; a redesign is tracked in the project plan.
 
 !!! example "Real-World: SOX2"
-    **SOX2** at chr17:181430901: `CCCCCC→T` (6bp→1bp, net −5bp).
-    Original count: **alt=3**. Corrected `CCCCCC→CCCCT` count: **alt=79**.
+    **SOX2** at chr3:181430901: `CCCCCC→T` (6bp→1bp, net −5bp).
+    Original count: **alt=3**. Corrected `CCCCCC→CCCCCT` count: **alt=79**.
     Corrected wins → `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
 
 ---

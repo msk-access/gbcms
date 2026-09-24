@@ -626,6 +626,53 @@ reporting both alleles' counts at every dual-count.
   (DNA, at real twin loci). The strand part is a consistency fix with
   negligible measured effect. Priority: T10 before T9.
 
+**As implemented (narrowed after review and a read census).**
+- The review showed the measured `repeat_span` gain was confounded with the
+  twin's shape. The read census then showed the `repeat_span` change has no
+  benefit, so it was dropped. The twin stays at 0 (unique sequence), with the
+  measured reason in the code. Census at the 11 real twin loci:
+  - the called delins is exact at 4 loci, yet the twin claims 93–97% of those
+    same reads;
+  - the twin as built (`C^(L-1)X`) is exact at 1 locus;
+  - the documented D(1)+SNV form is exact at 1 locus (the 5 → 78 win);
+  - at 4 loci most reads carry other alleles of the run (same-length MNPs and
+    rewrites) that both classifiers claim.
+  - The `repeat_span` change narrowed the original's margin where the original
+    is right (by 2–15 reads), and flipped no outcome.
+- Shipped:
+  - strand inheritance, outside the GTF block, so a strand supplied upstream
+    reaches the twin;
+  - `WARN_HOMOPOLYMER_DECOMP` re-derived per sample (the prepared variants are
+    shared by all samples of a run; B's row carried A's flag);
+  - docs and comments that describe the corrected allele as built.
+- Red battery (`tests/test_decomposed_twin_contract.py`): strand, the
+  per-sample flag, and a parity guard with invariants.
+
+## T11 — Homopolymer decomposition arbitration (#111; redesign; measure first)
+
+**Finding** (T10 review and read census; pre-existing). The dual-count pits
+two permissive classifiers against each other. Reads at real loci often carry
+a third allele that neither describes, and "more ALT wins" hangs on thin
+margins (the twin claims 93–97% of the called allele's own carriers). The
+twin's allele (`REF[..len-1] + X`) does not match its documentation
+(`C^(L-2)X`).
+
+**Direction.** Arbitrate on exact haplotype support, the census method.
+- Reduce each read to its sequence across the run plus flanks (from the
+  alignment) and count the reads that carry each candidate exactly: the called
+  allele, the corrected alleles (both shapes), and "other".
+- Report the allele the reads carry, and say so when it is neither form.
+- Revisit `repeat_span` for any corrected allele kept.
+
+**Measure first.**
+- The census harness at the 11 real twin loci is the truth set.
+- Twins are rare: 13 of 61,123 signed-out deletion loci. Priority: after the
+  6.5.0 cut unless the operator decides otherwise.
+- Related, filed separately:
+  - #112: when the corrected allele wins, per-transcript/ASJD, merge,
+    observations and input validation don't follow the winner;
+  - #110: a VCF delins with a one-base ALT is treated as a pure deletion.
+
 ## Order & discipline
 
 T1 (own branch, own review) → T2 (own branch; needs the FORTE geometries) →
@@ -643,3 +690,5 @@ T10 then T9, each on its own branch; both were measured on 2026-09-24.
   0.17%. It restores MNP confirmation at right exon edges, which only the
   opt-in RNA rescue safeguard uses. It can follow the cut. The measurement
   recommends keeping `exon_boundary_dist` `pos`-based.
+- **T11 is a redesign.** It measures first on the T10 census harness and
+  follows the cut. Twins are rare (0.02% of deletion loci).

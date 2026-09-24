@@ -1,7 +1,7 @@
 //! Homopolymer decomposition detection.
 //!
-//! Detects miscollapsed D(n)+SNV events in complex variants spanning
-//! homopolymer runs, and produces a corrected ALT allele for dual-counting.
+//! Detects complex variants that may be miscollapsed in a homopolymer run and
+//! produces a corrected ALT allele to dual-count against them.
 
 use log::debug;
 
@@ -14,12 +14,19 @@ use log::debug;
 /// matches the reference base immediately AFTER the REF span — suggesting
 /// D(n) + SNV were merged into a larger deletion than the reads actually support.
 ///
-/// # Example
+/// # Corrected allele
+/// The run with its last base replaced by the base that follows it, the same
+/// length as REF:
 /// ```text
 /// ref = CCCCCC, alt = T, next_ref_base = T
 /// Homopolymer base = C, alt ends with T == next_ref_base, T ≠ C
-/// → corrected alt = CCCCT (delete 1 C, change last C→T)
+/// → corrected alt = CCCCCT (REF[..len-1] + T)
 /// ```
+/// The dual-count keeps whichever of the two alleles more reads support. Reads
+/// at real loci carry several forms — the called delins, this allele, a 1bp
+/// deletion plus the change (C^(L-2)T), or other alleles of the run — and both
+/// classifiers can claim reads of forms neither describes exactly, so the
+/// arbitration is a heuristic.
 pub(crate) fn check_homopolymer_decomp(
     ref_al: &str,
     alt_al: &str,
@@ -58,22 +65,9 @@ pub(crate) fn check_homopolymer_decomp(
         return None;
     }
 
-    // Construct the corrected ALT allele:
-    // Keep (ref_len - net_del) bases from the homopolymer, then replace
-    // the last one with the SNV base.
-    //
-    // For SOX2:  ref=CCCCCC(6), alt=T(1), net_del = 6-1 = 5
-    //   keep = 6 - 5 = 1 homopolymer base → but we need alt_len bases total
-    //   Actually: corrected = ref[net_del..] with last base → alt_last
-    //   ref[5..] = "C", change last to T → "T"... that gives alt_len=1
-    //   That's wrong. The correct decomposition:
-    //   D(1) removes 1 C → CCCCC remains → change last C→T → CCCCT
-    //   So corrected_alt = homopolymer[..ref_len-1] + alt_last_char
-    //   = "CCCCC" + "T" = "CCCCT" (5bp) — BUT: what's the corrected ref?
-    //   ref stays CCCCCC(6bp), alt becomes CCCCT(5bp) → 6bp→5bp = D(1)+SNV
-    //
-    // General: corrected alt = ref[0..ref_len-1] as string + alt's last char
-    // This assumes D(1) + SNV at the boundary. This is the minimal decomposition.
+    // Construct the corrected ALT allele: every base of the run but the last,
+    // then the base that follows the run (REF[..len-1] + alt_last) — the same
+    // length as REF.
     let mut corrected = String::with_capacity(ref_bytes.len());
     // All but the last base of the homopolymer
     for &b in &ref_bytes[..ref_bytes.len() - 1] {

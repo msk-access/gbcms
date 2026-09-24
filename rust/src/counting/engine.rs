@@ -596,7 +596,7 @@ fn count_bam_binned_core(
     observations_path: Option<&str>,
     bam_path: String,
     mut variants: Vec<Variant>,
-    decomposed: Vec<Option<Variant>>,
+    mut decomposed: Vec<Option<Variant>>,
     min_mapq: u8,
     min_baseq: u8,
     filter_duplicates: bool,
@@ -705,6 +705,16 @@ fn count_bam_binned_core(
             "Resolved gene strand from the annotation for {}/{} variants",
             resolved, variants.len(),
         );
+    }
+    // A decomposed twin shares its original's contig and position, so it takes
+    // the same strand (resolved above or supplied upstream); without it the twin
+    // counts antisense reads the original excludes wherever it wins the dual-count.
+    for (v, twin) in variants.iter().zip(decomposed.iter_mut()) {
+        if let Some(twin) = twin {
+            if twin.gene_strand.is_none() {
+                twin.gene_strand = v.gene_strand;
+            }
+        }
     }
     // Strandedness enforcement needs a gene strand per variant; variants left
     // without one (no GTF, intergenic locus, or a GTF/variant contig mismatch)
