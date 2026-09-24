@@ -1397,10 +1397,13 @@ fn count_bin_shared(
         // are compatible with that transcript's intron structure. Reuses the
         // same read cache — no additional BAM I/O.
         if let Some(ref annot) = *annotation {
+            // The main counts' BAQ rule on the main counts' own distance (a
+            // decomposed form keeps the variant's contig and position).
+            let use_baq = baq_applies(apply_baq, final_counts.exon_boundary_dist);
             let (read_cts, frag_cts) = count_per_transcript(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
-                backend, apply_baq, umi_tag, enforce_strandedness, strandedness,
+                backend, use_baq, umi_tag, enforce_strandedness, strandedness,
                 amplicon_mode,
             );
             final_counts.transcript_read_counts = read_cts;
@@ -1412,7 +1415,7 @@ fn count_bin_shared(
             // via benjamini_hochberg() in count_bam_binned().
             let asjd = detect_asjd(
                 &read_cache, variant, siblings, annot,
-                min_mapq, min_baseq, backend, apply_baq, enforce_strandedness, strandedness,
+                min_mapq, min_baseq, backend, use_baq, enforce_strandedness, strandedness,
                 fasta_reader,
             );
             final_counts.asjd_flag = asjd.flag;
@@ -1560,10 +1563,17 @@ fn count_variant_from_cache(
     // ── Compute exon boundary distance (GTF-informed) ──
     // Set once per variant, not per read. Used for BAQ suppression
     // and as an output column. None when no GTF is provided.
-    let exon_boundary_dist: Option<i32> = annotation.as_ref().map(|annot| {
+    let exon_boundary_dist: Option<i32> = annotation.as_ref().and_then(|annot| {
         annot.nearest_splice_distance(&variant.chrom, variant.pos)
     });
     counts.exon_boundary_dist = exon_boundary_dist;
+    let use_baq = baq_applies(apply_baq, exon_boundary_dist);
+    if apply_baq && !use_baq {
+        debug!(
+            "BAQ skipped at {}:{}: {}bp from an annotated exon boundary",
+            variant.chrom, variant.pos + 1, exon_boundary_dist.unwrap_or_default(),
+        );
+    }
 
     // Fragment tracking: QNAME hash -> FragmentEvidence
     let mut fragments: HashMap<u64, FragmentEvidence> = HashMap::new();
@@ -1675,13 +1685,9 @@ fn count_variant_from_cache(
         // ── HEURISTIC BAQ: resolve adjusted qualities for classification.
         // When BAQ is enabled, bases near indels and splice junctions
         // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
-        // on for RNA (no upstream BQ recalibration).
-        // ── GTF-informed BAQ suppression ──
-        // At annotated splice boundaries (within 5bp), BAQ downgrade
-        // would incorrectly penalize reads that legitimately span the
-        // exon junction. Suppress BAQ when exon_boundary_dist <= 5.
-        let suppress_baq = matches!(exon_boundary_dist, Some(d) if d <= 5);
-        let baq_adjusted = if apply_baq && !suppress_baq {
+        // on for RNA (no upstream BQ recalibration). Skipped at exon edges:
+        // `use_baq` is `baq_applies`, resolved once per variant above.
+        let baq_adjusted = if use_baq {
             apply_heuristic_baq(record)
         } else {
             None
@@ -2129,7 +2135,7 @@ fn count_variant_from_cache(
 // RNA behavioral divergences remain, both binned-only because they need
 // inputs this legacy path never receives (RNA features are exempt from the
 // parity oracle per AGENTS.md invariant #1): exon-boundary BAQ suppression
-// (suppress when exon_boundary_dist <= 5; needs the GTF annotation) and
+// (`baq_applies`; needs the GTF annotation) and
 // rna_editing_site_overlap (needs the REDIportal editing-sites set).
 #[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
@@ -3067,6 +3073,9 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
 /// - Typical gene loci have 1–3 overlapping transcripts
 /// - RNA-seq depth is modest (50–200×)
 /// - No additional BAM I/O — reuses the existing read cache
+///
+/// `use_baq`: whether heuristic BAQ applies at this variant, as resolved by
+/// `baq_applies` (the main counts' rule).
 #[allow(clippy::too_many_arguments)]
 fn count_per_transcript(
     read_cache: &[Record],
@@ -3077,7 +3086,7 @@ fn count_per_transcript(
     min_baseq: u8,
     fragment_qual_threshold: u8,
     backend: &AlignmentBackend,
-    apply_baq: bool,
+    use_baq: bool,
     umi_tag: Option<[u8; 2]>,
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
@@ -3159,13 +3168,9 @@ fn count_per_transcript(
                 continue; // Incompatible junctions → skip for this transcript
             }
 
-            // ── BAQ. NOTE: unlike the main counting path, this applies BAQ
-            // unconditionally — the exon-boundary suppression (skip BAQ within
-            // 5bp of an annotated boundary, where it would penalize legitimate
-            // junction-spanning reads) is NOT applied here or in detect_asjd.
-            // Per-transcript counts near exon boundaries can therefore be
-            // slightly more conservative than the main counts.
-            let baq_adjusted = if apply_baq {
+            // ── BAQ under the main counts' rule (`use_baq`), so the spliced
+            // reads at an exon edge count here as they do in the main counts.
+            let baq_adjusted = if use_baq {
                 apply_heuristic_baq(record)
             } else {
                 None
@@ -3430,6 +3435,20 @@ impl JunctionTally {
 /// anchoring test so the two cannot disagree about what "annotated" means.
 const JUNCTION_TOLERANCE: i32 = 5;
 
+/// Heuristic BAQ is skipped at variants within this distance (bp) of an
+/// annotated exon boundary: its CIGAR-N penalty would land on exactly the
+/// reads that splice there, which are the evidence at an exon edge.
+const BAQ_BOUNDARY_SUPPRESS_BP: i32 = 5;
+
+/// Whether heuristic BAQ applies at a variant. The one rule every view that
+/// classifies alleles uses (main counts, per-transcript counts, ASJD), so a
+/// transcript's counts decompose the main counts: BAQ was requested, and the
+/// variant is not within `BAQ_BOUNDARY_SUPPRESS_BP` of an annotated exon
+/// boundary (`exon_boundary_dist`; None without a GTF).
+fn baq_applies(apply_baq: bool, exon_boundary_dist: Option<i32>) -> bool {
+    apply_baq && !matches!(exon_boundary_dist, Some(d) if d <= BAQ_BOUNDARY_SUPPRESS_BP)
+}
+
 /// Minimum fragments of REF-side junction evidence ASJD speaks on (below it:
 /// `LOW_REF_JUNC`). Also the floor for `RETENTION_DOMINANT`, whose count is
 /// the spliced (overwhelmingly wild-type) population — REF-side evidence.
@@ -3637,6 +3656,36 @@ fn canonical_motif(donor: [u8; 2], acceptor: [u8; 2]) -> Option<&'static str> {
     }
 }
 
+/// Two junctions are the same splice event when both ends agree within
+/// `JUNCTION_TOLERANCE`: aligners place a junction a few bases apart when the
+/// sequence at the boundary is ambiguous.
+fn same_junction(a: (i64, i64), b: (i64, i64)) -> bool {
+    let tol = JUNCTION_TOLERANCE as i64;
+    (a.0 - b.0).abs() <= tol && (a.1 - b.1).abs() <= tol
+}
+
+/// The junctions tied for the most fragments in one ASJD partition, leftmost
+/// first. Empty for an empty partition.
+fn top_junctions(counts: &HashMap<(i64, i64), JunctionStrandCounts>) -> Vec<(i64, i64)> {
+    let max = counts.values().map(|sc| sc.total()).max().unwrap_or(0);
+    let mut top: Vec<(i64, i64)> =
+        counts.iter().filter(|(_, sc)| sc.total() == max).map(|(j, _)| *j).collect();
+    top.sort_unstable();
+    top
+}
+
+/// Of one partition's tied junctions (`top`, leftmost first, non-empty), the
+/// one the other partition's fragments use most; the leftmost on a further tie.
+fn most_supported(
+    top: &[(i64, i64)],
+    other: &HashMap<(i64, i64), JunctionStrandCounts>,
+) -> (i64, i64) {
+    let support = |j: &(i64, i64)| other.get(j).map_or(0, |sc| sc.total());
+    // `top` is sorted, so the first maximum is the leftmost.
+    let best = top.iter().map(support).max().unwrap_or(0);
+    *top.iter().find(|j| support(j) == best).expect("top junctions are non-empty")
+}
+
 /// Canonical motif name, or `"OTHER"` when non-canonical.
 fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
     canonical_motif(donor, acceptor).unwrap_or("OTHER").to_string()
@@ -3663,6 +3712,8 @@ fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
 /// - `sibling_variants`: Multi-allelic sibling variants at the same locus
 /// - `annotation`: The GTF annotation index
 /// - `min_mapq`, `min_baseq`, etc.: Standard counting parameters
+/// - `use_baq`: whether heuristic BAQ applies at this variant, as resolved by
+///   `baq_applies` (the main counts' rule)
 #[allow(clippy::too_many_arguments)]
 fn detect_asjd(
     read_cache: &[Record],
@@ -3672,7 +3723,7 @@ fn detect_asjd(
     min_mapq: u8,
     min_baseq: u8,
     backend: &AlignmentBackend,
-    apply_baq: bool,
+    use_baq: bool,
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
@@ -3728,8 +3779,9 @@ fn detect_asjd(
             continue;
         }
 
-        // BAQ
-        let baq_adjusted = if apply_baq {
+        // BAQ under the main counts' rule (`use_baq`): at an exon edge the
+        // spliced reads are exactly ASJD's evidence.
+        let baq_adjusted = if use_baq {
             apply_heuristic_baq(record)
         } else {
             None
@@ -3839,19 +3891,29 @@ fn detect_asjd(
         };
     }
 
-    // Step 3: Find dominant junction in each partition (by total reads across both strands)
-    let (ref_dom_junc, ref_dom_strand_info) = ref_junction_counts
-        .iter()
-        .max_by_key(|(_, sc)| sc.total())
-        .map(|(j, sc)| (*j, sc))
-        .unwrap(); // safe: checked non-empty above
+    // Step 3: Find dominant junction in each partition (by total fragments across
+    // both strands). A tie is read the least divergent way, from the reads, never
+    // from hash order (which varies run to run):
+    // - when a REF top junction and an ALT top junction are the same splice
+    //   event (`same_junction`, an exact match preferred), each partition
+    //   reports its own of that pair — a tie is not a divergence;
+    // - otherwise each partition reports the tied junction the other partition
+    //   supports most, then the leftmost.
+    let ref_top = top_junctions(&ref_junction_counts);
+    let alt_top = top_junctions(&alt_junction_counts);
+    let pairs = || ref_top.iter().flat_map(|r| alt_top.iter().map(move |a| (*r, *a)));
+    let (ref_dom_junc, alt_dom_junc) = pairs()
+        .find(|(r, a)| r == a)
+        .or_else(|| pairs().find(|&(r, a)| same_junction(r, a)))
+        .unwrap_or_else(|| {
+            (
+                most_supported(&ref_top, &alt_junction_counts),
+                most_supported(&alt_top, &ref_junction_counts),
+            )
+        });
+    let ref_dom_strand_info = &ref_junction_counts[&ref_dom_junc];
     let n_ref_junc = ref_dom_strand_info.total();
-
-    let (alt_dom_junc, alt_dom_strand_info) = alt_junction_counts
-        .iter()
-        .max_by_key(|(_, sc)| sc.total())
-        .map(|(j, sc)| (*j, sc))
-        .unwrap(); // safe: checked non-empty above
+    let alt_dom_strand_info = &alt_junction_counts[&alt_dom_junc];
     let n_alt_junc = alt_dom_strand_info.total();
 
     // Check for multi-junction in ALT reads
@@ -3861,10 +3923,8 @@ fn detect_asjd(
     }
 
     // Step 4: Compare dominant junctions
-    let same_junction = (ref_dom_junc.0 - alt_dom_junc.0).abs() <= JUNCTION_TOLERANCE as i64
-        && (ref_dom_junc.1 - alt_dom_junc.1).abs() <= JUNCTION_TOLERANCE as i64;
-
-    let (pval, flag) = if same_junction {
+    let is_same = same_junction(ref_dom_junc, alt_dom_junc);
+    let (pval, flag) = if is_same {
         // Same dominant junction → no divergence
         (1.0, false)
     } else {
@@ -3887,7 +3947,7 @@ fn detect_asjd(
     let ref_known = annotation.is_junction_known(chrom, ref_dom_junc.0, ref_dom_junc.1, JUNCTION_TOLERANCE);
     let alt_known = annotation.is_junction_known(chrom, alt_dom_junc.0, alt_dom_junc.1, JUNCTION_TOLERANCE);
 
-    if !alt_known && !same_junction {
+    if !alt_known && !is_same {
         diag_flags.push("NOVEL_ALT_JUNC".to_string());
     }
 
@@ -3907,7 +3967,7 @@ fn detect_asjd(
     );
 
     // NON_CANONICAL_MOTIF diagnostic flag
-    if !same_junction && alt_motif == "OTHER" {
+    if !is_same && alt_motif == "OTHER" {
         diag_flags.push("NON_CANONICAL_MOTIF".to_string());
     }
 
@@ -3918,7 +3978,7 @@ fn detect_asjd(
     // Undefined for an unstranded library (no transcript strand), so gate it off there.
     let alt_minority_frac = alt_dom_strand_info.minority_strand_fraction();
     if strandedness != rna::Strandedness::Unstranded
-        && !same_junction
+        && !is_same
         && n_alt_junc >= ASJD_MIN_ALT_JUNC
         && alt_minority_frac >= 0.30
     {
@@ -3964,6 +4024,26 @@ mod tests {
     use super::*;
     use rust_htslib::bam::record::CigarString;
     use std::ffi::CString;
+
+    #[test]
+    fn test_baq_applies_threshold() {
+        // Skipped within BAQ_BOUNDARY_SUPPRESS_BP of an annotated exon edge,
+        // applied beyond it and without annotation, never when not requested.
+        assert!(!baq_applies(true, Some(0)));
+        assert!(!baq_applies(true, Some(BAQ_BOUNDARY_SUPPRESS_BP)));
+        assert!(baq_applies(true, Some(BAQ_BOUNDARY_SUPPRESS_BP + 1)));
+        assert!(baq_applies(true, None));
+        assert!(!baq_applies(false, Some(50)));
+        assert!(!baq_applies(false, None));
+    }
+
+    #[test]
+    fn test_same_junction_tolerance() {
+        let j = (300, 500);
+        assert!(same_junction(j, j));
+        assert!(same_junction(j, (300 + JUNCTION_TOLERANCE as i64, 500 - JUNCTION_TOLERANCE as i64)));
+        assert!(!same_junction(j, (300, 500 + JUNCTION_TOLERANCE as i64 + 1)));
+    }
 
     #[test]
     fn test_splice_motif_orientation_by_strand() {

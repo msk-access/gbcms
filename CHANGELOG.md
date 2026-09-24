@@ -39,6 +39,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   input's rows as it lists them, then rows only a later input has, in that
   input's order. Row contents are unchanged.
 
+### Fixed — one BAQ rule across RNA views; deterministic ASJD junctions
+
+- Per-transcript counts and ASJD now apply the main counts' exon-boundary BAQ
+  exception: BAQ is skipped at variants within 5bp of an annotated exon boundary,
+  where its CIGAR-N penalty lands on exactly the reads that splice there.
+  Before, both applied BAQ regardless. Measured on three junction-rich RNA
+  samples at 2010 exon-edge probes:
+  - per-transcript REF counts were ~3% low overall, and some transcripts lost
+    all their spliced REF reads. The median gap to the main counts drops from
+    2.5% to 0.05%, and the per-transcript mismatch rate now equals the main
+    counts';
+  - ASJD saw no junction at some edge variants, including known junctions
+    carried by thousands of fragments.
+
+  Main counts are unchanged. Away from exon edges, per-transcript counts are
+  unchanged. ASJD rows change there only where the tie rule below applies, or
+  through `asjd_qval`, which is corrected across the sample.
+- ASJD's dominant junction no longer depends on hash order. On a tie, the same
+  input could report a significant divergence on one run and none on the next.
+  A tie is now not a divergence: when a REF top junction and an ALT top junction
+  are the same splice event (both ends within 5bp, ASJD's tolerance
+  throughout), each allele reports its own of the pair and no test is run.
+  Otherwise each allele reports the tied junction the other allele's fragments
+  use most, and the leftmost only on a further tie. Coordinates alone could
+  otherwise decide the Fisher cells and `asjd_flag`.
+- `exon_boundary_dist` is found in any contig naming. A `chrM` variant against
+  an `MT`-named GTF read `2147483647`, and so did any contig the GTF does not
+  annotate. The first now reads the real distance, so the exon-edge rule
+  applies there. The second is now empty. The column is documented as the
+  unsigned distance it has always been; it was previously documented as
+  signed.
+
 ### Added — observability for silent fallbacks (no count changes)
 
 - `SW_FALLBACK(n)` in `gbcms_diagnostic`, plus one WARN per affected variant
