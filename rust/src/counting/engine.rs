@@ -3674,6 +3674,18 @@ fn top_junctions(counts: &HashMap<(i64, i64), JunctionStrandCounts>) -> Vec<(i64
     top
 }
 
+/// Of one partition's tied junctions (`top`, leftmost first, non-empty), the
+/// one the other partition's fragments use most; the leftmost on a further tie.
+fn most_supported(
+    top: &[(i64, i64)],
+    other: &HashMap<(i64, i64), JunctionStrandCounts>,
+) -> (i64, i64) {
+    let support = |j: &(i64, i64)| other.get(j).map_or(0, |sc| sc.total());
+    // `top` is sorted, so the first maximum is the leftmost.
+    let best = top.iter().map(support).max().unwrap_or(0);
+    *top.iter().find(|j| support(j) == best).expect("top junctions are non-empty")
+}
+
 /// Canonical motif name, or `"OTHER"` when non-canonical.
 fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
     canonical_motif(donor, acceptor).unwrap_or("OTHER").to_string()
@@ -3880,18 +3892,25 @@ fn detect_asjd(
     }
 
     // Step 3: Find dominant junction in each partition (by total fragments across
-    // both strands). A tie is not a divergence: when a REF top junction and an
-    // ALT top junction are the same splice event (`same_junction`, an exact
-    // match preferred), each partition reports its own of that pair; otherwise
-    // each reports its leftmost top junction. Never hash order, which varies
-    // run to run.
+    // both strands). A tie is read the least divergent way, from the reads, never
+    // from hash order (which varies run to run):
+    // - when a REF top junction and an ALT top junction are the same splice
+    //   event (`same_junction`, an exact match preferred), each partition
+    //   reports its own of that pair — a tie is not a divergence;
+    // - otherwise each partition reports the tied junction the other partition
+    //   supports most, then the leftmost.
     let ref_top = top_junctions(&ref_junction_counts);
     let alt_top = top_junctions(&alt_junction_counts);
     let pairs = || ref_top.iter().flat_map(|r| alt_top.iter().map(move |a| (*r, *a)));
     let (ref_dom_junc, alt_dom_junc) = pairs()
         .find(|(r, a)| r == a)
         .or_else(|| pairs().find(|&(r, a)| same_junction(r, a)))
-        .unwrap_or((ref_top[0], alt_top[0])); // safe: both partitions checked non-empty above
+        .unwrap_or_else(|| {
+            (
+                most_supported(&ref_top, &alt_junction_counts),
+                most_supported(&alt_top, &ref_junction_counts),
+            )
+        });
     let ref_dom_strand_info = &ref_junction_counts[&ref_dom_junc];
     let n_ref_junc = ref_dom_strand_info.total();
     let alt_dom_strand_info = &alt_junction_counts[&alt_dom_junc];

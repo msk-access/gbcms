@@ -29,7 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A tie is now not a divergence: when a REF top junction and an ALT top junction
   are the same splice event (both ends within 5bp, ASJD's tolerance
   throughout), each allele reports its own of the pair and no test is run.
-  Otherwise the leftmost top junction is reported.
+  Otherwise each allele reports the tied junction the other allele's fragments
+  use most, and the leftmost only on a further tie. Coordinates alone could
+  otherwise decide the Fisher cells and `asjd_flag`.
 - `exon_boundary_dist` is found in any contig naming. A `chrM` variant against
   an `MT`-named GTF read `2147483647`, and so did any contig the GTF does not
   annotate. The first now reads the real distance, so the exon-edge rule

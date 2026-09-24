@@ -251,6 +251,10 @@ Review round:
   lookup does, and returns `Option`. `chrM` against an `MT` GTF and
   unannotated contigs read 2147483647 before.
 - The per-transcript and ASJD passes reuse the main counts' distance.
+- Non-shared ties are broken by evidence (`most_supported`): each allele takes
+  the tied junction the other allele uses most, then the leftmost. A leftmost-
+  only rule let coordinates flip the flag, e.g. p 0.003 vs 0.16 on the same
+  reads.
 - Shared RNA fixtures moved to `tests/rna_fixtures.py`.
 - Pre-existing and out of scope, flagged separately: the BAQ rule and
   `exon_boundary_dist` key on `pos`, not the variant span; the decomposed twin

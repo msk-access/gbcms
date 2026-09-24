@@ -183,8 +183,10 @@ For each variant:
    is not a divergence. When a REF top junction and an ALT top junction are the
    same splice event, each allele reports its own of that pair and no test is
    run. "Same" means both ends within 5bp, the tolerance ASJD uses throughout;
-   an exact match is preferred. Otherwise each allele reports its leftmost top
-   junction, and Fisher's exact test compares the two. The choice is
+   an exact match is preferred. Otherwise each allele reports, among its tied
+   junctions, the one the other allele's fragments use most (the leftmost only
+   on a further tie), and Fisher's exact test compares the two. The verdict
+   therefore follows the reads, not the coordinates. The choice is
    deterministic: the same input always gives the same junctions and p-value.
 7. Alleles are classified under the main counts' base-quality rules, including
    the exon-boundary BAQ exception, so the spliced reads at an exon-edge

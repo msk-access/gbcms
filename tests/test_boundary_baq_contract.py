@@ -209,17 +209,7 @@ TIE_CASES = {
 }
 
 
-@pytest.mark.parametrize(
-    "case",
-    [
-        (
-            pytest.param(c, marks=pytest.mark.xfail(strict=True, reason="tie broken by coordinate"))
-            if c.endswith("_by_evidence")
-            else c
-        )
-        for c in sorted(TIE_CASES)
-    ],
-)
+@pytest.mark.parametrize("case", sorted(TIE_CASES))
 def test_asjd_dominant_junction_ties(tmp_path, case):
     ref_groups, alt_groups, expected = TIE_CASES[case]
     ref, alt = _REF, _alt(_REF, MID_SNV)
