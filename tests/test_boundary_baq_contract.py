@@ -24,20 +24,20 @@ Committed red (xfail-strict) before the implementation; flipped green with it.
 
 import pytest
 from helpers import make_read
-from test_asjd2_contract import (
+from rna_fixtures import (
     E1,
     E2,
     E3,
     READ_LEN,
     SENSE,
-    _bam,
-    _fasta,
-    _gtf,
-    _mk_ref,
-    _run,
-    _spliced,
-    _through,
-    _vcf,
+    mk_ref,
+    run_rna,
+    spliced,
+    through,
+    write_bam,
+    write_fasta,
+    write_gtf,
+    write_vcf,
 )
 
 TX = "T1"  # the GTF's one transcript: E1-E2-E3
@@ -66,24 +66,24 @@ def _tx(row, col="transcript_read_counts"):
 
 def _one(tmp_path, pos, reads, outname="out"):
     ref = _REF
-    (row,) = _run(
+    (row,) = run_rna(
         tmp_path,
-        _vcf(tmp_path, [(pos + 1, ref[pos], _alt(ref, pos))]),
-        _bam(tmp_path, ref, reads, name=f"{outname}.bam"),
-        _fasta(tmp_path, ref),
-        _gtf(tmp_path),
+        write_vcf(tmp_path, [(pos + 1, ref[pos], _alt(ref, pos))]),
+        write_bam(tmp_path, ref, reads, name=f"{outname}.bam"),
+        write_fasta(tmp_path, ref),
+        write_gtf(tmp_path),
         outname=outname,
     )
     return row
 
 
-_REF = _mk_ref()
+_REF = mk_ref()
 
 
 # ── Per-transcript counts follow the main counts' BAQ rule ─────────────────
 def test_per_transcript_matches_main_at_exon_edge(tmp_path):
     ref, alt = _REF, _alt(_REF, EDGE_SNV)
-    reads = _spliced(ref, E1[1], E2[0], 30, "ref") + _spliced(
+    reads = spliced(ref, E1[1], E2[0], 30, "ref") + spliced(
         _with(ref, EDGE_SNV, alt), E1[1], E2[0], 10, "alt"
     )
     row = _one(tmp_path, EDGE_SNV, reads)
@@ -107,7 +107,7 @@ def test_baq_still_applies_away_from_exon_edges(tmp_path):
         near_del.append(
             make_read(f"del{i}", seq, s, ((0, left), (2, 1), (0, READ_LEN - left)), flag=SENSE)
         )
-    row = _one(tmp_path, pos, near_del + _through(ref, pos, ref[pos], 20, "ok"))
+    row = _one(tmp_path, pos, near_del + through(ref, pos, ref[pos], 20, "ok"))
     assert int(row["ref_count"]) == 20, "BAQ masks the deletion-adjacent reads in the main counts"
     ad, rd, _ = _tx(row)[TX]
     assert (ad, rd) == (0, 20)
@@ -118,7 +118,7 @@ def test_asjd_sees_junctions_at_exon_edge(tmp_path):
     """REF splices E1->E2, ALT skips E2 (E1->E3): the classic splice-disrupting
     geometry, at a variant 2bp from the donor."""
     ref, alt = _REF, _alt(_REF, EDGE_SNV)
-    reads = _spliced(ref, E1[1], E2[0], 30, "ref") + _spliced(
+    reads = spliced(ref, E1[1], E2[0], 30, "ref") + spliced(
         _with(ref, EDGE_SNV, alt), E1[1], E3[0], 10, "skip"
     )
     row = _one(tmp_path, EDGE_SNV, reads)
@@ -150,8 +150,8 @@ def test_asjd_tie_is_shared_junction_not_divergence(tmp_path, case):
     ref_groups, alt_groups, shared = TIE_CASES[case]
     ref, alt = _REF, _alt(_REF, MID_SNV)
     mutant = _with(ref, MID_SNV, alt)
-    reads = [r for acc, n, p in ref_groups for r in _spliced(ref, E1[1], acc, n, p)] + [
-        r for acc, n, p in alt_groups for r in _spliced(mutant, E1[1], acc, n, p)
+    reads = [r for acc, n, p in ref_groups for r in spliced(ref, E1[1], acc, n, p)] + [
+        r for acc, n, p in alt_groups for r in spliced(mutant, E1[1], acc, n, p)
     ]
     seen = set()
     for k in range(REPEATS):
