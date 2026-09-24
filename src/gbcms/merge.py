@@ -244,6 +244,9 @@ def merge_mafs(config: MergeConfig) -> None:
                     t,
                 )
 
+    if "duplex" in frames and "simplex" in frames:
+        _warn_mixed_rescue(result, combined=config.add_combined)
+
     # Legacy naming pass (rename {type}_{metric} → t_{metric}_{type})
     if config.legacy_naming:
         result = _apply_legacy_naming(result, types)
@@ -255,6 +258,48 @@ def merge_mafs(config: MergeConfig) -> None:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _rescued_component(audit: str) -> str | None:
+    """The adopted component label of a ``gbcms_rescue`` value, or None if not rescued."""
+    fields = dict(part.split("=", 1) for part in audit.split(";") if "=" in part)
+    return fields.get("adopted") if fields.get("outcome") == "rescued" else None
+
+
+def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
+    """Warn on rows whose duplex and simplex MNP rescue outcomes differ.
+
+    A rescued row reports a component SNV's counts under the MNP's coordinates.
+    When only one flavor was rescued — or the two adopted different components —
+    the two flavors' counts describe different alleles, and the combined
+    columns add them. Counts are left as they are; the rows are named in the
+    log. No-op when rescue was not run (no ``gbcms_rescue`` columns).
+    """
+    d, s = "duplex_gbcms_rescue", "simplex_gbcms_rescue"
+    if d not in result.columns or s not in result.columns:
+        return
+    mixed = 0
+    for row in result.select([*VARIANT_KEY, d, s]).iter_rows(named=True):
+        d_comp, s_comp = _rescued_component(row[d] or ""), _rescued_component(row[s] or "")
+        if d_comp == s_comp:
+            continue
+        mixed += 1
+        logger.warning(
+            "Mixed MNP rescue at %s:%s %s>%s — duplex %s, simplex %s%s",
+            row["Chromosome"],
+            row["Start_Position"],
+            row["Reference_Allele"],
+            row["Tumor_Seq_Allele2"],
+            f"reports component {d_comp}" if d_comp else "reports the MNP",
+            f"reports component {s_comp}" if s_comp else "reports the MNP",
+            "; the simplex_duplex_* columns add counts of different alleles" if combined else "",
+        )
+    if mixed:
+        logger.warning(
+            "Mixed MNP rescue: %d row(s) where duplex and simplex rescue outcomes differ "
+            "(see gbcms_rescue per flavor)",
+            mixed,
+        )
 
 
 def _validate_variant_key(

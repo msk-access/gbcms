@@ -36,7 +36,6 @@ import re
 import types
 
 import pysam
-import pytest
 from helpers import make_read
 from typer.testing import CliRunner
 
@@ -397,9 +396,6 @@ def test_confirmed_haplotype_is_not_rescued(tmp_path):
     _assert_counting_invariants(row)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="T7 item 12: zero-confirmed gate, output-named labels, merge warning"
-)
 def test_one_read_showing_the_whole_mnp_blocks_rescue(tmp_path):
     plain = _run(tmp_path, {"S": _component_reads_with_whole_mnp_read()}, [MNP_ROW], rescue=False)
     (row,) = _run(tmp_path, {"S": _component_reads_with_whole_mnp_read()}, [MNP_ROW])["S"]
@@ -513,9 +509,6 @@ def test_indel_row_with_dominant_partial_is_never_rescued(tmp_path):
     _assert_counting_invariants(row)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="T7 item 12: zero-confirmed gate, output-named labels, merge warning"
-)
 def test_rescue_labels_follow_the_output_contig_naming(tmp_path):
     fasta = tmp_path / "ref.fasta"
     fasta.write_text(">chr1\n" + REF + "\n")
@@ -579,9 +572,6 @@ def _merge(tmp_path, duplex_reads, simplex_reads):
     return " ".join(result.output.split())
 
 
-@pytest.mark.xfail(
-    strict=True, reason="T7 item 12: zero-confirmed gate, output-named labels, merge warning"
-)
 def test_merge_warns_when_duplex_and_simplex_rescue_differ(tmp_path):
     log = _merge(tmp_path, _component_carrier_reads(), _cis_carrier_reads())
     assert "Mixed MNP rescue" in log

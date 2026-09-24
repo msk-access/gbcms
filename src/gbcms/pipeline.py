@@ -11,7 +11,6 @@ This module handles:
 """
 
 import logging
-import math
 import time
 import types
 from collections import Counter
@@ -241,16 +240,15 @@ def _resolve_mnp_rescue(
     return "rescued", best_idx
 
 
-def _confirmed_error_allowance(partial_alt: int, min_baseq: int) -> int:
-    """Confirmed full-haplotype reads that sequencing error alone can explain.
+def _output_contig(variant: Variant) -> str:
+    """The contig name as the output row writes it.
 
-    A single-change carrier reads as confirmed only if an error at another
-    discriminating base produces exactly the ALT base there. At the base
-    quality threshold the per-base error rate is at most ``10^(-min_baseq/10)``
-    (1% at the default Q20), so at most that fraction of ``partial_alt`` reads
-    can turn into error-made confirmed reads — rounded up.
+    MAF input rows are written from their own columns, so their ``Chromosome``
+    keeps the input's naming (e.g. ``chr1``); other rows are written from the
+    internal name, which strips ``chr``. Labels derived from a row (rescue flag
+    and audit) use this so they always match the row.
     """
-    return math.ceil(partial_alt * 10 ** (-min_baseq / 10))
+    return variant.metadata.get("Chromosome", variant.chrom)
 
 
 def _format_rescue_audit(
@@ -640,7 +638,7 @@ class Pipeline:
 
             # Post-counting: MNP rescue pass (optional, --rescue-mnp)
             if self.config.rescue_mnp:
-                self._rescue_mnp_pass(prepared, full_counts, bam_path, sample_name)
+                self._rescue_mnp_pass(prepared, full_counts, variants, bam_path, sample_name)
 
             # Write Output (all variants, including rejected with zero counts)
             self._write_output(sample_name, variants, full_counts, prepared)
@@ -826,6 +824,7 @@ class Pipeline:
         self,
         prepared: list,
         full_counts: list,
+        variants: list[Variant],
         bam_path: Path,
         sample_name: str,
     ) -> None:
@@ -857,10 +856,12 @@ class Pipeline:
         component re-count would hand contested reads back.
 
         MNPs whose haplotype the BAM shows are kept (``outcome=haplotype_confirmed``,
-        no re-count): when more reads show every changed base (``mnp_confirmed_alt``)
-        than sequencing error can explain (:func:`_confirmed_error_allowance`),
-        the annotated allele is present — e.g. a somatic change on top of a germline
-        SNP — and adopting a component would report the other allele instead.
+        no re-count): if even one read shows every changed base
+        (``mnp_confirmed_alt > 0``), the annotated allele is present — e.g. a
+        somatic change on top of a germline SNP — and adopting a component would
+        report a different allele. Every correct rescue seen in real data had
+        zero such reads; an error-made one needs a specific high-quality
+        substitution at another changed base.
 
         ``gbcms_rescue`` is reset for every variant first: ``prepared`` is shared
         by all samples of a run, so a value set for an earlier sample would
@@ -870,7 +871,6 @@ class Pipeline:
             pv.gbcms_rescue = ""
 
         rescue_start = time.perf_counter()
-        min_baseq = self.config.quality.min_base_quality
         outcomes: Counter[str] = Counter()
         candidates: list[tuple[int, list[tuple[int, str, str]]]] = []
         for i, (pv, counts) in enumerate(zip(prepared, full_counts, strict=True)):
@@ -881,32 +881,29 @@ class Pipeline:
             ):
                 continue
             v = pv.variant
+            contig = _output_contig(variants[i])
             if pv.multi_allelic_group is not None:
                 pv.gbcms_rescue = _format_rescue_audit("skipped_grouped", counts)
                 outcomes["skipped_grouped"] += 1
                 logger.debug(
                     "MNP rescue: %s:%d %s>%s skipped — co-annotated group %d owns its reads",
-                    v.chrom,
+                    contig,
                     v.pos + 1,
                     v.ref_allele,
                     v.alt_allele,
                     pv.multi_allelic_group,
                 )
                 continue
-            allowance = _confirmed_error_allowance(counts.partial_alt, min_baseq)
-            if counts.mnp_confirmed_alt > allowance:
+            if counts.mnp_confirmed_alt > 0:
                 pv.gbcms_rescue = _format_rescue_audit("haplotype_confirmed", counts)
                 outcomes["haplotype_confirmed"] += 1
                 logger.debug(
-                    "MNP rescue: %s:%d %s>%s kept — %d read(s) show the whole haplotype "
-                    "(error allowance %d at Q%d)",
-                    v.chrom,
+                    "MNP rescue: %s:%d %s>%s kept — %d read(s) show the whole haplotype",
+                    contig,
                     v.pos + 1,
                     v.ref_allele,
                     v.alt_allele,
                     counts.mnp_confirmed_alt,
-                    allowance,
-                    min_baseq,
                 )
                 continue
             candidates.append((i, _mnp_discriminating_positions(v)))
@@ -917,7 +914,8 @@ class Pipeline:
         for (i, positions), components in zip(candidates, component_counts, strict=True):
             pv, original = prepared[i], full_counts[i]
             v = pv.variant
-            labels = [f"{v.chrom}:{pos + 1}({ref}>{alt})" for pos, ref, alt in positions]
+            contig = _output_contig(variants[i])
+            labels = [f"{contig}:{pos + 1}({ref}>{alt})" for pos, ref, alt in positions]
             entries = [
                 f"{label}:{'ref_fail' if c is None else c.ad}"
                 for label, c in zip(labels, components, strict=True)
@@ -932,7 +930,7 @@ class Pipeline:
                     logging.WARNING if outcome == "ref_validation_failed" else logging.DEBUG,
                     "MNP rescue: %s:%d %s>%s not rescued (%s) — MNP ad=%d partial_alt=%d, "
                     "components %s; counts left as the MNP evaluation",
-                    v.chrom,
+                    contig,
                     v.pos + 1,
                     v.ref_allele,
                     v.alt_allele,
@@ -949,14 +947,14 @@ class Pipeline:
             pv.gbcms_diagnostic = ";".join(
                 [
                     *self._diagnostic_flags(v, adopted),
-                    f"RESCUED_COMPONENT({v.chrom}:{best_pos + 1}:{best_ref}>{best_alt})",
+                    f"RESCUED_COMPONENT({contig}:{best_pos + 1}:{best_ref}>{best_alt})",
                 ]
             )
             pv.gbcms_rescue = _format_rescue_audit(outcome, original, entries, labels[best])
             logger.warning(
                 "MNP rescue: %s:%d %s>%s now reports component %s (ALT %d, REF %d); the MNP "
                 "itself had ALT %d (%d showing the whole haplotype), partial %d",
-                v.chrom,
+                contig,
                 v.pos + 1,
                 v.ref_allele,
                 v.alt_allele,
