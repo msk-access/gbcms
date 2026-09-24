@@ -648,7 +648,7 @@ reporting both alleles' counts at every dual-count.
 - Red battery (`tests/test_decomposed_twin_contract.py`): strand, the
   per-sample flag, and a parity guard with invariants.
 
-## T11 — Homopolymer decomposition arbitration (redesign; measure first)
+## T11 — Homopolymer decomposition arbitration (#111; redesign; measure first)
 
 **Finding** (T10 review and read census; pre-existing). The dual-count pits
 two permissive classifiers against each other. Reads at real loci often carry
@@ -668,6 +668,10 @@ twin's allele (`REF[..len-1] + X`) does not match its documentation
 - The census harness at the 11 real twin loci is the truth set.
 - Twins are rare: 13 of 61,123 signed-out deletion loci. Priority: after the
   6.5.0 cut unless the operator decides otherwise.
+- Related, filed separately:
+  - #112: when the corrected allele wins, per-transcript/ASJD, merge,
+    observations and input validation don't follow the winner;
+  - #110: a VCF delins with a one-base ALT is treated as a pure deletion.
 
 ## Order & discipline
 
