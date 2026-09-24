@@ -8,6 +8,7 @@ Covers:
   - CLI integration via CliRunner
 """
 
+import random
 from pathlib import Path
 
 import polars as pl
@@ -1074,3 +1075,42 @@ def test_merge_handles_provenance_comment_lines(tmp_path):
     # Ensure no comment artifacts leaked into column names
     comment_cols = [c for c in result.columns if c.startswith("#")]
     assert comment_cols == [], f"Comment lines leaked as columns: {comment_cols}"
+
+
+# ── Row order follows the inputs ─────────────────────────────────────────────
+
+
+@pytest.mark.xfail(strict=True, reason="full join output order varies run to run")
+@pytest.mark.parametrize("n_inputs", [2, 3])
+def test_merge_row_order_follows_inputs(tmp_path, n_inputs):
+    """Merged rows follow the inputs' order, identically on every run: the first
+    input's rows as it lists them, then rows only a later input has, in that
+    input's order. A full join guarantees no order, and on real merges it varied
+    run to run, so merged MAFs could not be diffed across runs."""
+    rng = random.Random(11)
+    first = rng.sample(range(1000, 9000), 150)
+    later = [first[40:120] + rng.sample(range(10000, 20000), 70)]
+    if n_inputs == 3:
+        later.append(first[100:140] + later[0][-30:] + rng.sample(range(30000, 40000), 50))
+    for rows in later:
+        rng.shuffle(rows)
+    types = ["duplex", "simplex", "standard"][:n_inputs]
+    paths = {}
+    for t, positions in zip(types, [first, *later], strict=True):
+        paths[t] = tmp_path / f"{t}.maf"
+        _write_test_maf(
+            paths[t], [_make_variant_row(chrom="1", start=str(p), end=str(p)) for p in positions]
+        )
+    expected, seen = [], set()
+    for positions in [first, *later]:
+        for p in positions:
+            if p not in seen:
+                seen.add(p)
+                expected.append(str(p))
+
+    for k in range(5):
+        out = tmp_path / f"merged{k}.maf"
+        merge_mafs(MergeConfig(inputs=paths, output=out, add_combined=False))
+        result = pl.read_csv(out, separator="\t", infer_schema_length=0)
+        assert result["Start_Position"].to_list() == expected, f"run {k}"
+        assert not any(c.startswith("_") for c in result.columns), result.columns
