@@ -269,11 +269,9 @@ rounding up always excuses one read.
 
 ### Remaining work — item 12 "simplify and close"
 
-**Decision pending (operator):**
-- **Path A (recommended):** simplify the gate — steps 12a–12f.
-- **Path B:** keep only the bug fixes, return the gate to the original
-  strict `ad == 0`, drop 12a/12b; do 12c–12e and 12f without the cohort
-  rescues. Wrongly merged MNP annotations are then handled upstream.
+**Decision (operator, 2026-09-23): path A** — simplify the gate, steps
+12a–12g. (Path B, returning to `ad == 0`, was declined; logged in
+`REJECTED.md`.)
 
 **12a. One rule instead of an allowance.** Rescue only when *no* read shows
 the whole MNP (`mnp_confirmed_alt == 0`) and partial reads outnumber full-ALT
@@ -291,10 +289,12 @@ rows. Counts unchanged in this PR. Follow-up ticket: leave the combined
 columns empty (NA) for such rows and write a conflicts file beside the merged
 MAF.
 
-**12c. Labels without contig names.** `RESCUED_COMPONENT(pos:REF>ALT)` and
-audit labels `pos(REF>ALT)` — the row's own Chromosome column names the
-contig. Fixes the mismatch for chr-prefixed MAF input (row `chr1`, label
-`1`); never surfaced on b37 data, which has no `chr`.
+**12c. Labels use the output file's contig naming** (operator decision;
+dropping the contig was declined). `RESCUED_COMPONENT(...)` and audit labels
+take the contig exactly as the row writes it: the input MAF's `Chromosome`
+for MAF input (today they show the stripped internal name — row `chr1`,
+label `1`); for VCF input, whatever the output writes, which T8 makes the
+input's own naming. Never surfaced on b37 data, which has no `chr`.
 
 **12d. Tests.** Four counting invariants in the two engine counter tests; an
 end-to-end test that an indel row with `partial_alt > ad` is untouched by
@@ -304,7 +304,13 @@ end-to-end test that an indel row with `partial_alt > ad` is untouched by
 output-formats / dna.md / skill / CHANGELOG; BAQ caveat ("near indels BAQ can
 lower qualities so reads stop counting as showing the whole MNP").
 
-**12f. Validation (one BAM at a time).** Flag-off parity (35 runs, must stay
+**12f. Durable harnesses.** The validation harnesses lived in a session
+scratchpad and were lost on a restart. Recreate them in a local-only
+directory outside the repo (they carry patient-data paths): flag-off parity
+replay, IMPACT cohort with matched normals, per-read trace, partial-read
+make-up, BAQ effect, ACCESS duplex/simplex merge.
+
+**12g. Validation (one BAM at a time).** Flag-off parity (35 runs, must stay
 identical); both IMPACT cohorts (13 rescues must be unchanged); ACCESS merge
 study (expect 0 conflicts and no germline adoption).
 
@@ -334,10 +340,35 @@ pins). Harnesses (local, patient data): flag-off parity, IMPACT cohort with
 matched normals, per-read traces, partial-read make-up, BAQ effect, ACCESS
 duplex/simplex merge.
 
+## T8 — Output keeps the input's contig naming (#103; own branch — changes default output)
+
+**Problem (reproduced 2026-09-23, synthetic).** Readers strip `chr`
+(`CoordinateKernel.normalize_chromosome`) and `Variant` keeps no original
+name. VCF input → MAF writes `Chromosome=1` for `chr1`; VCF output writes
+records as `1` under a `##contig=<ID=chr1>` header taken from the reference
+`.fai` — a malformed VCF (htslib: "Contig '1' is not defined in the
+header"). MAF input keeps its `Chromosome` column (row passthrough), but labels
+built from the internal name (the rescue audit) show `1`. Counting is correct:
+contig reconciliation between variant file, FASTA and BAM works. Unseen so far
+because MSK b37 (`1`…`22`) and Ensembl-named hg38 have no `chr`.
+
+**Design.** Keep the input's contig name on `Variant` at read time (VCF and
+MAF readers) and write it everywhere a contig is written: MAF `Chromosome` and
+`vcf_region` for VCF input, VCF `CHROM`, and derived labels (rescue flag and
+audit — T7 12c). VCF `##contig` lines must declare the names the records use.
+Log once per run (INFO) when the input's naming differs from the reference or
+BAM naming, naming both, so the reconciliation is visible.
+
+**Tests.** `chr`-named input × {VCF, MAF} × {VCF, MAF output}: output names
+equal the input's; VCF output parses with no undefined-contig warning; b37
+naming unchanged. **Acceptance:** flag-off parity on the real-data sets stays
+byte-identical (all b37, no `chr`).
+
 ## Order & discipline
 
 T1 (own branch, own review) → T2 (own branch; needs the FORTE geometries) →
 T3+T4+T5 (one observability/cleanup branch) → T6 (measurement decides).
+T8 (contig naming, #103) follows T7 on its own branch.
 T7 is independent (Python-only, opt-in path) — own small branch
 (`feature/mnp-rescue-gate`), can land anytime; its leak fix may go first.
 Each branch: battery red → implement → suites + clippy + lint gate →
