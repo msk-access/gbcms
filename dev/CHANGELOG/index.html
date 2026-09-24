@@ -733,6 +733,15 @@
     </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#changed-mnp-rescue-reports-a-coherent-component-genotype-opt-in-rescue-mnp">
+<span class="md-ellipsis">
+      
+        ⚠️ Changed — MNP rescue reports a coherent component genotype (opt-in --rescue-mnp)
+      
+    </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -2355,6 +2364,65 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   fragment ALT counts land exactly on (or within counting-basis of)
   sign-out where the previous windowed counting over-attributed 2–5×;
   panels without co-annotated clusters are byte-identical.</li>
+</ul>
+<h3 id="changed-mnp-rescue-reports-a-coherent-component-genotype-opt-in-rescue-mnp">⚠️ Changed — <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue reports a coherent component genotype (opt-in <code>--rescue-mnp</code>)<a class="headerlink" href="#changed-mnp-rescue-reports-a-coherent-component-genotype-opt-in-rescue-mnp" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Candidate gate is partial dominance.</strong> Rescue now considers PASS
+  <code>MNP_RESCUE_ELIGIBLE</code> MNPs with <code>partial_alt &gt; alt_count</code> instead of only
+  <code>alt_count == 0</code>. Masked per-position evaluation counts a component carrier
+  whose other discriminating base is low-BQ as full ALT, so a single such
+  read blocked rescue of MNPs whose carriers hold only one component (a
+  TERT promoter GAGGG&gt;AAGGA row sat at alt 1 / partial 88).</li>
+<li><strong>Rescued rows adopt the component's full counts.</strong> Previously only
+  <code>alt_count</code> (and read <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>) changed, leaving strand, fragment, strand-bias,
+  <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> and diagnostic columns at <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> values and breaking
+  <code>alt_count = alt_count_forward + alt_count_reverse</code> in the output. A rescued
+  row now carries the winning component SNV's counts in every column (all
+  counting invariants hold, including <code>any_alt = ad + partial_alt</code>), and
+  <code>gbcms_diagnostic</code> is recomputed from them. Fragment-level consumers
+  (ACCESS, <code>gbcms merge --add-combined</code>) now see rescued counts.</li>
+<li><strong><code>gbcms_rescue</code> format</strong> (downstream parsers): every entry has
+  <code>outcome=</code> (<code>rescued</code>, <code>skipped_grouped</code>, <code>haplotype_confirmed</code>, <code>no_improvement</code>,
+  <code>ref_validation_failed</code>) and the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s own <code>original_ref</code>/<code>original_alt</code>/
+  <code>original_partial</code> (<code>original_alt</code> was hard-coded <code>0</code>); rescued rows add
+  <code>adopted=</code>. A position whose synthetic SNV failed preparation reads
+  <code>ref_fail</code> instead of a silent <code>0</code>. <code>outcome=no_signal</code> is gone.</li>
+<li><strong>MNPs whose haplotype the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> shows are kept</strong> (<code>outcome=haplotype_confirmed</code>,
+  no re-count): the engine now counts <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> ALT reads in which every
+  discriminating base was read (internal <code>BaseCounts.mnp_confirmed_alt</code>, not an
+  output column), and rescue fires only when that count is <strong>zero</strong> — no read
+  in the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> shows the annotated <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>. Validation with matched normals found
+  rescue adopting germline het SNPs where reads carried the real <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (IMPACT:
+  36 such reads; ACCESS duplex: 6); such rows now keep the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s counts. The
+  audit gains <code>original_confirmed</code>.</li>
+<li><strong>Rescue labels use the output's contig naming</strong> (an input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s own
+  <code>Chromosome</code>, e.g. <code>chr1</code>, rather than the stripped internal name).</li>
+<li><strong><code>gbcms merge</code> warns on mixed rescue:</strong> when duplex and simplex rescue
+  outcomes differ (one rescued, or different components), each row is named in
+  a WARNING with a per-run count — with or without <code>--add-combined</code>, since the
+  two flavors' columns then describe different alleles in one row (with it, the
+  <code>simplex_duplex_*</code> columns add them); counts are unchanged. When only one
+  flavor was genotyped with <code>--rescue-mnp</code>, merge says so once and names every
+  row rescued in that flavor (previously that case was silently skipped).</li>
+<li><strong>Grouped MNPs are skipped</strong> (<code>outcome=skipped_grouped</code>) so rescue cannot
+  hand back reads that exclusive assignment gave a co-annotated sibling.</li>
+<li><strong>Fixed: rescue audit leaked across samples.</strong> In a multi-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> run a later
+  sample's row could show an earlier sample's <code>gbcms_rescue</code>.</li>
+<li><strong>Rescued rows say so:</strong> <code>gbcms_diagnostic</code> (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GD</code>) gains
+  <code>RESCUED_COMPONENT(chrom:pos:REF&gt;ALT)</code> on every rescued row, each rescue
+  logs a WARNING (the component and the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s own counts), and enabling
+  <code>--rescue-mnp</code> logs a WARNING that rescued rows report a component.</li>
+<li><strong>Fixed: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GR</code> was split by parsers.</strong> The audit's positions list was
+  comma-separated and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> parsers (htslib/pysam) split a comma-bearing
+  Number=1 INFO value, silently truncating the audit. Positions are now
+  joined with <code>+</code>; the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GR</code> carry identical content.</li>
+<li>Per-sample INFO outcome summary; warnings for anomalies (a component SNV
+  failing preparation). With <code>--mfsd-parquet</code>, a rescued row's record keeps
+  the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s coordinates but carries the adopted component's fragment sizes
+  (logged per sample).</li>
+<li><code>BaseCounts.with_ad()</code> removed from the Python bindings (no remaining
+  callers).</li>
+<li>Default runs (<code>--rescue-mnp</code> off) are unchanged.</li>
 </ul>
 <h2 id="640-2026-09-22">[6.4.0] - 2026-09-22<a class="headerlink" href="#640-2026-09-22" title="Permanent link">¶</a></h2>
 <blockquote>

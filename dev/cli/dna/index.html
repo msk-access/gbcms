@@ -2353,10 +2353,12 @@ flag is passed.</p>
 </code></pre></div>
 </div>
 <h2 id="mnp-rescue-options"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Options<a class="headerlink" href="#mnp-rescue-options" title="Permanent link">¶</a></h2>
-<p>The rescue pass recovers <code>alt_count</code> for <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (multi-nucleotide polymorphism) variants where
-the full block match yields <code>ad=0</code>, by decomposing the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> into individual <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> positions and
-re-counting each one independently. See <a href="../../reference/architecture/#mnp-rescue-pass-rescue-mnp-v430">Architecture → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Pass</a>
-for the full design rationale.</p>
+<p>The rescue pass is for annotated MNPs (multi-nucleotide polymorphisms) whose carriers hold
+only a <em>component</em> of the haplotype — e.g. two SNVs on different molecules annotated as one
+<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>. gbcms correctly reports such a haplotype as absent: the carriers land in <code>partial_alt</code>,
+not <code>alt_count</code>. Rescue re-counts each discriminating position as an SNV and reports the
+best-supported component instead. See <a href="../../reference/architecture/#mnp-rescue-pass-rescue-mnp-v430">Architecture → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Pass</a>
+for the full design.</p>
 <table>
 <thead>
 <tr>
@@ -2369,7 +2371,7 @@ for the full design rationale.</p>
 <tr>
 <td style="text-align: left;"><code>--rescue-mnp</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Enable <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue pass. When <code>ad=0</code> and the variant is <code>MNP_RESCUE_ELIGIBLE</code>, decomposes the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> into individual <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> positions and re-counts via the Rust engine.</td>
+<td style="text-align: left;">Enable the rescue pass. Candidates are PASS MNPs flagged <code>MNP_RESCUE_ELIGIBLE</code> with <code>partial_alt &gt; alt_count</code>, outside co-annotated groups, and whose full haplotype no read shows. When the best component beats the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s <code>alt_count</code>, that component's full counts (every count, fragment, strand and <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> column) replace the row's, the row is flagged <code>RESCUED_COMPONENT(chrom:pos:REF&gt;ALT)</code> in <code>gbcms_diagnostic</code>, and a warning is logged; the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s own counts and the per-position split go to <code>gbcms_rescue</code>. <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output carry the same counts, flags and audit.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--rescue-mnp-threshold</code></td>
@@ -2380,11 +2382,19 @@ for the full design rationale.</p>
 </table>
 <div class="admonition info">
 <p class="admonition-title">Diagnostic Flags</p>
-<p>When rescue is enabled, two diagnostic flags are emitted for every <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> variant:</p>
+<p>Two diagnostic flags are emitted for every <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> variant, with or without <code>--rescue-mnp</code>:</p>
 <ul>
 <li><strong><code>MNP_DISC_RATIO(n/m)</code></strong> — Always emitted. Shows the ratio of discriminating positions to total <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> length.</li>
-<li><strong><code>MNP_RESCUE_ELIGIBLE</code></strong> — Emitted only when disc/len ≤ <code>--rescue-mnp-threshold</code>. Marks the variant as a rescue candidate.</li>
+<li><strong><code>MNP_RESCUE_ELIGIBLE</code></strong> — Emitted only when disc/len ≤ <code>--rescue-mnp-threshold</code>. Marks the variant as eligible; rescue additionally requires <code>partial_alt &gt; alt_count</code>. Both flags describe the annotated <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s shape, so a rescued row keeps them next to <code>RESCUED_COMPONENT(...)</code>; rows still awaiting review after a rescue run are <code>MNP_RESCUE_ELIGIBLE</code> without <code>RESCUED_COMPONENT</code>.</li>
 </ul>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">A rescued row reports a component, not the annotated <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr></p>
+<p>When reads show the whole <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (e.g. a somatic change on top of a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>), rescue
+keeps the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s counts (<code>outcome=haplotype_confirmed</code>). But where the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> itself is
+absent — typically a fillout of other timepoints or normals — a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> component
+can still be adopted, and the rescued <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is then the germline <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. Read <code>gbcms_rescue</code>
+(outcome, original counts, per-position split) before interpreting a rescued row.</p>
 </div>
 <div class="admonition tip">
 <p class="admonition-title">Choosing the threshold</p>
@@ -2578,7 +2588,7 @@ for the full design rationale.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 18, 2026 03:04:36 UTC"><span class="timeago" datetime="2026-09-18T03:04:36+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 18, 2026 03:04:36 UTC">2026-09-18</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 24, 2026 02:59:22 UTC"><span class="timeago" datetime="2026-09-24T02:59:22+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 24, 2026 02:59:22 UTC">2026-09-24</span>
   </span>
 
     
