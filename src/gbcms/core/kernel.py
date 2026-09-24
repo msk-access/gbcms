@@ -81,6 +81,7 @@ class CoordinateKernel:
             alt=alt,
             variant_type=vtype,
             original_id=original_id,
+            original_chrom=chrom,
         )
 
     @staticmethod
@@ -126,7 +127,14 @@ class CoordinateKernel:
             vtype = VariantType.COMPLEX
             internal_pos = start_pos - 1
 
-        return Variant(chrom=norm_chrom, pos=internal_pos, ref=ref, alt=alt, variant_type=vtype)
+        return Variant(
+            chrom=norm_chrom,
+            pos=internal_pos,
+            ref=ref,
+            alt=alt,
+            variant_type=vtype,
+            original_chrom=chrom,
+        )
 
     @staticmethod
     def _gdc_variant_type(variant: Variant) -> str:
@@ -227,6 +235,19 @@ class CoordinateKernel:
                 "Tumor_Seq_Allele2": variant.alt,
                 "Variant_Type": vtype,
             }
+
+    @staticmethod
+    def contig_key(chrom: str) -> str:
+        """Naming-independent key for comparing contig names across sources.
+
+        Mirrors the engine's ``normalize_contig`` (rust/src/shared/contig.rs):
+        strips a ``chr`` prefix in any case and folds the mitochondrial aliases
+        ``M`` / ``MT`` to ``MT``. Used to pair names written differently by the
+        variant file, reference and BAMs (``chrM`` vs ``MT``); it is never a
+        name written to output.
+        """
+        bare = chrom[3:] if chrom[:3].lower() == "chr" else chrom
+        return "MT" if bare.upper() in ("M", "MT") else bare
 
     @staticmethod
     def normalize_chromosome(chrom: str) -> str:

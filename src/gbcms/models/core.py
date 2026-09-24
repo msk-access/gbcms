@@ -62,9 +62,20 @@ class Variant(BaseModel):
 
     # Original input metadata (optional)
     original_id: str | None = None
+    original_chrom: str | None = Field(
+        default=None,
+        description="Contig name exactly as the input wrote it; ``chrom`` is the "
+        "normalized name used to reconcile the variant file, FASTA and BAM",
+    )
     metadata: dict[str, str] = Field(
         default_factory=dict, description="Original input metadata/columns"
     )
+
+    @property
+    def output_chrom(self) -> str:
+        """The contig name to write: the input's own naming, falling back to the
+        normalized name for variants built without one."""
+        return self.original_chrom or self.chrom
 
 
 class OutputFormat(StrEnum):

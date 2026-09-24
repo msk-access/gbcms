@@ -33,7 +33,8 @@ Coordinate/count gotchas encountered and locked in by this test:
   total_count=8 with no 'neither' reads.
 - MAF count columns are unprefixed by default: ``ref_count`` (=RD), ``alt_count``
   (=AD), ``total_count`` (=DP). See ``src/gbcms/io/output.py``. The MAF writer
-  also emits the normalized contig name, so the Chromosome column reads ``1``.
+  keeps the variant file's contig naming (issue #103), so the Chromosome column
+  reads ``chr1`` even though counting looked the contig up as ``1``.
 """
 
 import glob
@@ -158,9 +159,9 @@ def test_e2e_dna_maf_counts(tmp_path):
     row = rows[0]
 
     # The variant was accepted at the right coordinate (1-based in MAF).
-    # NOTE: the MAF writer normalizes the contig name and drops the 'chr' prefix,
-    # so input "chr1" is emitted as "1" in the Chromosome column.
-    assert row["Chromosome"] == "1"
+    # The output keeps the variant file's contig naming (issue #103): input
+    # "chr1" stays "chr1", although counting reconciled it with the BAM's "1".
+    assert row["Chromosome"] == "chr1"
     assert int(row["Start_Position"]) == VARIANT_POS_0BASED + 1
     assert row["Reference_Allele"] == REF_BASE
     assert row["Tumor_Seq_Allele2"] == ALT_BASE

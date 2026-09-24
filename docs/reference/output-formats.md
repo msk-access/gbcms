@@ -109,7 +109,11 @@ self-describing.
     !!! note "Provenance headers (v5.3.0)"
         `##gbcms_command`, `##reference`, `##contig`, and `##FILTER` lines
         are new in v5.3.0. `##contig` lines are auto-populated from the
-        `.fai` index of the reference FASTA when available.
+        `.fai` index of the reference FASTA when available, written under the
+        variant file's naming (e.g. the reference's `1` is declared as `chr1`
+        when the input says `chr1`, keeping the reference length) so every
+        record's `CHROM` is declared; a contig the reference lacks is declared
+        without a length.
 
 === "RNA mode"
 
@@ -162,7 +166,7 @@ self-describing.
 
 | Column | Source | Notes |
 |:-------|:-------|:------|
-| `CHROM` | Variant chromosome | Preserved from input |
+| `CHROM` | Variant chromosome | The input's own naming (e.g. `chr1` stays `chr1` against a `1`-named reference or BAM) |
 | `POS` | Variant position | 1-based (VCF convention) |
 | `ID` | Original VCF `ID` field | `.` when input is MAF (no `ID` column) |
 | `REF` | Reference allele | From input; validated against FASTA |
@@ -350,7 +354,7 @@ The set of columns in the first row of the header depends on whether the
     | Column | Description |
     |:-------|:------------|
     | `Hugo_Symbol` | Empty — not populated from VCF input |
-    | `Chromosome` | Chromosome name |
+    | `Chromosome` | Chromosome name, in the input VCF's own naming (`vcf_region` likewise) |
     | `Start_Position` | 1-based MAF start position |
     | `End_Position` | 1-based MAF end position |
     | `Strand` | `+` |

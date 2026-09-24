@@ -419,6 +419,32 @@ audit — T7 12c). VCF `##contig` lines must declare the names the records use.
 Log once per run (INFO) when the input's naming differs from the reference or
 BAM naming, naming both, so the reconciliation is visible.
 
+**As implemented.** `Variant.original_chrom` (set by both kernel readers) with an
+`output_chrom` accessor; `chrom` stays normalized, so counting is untouched. Writers,
+rescue labels (the old `_output_contig` helper is gone) and the mFSD Parquet use
+`output_chrom`. `##contig` lines: each `.fai` contig under the input's name(s) for it
+(reference length kept); input contigs absent from the `.fai` are declared without a
+length. The `.fai` is read once per run (was once per sample). One INFO line per
+distinct naming pair (reference, then any BAM). Observations Parquet keeps the
+internal name — it echoes loci from inside the engine (documented). Names are
+paired by `CoordinateKernel.contig_key`, the Python mirror of the engine's
+`normalize_contig` (`chrM` ~ `MT`, not just a `chr` strip); a `.fai` listing one
+contig under two aliases declares the input's name once. `gbcms merge` joins on
+the same key (review finding: inputs counted from differently named variant files
+otherwise split into two rows), keeps the first input's name, and logs differences.
+
+Second review round:
+- The FASTA fetch folded no mitochondrial alias, so `chrM` vs an `MT` FASTA was
+  `FETCH_FAILED`. This predates T8, but T8's log claimed reconciliation, and the
+  first chrM test asserted names, not counts. `fetch_region` now also tries
+  `MITO_SPELLINGS`, and the test matrix asserts counts.
+- Merge writes each contig one way. Rows only a later input has had kept its
+  spelling.
+- Merge warns when one input names a contig two ways, and rejects helper-named
+  input columns.
+- Merge's row order is deterministic (found by the merge parity harness). Rows
+  follow the inputs via per-input row numbers, which works on every polars 1.x.
+
 **Tests.** `chr`-named input × {VCF, MAF} × {VCF, MAF output}: output names
 equal the input's; VCF output parses with no undefined-contig warning; b37
 naming unchanged. **Acceptance:** flag-off parity on the real-data sets stays

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — output keeps the input's contig naming (#103)
+
+- `chr`-named input (e.g. hg38 with UCSC names) no longer loses its naming in the
+  output. VCF input → MAF writes `Chromosome`/`vcf_region` as the input names them
+  (was the stripped `1`), and VCF output writes `CHROM` in the input's naming with
+  `##contig` lines declared under the same names (reference lengths kept) — before,
+  records read `1` under a `##contig=<ID=chr1>` header, a malformed VCF that htslib
+  rejects (`Contig '1' is not defined in the header`). Rescue labels and the mFSD
+  Parquet follow the same naming. Counting is unchanged: contigs are still reconciled
+  internally between the variant file, FASTA and BAM. One INFO line per run names
+  the two conventions when they differ. Unprefixed (b37, Ensembl) input is
+  unaffected.
+- The reference FASTA now reconciles the mitochondrion's spellings as the BAM side
+  already did. Before, a `chrM` (or `M`, `MT`, `chrMT`) variant against a FASTA
+  naming it differently was rejected `FAIL` / `FETCH_FAILED` with zero counts.
+- `gbcms merge` joins inputs whose `Chromosome` naming differs (`chr1` ~ `1`,
+  `chrM` ~ `MT`) into one row instead of two half-empty ones. It writes each
+  contig one way, the first input's name where it has the contig, and logs each
+  later input's difference.
+  - An input that names one contig two ways now gets a WARN, since a variant
+    listed under both names is repeated.
+  - Input columns that collide with merge's join helpers are rejected with the
+    column named.
+
+### Fixed — `gbcms merge` row order is deterministic
+
+- Merged rows came out in a different order on every run: the full outer join
+  guarantees no order (5 runs on the same real inputs gave 5 orders), so merged
+  MAFs could not be diffed across runs. Rows now follow the inputs: the first
+  input's rows as it lists them, then rows only a later input has, in that
+  input's order. Row contents are unchanged.
+
 ### Fixed — one BAQ rule across RNA views; deterministic ASJD junctions
 
 - Per-transcript counts and ASJD now apply the main counts' exon-boundary BAQ

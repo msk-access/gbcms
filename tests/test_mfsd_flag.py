@@ -101,6 +101,7 @@ class _MockVariant:
 
     def __init__(self):
         self.chrom = "chr1"
+        self.output_chrom = "chr1"  # the name the writers emit (input's naming)
         self.pos = 999  # 0-based
         self.ref = "A"
         self.alt = "T"
