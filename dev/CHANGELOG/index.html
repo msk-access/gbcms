@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -697,6 +697,24 @@
 </a>
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-output-keeps-the-inputs-contig-naming-103">
+<span class="md-ellipsis">
+      
+        Fixed — output keeps the input's contig naming (#103)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#fixed-gbcms-merge-row-order-is-deterministic">
+<span class="md-ellipsis">
+      
+        Fixed — gbcms merge row order is deterministic
+      
+    </span>
+</a>
+</li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#added-observability-for-silent-fallbacks-no-count-changes">
 <span class="md-ellipsis">
@@ -2298,6 +2316,38 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed-output-keeps-the-inputs-contig-naming-103">Fixed — output keeps the input's contig naming (#103)<a class="headerlink" href="#fixed-output-keeps-the-inputs-contig-naming-103" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>chr</code>-named input (e.g. hg38 with UCSC names) no longer loses its naming in the
+  output. <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> writes <code>Chromosome</code>/<code>vcf_region</code> as the input names them
+  (was the stripped <code>1</code>), and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output writes <code>CHROM</code> in the input's naming with
+  <code>##contig</code> lines declared under the same names (reference lengths kept) — before,
+  records read <code>1</code> under a <code>##contig=&lt;ID=chr1&gt;</code> header, a malformed <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> that htslib
+  rejects (<code>Contig '1' is not defined in the header</code>). Rescue labels and the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>
+  Parquet follow the same naming. Counting is unchanged: contigs are still reconciled
+  internally between the variant file, <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> and <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>. One INFO line per run names
+  the two conventions when they differ. Unprefixed (b37, Ensembl) input is
+  unaffected.</li>
+<li>The reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> now reconciles the mitochondrion's spellings as the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> side
+  already did. Before, a <code>chrM</code> (or <code>M</code>, <code>MT</code>, <code>chrMT</code>) variant against a <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>
+  naming it differently was rejected <code>FAIL</code> / <code>FETCH_FAILED</code> with zero counts.</li>
+<li><code>gbcms merge</code> joins inputs whose <code>Chromosome</code> naming differs (<code>chr1</code> ~ <code>1</code>,
+  <code>chrM</code> ~ <code>MT</code>) into one row instead of two half-empty ones. It writes each
+  contig one way, the first input's name where it has the contig, and logs each
+  later input's difference.</li>
+<li>An input that names one contig two ways now gets a WARN, since a variant
+    listed under both names is repeated.</li>
+<li>Input columns that collide with merge's join helpers are rejected with the
+    column named.</li>
+</ul>
+<h3 id="fixed-gbcms-merge-row-order-is-deterministic">Fixed — <code>gbcms merge</code> row order is deterministic<a class="headerlink" href="#fixed-gbcms-merge-row-order-is-deterministic" title="Permanent link">¶</a></h3>
+<ul>
+<li>Merged rows came out in a different order on every run: the full outer join
+  guarantees no order (5 runs on the same real inputs gave 5 orders), so merged
+  MAFs could not be diffed across runs. Rows now follow the inputs: the first
+  input's rows as it lists them, then rows only a later input has, in that
+  input's order. Row contents are unchanged.</li>
+</ul>
 <h3 id="added-observability-for-silent-fallbacks-no-count-changes">Added — observability for silent fallbacks (no count changes)<a class="headerlink" href="#added-observability-for-silent-fallbacks-no-count-changes" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>SW_FALLBACK(n)</code> in <code>gbcms_diagnostic</code>, plus one WARN per affected variant

@@ -4540,7 +4540,7 @@ Use mouse to pan and zoom
 <ol>
 <li><strong>Scan</strong> — Each input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> is lazily scanned with all columns as strings</li>
 <li><strong>Prefix Detection</strong> — Columns are checked for existing type prefixes; unprefixed gbcms columns are renamed (e.g., <code>ref_count</code> → <code>duplex_ref_count</code>)</li>
-<li><strong>Outer Join</strong> — Progressive full outer join on the 5-column variant key: <code>Chromosome</code>, <code>Start_Position</code>, <code>End_Position</code>, <code>Reference_Allele</code>, <code>Tumor_Seq_Allele2</code></li>
+<li><strong>Outer Join</strong> — Progressive full outer join on the 5-column variant key: <code>Chromosome</code>, <code>Start_Position</code>, <code>End_Position</code>, <code>Reference_Allele</code>, <code>Tumor_Seq_Allele2</code>. <code>Chromosome</code> is compared by the same rule counting uses to reconcile contigs (<code>chr1</code> ~ <code>1</code>, <code>chrM</code> ~ <code>MT</code>), so inputs counted from differently named variant files still join. Each contig is written one way. That is the first input's name for it, or, for a contig the first input lacks, the name used by the earliest input that has it. When a later input names contigs differently, the log says so (one INFO line per input). An input column named <code>_contig_key</code>, or starting with <code>_row_</code> or <code>_chrom_</code>, is rejected: those names are reserved for the join. If one input names a contig two ways (e.g. <code>chrM</code> and <code>MT</code>), a variant listed under both joins once per name, and merge logs a WARN.</li>
 <li><strong>Null Fill</strong> — Missing counts → <code>"0"</code>, missing meta → <code>""</code></li>
 <li><strong>Combined Columns</strong> — If both <code>simplex</code> and <code>duplex</code> are present and <code>--no-combined</code> is not set:<ul>
 <li><strong>Phase 1</strong>: Additive sums (12 columns: read + fragment + strand counts)</li>
@@ -4549,7 +4549,7 @@ Use mouse to pan and zoom
 <li><strong>Phase 3</strong>: Fisher's exact test for strand bias (read + fragment level, via Rust)</li>
 </ul>
 </li>
-<li><strong>Write</strong> — Materialized DataFrame written as tab-separated <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></li>
+<li><strong>Write</strong> — Materialized DataFrame written as tab-separated <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>. Rows follow the inputs: the first input's rows in its order, then rows only a later input has, in that input's order. The output is identical on every run.</li>
 </ol>
 <div class="admonition info">
 <p class="admonition-title">Provenance Comment Lines (v5.3.0+)</p>
@@ -6759,11 +6759,11 @@ Use mouse to pan and zoom
 <h2 id="reference-input-formats-reference-fasta">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr><a class="headerlink" href="#reference-input-formats-reference-fasta" title="Permanent link">¶</a></h2>
 <ul>
 <li>Must have corresponding <code>.fai</code> index</li>
-<li>The reference is looked up by the variant's chromosome name, so the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> should use a
-  naming convention compatible with your variant file. (The <code>chr</code>-prefix and <code>M</code>/<code>MT</code>
-  differences between the <strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr></strong> and the variants are auto-reconciled — see below — but the
-  reference anchor is fetched by name, so a variant whose contig is absent from the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> is
-  rejected with verdict <code>FAIL</code> and reason <code>FETCH_FAILED</code>.)</li>
+<li>The reference is looked up by the variant's contig under any name that contig goes by:
+  as written, with or without a <code>chr</code> prefix, and, for the mitochondrion, as any of
+  <code>M</code> / <code>chrM</code> / <code>chrMT</code> / <code>MT</code>. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> and the variant file therefore reconcile the same
+  way the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> does (see below). A variant whose contig is absent from the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> under all of
+  these names is rejected with verdict <code>FAIL</code> and reason <code>FETCH_FAILED</code>.</li>
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#reference-input-formats-__codelineno-3-1"></a><span class="c1"># Create index if missing</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#reference-input-formats-__codelineno-3-2"></a>samtools<span class="w"> </span>faidx<span class="w"> </span>reference.fa
@@ -6776,6 +6776,11 @@ Use mouse to pan and zoom
   mitochondrial aliases (<code>M</code> / <code>chrM</code> / <code>chrMT</code> / <code>MT</code>) between the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> and the variant file
   are normalized automatically. Only a contig with <strong>no</strong> match in the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is skipped — and
   gbcms logs a one-time <code>WARN</code> for it, rather than silently returning zero counts.</li>
+<li>Reconciliation is internal only: the output keeps the variant file's own contig naming
+  (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <code>Chromosome</code>/<code>vcf_region</code>, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>CHROM</code> and its <code>##contig</code> lines, rescue labels, <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>
+  Parquet). When the variant file's naming differs from the reference's or a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>'s, one INFO
+  line per run names both. The Observations Parquet (<code>--observations-parquet</code>) echoes the
+  internal (normalized) contig name.</li>
 </ul>
 <div class="admonition info">
 <p class="admonition-title">CRAM Support (v5.3.0+)</p>
@@ -6922,7 +6927,11 @@ self-describing.</p>
 <p class="admonition-title">Provenance headers (v5.3.0)</p>
 <p><code>##gbcms_command</code>, <code>##reference</code>, <code>##contig</code>, and <code>##FILTER</code> lines
 are new in v5.3.0. <code>##contig</code> lines are auto-populated from the
-<code>.fai</code> index of the reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> when available.</p>
+<code>.fai</code> index of the reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> when available, written under the
+variant file's naming (e.g. the reference's <code>1</code> is declared as <code>chr1</code>
+when the input says <code>chr1</code>, keeping the reference length) so every
+record's <code>CHROM</code> is declared; a contig the reference lacks is declared
+without a length.</p>
 </div>
 </div>
 <div class="tabbed-block">
@@ -6984,7 +6993,7 @@ are new in v5.3.0. <code>##contig</code> lines are auto-populated from the
 <tr>
 <td style="text-align: left;"><code>CHROM</code></td>
 <td style="text-align: left;">Variant chromosome</td>
-<td style="text-align: left;">Preserved from input</td>
+<td style="text-align: left;">The input's own naming (e.g. <code>chr1</code> stays <code>chr1</code> against a <code>1</code>-named reference or <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>POS</code></td>
@@ -7520,7 +7529,7 @@ have no <abbr title="Mutation Annotation Format - Standard mutation annotation f
 </tr>
 <tr>
 <td style="text-align: left;"><code>Chromosome</code></td>
-<td style="text-align: left;">Chromosome name</td>
+<td style="text-align: left;">Chromosome name, in the input <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>'s own naming (<code>vcf_region</code> likewise)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Start_Position</code></td>
@@ -15656,6 +15665,38 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-output-keeps-the-inputs-contig-naming-103">Fixed — output keeps the input's contig naming (#103)<a class="headerlink" href="#development-changelog-fixed-output-keeps-the-inputs-contig-naming-103" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>chr</code>-named input (e.g. hg38 with UCSC names) no longer loses its naming in the
+  output. <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> writes <code>Chromosome</code>/<code>vcf_region</code> as the input names them
+  (was the stripped <code>1</code>), and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output writes <code>CHROM</code> in the input's naming with
+  <code>##contig</code> lines declared under the same names (reference lengths kept) — before,
+  records read <code>1</code> under a <code>##contig=&lt;ID=chr1&gt;</code> header, a malformed <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> that htslib
+  rejects (<code>Contig '1' is not defined in the header</code>). Rescue labels and the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>
+  Parquet follow the same naming. Counting is unchanged: contigs are still reconciled
+  internally between the variant file, <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> and <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>. One INFO line per run names
+  the two conventions when they differ. Unprefixed (b37, Ensembl) input is
+  unaffected.</li>
+<li>The reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> now reconciles the mitochondrion's spellings as the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> side
+  already did. Before, a <code>chrM</code> (or <code>M</code>, <code>MT</code>, <code>chrMT</code>) variant against a <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>
+  naming it differently was rejected <code>FAIL</code> / <code>FETCH_FAILED</code> with zero counts.</li>
+<li><code>gbcms merge</code> joins inputs whose <code>Chromosome</code> naming differs (<code>chr1</code> ~ <code>1</code>,
+  <code>chrM</code> ~ <code>MT</code>) into one row instead of two half-empty ones. It writes each
+  contig one way, the first input's name where it has the contig, and logs each
+  later input's difference.</li>
+<li>An input that names one contig two ways now gets a WARN, since a variant
+    listed under both names is repeated.</li>
+<li>Input columns that collide with merge's join helpers are rejected with the
+    column named.</li>
+</ul>
+<h3 id="development-changelog-fixed-gbcms-merge-row-order-is-deterministic">Fixed — <code>gbcms merge</code> row order is deterministic<a class="headerlink" href="#development-changelog-fixed-gbcms-merge-row-order-is-deterministic" title="Permanent link">¶</a></h3>
+<ul>
+<li>Merged rows came out in a different order on every run: the full outer join
+  guarantees no order (5 runs on the same real inputs gave 5 orders), so merged
+  MAFs could not be diffed across runs. Rows now follow the inputs: the first
+  input's rows as it lists them, then rows only a later input has, in that
+  input's order. Row contents are unchanged.</li>
+</ul>
 <h3 id="development-changelog-added-observability-for-silent-fallbacks-no-count-changes">Added — observability for silent fallbacks (no count changes)<a class="headerlink" href="#development-changelog-added-observability-for-silent-fallbacks-no-count-changes" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>SW_FALLBACK(n)</code> in <code>gbcms_diagnostic</code>, plus one WARN per affected variant
