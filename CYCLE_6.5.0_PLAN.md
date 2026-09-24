@@ -5,7 +5,7 @@
 > before commit, and validated on the local truth data named in its
 > Evidence line. No new output columns anywhere — new signal goes to
 > `gbcms_diagnostic`, logs, or validation tooling. Evidence links live on
-> issues #92 / #94 / #97.
+> issues #92 / #94 / #97 (T9/T10: #106 / #107).
 
 ## T1 — Cluster exclusive assignment (count-affecting; the cycle's core)
 
@@ -450,6 +450,122 @@ equal the input's; VCF output parses with no undefined-contig warning; b37
 naming unchanged. **Acceptance:** flag-off parity on the real-data sets stays
 byte-identical (all b37, no `chr`).
 
+## T9 — Span-aware exon-edge BAQ rule (#106; count-affecting, RNA + GTF only)
+
+**Finding** (adversarial review of T6; pre-existing, unchanged by T6). The rule
+keys on `variant.pos`:
+- `baq_applies` takes `exon_boundary_dist`, the distance from the variant's
+  *first* base to the nearest annotated boundary.
+- Heuristic BAQ penalizes read bases within 5bp of a CIGAR N. For an exon
+  ending at `E`, bases `E-5..E-1` of every read spliced at `E` lose 20 BQ.
+- So a multi-base variant whose `pos` is more than 5bp from `E`, but whose REF
+  span reaches within 5bp (an MNP at `E-7..E-4`), keeps BAQ. Its edge-side
+  bases are masked in every spliced read, and MNP confirmation collapses
+  (`MnpResult` confirmed=false). All three views agree on the rule, and it is
+  the rule that is wrong.
+- With `--rescue-mnp`, the MNP row (BAQ on) and its component recount at `E-4`
+  (BAQ off) are counted under two BAQ regimes.
+- Left edges are safe: `pos` is the leftmost base.
+
+**Options.**
+- **A (recommended). Span-aware variant rule.** The distance is from the
+  nearest annotated boundary to the REF span `[pos, pos+len(REF))`, and 0 when
+  a boundary falls inside it. `baq_applies` uses it, so there is still one
+  resolved value for main, per-transcript, ASJD and each rescue recount. SNVs
+  are unchanged.
+- **B. Read-level.** Skip the N-penalty in `apply_heuristic_baq` for Ns whose
+  ends are annotated junctions (±`JUNCTION_TOLERANCE`), and keep indel
+  penalties. Rejected unless A's measurement leaves residual edge masking:
+  - It re-penalizes *novel* junctions near a variant, which is ASJD's
+    splice-creation signal.
+  - It restores indel penalties at edges.
+  - It is a larger change to the main counts.
+
+**Decision for the operator.** Does `exon_boundary_dist` become the span
+distance too?
+- **Recommended: yes.** One definition shared by the rule and the column. The
+  column changes only for multi-base variants whose span sits nearer an edge
+  than `pos`, marked ⚠️ in the CHANGELOG.
+- **Otherwise:** the column stays `pos`-based and the rule keeps a second,
+  internal distance.
+
+**Measure first (as T6).**
+1. **Demand:** signed-out multi-base variants (MNP, DNP, deletion, delins) in
+   the local RNA truth cohort whose span reaches within 5bp of an annotated edge
+   while `pos` does not.
+2. **Effect:** on the T6 FORTE harness, add MNP and deletion probes with the
+   span end 0–4bp inside right exon edges and `pos` 6–10bp away, plus controls.
+   Report main, per-transcript and ASJD deltas and `mnp_confirmed_alt`, with
+   and without the change.
+
+**Red battery.**
+- An MNP whose span reaches E1's donor edge, with `pos` more than 5bp away. Its
+  spliced carriers count as confirmed ALT in the main counts, per-transcript
+  equals main, and ASJD sees them.
+- With `--rescue-mnp`, the MNP row and its component recount resolve the rule
+  identically.
+- Guards: SNV rows unchanged; left-edge geometries unchanged; BAQ still applies
+  away from edges.
+
+**Fix.** Add a span distance to `AnnotationIndex` (the binary search to the
+range, as `intron_boundary_in_range` already does). `count_variant_from_cache`
+resolves it once, and the per-transcript and ASJD passes keep reusing it.
+
+**Acceptance.**
+- The FORTE harness: SNV rows byte-identical to develop, multi-base edge probes
+  change as designed, and repeat runs byte-identical.
+- The RNA truth cohort: any affected sign-out rows are adjudicated read-by-read
+  (the BAM is truth).
+- RNA-only, so exempt from the legacy parity oracle. Confirm `PARITY_FIELDS` is
+  untouched.
+
+## T10 — Decomposed twin inherits what the original resolved (#107; count-affecting)
+
+**Finding** (adversarial review of T6; pre-existing).
+- The homopolymer-decomposed twin (normalize/engine.rs, Step 5) is built with
+  `gene_strand: None`.
+- `count_bam_binned_core` resolves gene strand from the GTF only for
+  `variants`, and the `--enforce-strandedness` WARN counts only `variants`.
+- So with RNA + GTF + `--enforce-strandedness` at a decomposition locus, the
+  twin admits antisense reads (`is_sense_strand(.., None, ..)` is true). This
+  inflates its AD and biases the dual-count arbitration
+  (`counts_decomp.ad > counts_orig.ad`) toward it.
+- The reported row then carries antisense evidence that per-transcript and
+  ASJD, which classify the stranded original, exclude.
+- No warning covers the twin: a silent no-op of an RNA default.
+
+**Audit in the same ticket.** The twin also gets `repeat_span: 0` ("repeat
+info is not critical"), yet by construction it sits in a homopolymer.
+`repeat_span` sets the fetch-window pad (`max(5, repeat_span + 2)`) and the
+wrong-length rule's repeat branch. List every field the original carries after
+prep and resolution. The twin inherits each unless a documented reason says
+otherwise.
+
+**Red battery.**
+- RNA + GTF + `--enforce-strandedness`, at a homopolymer-decomposable deletion
+  (the `check_homopolymer_decomp` geometry).
+  - Antisense reads support the decomposed form, and sense reads support the
+    original.
+  - The antisense reads are not counted.
+  - The arbitration is decided by sense reads.
+  - The per-transcript counts are consistent with the row.
+- A `repeat_span` case, if the audit finds a behavioral difference.
+
+**Fix.** After strand resolution, the twin takes its original's resolved
+strand (same contig and position). `repeat_span` is inherited too, if the audit
+says so.
+
+**Acceptance.**
+- A strand-only change leaves DNA byte-identical: re-run the T8 b37 parity
+  harness.
+- If `repeat_span` inheritance changes DNA counts, it is count-affecting for
+  DNA:
+  - measure it on the T1/ACCESS truth harnesses;
+  - keep the legacy oracle's dual-count on the *same* twin, so binned↔legacy
+    parity holds (invariant 1).
+- RNA: rows at decomposition loci change only by the excluded antisense reads.
+  Measure how often decomposition fires and wins on the FORTE cohort.
+
 ## Order & discipline
 
 T1 (own branch, own review) → T2 (own branch; needs the FORTE geometries) →
@@ -460,3 +576,8 @@ T7 is independent (Python-only, opt-in path) — own small branch
 Each branch: battery red → implement → suites + clippy + lint gate →
 sonnet adversarial review → real-data acceptance named above → merge to
 develop. 6.5.0 cut only after T1's ACCESS rerun and T2's cohort recheck.
+T10 then T9, each on its own branch.
+- T10 is small and contained.
+- T9 measures first and needs the operator's `exon_boundary_dist` decision.
+- Both should land before the 6.5.0 cut. T9 completes T6's one-rule contract
+  for multi-base variants. T10 closes a silent no-op of an RNA default.

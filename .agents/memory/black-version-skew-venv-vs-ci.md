@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 890ffab2-2fbd-474b-915c-62b9807e66d3
-  modified: 2026-09-23T14:09:15.934Z
+  modified: 2026-09-23T21:01:40.842Z
 ---
 
 Local lint tools here lag CI, so a locally-clean run can still fail CI (and vice-versa).

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: afbf4a49-f216-4b9f-aa60-421bb8c1073c
-  modified: 2026-09-17T19:34:50.667Z
+  modified: 2026-09-24T04:38:14.603Z
 ---
 
 `pyproject.toml` `[tool.maturin]` sets `python-source = "src"` and
@@ -21,3 +21,9 @@ from the repo root. After any rebuild, verify freshness:
 `python -c "import gbcms._rs as m, os, datetime; print(m.__file__, datetime.datetime.fromtimestamp(os.path.getmtime(m.__file__)))"`
 — the path must be `src/gbcms/_rs...so` with a just-now mtime. If an old .so
 shadows, delete it and rebuild from the root.
+
+The main checkout's `.venv` has **no maturin of its own**: `.venv/bin/maturin`
+fails "no such file", and a `-q` build piped through `grep error` hides that, so
+tests silently run the old engine (happened 2026-09-24; caught by the mtime).
+Worktree venvs built with `pip install maturin` do have it. Never filter build
+output without also checking the .so mtime.

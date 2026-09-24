@@ -26,3 +26,12 @@ sessions (it is symlinked into `.agents/memory/`), so `git add -A` sweeps
 another session's in-flight memory edits into the current branch's commits
 (happened in the T2 PR). Stage explicit paths only; check `git status` for
 `.agents/memory/` changes you did not make and leave them unstaged.
+
+**Also (2026-09-23, later):** workflow agents run in the *session's current
+directory*. An audit launched while the session sat in a worktree ran there,
+and one agent detached HEAD (checked out the reviewed SHA) despite a read-only
+instruction — the next commit then landed on a detached HEAD and `git push`
+said "Everything up-to-date" while the remote stayed behind. After any
+workflow: check `git branch --show-current` (empty = detached), and verify a
+push by comparing `git ls-remote` to HEAD, not by push's exit code. Launch
+review workflows from the main checkout, never from a worktree.
