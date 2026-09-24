@@ -8846,7 +8846,7 @@ Use mouse to pan and zoom
 </div>
 <hr>
 <h2 id="reference-variant-normalization-step-5-homopolymer-decomposition-detection">Step 5: Homopolymer Decomposition Detection<a class="headerlink" href="#reference-variant-normalization-step-5-homopolymer-decomposition-detection" title="Permanent link">¶</a></h2>
-<p>Some variant callers merge nearby events (e.g., a 1bp deletion + SNV in a homopolymer) into a single complex variant with an inflated deletion size. For example, <code>CCCCCC→T</code> when the reads actually show <code>CCCCCC→CCCCT</code> (a D(1) + C→T).</p>
+<p>Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. <code>CCCCCC→T</code> where the reads show a smaller change at the run's end. For such calls gbcms also counts a <strong>corrected allele</strong> and reports whichever of the two more reads support.</p>
 <h3 id="reference-variant-normalization-detection-criteria">Detection Criteria<a class="headerlink" href="#reference-variant-normalization-detection-criteria" title="Permanent link">¶</a></h3>
 <p>All four conditions must be met:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
@@ -8896,12 +8896,12 @@ Use mouse to pan and zoom
 </div>
 </div>
 <h3 id="reference-variant-normalization-corrected-allele-construction">Corrected Allele Construction<a class="headerlink" href="#reference-variant-normalization-corrected-allele-construction" title="Permanent link">¶</a></h3>
-<p>When detected, a <strong>corrected ALT allele</strong> is built by keeping most of the homopolymer intact and appending the SNV base:</p>
+<p>When detected, a <strong>corrected ALT allele</strong> is built by keeping every base of the run but the last and replacing that last base with the base that follows the run. The corrected allele has the same length as REF:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-variant-normalization-__codelineno-1-1"></a>Example:  REF = CCCCCC, ALT = T, next_ref_base = T
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#reference-variant-normalization-__codelineno-1-2"></a>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#reference-variant-normalization-__codelineno-1-3"></a>Step 1: homopolymer base = C
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#reference-variant-normalization-__codelineno-1-4"></a>Step 2: Confirmed: alt_last (T) == next_ref_base (T), T ≠ C
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-variant-normalization-__codelineno-1-5"></a>Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCT
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#reference-variant-normalization-__codelineno-1-5"></a>Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCCT
 </code></pre></div>
 <h3 id="reference-variant-normalization-dual-counting-flow">Dual-Counting Flow<a class="headerlink" href="#reference-variant-normalization-dual-counting-flow" title="Permanent link">¶</a></h3>
 <p>The corrected variant is stored in <code>PreparedVariant.decomposed_variant</code>. During counting, <strong>both</strong> the original and corrected alleles are counted independently. The result with the higher <code>alt_count</code> wins:</p>
@@ -8932,7 +8932,7 @@ Use mouse to pan and zoom
     Input --&gt;|"in parallel"| CountDecomp
 
     CountOrig["count_bam(original: CCCCCC→T)"]
-    CountDecomp["count_bam(corrected: CCCCCC→CCCCT)"]
+    CountDecomp["count_bam(corrected: CCCCCC→CCCCCT)"]
 
     CountOrig --&gt; Compare
     CountDecomp --&gt; Compare
@@ -8948,14 +8948,15 @@ Use mouse to pan and zoom
 Use mouse to pan and zoom
 </div>
 </div>
-<div class="admonition info">
-<p class="admonition-title">Self-Validating</p>
-<p>The warning flag only appears when reads <em>actually</em> support the decomposed representation better. If the original variant gets more ALT support, it's used as-is with a normal <code>PASS</code> status. This makes the approach safe — it never blindly corrects variants.</p>
+<p>The corrected allele is scored as unique sequence (<code>repeat_span</code> 0). In RNA with a GTF it takes the original's gene strand, so <code>--enforce-strandedness</code> applies to it as to the original. <code>WARN_HOMOPOLYMER_DECOMP</code> is set <strong>per sample</strong>: a row carries it only when that sample's corrected allele won.</p>
+<div class="admonition warning">
+<p class="admonition-title">A heuristic arbitration</p>
+<p>The flag appears only when the corrected allele got more ALT support than the called one. If the original gets more, it is used as-is with a normal <code>PASS</code> status. The comparison is not an exact haplotype match, though. Reads at real loci carry several forms: the called delins, the corrected allele, a 1bp deletion plus the change, or other alleles of the run. Both classifiers can claim reads of forms neither describes exactly. Inspect the reads at flagged loci; a redesign is tracked in the project plan.</p>
 </div>
 <div class="admonition example">
 <p class="admonition-title">Real-World: SOX2</p>
-<p><strong>SOX2</strong> at chr17:181430901: <code>CCCCCC→T</code> (6bp→1bp, net −5bp).
-Original count: <strong>alt=3</strong>. Corrected <code>CCCCCC→CCCCT</code> count: <strong>alt=79</strong>.
+<p><strong>SOX2</strong> at chr3:181430901: <code>CCCCCC→T</code> (6bp→1bp, net −5bp).
+Original count: <strong>alt=3</strong>. Corrected <code>CCCCCC→CCCCCT</code> count: <strong>alt=79</strong>.
 Corrected wins → <code>gbcms_status = PASS</code>, <code>gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP</code>.</p>
 </div>
 <hr>
@@ -15694,6 +15695,21 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-homopolymer-decomposed-twin-strand-and-per-sample-flag-107">Fixed — homopolymer-decomposed twin: strand and per-sample flag (#107)<a class="headerlink" href="#development-changelog-fixed-homopolymer-decomposed-twin-strand-and-per-sample-flag-107" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>WARN_HOMOPOLYMER_DECOMP</code> is per sample again. The prepared variants are
+  shared by every sample of a run, so once one sample's corrected allele won,
+  every <em>later</em> sample's row carried the flag, whatever its reads showed.
+  Output depended on sample order.</li>
+<li>In RNA with a GTF, the corrected allele takes its original's gene strand, so
+  <code>--enforce-strandedness</code> applies to it. Before, where it won, its counts
+  included antisense reads (measured: 0.065% of its depth at synthetic
+  probes).</li>
+<li>The docs describe the corrected allele as built: the run with its last base
+  replaced, the same length as REF (<code>CCCCCC→CCCCCT</code>). They had described a 1bp
+  deletion plus the change (<code>CCCCCT</code> was written <code>CCCCT</code>). The SOX2 example's
+  chromosome is corrected to 3.</li>
+</ul>
 <h3 id="development-changelog-fixed-output-keeps-the-inputs-contig-naming-103">Fixed — output keeps the input's contig naming (#103)<a class="headerlink" href="#development-changelog-fixed-output-keeps-the-inputs-contig-naming-103" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>chr</code>-named input (e.g. hg38 with UCSC names) no longer loses its naming in the
@@ -17976,11 +17992,14 @@ with 26/27 bases correct and 1 trailing base that's a <abbr title="Mutation Anno
 </details>
 <details class="question">
 <summary><code>WARN_HOMOPOLYMER_DECOMP</code> reason (verdict <code>PASS</code>) — what changed?</summary>
-<p>The variant overlapped a homopolymer, and the corrected allele (e.g., <code>CCCCCC→CCCCT</code> instead
-of <code>CCCCCC→T</code>) got more ALT support. The corrected allele counts were used.
-<code>used_decomposed = True</code> in the output.</p>
-<p>This is <strong>correct behavior</strong> — it means the variant caller collapsed a D(1)+SNV into a single
-complex variant, and gbcms detected and corrected for this.</p>
+<p>The variant is a homopolymer run called as a larger deletion (e.g. <code>CCCCCC→T</code>). In this
+sample, the corrected allele (the run with its last base replaced, <code>CCCCCC→CCCCCT</code>) got
+more ALT support, so its counts were used. <code>used_decomposed = True</code> in the output, and the
+flag is set per sample.</p>
+<p>It suggests the caller collapsed a smaller change at the run's end into one complex variant.
+The comparison is a heuristic: both alleles can claim reads carrying other forms of the run.
+Inspect the reads at the locus before relying on either allele's counts (see
+<a href="#reference-variant-normalization">Variant Normalization</a>).</p>
 </details>
 <hr>
 <h2 id="resources-troubleshooting-rna-mode-issues">RNA Mode Issues<a class="headerlink" href="#resources-troubleshooting-rna-mode-issues" title="Permanent link">¶</a></h2>
