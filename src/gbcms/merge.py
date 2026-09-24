@@ -54,6 +54,12 @@ _CONTIG_KEY = "_contig_key"
 JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
 
 
+def _row_col(bam_type: str) -> str:
+    """Per-input row-number column carried through the joins, so merged rows
+    can be put back in the inputs' order (a full join guarantees none)."""
+    return f"_row_{bam_type}"
+
+
 def _with_contig_key(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Add the join's contig key, computed by :meth:`CoordinateKernel.contig_key`
     (the counting engine's rule) so merge pairs names exactly as counting does."""
@@ -183,7 +189,7 @@ def merge_mafs(config: MergeConfig) -> None:
         else:
             logger.info("  Columns already prefixed for '%s', using as-is", bam_type)
 
-        frames[bam_type] = _with_contig_key(lf)
+        frames[bam_type] = _with_contig_key(lf).with_row_index(_row_col(bam_type))
 
     # ── 2. Progressive outer join ─────────────────────────────────────────────
     types = list(frames.keys())
@@ -196,22 +202,18 @@ def merge_mafs(config: MergeConfig) -> None:
         # rows only it has keep their name, and naming differences can be
         # reported after materialization.
         join_frame = frames[join_type]
-        join_cols = [
-            c
-            for c in join_frame.collect_schema().names()
-            if c in JOIN_KEY or c == "Chromosome" or _is_prefixed_gbcms_col(c, join_type)
+        count_cols = [
+            c for c in join_frame.collect_schema().names() if _is_prefixed_gbcms_col(c, join_type)
         ]
         merged = merged.join(
-            join_frame.select(join_cols).rename({"Chromosome": f"_chrom_{join_type}"}),
+            join_frame.select([*JOIN_KEY, "Chromosome", _row_col(join_type), *count_cols]).rename(
+                {"Chromosome": f"_chrom_{join_type}"}
+            ),
             on=JOIN_KEY,
             how="full",
             coalesce=True,
         )
-        logger.info(
-            "  Joined '%s' (%d count cols)",
-            join_type,
-            len(join_cols) - len(JOIN_KEY) - 1,
-        )
+        logger.info("  Joined '%s' (%d count cols)", join_type, len(count_cols))
 
     # ── 3. Fill nulls → "0" for count columns, "" for meta columns ─────────
     output_schema = merged.collect_schema().names()
@@ -238,7 +240,7 @@ def merge_mafs(config: MergeConfig) -> None:
         logger.info("  Added simplex_duplex combined columns")
 
     # ── 5. Materialize and write ──────────────────────────────────────────────
-    result = _resolve_contig_names(merged.collect(), types)
+    result = _in_input_order(_resolve_contig_names(merged.collect(), types), types)
     logger.info(
         "Merged result: %d rows × %d columns",
         result.height,
@@ -310,6 +312,17 @@ def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFram
             )
         result = result.with_columns(pl.coalesce("Chromosome", col).alias("Chromosome")).drop(col)
     return result.drop(_CONTIG_KEY)
+
+
+def _in_input_order(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
+    """Merged rows in the inputs' order, then the row numbers dropped.
+
+    The first input's rows as it lists them, then rows only a later input has,
+    in that input's order. A full join guarantees no order — without this the
+    merged rows came out differently on every run.
+    """
+    rows = [_row_col(t) for t in types]
+    return result.sort(rows, nulls_last=True).drop(rows)
 
 
 def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:

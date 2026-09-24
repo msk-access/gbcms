@@ -1080,9 +1080,9 @@ def test_merge_handles_provenance_comment_lines(tmp_path):
 # ── Row order follows the inputs ─────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="full join output order varies run to run")
+@pytest.mark.parametrize("combined", [False, True])
 @pytest.mark.parametrize("n_inputs", [2, 3])
-def test_merge_row_order_follows_inputs(tmp_path, n_inputs):
+def test_merge_row_order_follows_inputs(tmp_path, n_inputs, combined):
     """Merged rows follow the inputs' order, identically on every run: the first
     input's rows as it lists them, then rows only a later input has, in that
     input's order. A full join guarantees no order, and on real merges it varied
@@ -1110,7 +1110,7 @@ def test_merge_row_order_follows_inputs(tmp_path, n_inputs):
 
     for k in range(5):
         out = tmp_path / f"merged{k}.maf"
-        merge_mafs(MergeConfig(inputs=paths, output=out, add_combined=False))
+        merge_mafs(MergeConfig(inputs=paths, output=out, add_combined=combined))
         result = pl.read_csv(out, separator="\t", infer_schema_length=0)
         assert result["Start_Position"].to_list() == expected, f"run {k}"
         assert not any(c.startswith("_") for c in result.columns), result.columns

@@ -85,7 +85,7 @@ flowchart LR
     - **Phase 2a**: Derived totals (`total_count`, `total_count_fragment`)
     - **Phase 2b**: Derived VAFs (`vaf`, `vaf_fragment`)
     - **Phase 3**: Fisher's exact test for strand bias (read + fragment level, via Rust)
-6. **Write** — Materialized DataFrame written as tab-separated MAF
+6. **Write** — Materialized DataFrame written as tab-separated MAF. Rows follow the inputs: the first input's rows in its order, then rows only a later input has, in that input's order. The output is identical on every run.
 
 !!! info "Provenance Comment Lines (v5.3.0+)"
     Starting in v5.3.0, gbcms MAF output includes `#gbcms` and `#command`

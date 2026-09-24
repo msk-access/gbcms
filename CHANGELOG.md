@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `chrM` ~ `MT`) into one row instead of two half-empty ones, keeps the first
   input's naming, and logs the difference.
 
+### Fixed — `gbcms merge` row order is deterministic
+
+- Merged rows came out in a different order on every run: the full outer join
+  guarantees no order (5 runs on the same real inputs gave 5 orders), so merged
+  MAFs could not be diffed across runs. Rows now follow the inputs: the first
+  input's rows as it lists them, then rows only a later input has, in that
+  input's order. Row contents are unchanged.
+
 ### Added — observability for silent fallbacks (no count changes)
 
 - `SW_FALLBACK(n)` in `gbcms_diagnostic`, plus one WARN per affected variant
