@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -720,6 +720,29 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="added-observability-for-silent-fallbacks-no-count-changes">Added — observability for silent fallbacks (no count changes)<a class="headerlink" href="#added-observability-for-silent-fallbacks-no-count-changes" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>SW_FALLBACK(n)</code> in <code>gbcms_diagnostic</code>, plus one WARN per affected variant
+  naming the reason and outcome: under the default <code>pairhmm</code> backend, n
+  depth-contributing reads could not be evaluated by the pangenomic haplotype
+  matrix because the variant's reference context is missing (prep's fetch
+  failed) or does not contain it. They are scored by the Smith-Waterman fallback
+  where it can run and otherwise end NEITHER — previously with no trace on the
+  row. Measured to never fire on well-formed input. Never set under
+  <code>--alignment-backend sw</code>.</li>
+<li><code>CLIP_CANDIDATES(n)</code> in <code>gbcms_diagnostic</code>: an insertion with no confirmed
+  ALT where n (≥ 2) reads carry a ≥ 8bp soft clip within the insert's
+  duplication reach — clip-represented carriers (typically a tandem-duplication
+  ITD) the engine cannot claim.</li>
+<li><code>--umi-tag TAG</code> that no processed read carries now logs one WARN per <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:
+  fragment grouping silently fell back to read names.</li>
+</ul>
+<h3 id="changed-smith-waterman-gap-extend-is-a-documented-constant">Changed — Smith-Waterman gap-extend is a documented constant<a class="headerlink" href="#changed-smith-waterman-gap-extend-is-a-documented-constant" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>dynamic_sw_gap_extend</code> rounded to −1 for every repeat span, so its repeat
+  relaxation never engaged. It is replaced by <code>SW_GAP_OPEN = -5</code> /
+  <code>SW_GAP_EXTEND = -1</code> constants; alignment scores are unchanged.</li>
+</ul>
 <h3 id="added-asjd-2-splice-disruption-markers-rna-gtf">Added — ASJD-2 splice-disruption markers (RNA + GTF)<a class="headerlink" href="#added-asjd-2-splice-disruption-markers-rna-gtf" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>asjd_diagnostic</code> gains two markers that read the population the
