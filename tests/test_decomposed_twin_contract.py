@@ -21,7 +21,6 @@ import glob
 import random
 
 import pysam
-import pytest
 from helpers import count_both, make_read, read_maf_output
 from rna_fixtures import E1, SENSE, mk_ref, run_rna, write_bam, write_fasta, write_gtf, write_vcf
 from typer.testing import CliRunner
@@ -98,7 +97,6 @@ def test_twin_parity_between_engines(tmp_path):
 
 
 # ── WARN_HOMOPOLYMER_DECOMP is per sample ─────────────────────────────────
-@pytest.mark.xfail(strict=True, reason="the flag set for one sample stays on later samples' rows")
 def test_decomp_flag_is_per_sample(tmp_path):
     """Sample A's reads carry the corrected allele (its twin wins); sample B's
     are reference (its original stands). A is counted first, so a flag left on
@@ -160,7 +158,6 @@ def _rna_ref():
     return ref[: RNA_RUN - 1] + "A" + "C" * RUN_LEN + "T" + ref[RNA_RUN + RUN_LEN + 1 :]
 
 
-@pytest.mark.xfail(strict=True, reason="twin is counted without a gene strand")
 def test_twin_respects_strandedness(tmp_path):
     """8 sense and 5 antisense reads carry the corrected allele and the twin
     wins. Under --enforce-strandedness (RNA default) only the sense carriers

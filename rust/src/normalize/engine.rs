@@ -749,7 +749,10 @@ fn prepare_single_variant(
                     variant_type: decomp_vtype,
                     ref_context: ref_context.clone(),
                     ref_context_start,
-                    repeat_span: 0, // Decomposed variant inherits context but repeat info is not critical
+                    // Scored as unique sequence. Its tract's span was measured at real
+                    // twin loci: it widened the twin's claim over reads the original
+                    // explains and corrected no outcome, so it is not given one.
+                    repeat_span: 0,
                     gene_strand: None,
                 }
             })
