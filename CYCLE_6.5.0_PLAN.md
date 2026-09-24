@@ -217,206 +217,122 @@ material → small fix: thread `exon_boundary_dist` into
 `count_per_transcript`'s BAQ call, mirroring the main loop, with a red
 tx-count pin first.
 
-## T7 — MNP rescue: gate matches intent, rescued row is one coherent genotype (opt-in path only)
+## T7 — MNP rescue (`--rescue-mnp`, opt-in): report only what the BAM shows
 
-**Intent (v4.3.0, unchanged).** `--rescue-mnp` exists for sign-out MNPs
-whose carriers hold only a component of the annotated haplotype: gbcms
-correctly reports the annotated allele as absent (carriers land in
-`partial_alt`), sign-out reports the component count. Rescue re-counts each
-discriminating position as an SNV and reports the best component — the
-architecture doc's worked example is the TERT promoter GAGGG>AAGGA itself.
-Opt-in; the flag's contract *is* component counting.
+**Principle (operator, 2026-09-23).** The BAM is the truth; sign-out is one
+more result to compare against. Default output (rescue off) reports the
+annotated MNP exactly as the reads support it and is unchanged by T7.
 
-**Problem (measured, T1 acceptance).** Isolated TERT GAGGG>AAGGA
-(disc 2/5): ad 1, partial 88, rd 486 vs sign-out t_alt 93 / t_ref 484.
-Read-verified: 90 reads carry only the first G>A (C250T), 1 only the second,
-0 the full haplotype — engine exact (pinned: `TestONPCarrierShapes`). Rescue
-did not fire because the gate is `ad == 0`, and masked per-position
-evaluation makes that brittle: one C250T read with BQ<20 at the second
-position votes on the first alone → full ALT → ad 1. Gate intent is
-"haplotype effectively absent"; code implements "exactly zero".
+**What rescue is for.** Some signed-out MNPs are really one SNV (or two SNVs
+on different molecules) annotated as a single multi-base change. The reads
+then carry only a *component*: gbcms correctly counts the annotated MNP as
+~absent and puts the carriers in `partial_alt`. Rescue re-counts each changed
+position as an SNV and, when the annotated MNP is absent, reports the
+best-supported component under the MNP's row, flagged and audited. It
+relabels; it never invents reads.
 
-Four further defects in the rescue pass (verified end-to-end on synthetic
-BAMs):
-- **Stale row.** `with_ad()` replaces `ad` only. A rescued row reported
-  alt_count 9 beside alt_count_forward/reverse 0, alt_count_fragment 0,
-  `ZERO_ALT` — violating `ad == ad_fwd + ad_rev` in the written output; VCF
-  AD/VAF move while ADF/ADR/FAD/FAF, strand bias, mFSD, any_alt/partial_alt
-  stay at MNP values. Fragment columns are never rescued, so ACCESS
-  (scored on fragments) and `merge --add-combined` never see rescue.
-- **Cross-sample leak.** `prepared` is shared across all BAMs of a run and
-  `gbcms_rescue` is never reset: a later sample with 10 genuine full-haplotype
-  reads printed the earlier sample's rescue string.
-- **T1 bypass.** Synthetic SNVs are counted with no siblings; a grouped MNP
-  that lost reads to a sibling (now surfaced as `partial_alt`) would get them
-  back — breaks Σ per-row ad ≤ distinct ALT molecules. Reachable today when a
-  grouped MNP loses every read (ad 0).
-- **Audit hard-codes `original_alt=0`.**
+### Where we are (PR #101, open against develop)
 
-**Status (2026-09-23).** Implemented on `feature/mnp-rescue-gate`: red battery
-041c733 → fix 3844052 → docs 3a06dc0 → review fixes 9ec1373. Real-data
-acceptance met on the IMPACT harness sample: TERT GAGGG>AAGGA rescue OFF
-486/1/88 (ref/alt/partial) → ON 483/93/0 vs sign-out 484/93, audit
-`positions=5:1295250(G>A):93,5:1295254(G>A):1`; the sample's seven
-dinucleotide MNPs identical OFF vs ON. Flag-off harness reruns (complex-cluster,
-ACCESS, FLT3/MSI/FORTE) not repeated — the default-path refactors were
-reviewed behavior-neutral and the full suite is unchanged.
+| Area | State |
+|---|---|
+| Default output (rescue off) | Unchanged — 35/35 recorded real-data runs identical to develop |
+| Bug fixes | Done (list below) |
+| Rescue gate | Works on IMPACT; **too generous on ACCESS** (below) — item 12a |
+| Merge of rescued duplex/simplex | Can add two different alleles — item 12b |
+| Review nits | Contig label, test invariants, indel test — items 12c–12d |
 
-**Design (Python orchestration; the only Rust/stub change deletes
-`BaseCounts.with_ad`, which has no callers left).**
-1. *Gate:* candidate when PASS, MNP, `MNP_RESCUE_ELIGIBLE`, and
-   `partial_alt > ad` (the existing `PARTIAL_DOMINANT` condition), replacing
-   `ad == 0`. Population comparison, no tuned rate; ad 0 with partial > 0 is
-   still covered.
-2. *Replace only if the component beats the haplotype:* best SNV `ad > ad`,
-   else `outcome=no_improvement` and keep the MNP counts. The masked-full-
-   carrier case needs partial ≤ ad, so the gate excludes it — but review
-   found (and a synthetic battery confirmed) another source: reads with an
-   indel inside the block go to the complex path, count REF with
-   nearby-indel evidence (`partial_alt`), and no single-base count calls
-   them ALT. Legitimate decline, logged at DEBUG; decision logic lives in
-   the pure `_resolve_mnp_rescue` (unit-tested).
-3. *Adopt the winning SNV's whole `BaseCounts`,* not an ALT-side graft. Every
-   count, fragment, strand, strand-bias, mFSD and RNA column then comes from
-   one real counting pass, so all four counting invariants hold on rescued
-   rows by construction and Invariant-1 breakage disappears. Rejected
-   alternative — graft ALT fields onto the MNP record (needs a Rust copy
-   method + stats recompute): mixes two classifications, and fragment
-   consensus lets a neither-read abstain, so an R1-partial/R2-masked-REF
-   fragment is MNP-REF *and* SNV-ALT → can break `dpf ≥ rdf + adf`.
-   Consequence to document: rescued rd/dp are the SNV's (reads carrying only
-   another component count REF at the winning position; reads covering the
-   position but not the whole block count in dp).
-4. *Audit carries the MNP forensics* (they no longer live in the count
-   columns): `method=decomposed;outcome=O;original_ref=R;original_alt=A;original_partial=P[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>,...]`
-   with outcomes rescued / skipped_grouped / haplotype_confirmed (item 10) /
-   no_improvement / ref_validation_failed — `original_alt` keeps its key (now the true value,
-   not 0); a component whose synthetic SNV fails preparation reads
-   `ref_fail` (was a silent 0).
-5. *Diagnostics describe the row as written:* recompute `gbcms_diagnostic`
-   for rescued rows from the adopted counts (keeps `MNP_DISC_RATIO`/
-   `MNP_RESCUE_ELIGIBLE`); a non-empty `gbcms_rescue` is the record of why.
-   Removes the ZERO_ALT-beside-alt_count>0 contradiction.
-6. *Skip grouped rows* (`multi_allelic_group` set): `outcome=skipped_grouped`;
-   exclusive assignment owns those reads.
-7. *Reset `gbcms_rescue` per sample* before candidate selection (fixes the
-   leak).
-8. *mFSD Parquet (found in review):* a rescued row's `--mfsd-parquet`
-   record keeps the MNP's coordinates with the adopted component's
-   fragment sizes (consistent with the row's mFSD columns; no new column —
-   documented and logged per sample, join to `gbcms_rescue`).
-9. *Found in pre-implementation review:* both count calls now share
-   `_engine_kwargs()` (the component re-count had a verbatim copy of the
-   main call's ~25 engine settings); diagnostics split into per-row
-   `_diagnostic_flags` so rescued rows reuse the same code; unused `snp_map`
-   and the quadratic per-position index lookup removed.
-10. *Confirmed-haplotype gate (added after cohort validation, 2026-09-23).*
-    Truth is the BAM; sign-out is another result. The 28-sample / 63-MNP
-    cohort (matched normals) rescued 7 rows: 5 TERT C250T-shaped rows and
-    TP53 17:7577558 GG>AA read-verified as component carriers, and one wrong
-    — GRIN2A 16:9916204 CC>GT, where 36 reads carry BOTH changes (the real
-    somatic MNP, sign-out 35) and 238 carry only a germline het C>G (normal
-    274 alt); rescue adopted the germline SNP (36 → 276, 6% → 47% VAF). TP53
-    also has 264 reads carrying both changes, so its annotated DNP is real at
-    264. Rescue must fire only when the BAM says the annotated haplotype is
-    absent.
-    - *Engine:* new internal `BaseCounts.mnp_confirmed_alt` (not an output
-      column; `_rs.pyi` updated) — reads counted ALT by the MNP check with
-      every discriminating base read (none masked for BQ, none N). Set only
-      by check_mnp (via a `ClassifyResult` flag, default false); SNV,
-      indel, complex and MNP-structural (complex-path) ALT calls are never
-      confirmed. Incremented where `ad` is, after the exclusive-assignment
-      contest; invariant `mnp_confirmed_alt ≤ ad` checked with the others.
-      Mirrored in the legacy path.
-    - *Gate:* a candidate additionally needs
-      `mnp_confirmed_alt ≤ ceil(partial_alt × 10^(−min_baseq/10))` — the
-      number of single-change carriers a sequencing error at another
-      discriminating base could turn into a confirmed read, derived from the
-      base-quality threshold (1% at the default Q20), not tuned. Otherwise
-      `outcome=haplotype_confirmed`, counts stay the MNP's, and no component
-      re-count is run.
-    - *Audit:* every entry gains `original_confirmed=C`.
-    - *Expected on the cohort:* TERT ×5 still rescued; GRIN2A stays 36;
-      TP53 stays 264 (the true count of the annotated DNP); all other rows
-      unchanged.
-    - *Result (2026-09-23, met exactly):* implemented 188cfdc8 (red) →
-      87669061 (engine) → 35179306 (gate) → d13fcb77 (docs); adversarial
-      review found no defects. Tier 1 flag-off parity 35/35 runs identical
-      (FLT3 replayed on frozen variant copies — the source directory was
-      being rewritten by another session). Tier 2 same-seed cohort: only
-      GRIN2A (36, confirmed 33 vs allowance 3) and TP53 (264, confirmed 253
-      vs 3) moved, both to `haplotype_confirmed`; the five TERT rows stay
-      rescued to sign-out (confirmed 0); 56 non-candidates unchanged; no
-      germline adoption. Tier 3 traces agree read-class by read-class.
-11. *Rescued rows say so; VCF and MAF carry the same audit (operator decision
-    2026-09-23: keep count replacement — rescue is opt-in — but add
-    warnings).* A rescued row keeps the MNP's coordinates while reporting a
-    component's counts, so:
-    - `gbcms_diagnostic` (MAF column, VCF `GD`) gains
-      `RESCUED_COMPONENT(chrom:pos:REF>ALT)` on every rescued row;
-    - each rescue logs a WARNING (component, its ALT count, and the MNP's own
-      ALT/confirmed counts) instead of DEBUG; enabling `--rescue-mnp` logs a
-      WARNING stating that rescued rows report a component, not the MNP;
-    - *VCF defect found:* the audit's positions list is comma-separated, and
-      htslib splits a comma-bearing `GR` (Number=1) into two values — a VCF
-      consumer silently gets a truncated audit. Positions are now joined with
-      `+`, so `GR` (the MAF value with `;`→`|`) parses as one string.
-    - Tests: VCF-format end-to-end on the rescued geometry — FORMAT AD/FAD
-      equal the MAF run's counts, `GD` carries the flag, `GR` round-trips
-      through pysam intact.
-    - *Result (2026-09-23):* a8484143 (red) → a21f8f0e (fix) → 9699828f
-      (docs); the enable-time message moved from two duplicated CLI INFO
-      lines into one pipeline WARNING. Real-data check on a rescued TERT row:
-      MAF and VCF identical (AD 342/890, GD with RESCUED_COMPONENT, GR parsed
-      as one string); both warnings logged.
+**Done and staying, whatever the gate decision** (history: items 1–11 below):
+- Rescued rows are one coherent genotype: all count, fragment, strand,
+  strand-bias and mFSD columns come from the adopted component's own counting
+  pass (previously only `alt_count` changed).
+- Audit leak across samples fixed (reset per sample).
+- VCF `GR` no longer split by parsers (positions joined with `+`).
+- Grouped MNPs skipped, so rescue cannot undo T1 exclusive assignment.
+- Failed positions read `ref_fail`, not a silent 0.
+- Every rescued row flagged `RESCUED_COMPONENT(...)`, a WARNING per rescue and
+  one when the flag is enabled; MAF and VCF carry identical content.
+- Engine counts `mnp_confirmed_alt`: MNP ALT reads in which every changed base
+  was read (none low-quality, none N) — reads that *show* the whole MNP.
 
-**Files.** `src/gbcms/pipeline.py` (`_rescue_mnp_pass`, per-sample reset,
-diagnostics recompute for rescued rows); `rust/src/types.rs` + `_rs.pyi`
-(`with_ad` removed; `mnp_confirmed_alt` added); `rust/src/counting/`
-`{utils,variant_checks,engine}.rs` (confirmed flag + counter, binned and
-legacy); `cli.py` help + `models/core.py`
-field descriptions (both commands); tests; docs `cli/dna.md`,
-`nextflow/parameters.md`, `reference/architecture.md` (candidate table,
-invariant-impact table → "invariants hold"), `reference/output-formats.md`
-(`gbcms_rescue` format), `development/developer-guide.md`; `mnp-rescue`
-skill; CHANGELOG (behavior change on the opt-in path + `gbcms_rescue`
-format change for downstream parsers).
+### What real data showed (2026-09-23)
 
-**Tests (red-first).** Battery on the TERT geometry via the CLI:
-(a) component carriers + one masked stray full read → rescued, row equals
-the winning SNV's counts, four invariants asserted on the written row,
-audit carries original ref/alt/partial; (b) cis carriers (ad > partial) →
-untouched; (c) indel-disrupted carriers (1bp insertion inside the block)
-→ `no_improvement`, counts untouched, plus outcome-resolution unit tests
-(ref_validation_failed and leftmost tie-break are unreachable through a BAM);
-(d) grouped MNP → `skipped_grouped`; (e) two BAMs in one run → second
-sample's `gbcms_rescue` reflects only itself; (f) rescue off → output
-byte-identical to today; (g) germline-component geometry (component-only
-reads + a population carrying both changes) → `haplotype_confirmed`,
-counts untouched; (h) component carriers plus error-level confirmed reads
-within the allowance → still rescued; engine pin that `mnp_confirmed_alt`
-counts only fully-read MNP ALT reads. Replace `test_rescue_skips_nonzero_ad` with the
-new gate's pin. Carrier-shape engine pin already written
-(`TestONPCarrierShapes`, test_mnp_concordance.py). Parity oracle unaffected
-(Python post-pass).
+| Data | Result |
+|---|---|
+| IMPACT, 2 cohorts, 68 samples / 140 MNP rows | 13 rescues, all exact vs sign-out, all somatic in the matched normal, all with **0** reads showing the whole MNP |
+| Same, partial-read make-up | 97–100% genuine single-change carriers |
+| `--apply-baq` on all 7 candidate rows | No outcome, count or confirmed-read change |
+| ACCESS, 20 samples / 22 MNP rows (duplex + simplex) | **2 wrong rescues**, each also a duplex/simplex conflict: BRCA2 AAG>TAC duplex adopted a **germline** SNP (normal VAF 0.43; 6 reads showed the whole MNP but the allowance was 8) → combined fragment ALT 25 → 724; KRAS ACC>CCA simplex rescued with 1 whole-MNP read (allowance rounded up to 1) although duplex shows 4 |
 
-**Acceptance (item 10).** Rerun Tier 1 (flag-off parity, 35 recorded runs —
-must stay identical) and the Tier 2 cohort (same seed): GRIN2A and TP53 not
-rescued, the five TERT rows still rescued, nothing else moves; Tier 3 trace
-of every touched row.
+Cause: the error allowance `ceil(partial × 10^(−q/10))` is loose twice over —
+it counts any error rather than an error to the one ALT base (~1/3), and
+rounding up always excuses one read.
 
-**Acceptance.** TERT row with `--rescue-mnp`: alt ≈ 88–90 vs sign-out 93,
-audit shows the 1295250/1295254 split; the sample's seven dinucleotide MNPs
-unchanged (ad > partial); complex-cluster, ACCESS, FLT3/MSI/FORTE harnesses
-byte-identical with the flag off, and with it on change only rows whose audit
-says rescued.
+### Remaining work — item 12 "simplify and close"
 
-**Risks.** Germline-component MNPs (somatic change merged with a het SNP)
-report the germline component — inherent to the flag since v4.3.0, now
-reachable in tumors where the haplotype is present but dominated; document
-in the flag help. `PARTIAL_DOMINANT` for MNPs also counts third-allele
-reads that match ALT at ≥1 position — noise-level at real depth, and item 2
-still requires the component to beat the haplotype.
+**Decision pending (operator):**
+- **Path A (recommended):** simplify the gate — steps 12a–12f.
+- **Path B:** keep only the bug fixes, return the gate to the original
+  strict `ad == 0`, drop 12a/12b; do 12c–12e and 12f without the cohort
+  rescues. Wrongly merged MNP annotations are then handled upstream.
+
+**12a. One rule instead of an allowance.** Rescue only when *no* read shows
+the whole MNP (`mnp_confirmed_alt == 0`) and partial reads outnumber full-ALT
+reads. Delete `_confirmed_error_allowance` and its test. Why: every correct
+rescue seen has exactly 0; every wrong one had ≥1. Sequencing error making a
+fake whole-MNP read needs a specific substitution at high quality at another
+position — expected well under one read at real depths. Expected on the data
+above: the 13 IMPACT rescues unchanged; GRIN2A, TP53, BRCA2 and KRAS all kept
+as `haplotype_confirmed`; both ACCESS conflicts disappear.
+
+**12b. Merge warns on mixed rescue.** `gbcms merge --add-combined`: when the
+duplex and simplex rows disagree (one rescued and one not, or rescued to
+different components), log a WARNING per row and a per-run count naming the
+rows. Counts unchanged in this PR. Follow-up ticket: leave the combined
+columns empty (NA) for such rows and write a conflicts file beside the merged
+MAF.
+
+**12c. Labels without contig names.** `RESCUED_COMPONENT(pos:REF>ALT)` and
+audit labels `pos(REF>ALT)` — the row's own Chromosome column names the
+contig. Fixes the mismatch for chr-prefixed MAF input (row `chr1`, label
+`1`); never surfaced on b37 data, which has no `chr`.
+
+**12d. Tests.** Four counting invariants in the two engine counter tests; an
+end-to-end test that an indel row with `partial_alt > ad` is untouched by
+`--rescue-mnp`; a merge test for the 12b warning; update pins for 12a/12c.
+
+**12e. Docs.** Gate rule, merge warning, labels in architecture /
+output-formats / dna.md / skill / CHANGELOG; BAQ caveat ("near indels BAQ can
+lower qualities so reads stop counting as showing the whole MNP").
+
+**12f. Validation (one BAM at a time).** Flag-off parity (35 runs, must stay
+identical); both IMPACT cohorts (13 rescues must be unchanged); ACCESS merge
+study (expect 0 conflicts and no germline adoption).
+
+**Out of scope (tickets):** merge NA + conflicts file; a run-start summary of
+enabled options and their implications; fillout samples where the MNP is
+absent but a germline component is present (upstream annotation). The
+always-on `mnp_confirmed_alt` counter stays (one check per MNP ALT read) — an
+accepted deviation from "engine should be output-aware".
+
+### History (items 1–11, all merged on the branch)
+1. Gate `partial_alt > ad` instead of `ad == 0` (a single masked read blocked TERT).
+2. Replace only if the component beats the MNP; else `no_improvement` (reads with an indel inside the block).
+3. Adopt the component's whole `BaseCounts`.
+4. Audit keeps the MNP's own counts; `outcome`; `ref_fail`.
+5. Diagnostics recomputed for rescued rows.
+6. Grouped rows skipped.
+7. Audit reset per sample.
+8. mFSD Parquet provenance logged/documented.
+9. Shared `_engine_kwargs`, per-row `_diagnostic_flags`, dead code removed.
+10. `mnp_confirmed_alt` and the confirmed-haplotype gate (fixed GRIN2A germline adoption on IMPACT).
+11. `RESCUED_COMPONENT` flag, warnings, `+`-joined positions (VCF parse fix).
+
+**Tests.** `tests/test_rescue_mnp.py` (end-to-end MAF and VCF battery,
+invariants on written rows, audit/outcome units),
+`tests/test_mnp_concordance.py` (`TestONPCarrierShapes`, confirmed-read engine
+pins). Harnesses (local, patient data): flag-off parity, IMPACT cohort with
+matched normals, per-read traces, partial-read make-up, BAQ effect, ACCESS
+duplex/simplex merge.
 
 ## Order & discipline
 
