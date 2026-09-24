@@ -305,14 +305,28 @@ output-formats / dna.md / skill / CHANGELOG; BAQ caveat ("near indels BAQ can
 lower qualities so reads stop counting as showing the whole MNP").
 
 **12f. Durable harnesses.** The validation harnesses lived in a session
-scratchpad and were lost on a restart. Recreate them in a local-only
-directory outside the repo (they carry patient-data paths): flag-off parity
-replay, IMPACT cohort with matched normals, per-read trace, partial-read
-make-up, BAQ effect, ACCESS duplex/simplex merge.
+scratchpad and were lost on a restart. Recreated in a local-only directory
+outside the repo (they carry patient-data paths), with their own branch and
+develop venvs: flag-off parity on a seeded real-data panel (IMPACT tumours +
+ACCESS duplex/simplex, all signed-out variants — the earlier recorded runs were
+lost too), the IMPACT cohort with matched normals (seeds 1 and 2 reproduce the
+two T7 cohorts), per-read traces, and the ACCESS merge study (also checks the
+merge warning fires exactly on disagreeing rows). The partial-read make-up and
+BAQ studies were one-off investigations; their results are recorded above.
 
 **12g. Validation (one BAM at a time).** Flag-off parity (35 runs, must stay
 identical); both IMPACT cohorts (13 rescues must be unchanged); ACCESS merge
 study (expect 0 conflicts and no germline adoption).
+
+**Item 12 result (2026-09-23, met).** Code: red battery 69e3722a → fix
+b422a9ef → docs be566216. Real data (harness `~/test/gbcms/harness/t7`, one BAM
+at a time): flag-off parity 16/16 runs identical (8 IMPACT tumours + 4 ACCESS
+duplex/simplex pairs, all signed-out variants); IMPACT cohort seed 1 — 5
+rescued (all exact vs sign-out, somatic in normal, 0 whole-MNP reads), GRIN2A
+and TP53 kept (33 / 253 whole-MNP reads); seed 2 — 8 rescued, all exact,
+somatic, 0 whole-MNP reads; ACCESS 20 samples — 0 duplex/simplex conflicts, 0
+merge warnings, BRCA2 and KRAS kept in both flavors (combined fragment ALT
+unchanged: 25 and 4); traces agree.
 
 **Out of scope (tickets):** merge NA + conflicts file; a run-start summary of
 enabled options and their implications; fillout samples where the MNP is

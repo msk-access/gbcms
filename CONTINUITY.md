@@ -7,12 +7,12 @@ _Last updated: 2026-09-23_
 
 ## Now
 **T7 MNP rescue — PR #101 open (`feature/mnp-rescue-gate` → develop).** Operator
-chose path A: replace the confirmed-read error allowance with "rescue only when
-no read shows the whole MNP", warn in `gbcms merge` when duplex/simplex rescue
-outcomes differ, rescue labels follow the output file's contig naming,
-invariant/indel tests, BAQ doc note, recreate the validation harnesses in a
-durable local-only dir (the scratchpad copies were lost on a session restart),
-then re-run flag-off parity, both IMPACT cohorts and the ACCESS merge study.
+chose path A — DONE and validated (item 12): rescue only when no read shows
+the whole MNP; `gbcms merge` warns on mixed duplex/simplex rescue; labels
+follow the output's contig naming; invariant/indel tests; BAQ doc note.
+Real-data re-run met every target (parity 16/16, 13 IMPACT rescues exact +
+somatic, ACCESS 0 conflicts). Harness: `~/test/gbcms/harness/t7` (local-only,
+own venvs, `run_all.sh`). Remaining: CI green → merge PR #101.
 Plan: `CYCLE_6.5.0_PLAN.md` T7 item 12. Principle: the BAM is truth; sign-out
 is a comparison. **Next after T7: T8 (#103)** — output keeps the input's
 contig naming (VCF output currently malformed for `chr`-named input).
