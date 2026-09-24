@@ -118,6 +118,11 @@ samtools faidx reference.fa
   mitochondrial aliases (`M` / `chrM` / `chrMT` / `MT`) between the BAM and the variant file
   are normalized automatically. Only a contig with **no** match in the BAM is skipped — and
   gbcms logs a one-time `WARN` for it, rather than silently returning zero counts.
+- Reconciliation is internal only: the output keeps the variant file's own contig naming
+  (MAF `Chromosome`/`vcf_region`, VCF `CHROM` and its `##contig` lines, rescue labels, mFSD
+  Parquet). When the variant file's naming differs from the reference's or a BAM's, one INFO
+  line per run names both. The Observations Parquet (`--observations-parquet`) echoes the
+  internal (normalized) contig name.
 
 !!! info "CRAM Support (v5.3.0+)"
     Both `--bam` and `--bam-list` accept CRAM files transparently.

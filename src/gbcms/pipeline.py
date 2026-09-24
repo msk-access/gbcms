@@ -249,15 +249,41 @@ def _resolve_mnp_rescue(
     return OUTCOME_RESCUED, best_idx
 
 
-def _output_contig(variant: Variant) -> str:
-    """The contig name as the output row writes it.
+def _declared_contigs(
+    reference: list[tuple[str, int]], variants: list[Variant]
+) -> list[tuple[str, int | None]]:
+    """VCF ``##contig`` entries in the output's naming.
 
-    MAF input rows are written from their own columns, so their ``Chromosome``
-    keeps the input's naming (e.g. ``chr1``); other rows are written from the
-    internal name, which strips ``chr``. Labels derived from a row (rescue flag
-    and audit) use this so they always match the row.
+    Each reference contig is declared under the name(s) the variant file uses
+    for it (keeping the reference length), so records written with the input's
+    naming are always declared; reference contigs the input never names keep
+    the reference's name. Input contigs the reference lacks are declared
+    without a length rather than left undeclared.
     """
-    return variant.metadata.get("Chromosome", variant.chrom)
+    input_names: dict[str, list[str]] = {}
+    for v in variants:
+        names = input_names.setdefault(v.chrom, [])
+        if v.output_chrom not in names:
+            names.append(v.output_chrom)
+    declared: list[tuple[str, int | None]] = []
+    for name, length in reference:
+        for out in input_names.get(CoordinateKernel.normalize_chromosome(name), [name]):
+            declared.append((out, length))
+    seen = {name for name, _ in declared}
+    for names in input_names.values():
+        declared.extend((out, None) for out in names if out not in seen)
+    return declared
+
+
+def _naming_difference(variants: list[Variant], other_names: list[str]) -> tuple[str, str] | None:
+    """The first ``(input name, other name)`` pair naming the same contig
+    differently, or None when the variant file's naming matches."""
+    other = {CoordinateKernel.normalize_chromosome(n): n for n in other_names}
+    for v in variants:
+        name = other.get(v.chrom)
+        if name is not None and name != v.output_chrom:
+            return v.output_chrom, name
+    return None
 
 
 class Pipeline:
@@ -278,6 +304,27 @@ class Pipeline:
             "total_time": 0.0,
         }
         self._failed_samples: list[dict[str, str]] = []
+        self._reference_contigs: list[tuple[str, int]] = []
+        self._declared_contigs: list[tuple[str, int | None]] = []
+        self._logged_naming: set[tuple[str, str]] = set()
+
+    def _log_naming_difference(
+        self, variants: list[Variant], other_names: list[str], other: str
+    ) -> None:
+        """INFO once per distinct naming pair per run when the variant file names
+        contigs differently from the reference or a BAM (e.g. ``chr1`` vs ``1``).
+        Counting reconciles the two; this makes the reconciliation visible."""
+        pair = _naming_difference(variants, other_names)
+        if pair is None or pair in self._logged_naming:
+            return
+        self._logged_naming.add(pair)
+        logger.info(
+            "Variant file and %s use different contig naming ('%s' vs '%s'): counting "
+            "reconciles them, and the output keeps the variant file's naming",
+            other,
+            pair[0],
+            pair[1],
+        )
 
     def run(self) -> dict:
         """
@@ -344,6 +391,11 @@ class Pipeline:
         logger.debug("Loading variants from %s", self.config.variant_file)
         variants = self._load_variants()
         logger.info("Loaded %d variants", len(variants))
+        self._reference_contigs = self._load_contigs_from_fai()
+        self._log_naming_difference(
+            variants, [name for name, _ in self._reference_contigs], "reference"
+        )
+        self._declared_contigs = _declared_contigs(self._reference_contigs, variants)
 
         if not variants:
             logger.error("No variants found. Exiting.")
@@ -882,7 +934,7 @@ class Pipeline:
             ):
                 continue
             v = pv.variant
-            contig = _output_contig(variants[i])
+            contig = variants[i].output_chrom
             if pv.multi_allelic_group is not None:
                 pv.gbcms_rescue = format_rescue_audit(OUTCOME_SKIPPED_GROUPED, counts)
                 outcomes[OUTCOME_SKIPPED_GROUPED] += 1
@@ -915,7 +967,7 @@ class Pipeline:
         for (i, positions), components in zip(candidates, component_counts, strict=True):
             pv, original = prepared[i], full_counts[i]
             v = pv.variant
-            contig = _output_contig(variants[i])
+            contig = variants[i].output_chrom
             labels = [f"{contig}:{pos + 1}({ref}>{alt})" for pos, ref, alt in positions]
             entries = [
                 f"{label}:{'ref_fail' if c is None else c.ad}"
@@ -1079,6 +1131,7 @@ class Pipeline:
             ) as bam:
                 bam_chroms = set(bam.references)
 
+            self._log_naming_difference(variants, sorted(bam_chroms), "BAM")
             norm_bam_chroms = {CoordinateKernel.normalize_chromosome(c) for c in bam_chroms}
 
             if variants:
@@ -1094,14 +1147,15 @@ class Pipeline:
     def _load_contigs_from_fai(self) -> list[tuple[str, int]]:
         """Load contig names and lengths from the FASTA index (.fai).
 
-        Returns a list of (name, length) tuples for VCF ##contig headers.
-        Falls back to an empty list if the FAI is missing or malformed —
-        the pipeline should not fail just because of missing contig headers.
+        Returns a list of (name, length) tuples, used for VCF ##contig headers
+        and to report contig-naming differences. Falls back to an empty list if
+        the FAI is missing or malformed — neither use should fail the run.
         """
         fai_path = Path(str(self.config.reference_fasta) + ".fai")
         if not fai_path.exists():
             logger.warning(
-                "FASTA index not found: %s — VCF ##contig headers will be omitted",
+                "FASTA index not found: %s — VCF ##contig headers will list only the "
+                "variant file's contigs, without lengths",
                 fai_path,
             )
             return []
@@ -1116,7 +1170,8 @@ class Pipeline:
             logger.debug("Loaded %d contigs from %s", len(contigs), fai_path.name)
         except (ValueError, OSError) as e:
             logger.warning(
-                "Failed to parse FASTA index %s: %s — VCF ##contig headers will be omitted",
+                "Failed to parse FASTA index %s: %s — VCF ##contig headers will list only "
+                "the variant file's contigs, without lengths",
                 fai_path,
                 e,
             )
@@ -1144,8 +1199,6 @@ class Pipeline:
 
         writer: VcfWriter | MafWriter
         if self.config.output.format == OutputFormat.VCF:
-            # Load contigs from FAI for VCF ##contig headers (lazy — only for VCF output)
-            contigs = self._load_contigs_from_fai()
 
             # mode= is required so RNA-specific INFO/FORMAT headers and data fields
             # (SEN, ANT, ASEN, RED, SPL) are included when self.config.mode == "rna".
@@ -1160,7 +1213,7 @@ class Pipeline:
                 has_gtf=bool(getattr(self.config, "gtf", None)),
                 command_line=self.config.command_line,
                 reference_fasta=str(self.config.reference_fasta),
-                contigs=contigs,
+                contigs=self._declared_contigs,
             )
         else:
             # mode= is required so RNA-specific MAF columns (rna_sense_depth, etc.)
@@ -1193,6 +1246,7 @@ class Pipeline:
             if pv and pv.was_normalized:
                 norm_v = Variant(
                     chrom=pv.variant.chrom,
+                    original_chrom=v.original_chrom,
                     pos=pv.variant.pos,
                     ref=pv.variant.ref_allele,
                     alt=pv.variant.alt_allele,
@@ -1229,7 +1283,7 @@ class Pipeline:
             excluded = len(variants) - len(counted)
             _get_rs().write_fsd_parquet(
                 str(fsd_path),
-                [v.chrom for v, _ in counted],
+                [v.output_chrom for v, _ in counted],
                 [v.pos + 1 for v, _ in counted],  # 1-based MAF/VCF convention
                 [v.ref for v, _ in counted],
                 [v.alt for v, _ in counted],

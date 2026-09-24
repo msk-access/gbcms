@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — output keeps the input's contig naming (#103)
+
+- `chr`-named input (e.g. hg38 with UCSC names) no longer loses its naming in the
+  output. VCF input → MAF writes `Chromosome`/`vcf_region` as the input names them
+  (was the stripped `1`), and VCF output writes `CHROM` in the input's naming with
+  `##contig` lines declared under the same names (reference lengths kept) — before,
+  records read `1` under a `##contig=<ID=chr1>` header, a malformed VCF that htslib
+  rejects (`Contig '1' is not defined in the header`). Rescue labels and the mFSD
+  Parquet follow the same naming. Counting is unchanged: contigs are still reconciled
+  internally between the variant file, FASTA and BAM. One INFO line per run names the
+  two conventions when they differ. Unprefixed (b37, Ensembl) input is unaffected.
+
 ### Added — observability for silent fallbacks (no count changes)
 
 - `SW_FALLBACK(n)` in `gbcms_diagnostic`, plus one WARN per affected variant

@@ -673,12 +673,12 @@ class MafWriter(OutputWriter):
             # Convert internal coordinates to GDC MAF format
             maf_coords = CoordinateKernel.internal_to_maf(variant)
             row.update(maf_coords)
-            row["Chromosome"] = variant.chrom
+            row["Chromosome"] = variant.output_chrom
 
             # VCF-origin tracking fields
             vcf_pos = variant.pos + 1
             row["vcf_pos"] = str(vcf_pos)
-            row["vcf_region"] = f"{variant.chrom}:{vcf_pos}"
+            row["vcf_region"] = f"{variant.output_chrom}:{vcf_pos}"
             if variant.original_id:
                 row["vcf_id"] = variant.original_id
 
@@ -733,7 +733,7 @@ class VcfWriter(OutputWriter):
         has_gtf: bool = False,
         command_line: str = "",
         reference_fasta: str = "",
-        contigs: list[tuple[str, int]] | None = None,
+        contigs: list[tuple[str, int | None]] | None = None,
     ):
         self.path = path
         self.sample_name = sample_name
@@ -778,8 +778,13 @@ class VcfWriter(OutputWriter):
         if self.reference_fasta:
             headers.append(f"##reference=file://{self.reference_fasta}")
         # Contig headers — recommended by VCF 4.2 spec, required by some tools
+        # Names follow the records' naming (the input's); a contig the reference
+        # lacks is declared without a length rather than left undeclared.
         for name, length in self.contigs:
-            headers.append(f"##contig=<ID={name},length={length}>")
+            if length is None:
+                headers.append(f"##contig=<ID={name}>")
+            else:
+                headers.append(f"##contig=<ID={name},length={length}>")
         # FILTER header — required by VCF 4.2 spec even when only PASS is used
         headers.append('##FILTER=<ID=PASS,Description="All filters passed">')
         # INFO fields
@@ -1063,7 +1068,7 @@ class VcfWriter(OutputWriter):
             )
 
         row = [
-            variant.chrom,
+            variant.output_chrom,
             str(pos),
             variant.original_id or ".",
             variant.ref,

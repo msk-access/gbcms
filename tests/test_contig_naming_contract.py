@@ -14,7 +14,7 @@ naming of the input it came from:
 - One INFO line per run names the two conventions when the input's naming
   differs from the reference's.
 
-Committed red (xfail-strict) before the implementation.
+Committed red (xfail-strict) before the implementation; flipped green with it.
 """
 
 import glob
@@ -28,8 +28,6 @@ from typer.testing import CliRunner
 from gbcms.cli import app
 
 runner = CliRunner()
-
-XFAIL = pytest.mark.xfail(strict=True, reason="contig naming (#103): implementation pending")
 
 READ_LEN = 100
 POS1 = 201  # 1-based SNV position
@@ -134,7 +132,6 @@ def _vcf_records(path, capfd):
 
 
 # ── #103 reproduction: chr-named input, chr FASTA, unprefixed BAM ─────────
-@XFAIL
 def test_vcf_input_maf_output_keeps_chr_naming(tmp_path):
     ref = _ref()
     path, _ = _run(
@@ -150,7 +147,6 @@ def test_vcf_input_maf_output_keeps_chr_naming(tmp_path):
     assert row["vcf_region"] == f"chr1:{POS1}"
 
 
-@XFAIL
 def test_vcf_input_vcf_output_is_well_formed_with_chr_naming(tmp_path, capfd):
     ref = _ref()
     path, _ = _run(
@@ -166,7 +162,6 @@ def test_vcf_input_vcf_output_is_well_formed_with_chr_naming(tmp_path, capfd):
     assert "chr1" in declared
 
 
-@XFAIL
 def test_maf_input_vcf_output_keeps_chr_naming(tmp_path, capfd):
     ref = _ref()
     path, _ = _run(
@@ -196,7 +191,6 @@ def test_maf_input_maf_output_keeps_chr_naming(tmp_path):
     assert _maf_row(path)["Chromosome"] == "chr1"
 
 
-@XFAIL
 def test_vcf_header_declares_input_naming_when_reference_differs(tmp_path, capfd):
     """chr-named input against an unprefixed reference: the ##contig line
     for the reference's '1' is written under the input's name 'chr1', with
@@ -217,7 +211,6 @@ def test_vcf_header_declares_input_naming_when_reference_differs(tmp_path, capfd
         assert vf.header.contigs["chr1"].length == len(ref)
 
 
-@XFAIL
 def test_naming_difference_is_logged_once(tmp_path):
     ref = _ref()
     _, log = _run(

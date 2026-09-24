@@ -81,6 +81,7 @@ class CoordinateKernel:
             alt=alt,
             variant_type=vtype,
             original_id=original_id,
+            original_chrom=chrom,
         )
 
     @staticmethod
@@ -126,7 +127,14 @@ class CoordinateKernel:
             vtype = VariantType.COMPLEX
             internal_pos = start_pos - 1
 
-        return Variant(chrom=norm_chrom, pos=internal_pos, ref=ref, alt=alt, variant_type=vtype)
+        return Variant(
+            chrom=norm_chrom,
+            pos=internal_pos,
+            ref=ref,
+            alt=alt,
+            variant_type=vtype,
+            original_chrom=chrom,
+        )
 
     @staticmethod
     def _gdc_variant_type(variant: Variant) -> str:
