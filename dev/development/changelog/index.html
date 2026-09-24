@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -752,6 +752,37 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   input's rows as it lists them, then rows only a later input has, in that
   input's order. Row contents are unchanged.</li>
 </ul>
+<h3 id="fixed-one-baq-rule-across-rna-views-deterministic-asjd-junctions">Fixed — one <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule across RNA views; deterministic ASJD junctions<a class="headerlink" href="#fixed-one-baq-rule-across-rna-views-deterministic-asjd-junctions" title="Permanent link">¶</a></h3>
+<ul>
+<li>Per-transcript counts and ASJD now apply the main counts' exon-boundary <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>
+  exception: <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is skipped at variants within 5bp of an annotated exon boundary,
+  where its <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-N penalty lands on exactly the reads that splice there.
+  Before, both applied <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> regardless. Measured on three junction-rich RNA
+  samples at 2010 exon-edge probes:</li>
+<li>per-transcript REF counts were ~3% low overall, and some transcripts lost
+    all their spliced REF reads. The median gap to the main counts drops from
+    2.5% to 0.05%, and the per-transcript mismatch rate now equals the main
+    counts';</li>
+<li>ASJD saw no junction at some edge variants, including known junctions
+    carried by thousands of fragments.</li>
+</ul>
+<p>Main counts are unchanged. Away from exon edges, per-transcript counts are
+  unchanged. ASJD rows change there only where the tie rule below applies, or
+  through <code>asjd_qval</code>, which is corrected across the sample.
+- ASJD's dominant junction no longer depends on hash order. On a tie, the same
+  input could report a significant divergence on one run and none on the next.
+  A tie is now not a divergence: when a REF top junction and an ALT top junction
+  are the same splice event (both ends within 5bp, ASJD's tolerance
+  throughout), each allele reports its own of the pair and no test is run.
+  Otherwise each allele reports the tied junction the other allele's fragments
+  use most, and the leftmost only on a further tie. Coordinates alone could
+  otherwise decide the Fisher cells and <code>asjd_flag</code>.
+- <code>exon_boundary_dist</code> is found in any contig naming. A <code>chrM</code> variant against
+  an <code>MT</code>-named GTF read <code>2147483647</code>, and so did any contig the GTF does not
+  annotate. The first now reads the real distance, so the exon-edge rule
+  applies there. The second is now empty. The column is documented as the
+  unsigned distance it has always been; it was previously documented as
+  signed.</p>
 <h3 id="added-observability-for-silent-fallbacks-no-count-changes">Added — observability for silent fallbacks (no count changes)<a class="headerlink" href="#added-observability-for-silent-fallbacks-no-count-changes" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>SW_FALLBACK(n)</code> in <code>gbcms_diagnostic</code>, plus one WARN per affected variant

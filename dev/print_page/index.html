@@ -7904,7 +7904,7 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>exon_boundary_dist</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Signed distance to the nearest exon boundary. Positive = exonic (distance from exon edge inward); negative = intronic (distance from nearest exon edge outward). <code>0</code> = exactly at an exon boundary.</td>
+<td style="text-align: left;">Distance (bp) to the nearest annotated exon boundary, exonic and intronic alike (unsigned). <code>0</code> = exactly at an exon boundary. Empty when the variant's contig has no annotation in the GTF.</td>
 </tr>
 </tbody>
 </table>
@@ -9609,6 +9609,14 @@ junction-compatible extraction (tracked in issue #94).</p>
 <li>This mimics GATK SplitNCigarReads' overhang clipping without
   removing bases — a softer approach that preserves information</li>
 </ul>
+<p><strong>Exon-boundary exception (with <code>--gtf</code>).</strong> At a variant within 5bp of an
+annotated exon boundary (<code>exon_boundary_dist</code>), the penalty would land on
+exactly the reads that splice there, which are the evidence at an exon edge.
+<abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is therefore skipped for that variant. The main counts, the per-transcript
+counts and ASJD all use this one rule, so at an exon edge a transcript's
+counts match the variant's counts, as they do elsewhere. Away from a boundary,
+<abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> applies in every view. A DEBUG line names each variant form where it is
+skipped.</p>
 <p><strong>Default behavior:</strong></p>
 <table>
 <thead>
@@ -9917,8 +9925,10 @@ Use mouse to pan and zoom
 </table>
 <hr>
 <h2 id="reference-rna-annotation-feature-1-exon-boundary-distance">Feature 1: Exon Boundary Distance<a class="headerlink" href="#reference-rna-annotation-feature-1-exon-boundary-distance" title="Permanent link">¶</a></h2>
-<p>For each variant, gbcms computes the signed distance to the <strong>nearest exon boundary</strong>
-across all overlapping transcripts.</p>
+<p>For each variant, gbcms computes the distance (bp) to the <strong>nearest annotated exon
+boundary</strong> on its contig, across all transcripts. The distance is unsigned: exonic and
+intronic positions both count up from the edge. The contig is matched in any naming
+(<code>chr1</code> ~ <code>1</code>, <code>chrM</code> ~ <code>MT</code>).</p>
 <table>
 <thead>
 <tr>
@@ -9928,16 +9938,16 @@ across all overlapping transcripts.</p>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">Positive</td>
-<td style="text-align: left;">Variant is exonic, N bases from the nearest exon edge</td>
+<td style="text-align: left;">N &gt; 0</td>
+<td style="text-align: left;">Variant is N bases from the nearest exon edge (exonic or intronic side)</td>
 </tr>
 <tr>
 <td style="text-align: left;">0</td>
 <td style="text-align: left;">Variant is exactly at an exon boundary</td>
 </tr>
 <tr>
-<td style="text-align: left;">Negative</td>
-<td style="text-align: left;">Variant is intronic, N bases from the nearest exon edge</td>
+<td style="text-align: left;">empty</td>
+<td style="text-align: left;">The variant's contig has no annotation in the GTF</td>
 </tr>
 </tbody>
 </table>
@@ -9963,6 +9973,13 @@ overlaps multiple transcripts with different exon structures.</p>
 <li>A read's <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> operations (splice junctions) are compared
      against the transcript's annotated splice sites.</li>
 <li>Reads with matching splice junctions are counted toward that transcript.</li>
+<li>Alleles are classified under the same base-quality rules as the main
+   counts, including the exon-boundary <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> exception
+   (<a href="#reference-rna-splice-handling">RNA Splice-Junction Handling</a>). For the
+   transcript every read is compatible with, the per-transcript counts match
+   the variant's counts. The exception is when the main counts took a
+   decomposed form of the variant or were adjusted for sibling alleles, since
+   per-transcript counting classifies the variant as written.</li>
 </ol>
 <h3 id="reference-rna-annotation-output-columns">Output Columns<a class="headerlink" href="#reference-rna-annotation-output-columns" title="Permanent link">¶</a></h3>
 <table>
@@ -10038,6 +10055,18 @@ Use mouse to pan and zoom
 <li>Counts are deduped <strong>per fragment</strong> (by QNAME): a molecule whose R1 and R2 both
    span the same junction votes once, so the junction totals and the strand-discordance
    test reflect independent fragments, not mates.</li>
+<li>Each allele's <strong>dominant junction</strong> is the one with the most fragments. A tie
+   is not a divergence. When a REF top junction and an ALT top junction are the
+   same splice event, each allele reports its own of that pair and no test is
+   run. "Same" means both ends within 5bp, the tolerance ASJD uses throughout;
+   an exact match is preferred. Otherwise each allele reports, among its tied
+   junctions, the one the other allele's fragments use most (the leftmost only
+   on a further tie), and Fisher's exact test compares the two. The verdict
+   therefore follows the reads, not the coordinates. The choice is
+   deterministic: the same input always gives the same junctions and p-value.</li>
+<li>Alleles are classified under the main counts' base-quality rules, including
+   the exon-boundary <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> exception, so the spliced reads at an exon-edge
+   variant are ASJD evidence rather than masked.</li>
 </ol>
 <h3 id="reference-rna-annotation-output-columns-14-asjd">Output Columns (14 ASJD)<a class="headerlink" href="#reference-rna-annotation-output-columns-14-asjd" title="Permanent link">¶</a></h3>
 <p>The 14 ASJD fields are part of the 17 columns GTF mode adds (alongside
@@ -15697,6 +15726,37 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   input's rows as it lists them, then rows only a later input has, in that
   input's order. Row contents are unchanged.</li>
 </ul>
+<h3 id="development-changelog-fixed-one-baq-rule-across-rna-views-deterministic-asjd-junctions">Fixed — one <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule across RNA views; deterministic ASJD junctions<a class="headerlink" href="#development-changelog-fixed-one-baq-rule-across-rna-views-deterministic-asjd-junctions" title="Permanent link">¶</a></h3>
+<ul>
+<li>Per-transcript counts and ASJD now apply the main counts' exon-boundary <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>
+  exception: <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is skipped at variants within 5bp of an annotated exon boundary,
+  where its <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-N penalty lands on exactly the reads that splice there.
+  Before, both applied <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> regardless. Measured on three junction-rich RNA
+  samples at 2010 exon-edge probes:</li>
+<li>per-transcript REF counts were ~3% low overall, and some transcripts lost
+    all their spliced REF reads. The median gap to the main counts drops from
+    2.5% to 0.05%, and the per-transcript mismatch rate now equals the main
+    counts';</li>
+<li>ASJD saw no junction at some edge variants, including known junctions
+    carried by thousands of fragments.</li>
+</ul>
+<p>Main counts are unchanged. Away from exon edges, per-transcript counts are
+  unchanged. ASJD rows change there only where the tie rule below applies, or
+  through <code>asjd_qval</code>, which is corrected across the sample.
+- ASJD's dominant junction no longer depends on hash order. On a tie, the same
+  input could report a significant divergence on one run and none on the next.
+  A tie is now not a divergence: when a REF top junction and an ALT top junction
+  are the same splice event (both ends within 5bp, ASJD's tolerance
+  throughout), each allele reports its own of the pair and no test is run.
+  Otherwise each allele reports the tied junction the other allele's fragments
+  use most, and the leftmost only on a further tie. Coordinates alone could
+  otherwise decide the Fisher cells and <code>asjd_flag</code>.
+- <code>exon_boundary_dist</code> is found in any contig naming. A <code>chrM</code> variant against
+  an <code>MT</code>-named GTF read <code>2147483647</code>, and so did any contig the GTF does not
+  annotate. The first now reads the real distance, so the exon-edge rule
+  applies there. The second is now empty. The column is documented as the
+  unsigned distance it has always been; it was previously documented as
+  signed.</p>
 <h3 id="development-changelog-added-observability-for-silent-fallbacks-no-count-changes">Added — observability for silent fallbacks (no count changes)<a class="headerlink" href="#development-changelog-added-observability-for-silent-fallbacks-no-count-changes" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>SW_FALLBACK(n)</code> in <code>gbcms_diagnostic</code>, plus one WARN per affected variant
