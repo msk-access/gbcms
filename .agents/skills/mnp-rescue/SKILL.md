@@ -36,7 +36,12 @@ calls share `_engine_kwargs()` so components classify reads exactly like the mai
   never `,` — VCF emits it as the Number=1 `GR` INFO and parsers split commas.
 - Labels (flag, audit, logs) use the contig as the output row writes it (`_output_contig`:
   an input MAF's own `Chromosome`, else the internal name).
-- `gbcms merge` warns per row when duplex/simplex rescue outcomes differ (counts unchanged).
+- `gbcms merge` warns per row when duplex/simplex rescue outcomes differ, with or without
+  `--add-combined` (counts unchanged).
+- Rescued rows keep the shape flags `MNP_DISC_RATIO`/`MNP_RESCUE_ELIGIBLE`; unresolved rows =
+  `MNP_RESCUE_ELIGIBLE` without `RESCUED_COMPONENT`.
+- `mnp_confirmed_alt` never counts a read with an indel inside the block (a different allele;
+  the complex path may still count it toward `ad`).
 - Rescued rows: `RESCUED_COMPONENT(chrom:pos:REF>ALT)` appended to `gbcms_diagnostic`, a
   WARNING per row, and a WARNING when `--rescue-mnp` is enabled (counts are replaced — opt-in).
 - `no_improvement` is legitimate: partial evidence from indel-disrupted reads

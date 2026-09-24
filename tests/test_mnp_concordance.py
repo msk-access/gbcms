@@ -262,6 +262,46 @@ class TestONPCarrierShapes:
         assert counts.rd == counts.rd_fwd + counts.rd_rev
         assert counts.ad == counts.ad_fwd + counts.ad_rev
 
+    def test_indel_inside_block_is_never_confirmed(self, tmp_path):
+        """A read carrying both changed bases plus a 1bp insertion inside the
+        block is a different allele, not the annotated haplotype: it may count
+        toward ad through the complex path, but never as a read that shows the
+        whole MNP. Counting it toward ad also keeps the rescue gate's
+        partial_alt > ad from opening at such a locus."""
+        reads = [
+            make_read(
+                f"ref_{i}",
+                self.LEFT + "GAGGG" + self.RIGHT,
+                start=80,
+                cigar=((0, 45),),
+                flag=16 if i % 2 else 0,
+            )
+            for i in range(20)
+        ]
+        reads += [
+            make_read(
+                f"ins_{i}",
+                self.LEFT + "AAG" + "T" + "GA" + self.RIGHT,
+                start=80,
+                cigar=((0, 23), (1, 1), (0, 22)),
+                flag=16 if i % 2 else 0,
+            )
+            for i in range(10)
+        ]
+        bam = build_bam(tmp_path, reads, "onp_ins_in_block.bam")
+        variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "ONP")
+        counts = count_both(bam, [variant])[0]
+        legacy = count_one(bam, variant)
+
+        assert counts.mnp_confirmed_alt == 0
+        assert legacy.mnp_confirmed_alt == 0
+        assert counts.ad == 10
+        assert counts.partial_alt == 0
+        assert counts.dp >= counts.rd + counts.ad
+        assert counts.dpf >= counts.rdf + counts.adf
+        assert counts.rd == counts.rd_fwd + counts.rd_rev
+        assert counts.ad == counts.ad_fwd + counts.ad_rev
+
     def test_confirmed_alt_is_zero_for_non_mnp_variants(self, tmp_path):
         bam = self._bam(tmp_path, "AAGGA")
         snv = gbcms_rs.Variant("chr1", 100, "G", "A", "SNP")

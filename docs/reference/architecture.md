@@ -397,7 +397,7 @@ A variant is a rescue candidate when **all** conditions are met:
 | 2 | `MNP_RESCUE_ELIGIBLE` in `gbcms_diagnostic` | Emitted only for MNPs (`ref_len == alt_len > 1`) with disc/len ≤ `--rescue-mnp-threshold` (default 1.0 = all MNPs; 0.5 = conservative sparse-only mode). |
 | 3 | `partial_alt > ad` | The haplotype is dominated by component evidence. Not `ad == 0`: masked per-position evaluation counts a component carrier whose other discriminating base is low-BQ as full ALT, and one such read must not block rescue. |
 | 4 | Not in a co-annotated group (`multi_allelic_group` unset) | Grouped reads are exclusively assigned against siblings; a sibling-free component re-count would hand contested reads back. Such rows get `outcome=skipped_grouped`. |
-| 5 | `mnp_confirmed_alt == 0` | `mnp_confirmed_alt` counts MNP ALT reads in which every discriminating base was read (none masked, none N) — reads that *show* the whole haplotype. Any such read means the BAM shows the annotated allele (e.g. a somatic change on a germline SNP's haplotype), and adopting a component would report a different allele, so the row keeps the MNP's counts with `outcome=haplotype_confirmed` and no re-count. Every correct rescue seen in real data had zero such reads; an error-made one needs a specific high-quality substitution at another changed base. (An error allowance scaled by `partial_alt` was tried and rejected: on ACCESS it adopted a germline SNP.) |
+| 5 | `mnp_confirmed_alt == 0` | `mnp_confirmed_alt` counts MNP ALT reads in which every discriminating base was read (none masked, none N) — reads that *show* the whole haplotype. A read with an indel inside the block never counts: its sequence at the locus is a different allele, not the annotated one (the complex path may still count it toward `ad`, which makes condition 3 harder to meet). Any such read means the BAM shows the annotated allele (e.g. a somatic change on a germline SNP's haplotype), and adopting a component would report a different allele, so the row keeps the MNP's counts with `outcome=haplotype_confirmed` and no re-count. Every correct rescue seen in real data had zero such reads; an error-made one needs a specific high-quality substitution at another changed base. (An error allowance scaled by `partial_alt` was tried and rejected: on ACCESS it adopted a germline SNP.) |
 
 ### Rescue Strategy: Adopt the Best Component
 
@@ -457,9 +457,11 @@ variant list is shared across the BAMs of a run). For candidates:
 |:--------|:--------|:---------------|
 | `rescued` | Best component beats the MNP's `ad`; `gbcms_diagnostic` gains `RESCUED_COMPONENT(chrom:pos:REF>ALT)` and a warning is logged | Adopted component's |
 | `skipped_grouped` | MNP is in a co-annotated group | MNP's |
-| `haplotype_confirmed` | More reads show the whole haplotype than sequencing error explains — the annotated allele is present | MNP's |
+| `haplotype_confirmed` | At least one read shows the whole haplotype (`mnp_confirmed_alt > 0`, gate row 5) — the BAM shows the annotated allele | MNP's |
 | `no_improvement` | No component beats the MNP's `ad`: the partial evidence was not component carriers — e.g. reads with an indel inside the block, which the complex path counts as REF with nearby-indel evidence and no single-base count calls ALT. Rescue correctly declines | MNP's |
 | `ref_validation_failed` | No component SNV survived preparation — an anomaly (the MNP itself passed REF validation); logged as a warning | MNP's |
+
+`MNP_DISC_RATIO(n/m)` and `MNP_RESCUE_ELIGIBLE` describe the annotated MNP's *shape*, so a rescued row keeps them next to `RESCUED_COMPONENT(...)`: rows still awaiting review after a rescue run are those with `MNP_RESCUE_ELIGIBLE` and **without** `RESCUED_COMPONENT` (equivalently, `gbcms_rescue` `outcome` other than `rescued`).
 
 `original_ref` / `original_alt` / `original_partial` / `original_confirmed` always carry the
 MNP's own counts (`original_confirmed` is its `mnp_confirmed_alt`).

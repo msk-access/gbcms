@@ -271,9 +271,12 @@ def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
 
     A rescued row reports a component SNV's counts under the MNP's coordinates.
     When only one flavor was rescued — or the two adopted different components —
-    the two flavors' counts describe different alleles, and the combined
-    columns add them. Counts are left as they are; the rows are named in the
-    log. No-op when rescue was not run (no ``gbcms_rescue`` columns).
+    the two flavors' counts describe different alleles in one row: anyone
+    comparing or summing the duplex and simplex columns would be misled, with
+    or without ``--add-combined``. With it, the ``simplex_duplex_*`` columns
+    add them outright, and the per-row message says so. Counts are left as
+    they are; the rows are named in the log. No-op when rescue was not run (no
+    ``gbcms_rescue`` columns).
     """
     d, s = "duplex_gbcms_rescue", "simplex_gbcms_rescue"
     if d not in result.columns or s not in result.columns:

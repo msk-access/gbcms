@@ -286,7 +286,10 @@ position — expected well under one read at real depths. Expected on the data
 above: the 13 IMPACT rescues unchanged; GRIN2A, TP53, BRCA2 and KRAS all kept
 as `haplotype_confirmed`; both ACCESS conflicts disappear.
 
-**12b. Merge warns on mixed rescue.** `gbcms merge --add-combined`: when the
+**12b. Merge warns on mixed rescue.** `gbcms merge` (with or without
+`--add-combined` — review finding: the two flavors' columns describe different
+alleles in one row either way; the combined-column note is added only when
+those columns are written): when the
 duplex and simplex rows disagree (one rescued and one not, or rescued to
 different components), log a WARNING per row and a per-run count naming the
 rows. Counts unchanged in this PR. Follow-up ticket: leave the combined

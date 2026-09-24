@@ -549,7 +549,7 @@ def test_rescue_labels_follow_the_output_contig_naming(tmp_path):
     assert audit["positions"] == "chr1:201(G>A):10+chr1:205(G>A):0"
 
 
-def _merge(tmp_path, duplex_reads, simplex_reads):
+def _merge(tmp_path, duplex_reads, simplex_reads, extra=()):
     """Rescue-on MAFs for a duplex and a simplex BAM, merged; return CLI output."""
     (tmp_path / "d").mkdir()
     (tmp_path / "s").mkdir()
@@ -566,6 +566,7 @@ def _merge(tmp_path, duplex_reads, simplex_reads):
             f"simplex:{s_out / 'S.maf'}",
             "-o",
             str(merged),
+            *extra,
         ],
     )
     assert result.exit_code == 0, result.output
@@ -576,6 +577,17 @@ def test_merge_warns_when_duplex_and_simplex_rescue_differ(tmp_path):
     log = _merge(tmp_path, _component_carrier_reads(), _cis_carrier_reads())
     assert "Mixed MNP rescue" in log
     assert "1 row(s)" in log
+    assert "simplex_duplex_* columns add counts of different alleles" in log
+
+
+def test_merge_warns_on_mixed_rescue_without_combined_columns(tmp_path):
+    """Without --add-combined the two flavors' columns still describe different
+    alleles in one row, so the row is still named — but the combined-column
+    note is omitted because no such columns are written."""
+    log = _merge(tmp_path, _component_carrier_reads(), _cis_carrier_reads(), ["--no-combined"])
+    assert "Mixed MNP rescue" in log
+    assert "1 row(s)" in log
+    assert "simplex_duplex_*" not in log
 
 
 def test_merge_is_quiet_when_both_flavors_agree(tmp_path):

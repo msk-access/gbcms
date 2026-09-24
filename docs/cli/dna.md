@@ -150,7 +150,7 @@ for the full design.
     Two diagnostic flags are emitted for every MNP variant, with or without `--rescue-mnp`:
 
     - **`MNP_DISC_RATIO(n/m)`** — Always emitted. Shows the ratio of discriminating positions to total MNP length.
-    - **`MNP_RESCUE_ELIGIBLE`** — Emitted only when disc/len ≤ `--rescue-mnp-threshold`. Marks the variant as eligible; rescue additionally requires `partial_alt > alt_count`.
+    - **`MNP_RESCUE_ELIGIBLE`** — Emitted only when disc/len ≤ `--rescue-mnp-threshold`. Marks the variant as eligible; rescue additionally requires `partial_alt > alt_count`. Both flags describe the annotated MNP's shape, so a rescued row keeps them next to `RESCUED_COMPONENT(...)`; rows still awaiting review after a rescue run are `MNP_RESCUE_ELIGIBLE` without `RESCUED_COMPONENT`.
 
 !!! warning "A rescued row reports a component, not the annotated MNP"
     When reads show the whole MNP (e.g. a somatic change on top of a germline SNP), rescue

@@ -108,8 +108,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Chromosome`, e.g. `chr1`, rather than the stripped internal name).
 - **`gbcms merge` warns on mixed rescue:** when duplex and simplex rescue
   outcomes differ (one rescued, or different components), each row is named in
-  a WARNING (the `simplex_duplex_*` columns then add different alleles) with a
-  per-run count; counts are unchanged.
+  a WARNING with a per-run count — with or without `--add-combined`, since the
+  two flavors' columns then describe different alleles in one row (with it, the
+  `simplex_duplex_*` columns add them); counts are unchanged.
 - **Grouped MNPs are skipped** (`outcome=skipped_grouped`) so rescue cannot
   hand back reads that exclusive assignment gave a co-annotated sibling.
 - **Fixed: rescue audit leaked across samples.** In a multi-BAM run a later
