@@ -30,6 +30,10 @@ description: Procedure for adding a feature to gbcms following its Git Flow and 
 
 6. **Run QA** (see the qa-check skill).
 
+   **Real-data acceptance** for count-changing work: run every assay the change reaches
+   (IMPACT tumour with its matched normal; ACCESS duplex + simplex through `gbcms merge`),
+   one BAM at a time, and score against the reads — the BAM is truth, sign-out a comparison.
+
 7. **PR to develop**:
    ```bash
    git push origin feature/<scope>-<description>

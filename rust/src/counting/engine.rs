@@ -1927,6 +1927,7 @@ fn count_variant_from_cache(
         } else if is_alt {
             counts.ad += 1;
             counts.any_alt += 1; // Full ALT → counts toward any_alt
+            if result.mnp_confirmed { counts.mnp_confirmed_alt += 1; }
             if is_reverse { counts.ad_rev += 1; } else { counts.ad_fwd += 1; }
 
             // ── RNA-SPECIFIC ALT TRACKING ──
@@ -2478,6 +2479,9 @@ fn count_single_variant(
         } else if is_alt {
             counts.ad += 1;
             counts.any_alt += 1; // Full ALT → counts toward any_alt
+            if result.mnp_confirmed {
+                counts.mnp_confirmed_alt += 1;
+            }
             if is_reverse {
                 counts.ad_rev += 1;
             } else {
@@ -2937,9 +2941,10 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 r.has_n_base = had_n;
                 r
             }
-            MnpResult::Alt(q, had_n) => {
+            MnpResult::Alt(q, had_n, confirmed) => {
                 let mut r = ClassifyResult::is_alt(q, ClassifyPhase::MaskedCompare);
                 r.has_n_base = had_n;
+                r.mnp_confirmed = confirmed;
                 r
             }
             MnpResult::LowQuality(partial, had_n) => {
@@ -4204,7 +4209,10 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
+            MnpResult::Alt(q, _, confirmed) => {
+                assert!(q >= 20, "Quality should be >= 20, got {}", q);
+                assert!(confirmed, "both discriminating bases read as ALT → confirmed");
+            }
             other => panic!("Expected MnpResult::Alt, got {:?}", format_mnp_result(&other)),
         }
     }
@@ -4227,7 +4235,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
+            MnpResult::Alt(q, _, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
             other => panic!(
                 "Expected Alt for DNP with one masked position (recovered by masked eval), got {:?}",
                 format_mnp_result(&other)
@@ -4347,7 +4355,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
+            MnpResult::Alt(q, _, _) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
             other => panic!("Expected MnpResult::Alt for TERT-like 5bp MNP, got {:?}",
                            format_mnp_result(&other)),
         }
@@ -4365,7 +4373,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q >= 20, "Should pass at exact threshold boundary"),
+            MnpResult::Alt(q, _, _) => assert!(q >= 20, "Should pass at exact threshold boundary"),
             other => panic!("Expected Alt at exact BQ threshold, got {:?}",
                            format_mnp_result(&other)),
         }
@@ -4375,7 +4383,7 @@ mod tests {
     fn format_mnp_result(result: &MnpResult) -> String {
         match result {
             MnpResult::Ref(q, n) => format!("Ref(q={}, had_n={})", q, n),
-            MnpResult::Alt(q, n) => format!("Alt(q={}, had_n={})", q, n),
+            MnpResult::Alt(q, n, c) => format!("Alt(q={}, had_n={}, confirmed={})", q, n, c),
             MnpResult::LowQuality(p, n) => format!("LowQuality(partial={}, had_n={})", p, n),
             MnpResult::ThirdAllele(p, n) => format!("ThirdAllele(partial={}, had_n={})", p, n),
             MnpResult::Structural => "Structural".to_string(),
@@ -4400,7 +4408,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q >= 20,
+            MnpResult::Alt(q, _, _) => assert!(q >= 20,
                 "Should classify as ALT when non-discriminating bases are low quality, got q={}", q),
             other => panic!(
                 "Expected Alt for TERT ONP with low-qual non-discriminating pos, got {:?}",
@@ -4423,7 +4431,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
+            MnpResult::Alt(q, _, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
             other => panic!(
                 "Expected Alt for DNP with one masked discriminating position, got {:?}",
                 format_mnp_result(&other)
@@ -4507,11 +4515,12 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, had_n) => {
+            MnpResult::Alt(q, had_n, confirmed) => {
                 assert!(q > 0,
                     "Expected Alt when N masks one position but other unmasked matches ALT, got q={}", q);
                 assert!(had_n,
                     "Expected had_n=true when N base present at discriminating position");
+                assert!(!confirmed, "an N-masked discriminating base → not confirmed");
             }
             other => panic!(
                 "Expected Alt for ONP with N at one discriminating position, got {:?}",
@@ -4845,8 +4854,9 @@ mod tests {
 
         // N at first position is masked, G at second matches ALT → classified as ALT
         match result {
-            MnpResult::Alt(_, had_n) => {
+            MnpResult::Alt(_, had_n, confirmed) => {
                 assert!(had_n, "MNP Alt with N at one position should report had_n=true");
+                assert!(!confirmed, "an N-masked discriminating base → not confirmed");
             }
             other => panic!("Expected MnpResult::Alt, got {:?}", other),
         }
@@ -4879,6 +4889,24 @@ mod tests {
 
         assert!(result.is_alt, "MNP with N-masked + ALT-matching should be ALT");
         assert!(result.has_n_base, "MNP ALT with N at one position should propagate has_n_base=true");
+        assert!(!result.mnp_confirmed, "an N-masked discriminating base → not confirmed");
+
+        // Same read with the N replaced by the ALT base: every discriminating
+        // base read → confirmed through the dispatch.
+        let full = build_record(b"GGCGGGGGGG", qual, &cigar, 0);
+        let result = check_allele_with_qual(
+            &full, &variant, &[], full.qual(), 20,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+        );
+        assert!(result.is_alt && result.mnp_confirmed, "fully read MNP ALT → confirmed");
+
+        // An SNV ALT call through the same dispatch is never MNP-confirmed.
+        let snv = build_variant_with_context(2, "A", "C", "GGATGGGGGG", 0);
+        let result = check_allele_with_qual(
+            &full, &snv, &[], full.qual(), 20,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+        );
+        assert!(result.is_alt && !result.mnp_confirmed, "SNV ALT → never MNP-confirmed");
     }
 
     // ── G4: check_complex N base propagation tests ──

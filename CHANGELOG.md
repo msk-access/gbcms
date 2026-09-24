@@ -74,6 +74,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sign-out where the previous windowed counting over-attributed 2–5×;
   panels without co-annotated clusters are byte-identical.
 
+### ⚠️ Changed — MNP rescue reports a coherent component genotype (opt-in `--rescue-mnp`)
+
+- **Candidate gate is partial dominance.** Rescue now considers PASS
+  `MNP_RESCUE_ELIGIBLE` MNPs with `partial_alt > alt_count` instead of only
+  `alt_count == 0`. Masked per-position evaluation counts a component carrier
+  whose other discriminating base is low-BQ as full ALT, so a single such
+  read blocked rescue of MNPs whose carriers hold only one component (a
+  TERT promoter GAGGG>AAGGA row sat at alt 1 / partial 88).
+- **Rescued rows adopt the component's full counts.** Previously only
+  `alt_count` (and read VAF) changed, leaving strand, fragment, strand-bias,
+  mFSD and diagnostic columns at MNP values and breaking
+  `alt_count = alt_count_forward + alt_count_reverse` in the output. A rescued
+  row now carries the winning component SNV's counts in every column (all
+  counting invariants hold, including `any_alt = ad + partial_alt`), and
+  `gbcms_diagnostic` is recomputed from them. Fragment-level consumers
+  (ACCESS, `gbcms merge --add-combined`) now see rescued counts.
+- **`gbcms_rescue` format** (downstream parsers): every entry has
+  `outcome=` (`rescued`, `skipped_grouped`, `haplotype_confirmed`, `no_improvement`,
+  `ref_validation_failed`) and the MNP's own `original_ref`/`original_alt`/
+  `original_partial` (`original_alt` was hard-coded `0`); rescued rows add
+  `adopted=`. A position whose synthetic SNV failed preparation reads
+  `ref_fail` instead of a silent `0`. `outcome=no_signal` is gone.
+- **MNPs whose haplotype the BAM shows are kept** (`outcome=haplotype_confirmed`,
+  no re-count): the engine now counts MNP ALT reads in which every
+  discriminating base was read (internal `BaseCounts.mnp_confirmed_alt`, not an
+  output column), and rescue fires only when that count is **zero** — no read
+  in the BAM shows the annotated MNP. Validation with matched normals found
+  rescue adopting germline het SNPs where reads carried the real MNP (IMPACT:
+  36 such reads; ACCESS duplex: 6); such rows now keep the MNP's counts. The
+  audit gains `original_confirmed`.
+- **Rescue labels use the output's contig naming** (an input MAF's own
+  `Chromosome`, e.g. `chr1`, rather than the stripped internal name).
+- **`gbcms merge` warns on mixed rescue:** when duplex and simplex rescue
+  outcomes differ (one rescued, or different components), each row is named in
+  a WARNING with a per-run count — with or without `--add-combined`, since the
+  two flavors' columns then describe different alleles in one row (with it, the
+  `simplex_duplex_*` columns add them); counts are unchanged. When only one
+  flavor was genotyped with `--rescue-mnp`, merge says so once and names every
+  row rescued in that flavor (previously that case was silently skipped).
+- **Grouped MNPs are skipped** (`outcome=skipped_grouped`) so rescue cannot
+  hand back reads that exclusive assignment gave a co-annotated sibling.
+- **Fixed: rescue audit leaked across samples.** In a multi-BAM run a later
+  sample's row could show an earlier sample's `gbcms_rescue`.
+- **Rescued rows say so:** `gbcms_diagnostic` (MAF column, VCF `GD`) gains
+  `RESCUED_COMPONENT(chrom:pos:REF>ALT)` on every rescued row, each rescue
+  logs a WARNING (the component and the MNP's own counts), and enabling
+  `--rescue-mnp` logs a WARNING that rescued rows report a component.
+- **Fixed: VCF `GR` was split by parsers.** The audit's positions list was
+  comma-separated and VCF parsers (htslib/pysam) split a comma-bearing
+  Number=1 INFO value, silently truncating the audit. Positions are now
+  joined with `+`; the MAF column and VCF `GR` carry identical content.
+- Per-sample INFO outcome summary; warnings for anomalies (a component SNV
+  failing preparation). With `--mfsd-parquet`, a rescued row's record keeps
+  the MNP's coordinates but carries the adopted component's fragment sizes
+  (logged per sample).
+- `BaseCounts.with_ad()` removed from the Python bindings (no remaining
+  callers).
+- Default runs (`--rescue-mnp` off) are unchanged.
+
 ## [6.4.0] - 2026-09-22
 
 > The changes below alter reported counts at wrong-length indel loci and at

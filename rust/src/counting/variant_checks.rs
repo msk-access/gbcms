@@ -391,8 +391,11 @@ fn has_indel_in_window(record: &Record, wstart: i64, wend: i64) -> bool {
 pub enum MnpResult {
     /// All unmasked bases match REF. (quality, had_n_at_any_position)
     Ref(u8, bool),
-    /// All unmasked bases match ALT. (quality, had_n_at_any_position)
-    Alt(u8, bool),
+    /// All unmasked bases match ALT. (quality, had_n_at_any_position,
+    /// confirmed) — `confirmed` when no discriminating base was masked, i.e.
+    /// every one was read and matched ALT: the read itself shows the whole
+    /// haplotype rather than inferring it from the unmasked subset.
+    Alt(u8, bool, bool),
     /// All discriminating positions masked (BQ < threshold or N).
     /// Carries (positions_matching_alt, had_n_at_any_position).
     /// Used for `partial_alt` counting when positions_matching_alt > 0.
@@ -596,7 +599,7 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
         MnpResult::Ref(med_qual, had_n_base)
     } else if n_unmasked_match_alt == n_unmasked && n_unmasked_match_ref == 0 {
         // All unmasked discriminating positions match ALT
-        MnpResult::Alt(med_qual, had_n_base)
+        MnpResult::Alt(med_qual, had_n_base, n_masked == 0)
     } else {
         // Mixed or neither — log per-position breakdown for diagnostics
         if log::log_enabled!(log::Level::Trace) {

@@ -29,6 +29,7 @@ import polars as pl
 
 from gbcms.io.batch import scan_maf, write_maf
 from gbcms.models.core import MergeConfig
+from gbcms.rescue_audit import rescued_component
 
 __all__ = ["merge_mafs"]
 
@@ -244,6 +245,9 @@ def merge_mafs(config: MergeConfig) -> None:
                     t,
                 )
 
+    if "duplex" in frames and "simplex" in frames:
+        _warn_mixed_rescue(result, combined=config.add_combined)
+
     # Legacy naming pass (rename {type}_{metric} → t_{metric}_{type})
     if config.legacy_naming:
         result = _apply_legacy_naming(result, types)
@@ -255,6 +259,59 @@ def merge_mafs(config: MergeConfig) -> None:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
+    """Warn on rows whose duplex and simplex MNP rescue outcomes differ.
+
+    A rescued row reports a component SNV's counts under the MNP's coordinates.
+    When only one flavor was rescued — or the two adopted different components —
+    the two flavors' counts describe different alleles in one row: anyone
+    comparing or summing the duplex and simplex columns would be misled, with
+    or without ``--add-combined``. With it, the ``simplex_duplex_*`` columns
+    add them outright, and the per-row message says so. Counts are left as
+    they are; the rows are named in the log. No-op when rescue was run on
+    neither flavor (no ``gbcms_rescue`` column). When it was run on only one,
+    that is logged once and the other flavor is treated as reporting the MNP on
+    every row, so each row rescued in the rescue-on flavor is named.
+    """
+    d, s = "duplex_gbcms_rescue", "simplex_gbcms_rescue"
+    present = [col for col in (d, s) if col in result.columns]
+    if not present:
+        return
+    if len(present) == 1:
+        ran, other = ("duplex", "simplex") if present[0] == d else ("simplex", "duplex")
+        logger.warning(
+            "MNP rescue was run on %s only (%s was genotyped without --rescue-mnp): rows "
+            "rescued in %s report a component while %s reports the MNP",
+            ran,
+            other,
+            ran,
+            other,
+        )
+    mixed = 0
+    for row in result.select([*VARIANT_KEY, *present]).iter_rows(named=True):
+        d_comp = rescued_component(row.get(d) or "")
+        s_comp = rescued_component(row.get(s) or "")
+        if d_comp == s_comp:
+            continue
+        mixed += 1
+        logger.warning(
+            "Mixed MNP rescue at %s:%s %s>%s — duplex %s, simplex %s%s",
+            row["Chromosome"],
+            row["Start_Position"],
+            row["Reference_Allele"],
+            row["Tumor_Seq_Allele2"],
+            f"reports component {d_comp}" if d_comp else "reports the MNP",
+            f"reports component {s_comp}" if s_comp else "reports the MNP",
+            "; the simplex_duplex_* columns add counts of different alleles" if combined else "",
+        )
+    if mixed:
+        logger.warning(
+            "Mixed MNP rescue: %d row(s) where duplex and simplex rescue outcomes differ "
+            "(see gbcms_rescue per flavor)",
+            mixed,
+        )
 
 
 def _validate_variant_key(

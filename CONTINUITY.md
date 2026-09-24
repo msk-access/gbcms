@@ -3,9 +3,20 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-22_
+_Last updated: 2026-09-23_
 
 ## Now
+**T7 MNP rescue — PR #101 open (`feature/mnp-rescue-gate` → develop).** Operator
+chose path A — DONE and validated (item 12): rescue only when no read shows
+the whole MNP; `gbcms merge` warns on mixed duplex/simplex rescue; labels
+follow the output's contig naming; invariant/indel tests; BAQ doc note.
+Real-data re-run met every target (parity 16/16, 13 IMPACT rescues exact +
+somatic, ACCESS 0 conflicts). Harness: `~/test/gbcms/harness/t7` (local-only,
+own venvs, `run_all.sh`). Remaining: CI green → merge PR #101.
+Plan: `CYCLE_6.5.0_PLAN.md` T7 item 12. Principle: the BAM is truth; sign-out
+is a comparison. **Next after T7: T8 (#103)** — output keeps the input's
+contig naming (VCF output currently malformed for `chr`-named input).
+
 **6.4.0 RELEASE IN FLIGHT:** #96 merged to develop (0523206);
 `release/6.4.0` cut (version bumps + CHANGELOG) → PR #98 → main, gated on:
 container build+push (user) → HPC 56-sample matrix vs the 2026-09-18 6.3.1

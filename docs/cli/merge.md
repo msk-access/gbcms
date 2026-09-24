@@ -128,6 +128,19 @@ columns are computed (assuming all strand-level counts are present in the input)
     gbcms version), only the available columns are summed. Missing metrics are
     logged at INFO level and skipped — the pipeline does not fail.
 
+!!! warning "Mixed MNP rescue between duplex and simplex"
+    With inputs genotyped using `--rescue-mnp`, a row can be rescued in one flavor
+    (its counts are then a component SNV's) but not the other (the MNP's own
+    counts), or rescued to different components. The two flavors' columns then
+    describe different alleles in one row, and with `--add-combined` the combined
+    columns add them. `gbcms merge` names every such row in a WARNING (with or
+    without `--add-combined`; the combined-column note is added only when those
+    columns are written) and logs a per-run count; the counts themselves are left
+    unchanged. If only one flavor was genotyped with `--rescue-mnp`, merge logs
+    that once and names every row rescued in that flavor, since the other flavor
+    reports the MNP there.
+    Check `duplex_gbcms_rescue` / `simplex_gbcms_rescue` for those rows.
+
 ---
 
 ## Nextflow Integration

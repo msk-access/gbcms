@@ -134,6 +134,6 @@ sign-off* — never let the two paths silently diverge.
 
 - `src/gbcms/_rs.pyi` is the **single** stub for the `gbcms._rs` extension module —
   edit it whenever the `#[pyo3(get)]` fields or `#[pyo3(signature)]` params change
-- It includes: `BaseCounts`, `PreparedVariant`, `with_ad()`, diagnostic fields, ASJD fields, nucleosomal fractions
+- It includes: `BaseCounts`, `PreparedVariant`, diagnostic fields, ASJD fields, nucleosomal fractions
 - (Historical: a top-level `src/gbcms_rs.pyi` used to mirror this; it stubbed a module
   nothing imports and was removed in LO-1. Don't reintroduce it.)

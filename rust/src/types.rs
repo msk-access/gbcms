@@ -307,6 +307,14 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub partial_alt: u32,
 
+    /// MNP ALT reads whose every discriminating base was read (none masked
+    /// for base quality, none N): reads that show the whole haplotype rather
+    /// than inferring it from an unmasked subset. A subset of `ad`; always 0
+    /// for non-MNP variants. Not an output column — the MNP rescue pass uses
+    /// it to tell a present haplotype from one only its components carry.
+    #[pyo3(get)]
+    pub mnp_confirmed_alt: u32,
+
     /// Reads with N base at ≥1 discriminating position (NAD in VCF).
     /// N bases arise from duplex collapsing (fgbio masks disagreeing bases)
     /// or sequencer failure. These reads are uninformative (neither REF nor
@@ -449,23 +457,6 @@ pub struct BaseCounts {
     /// RD/AD is explained rather than silent. PairHMM backend only.
     #[pyo3(get)]
     pub non_discriminating_locus: bool,
-}
-
-#[pymethods]
-impl BaseCounts {
-    /// Return a copy with `ad` replaced by `new_ad`.
-    ///
-    /// Used by the Python MNP rescue pass (`--rescue-mnp`) which needs to
-    /// update `ad` after decomposing a sparse MNP into individual SNPs.
-    /// Preserves immutability of the original struct from the Python side —
-    /// all fields are `#[pyo3(get)]` only, so this copy-on-write method is
-    /// the only way to produce a modified `BaseCounts` from Python.
-    fn with_ad(&self, new_ad: u32) -> BaseCounts {
-        BaseCounts {
-            ad: new_ad,
-            ..self.clone()
-        }
-    }
 }
 
 /// Allele state of one molecule at one variant, as resolved by

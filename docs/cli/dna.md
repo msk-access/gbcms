@@ -134,21 +134,30 @@ Unique Molecular Identifier (UMI) support for molecule-level deduplication.
 
 ## MNP Rescue Options
 
-The rescue pass recovers `alt_count` for MNP (multi-nucleotide polymorphism) variants where
-the full block match yields `ad=0`, by decomposing the MNP into individual SNP positions and
-re-counting each one independently. See [Architecture → MNP Rescue Pass](../reference/architecture.md#mnp-rescue-pass-rescue-mnp-v430)
-for the full design rationale.
+The rescue pass is for annotated MNPs (multi-nucleotide polymorphisms) whose carriers hold
+only a *component* of the haplotype — e.g. two SNVs on different molecules annotated as one
+MNP. gbcms correctly reports such a haplotype as absent: the carriers land in `partial_alt`,
+not `alt_count`. Rescue re-counts each discriminating position as an SNV and reports the
+best-supported component instead. See [Architecture → MNP Rescue Pass](../reference/architecture.md#mnp-rescue-pass-rescue-mnp-v430)
+for the full design.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--rescue-mnp` | `false` | Enable MNP rescue pass. When `ad=0` and the variant is `MNP_RESCUE_ELIGIBLE`, decomposes the MNP into individual SNP positions and re-counts via the Rust engine. |
+| `--rescue-mnp` | `false` | Enable the rescue pass. Candidates are PASS MNPs flagged `MNP_RESCUE_ELIGIBLE` with `partial_alt > alt_count`, outside co-annotated groups, and whose full haplotype no read shows. When the best component beats the MNP's `alt_count`, that component's full counts (every count, fragment, strand and mFSD column) replace the row's, the row is flagged `RESCUED_COMPONENT(chrom:pos:REF>ALT)` in `gbcms_diagnostic`, and a warning is logged; the MNP's own counts and the per-position split go to `gbcms_rescue`. MAF and VCF output carry the same counts, flags and audit. |
 | `--rescue-mnp-threshold` | `1.0` | Maximum discriminating/length ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs are eligible (C++ gbcms compatible, default). `0.5` = conservative sparse-only mode (≤50% discriminating positions). `0.0` = disable rescue eligibility (MNP_DISC_RATIO diagnostics are still emitted). Only used when `--rescue-mnp` is enabled. |
 
 !!! info "Diagnostic Flags"
-    When rescue is enabled, two diagnostic flags are emitted for every MNP variant:
+    Two diagnostic flags are emitted for every MNP variant, with or without `--rescue-mnp`:
 
     - **`MNP_DISC_RATIO(n/m)`** — Always emitted. Shows the ratio of discriminating positions to total MNP length.
-    - **`MNP_RESCUE_ELIGIBLE`** — Emitted only when disc/len ≤ `--rescue-mnp-threshold`. Marks the variant as a rescue candidate.
+    - **`MNP_RESCUE_ELIGIBLE`** — Emitted only when disc/len ≤ `--rescue-mnp-threshold`. Marks the variant as eligible; rescue additionally requires `partial_alt > alt_count`. Both flags describe the annotated MNP's shape, so a rescued row keeps them next to `RESCUED_COMPONENT(...)`; rows still awaiting review after a rescue run are `MNP_RESCUE_ELIGIBLE` without `RESCUED_COMPONENT`.
+
+!!! warning "A rescued row reports a component, not the annotated MNP"
+    When reads show the whole MNP (e.g. a somatic change on top of a germline SNP), rescue
+    keeps the MNP's counts (`outcome=haplotype_confirmed`). But where the MNP itself is
+    absent — typically a fillout of other timepoints or normals — a germline SNP component
+    can still be adopted, and the rescued VAF is then the germline VAF. Read `gbcms_rescue`
+    (outcome, original counts, per-position split) before interpreting a rescued row.
 
 !!! tip "Choosing the threshold"
     ```bash

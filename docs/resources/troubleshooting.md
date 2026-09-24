@@ -165,7 +165,8 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     |:------|:--------|:----------|
     | **TRANS configuration** | Two MNP alleles on opposite chromosomes; sign-out counts 2× reads | VAF ~2× expected |
     | **MAF annotation artifact** | ONP defined at wrong position or missing adjacent SNV | `gbcms normalize` shows position shift |
-    | **Sign-out duplication** | Variant captured by two MAF entries (DEL+INS pair both counted | Two nearby rows in MAF with same gene |
+    | **Sign-out duplication** | Variant captured by two MAF entries (DEL+INS pair both counted) | Two nearby rows in MAF with same gene |
+    | **Component carriers** | Carriers hold only part of the annotated haplotype (e.g. one of two G>A changes): `alt_count` ≈ 0, `partial_alt` ≈ sign-out `t_alt`, `PARTIAL_DOMINANT` | Correct for the annotated allele. `--rescue-mnp` reports the best-supported component; `gbcms_rescue` shows the per-position split |
 
     Use `--verbose` to log per-variant read counts, or `--trace` for per-read detail.
 

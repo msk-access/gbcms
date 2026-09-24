@@ -156,7 +156,7 @@ structural bound from the insert's own length). If count ≥ 2, append
 **Tests.** Red-first: the 30bp clip-only geometry (clips at duplication
 boundary, zero I ops) → flag with n; guards: I-dominant locus (no flag even
 with stray clips), SNV locus (never), `ad>0` locus (never). Real-data
-acceptance: the P-0098981-T08 locus flags; the 12 survey loci do not.
+acceptance: the clip-only ZERO_ALT ITD locus (t_alt=7) flags; the 12 survey loci do not.
 
 ## T4 — UMI-tag warn
 
@@ -221,10 +221,177 @@ material → small fix: thread `exon_boundary_dist` into
 `count_per_transcript`'s BAQ call, mirroring the main loop, with a red
 tx-count pin first.
 
+## T7 — MNP rescue (`--rescue-mnp`, opt-in): report only what the BAM shows
+
+**Principle (operator, 2026-09-23).** The BAM is the truth; sign-out is one
+more result to compare against. Default output (rescue off) reports the
+annotated MNP exactly as the reads support it and is unchanged by T7.
+
+**What rescue is for.** Some signed-out MNPs are really one SNV (or two SNVs
+on different molecules) annotated as a single multi-base change. The reads
+then carry only a *component*: gbcms correctly counts the annotated MNP as
+~absent and puts the carriers in `partial_alt`. Rescue re-counts each changed
+position as an SNV and, when the annotated MNP is absent, reports the
+best-supported component under the MNP's row, flagged and audited. It
+relabels; it never invents reads.
+
+### Where we are (PR #101, open against develop)
+
+| Area | State |
+|---|---|
+| Default output (rescue off) | Unchanged — 35/35 recorded real-data runs identical to develop |
+| Bug fixes | Done (list below) |
+| Rescue gate | Works on IMPACT; **too generous on ACCESS** (below) — item 12a |
+| Merge of rescued duplex/simplex | Can add two different alleles — item 12b |
+| Review nits | Contig label, test invariants, indel test — items 12c–12d |
+
+**Done and staying, whatever the gate decision** (history: items 1–11 below):
+- Rescued rows are one coherent genotype: all count, fragment, strand,
+  strand-bias and mFSD columns come from the adopted component's own counting
+  pass (previously only `alt_count` changed).
+- Audit leak across samples fixed (reset per sample).
+- VCF `GR` no longer split by parsers (positions joined with `+`).
+- Grouped MNPs skipped, so rescue cannot undo T1 exclusive assignment.
+- Failed positions read `ref_fail`, not a silent 0.
+- Every rescued row flagged `RESCUED_COMPONENT(...)`, a WARNING per rescue and
+  one when the flag is enabled; MAF and VCF carry identical content.
+- Engine counts `mnp_confirmed_alt`: MNP ALT reads in which every changed base
+  was read (none low-quality, none N) — reads that *show* the whole MNP.
+
+### What real data showed (2026-09-23)
+
+| Data | Result |
+|---|---|
+| IMPACT, 2 cohorts, 68 samples / 140 MNP rows | 13 rescues, all exact vs sign-out, all somatic in the matched normal, all with **0** reads showing the whole MNP |
+| Same, partial-read make-up | 97–100% genuine single-change carriers |
+| `--apply-baq` on all 7 candidate rows | No outcome, count or confirmed-read change |
+| ACCESS, 20 samples / 22 MNP rows (duplex + simplex) | **2 wrong rescues**, each also a duplex/simplex conflict: BRCA2 AAG>TAC duplex adopted a **germline** SNP (normal VAF 0.43; 6 reads showed the whole MNP but the allowance was 8) → combined fragment ALT 25 → 724; KRAS ACC>CCA simplex rescued with 1 whole-MNP read (allowance rounded up to 1) although duplex shows 4 |
+
+Cause: the error allowance `ceil(partial × 10^(−q/10))` is loose twice over —
+it counts any error rather than an error to the one ALT base (~1/3), and
+rounding up always excuses one read.
+
+### Remaining work — item 12 "simplify and close"
+
+**Decision (operator, 2026-09-23): path A** — simplify the gate, steps
+12a–12g. (Path B, returning to `ad == 0`, was declined; logged in
+`REJECTED.md`.)
+
+**12a. One rule instead of an allowance.** Rescue only when *no* read shows
+the whole MNP (`mnp_confirmed_alt == 0`) and partial reads outnumber full-ALT
+reads. Delete `_confirmed_error_allowance` and its test. Why: every correct
+rescue seen has exactly 0; every wrong one had ≥1. Sequencing error making a
+fake whole-MNP read needs a specific substitution at high quality at another
+position — expected well under one read at real depths. Expected on the data
+above: the 13 IMPACT rescues unchanged; GRIN2A, TP53, BRCA2 and KRAS all kept
+as `haplotype_confirmed`; both ACCESS conflicts disappear.
+
+**12b. Merge warns on mixed rescue.** `gbcms merge` (with or without
+`--add-combined` — review finding: the two flavors' columns describe different
+alleles in one row either way; the combined-column note is added only when
+those columns are written): when the
+duplex and simplex rows disagree (one rescued and one not, or rescued to
+different components), log a WARNING per row and a per-run count naming the
+rows. Counts unchanged in this PR. Follow-up ticket: leave the combined
+columns empty (NA) for such rows and write a conflicts file beside the merged
+MAF.
+
+**12c. Labels use the output file's contig naming** (operator decision;
+dropping the contig was declined). `RESCUED_COMPONENT(...)` and audit labels
+take the contig exactly as the row writes it: the input MAF's `Chromosome`
+for MAF input (today they show the stripped internal name — row `chr1`,
+label `1`); for VCF input, whatever the output writes, which T8 makes the
+input's own naming. Never surfaced on b37 data, which has no `chr`.
+
+**12d. Tests.** Four counting invariants in the two engine counter tests; an
+end-to-end test that an indel row with `partial_alt > ad` is untouched by
+`--rescue-mnp`; a merge test for the 12b warning; update pins for 12a/12c.
+
+**12e. Docs.** Gate rule, merge warning, labels in architecture /
+output-formats / dna.md / skill / CHANGELOG; BAQ caveat ("near indels BAQ can
+lower qualities so reads stop counting as showing the whole MNP").
+
+**12f. Durable harnesses.** The validation harnesses lived in a session
+scratchpad and were lost on a restart. Recreated in a local-only directory
+outside the repo (they carry patient-data paths), with their own branch and
+develop venvs: flag-off parity on a seeded real-data panel (IMPACT tumours +
+ACCESS duplex/simplex, all signed-out variants — the earlier recorded runs were
+lost too), the IMPACT cohort with matched normals (seeds 1 and 2 reproduce the
+two T7 cohorts), per-read traces, and the ACCESS merge study (also checks the
+merge warning fires exactly on disagreeing rows). The partial-read make-up and
+BAQ studies were one-off investigations; their results are recorded above.
+
+**12g. Validation (one BAM at a time).** Flag-off parity (35 runs, must stay
+identical); both IMPACT cohorts (13 rescues must be unchanged); ACCESS merge
+study (expect 0 conflicts and no germline adoption).
+
+**Item 12 result (2026-09-23, met).** Code: red battery 69e3722a → fix
+b422a9ef → docs be566216. Real data (harness `~/test/gbcms/harness/t7`, one BAM
+at a time): flag-off parity 16/16 runs identical (8 IMPACT tumours + 4 ACCESS
+duplex/simplex pairs, all signed-out variants); IMPACT cohort seed 1 — 5
+rescued (all exact vs sign-out, somatic in normal, 0 whole-MNP reads), GRIN2A
+and TP53 kept (33 / 253 whole-MNP reads); seed 2 — 8 rescued, all exact,
+somatic, 0 whole-MNP reads; ACCESS 20 samples — 0 duplex/simplex conflicts, 0
+merge warnings, BRCA2 and KRAS kept in both flavors (combined fragment ALT
+unchanged: 25 and 4); traces agree.
+
+**Out of scope (tickets):** merge NA + conflicts file; a run-start summary of
+enabled options and their implications; fillout samples where the MNP is
+absent but a germline component is present (upstream annotation). The
+always-on `mnp_confirmed_alt` counter stays (one check per MNP ALT read) — an
+accepted deviation from "engine should be output-aware".
+
+### History (items 1–11, all merged on the branch)
+1. Gate `partial_alt > ad` instead of `ad == 0` (a single masked read blocked TERT).
+2. Replace only if the component beats the MNP; else `no_improvement` (reads with an indel inside the block).
+3. Adopt the component's whole `BaseCounts`.
+4. Audit keeps the MNP's own counts; `outcome`; `ref_fail`.
+5. Diagnostics recomputed for rescued rows.
+6. Grouped rows skipped.
+7. Audit reset per sample.
+8. mFSD Parquet provenance logged/documented.
+9. Shared `_engine_kwargs`, per-row `_diagnostic_flags`, dead code removed.
+10. `mnp_confirmed_alt` and the confirmed-haplotype gate (fixed GRIN2A germline adoption on IMPACT).
+11. `RESCUED_COMPONENT` flag, warnings, `+`-joined positions (VCF parse fix).
+
+**Tests.** `tests/test_rescue_mnp.py` (end-to-end MAF and VCF battery,
+invariants on written rows, audit/outcome units),
+`tests/test_mnp_concordance.py` (`TestONPCarrierShapes`, confirmed-read engine
+pins). Harnesses (local, patient data): flag-off parity, IMPACT cohort with
+matched normals, per-read traces, partial-read make-up, BAQ effect, ACCESS
+duplex/simplex merge.
+
+## T8 — Output keeps the input's contig naming (#103; own branch — changes default output)
+
+**Problem (reproduced 2026-09-23, synthetic).** Readers strip `chr`
+(`CoordinateKernel.normalize_chromosome`) and `Variant` keeps no original
+name. VCF input → MAF writes `Chromosome=1` for `chr1`; VCF output writes
+records as `1` under a `##contig=<ID=chr1>` header taken from the reference
+`.fai` — a malformed VCF (htslib: "Contig '1' is not defined in the
+header"). MAF input keeps its `Chromosome` column (row passthrough), but labels
+built from the internal name (the rescue audit) show `1`. Counting is correct:
+contig reconciliation between variant file, FASTA and BAM works. Unseen so far
+because MSK b37 (`1`…`22`) and Ensembl-named hg38 have no `chr`.
+
+**Design.** Keep the input's contig name on `Variant` at read time (VCF and
+MAF readers) and write it everywhere a contig is written: MAF `Chromosome` and
+`vcf_region` for VCF input, VCF `CHROM`, and derived labels (rescue flag and
+audit — T7 12c). VCF `##contig` lines must declare the names the records use.
+Log once per run (INFO) when the input's naming differs from the reference or
+BAM naming, naming both, so the reconciliation is visible.
+
+**Tests.** `chr`-named input × {VCF, MAF} × {VCF, MAF output}: output names
+equal the input's; VCF output parses with no undefined-contig warning; b37
+naming unchanged. **Acceptance:** flag-off parity on the real-data sets stays
+byte-identical (all b37, no `chr`).
+
 ## Order & discipline
 
 T1 (own branch, own review) → T2 (own branch; needs the FORTE geometries) →
 T3+T4+T5 (one observability/cleanup branch) → T6 (measurement decides).
+T8 (contig naming, #103) follows T7 on its own branch.
+T7 is independent (Python-only, opt-in path) — own small branch
+(`feature/mnp-rescue-gate`), can land anytime; its leak fix may go first.
 Each branch: battery red → implement → suites + clippy + lint gate →
 sonnet adversarial review → real-data acceptance named above → merge to
 develop. 6.5.0 cut only after T1's ACCESS rerun and T2's cohort recheck.

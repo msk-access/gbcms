@@ -61,6 +61,18 @@ _COMPRESSED_VCF_SUFFIXES: tuple[str, ...] = (".vcf.gz", ".vcf.bgz")
 # Column-prefix charset: only letters, digits, underscores
 _COLUMN_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]*$")
 
+# Shared by the dna and rna commands.
+_RESCUE_MNP_HELP = (
+    "Enable the MNP rescue pass, for annotated MNPs whose carriers hold only a "
+    "component of the haplotype. When partial_alt > alt_count and no read shows "
+    "every changed base (MNP_RESCUE_ELIGIBLE MNPs outside co-annotated groups), each "
+    "discriminating position is re-counted as an "
+    "SNV and the best component's counts replace the row's; the MNP's own counts and "
+    "the per-position split go to gbcms_rescue. Where the MNP itself is absent (e.g. "
+    "a fillout of other timepoints or normals) a germline SNP component can still be "
+    "adopted — check gbcms_rescue before trusting a rescued VAF."
+)
+
 app = typer.Typer(help="gbcms: Get Base Counts Multi-Sample")
 
 
@@ -299,12 +311,7 @@ def dna(
     rescue_mnp: bool = typer.Option(
         False,
         "--rescue-mnp",
-        help=(
-            "Enable MNP rescue pass for multi-base substitutions. "
-            "When alt_count=0, decomposes the MNP into individual SNPs "
-            "and re-counts using the best discriminating position. "
-            "Populates gbcms_rescue with a structured audit trail."
-        ),
+        help=_RESCUE_MNP_HELP,
     ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
@@ -389,12 +396,6 @@ def dna(
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
     logger.info("Running gbcms v%s in DNA mode", __version__)
-    if rescue_mnp:
-        logger.info(
-            "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
-            rescue_mnp_threshold,
-        )
-
     # ── 2. Pre-model validation (semantic + cross-option checks) ───────────────
 
     # GAP 12: Reject unsupported variant file extensions before any I/O.
@@ -703,12 +704,7 @@ def rna(
     rescue_mnp: bool = typer.Option(
         False,
         "--rescue-mnp",
-        help=(
-            "Enable MNP rescue pass for multi-base substitutions. "
-            "When alt_count=0, decomposes the MNP into individual SNPs "
-            "and re-counts using the best discriminating position. "
-            "Populates gbcms_rescue with a structured audit trail."
-        ),
+        help=_RESCUE_MNP_HELP,
     ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
@@ -793,12 +789,6 @@ def rna(
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
     logger.info("Running gbcms v%s in RNA mode", __version__)
-    if rescue_mnp:
-        logger.info(
-            "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
-            rescue_mnp_threshold,
-        )
-
     # ── 2. Pre-model validation ──
     _is_vcf_gz = _is_compressed_vcf(variant_file)
     _ext = variant_file.suffix.lower()
