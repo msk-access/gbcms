@@ -196,8 +196,12 @@ constant (−1).
    CLI gap flags intentionally do not reach SW. Update
    allele-classification.md SW-gap section + counting-engine skill.
 
-**Tests.** Red-first: a variant engineered with broken context (e.g.
-ref_context absent via direct `_rs` call) under the PairHMM backend →
+**Tests.** Red-first: a variant engineered with broken context — as
+implemented, a `ref_context` window that ends at the variant (an *absent*
+context never reaches the fallback: both SW sites sit inside
+`if let Some(ref_context)`); measured: the fallback's own SW also cannot
+build haplotypes there, so those reads end as NEITHER — the flag is their
+only trace under the PairHMM backend →
 `SW_FALLBACK(n)` flag + caplog WARN, counts still produced; guards: normal
 variants never flag (whole existing battery doubles as the guard); explicit
 SW backend never flags (it is chosen, not fallen into). Parity: flag counter

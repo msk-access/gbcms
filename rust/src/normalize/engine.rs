@@ -758,7 +758,8 @@ fn prepare_single_variant(
         None
     };
 
-    // Compute repeat_span from ref_context for dynamic SW gap penalty tuning.
+    // Compute repeat_span from ref_context (PairHMM gap blending, windowed-scan
+    // width, tract-cluster grouping reach).
     // find_tandem_repeat detects tandem repeats around the variant position.
     let variant_repeat_span = if let Some(ref ctx) = ref_context {
         let ctx_bytes = ctx.as_bytes();

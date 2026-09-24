@@ -123,6 +123,13 @@ pub struct ClassifyResult {
     /// every other variant type and for MNP reads classified by the complex
     /// path. Accumulated into `BaseCounts::mnp_confirmed_alt`.
     pub mnp_confirmed: bool,
+    /// Whether the PairHMM backend's pangenomic haplotype matrix could not
+    /// evaluate this read (reference context missing, or not containing the
+    /// variant), so it was scored by the Smith-Waterman fallback — or, where SW
+    /// cannot run either, left NEITHER. Never set under the explicit SW
+    /// backend, where SW is the chosen scorer. Counted per variant (DP reads
+    /// only) as `BaseCounts::sw_fallback_reads`.
+    pub sw_fallback: bool,
 }
 
 impl ClassifyResult {
@@ -146,6 +153,7 @@ impl ClassifyResult {
             is_structural: false,
             covers_locus: true,
             mnp_confirmed: false,
+            sw_fallback: false,
         }
     }
 

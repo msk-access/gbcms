@@ -774,6 +774,16 @@ class Pipeline:
                 DP as no-observation) than confirmed ALT. RNA aligners represent
                 large deletions as splices (STAR: ≥ alignIntronMin, default
                 21bp), so AD=0 here may mean carriers exist as junction reads.
+            CLIP_CANDIDATES(n): insertion locus with no confirmed ALT where n
+                (>= 2) reads carry a soft clip >= 8bp whose boundary lies within
+                the insert's duplication reach — carriers the aligner may have
+                represented as clips rather than I ops (inspect in IGV).
+            SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
+                be evaluated by the pangenomic haplotype matrix (reference context
+                missing or not containing the variant — malformed input upstream);
+                they were scored by Smith-Waterman where it can run, otherwise
+                left NEITHER, so counts here came partly from a different scorer
+                or are missing reads.
         """
         flags: list[str] = []
 
@@ -817,6 +827,21 @@ class Pipeline:
         excluded = getattr(counts, "splice_skip_excluded", 0)
         if len(ref_allele) > len(alt_allele) and excluded > counts.ad:
             flags.append(f"SPLICE_SKIP_DOMINANT({excluded})")
+
+        # CLIP_CANDIDATES: an insertion with no confirmed ALT, but reads whose
+        # soft clips land where clip-represented tandem-duplication carriers
+        # would (the engine's ±1bp Phase-3 clip window cannot claim them).
+        # Needs >= 2 such reads so a single stray clip does not flag.
+        clip_candidates = getattr(counts, "clip_candidates", 0)
+        if len(alt_allele) > len(ref_allele) and counts.ad == 0 and clip_candidates >= 2:
+            flags.append(f"CLIP_CANDIDATES({clip_candidates})")
+
+        # SW_FALLBACK: reads scored by the Smith-Waterman fallback under the
+        # PairHMM backend — the row's counts came partly from a different
+        # scorer, and the variant's reference context was malformed upstream.
+        sw_fallback = getattr(counts, "sw_fallback_reads", 0)
+        if sw_fallback > 0:
+            flags.append(f"SW_FALLBACK({sw_fallback})")
 
         return flags
 

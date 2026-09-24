@@ -77,8 +77,9 @@ At overlapping loci, sibling ALT alleles are excluded from each other's counting
 
 - Default backend PairHMM (`--alignment-backend hmm`, pangenomic WFA→PairHMM);
   SW via `sw`. Under PairHMM, SW runs only when the haplotype matrix cannot be
-  built — and its gap penalty uses fixed constants that CLI gap flags never
-  reach (`dynamic_sw_gap_extend`).
+  built — counted (`sw_fallback_reads`), WARNed per variant, and flagged
+  `SW_FALLBACK(n)`. SW penalties are constants (`SW_GAP_OPEN`/`SW_GAP_EXTEND`
+  in `alignment.rs`) that CLI gap flags never reach.
 - A WFA2 fast-path (`wfa_router.rs`) triages before the fallback. The fast path
   must apply the **same base-quality gate** as SW/PairHMM — it must not make a
   definitive REF/ALT call on bases the fallback would reject.
