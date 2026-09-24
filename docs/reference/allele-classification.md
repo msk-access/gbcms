@@ -933,7 +933,8 @@ Smith-Waterman has two roles:
   in `gbcms_diagnostic` (n = depth-contributing reads the matrix could not
   evaluate). Where SW cannot build its haplotypes either — always the case
   without a reference context — those reads end as NEITHER, and the flag is
-  how that loss becomes visible.
+  how that loss becomes visible. (MNPs carry no reference context by design and
+  use no Phase 3, so their reads are never counted here.)
 
 The PairHMM gap flags retune PairHMM probabilities only; they never reach the
 SW penalties.

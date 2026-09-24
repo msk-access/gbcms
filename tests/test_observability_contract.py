@@ -192,6 +192,29 @@ def test_missing_context_reads_are_flagged_not_silent(tmp_path, caplog):
     assert sw.sw_fallback_reads == 0, "explicit SW backend: SW is chosen, not fallen into"
 
 
+def test_mnp_without_context_is_not_a_fallback(tmp_path):
+    """Guard (found on real data): MNPs carry no reference context by design
+    (prep skips it — MNPs use no Phase 3), so an MNP read with an indel in the
+    span legitimately ends NEITHER. That is expected behavior, not malformed
+    input, and must not be flagged SW_FALLBACK."""
+    rng = random.Random(5)
+    ref = "".join(rng.choice("ACGT") for _ in range(600))
+    mnp_ref = ref[SW_POS : SW_POS + 2]
+    mnp_alt = "".join("A" if b != "A" else "C" for b in mnp_ref)
+    reads = []
+    for i in range(5):  # D1 inside the MNP span -> structural route to check_complex
+        s = 240 + i
+        left = SW_POS + 1 - s
+        right = READ_LEN - left
+        seq = ref[s : SW_POS + 1] + ref[SW_POS + 2 : SW_POS + 2 + right]
+        reads.append(make_read(f"m{i}", seq, s, ((0, left), (2, 1), (0, right))))
+    bam = _bam(tmp_path, ref, reads, name="obs_mnp.bam")
+    variant = _rs.Variant("1", SW_POS, mnp_ref, mnp_alt, "MNP")
+    (c,) = _binned(bam, [variant])
+    assert c.dp == 5
+    assert c.sw_fallback_reads == 0
+
+
 def _diag(counts_kwargs, ref_allele="GGG", alt_allele="T"):
     pv = types.SimpleNamespace(
         variant=types.SimpleNamespace(ref_allele=ref_allele, alt_allele=alt_allele),

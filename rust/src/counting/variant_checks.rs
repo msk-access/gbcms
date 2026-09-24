@@ -1282,12 +1282,18 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     }
 
     // A read reaching here without a reference context was never evaluated by
-    // the requested scorer: prep's context fetch failed (it logs once), so no
-    // haplotype matrix — and no SW either — can be built. Under PairHMM this
-    // is the same malformed-input condition the SW fallback covers; mark it so
-    // the row carries SW_FALLBACK instead of silently losing the read.
+    // the requested scorer. For a length-changing variant (indel or delins —
+    // the variants prep fetches a context for) that means prep's context fetch
+    // failed (it logs once), so no haplotype matrix — and no SW either — can be
+    // built. Under PairHMM this is the same malformed-input condition the SW
+    // fallback covers; mark it so the row carries SW_FALLBACK instead of
+    // silently losing the read. MNPs carry no context by design (no Phase 3),
+    // so their structural reads ending here are expected, not a fallback.
     let mut r = ClassifyResult::neither(ClassifyPhase::Alignment);
-    if variant.ref_context.is_none() && matches!(backend, AlignmentBackend::PairHMM { .. }) {
+    if variant.ref_context.is_none()
+        && variant.ref_allele.len() != variant.alt_allele.len()
+        && matches!(backend, AlignmentBackend::PairHMM { .. })
+    {
         r.sw_fallback = true;
     }
     r

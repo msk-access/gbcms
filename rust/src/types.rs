@@ -350,7 +350,8 @@ pub struct BaseCounts {
     /// Depth-contributing reads (first-class, anchor-overlapping — the DP
     /// population) that the PairHMM backend's pangenomic haplotype matrix
     /// could not evaluate: its reference context is missing (prep's fetch
-    /// failed) or does not contain the variant. Such reads are scored by the
+    /// failed — length-changing variants only; MNPs have none by design) or
+    /// does not contain the variant. Such reads are scored by the
     /// Smith-Waterman fallback where SW can run, and otherwise left NEITHER.
     /// Measured to be zero on well-formed input. Diagnostic only (feeds the
     /// SW_FALLBACK flag and a per-variant WARN); not an output column. Always 0
