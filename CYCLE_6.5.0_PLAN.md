@@ -483,11 +483,11 @@ keys on `variant.pos`:
 
 **Decision for the operator.** Does `exon_boundary_dist` become the span
 distance too?
-- **Recommended: yes.** One definition shared by the rule and the column. The
-  column changes only for multi-base variants whose span sits nearer an edge
-  than `pos`, marked ⚠️ in the CHANGELOG.
-- **Otherwise:** the column stays `pos`-based and the rule keeps a second,
-  internal distance.
+- **Recommended after measuring: no.** The column stays `pos`-based and the
+  rule uses the span internally. The column change would touch about 10% of
+  signed-out deletions near exon edges, and deletions gain nothing from the
+  rule. It would be a user-visible change with no counting benefit.
+- The first recommendation was "yes", made before the measurement below.
 
 **Measure first (as T6).**
 1. **Demand:** signed-out multi-base variants (MNP, DNP, deletion, delins) in
@@ -518,6 +518,34 @@ resolves it once, and the per-transcript and ASJD passes keep reusing it.
   (the BAM is truth).
 - RNA-only, so exempt from the legacy parity oracle. Confirm `PARITY_FIELDS` is
   untouched.
+
+**Measured (2026-09-24, local data; no data in repo).**
+- **Demand.** Across 74,617 unique signed-out multi-base events:
+  - 6,130 deletion loci (10% of 61,123) have the geometry, 4,887 of them
+    crossing an exon boundary;
+  - 99 MNP loci (0.7%) have it.
+- **Effect.** An A/B of develop vs a span-aware prototype on 3 FORTE RNA
+  samples, 326 probes (231 in the T9 class). The harness was clean: controls
+  byte-identical, the column unchanged, invariants held, repeat runs
+  byte-identical.
+  - **Deletions: no effect.** 0 rows moved across 7 categories and 510
+    probe-sample rows (crossing at 12, 30 and 60bp, and ending short), apart
+    from one fragment count. Deletion calls are structural.
+  - **MNPs, ending 4–5bp short of a right edge:** RD +0.03% to +0.17%, with
+    per-transcript and ASJD moving alike. AD and DP are unchanged.
+  - **MNP confirmation.** Counted exactly with pysam: a median 90–92% of the
+    reads covering such an MNP have a splice N within BAQ's radius of an MNP
+    base. REF and ALT calls vote on the unmasked bases, which is why the
+    counts barely move. But `MnpResult::Alt` confirmation needs no masked
+    base. So under the current rule about 9 in 10 real carriers there can never
+    be MNP-confirmed, and `--rescue-mnp`'s `haplotype_confirmed` safeguard is
+    largely blind at right exon edges in RNA.
+- **Conclusion.** The fix matters for MNP confirmation, which only the opt-in
+  RNA rescue path consumes. It is not needed for counts, and not needed for
+  deletions at all.
+  - Priority: low.
+  - The red battery should pin `mnp_confirmed_alt` for an edge MNP's spliced
+    carriers.
 
 ## T10 — Decomposed twin inherits what the original resolved (#107; count-affecting)
 
@@ -551,9 +579,15 @@ otherwise.
   - The per-transcript counts are consistent with the row.
 - A `repeat_span` case, if the audit finds a behavioral difference.
 
-**Fix.** After strand resolution, the twin takes its original's resolved
-strand (same contig and position). `repeat_span` is inherited too, if the audit
-says so.
+**Fix.**
+- `repeat_span`: set it where the twin is built, in `prepare_variants`, to the
+  original's computed value. Today it is computed just *after* the twin
+  (Step 5 builds the twin; the `repeat_span` computation follows), so compute
+  it first. The legacy oracle then dual-counts the same twin, so binned↔legacy
+  parity holds (invariant 1).
+- Strand: after strand resolution in `count_bam_binned_core`, the twin takes
+  its original's resolved strand (same contig and position). The legacy path
+  has no strand.
 
 **Acceptance.**
 - A strand-only change leaves DNA byte-identical: re-run the T8 b37 parity
@@ -566,6 +600,32 @@ says so.
 - RNA: rows at decomposition loci change only by the excluded antisense reads.
   Measure how often decomposition fires and wins on the FORTE cohort.
 
+**Measured (2026-09-24, local data; no data in repo).** Develop vs a prototype
+twin that inherits strand and `repeat_span`, with log-only instrumentation
+reporting both alleles' counts at every dual-count.
+- **Frequency.** A decomposed twin exists at only 13 of 61,123 signed-out
+  deletion loci (0.02%), all in annotated exons.
+- **DNA,** 11 of those loci on their own samples' BAMs. The other 2 samples
+  are absent from the local key files.
+  - **The twin wins at 2 of 11.** At one locus the original's ALT count is 5
+    and the twin's is 78, so decomposition does real work.
+  - **`repeat_span: 0` undercounts the twin's ALT** at 7 of 11 loci, by up to
+    15 reads (about 7%). The truncated scan window misses carriers, so the
+    arbitration compares a handicapped twin.
+  - One output row changed; there were no winner flips at these loci.
+  - The original's counts are identical between builds at 11 of 11, so the
+    difference is `repeat_span` alone (DNA has no strand).
+- **RNA,** 40 homopolymer-decomposable probes × 3 FORTE samples, strandedness
+  on and off.
+  - The missing strand leaks antisense reads into the twin at 14 of 120 loci:
+    52 reads, 0.065% of the twin's RD.
+  - No output change and no winner flip.
+  - `repeat_span` had no effect on these REF-only loci, as expected: it acts on
+    windowed ALT evidence.
+- **Conclusion.** `repeat_span` inheritance is the count-affecting part
+  (DNA, at real twin loci). The strand part is a consistency fix with
+  negligible measured effect. Priority: T10 before T9.
+
 ## Order & discipline
 
 T1 (own branch, own review) → T2 (own branch; needs the FORTE geometries) →
@@ -576,8 +636,10 @@ T7 is independent (Python-only, opt-in path) — own small branch
 Each branch: battery red → implement → suites + clippy + lint gate →
 sonnet adversarial review → real-data acceptance named above → merge to
 develop. 6.5.0 cut only after T1's ACCESS rerun and T2's cohort recheck.
-T10 then T9, each on its own branch.
-- T10 is small and contained.
-- T9 measures first and needs the operator's `exon_boundary_dist` decision.
-- Both should land before the 6.5.0 cut. T9 completes T6's one-rule contract
-  for multi-base variants. T10 closes a silent no-op of an RNA default.
+T10 then T9, each on its own branch; both were measured on 2026-09-24.
+- **T10 before the 6.5.0 cut.** It is small, and it is count-affecting for DNA
+  at real twin loci: `repeat_span` biases the dual-count arbitration.
+- **T9 is low priority.** Deletions are unaffected, and MNP counts move at most
+  0.17%. It restores MNP confirmation at right exon edges, which only the
+  opt-in RNA rescue safeguard uses. It can follow the cut. The measurement
+  recommends keeping `exon_boundary_dist` `pos`-based.
