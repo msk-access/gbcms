@@ -406,9 +406,9 @@ mod tests {
         assert_eq!(tx.introns, vec![(200, 300)]);
 
         // Splice distance
-        assert_eq!(idx.nearest_splice_distance("1", 100), 0); // exon start (0-based: 101-1=100)
-        assert_eq!(idx.nearest_splice_distance("1", 200), 0); // exon end
-        assert_eq!(idx.nearest_splice_distance("2", 550), i32::MAX); // filtered out
+        assert_eq!(idx.nearest_splice_distance("1", 100), Some(0)); // exon start (0-based: 101-1=100)
+        assert_eq!(idx.nearest_splice_distance("1", 200), Some(0)); // exon end
+        assert_eq!(idx.nearest_splice_distance("2", 550), None); // filtered out
 
         // Cleanup
         std::fs::remove_file(&gtf_path).ok();

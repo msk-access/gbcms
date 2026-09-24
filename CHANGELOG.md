@@ -21,13 +21,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - ASJD saw no junction at some edge variants, including known junctions
     carried by thousands of fragments.
 
-  Main counts are unchanged. Probes away from a boundary are unaffected, apart
-  from `asjd_qval`, which is corrected across the sample.
+  Main counts are unchanged. Away from exon edges, per-transcript counts are
+  unchanged. ASJD rows change there only where the tie rule below applies, or
+  through `asjd_qval`, which is corrected across the sample.
 - ASJD's dominant junction no longer depends on hash order. On a tie, the same
   input could report a significant divergence on one run and none on the next.
-  A tie is now not a divergence: when REF's and ALT's tied-top junctions
-  overlap, both report the shared junction and no test is run. Otherwise the
-  leftmost top junction is reported.
+  A tie is now not a divergence: when a REF top junction and an ALT top junction
+  are the same splice event (both ends within 5bp, ASJD's tolerance
+  throughout), each allele reports its own of the pair and no test is run.
+  Otherwise the leftmost top junction is reported.
+- `exon_boundary_dist` is found in any contig naming. A `chrM` variant against
+  an `MT`-named GTF read `2147483647`, and so did any contig the GTF does not
+  annotate. The first now reads the real distance, so the exon-edge rule
+  applies there. The second is now empty. The column is documented as the
+  unsigned distance it has always been; it was previously documented as
+  signed.
 
 ### Added — observability for silent fallbacks (no count changes)
 

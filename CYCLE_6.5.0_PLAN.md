@@ -243,6 +243,19 @@ tx-count pin first.
   `top_junctions` breaks ties: when REF's and ALT's tied-top sets overlap,
   both report the shared junction and no test is run; otherwise the leftmost.
 
+Review round:
+- The tie match is tolerance-aware. One `same_junction` predicate (±5bp) now
+  serves the tie-break and Step 4: an exact-only match could still call a
+  2bp-shifted tie a divergence.
+- `nearest_splice_distance` normalizes its contig, as every other annotation
+  lookup does, and returns `Option`. `chrM` against an `MT` GTF and
+  unannotated contigs read 2147483647 before.
+- The per-transcript and ASJD passes reuse the main counts' distance.
+- Shared RNA fixtures moved to `tests/rna_fixtures.py`.
+- Pre-existing and out of scope, flagged separately: the BAQ rule and
+  `exon_boundary_dist` key on `pos`, not the variant span; the decomposed twin
+  never receives `gene_strand`.
+
 ## T7 — MNP rescue (`--rescue-mnp`, opt-in): report only what the BAM shows
 
 **Principle (operator, 2026-09-23).** The BAM is the truth; sign-out is one

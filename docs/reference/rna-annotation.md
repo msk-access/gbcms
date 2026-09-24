@@ -96,14 +96,16 @@ flowchart LR
 
 ## Feature 1: Exon Boundary Distance
 
-For each variant, gbcms computes the signed distance to the **nearest exon boundary**
-across all overlapping transcripts.
+For each variant, gbcms computes the distance (bp) to the **nearest annotated exon
+boundary** on its contig, across all transcripts. The distance is unsigned: exonic and
+intronic positions both count up from the edge. The contig is matched in any naming
+(`chr1` ~ `1`, `chrM` ~ `MT`).
 
 | Value | Meaning |
 |:------|:--------|
-| Positive | Variant is exonic, N bases from the nearest exon edge |
+| N > 0 | Variant is N bases from the nearest exon edge (exonic or intronic side) |
 | 0 | Variant is exactly at an exon boundary |
-| Negative | Variant is intronic, N bases from the nearest exon edge |
+| empty | The variant's contig has no annotation in the GTF |
 
 **Output column**: `exon_boundary_dist` (MAF)
 
@@ -133,8 +135,10 @@ overlaps multiple transcripts with different exon structures.
 4. Alleles are classified under the same base-quality rules as the main
    counts, including the exon-boundary BAQ exception
    ([RNA Splice-Junction Handling](rna-splice-handling.md)). For the
-   transcript every read is compatible with, the per-transcript counts equal
-   the variant's counts.
+   transcript every read is compatible with, the per-transcript counts match
+   the variant's counts. The exception is when the main counts took a
+   decomposed form of the variant or were adjusted for sibling alleles, since
+   per-transcript counting classifies the variant as written.
 
 ### Output Columns
 
@@ -176,10 +180,12 @@ For each variant:
    span the same junction votes once, so the junction totals and the strand-discordance
    test reflect independent fragments, not mates.
 6. Each allele's **dominant junction** is the one with the most fragments. A tie
-   is not a divergence: when REF's and ALT's tied-top junctions overlap, both
-   report the shared junction and no test is run. Otherwise each reports its
-   leftmost top junction, and Fisher's exact test compares the two. The choice
-   is deterministic: the same input always gives the same junctions and p-value.
+   is not a divergence. When a REF top junction and an ALT top junction are the
+   same splice event, each allele reports its own of that pair and no test is
+   run. "Same" means both ends within 5bp, the tolerance ASJD uses throughout;
+   an exact match is preferred. Otherwise each allele reports its leftmost top
+   junction, and Fisher's exact test compares the two. The choice is
+   deterministic: the same input always gives the same junctions and p-value.
 7. Alleles are classified under the main counts' base-quality rules, including
    the exon-boundary BAQ exception, so the spliced reads at an exon-edge
    variant are ASJD evidence rather than masked.

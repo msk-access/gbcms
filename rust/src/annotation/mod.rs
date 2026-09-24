@@ -193,40 +193,42 @@ impl AnnotationIndex {
 
     // ─── Splice Mask ─────────────────────────────────────────────────────────
 
-    /// Distance (bp) from `pos` to the nearest known exon boundary on `chrom`.
+    /// Distance (bp, unsigned) from `pos` to the nearest known exon boundary
+    /// on `chrom`, exonic and intronic alike.
     ///
-    /// Returns `i32::MAX` if:
-    /// - The chromosome has no annotation (not in GTF, or filtered out by
-    ///   variant-guided streaming).
-    /// - The chromosome has no exon boundaries after dedup.
+    /// None when the contig has no annotation (not in the GTF, filtered out by
+    /// variant-guided streaming, or no exon boundaries after dedup) — never a
+    /// sentinel distance.
     ///
     /// Uses binary search on the pre-sorted `splice_sites` vec — O(log n).
     ///
     /// # Parameters
     ///
-    /// - `chrom`: normalized chromosome name (no "chr" prefix).
+    /// - `chrom`: contig name in any naming; normalized here like every other
+    ///   annotation lookup (`chr1` ~ `1`, `chrM` ~ `M` ~ `MT`).
     /// - `pos`: 0-based variant position.
-    pub fn nearest_splice_distance(&self, chrom: &str, pos: i64) -> i32 {
-        let chrom_id = match self.chrom_map.get(chrom) {
+    pub fn nearest_splice_distance(&self, chrom: &str, pos: i64) -> Option<i32> {
+        let key = crate::shared::contig::normalize_contig(chrom);
+        let chrom_id = match self.chrom_map.get(&key) {
             Some(id) => *id,
             None => {
                 trace!(
                     "nearest_splice_distance: chrom '{}' not in annotation index",
                     chrom
                 );
-                return i32::MAX;
+                return None;
             }
         };
 
         let sites = match self.splice_sites.get(&chrom_id) {
             Some(s) if !s.is_empty() => s,
-            _ => return i32::MAX,
+            _ => return None,
         };
 
         let pos_i32 = pos as i32;
 
         // Binary search for the insertion point
-        match sites.binary_search(&pos_i32) {
+        Some(match sites.binary_search(&pos_i32) {
             Ok(_) => 0, // Exact match — variant is AT an exon boundary
             Err(idx) => {
                 // Check distance to neighbors on both sides
@@ -240,9 +242,10 @@ impl AnnotationIndex {
                 } else {
                     i32::MAX
                 };
+                // `sites` is non-empty, so at least one neighbor exists.
                 dist_left.min(dist_right)
             }
-        }
+        })
     }
 
     /// Whether an annotated intron boundary (a true donor/acceptor site —
@@ -548,31 +551,48 @@ mod tests {
     #[test]
     fn test_at_exon_boundary() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("1", 100), 0);
-        assert_eq!(idx.nearest_splice_distance("1", 200), 0);
-        assert_eq!(idx.nearest_splice_distance("1", 300), 0);
-        assert_eq!(idx.nearest_splice_distance("1", 400), 0);
+        assert_eq!(idx.nearest_splice_distance("1", 100), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 200), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 300), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 400), Some(0));
     }
 
     #[test]
     fn test_near_boundary() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("1", 197), 3);
-        assert_eq!(idx.nearest_splice_distance("1", 203), 3);
-        assert_eq!(idx.nearest_splice_distance("1", 298), 2);
+        assert_eq!(idx.nearest_splice_distance("1", 197), Some(3));
+        assert_eq!(idx.nearest_splice_distance("1", 203), Some(3));
+        assert_eq!(idx.nearest_splice_distance("1", 298), Some(2));
     }
 
     #[test]
     fn test_mid_exon() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("1", 150), 50);
-        assert_eq!(idx.nearest_splice_distance("1", 350), 50);
+        assert_eq!(idx.nearest_splice_distance("1", 150), Some(50));
+        assert_eq!(idx.nearest_splice_distance("1", 350), Some(50));
     }
 
     #[test]
     fn test_unknown_chrom() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("X", 100), i32::MAX);
+        assert_eq!(idx.nearest_splice_distance("X", 100), None, "no sentinel distance");
+    }
+
+    #[test]
+    fn test_distance_lookup_normalizes_contig_naming() {
+        // The index is keyed by normalized names (the GTF parser applies
+        // normalize_contig); callers pass the input's contig, so a chr-named or
+        // chrM-named variant must still find its annotation.
+        let idx = build_test_index();
+        assert_eq!(idx.nearest_splice_distance("chr1", 298), Some(2));
+        let mut chrom_map = HashMap::new();
+        chrom_map.insert("MT".to_string(), 0u32);
+        let mut splice_sites = HashMap::new();
+        splice_sites.insert(0u32, vec![100i32, 200]);
+        let mt = AnnotationIndex::new(HashMap::new(), vec![], splice_sites, HashMap::new(), chrom_map);
+        for name in ["chrM", "M", "MT", "chrMT"] {
+            assert_eq!(mt.nearest_splice_distance(name, 198), Some(2), "{name}");
+        }
     }
 
     // ── overlapping_transcripts tests ──

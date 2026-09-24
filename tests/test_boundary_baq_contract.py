@@ -192,17 +192,7 @@ TIE_CASES = {
 }
 
 
-@pytest.mark.parametrize(
-    "case",
-    [
-        (
-            pytest.param(c, marks=pytest.mark.xfail(strict=True, reason="tie match is exact-only"))
-            if c == "near_tie"
-            else c
-        )
-        for c in sorted(TIE_CASES)
-    ],
-)
+@pytest.mark.parametrize("case", sorted(TIE_CASES))
 def test_asjd_dominant_junction_ties(tmp_path, case):
     ref_groups, alt_groups, expected = TIE_CASES[case]
     ref, alt = _REF, _alt(_REF, MID_SNV)
@@ -218,7 +208,6 @@ def test_asjd_dominant_junction_ties(tmp_path, case):
 
 
 # ── exon_boundary_dist: found in any contig naming, never a sentinel ──────
-@pytest.mark.xfail(strict=True, reason="distance lookup skips contig normalization")
 def test_exon_distance_found_for_mitochondrial_naming(tmp_path):
     """A chrM variant against an Ensembl-named (MT) GTF: the distance lookup
     reconciles the name as every other annotation lookup does, so the edge
@@ -236,7 +225,6 @@ def test_exon_distance_found_for_mitochondrial_naming(tmp_path):
     assert (ad, rd) == (10, 30)
 
 
-@pytest.mark.xfail(strict=True, reason="unannotated contig reports i32::MAX")
 def test_exon_distance_empty_without_annotation(tmp_path):
     """A variant whose contig the GTF does not annotate has no distance: the
     column is empty, not a sentinel integer."""

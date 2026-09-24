@@ -490,7 +490,7 @@ These columns are **always** appended regardless of input format.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `exon_boundary_dist` | Integer | Signed distance to the nearest exon boundary. Positive = exonic (distance from exon edge inward); negative = intronic (distance from nearest exon edge outward). `0` = exactly at an exon boundary. |
+| `exon_boundary_dist` | Integer | Distance (bp) to the nearest annotated exon boundary, exonic and intronic alike (unsigned). `0` = exactly at an exon boundary. Empty when the variant's contig has no annotation in the GTF. |
 
 #### Per-Transcript Counts
 

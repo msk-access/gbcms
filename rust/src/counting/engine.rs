@@ -1397,12 +1397,9 @@ fn count_bin_shared(
         // are compatible with that transcript's intron structure. Reuses the
         // same read cache — no additional BAM I/O.
         if let Some(ref annot) = *annotation {
-            // The main counts' BAQ rule, resolved at this variant's position
-            // (a decomposed winner may sit elsewhere, so not final_counts').
-            let use_baq = baq_applies(
-                apply_baq,
-                Some(annot.nearest_splice_distance(&variant.chrom, variant.pos)),
-            );
+            // The main counts' BAQ rule on the main counts' own distance (a
+            // decomposed form keeps the variant's contig and position).
+            let use_baq = baq_applies(apply_baq, final_counts.exon_boundary_dist);
             let (read_cts, frag_cts) = count_per_transcript(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
@@ -1566,7 +1563,7 @@ fn count_variant_from_cache(
     // ── Compute exon boundary distance (GTF-informed) ──
     // Set once per variant, not per read. Used for BAQ suppression
     // and as an output column. None when no GTF is provided.
-    let exon_boundary_dist: Option<i32> = annotation.as_ref().map(|annot| {
+    let exon_boundary_dist: Option<i32> = annotation.as_ref().and_then(|annot| {
         annot.nearest_splice_distance(&variant.chrom, variant.pos)
     });
     counts.exon_boundary_dist = exon_boundary_dist;
@@ -3659,6 +3656,14 @@ fn canonical_motif(donor: [u8; 2], acceptor: [u8; 2]) -> Option<&'static str> {
     }
 }
 
+/// Two junctions are the same splice event when both ends agree within
+/// `JUNCTION_TOLERANCE`: aligners place a junction a few bases apart when the
+/// sequence at the boundary is ambiguous.
+fn same_junction(a: (i64, i64), b: (i64, i64)) -> bool {
+    let tol = JUNCTION_TOLERANCE as i64;
+    (a.0 - b.0).abs() <= tol && (a.1 - b.1).abs() <= tol
+}
+
 /// The junctions tied for the most fragments in one ASJD partition, leftmost
 /// first. Empty for an empty partition.
 fn top_junctions(counts: &HashMap<(i64, i64), JunctionStrandCounts>) -> Vec<(i64, i64)> {
@@ -3875,15 +3880,18 @@ fn detect_asjd(
     }
 
     // Step 3: Find dominant junction in each partition (by total fragments across
-    // both strands). A tie is not a divergence: when the partitions' tied-top
-    // junctions overlap, both report the shared one; otherwise each reports its
-    // leftmost top junction. Never hash order, which varies run to run.
+    // both strands). A tie is not a divergence: when a REF top junction and an
+    // ALT top junction are the same splice event (`same_junction`, an exact
+    // match preferred), each partition reports its own of that pair; otherwise
+    // each reports its leftmost top junction. Never hash order, which varies
+    // run to run.
     let ref_top = top_junctions(&ref_junction_counts);
     let alt_top = top_junctions(&alt_junction_counts);
-    let (ref_dom_junc, alt_dom_junc) = match ref_top.iter().find(|j| alt_top.contains(j)) {
-        Some(&shared) => (shared, shared),
-        None => (ref_top[0], alt_top[0]), // safe: both partitions checked non-empty above
-    };
+    let pairs = || ref_top.iter().flat_map(|r| alt_top.iter().map(move |a| (*r, *a)));
+    let (ref_dom_junc, alt_dom_junc) = pairs()
+        .find(|(r, a)| r == a)
+        .or_else(|| pairs().find(|&(r, a)| same_junction(r, a)))
+        .unwrap_or((ref_top[0], alt_top[0])); // safe: both partitions checked non-empty above
     let ref_dom_strand_info = &ref_junction_counts[&ref_dom_junc];
     let n_ref_junc = ref_dom_strand_info.total();
     let alt_dom_strand_info = &alt_junction_counts[&alt_dom_junc];
@@ -3896,10 +3904,8 @@ fn detect_asjd(
     }
 
     // Step 4: Compare dominant junctions
-    let same_junction = (ref_dom_junc.0 - alt_dom_junc.0).abs() <= JUNCTION_TOLERANCE as i64
-        && (ref_dom_junc.1 - alt_dom_junc.1).abs() <= JUNCTION_TOLERANCE as i64;
-
-    let (pval, flag) = if same_junction {
+    let is_same = same_junction(ref_dom_junc, alt_dom_junc);
+    let (pval, flag) = if is_same {
         // Same dominant junction → no divergence
         (1.0, false)
     } else {
@@ -3922,7 +3928,7 @@ fn detect_asjd(
     let ref_known = annotation.is_junction_known(chrom, ref_dom_junc.0, ref_dom_junc.1, JUNCTION_TOLERANCE);
     let alt_known = annotation.is_junction_known(chrom, alt_dom_junc.0, alt_dom_junc.1, JUNCTION_TOLERANCE);
 
-    if !alt_known && !same_junction {
+    if !alt_known && !is_same {
         diag_flags.push("NOVEL_ALT_JUNC".to_string());
     }
 
@@ -3942,7 +3948,7 @@ fn detect_asjd(
     );
 
     // NON_CANONICAL_MOTIF diagnostic flag
-    if !same_junction && alt_motif == "OTHER" {
+    if !is_same && alt_motif == "OTHER" {
         diag_flags.push("NON_CANONICAL_MOTIF".to_string());
     }
 
@@ -3953,7 +3959,7 @@ fn detect_asjd(
     // Undefined for an unstranded library (no transcript strand), so gate it off there.
     let alt_minority_frac = alt_dom_strand_info.minority_strand_fraction();
     if strandedness != rna::Strandedness::Unstranded
-        && !same_junction
+        && !is_same
         && n_alt_junc >= ASJD_MIN_ALT_JUNC
         && alt_minority_frac >= 0.30
     {
@@ -3999,6 +4005,26 @@ mod tests {
     use super::*;
     use rust_htslib::bam::record::CigarString;
     use std::ffi::CString;
+
+    #[test]
+    fn test_baq_applies_threshold() {
+        // Skipped within BAQ_BOUNDARY_SUPPRESS_BP of an annotated exon edge,
+        // applied beyond it and without annotation, never when not requested.
+        assert!(!baq_applies(true, Some(0)));
+        assert!(!baq_applies(true, Some(BAQ_BOUNDARY_SUPPRESS_BP)));
+        assert!(baq_applies(true, Some(BAQ_BOUNDARY_SUPPRESS_BP + 1)));
+        assert!(baq_applies(true, None));
+        assert!(!baq_applies(false, Some(50)));
+        assert!(!baq_applies(false, None));
+    }
+
+    #[test]
+    fn test_same_junction_tolerance() {
+        let j = (300, 500);
+        assert!(same_junction(j, j));
+        assert!(same_junction(j, (300 + JUNCTION_TOLERANCE as i64, 500 - JUNCTION_TOLERANCE as i64)));
+        assert!(!same_junction(j, (300, 500 + JUNCTION_TOLERANCE as i64 + 1)));
+    }
 
     #[test]
     fn test_splice_motif_orientation_by_strand() {
