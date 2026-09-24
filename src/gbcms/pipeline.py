@@ -257,30 +257,36 @@ def _declared_contigs(
     Each reference contig is declared under the name(s) the variant file uses
     for it (keeping the reference length), so records written with the input's
     naming are always declared; reference contigs the input never names keep
-    the reference's name. Input contigs the reference lacks are declared
-    without a length rather than left undeclared.
+    the reference's name. Names are paired with the engine's own rule
+    (:meth:`CoordinateKernel.contig_key`: ``chr1``~``1``, ``chrM``~``MT``). Input
+    contigs the reference lacks are declared without a length rather than left
+    undeclared; each name is declared once.
     """
+    key = CoordinateKernel.contig_key
     input_names: dict[str, list[str]] = {}
     for v in variants:
-        names = input_names.setdefault(v.chrom, [])
+        names = input_names.setdefault(key(v.output_chrom), [])
         if v.output_chrom not in names:
             names.append(v.output_chrom)
-    declared: list[tuple[str, int | None]] = []
+    declared: dict[str, int | None] = {}
     for name, length in reference:
-        for out in input_names.get(CoordinateKernel.normalize_chromosome(name), [name]):
-            declared.append((out, length))
-    seen = {name for name, _ in declared}
+        for out in input_names.get(key(name), [name]):
+            # A reference listing one contig under two aliases maps both to the
+            # same input name: declare it once.
+            declared.setdefault(out, length)
     for names in input_names.values():
-        declared.extend((out, None) for out in names if out not in seen)
-    return declared
+        for out in names:
+            declared.setdefault(out, None)
+    return list(declared.items())
 
 
 def _naming_difference(variants: list[Variant], other_names: list[str]) -> tuple[str, str] | None:
     """The first ``(input name, other name)`` pair naming the same contig
     differently, or None when the variant file's naming matches."""
-    other = {CoordinateKernel.normalize_chromosome(n): n for n in other_names}
+    key = CoordinateKernel.contig_key
+    other = {key(n): n for n in other_names}
     for v in variants:
-        name = other.get(v.chrom)
+        name = other.get(key(v.output_chrom))
         if name is not None and name != v.output_chrom:
             return v.output_chrom, name
     return None
@@ -1132,11 +1138,11 @@ class Pipeline:
                 bam_chroms = set(bam.references)
 
             self._log_naming_difference(variants, sorted(bam_chroms), "BAM")
-            norm_bam_chroms = {CoordinateKernel.normalize_chromosome(c) for c in bam_chroms}
+            norm_bam_chroms = {CoordinateKernel.contig_key(c) for c in bam_chroms}
 
             if variants:
                 v = variants[0]
-                norm_v_chrom = CoordinateKernel.normalize_chromosome(v.chrom)
+                norm_v_chrom = CoordinateKernel.contig_key(v.output_chrom)
                 if norm_v_chrom not in norm_bam_chroms:
                     return False
             return True
@@ -1246,7 +1252,6 @@ class Pipeline:
             if pv and pv.was_normalized:
                 norm_v = Variant(
                     chrom=pv.variant.chrom,
-                    original_chrom=v.original_chrom,
                     pos=pv.variant.pos,
                     ref=pv.variant.ref_allele,
                     alt=pv.variant.alt_allele,

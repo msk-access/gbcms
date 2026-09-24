@@ -18,14 +18,19 @@ Committed red (xfail-strict) before the implementation; flipped green with it.
 """
 
 import glob
+import logging
 import random
 
+import polars as pl
 import pysam
 import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
 from gbcms.cli import app
+from gbcms.merge import merge_mafs
+from gbcms.models.core import MergeConfig, Variant, VariantType
+from gbcms.pipeline import _declared_contigs
 
 runner = CliRunner()
 
@@ -222,6 +227,97 @@ def test_naming_difference_is_logged_once(tmp_path):
         "o",
     )
     assert log.count("contig naming") == 1, log
+
+
+def test_maf_input_vcf_output_declares_input_naming_when_reference_differs(tmp_path, capfd):
+    """MAF input takes the same route as VCF input: its 'chr1' is declared with
+    the unprefixed reference's length."""
+    ref = _ref()
+    path, _ = _run(
+        tmp_path,
+        _maf_input(tmp_path, ref, "chr1"),
+        _bam(tmp_path, ref, "1"),
+        _fasta(tmp_path, ref, "1"),
+        "vcf",
+        "o",
+    )
+    rec, declared = _vcf_records(path, capfd)
+    assert rec.chrom == "chr1"
+    assert declared == {"chr1"}
+
+
+# ── Mitochondrion: chrM and MT are the same contig ─────────────────────────
+def test_chrM_input_against_MT_reference(tmp_path, capfd):
+    """The engine reconciles chrM with MT (not just a 'chr' strip); the header
+    and the naming log must pair them the same way, so 'chrM' is declared with
+    MT's length and the difference is logged."""
+    ref = _ref()
+    path, log = _run(
+        tmp_path,
+        _vcf_input(tmp_path, ref, "chrM"),
+        _bam(tmp_path, ref, "MT"),
+        _fasta(tmp_path, ref, "MT"),
+        "vcf",
+        "o",
+    )
+    rec, declared = _vcf_records(path, capfd)
+    assert rec.chrom == "chrM"
+    assert declared == {"chrM"}
+    with pysam.VariantFile(path) as vf:
+        assert vf.header.contigs["chrM"].length == len(ref)
+    assert log.count("contig naming") == 1, log
+
+
+def test_reference_aliases_declare_each_name_once():
+    """A reference listing one contig under two aliases (chr1 and 1) must not
+    produce a duplicate ##contig line for the input's name."""
+    v = Variant(chrom="1", pos=0, ref="A", alt="C", variant_type=VariantType.SNP)
+    v.original_chrom = "chr1"
+    assert _declared_contigs([("chr1", 600), ("1", 600), ("2", 900)], [v]) == [
+        ("chr1", 600),
+        ("2", 900),
+    ]
+
+
+# ── gbcms merge across inputs that name contigs differently ────────────────
+def test_merge_joins_across_contig_naming(tmp_path, caplog):
+    """Runs from a 'chr'-named and an unprefixed variant file describe the same
+    variant: merge joins them into one row in the first input's naming, keeps
+    a row only the second input has in that input's naming, and logs it."""
+    cols = [
+        "Chromosome",
+        "Start_Position",
+        "End_Position",
+        "Reference_Allele",
+        "Tumor_Seq_Allele2",
+        "ref_count",
+        "alt_count",
+    ]
+
+    def maf(name, rows):
+        p = tmp_path / name
+        p.write_text("\n".join(["\t".join(cols), *("\t".join(r) for r in rows)]) + "\n")
+        return p
+
+    duplex = maf("duplex.maf", [["chr1", "100", "100", "A", "T", "20", "10"]])
+    simplex = maf(
+        "simplex.maf",
+        [["1", "100", "100", "A", "T", "5", "2"], ["MT", "50", "50", "G", "C", "7", "1"]],
+    )
+    out = tmp_path / "merged.maf"
+    with caplog.at_level(logging.INFO, logger="gbcms.merge"):
+        merge_mafs(
+            MergeConfig(
+                inputs={"duplex": duplex, "simplex": simplex}, output=out, add_combined=False
+            )
+        )
+    result = pl.read_csv(out, separator="\t", infer_schema_length=0).sort("Chromosome")
+    assert result["Chromosome"].to_list() == ["MT", "chr1"]
+    joined = result.filter(pl.col("Chromosome") == "chr1").row(0, named=True)
+    assert (joined["duplex_ref_count"], joined["simplex_ref_count"]) == ("20", "5")
+    assert not any(c.startswith("_") for c in result.columns), result.columns
+    naming = [r.message for r in caplog.records if "name contigs differently" in r.message]
+    assert len(naming) == 1, [r.message for r in caplog.records]
 
 
 # ── b37-style naming is untouched ──────────────────────────────────────────

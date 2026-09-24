@@ -237,6 +237,19 @@ class CoordinateKernel:
             }
 
     @staticmethod
+    def contig_key(chrom: str) -> str:
+        """Naming-independent key for comparing contig names across sources.
+
+        Mirrors the engine's ``normalize_contig`` (rust/src/shared/contig.rs):
+        strips a ``chr`` prefix in any case and folds the mitochondrial aliases
+        ``M`` / ``MT`` to ``MT``. Used to pair names written differently by the
+        variant file, reference and BAMs (``chrM`` vs ``MT``); it is never a
+        name written to output.
+        """
+        bare = chrom[3:] if chrom[:3].lower() == "chr" else chrom
+        return "MT" if bare.upper() in ("M", "MT") else bare
+
+    @staticmethod
     def normalize_chromosome(chrom: str) -> str:
         """
         Normalize chromosome name (remove 'chr' prefix).

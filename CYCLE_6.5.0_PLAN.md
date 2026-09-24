@@ -387,7 +387,12 @@ rescue labels (the old `_output_contig` helper is gone) and the mFSD Parquet use
 (reference length kept); input contigs absent from the `.fai` are declared without a
 length. The `.fai` is read once per run (was once per sample). One INFO line per
 distinct naming pair (reference, then any BAM). Observations Parquet keeps the
-internal name — it echoes loci from inside the engine (documented).
+internal name — it echoes loci from inside the engine (documented). Names are
+paired by `CoordinateKernel.contig_key`, the Python mirror of the engine's
+`normalize_contig` (`chrM` ~ `MT`, not just a `chr` strip); a `.fai` listing one
+contig under two aliases declares the input's name once. `gbcms merge` joins on
+the same key (review finding: inputs counted from differently named variant files
+otherwise split into two rows), keeps the first input's name, and logs differences.
 
 **Tests.** `chr`-named input × {VCF, MAF} × {VCF, MAF output}: output names
 equal the input's; VCF output parses with no undefined-contig warning; b37

@@ -78,7 +78,7 @@ flowchart LR
 
 1. **Scan** — Each input MAF is lazily scanned with all columns as strings
 2. **Prefix Detection** — Columns are checked for existing type prefixes; unprefixed gbcms columns are renamed (e.g., `ref_count` → `duplex_ref_count`)
-3. **Outer Join** — Progressive full outer join on the 5-column variant key: `Chromosome`, `Start_Position`, `End_Position`, `Reference_Allele`, `Tumor_Seq_Allele2`
+3. **Outer Join** — Progressive full outer join on the 5-column variant key: `Chromosome`, `Start_Position`, `End_Position`, `Reference_Allele`, `Tumor_Seq_Allele2`. `Chromosome` is compared by the same rule counting uses to reconcile contigs (`chr1` ~ `1`, `chrM` ~ `MT`), so inputs counted from differently named variant files still join. A merged row keeps the first input's name; a row only a later input has keeps that input's name. When inputs name contigs differently, the log says so (one INFO line per input).
 4. **Null Fill** — Missing counts → `"0"`, missing meta → `""`
 5. **Combined Columns** — If both `simplex` and `duplex` are present and `--no-combined` is not set:
     - **Phase 1**: Additive sums (12 columns: read + fragment + strand counts)

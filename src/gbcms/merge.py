@@ -27,6 +27,7 @@ from pathlib import Path
 
 import polars as pl
 
+from gbcms.core.kernel import CoordinateKernel
 from gbcms.io.batch import scan_maf, write_maf
 from gbcms.models.core import MergeConfig
 from gbcms.rescue_audit import rescued_component
@@ -46,6 +47,22 @@ VARIANT_KEY: list[str] = [
     "Reference_Allele",
     "Tumor_Seq_Allele2",
 ]
+
+# Naming-independent contig key the joins use in place of Chromosome, so MAFs
+# whose inputs name contigs differently (chr1 vs 1, chrM vs MT) still join.
+_CONTIG_KEY = "_contig_key"
+JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
+
+
+def _with_contig_key(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Add the join's contig key, computed by :meth:`CoordinateKernel.contig_key`
+    (the counting engine's rule) so merge pairs names exactly as counting does."""
+    return lf.with_columns(
+        pl.col("Chromosome")
+        .map_elements(CoordinateKernel.contig_key, return_dtype=pl.String)
+        .alias(_CONTIG_KEY)
+    )
+
 
 # gbcms count column basenames (without any prefix).
 # These columns contain numeric counts/rates and will be type-prefixed.
@@ -166,7 +183,7 @@ def merge_mafs(config: MergeConfig) -> None:
         else:
             logger.info("  Columns already prefixed for '%s', using as-is", bam_type)
 
-        frames[bam_type] = lf
+        frames[bam_type] = _with_contig_key(lf)
 
     # ── 2. Progressive outer join ─────────────────────────────────────────────
     types = list(frames.keys())
@@ -175,22 +192,25 @@ def merge_mafs(config: MergeConfig) -> None:
     for join_type in types[1:]:
         # Select only variant key + gbcms columns from the joining frame
         # to avoid duplicating annotation columns across inputs.
+        # The joining frame's own Chromosome is kept aside (not a join key) so
+        # rows only it has keep their name, and naming differences can be
+        # reported after materialization.
         join_frame = frames[join_type]
         join_cols = [
             c
             for c in join_frame.collect_schema().names()
-            if c in VARIANT_KEY or _is_prefixed_gbcms_col(c, join_type)
+            if c in JOIN_KEY or c == "Chromosome" or _is_prefixed_gbcms_col(c, join_type)
         ]
         merged = merged.join(
-            join_frame.select(join_cols),
-            on=VARIANT_KEY,
+            join_frame.select(join_cols).rename({"Chromosome": f"_chrom_{join_type}"}),
+            on=JOIN_KEY,
             how="full",
             coalesce=True,
         )
         logger.info(
             "  Joined '%s' (%d count cols)",
             join_type,
-            len(join_cols) - len(VARIANT_KEY),
+            len(join_cols) - len(JOIN_KEY) - 1,
         )
 
     # ── 3. Fill nulls → "0" for count columns, "" for meta columns ─────────
@@ -218,7 +238,7 @@ def merge_mafs(config: MergeConfig) -> None:
         logger.info("  Added simplex_duplex combined columns")
 
     # ── 5. Materialize and write ──────────────────────────────────────────────
-    result = merged.collect()
+    result = _resolve_contig_names(merged.collect(), types)
     logger.info(
         "Merged result: %d rows × %d columns",
         result.height,
@@ -259,6 +279,37 @@ def merge_mafs(config: MergeConfig) -> None:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
+    """Settle Chromosome after naming-independent joins and drop the helpers.
+
+    Rows keep the first input's contig name; a row only a later input has takes
+    that input's name. When two inputs name the same contigs differently (e.g.
+    one run from a ``chr``-named variant file, one not), an INFO line per input
+    says so — the rows still joined, on the normalized contig.
+    """
+    for t in types[1:]:
+        col = f"_chrom_{t}"
+        differ = result.filter(
+            pl.col("Chromosome").is_not_null()
+            & pl.col(col).is_not_null()
+            & (pl.col("Chromosome") != pl.col(col))
+        )
+        if differ.height:
+            first = differ.row(0, named=True)
+            logger.info(
+                "  '%s' and '%s' name contigs differently ('%s' vs '%s', %d row(s)): joined "
+                "on the normalized contig; merged rows keep '%s''s naming",
+                types[0],
+                t,
+                first["Chromosome"],
+                first[col],
+                differ.height,
+                types[0],
+            )
+        result = result.with_columns(pl.coalesce("Chromosome", col).alias("Chromosome")).drop(col)
+    return result.drop(_CONTIG_KEY)
 
 
 def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
