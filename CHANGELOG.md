@@ -110,7 +110,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outcomes differ (one rescued, or different components), each row is named in
   a WARNING with a per-run count — with or without `--add-combined`, since the
   two flavors' columns then describe different alleles in one row (with it, the
-  `simplex_duplex_*` columns add them); counts are unchanged.
+  `simplex_duplex_*` columns add them); counts are unchanged. When only one
+  flavor was genotyped with `--rescue-mnp`, merge says so once and names every
+  row rescued in that flavor (previously that case was silently skipped).
 - **Grouped MNPs are skipped** (`outcome=skipped_grouped`) so rescue cannot
   hand back reads that exclusive assignment gave a co-annotated sibling.
 - **Fixed: rescue audit leaked across samples.** In a multi-BAM run a later

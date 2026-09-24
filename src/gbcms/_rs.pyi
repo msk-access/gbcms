@@ -185,7 +185,7 @@ class PreparedVariant:
     # Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
     gbcms_diagnostic: str
     # Rescue audit trail (set by pipeline._rescue_mnp_pass; format in
-    # pipeline._format_rescue_audit). Semicolon-separated key=value pairs, reset
+    # gbcms.rescue_audit.format_rescue_audit). Semicolon-separated key=value pairs, reset
     # per sample. Empty string for non-candidates and when --rescue-mnp is off.
     gbcms_rescue: str
     was_anchor_resolved: bool

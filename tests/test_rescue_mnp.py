@@ -42,7 +42,8 @@ from typer.testing import CliRunner
 from gbcms.cli import app
 from gbcms.io.output import MafWriter, VcfWriter
 from gbcms.models.core import GbcmsBaseConfig
-from gbcms.pipeline import _format_rescue_audit, _resolve_mnp_rescue
+from gbcms.pipeline import _resolve_mnp_rescue
+from gbcms.rescue_audit import format_rescue_audit, rescued_component
 
 runner = CliRunner()
 
@@ -455,11 +456,11 @@ def test_resolve_reports_when_no_component_could_be_counted():
 
 def test_audit_format():
     original = types.SimpleNamespace(rd=486, ad=1, partial_alt=88, mnp_confirmed_alt=0)
-    assert _format_rescue_audit("skipped_grouped", original) == (
+    assert format_rescue_audit("skipped_grouped", original) == (
         "method=decomposed;outcome=skipped_grouped;"
         "original_ref=486;original_alt=1;original_partial=88;original_confirmed=0"
     )
-    assert _format_rescue_audit(
+    assert format_rescue_audit(
         "rescued",
         original,
         ["5:1295250(G>A):87", "5:1295254(G>A):ref_fail"],
@@ -549,12 +550,12 @@ def test_rescue_labels_follow_the_output_contig_naming(tmp_path):
     assert audit["positions"] == "chr1:201(G>A):10+chr1:205(G>A):0"
 
 
-def _merge(tmp_path, duplex_reads, simplex_reads, extra=()):
+def _merge(tmp_path, duplex_reads, simplex_reads, extra=(), simplex_rescue=True):
     """Rescue-on MAFs for a duplex and a simplex BAM, merged; return CLI output."""
     (tmp_path / "d").mkdir()
     (tmp_path / "s").mkdir()
     d_out, _ = _invoke(tmp_path / "d", {"S": duplex_reads}, [MNP_ROW], True, "maf")
-    s_out, _ = _invoke(tmp_path / "s", {"S": simplex_reads}, [MNP_ROW], True, "maf")
+    s_out, _ = _invoke(tmp_path / "s", {"S": simplex_reads}, [MNP_ROW], simplex_rescue, "maf")
     merged = tmp_path / "merged.maf"
     result = runner.invoke(
         app,
@@ -588,6 +589,27 @@ def test_merge_warns_on_mixed_rescue_without_combined_columns(tmp_path):
     assert "Mixed MNP rescue" in log
     assert "1 row(s)" in log
     assert "simplex_duplex_*" not in log
+
+
+def test_merge_warns_when_only_one_flavor_ran_rescue(tmp_path):
+    """Duplex genotyped with --rescue-mnp, simplex without: the simplex MAF has
+    no gbcms_rescue column. That must not silence the check — it is the most
+    likely way the two flavors end up reporting different alleles."""
+    log = _merge(
+        tmp_path, _component_carrier_reads(), _component_carrier_reads(), simplex_rescue=False
+    )
+    assert "MNP rescue was run on duplex only" in log
+    assert "Mixed MNP rescue at" in log
+    assert "1 row(s)" in log
+
+
+def test_rescued_component_reads_only_rescued_rows():
+    original = types.SimpleNamespace(rd=5, ad=0, partial_alt=9, mnp_confirmed_alt=0)
+    rescued = format_rescue_audit("rescued", original, ["chr1:201(G>A):9"], "chr1:201(G>A)")
+    assert rescued_component(rescued) == "chr1:201(G>A)"
+    for outcome in ("no_improvement", "haplotype_confirmed", "skipped_grouped"):
+        assert rescued_component(format_rescue_audit(outcome, original)) is None
+    assert rescued_component("") is None
 
 
 def test_merge_is_quiet_when_both_flavors_agree(tmp_path):

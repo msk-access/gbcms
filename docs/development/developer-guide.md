@@ -250,7 +250,7 @@ gbcms dna --verbose --rescue-mnp --variants input.maf --bam sample:sample.bam --
 
 1. Add the strategy as a new code path in `_rescue_mnp_pass()`
 2. Use a different `method=` value in the audit trail (e.g. `method=coordinate_shift`) and
-   keep `outcome=` and `original_*` keys, built by `_format_rescue_audit()`
+   keep `outcome=` and `original_*` keys, built by `gbcms.rescue_audit.format_rescue_audit()`
 3. Decide outcomes in a pure function (like `_resolve_mnp_rescue()`) so they are unit-testable
 4. Log DEBUG per variant, INFO per-sample summary, WARNING for anomalies
 5. Add end-to-end tests to `test_rescue_mnp.py` asserting the counting invariants on written rows

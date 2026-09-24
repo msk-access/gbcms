@@ -136,7 +136,9 @@ columns are computed (assuming all strand-level counts are present in the input)
     columns add them. `gbcms merge` names every such row in a WARNING (with or
     without `--add-combined`; the combined-column note is added only when those
     columns are written) and logs a per-run count; the counts themselves are left
-    unchanged.
+    unchanged. If only one flavor was genotyped with `--rescue-mnp`, merge logs
+    that once and names every row rescued in that flavor, since the other flavor
+    reports the MNP there.
     Check `duplex_gbcms_rescue` / `simplex_gbcms_rescue` for those rows.
 
 ---

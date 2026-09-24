@@ -29,6 +29,7 @@ import polars as pl
 
 from gbcms.io.batch import scan_maf, write_maf
 from gbcms.models.core import MergeConfig
+from gbcms.rescue_audit import rescued_component
 
 __all__ = ["merge_mafs"]
 
@@ -260,12 +261,6 @@ def merge_mafs(config: MergeConfig) -> None:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _rescued_component(audit: str) -> str | None:
-    """The adopted component label of a ``gbcms_rescue`` value, or None if not rescued."""
-    fields = dict(part.split("=", 1) for part in audit.split(";") if "=" in part)
-    return fields.get("adopted") if fields.get("outcome") == "rescued" else None
-
-
 def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
     """Warn on rows whose duplex and simplex MNP rescue outcomes differ.
 
@@ -275,15 +270,29 @@ def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
     comparing or summing the duplex and simplex columns would be misled, with
     or without ``--add-combined``. With it, the ``simplex_duplex_*`` columns
     add them outright, and the per-row message says so. Counts are left as
-    they are; the rows are named in the log. No-op when rescue was not run (no
-    ``gbcms_rescue`` columns).
+    they are; the rows are named in the log. No-op when rescue was run on
+    neither flavor (no ``gbcms_rescue`` column). When it was run on only one,
+    that is logged once and the other flavor is treated as reporting the MNP on
+    every row, so each row rescued in the rescue-on flavor is named.
     """
     d, s = "duplex_gbcms_rescue", "simplex_gbcms_rescue"
-    if d not in result.columns or s not in result.columns:
+    present = [col for col in (d, s) if col in result.columns]
+    if not present:
         return
+    if len(present) == 1:
+        ran, other = ("duplex", "simplex") if present[0] == d else ("simplex", "duplex")
+        logger.warning(
+            "MNP rescue was run on %s only (%s was genotyped without --rescue-mnp): rows "
+            "rescued in %s report a component while %s reports the MNP",
+            ran,
+            other,
+            ran,
+            other,
+        )
     mixed = 0
-    for row in result.select([*VARIANT_KEY, d, s]).iter_rows(named=True):
-        d_comp, s_comp = _rescued_component(row[d] or ""), _rescued_component(row[s] or "")
+    for row in result.select([*VARIANT_KEY, *present]).iter_rows(named=True):
+        d_comp = rescued_component(row.get(d) or "")
+        s_comp = rescued_component(row.get(s) or "")
         if d_comp == s_comp:
             continue
         mixed += 1

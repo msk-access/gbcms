@@ -30,7 +30,7 @@ Best component (highest `ad`, leftmost on ties) must beat the MNP's `ad`; its wh
 `dpf >= rdf + adf`), and diagnostics are recomputed via `_diagnostic_flags`. Both count
 calls share `_engine_kwargs()` so components classify reads exactly like the main count.
 
-## `gbcms_rescue` (built only by `_format_rescue_audit`)
+## `gbcms_rescue` (contract in `src/gbcms/rescue_audit.py`: built by `format_rescue_audit`, read by `rescued_component`)
 `method=decomposed;outcome=<rescued|skipped_grouped|haplotype_confirmed|no_improvement|ref_validation_failed>;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad|ref_fail>+...]`
 - Reset for every sample (the prepared list is shared across BAMs). Positions join with `+`,
   never `,` — VCF emits it as the Number=1 `GR` INFO and parsers split commas.

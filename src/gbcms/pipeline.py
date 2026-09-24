@@ -31,6 +31,15 @@ from .core.kernel import CoordinateKernel
 from .io.input import MafReader, VariantReader, VcfReader
 from .io.output import MafWriter, VcfWriter
 from .models.core import GbcmsBaseConfig, OutputFormat, Variant
+from .rescue_audit import (
+    MNP_RESCUE_ELIGIBLE,
+    OUTCOME_HAPLOTYPE_CONFIRMED,
+    OUTCOME_NO_IMPROVEMENT,
+    OUTCOME_REF_VALIDATION_FAILED,
+    OUTCOME_RESCUED,
+    OUTCOME_SKIPPED_GROUPED,
+    format_rescue_audit,
+)
 
 _gbcms_rs = None
 
@@ -233,11 +242,11 @@ def _resolve_mnp_rescue(
     """
     counted = [(ad, idx) for idx, ad in enumerate(component_ads) if ad is not None]
     if not counted:
-        return "ref_validation_failed", None
+        return OUTCOME_REF_VALIDATION_FAILED, None
     best_ad, best_idx = max(counted, key=lambda pair: (pair[0], -pair[1]))
     if best_ad <= original_ad:
-        return "no_improvement", None
-    return "rescued", best_idx
+        return OUTCOME_NO_IMPROVEMENT, None
+    return OUTCOME_RESCUED, best_idx
 
 
 def _output_contig(variant: Variant) -> str:
@@ -249,39 +258,6 @@ def _output_contig(variant: Variant) -> str:
     and audit) use this so they always match the row.
     """
     return variant.metadata.get("Chromosome", variant.chrom)
-
-
-def _format_rescue_audit(
-    outcome: str,
-    original: Any,
-    positions: list[str] | None = None,
-    adopted: str | None = None,
-) -> str:
-    """Build the ``gbcms_rescue`` value.
-
-    Format: ``method=decomposed;outcome=<outcome>;original_ref=R;original_alt=A;
-    original_partial=P;original_confirmed=C[;adopted=<label>]
-    [;positions=<label>:<ad|ref_fail>+...]`` where a label is
-    ``chrom:pos(REF>ALT)`` (1-based). Positions are joined with ``+``, never
-    ``,``: the VCF writer emits this string as the Number=1 ``GR`` INFO value,
-    which VCF parsers split at commas. ``original_*`` are the MNP's own counts —
-    for a rescued row the only record of its evaluation, because the count
-    columns then carry the adopted component's counts. ``original_confirmed``
-    is the MNP's ``mnp_confirmed_alt``: reads that showed the whole haplotype.
-    """
-    parts = [
-        "method=decomposed",
-        f"outcome={outcome}",
-        f"original_ref={original.rd}",
-        f"original_alt={original.ad}",
-        f"original_partial={original.partial_alt}",
-        f"original_confirmed={original.mnp_confirmed_alt}",
-    ]
-    if adopted is not None:
-        parts.append(f"adopted={adopted}")
-    if positions:
-        parts.append("positions=" + "+".join(positions))
-    return ";".join(parts)
 
 
 class Pipeline:
@@ -804,7 +780,7 @@ class Pipeline:
             disc = len(_mnp_discriminating_positions(variant))
             flags.append(f"MNP_DISC_RATIO({disc}/{len(ref_allele)})")
             if disc / len(ref_allele) <= self.config.rescue_mnp_threshold:
-                flags.append("MNP_RESCUE_ELIGIBLE")
+                flags.append(MNP_RESCUE_ELIGIBLE)
 
         # HIGH_N_FRACTION: high rate of N-bases at discriminating positions
         if counts.dp > 0 and counts.n_count / counts.dp > 0.05:
@@ -873,7 +849,7 @@ class Pipeline:
         the row's diagnostics are recomputed from them, plus
         ``RESCUED_COMPONENT(chrom:pos:REF>ALT)`` naming the adopted component,
         and a warning is logged. The MNP's own counts
-        survive in ``gbcms_rescue`` (format: :func:`_format_rescue_audit`;
+        survive in ``gbcms_rescue`` (format: :func:`.rescue_audit.format_rescue_audit`;
         outcomes: :func:`_resolve_mnp_rescue`).
 
         Grouped MNPs are skipped (``outcome=skipped_grouped``): their reads are
@@ -901,15 +877,15 @@ class Pipeline:
         for i, (pv, counts) in enumerate(zip(prepared, full_counts, strict=True)):
             if (
                 pv.gbcms_status != "PASS"
-                or "MNP_RESCUE_ELIGIBLE" not in pv.gbcms_diagnostic.split(";")
+                or MNP_RESCUE_ELIGIBLE not in pv.gbcms_diagnostic.split(";")
                 or counts.partial_alt <= counts.ad
             ):
                 continue
             v = pv.variant
             contig = _output_contig(variants[i])
             if pv.multi_allelic_group is not None:
-                pv.gbcms_rescue = _format_rescue_audit("skipped_grouped", counts)
-                outcomes["skipped_grouped"] += 1
+                pv.gbcms_rescue = format_rescue_audit(OUTCOME_SKIPPED_GROUPED, counts)
+                outcomes[OUTCOME_SKIPPED_GROUPED] += 1
                 logger.debug(
                     "MNP rescue: %s:%d %s>%s skipped — co-annotated group %d owns its reads",
                     contig,
@@ -920,8 +896,8 @@ class Pipeline:
                 )
                 continue
             if counts.mnp_confirmed_alt > 0:
-                pv.gbcms_rescue = _format_rescue_audit("haplotype_confirmed", counts)
-                outcomes["haplotype_confirmed"] += 1
+                pv.gbcms_rescue = format_rescue_audit(OUTCOME_HAPLOTYPE_CONFIRMED, counts)
+                outcomes[OUTCOME_HAPLOTYPE_CONFIRMED] += 1
                 logger.debug(
                     "MNP rescue: %s:%d %s>%s kept — %d read(s) show the whole haplotype",
                     contig,
@@ -950,9 +926,9 @@ class Pipeline:
             )
             outcomes[outcome] += 1
             if best is None:
-                pv.gbcms_rescue = _format_rescue_audit(outcome, original, entries)
+                pv.gbcms_rescue = format_rescue_audit(outcome, original, entries)
                 logger.log(
-                    logging.WARNING if outcome == "ref_validation_failed" else logging.DEBUG,
+                    logging.WARNING if outcome == OUTCOME_REF_VALIDATION_FAILED else logging.DEBUG,
                     "MNP rescue: %s:%d %s>%s not rescued (%s) — MNP ad=%d partial_alt=%d, "
                     "components %s; counts left as the MNP evaluation",
                     contig,
@@ -975,7 +951,7 @@ class Pipeline:
                     f"RESCUED_COMPONENT({contig}:{best_pos + 1}:{best_ref}>{best_alt})",
                 ]
             )
-            pv.gbcms_rescue = _format_rescue_audit(outcome, original, entries, labels[best])
+            pv.gbcms_rescue = format_rescue_audit(outcome, original, entries, labels[best])
             logger.warning(
                 "MNP rescue: %s:%d %s>%s now reports component %s (ALT %d, REF %d); the MNP "
                 "itself had ALT %d (%d showing the whole haplotype), partial %d",
@@ -1000,19 +976,19 @@ class Pipeline:
             ", ".join(f"{name}={n}" for name, n in sorted(outcomes.items())),
             time.perf_counter() - rescue_start,
         )
-        if outcomes["rescued"] and self.config.output.observations_parquet:
+        if outcomes[OUTCOME_RESCUED] and self.config.output.observations_parquet:
             logger.info(
                 "Observations Parquet for %s records the MNP evaluation of %d rescued row(s); "
                 "their written counts are the adopted component's (see gbcms_rescue)",
                 sample_name,
-                outcomes["rescued"],
+                outcomes[OUTCOME_RESCUED],
             )
-        if outcomes["rescued"] and self.config.output.mfsd_parquet:
+        if outcomes[OUTCOME_RESCUED] and self.config.output.mfsd_parquet:
             logger.info(
                 "mFSD Parquet for %s: %d rescued row(s) keep the MNP's coordinates but carry "
                 "the adopted component's fragment sizes (see gbcms_rescue in the MAF/VCF)",
                 sample_name,
-                outcomes["rescued"],
+                outcomes[OUTCOME_RESCUED],
             )
 
     def _count_mnp_components(
