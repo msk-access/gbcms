@@ -46,7 +46,7 @@ use log::{debug, info, trace, warn};
 use bio::alignment::pairwise::Aligner;
 
 use super::fragment::{FragmentEvidence, hash_qname, hash_molecule};
-use super::pairhmm::dynamic_sw_gap_extend;
+use super::alignment::{SW_GAP_EXTEND, SW_GAP_OPEN};
 use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, reconstruct_span, MnpResult};
 use bio::alignment::distance::levenshtein;
 use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
@@ -784,6 +784,9 @@ fn count_bam_binned_core(
     let n = variants.len();
     sibling_variants.resize_with(n, Vec::new);
 
+    // Kept for the post-run UMI-tag check (bam_path moves into the workers).
+    let bam_label = bam_path.clone();
+
     // Parse UMI tag for thread-local use
     let umi_tag_owned: Option<[u8; 2]> = umi_tag.and_then(|tag| {
         let bytes = tag.as_bytes();
@@ -916,6 +919,22 @@ fn count_bam_binned_core(
         Ok((pairs, mut observations)) => {
             for (vi, counts) in pairs {
                 all_counts[vi] = counts;
+            }
+
+            // A requested UMI tag that no processed read carries means fragment
+            // grouping silently fell back to QNAME for this BAM. Counts are
+            // unaffected (QNAME grouping is the no-UMI behaviour), and mixed
+            // tagged/untagged workflows are legitimate — so warn, don't fail.
+            if let (Some(tag), Some(tag_bytes)) = (umi_tag, umi_tag_owned) {
+                let tagged: u64 = all_counts.iter().map(|c| c.umi_tagged_reads as u64).sum();
+                let depth: u64 = all_counts.iter().map(|c| c.dp as u64).sum();
+                if tagged == 0 && depth > 0 {
+                    warn!(
+                        "--umi-tag {}: no processed read in {} carries the {} tag; fragment \
+                         grouping fell back to read names (QNAME) for this BAM",
+                        tag, bam_label, String::from_utf8_lossy(&tag_bytes),
+                    );
+                }
             }
 
             // Deterministic observation order. `HashMap<u64, FragmentEvidence>` iteration
@@ -1561,10 +1580,8 @@ fn count_variant_from_cache(
     let score_fn = |a: u8, b: u8| -> i32 {
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
-    let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
-    let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
-    let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
 
     // Per-phase classification counters
     let mut phase_counts = [0u32; 5];
@@ -1697,6 +1714,7 @@ fn count_variant_from_cache(
         let is_ref = result.is_ref;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
+        tally_clip_candidate(&mut counts, record, variant, first_class);
 
         // ── MULTI-ALLELIC AD-CLAIMING GUARD: an ALT match contested and won
         // by a co-annotated sibling is the sibling's molecule. Downgrade
@@ -1755,6 +1773,12 @@ fn count_variant_from_cache(
             } else {
                 counts.dp_fwd += 1;
             }
+            // Counted with DP, not at classification: SW_FALLBACK claims the
+            // row's counts came partly from a different scorer, which is only
+            // true for reads that contribute to those counts.
+            if result.sw_fallback {
+                counts.sw_fallback_reads += 1;
+            }
         }
 
         // ── FRAGMENT TRACKING: track ALL fragments for DPF.
@@ -1771,6 +1795,9 @@ fn count_variant_from_cache(
                     rust_htslib::bam::record::Aux::String(s) => Some(s.as_bytes()),
                     _ => None,
                 });
+            if umi_bytes.is_some() {
+                counts.umi_tagged_reads += 1;
+            }
             hash_molecule(record.qname(), umi_bytes)
         } else {
             hash_qname(record.qname())
@@ -2072,12 +2099,14 @@ fn count_variant_from_cache(
         compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
     }
 
+    warn_sw_fallback(variant, counts.sw_fallback_reads);
+
     // Log per-phase classification breakdown + reads considered
     debug!(
-        "Phase stats {}:{} {}→{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} ({} backend, {} reads from cache)",
+        "Phase stats {}:{} {}→{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} sw_fallback={} clip_candidates={} ({} backend, {} reads from cache)",
         variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
-        counts.splice_skip_excluded,
+        counts.splice_skip_excluded, counts.sw_fallback_reads, counts.clip_candidates,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2167,13 +2196,8 @@ fn count_single_variant(
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
     // ALT + REF: Same affine gap penalties for fair comparison.
-    // NOTE: dynamic_sw_gap_extend is currently a constant -1 for every
-    // repeat_span — the intended tight-to-free relaxation never engages
-    // with the fixed default curve (see its doc; issue #92).
-    let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
-    let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
-    let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
 
     // Per-phase classification counters
     // Indices: 0=Structural, 1=CigarRecon, 2=MaskedCompare, 3=Levenshtein, 4=Alignment
@@ -2273,6 +2297,7 @@ fn count_single_variant(
         let is_ref = result.is_ref;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
+        tally_clip_candidate(&mut counts, &record, variant, first_class);
 
         // ── MULTI-ALLELIC AD-CLAIMING GUARD: mirrors the binned path — an
         // ALT match contested and won by a co-annotated sibling is
@@ -2330,6 +2355,12 @@ fn count_single_variant(
                 counts.dp_rev += 1;
             } else {
                 counts.dp_fwd += 1;
+            }
+            // Counted with DP, not at classification: SW_FALLBACK claims the
+            // row's counts came partly from a different scorer, which is only
+            // true for reads that contribute to those counts.
+            if result.sw_fallback {
+                counts.sw_fallback_reads += 1;
             }
         }
 
@@ -2579,12 +2610,14 @@ fn count_single_variant(
     // as the binned path so the two can never drift.
     compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
 
+    warn_sw_fallback(variant, counts.sw_fallback_reads);
+
     // Log per-phase classification breakdown
     debug!(
-        "Phase stats {}:{} {}→{}: P0(Structural)={} P1(CigarRecon)={} P2(Masked)={} P2.5(Lev)={} P3(Align)={} splice_skip_excluded={} ({} backend)",
+        "Phase stats {}:{} {}→{}: P0(Structural)={} P1(CigarRecon)={} P2(Masked)={} P2.5(Lev)={} P3(Align)={} splice_skip_excluded={} sw_fallback={} clip_candidates={} ({} backend)",
         variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
-        counts.splice_skip_excluded,
+        counts.splice_skip_excluded, counts.sw_fallback_reads, counts.clip_candidates,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2778,6 +2811,73 @@ fn sibling_claims_alt(
         }
     }
     false
+}
+
+/// Minimum soft-clip length for an insertion clip candidate: shorter clips
+/// are routine adapter/quality trimming, not unaligned inserted sequence.
+const CLIP_CANDIDATE_MIN_LEN: u32 = 8;
+
+/// Slack (bp) added to the insert length when bounding where a
+/// clip-represented tandem-duplication carrier's clip boundary can land
+/// relative to the anchor.
+const CLIP_REACH_SLACK: i64 = 10;
+
+/// Insertion loci only: count a first-class read carrying a clip candidate.
+/// Shared by the binned and legacy loops and called right after
+/// classification — deliberately before the anchor-overlap gate, because a
+/// clip-represented tandem-duplication carrier can align entirely past the
+/// anchor (its clip covers the inserted copy) and still be the evidence the
+/// CLIP_CANDIDATES flag points at.
+fn tally_clip_candidate(
+    counts: &mut BaseCounts,
+    record: &Record,
+    variant: &Variant,
+    first_class: bool,
+) {
+    let ins_len = variant.alt_allele.len() as i64 - variant.ref_allele.len() as i64;
+    if first_class && ins_len > 0 {
+        let reach = ins_len + CLIP_REACH_SLACK;
+        if has_clip_boundary_in(record, variant.pos - reach, variant.pos + reach) {
+            counts.clip_candidates += 1;
+        }
+    }
+}
+
+/// Whether the read has a soft clip of at least `CLIP_CANDIDATE_MIN_LEN`
+/// whose boundary (the reference position where the clipped bases would
+/// continue the alignment) lies in `[lo, hi]`. Hard clips at the read ends
+/// are skipped when locating the soft clip.
+fn has_clip_boundary_in(record: &Record, lo: i64, hi: i64) -> bool {
+    let cigar = record.cigar();
+    let ops: Vec<&Cigar> = cigar.iter().filter(|op| !matches!(op, Cigar::HardClip(_))).collect();
+    let leading = matches!(ops.first(), Some(Cigar::SoftClip(n)) if *n >= CLIP_CANDIDATE_MIN_LEN);
+    let trailing = ops.len() > 1
+        && matches!(ops.last(), Some(Cigar::SoftClip(n)) if *n >= CLIP_CANDIDATE_MIN_LEN);
+    (leading && (lo..=hi).contains(&record.pos()))
+        || (trailing && (lo..=hi).contains(&read_ref_end(record)))
+}
+
+/// One WARN per variant when depth reads could not be evaluated by the
+/// PairHMM backend's pangenomic haplotype matrix. The Smith-Waterman fallback
+/// is kept (operator decision) but must not be silent: it only fires when the
+/// variant's reference context is missing or does not contain it, i.e.
+/// upstream input was malformed. Without any context no scorer can run, so
+/// those reads end NEITHER — the message says which outcome applied.
+fn warn_sw_fallback(variant: &Variant, n: u32) {
+    if n > 0 {
+        let outcome = if variant.ref_context.is_none() {
+            "no scorer can run without a reference context, so they were left NEITHER"
+        } else {
+            "they were scored by the Smith-Waterman fallback instead (NEITHER where SW \
+             could not run either)"
+        };
+        warn!(
+            "{}:{} {}>{}: {} read(s) could not be evaluated by the pangenomic haplotype \
+             matrix ({}); {} — flagged SW_FALLBACK({})",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+            n, super::pangenome::matrix_failure_reason(variant), outcome, n,
+        );
+    }
 }
 
 /// Check if a read supports the reference or alternate allele.
@@ -3001,8 +3101,6 @@ fn count_per_transcript(
     let score_fn = |a: u8, b: u8| -> i32 {
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
-    let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
 
     // Step 4: Per-transcript counting
     let mut read_entries: Vec<String> = Vec::with_capacity(transcript_ids.len());
@@ -3029,8 +3127,8 @@ fn count_per_transcript(
         let mut tx_fragments: HashMap<u64, FragmentEvidence> = HashMap::new();
 
         // Fresh aligners per transcript to avoid cross-contamination
-        let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
-        let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+        let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+        let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
 
         for record in read_cache {
             // ── Overlap check: does this read overlap the variant window?
@@ -3586,10 +3684,8 @@ fn detect_asjd(
     let score_fn = |a: u8, b: u8| -> i32 {
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
-    let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
-    let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
-    let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
 
     // Step 1: Partition reads into REF/ALT and collect junctions with strand info.
     // Tracks per-junction transcript-strand counts for STRAND_DISCORDANT detection:

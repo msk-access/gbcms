@@ -1,6 +1,6 @@
 ---
 name: commit-before-review-workflows
-description: Adversarial-review subagents share the checkout and may git stash/checkout — commit work before launching them.
+description: Shared checkout hazards — review subagents may git stash; concurrent sessions write .agents/memory — commit before workflows, stage explicit paths only.
 metadata:
   node_type: memory
   type: feedback
@@ -20,3 +20,9 @@ caught it because a later scripted edit's `assert` failed.
 same-checkout review workflows, or pass `isolation: 'worktree'` for agents
 that run git commands. After any workflow completes, check `git status` and
 `git stash list` before further edits. Related: [[user-local-validation-data]].
+
+**Also (2026-09-23):** the memory dir is shared with concurrently running
+sessions (it is symlinked into `.agents/memory/`), so `git add -A` sweeps
+another session's in-flight memory edits into the current branch's commits
+(happened in the T2 PR). Stage explicit paths only; check `git status` for
+`.agents/memory/` changes you did not make and leave them unstaged.

@@ -15,6 +15,27 @@ use log::{debug, trace};
 use crate::types::Variant;
 use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
+/// Smith-Waterman affine gap-open penalty (integer scoring: match +1,
+/// mismatch −1, N scores 0).
+pub const SW_GAP_OPEN: i32 = -5;
+
+/// Smith-Waterman affine gap-extend penalty — a documented constant.
+///
+/// It replaces `dynamic_sw_gap_extend`, a logistic "relax gaps in repeats"
+/// curve that rounded to −1 for every `repeat_span` (the curve's fixed
+/// defaults cap it at 0.5, and the pre-round value always fell in
+/// (−0.9, −0.5]), so the relaxation never engaged. Traced real runs (ACCESS
+/// duplex, MSI-high) confirmed SW scores nothing under the default PairHMM
+/// backend on well-formed input (issue #92), so a real relaxation curve
+/// would have had no measurable use.
+///
+/// SW has two roles: the explicit `--alignment-backend sw` scorer (kept for
+/// cross-backend concordance), and a last-resort fallback under PairHMM when
+/// the pangenomic haplotype matrix cannot be built (counted and flagged as
+/// `SW_FALLBACK(n)`). The PairHMM gap CLI flags intentionally do not reach
+/// these penalties; there are no SW gap flags.
+pub const SW_GAP_EXTEND: i32 = -1;
+
 /// Extract contiguous **raw** read bases spanning a genomic window `[win_start, win_end)`.
 ///
 /// Unlike `extract_read_subsequence` which concatenates CIGAR-projected bases
