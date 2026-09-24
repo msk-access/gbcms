@@ -257,6 +257,10 @@ class TestONPCarrierShapes:
         assert counts.mnp_confirmed_alt == expected_confirmed
         assert legacy.mnp_confirmed_alt == expected_confirmed
         assert counts.mnp_confirmed_alt <= counts.ad
+        assert counts.dp >= counts.rd + counts.ad
+        assert counts.dpf >= counts.rdf + counts.adf
+        assert counts.rd == counts.rd_fwd + counts.rd_rev
+        assert counts.ad == counts.ad_fwd + counts.ad_rev
 
     def test_confirmed_alt_is_zero_for_non_mnp_variants(self, tmp_path):
         bam = self._bam(tmp_path, "AAGGA")
@@ -264,6 +268,10 @@ class TestONPCarrierShapes:
         counts = count_both(bam, [snv])[0]
         assert counts.ad == 10
         assert counts.mnp_confirmed_alt == 0
+        assert counts.dp >= counts.rd + counts.ad
+        assert counts.dpf >= counts.rdf + counts.adf
+        assert counts.rd == counts.rd_fwd + counts.rd_rev
+        assert counts.ad == counts.ad_fwd + counts.ad_rev
 
 
 # ── DNP Tests (all-discriminating) ───────────────────────────────────────

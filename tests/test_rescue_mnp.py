@@ -22,8 +22,10 @@ Covers:
 10. Outcome resolution: tie-break, no_improvement, and ref_validation_failed
     (a component SNV failing preparation — not reachable through a BAM)
 11. Audit format
-12. Confirmed haplotype (reads carrying every change, all read) → not rescued;
-    error-level confirmed reads within the base-quality allowance → rescued
+12. Any read showing the whole MNP (every changed base read) → not rescued
+13. Indel rows with dominant partial evidence are never rescue candidates
+14. Rescue labels use the output file's contig naming
+15. gbcms merge warns when duplex and simplex rescue outcomes differ
 """
 
 import csv
@@ -34,6 +36,7 @@ import re
 import types
 
 import pysam
+import pytest
 from helpers import make_read
 from typer.testing import CliRunner
 
@@ -206,12 +209,12 @@ def _germline_component_reads():
     return reads
 
 
-def _component_reads_with_error_level_cis():
-    """20 REF + 200 first-change-only carriers + 1 fully read full-haplotype
-    read — the level a sequencing error at the second position produces."""
+def _component_reads_with_whole_mnp_read():
+    """20 REF + 200 first-change-only carriers + 1 fully read read carrying
+    the whole MNP — one read in the BAM shows the annotated allele."""
     reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
     reads += [_read(f"comp_{i}", "AAGGG", i) for i in range(200)]
-    reads.append(_read("err_cis", ALT_BLOCK, 0))
+    reads.append(_read("whole_mnp", ALT_BLOCK, 0))
     return reads
 
 
@@ -394,12 +397,17 @@ def test_confirmed_haplotype_is_not_rescued(tmp_path):
     _assert_counting_invariants(row)
 
 
-def test_error_level_confirmed_reads_do_not_block_rescue(tmp_path):
-    (row,) = _run(tmp_path, {"S": _component_reads_with_error_level_cis()}, [MNP_ROW])["S"]
+@pytest.mark.xfail(
+    strict=True, reason="T7 item 12: zero-confirmed gate, output-named labels, merge warning"
+)
+def test_one_read_showing_the_whole_mnp_blocks_rescue(tmp_path):
+    plain = _run(tmp_path, {"S": _component_reads_with_whole_mnp_read()}, [MNP_ROW], rescue=False)
+    (row,) = _run(tmp_path, {"S": _component_reads_with_whole_mnp_read()}, [MNP_ROW])["S"]
     audit = _audit(row)
-    assert audit["outcome"] == "rescued"
-    assert audit["original_confirmed"] == "1"  # within ceil(200 x 1%) = 2
-    assert int(row["alt_count"]) == 201
+    assert audit["outcome"] == "haplotype_confirmed"
+    assert audit["original_confirmed"] == "1"
+    count_cols = ("ref_count", "alt_count", "partial_alt", "alt_count_fragment")
+    assert {c: row[c] for c in count_cols} == {c: plain["S"][0][c] for c in count_cols}
     _assert_counting_invariants(row)
 
 
@@ -467,12 +475,119 @@ def test_audit_format():
     )
 
 
-def test_confirmed_error_allowance_follows_the_base_quality_threshold():
-    from gbcms.pipeline import _confirmed_error_allowance
+def test_indel_row_with_dominant_partial_is_never_rescued(tmp_path):
+    import test_e2e_partial_dominant as wl
 
-    assert _confirmed_error_allowance(850, 20) == 9  # 8.5 at Q20 (1% error)
-    assert _confirmed_error_allowance(238, 20) == 3
-    assert _confirmed_error_allowance(200, 20) == 2
-    assert _confirmed_error_allowance(100, 30) == 1  # 0.1 at Q30, rounded up
-    assert _confirmed_error_allowance(0, 20) == 0
-    assert _confirmed_error_allowance(100, 0) == 100  # no quality gate: any base may be wrong
+    ref = wl._reference_sequence()
+    fasta = wl._build_reference(tmp_path, ref)
+    bam = wl._build_reads_bam(tmp_path, ref)
+    vcf = wl._build_vcf(tmp_path, ref)
+    out = tmp_path / "out"
+    result = runner.invoke(
+        app,
+        [
+            "dna",
+            "-v",
+            str(vcf),
+            "-b",
+            str(bam),
+            "-f",
+            str(fasta),
+            "-o",
+            str(out),
+            "--format",
+            "maf",
+            "--rescue-mnp",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    (path,) = glob.glob(str(out / "*.maf"))
+    with open(path) as f:
+        (row,) = csv.DictReader(
+            io.StringIO("".join(ln for ln in f if not ln.startswith("#"))), delimiter="\t"
+        )
+    assert int(row["partial_alt"]) > int(row["alt_count"])
+    assert "PARTIAL_DOMINANT" in row["gbcms_diagnostic"].split(";")
+    assert row["gbcms_rescue"] == ""
+    assert "RESCUED_COMPONENT" not in row["gbcms_diagnostic"]
+    _assert_counting_invariants(row)
+
+
+@pytest.mark.xfail(
+    strict=True, reason="T7 item 12: zero-confirmed gate, output-named labels, merge warning"
+)
+def test_rescue_labels_follow_the_output_contig_naming(tmp_path):
+    fasta = tmp_path / "ref.fasta"
+    fasta.write_text(">chr1\n" + REF + "\n")
+    pysam.faidx(str(fasta))
+    maf = tmp_path / "in.maf"
+    maf.write_text(
+        "Hugo_Symbol\tChromosome\tStart_Position\tEnd_Position\tReference_Allele\t"
+        "Tumor_Seq_Allele2\tTumor_Sample_Barcode\nG\tchr1\t201\t205\tGAGGG\tAAGGA\tS\n"
+    )
+    bam = _write_bam(tmp_path, "S", _component_carrier_reads())
+    out = tmp_path / "out"
+    result = runner.invoke(
+        app,
+        [
+            "dna",
+            "-v",
+            str(maf),
+            "-b",
+            f"S:{bam}",
+            "-f",
+            str(fasta),
+            "-o",
+            str(out),
+            "--format",
+            "maf",
+            "--rescue-mnp",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    with open(out / "S.maf") as f:
+        (row,) = csv.DictReader(
+            io.StringIO("".join(ln for ln in f if not ln.startswith("#"))), delimiter="\t"
+        )
+    assert row["Chromosome"] == "chr1"
+    assert "RESCUED_COMPONENT(chr1:201:G>A)" in row["gbcms_diagnostic"].split(";")
+    audit = _audit(row)
+    assert audit["adopted"] == "chr1:201(G>A)"
+    assert audit["positions"] == "chr1:201(G>A):10+chr1:205(G>A):0"
+
+
+def _merge(tmp_path, duplex_reads, simplex_reads):
+    """Rescue-on MAFs for a duplex and a simplex BAM, merged; return CLI output."""
+    (tmp_path / "d").mkdir()
+    (tmp_path / "s").mkdir()
+    d_out, _ = _invoke(tmp_path / "d", {"S": duplex_reads}, [MNP_ROW], True, "maf")
+    s_out, _ = _invoke(tmp_path / "s", {"S": simplex_reads}, [MNP_ROW], True, "maf")
+    merged = tmp_path / "merged.maf"
+    result = runner.invoke(
+        app,
+        [
+            "merge",
+            "-i",
+            f"duplex:{d_out / 'S.maf'}",
+            "-i",
+            f"simplex:{s_out / 'S.maf'}",
+            "-o",
+            str(merged),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    return " ".join(result.output.split())
+
+
+@pytest.mark.xfail(
+    strict=True, reason="T7 item 12: zero-confirmed gate, output-named labels, merge warning"
+)
+def test_merge_warns_when_duplex_and_simplex_rescue_differ(tmp_path):
+    log = _merge(tmp_path, _component_carrier_reads(), _cis_carrier_reads())
+    assert "Mixed MNP rescue" in log
+    assert "1 row(s)" in log
+
+
+def test_merge_is_quiet_when_both_flavors_agree(tmp_path):
+    log = _merge(tmp_path, _component_carrier_reads(), _component_carrier_reads())
+    assert "Mixed MNP rescue" not in log
