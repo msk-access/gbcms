@@ -76,12 +76,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MNPs whose haplotype the BAM shows are kept** (`outcome=haplotype_confirmed`,
   no re-count): the engine now counts MNP ALT reads in which every
   discriminating base was read (internal `BaseCounts.mnp_confirmed_alt`, not an
-  output column), and rescue requires that count to stay within what
-  sequencing error at the base-quality threshold explains,
-  `ceil(partial_alt × 10^(−min_baseq/10))`. A 28-sample validation with matched
-  normals found rescue adopting a germline het SNP where 36 reads carried the
-  real somatic MNP; such rows now keep the MNP's counts. The audit gains
-  `original_confirmed`.
+  output column), and rescue fires only when that count is **zero** — no read
+  in the BAM shows the annotated MNP. Validation with matched normals found
+  rescue adopting germline het SNPs where reads carried the real MNP (IMPACT:
+  36 such reads; ACCESS duplex: 6); such rows now keep the MNP's counts. The
+  audit gains `original_confirmed`.
+- **Rescue labels use the output's contig naming** (an input MAF's own
+  `Chromosome`, e.g. `chr1`, rather than the stripped internal name).
+- **`gbcms merge` warns on mixed rescue:** when duplex and simplex rescue
+  outcomes differ (one rescued, or different components), each row is named in
+  a WARNING (the `simplex_duplex_*` columns then add different alleles) with a
+  per-run count; counts are unchanged.
 - **Grouped MNPs are skipped** (`outcome=skipped_grouped`) so rescue cannot
   hand back reads that exclusive assignment gave a co-annotated sibling.
 - **Fixed: rescue audit leaked across samples.** In a multi-BAM run a later

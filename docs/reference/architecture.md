@@ -397,7 +397,7 @@ A variant is a rescue candidate when **all** conditions are met:
 | 2 | `MNP_RESCUE_ELIGIBLE` in `gbcms_diagnostic` | Emitted only for MNPs (`ref_len == alt_len > 1`) with disc/len ≤ `--rescue-mnp-threshold` (default 1.0 = all MNPs; 0.5 = conservative sparse-only mode). |
 | 3 | `partial_alt > ad` | The haplotype is dominated by component evidence. Not `ad == 0`: masked per-position evaluation counts a component carrier whose other discriminating base is low-BQ as full ALT, and one such read must not block rescue. |
 | 4 | Not in a co-annotated group (`multi_allelic_group` unset) | Grouped reads are exclusively assigned against siblings; a sibling-free component re-count would hand contested reads back. Such rows get `outcome=skipped_grouped`. |
-| 5 | `mnp_confirmed_alt ≤ ⌈partial_alt × 10^(−min_baseq/10)⌉` | `mnp_confirmed_alt` counts MNP ALT reads in which every discriminating base was read (none masked, none N) — reads that *show* the whole haplotype. A single-change carrier only looks confirmed if a sequencing error at another discriminating base gives exactly the ALT base, at most `10^(−min_baseq/10)` of them (1% at Q20). More confirmed reads than that means the BAM shows the annotated allele — e.g. a somatic change on a germline SNP's haplotype — and adopting a component would report the other allele. Such rows get `outcome=haplotype_confirmed`, with no re-count. |
+| 5 | `mnp_confirmed_alt == 0` | `mnp_confirmed_alt` counts MNP ALT reads in which every discriminating base was read (none masked, none N) — reads that *show* the whole haplotype. Any such read means the BAM shows the annotated allele (e.g. a somatic change on a germline SNP's haplotype), and adopting a component would report a different allele, so the row keeps the MNP's counts with `outcome=haplotype_confirmed` and no re-count. Every correct rescue seen in real data had zero such reads; an error-made one needs a specific high-quality substitution at another changed base. (An error allowance scaled by `partial_alt` was tried and rejected: on ACCESS it adopted a germline SNP.) |
 
 ### Rescue Strategy: Adopt the Best Component
 
@@ -429,8 +429,19 @@ Consequences to keep in mind when reading a rescued row:
 - `ref_count` / `total_count` are the component's: reads carrying only *another*
   component count as REF at the adopted position, and reads covering that position
   without spanning the whole block count toward depth.
-- A component can be a germline SNP merged into a somatic MNP; its VAF is then the
-  germline VAF. `gbcms_rescue` shows the per-position split.
+- A component can be a germline SNP merged into a somatic MNP. Where reads show the
+  MNP, rescue keeps it (criterion 5); where the MNP is absent (e.g. a fillout of other
+  timepoints or normals), the germline component can still be adopted and the row's VAF
+  is then the germline VAF. `gbcms_rescue` shows the per-position split.
+- With `--apply-baq`, BAQ can lower base qualities near indels so a read carrying the
+  whole MNP stops counting as showing it (a changed base is masked). Unobserved on the
+  validation data (no candidate MNP sat next to an indel), but at such loci read
+  `original_confirmed` in `gbcms_rescue` with care.
+- Labels (`RESCUED_COMPONENT`, the audit, logs) use the contig as the output row writes
+  it — an input MAF's own `Chromosome` (e.g. `chr1`).
+- `gbcms merge` with duplex + simplex: when the two flavors' rescue outcomes differ, each
+  row is named in a WARNING — the `simplex_duplex_*` columns then add counts of different
+  alleles — with a per-run count; counts are left unchanged.
 - With `--observations-parquet`, the Parquet records the MNP evaluation; a rescued row's
   counts come from the adopted component (logged per sample).
 - With `--mfsd-parquet`, a rescued row's record keeps the MNP's coordinates but carries the

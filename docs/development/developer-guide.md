@@ -239,7 +239,8 @@ gbcms dna --verbose --rescue-mnp --variants input.maf --bam sample:sample.bam --
 # INFO    — "MNP rescue for SAMPLE: rescued=2, skipped_grouped=1 (0.342s)"   (per-sample outcome summary)
 # WARNING — "MNP rescue: 5:1295250 GAGGG>AAGGA now reports component 5:1295250(G>A) (ALT 88, REF 487); the MNP itself had ALT 1 (0 showing the whole haplotype), partial 88"
 # DEBUG   — "MNP rescue: ... skipped — co-annotated group 3 owns its reads"
-# DEBUG   — "MNP rescue: ... kept — 36 read(s) show the whole haplotype (error allowance 3 at Q20)"
+# DEBUG   — "MNP rescue: ... kept — 36 read(s) show the whole haplotype"
+# WARNING — "Mixed MNP rescue at 5:1295250 GAGGG>AAGGA — duplex reports component ..., simplex reports the MNP ..."  (gbcms merge)
 # DEBUG   — "MNP rescue: ... not rescued (no_improvement) ..."  (partial evidence was not component carriers)
 # WARNING — "MNP rescue: ... not rescued (ref_validation_failed) ..."  (anomaly: investigate)
 # WARNING — "MNP rescue: synthetic SNV ... failed preparation (...) — reported as ref_fail"

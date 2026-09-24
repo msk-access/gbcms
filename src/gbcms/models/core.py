@@ -378,8 +378,8 @@ class GbcmsBaseConfig(BaseModel):
         description=(
             "Enable the MNP rescue pass. Candidates: PASS MNPs flagged "
             "MNP_RESCUE_ELIGIBLE (--rescue-mnp-threshold) with partial_alt > ad, "
-            "outside co-annotated groups, whose haplotype no more reads confirm than "
-            "sequencing error explains. Each discriminating position is re-counted "
+            "outside co-annotated groups, whose haplotype no read shows. Each "
+            "discriminating position is re-counted "
             "as an SNV; when the best component beats the MNP's ad, its full counts "
             "replace the row's and the MNP's own counts go to gbcms_rescue."
         ),

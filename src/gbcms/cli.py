@@ -64,9 +64,9 @@ _COLUMN_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]*$")
 # Shared by the dna and rna commands.
 _RESCUE_MNP_HELP = (
     "Enable the MNP rescue pass, for annotated MNPs whose carriers hold only a "
-    "component of the haplotype. When partial_alt > alt_count and no more reads show "
-    "every changed base than sequencing error explains (MNP_RESCUE_ELIGIBLE MNPs "
-    "outside co-annotated groups), each discriminating position is re-counted as an "
+    "component of the haplotype. When partial_alt > alt_count and no read shows "
+    "every changed base (MNP_RESCUE_ELIGIBLE MNPs outside co-annotated groups), each "
+    "discriminating position is re-counted as an "
     "SNV and the best component's counts replace the row's; the MNP's own counts and "
     "the per-position split go to gbcms_rescue. Where the MNP itself is absent (e.g. "
     "a fillout of other timepoints or normals) a germline SNP component can still be "

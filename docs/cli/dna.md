@@ -143,7 +143,7 @@ for the full design.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--rescue-mnp` | `false` | Enable the rescue pass. Candidates are PASS MNPs flagged `MNP_RESCUE_ELIGIBLE` with `partial_alt > alt_count`, outside co-annotated groups, and whose full haplotype is not shown by more reads than sequencing error explains. When the best component beats the MNP's `alt_count`, that component's full counts (every count, fragment, strand and mFSD column) replace the row's, the row is flagged `RESCUED_COMPONENT(chrom:pos:REF>ALT)` in `gbcms_diagnostic`, and a warning is logged; the MNP's own counts and the per-position split go to `gbcms_rescue`. MAF and VCF output carry the same counts, flags and audit. |
+| `--rescue-mnp` | `false` | Enable the rescue pass. Candidates are PASS MNPs flagged `MNP_RESCUE_ELIGIBLE` with `partial_alt > alt_count`, outside co-annotated groups, and whose full haplotype no read shows. When the best component beats the MNP's `alt_count`, that component's full counts (every count, fragment, strand and mFSD column) replace the row's, the row is flagged `RESCUED_COMPONENT(chrom:pos:REF>ALT)` in `gbcms_diagnostic`, and a warning is logged; the MNP's own counts and the per-position split go to `gbcms_rescue`. MAF and VCF output carry the same counts, flags and audit. |
 | `--rescue-mnp-threshold` | `1.0` | Maximum discriminating/length ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs are eligible (C++ gbcms compatible, default). `0.5` = conservative sparse-only mode (≤50% discriminating positions). `0.0` = disable rescue eligibility (MNP_DISC_RATIO diagnostics are still emitted). Only used when `--rescue-mnp` is enabled. |
 
 !!! info "Diagnostic Flags"
