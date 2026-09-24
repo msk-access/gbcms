@@ -16,12 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   records read `1` under a `##contig=<ID=chr1>` header, a malformed VCF that htslib
   rejects (`Contig '1' is not defined in the header`). Rescue labels and the mFSD
   Parquet follow the same naming. Counting is unchanged: contigs are still reconciled
-  internally between the variant file, FASTA and BAM (`chrM` ~ `MT` included). One
-  INFO line per run names the two conventions when they differ. Unprefixed (b37,
-  Ensembl) input is unaffected.
+  internally between the variant file, FASTA and BAM. One INFO line per run names
+  the two conventions when they differ. Unprefixed (b37, Ensembl) input is
+  unaffected.
+- The reference FASTA now reconciles the mitochondrion's spellings as the BAM side
+  already did. Before, a `chrM` (or `M`, `MT`, `chrMT`) variant against a FASTA
+  naming it differently was rejected `FAIL` / `FETCH_FAILED` with zero counts.
 - `gbcms merge` joins inputs whose `Chromosome` naming differs (`chr1` ~ `1`,
-  `chrM` ~ `MT`) into one row instead of two half-empty ones, keeps the first
-  input's naming, and logs the difference.
+  `chrM` ~ `MT`) into one row instead of two half-empty ones. It writes each
+  contig one way, the first input's name where it has the contig, and logs each
+  later input's difference.
+  - An input that names one contig two ways now gets a WARN, since a variant
+    listed under both names is repeated.
+  - Input columns that collide with merge's join helpers are rejected with the
+    column named.
 
 ### Fixed — `gbcms merge` row order is deterministic
 

@@ -52,6 +52,9 @@ VARIANT_KEY: list[str] = [
 # whose inputs name contigs differently (chr1 vs 1, chrM vs MT) still join.
 _CONTIG_KEY = "_contig_key"
 JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
+# Prefixes of the other per-input join helpers (row numbers, each later
+# input's own contig names). Input columns with these names are rejected.
+_HELPER_PREFIXES = ("_row_", "_chrom_")
 
 
 def _row_col(bam_type: str) -> str:
@@ -60,12 +63,42 @@ def _row_col(bam_type: str) -> str:
     return f"_row_{bam_type}"
 
 
-def _with_contig_key(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """Add the join's contig key, computed by :meth:`CoordinateKernel.contig_key`
-    (the counting engine's rule) so merge pairs names exactly as counting does."""
+def _reject_helper_columns(columns: list[str], bam_type: str, path: Path) -> None:
+    """Refuse input columns that collide with merge's join helpers: they would
+    be overwritten or shadow the helper and corrupt the join."""
+    clash = [c for c in columns if c == _CONTIG_KEY or c.startswith(_HELPER_PREFIXES)]
+    if clash:
+        raise ValueError(
+            f"{bam_type} MAF ({path}) has column(s) {clash} that gbcms merge reserves "
+            "for its join helpers; rename or drop them"
+        )
+
+
+def _with_contig_key(lf: pl.LazyFrame, bam_type: str) -> pl.LazyFrame:
+    """Add the join's contig key: :meth:`CoordinateKernel.contig_key` (the
+    counting engine's rule), computed once per distinct contig name.
+
+    Warns when this input names one contig more than one way (e.g. ``chrM``
+    and ``MT``): the same variant under both names joins twice, so the merged
+    output carries a duplicate row for it.
+    """
+    names = lf.select(pl.col("Chromosome").unique()).collect().to_series().drop_nulls()
+    keys = {n: CoordinateKernel.contig_key(n) for n in names.to_list()}
+    spellings: dict[str, list[str]] = {}
+    for name, key in keys.items():
+        spellings.setdefault(key, []).append(name)
+    for aliases in spellings.values():
+        if len(aliases) > 1:
+            logger.warning(
+                "  '%s' names one contig %d ways (%s): a variant listed under more than "
+                "one of them joins once per name, so the merged output repeats it",
+                bam_type,
+                len(aliases),
+                ", ".join(sorted(aliases)),
+            )
     return lf.with_columns(
         pl.col("Chromosome")
-        .map_elements(CoordinateKernel.contig_key, return_dtype=pl.String)
+        .replace_strict(keys, default=None, return_dtype=pl.String)
         .alias(_CONTIG_KEY)
     )
 
@@ -176,6 +209,7 @@ def merge_mafs(config: MergeConfig) -> None:
         # Validate variant key columns exist
         schema_names = lf.collect_schema().names()
         _validate_variant_key(schema_names, bam_type, path)
+        _reject_helper_columns(schema_names, bam_type, path)
 
         # Detect and rename gbcms columns with type prefix
         rename_map = _build_rename_map(schema_names, bam_type)
@@ -189,7 +223,7 @@ def merge_mafs(config: MergeConfig) -> None:
         else:
             logger.info("  Columns already prefixed for '%s', using as-is", bam_type)
 
-        frames[bam_type] = _with_contig_key(lf).with_row_index(_row_col(bam_type))
+        frames[bam_type] = _with_contig_key(lf, bam_type).with_row_index(_row_col(bam_type))
 
     # ── 2. Progressive outer join ─────────────────────────────────────────────
     types = list(frames.keys())
@@ -286,32 +320,38 @@ def merge_mafs(config: MergeConfig) -> None:
 def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
     """Settle Chromosome after naming-independent joins and drop the helpers.
 
-    Rows keep the first input's contig name; a row only a later input has takes
-    that input's name. When two inputs name the same contigs differently (e.g.
-    one run from a ``chr``-named variant file, one not), an INFO line per input
-    says so — the rows still joined, on the normalized contig.
+    Each contig is written one way: the first input's name for it, or — for a
+    contig the first input lacks — the name of the earliest input that has it.
+    Rows the first input has keep its name as written. One INFO line per later
+    input that names contigs differently from the output; its rows still
+    joined, on the normalized contig.
     """
-    for t in types[1:]:
-        col = f"_chrom_{t}"
-        differ = result.filter(
-            pl.col("Chromosome").is_not_null()
-            & pl.col(col).is_not_null()
-            & (pl.col("Chromosome") != pl.col(col))
-        )
+    later = [f"_chrom_{t}" for t in types[1:]]
+    written: dict[str, str] = {}
+    for col in ["Chromosome", *later]:
+        pairs = result.select(_CONTIG_KEY, col).drop_nulls().unique(maintain_order=True)
+        for key, name in pairs.iter_rows():
+            written.setdefault(key, name)
+    result = result.with_columns(
+        pl.coalesce(
+            "Chromosome",
+            pl.col(_CONTIG_KEY).replace_strict(written, default=None, return_dtype=pl.String),
+        ).alias("Chromosome")
+    )
+    for t, col in zip(types[1:], later, strict=True):
+        differ = result.filter(pl.col(col).is_not_null() & (pl.col(col) != pl.col("Chromosome")))
         if differ.height:
-            first = differ.row(0, named=True)
+            row = differ.row(0, named=True)
             logger.info(
-                "  '%s' and '%s' name contigs differently ('%s' vs '%s', %d row(s)): joined "
-                "on the normalized contig; merged rows keep '%s''s naming",
-                types[0],
+                "  '%s' and the merged output name contigs differently ('%s' vs '%s', "
+                "%d row(s)): joined on the normalized contig; the output names each "
+                "contig one way",
                 t,
-                first["Chromosome"],
-                first[col],
+                row[col],
+                row["Chromosome"],
                 differ.height,
-                types[0],
             )
-        result = result.with_columns(pl.coalesce("Chromosome", col).alias("Chromosome")).drop(col)
-    return result.drop(_CONTIG_KEY)
+    return result.drop([_CONTIG_KEY, *later])
 
 
 def _in_input_order(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:

@@ -394,6 +394,18 @@ contig under two aliases declares the input's name once. `gbcms merge` joins on
 the same key (review finding: inputs counted from differently named variant files
 otherwise split into two rows), keeps the first input's name, and logs differences.
 
+Second review round:
+- The FASTA fetch folded no mitochondrial alias, so `chrM` vs an `MT` FASTA was
+  `FETCH_FAILED`. This predates T8, but T8's log claimed reconciliation, and the
+  first chrM test asserted names, not counts. `fetch_region` now also tries
+  `MITO_SPELLINGS`, and the test matrix asserts counts.
+- Merge writes each contig one way. Rows only a later input has had kept its
+  spelling.
+- Merge warns when one input names a contig two ways, and rejects helper-named
+  input columns.
+- Merge's row order is deterministic (found by the merge parity harness). Rows
+  follow the inputs via per-input row numbers, which works on every polars 1.x.
+
 **Tests.** `chr`-named input × {VCF, MAF} × {VCF, MAF output}: output names
 equal the input's; VCF output parses with no undefined-contig warning; b37
 naming unchanged. **Acceptance:** flag-off parity on the real-data sets stays

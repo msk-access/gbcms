@@ -345,7 +345,6 @@ def test_unprefixed_naming_unchanged(tmp_path, capfd, fmt):
 
 
 # ── Mitochondrion: every source reconciles chrM ~ M ~ MT ~ chrMT ───────────
-@pytest.mark.xfail(strict=True, reason="FASTA fetch does not fold the mitochondrial aliases")
 @pytest.mark.parametrize(
     "variant_name,fasta_name,bam_name",
     [("chrM", "MT", "MT"), ("MT", "chrM", "chrM"), ("chrMT", "chrM", "MT"), ("M", "MT", "chrM")],
@@ -409,7 +408,6 @@ def _merge_maf(tmp_path, name, rows, cols=_MERGE_COLS):
     return p
 
 
-@pytest.mark.xfail(strict=True, reason="rows only a later input has keep that input's naming")
 def test_merge_writes_each_contig_one_way(tmp_path, caplog):
     """A row only a later input has takes the name the first input uses for
     that contig, so one file never names a contig two ways; each later input's
@@ -442,7 +440,6 @@ def test_merge_writes_each_contig_one_way(tmp_path, caplog):
     assert "'standard'" in naming[1] and "2 row(s)" in naming[1], naming
 
 
-@pytest.mark.xfail(strict=True, reason="helper column names are not reserved")
 @pytest.mark.parametrize("col", ["_contig_key", "_row_duplex", "_chrom_simplex"])
 def test_merge_rejects_reserved_helper_columns(tmp_path, col):
     rows = [["chr1", "100", "100", "A", "T", "5", "1", "x"]]
@@ -458,7 +455,6 @@ def test_merge_rejects_reserved_helper_columns(tmp_path, col):
         )
 
 
-@pytest.mark.xfail(strict=True, reason="one input naming a contig two ways is silent")
 def test_merge_warns_when_one_input_names_a_contig_two_ways(tmp_path, caplog):
     """chrM and MT rows in one MAF share a contig key, so the same variant under
     both names joins twice (duplicate merged rows): say so."""

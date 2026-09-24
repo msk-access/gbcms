@@ -8,6 +8,11 @@
 //! `M`, which still never equals `MT`) — silently dropping every mitochondrial
 //! variant/exon/editing join. This normalizer closes that gap.
 
+/// The mitochondrion's spellings across sources; all normalize to `MT`. For
+/// lookups that cannot normalize the other side's names (a FASTA fetch by
+/// name), these are the names to try.
+pub(crate) const MITO_SPELLINGS: [&str; 4] = ["MT", "chrM", "M", "chrMT"];
+
 /// Canonicalize a chromosome name for cross-source comparison.
 ///
 /// - Strips a leading `chr` (any case): `chr1` → `1`, `CHR7` → `7`.

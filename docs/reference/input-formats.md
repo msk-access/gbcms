@@ -99,11 +99,11 @@ gbcms automatically **left-aligns** indels and complex variants during the prepa
 ## Reference FASTA
 
 - Must have corresponding `.fai` index
-- The reference is looked up by the variant's chromosome name, so the FASTA should use a
-  naming convention compatible with your variant file. (The `chr`-prefix and `M`/`MT`
-  differences between the **BAM** and the variants are auto-reconciled — see below — but the
-  reference anchor is fetched by name, so a variant whose contig is absent from the FASTA is
-  rejected with verdict `FAIL` and reason `FETCH_FAILED`.)
+- The reference is looked up by the variant's contig under any name that contig goes by:
+  as written, with or without a `chr` prefix, and, for the mitochondrion, as any of
+  `M` / `chrM` / `chrMT` / `MT`. The FASTA and the variant file therefore reconcile the same
+  way the BAM does (see below). A variant whose contig is absent from the FASTA under all of
+  these names is rejected with verdict `FAIL` and reason `FETCH_FAILED`.
 
 ```bash
 # Create index if missing

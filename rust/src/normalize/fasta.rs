@@ -5,37 +5,33 @@ use std::fs::File;
 use bio::io::fasta;
 use log::warn;
 
-/// Fetch a region from FASTA, trying chrom variants (with/without chr prefix).
+/// Fetch a region from FASTA under any name the contig goes by: as given, with
+/// or without a `chr` prefix, and — for the mitochondrion — each of its
+/// spellings, so the FASTA reconciles contigs as the BAM side does
+/// (`normalize_contig`: `chrM` ~ `M` ~ `MT` ~ `chrMT`).
 pub(crate) fn fetch_region(
     reader: &mut fasta::IndexedReader<File>,
     chrom: &str,
     start: u64,
     end: u64,
 ) -> anyhow::Result<Vec<u8>> {
-    let mut buf = Vec::new();
-
-    // Try as-is
-    if reader.fetch(chrom, start, end).is_ok() {
-        buf.clear();
-        reader.read(&mut buf)?;
-        if !buf.is_empty() {
-            return Ok(buf);
-        }
-    }
-
-    // Try with chr prefix
-    let chr_name = format!("chr{}", chrom);
-    if reader.fetch(&chr_name, start, end).is_ok() {
-        buf.clear();
-        reader.read(&mut buf)?;
-        if !buf.is_empty() {
-            return Ok(buf);
-        }
-    }
-
-    // Try stripping chr prefix
+    let mut names = vec![chrom.to_string(), format!("chr{}", chrom)];
     if let Some(stripped) = chrom.strip_prefix("chr") {
-        if reader.fetch(stripped, start, end).is_ok() {
+        names.push(stripped.to_string());
+    }
+    if crate::shared::contig::normalize_contig(chrom) == "MT" {
+        names.extend(
+            crate::shared::contig::MITO_SPELLINGS
+                .iter()
+                .filter(|m| !names.iter().any(|n| n == *m))
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    let mut buf = Vec::new();
+    for name in &names {
+        if reader.fetch(name, start, end).is_ok() {
             buf.clear();
             reader.read(&mut buf)?;
             if !buf.is_empty() {
