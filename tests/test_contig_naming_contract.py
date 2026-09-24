@@ -28,6 +28,7 @@ from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
 from gbcms.cli import app
+from gbcms.core.kernel import CoordinateKernel
 from gbcms.merge import merge_mafs
 from gbcms.models.core import MergeConfig, Variant, VariantType
 from gbcms.pipeline import _declared_contigs
@@ -341,3 +342,139 @@ def test_unprefixed_naming_unchanged(tmp_path, capfd, fmt):
         rec, declared = _vcf_records(path, capfd)
         assert rec.chrom == "1" and declared == {"1"}
     assert "contig naming" not in log
+
+
+# ── Mitochondrion: every source reconciles chrM ~ M ~ MT ~ chrMT ───────────
+@pytest.mark.xfail(strict=True, reason="FASTA fetch does not fold the mitochondrial aliases")
+@pytest.mark.parametrize(
+    "variant_name,fasta_name,bam_name",
+    [("chrM", "MT", "MT"), ("MT", "chrM", "chrM"), ("chrMT", "chrM", "MT"), ("M", "MT", "chrM")],
+)
+def test_mitochondrial_names_count_across_sources(tmp_path, variant_name, fasta_name, bam_name):
+    """Counting reconciles the mitochondrion's spellings on every side (BAM and
+    FASTA alike), so the naming log's 'counting reconciles them' is true and
+    the variant counts; the output keeps the input's name."""
+    ref = _ref()
+    path, _ = _run(
+        tmp_path,
+        _vcf_input(tmp_path, ref, variant_name),
+        _bam(tmp_path, ref, bam_name),
+        _fasta(tmp_path, ref, fasta_name),
+        "maf",
+        "o",
+    )
+    row = _maf_row(path)
+    assert row["Chromosome"] == variant_name
+
+
+# ── contig_key mirrors the engine's normalize_contig ───────────────────────
+@pytest.mark.parametrize(
+    "name,key",
+    [
+        # rust/src/shared/contig.rs tests, mirrored
+        ("chr1", "1"),
+        ("CHR7", "7"),
+        ("chrX", "X"),
+        ("1", "1"),
+        ("MT", "MT"),
+        ("M", "MT"),
+        ("chrM", "MT"),
+        ("chrMT", "MT"),
+        ("chrm", "MT"),
+        ("mt", "MT"),
+        ("MT1", "MT1"),
+        ("GL000220", "GL000220"),
+        ("chrUn_gl000220", "Un_gl000220"),
+    ],
+)
+def test_contig_key_mirrors_engine_rule(name, key):
+    assert CoordinateKernel.contig_key(name) == key
+
+
+# ── gbcms merge names each contig one way ──────────────────────────────────
+_MERGE_COLS = [
+    "Chromosome",
+    "Start_Position",
+    "End_Position",
+    "Reference_Allele",
+    "Tumor_Seq_Allele2",
+    "ref_count",
+    "alt_count",
+]
+
+
+def _merge_maf(tmp_path, name, rows, cols=_MERGE_COLS):
+    p = tmp_path / name
+    p.write_text("\n".join(["\t".join(cols), *("\t".join(r) for r in rows)]) + "\n")
+    return p
+
+
+@pytest.mark.xfail(strict=True, reason="rows only a later input has keep that input's naming")
+def test_merge_writes_each_contig_one_way(tmp_path, caplog):
+    """A row only a later input has takes the name the first input uses for
+    that contig, so one file never names a contig two ways; each later input's
+    naming difference is logged against the name actually written."""
+    duplex = _merge_maf(tmp_path, "d.maf", [["chr1", "100", "100", "A", "T", "20", "10"]])
+    simplex = _merge_maf(
+        tmp_path,
+        "s.maf",
+        [["1", "100", "100", "A", "T", "5", "2"], ["1", "200", "200", "G", "C", "7", "1"]],
+    )
+    standard = _merge_maf(
+        tmp_path,
+        "t.maf",
+        [["CHR1", "200", "200", "G", "C", "3", "1"], ["CHR1", "300", "300", "C", "A", "4", "0"]],
+    )
+    out = tmp_path / "merged.maf"
+    with caplog.at_level(logging.INFO, logger="gbcms.merge"):
+        merge_mafs(
+            MergeConfig(
+                inputs={"duplex": duplex, "simplex": simplex, "standard": standard},
+                output=out,
+                add_combined=False,
+            )
+        )
+    result = pl.read_csv(out, separator="\t", infer_schema_length=0)
+    assert result["Chromosome"].to_list() == ["chr1", "chr1", "chr1"]
+    naming = [r.message for r in caplog.records if "name contigs differently" in r.message]
+    assert len(naming) == 2, naming
+    assert "'simplex'" in naming[0] and "2 row(s)" in naming[0], naming
+    assert "'standard'" in naming[1] and "2 row(s)" in naming[1], naming
+
+
+@pytest.mark.xfail(strict=True, reason="helper column names are not reserved")
+@pytest.mark.parametrize("col", ["_contig_key", "_row_duplex", "_chrom_simplex"])
+def test_merge_rejects_reserved_helper_columns(tmp_path, col):
+    rows = [["chr1", "100", "100", "A", "T", "5", "1", "x"]]
+    duplex = _merge_maf(tmp_path, "d.maf", rows, [*_MERGE_COLS, col])
+    simplex = _merge_maf(tmp_path, "s.maf", [r[:-1] for r in rows])
+    with pytest.raises(ValueError, match=col):
+        merge_mafs(
+            MergeConfig(
+                inputs={"duplex": duplex, "simplex": simplex},
+                output=tmp_path / "m.maf",
+                add_combined=False,
+            )
+        )
+
+
+@pytest.mark.xfail(strict=True, reason="one input naming a contig two ways is silent")
+def test_merge_warns_when_one_input_names_a_contig_two_ways(tmp_path, caplog):
+    """chrM and MT rows in one MAF share a contig key, so the same variant under
+    both names joins twice (duplicate merged rows): say so."""
+    duplex = _merge_maf(tmp_path, "d.maf", [["chrM", "100", "100", "A", "T", "20", "10"]])
+    simplex = _merge_maf(
+        tmp_path,
+        "s.maf",
+        [["chrM", "100", "100", "A", "T", "11", "1"], ["MT", "100", "100", "A", "T", "12", "1"]],
+    )
+    with caplog.at_level(logging.WARNING, logger="gbcms.merge"):
+        merge_mafs(
+            MergeConfig(
+                inputs={"duplex": duplex, "simplex": simplex},
+                output=tmp_path / "m.maf",
+                add_combined=False,
+            )
+        )
+    warns = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("'simplex'" in w and "chrM" in w and "MT" in w for w in warns), warns
