@@ -10,11 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added — observability for silent fallbacks (no count changes)
 
 - `SW_FALLBACK(n)` in `gbcms_diagnostic`, plus one WARN per affected variant
-  naming the reason: under the default `pairhmm` backend, n reads were scored by
-  the Smith-Waterman fallback because the pangenomic haplotype matrix could not
-  be built (a malformed reference context upstream). Measured to never fire on
-  well-formed input; when SW cannot run either, those reads end as NEITHER and
-  the flag is the only trace. Never set under `--alignment-backend sw`.
+  naming the reason and outcome: under the default `pairhmm` backend, n
+  depth-contributing reads could not be evaluated by the pangenomic haplotype
+  matrix because the variant's reference context is missing (prep's fetch
+  failed) or does not contain it. They are scored by the Smith-Waterman fallback
+  where it can run and otherwise end NEITHER — previously with no trace on the
+  row. Measured to never fire on well-formed input. Never set under
+  `--alignment-backend sw`.
 - `CLIP_CANDIDATES(n)` in `gbcms_diagnostic`: an insertion with no confirmed
   ALT where n (≥ 2) reads carry a ≥ 8bp soft clip within the insert's
   duplication reach — clip-represented carriers (typically a tandem-duplication

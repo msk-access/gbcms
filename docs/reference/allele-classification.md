@@ -926,12 +926,14 @@ Smith-Waterman has two roles:
   engine there, kept for cross-backend concordance. There are no SW gap flags.
 - **A last-resort fallback under the default `pairhmm` backend**, used only
   when the pangenomic haplotype matrix cannot be built for a variant (its
-  reference context does not contain it, or the ALT haplotype cannot be
-  constructed) — i.e. upstream input was malformed. The fallback is kept but
-  never silent: each affected variant logs one WARN naming the reason, and the
-  row carries `SW_FALLBACK(n)` in `gbcms_diagnostic` (n = reads scored this
-  way). If SW cannot build its haplotypes either, those reads end as NEITHER —
-  the flag is how that loss becomes visible.
+  reference context is missing because prep's fetch failed, does not contain
+  it, or the ALT haplotype cannot be constructed) — i.e. upstream input was
+  malformed. The fallback is kept but never silent: each affected variant logs
+  one WARN naming the reason and outcome, and the row carries `SW_FALLBACK(n)`
+  in `gbcms_diagnostic` (n = depth-contributing reads the matrix could not
+  evaluate). Where SW cannot build its haplotypes either — always the case
+  without a reference context — those reads end as NEITHER, and the flag is
+  how that loss becomes visible.
 
 The PairHMM gap flags retune PairHMM probabilities only; they never reach the
 SW penalties.

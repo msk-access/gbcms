@@ -347,14 +347,14 @@ pub struct BaseCounts {
     /// default 21bp, as N).
     #[pyo3(get)]
     pub splice_skip_excluded: u32,
-    /// Reads classified via the Smith-Waterman fallback under the PairHMM
-    /// backend (the pangenomic haplotype matrix could not be built for this
-    /// variant). Measured to be zero on well-formed input; non-zero means the
-    /// variant's reference context was malformed upstream and these reads were
-    /// scored by a different scorer than requested (or lost to NEITHER if SW
-    /// could not run either). Diagnostic only (feeds the SW_FALLBACK flag and
-    /// a per-variant WARN); not an output column. Always 0 under the explicit
-    /// SW backend, where SW is the chosen scorer.
+    /// Depth-contributing reads (first-class, anchor-overlapping — the DP
+    /// population) that the PairHMM backend's pangenomic haplotype matrix
+    /// could not evaluate: its reference context is missing (prep's fetch
+    /// failed) or does not contain the variant. Such reads are scored by the
+    /// Smith-Waterman fallback where SW can run, and otherwise left NEITHER.
+    /// Measured to be zero on well-formed input. Diagnostic only (feeds the
+    /// SW_FALLBACK flag and a per-variant WARN); not an output column. Always 0
+    /// under the explicit SW backend, where SW is the chosen scorer.
     #[pyo3(get)]
     pub sw_fallback_reads: u32,
     /// Insertion loci only: first-class reads carrying a soft clip ≥ 8bp

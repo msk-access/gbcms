@@ -118,12 +118,12 @@ pub struct ClassifyResult {
     /// counted by pileup at POS, but it carries no information about the
     /// event, and keeping it in DP would deflate VAF with unobservant reads.
     pub covers_locus: bool,
-    /// Whether this classification came from the Smith-Waterman fallback
-    /// under the PairHMM backend: the pangenomic haplotype matrix could not
-    /// be built for the variant, so the read was scored by (or, if SW could
-    /// not run either, lost to NEITHER in) a different scorer than the one
-    /// requested. Never set under the explicit SW backend, where SW is the
-    /// chosen scorer. Counted per variant as `BaseCounts::sw_fallback_reads`.
+    /// Whether the PairHMM backend's pangenomic haplotype matrix could not
+    /// evaluate this read (reference context missing, or not containing the
+    /// variant), so it was scored by the Smith-Waterman fallback — or, where SW
+    /// cannot run either, left NEITHER. Never set under the explicit SW
+    /// backend, where SW is the chosen scorer. Counted per variant (DP reads
+    /// only) as `BaseCounts::sw_fallback_reads`.
     pub sw_fallback: bool,
 }
 

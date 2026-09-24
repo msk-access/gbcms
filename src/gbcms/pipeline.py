@@ -651,10 +651,12 @@ class Pipeline:
                 (>= 2) reads carry a soft clip >= 8bp whose boundary lies within
                 the insert's duplication reach — carriers the aligner may have
                 represented as clips rather than I ops (inspect in IGV).
-            SW_FALLBACK(n): under the PairHMM backend, n reads were scored by
-                the Smith-Waterman fallback because the pangenomic haplotype
-                matrix could not be built (malformed reference context upstream);
-                counts here came partly from a different scorer.
+            SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
+                be evaluated by the pangenomic haplotype matrix (reference context
+                missing or not containing the variant — malformed input upstream);
+                they were scored by Smith-Waterman where it can run, otherwise
+                left NEITHER, so counts here came partly from a different scorer
+                or are missing reads.
         """
         flag_counts: dict[str, int] = {}
 

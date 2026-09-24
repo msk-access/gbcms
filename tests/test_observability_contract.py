@@ -129,6 +129,69 @@ def test_sw_fallback_counter_parity_with_legacy(tmp_path):
     assert b.sw_fallback_reads == legacy.sw_fallback_reads == 6
 
 
+def test_sw_fallback_counts_only_depth_reads(tmp_path):
+    """Two more fallback-routed reads whose alignment ends before the anchor:
+    they are classified (they overlap the scan window) but never contribute
+    to DP/RD/AD, so they must not count toward SW_FALLBACK — the flag claims
+    the row's counts came partly from a different scorer."""
+    bam, misplaced, _ = _sw_setup(tmp_path)
+    rng = random.Random(5)
+    ref = "".join(rng.choice("ACGT") for _ in range(600))
+    reads = [
+        make_read(a.query_name, a.query_sequence, a.reference_start, a.cigartuples)
+        for a in pysam.AlignmentFile(str(bam))
+    ]
+    for i in range(2):
+        s = 196 + i
+        left = 285 - s
+        right = READ_LEN - left
+        seq = ref[s:285] + ref[287 : 287 + right]
+        reads.append(make_read(f"na{i}", seq, s, ((0, left), (2, 2), (0, right))))
+    assert all(a.reference_end < SW_POS + 1 for a in reads[-2:]), "must end before the anchor"
+    bam2 = _bam(tmp_path, ref, reads, name="obs_na.bam")
+    (c,) = _binned(bam2, [misplaced])
+    assert c.dp == 10
+    assert c.sw_fallback_reads == 6
+
+
+def _no_context_setup(tmp_path):
+    """A delins with NO reference context (prep's context fetch failed):
+    5 reads carry a 1bp insertion inside the span (a 4-base reconstruction,
+    neither allele's length) and must escalate to Phase 3, where no scorer
+    can run; 4 reads are clean."""
+    rng = random.Random(5)
+    ref = "".join(rng.choice("ACGT") for _ in range(600))
+    reads = []
+    for i in range(5):
+        s = 240 + i
+        left = SW_POS + 1 - s
+        right = READ_LEN - left - 1
+        seq = ref[s : SW_POS + 1] + "A" + ref[SW_POS + 1 : SW_POS + 1 + right]
+        reads.append(make_read(f"i{i}", seq, s, ((0, left), (1, 1), (0, right))))
+    for i in range(4):
+        reads.append(make_read(f"w{i}", ref[250 + i : 350 + i], 250 + i, ((0, READ_LEN),)))
+    variant = _rs.Variant("1", SW_POS, ref[SW_POS : SW_POS + 3], "T", "COMPLEX")
+    return _bam(tmp_path, ref, reads, name="obs_nc.bam"), variant
+
+
+def test_missing_context_reads_are_flagged_not_silent(tmp_path, caplog):
+    """Without a reference context the PairHMM matrix, and SW, cannot run:
+    reads needing Phase 3 end NEITHER. That loss must be counted and warned
+    (with the real reason), not silent — in both the binned and legacy paths."""
+    bam, variant = _no_context_setup(tmp_path)
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        (c,) = _binned(bam, [variant])
+    assert c.sw_fallback_reads == 5
+    warns = [r.message for r in caplog.records if "SW_FALLBACK(5)" in r.message]
+    assert len(warns) == 1 and "no reference context" in warns[0], warns
+    (legacy,) = _rs.count_bam(
+        str(bam), [variant], [None], 20, 20, True, False, False, False, False, False, 1
+    )
+    assert legacy.sw_fallback_reads == 5
+    (sw,) = _binned(bam, [variant], backend="sw")
+    assert sw.sw_fallback_reads == 0, "explicit SW backend: SW is chosen, not fallen into"
+
+
 def _diag(counts_kwargs, ref_allele="GGG", alt_allele="T"):
     pv = types.SimpleNamespace(
         variant=types.SimpleNamespace(ref_allele=ref_allele, alt_allele=alt_allele),

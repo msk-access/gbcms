@@ -1714,7 +1714,7 @@ fn count_variant_from_cache(
         let is_ref = result.is_ref;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
-        tally_observability(&mut counts, record, &result, variant, first_class);
+        tally_clip_candidate(&mut counts, record, variant, first_class);
 
         // ── MULTI-ALLELIC AD-CLAIMING GUARD: an ALT match contested and won
         // by a co-annotated sibling is the sibling's molecule. Downgrade
@@ -1772,6 +1772,12 @@ fn count_variant_from_cache(
                 counts.dp_rev += 1;
             } else {
                 counts.dp_fwd += 1;
+            }
+            // Counted with DP, not at classification: SW_FALLBACK claims the
+            // row's counts came partly from a different scorer, which is only
+            // true for reads that contribute to those counts.
+            if result.sw_fallback {
+                counts.sw_fallback_reads += 1;
             }
         }
 
@@ -2291,7 +2297,7 @@ fn count_single_variant(
         let is_ref = result.is_ref;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
-        tally_observability(&mut counts, &record, &result, variant, first_class);
+        tally_clip_candidate(&mut counts, &record, variant, first_class);
 
         // ── MULTI-ALLELIC AD-CLAIMING GUARD: mirrors the binned path — an
         // ALT match contested and won by a co-annotated sibling is
@@ -2349,6 +2355,12 @@ fn count_single_variant(
                 counts.dp_rev += 1;
             } else {
                 counts.dp_fwd += 1;
+            }
+            // Counted with DP, not at classification: SW_FALLBACK claims the
+            // row's counts came partly from a different scorer, which is only
+            // true for reads that contribute to those counts.
+            if result.sw_fallback {
+                counts.sw_fallback_reads += 1;
             }
         }
 
@@ -2810,20 +2822,18 @@ const CLIP_CANDIDATE_MIN_LEN: u32 = 8;
 /// relative to the anchor.
 const CLIP_REACH_SLACK: i64 = 10;
 
-/// Per-read observability counters shared by the binned and legacy loops
-/// (called right after classification, so both paths count the same reads):
-/// Smith-Waterman fallback classifications, and — at insertion loci —
-/// first-class reads carrying a clip candidate.
-fn tally_observability(
+/// Insertion loci only: count a first-class read carrying a clip candidate.
+/// Shared by the binned and legacy loops and called right after
+/// classification — deliberately before the anchor-overlap gate, because a
+/// clip-represented tandem-duplication carrier can align entirely past the
+/// anchor (its clip covers the inserted copy) and still be the evidence the
+/// CLIP_CANDIDATES flag points at.
+fn tally_clip_candidate(
     counts: &mut BaseCounts,
     record: &Record,
-    result: &ClassifyResult,
     variant: &Variant,
     first_class: bool,
 ) {
-    if result.sw_fallback {
-        counts.sw_fallback_reads += 1;
-    }
     let ins_len = variant.alt_allele.len() as i64 - variant.ref_allele.len() as i64;
     if first_class && ins_len > 0 {
         let reach = ins_len + CLIP_REACH_SLACK;
@@ -2847,18 +2857,25 @@ fn has_clip_boundary_in(record: &Record, lo: i64, hi: i64) -> bool {
         || (trailing && (lo..=hi).contains(&read_ref_end(record)))
 }
 
-/// One WARN per variant when reads fell back to Smith-Waterman under the
-/// PairHMM backend. The fallback is kept (operator decision) but must not be
-/// silent: it only fires when the variant's reference context cannot anchor
-/// the pangenomic haplotype matrix, i.e. upstream input was malformed.
+/// One WARN per variant when depth reads could not be evaluated by the
+/// PairHMM backend's pangenomic haplotype matrix. The Smith-Waterman fallback
+/// is kept (operator decision) but must not be silent: it only fires when the
+/// variant's reference context is missing or does not contain it, i.e.
+/// upstream input was malformed. Without any context no scorer can run, so
+/// those reads end NEITHER — the message says which outcome applied.
 fn warn_sw_fallback(variant: &Variant, n: u32) {
     if n > 0 {
+        let outcome = if variant.ref_context.is_none() {
+            "no scorer can run without a reference context, so they were left NEITHER"
+        } else {
+            "they were scored by the Smith-Waterman fallback instead (NEITHER where SW \
+             could not run either)"
+        };
         warn!(
-            "{}:{} {}>{}: {} read(s) scored by the Smith-Waterman fallback — the \
-             pangenomic haplotype matrix could not be built ({}); counts at this \
-             locus came partly from a different scorer (flagged SW_FALLBACK({}))",
+            "{}:{} {}>{}: {} read(s) could not be evaluated by the pangenomic haplotype \
+             matrix ({}); {} — flagged SW_FALLBACK({})",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-            n, super::pangenome::matrix_failure_reason(variant), n,
+            n, super::pangenome::matrix_failure_reason(variant), outcome, n,
         );
     }
 }
