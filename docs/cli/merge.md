@@ -78,14 +78,14 @@ flowchart LR
 
 1. **Scan** — Each input MAF is lazily scanned with all columns as strings
 2. **Prefix Detection** — Columns are checked for existing type prefixes; unprefixed gbcms columns are renamed (e.g., `ref_count` → `duplex_ref_count`)
-3. **Outer Join** — Progressive full outer join on the 5-column variant key: `Chromosome`, `Start_Position`, `End_Position`, `Reference_Allele`, `Tumor_Seq_Allele2`
+3. **Outer Join** — Progressive full outer join on the 5-column variant key: `Chromosome`, `Start_Position`, `End_Position`, `Reference_Allele`, `Tumor_Seq_Allele2`. `Chromosome` is compared by the same rule counting uses to reconcile contigs (`chr1` ~ `1`, `chrM` ~ `MT`), so inputs counted from differently named variant files still join. Each contig is written one way. That is the first input's name for it, or, for a contig the first input lacks, the name used by the earliest input that has it. When a later input names contigs differently, the log says so (one INFO line per input). An input column named `_contig_key`, or starting with `_row_` or `_chrom_`, is rejected: those names are reserved for the join. If one input names a contig two ways (e.g. `chrM` and `MT`), a variant listed under both joins once per name, and merge logs a WARN.
 4. **Null Fill** — Missing counts → `"0"`, missing meta → `""`
 5. **Combined Columns** — If both `simplex` and `duplex` are present and `--no-combined` is not set:
     - **Phase 1**: Additive sums (12 columns: read + fragment + strand counts)
     - **Phase 2a**: Derived totals (`total_count`, `total_count_fragment`)
     - **Phase 2b**: Derived VAFs (`vaf`, `vaf_fragment`)
     - **Phase 3**: Fisher's exact test for strand bias (read + fragment level, via Rust)
-6. **Write** — Materialized DataFrame written as tab-separated MAF
+6. **Write** — Materialized DataFrame written as tab-separated MAF. Rows follow the inputs: the first input's rows in its order, then rows only a later input has, in that input's order. The output is identical on every run.
 
 !!! info "Provenance Comment Lines (v5.3.0+)"
     Starting in v5.3.0, gbcms MAF output includes `#gbcms` and `#command`

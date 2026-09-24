@@ -99,11 +99,11 @@ gbcms automatically **left-aligns** indels and complex variants during the prepa
 ## Reference FASTA
 
 - Must have corresponding `.fai` index
-- The reference is looked up by the variant's chromosome name, so the FASTA should use a
-  naming convention compatible with your variant file. (The `chr`-prefix and `M`/`MT`
-  differences between the **BAM** and the variants are auto-reconciled — see below — but the
-  reference anchor is fetched by name, so a variant whose contig is absent from the FASTA is
-  rejected with verdict `FAIL` and reason `FETCH_FAILED`.)
+- The reference is looked up by the variant's contig under any name that contig goes by:
+  as written, with or without a `chr` prefix, and, for the mitochondrion, as any of
+  `M` / `chrM` / `chrMT` / `MT`. The FASTA and the variant file therefore reconcile the same
+  way the BAM does (see below). A variant whose contig is absent from the FASTA under all of
+  these names is rejected with verdict `FAIL` and reason `FETCH_FAILED`.
 
 ```bash
 # Create index if missing
@@ -118,6 +118,11 @@ samtools faidx reference.fa
   mitochondrial aliases (`M` / `chrM` / `chrMT` / `MT`) between the BAM and the variant file
   are normalized automatically. Only a contig with **no** match in the BAM is skipped — and
   gbcms logs a one-time `WARN` for it, rather than silently returning zero counts.
+- Reconciliation is internal only: the output keeps the variant file's own contig naming
+  (MAF `Chromosome`/`vcf_region`, VCF `CHROM` and its `##contig` lines, rescue labels, mFSD
+  Parquet). When the variant file's naming differs from the reference's or a BAM's, one INFO
+  line per run names both. The Observations Parquet (`--observations-parquet`) echoes the
+  internal (normalized) contig name.
 
 !!! info "CRAM Support (v5.3.0+)"
     Both `--bam` and `--bam-list` accept CRAM files transparently.
