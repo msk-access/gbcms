@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it. Prep measures that region over its own fetch (`Variant.shift_region`);
   the repeat context kept for alignment is often too short (a 30bp duplication
   had an 11-base context).
-  [Informative reads](docs/reference/allele-classification.md#informative-reads-for-indels).
+  See "Informative Reads for Indels" in the allele-classification reference.
 - **Grouped rows: REF reads and REF fragments exclude the same molecules** (#119).
   The sibling-ALT guard dropped a read from `ref_count` when it carried any
   co-annotated sibling's ALT, even one far from this row, and only after its
