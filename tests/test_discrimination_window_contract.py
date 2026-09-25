@@ -12,7 +12,6 @@ stretch a read must cover to show which allele it carries, as IGV shows it.
   carries a sibling's change inside that row's window, for read and fragment
   counts alike. A read carrying a sibling elsewhere still shows REF there.
 
-Committed red (xfail-strict) before the fix.
 """
 
 import glob
@@ -90,7 +89,6 @@ def _deletion_reads(ref):
     return reads
 
 
-@pytest.mark.xfail(strict=True, reason="reads ending inside the tract are counted REF")
 def test_reads_ending_inside_a_homopolymer_deletion_are_uninformative(tmp_path):
     ref = _ref(TRACT)
     fa, bam = _files(tmp_path, ref, _deletion_reads(ref))
@@ -101,7 +99,6 @@ def test_reads_ending_inside_a_homopolymer_deletion_are_uninformative(tmp_path):
     assert c.dp == 40  # the 20 uninformative reads stay in depth
 
 
-@pytest.mark.xfail(strict=True, reason="reads ending inside the tract are counted REF")
 def test_reads_ending_inside_a_homopolymer_insertion_are_uninformative(tmp_path):
     ref = _ref(TRACT)
     alt = ref[:200] + "A" + ref[200:]  # one A inserted
@@ -192,7 +189,6 @@ def _span_read(name, hap, s, d_at=None):
     return make_read(name, hap[s : s + READ], s, ((0, left), (2, 1), (0, READ - left)))
 
 
-@pytest.mark.xfail(strict=True, reason="reads carrying a sibling elsewhere are dropped from REF")
 def test_sibling_alt_outside_the_window_is_ref_here(tmp_path):
     ref = _ref(TWO_TRACTS)
     b_alt = ref[:220] + ref[221:]  # B: one T deleted from tract 2
@@ -205,17 +201,17 @@ def test_sibling_alt_outside_the_window_is_ref_here(tmp_path):
     assert (int(a["ref_count"]), int(a["ref_count_fragment"])) == (14, 14)
 
 
-def _twin_reads(ref, kind):
+def _twin_reads(ref, kind, snv_at=200):
     """6 wild-type reads plus 8 carriers of a sibling whose change sits in A's tract.
 
-    - snv: an A>G inside the homopolymer (no gap, so A's classifier sees REF).
+    - snv: an A>G at `snv_at` (no gap, so A's classifier sees REF).
     - ins: one extra A in the same homopolymer (the del/ins twin geometry).
     """
     reads = [_span_read(f"wt{i}", ref, 150 + i) for i in range(6)]
     for i in range(8):
         s = 150 + i
         if kind == "snv":
-            hap = ref[:203] + "G" + ref[204:]
+            hap = ref[:snv_at] + "G" + ref[snv_at + 1 :]
             reads.append(make_read(f"sib{i}", hap[s : s + READ], s, ((0, READ),)))
         else:
             hap = ref[:200] + "A" + ref[200:]
@@ -228,10 +224,10 @@ def _twin_reads(ref, kind):
     return reads
 
 
-SIBLING_ROWS = {"snv": (204, "A", "G"), "ins": (200, "C", "CA")}
+# snv: A>G on the deleted base itself, so the two rows share a site (spans overlap).
+SIBLING_ROWS = {"snv": (201, "A", "G"), "ins": (200, "C", "CA")}
 
 
-@pytest.mark.xfail(strict=True, reason="sibling carriers leave rd but stay in REF fragments")
 @pytest.mark.parametrize("kind", ["snv", "ins"])
 def test_sibling_alt_inside_the_window_is_not_ref_for_reads_or_fragments(tmp_path, kind):
     ref = _ref(TWO_TRACTS)
@@ -241,3 +237,16 @@ def test_sibling_alt_inside_the_window_is_not_ref_for_reads_or_fragments(tmp_pat
     a = next(r for r in read_maf_output(out) if r["vcf_ref"] == "CA")
     assert "MULTI_ALLELIC" in a["gbcms_status_reason"]
     assert (int(a["ref_count"]), int(a["ref_count_fragment"])) == (6, 6)
+
+
+def test_snv_outside_the_span_is_not_a_sibling_and_its_carriers_are_ref(tmp_path):
+    """Guard: an SNV inside the tract but outside the deletion's VCF span is its
+    own site. Its carriers show the reference tract length, so they are REF for
+    the deletion (as GATK counts AD at the deletion's site)."""
+    ref = _ref(TWO_TRACTS)
+    rows = [(200, "CA", "C"), (204, "A", "G")]
+    _run_cli(tmp_path, ref, _twin_reads(ref, "snv", snv_at=203), rows)
+    out = glob.glob(str(tmp_path / "out" / "*.maf"))[0]
+    a = next(r for r in read_maf_output(out) if r["vcf_ref"] == "CA")
+    assert "MULTI_ALLELIC" not in a["gbcms_status_reason"]
+    assert (int(a["ref_count"]), int(a["ref_count_fragment"])) == (14, 14)
