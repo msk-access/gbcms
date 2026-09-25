@@ -244,6 +244,12 @@ backends.**
   - The local-alignment fallback no longer decides complex calls, so #92's
     stale flag goes with it.
   - It builds on #160 (`counting/window.rs`).
+  - **Compare placement-independently, in canonical form.** Widen each read
+    over any indel whose shift region touches the event, and compare left-aligned
+    minimal alleles, as O4's scan does (#164). O4 showed that a fixed-window
+    comparison misreads carriers whose indel the aligner placed elsewhere in a
+    repeat: 4 of 5 "mis-described" complex variants were such artifacts. So the
+    90%-of-ALT-kept figure above is probably conservative.
 
 **Effects map (B/C).**
 - **Changes:** `partial_alt`, `any_alt`, `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`.
