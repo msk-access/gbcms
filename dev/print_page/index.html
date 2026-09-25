@@ -7956,7 +7956,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>ref_count</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">REF read depth</td>
+<td style="text-align: left;">REF read depth. For an indel, only reads that can tell the alleles apart count (<a href="#reference-allele-classification-informative-reads-for-indels">informative reads</a>); reads ending inside its repeat tract count in <code>total_count</code> only</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>alt_count</code></td>
@@ -8143,12 +8143,12 @@ appear at all in DNA mode output.</p>
 <tr>
 <td style="text-align: left;"><code>rna_sense_depth</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Total reads on the transcript sense strand at this position</td>
+<td style="text-align: left;">REF and ALT reads on the transcript sense strand at this position</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_antisense_depth</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Total reads on the antisense strand</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_alt_sense_count</code></td>
@@ -9664,7 +9664,7 @@ Use mouse to pan and zoom
 <p>Novel splice junctions often receive low <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> because <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> hasn't observed the junction in its first-pass database. The <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 rescue ensures these uniquely mapped reads contribute to allele counts rather than being silently discarded.</p>
 </div>
 <h3 id="reference-read-filters-strandedness-filter">Strandedness Filter<a class="headerlink" href="#reference-read-filters-strandedness-filter" title="Permanent link">¶</a></h3>
-<p>For <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense reads are <strong>counted</strong> (they contribute to <code>rna_sense_depth</code> and <code>rna_antisense_depth</code> respectively), but only sense-strand reads contribute to the primary <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>/<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> counts when <code>--enforce-strandedness</code> is enabled.</p>
+<p>For <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense REF and ALT reads are <strong>counted</strong> (they contribute to <code>rna_sense_depth</code> and <code>rna_antisense_depth</code> respectively), but only sense-strand reads contribute to the primary <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>/<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> counts when <code>--enforce-strandedness</code> is enabled.</p>
 <table>
 <thead>
 <tr>
@@ -11894,12 +11894,71 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <p>For small Complex and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> variants, biological reads heavily affected by surrounding genetic polymorphism can result in 50% partial matches against the Alternate array. Mathematically, this scores an exact numerical <strong>tie</strong> between the <code>REF</code> and <code>ALT</code> haplotypes (<code>alt_score = 11, ref_score = 11</code>). </p>
 <p>These ambiguous reads are routed to <strong>neither</strong> (<code>is_ref = false, is_alt = false</code>). They still contribute to physical Total Depth (<code>DP</code>) via the anchor overlap gate, but do <strong>not</strong> inflate <code>RD</code> or <code>AD</code>. This preserves an unbiased <code>VAF = AD / (RD + AD)</code> — critical for low-<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> detection where even small <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> inflation can push a variant below the clinical Limit of Detection.</p>
 <hr>
+<h2 id="reference-allele-classification-informative-reads-for-indels">Informative Reads for Indels<a class="headerlink" href="#reference-allele-classification-informative-reads-for-indels" title="Permanent link">¶</a></h2>
+<p>An indel inside a repeat can sit anywhere along its <strong>shift-equivalence region</strong>:
+the stretch it slides over without changing the haplotype (the whole tract for a
+homopolymer, every full and partial copy for an STR, the event itself in unique
+sequence). A read that starts or ends inside that region reads the same with or
+without the event, so the aligner places no gap and IGV cannot show which allele
+it carries. Counting such a read as REF biases <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> down. For a 1bp deletion in a
+10-base homopolymer, with 10 REF and 10 ALT reads spanning the tract and 10 of
+each ending inside it, <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> came out 25% instead of 50%.</p>
+<p>A <strong>REF call on a pure insertion or deletion</strong> therefore needs an informative read.
+Reading inward from one flank of the region, REF and ALT agree until one base,
+the first discriminating base. The read must cover that flank base and run one
+base past the first discriminating base on that side. Either side will do.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Event</th>
+<th style="text-align: left;">First discriminating base (left / right)</th>
+<th style="text-align: left;">Needs, in practice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Deletion of L bases over region <code>[lo, hi)</code></td>
+<td style="text-align: left;"><code>hi − L</code> / <code>lo + L − 1</code></td>
+<td style="text-align: left;">Homopolymer: the tract and both flanks. Deletion longer than a read: one junction plus two bases.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Insertion over boundaries <code>lo..=hi</code></td>
+<td style="text-align: left;"><code>hi</code> / <code>lo − 1</code></td>
+<td style="text-align: left;">The whole stretch, both flanks, and one more base on either side.</td>
+</tr>
+</tbody>
+</table>
+<p>The extra base past the discriminating one is an aligner margin. An ALT read
+ending on the discriminating base keeps a single terminal mismatch (cheaper than
+a clip) and would look like REF. With one more base, the mismatches cost more
+than the gap or the clip.</p>
+<p>Prep measures each pure indel's region over its own reference fetch, sized to
+the event (<code>Variant.shift_region</code>). A tandem duplication (an ITD, for example)
+slides over its whole duplicated segment, which can be far longer than the
+repeat context kept for alignment.</p>
+<p>Reads that fail the rule count toward <code>DP</code> and <code>DPF</code> but are neither REF nor ALT,
+the same as GATK's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, which counts only informative reads. The rule does not
+apply to substitution-bearing events (SNV, <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, delins): they have no shift
+region, and their first base already discriminates.</p>
+<hr>
 <h2 id="reference-allele-classification-multi-allelic-behavior">Multi-Allelic Behavior<a class="headerlink" href="#reference-allele-classification-multi-allelic-behavior" title="Permanent link">¶</a></h2>
 <p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
 <h3 id="reference-allele-classification-phase-1-annotation">Phase 1: Annotation<a class="headerlink" href="#reference-allele-classification-phase-1-annotation" title="Permanent link">¶</a></h3>
 <p>During normalization, <code>assign_multi_allelic_groups()</code> groups co-annotated variants with a fixed-point sweep over sorted <code>(chrom, pos)</code> coordinates, under two criteria: variants whose REF spans intersect (any types — tagged <code>MULTI_ALLELIC</code>), and length-changing variants whose scan windows (<code>max(5, repeat_span+2)</code> each side) overlap (tagged <code>TRACT_CLUSTER</code> when window-only). Groups close transitively and may be non-contiguous in position order; members share a <code>multi_allelic_group</code> ID and the tag is appended to <code>gbcms_status_reason</code> (the verdict stays <code>PASS</code>). Within a group the engine assigns <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> exclusively: a read's ALT call is demoted to <code>partial_alt</code> when a sibling explains it at least as well by span-explanation cost, and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence is never contested.</p>
 <h3 id="reference-allele-classification-phase-2-sibling-alt-exclusion">Phase 2: Sibling ALT Exclusion<a class="headerlink" href="#reference-allele-classification-phase-2-sibling-alt-exclusion" title="Permanent link">¶</a></h3>
-<p>During counting, reads classified as <strong>REF</strong> for a variant are additionally checked against all <strong>sibling variants</strong> in the same group. For each sibling, the full <code>check_allele_with_qual()</code> pipeline (including <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> reconstruction and <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment) determines if the read actually carries the sibling's ALT allele. If so, the read is <strong>excluded from REF</strong> for the current variant.</p>
+<p>During counting, a read classified as <strong>REF</strong> for a variant is checked against the
+<strong>siblings whose change lies inside the variant's discrimination window</strong>: its
+shift-equivalence region (see <a href="#reference-allele-classification-informative-reads-for-indels">Informative Reads for Indels</a>;
+the span for other variants) plus one base on each side. For each such sibling,
+the full <code>check_allele_with_qual()</code> pipeline determines whether the read carries
+the sibling's ALT. If it does, the read is <strong>excluded from REF</strong> for the current
+variant and counted as <code>partial_alt</code>.</p>
+<p>A carrier of a sibling whose change lies <strong>outside</strong> the window shows the reference
+across every base that could tell this variant's alleles apart, so it stays REF,
+as IGV shows it and as GATK counts REF at a site unless an event overlaps it.</p>
+<p>The exclusion runs before fragment evidence is recorded, so <code>ref_count</code> and
+<code>ref_count_fragment</code> drop the same molecules. The production, legacy parity and
+per-transcript paths apply the same rule.</p>
 <div class="admonition important">
 <p class="admonition-title">This prevents systematic REF inflation at multi-allelic loci, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> estimation.</p>
 </div>
@@ -12574,7 +12633,7 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><code>NonREF</code></td>
-<td style="text-align: left;">Fragment supporting a third allele (neither REF nor ALT)</td>
+<td style="text-align: left;">Fragment supporting a third allele, or with no REF/ALT consensus (neither REF nor ALT, not N)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>N</code></td>
@@ -12582,6 +12641,9 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
+<p>A fragment whose reads all start or end inside an indel's repeat tract carries no
+readable allele (<a href="#reference-allele-classification-informative-reads-for-indels">informative reads</a>).
+It counts in fragment depth but in none of the four classes.</p>
 <h3 id="reference-counting-metrics-maf-columns-41-total"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Columns (41 total)<a class="headerlink" href="#reference-counting-metrics-maf-columns-41-total" title="Permanent link">¶</a></h3>
 <h4 id="reference-counting-metrics-raw-counts">Raw Counts<a class="headerlink" href="#reference-counting-metrics-raw-counts" title="Permanent link">¶</a></h4>
 <table>
@@ -12920,12 +12982,12 @@ equals the p-value until the post-counting BH pass runs.</p>
 <tr>
 <td style="text-align: left;"><code>rna_sense_depth</code></td>
 <td style="text-align: left;">u32</td>
-<td style="text-align: left;">Reads aligning to the gene <strong>sense</strong> strand</td>
+<td style="text-align: left;">REF and ALT reads aligning to the gene <strong>sense</strong> strand</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_antisense_depth</code></td>
 <td style="text-align: left;">u32</td>
-<td style="text-align: left;">Reads aligning to the gene <strong>antisense</strong> strand</td>
+<td style="text-align: left;">REF and ALT reads aligning to the gene <strong>antisense</strong> strand</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_alt_sense_count</code></td>
@@ -13539,7 +13601,7 @@ despite parallel processing. Compression is Zstandard level 1.</p>
 </tr>
 <tr>
 <td style="text-align: left;"><code>3</code> OTHER</td>
-<td style="text-align: left;">A third allele, or no fragment consensus.</td>
+<td style="text-align: left;">A third allele, no fragment consensus, or (for an indel) a molecule whose reads all start or end inside the event's repeat tract, so they cannot tell the alleles apart (<a href="#reference-allele-classification-informative-reads-for-indels">informative reads</a>).</td>
 </tr>
 </tbody>
 </table>
@@ -14211,6 +14273,10 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
 <tr>
 <td style="text-align: left;"><strong><abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr></strong></td>
 <td style="text-align: left;">Reference allele depth</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Informative read</strong></td>
+<td style="text-align: left;">For an indel, a read that covers a flank of the event's shift-equivalence region and runs one base past the first base where REF and ALT differ. Only informative reads count REF; the others count toward <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> only (<a href="#reference-allele-classification-informative-reads-for-indels">details</a>).</td>
 </tr>
 </tbody>
 </table>
@@ -16020,6 +16086,52 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed">Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Indel REF counts use only reads that can tell the alleles apart</strong> (#157).
+  A read that starts or ends inside an indel's repeat tract matches both
+  alleles: the aligner places no gap either way. It was counted REF from anchor
+  coverage alone, which biased repeat-indel <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> down (a 50% homopolymer deletion
+  read 25% in a synthetic test; on the 6.5.0 RC data the median gbcms-to-
+  informative <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> ratio was 0.91 for STRs and 0.92 for homopolymers). Such reads
+  now count toward depth only, as in GATK's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>. A deletion longer than a read
+  still gets REF reads from either junction. A tandem duplication (an ITD)
+  slides over its whole duplicated segment, so REF needs a read across all of
+  it. Prep measures that region over its own fetch (<code>Variant.shift_region</code>);
+  the repeat context kept for alignment is often too short (a 30bp duplication
+  had an 11-base context).
+  See "Informative Reads for Indels" in the allele-classification reference.</li>
+<li><strong>Grouped rows: REF reads and REF fragments exclude the same molecules</strong> (#119).
+  The sibling-ALT guard dropped a read from <code>ref_count</code> when it carried any
+  co-annotated sibling's ALT, even one far from this row, and only after its
+  fragment had been recorded as REF. The guard now applies only to siblings
+  whose change lies inside the row's discrimination window. It runs before
+  fragment evidence in every counting path, so <code>ref_count</code> and
+  <code>ref_count_fragment</code> agree.</li>
+<li>Carriers of a sibling outside the window count REF again: IGV shows them as
+    REF at this row.</li>
+<li>Carriers of a sibling inside the window now also leave <code>ref_count_fragment</code>.</li>
+<li>What moves with these fixes:</li>
+<li><code>ref_count</code>, <code>ref_count_fragment</code> and their strand forms, <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>, strand
+    bias, and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>AD</code>/<code>ADF</code>/<code>ADR</code>/<code>FAD</code>;</li>
+<li>values built from REF + ALT: the merged <code>simplex_duplex_total_count</code>, and
+    RNA <code>rna_sense_depth</code>/<code>rna_antisense_depth</code> (these count REF and ALT reads;
+    the docs now say so);</li>
+<li>per-transcript REF counts and the ASJD REF partition;</li>
+<li><code>partial_alt</code>: sibling carriers outside the window count REF, not partial.
+    A carrier of an in-window sibling still counts partial, even when it ends
+    inside the tract.</li>
+<li><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>: a fragment whose reads all end inside the tract lands in no class. It
+    used to land in REF, and must not look like a third allele (NonREF). In the
+    observation export it is <code>OTHER</code>.</li>
+<li><code>alt_count_fragment</code> can rise by a molecule or two: a mate whose REF call was
+  vacuous (it ended in the tract, or carried a sibling) no longer contests the
+  other mate's ALT. This happened on 3 of 1,060 rows in the 6.5.0 RC DNA runs,
+  by +1 to +2.</li>
+<li>Unchanged: <code>alt_count</code>, <code>total_count</code> (<abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>) and <code>total_count_fragment</code>. SNV and
+  <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rows change only when they share a site with a co-annotated indel. None
+  did in the RC runs.</li>
+</ul>
 <h2 id="development-changelog-650-2026-09-25">[6.5.0] - 2026-09-25<a class="headerlink" href="#development-changelog-650-2026-09-25" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-breaking-changes-vcf-maf-representation-follows-vcf2maf-maf2vcf-110">⚠️ Breaking Changes — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> ↔ <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> representation follows vcf2maf / maf2vcf (#110)<a class="headerlink" href="#development-changelog-breaking-changes-vcf-maf-representation-follows-vcf2maf-maf2vcf-110" title="Permanent link">¶</a></h3>
 <blockquote>
@@ -16432,7 +16544,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   instead of having their overflow fields silently truncated — the gbcms count
   columns are the trailing columns, exactly what truncation dropped.</li>
 </ul>
-<h3 id="development-changelog-fixed">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_1">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_1" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>A rejected (FAIL) variant no longer crashes <code>--mfsd</code>, RNA <code>--gtf</code>, or
   <code>--mfsd-parquet</code> runs</strong>: the zero-count stub now carries every column the
@@ -16483,7 +16595,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
 <li>Delins/complex variants are unaffected: they route to <code>check_complex</code>, whose Phase-3
   realignment correctly resolves split and mismatch-absorbed representations of one event.</li>
 </ul>
-<h3 id="development-changelog-fixed_1">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_2">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--trace</code> never emitted a single per-read Rust trace line</strong>: pyo3-log's default filter
   capped forwarding at DEBUG, and the Python side configured a logger name (<code>gbcms_rs</code>)
@@ -16513,7 +16625,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   controls removed from docs (logging is <code>--verbose</code>/<code>--trace</code>).</li>
 </ul>
 <h2 id="development-changelog-631-2026-08-25">[6.3.1] - 2026-08-25<a class="headerlink" href="#development-changelog-631-2026-08-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_2">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_3">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow: turning off a default-on read filter now actually reaches the engine.</strong>
   <code>--filter_duplicates false</code>, <code>--filter_secondary false</code>, <code>--filter_supplementary false</code>,
@@ -16559,7 +16671,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   other argument treats <code>None</code> as "not supplied". Without that distinction, a caller passing
   <code>umi_tag=None</code> alongside a config that sets one would silently inherit it and change what
   counts as a molecule.</p>
-<h3 id="development-changelog-fixed_3">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_4">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--filter-secondary</code> and <code>--filter-supplementary</code> now change the result when turned
   off.</strong> They previously could not change <strong>any</strong> output: an unconditional skip in the
@@ -16612,7 +16724,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   Nextflow, and the Python API have always passed the backend explicitly, so counts are
   unchanged.</li>
 </ul>
-<h3 id="development-changelog-fixed_4">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_5">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>An unrecognized <code>alignment_backend</code> token now raises <code>ValueError</code></strong> instead of silently
   falling back to Smith-Waterman. <code>"PairHMM"</code>, <code>"smith-waterman"</code>, or any typo previously
@@ -16703,7 +16815,7 @@ This major release changes several output behaviours:
 - <strong><code>--mfsd</code> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>/<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> schema grew</strong> to 41 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns / 13 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>MFSD_*</code> INFO fields
   (gated behind <code>--mfsd</code>, absent otherwise).</p>
 </blockquote>
-<h3 id="development-changelog-fixed_5">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_6">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_6" title="Permanent link">¶</a></h3>
 <ul>
 <li>
 <p><strong>Contig-naming mismatches no longer silently produce zero counts.</strong> When the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>'s
@@ -16905,7 +17017,7 @@ This major release changes several output behaviours:
   enter the read cache, not whether they are counted). Affects only the
   non-default flag combination; default behavior is unchanged.</li>
 </ul>
-<h3 id="development-changelog-fixed_6">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_7">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Read-level supplementary/secondary double-count</strong> under <code>--no-filter-secondary</code>
   / <code>--no-filter-supplementary</code> (see Changed above).</li>
@@ -16969,7 +17081,7 @@ This major release changes several output behaviours:
   <code>merge_legacy_naming</code> in <code>nextflow.config</code>.</li>
 <li><strong>Polars dependency</strong>: <code>polars&gt;=1.0.0</code> added as a core dependency.</li>
 </ul>
-<h3 id="development-changelog-fixed_7">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_8">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment consensus: INDEL structural evidence priority</strong> — When R1 and R2
   of a duplex fragment disagree on an insertion or deletion, the read with direct
@@ -17034,7 +17146,7 @@ This major release changes several output behaviours:
   after <code>GR</code> (before strand bias fields), matching the diagnostic proximity
   principle.</li>
 </ul>
-<h3 id="development-changelog-fixed_8">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_9">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Wrong-length insertion Phase 3 fallback</strong> (PAX5-class discordance fix):
   <code>check_insertion</code> now routes wrong-length insertions at the strict anchor
@@ -17110,7 +17222,7 @@ This major release changes several output behaviours:
 <li><strong>Nextflow <code>library_type</code> parameter</strong>: Registered in <code>nextflow.config</code> and
   threaded through <code>rna/main.nf</code> for amplicon mode support in pipeline runs.</li>
 </ul>
-<h3 id="development-changelog-fixed_9">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_10">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>lib.rs</code> dead-code comment</strong>: Updated annotation type comment to reflect
   that annotation types are now fully wired (previously noted as unused).</li>
@@ -17199,7 +17311,7 @@ This major release changes several output behaviours:
 <li><strong>Diagnostic flag summary logging</strong>: <code>info</code>-level log of diagnostic flag
   distribution per sample (e.g., <code>ZERO_ALT=12, PARTIAL_DOMINANT=3</code>).</li>
 </ul>
-<h3 id="development-changelog-fixed_10">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_11">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>partial_alt</code> description</strong>: Documentation corrected to reflect that
   <code>partial_alt</code> is now populated for all variant types, not just <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Complex.</li>
@@ -17292,7 +17404,7 @@ This major release changes several output behaviours:
 <li><strong>Extended trace fields</strong>: IO diagnostics (<code>rchar</code>, <code>wchar</code>, <code>syscr</code>, <code>syscw</code>,
   <code>read_bytes</code>, <code>write_bytes</code>) added to execution trace.</li>
 </ul>
-<h3 id="development-changelog-fixed_11">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_11" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_12">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_12" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Dual-axis gridline artifact</strong>: Fixed Plotly <code>yaxis2</code> overlay creating a
   duplicate x-axis line in <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> histograms by standardizing <code>mirror: false</code>,
@@ -17409,7 +17521,7 @@ This major release changes several output behaviours:
   failures matrix, invariant table, updated test counts.</li>
 </ul>
 <h2 id="development-changelog-401-2026-03-24">[4.0.1] - 2026-03-24<a class="headerlink" href="#development-changelog-401-2026-03-24" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_12">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_13">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_13" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>was_normalized</code> flag accuracy</strong>: Split into granular <code>was_anchor_resolved</code>
   and <code>was_left_aligned</code> flags with backward-compatible <code>was_normalized</code> getter.
@@ -17470,7 +17582,7 @@ This major release changes several output behaviours:
   column-level schema reference for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output under all mode/flag
   combinations (DNA vs RNA, with <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, with normalization columns).</li>
 </ul>
-<h3 id="development-changelog-fixed_13">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_14">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_14" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Complex indel classification</strong> (<code>fix: correctly classify complex indels</code>):
   Fixes for Phase 3 dispatch cases 2, 3, and 4 — previously misclassified
@@ -17553,7 +17665,7 @@ This major release changes several output behaviours:
 <li><strong><code>py-gbcms</code> deprecation stub</strong>: <code>compat/py-gbcms/</code> shim published to PyPI
   as <code>py-gbcms==3.0.0</code> for backwards compatibility during migration.</li>
 </ul>
-<h3 id="development-changelog-fixed_14">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_14" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_15">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_15" title="Permanent link">¶</a></h3>
 <ul>
 <li>Parquet output compression switched from SNAPPY to ZSTD(1).</li>
 <li>Resolved <code>mypy</code> <code>AlignedSegment.cigar</code> attribute errors in test suite.</li>
@@ -17577,7 +17689,7 @@ This major release changes several output behaviours:
 <li><strong>Per-phase ClassifyResult counters</strong>: Diagnostic counters track how many reads are resolved in each classification phase (Phase 1/2/2.5/3)</li>
 <li><strong><code>--trace</code> flag</strong>: Two-tier Rust logging — <code>--verbose</code> for debug, <code>--trace</code> for per-read classification diagnostics via pyo3-log</li>
 </ul>
-<h3 id="development-changelog-fixed_15">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_15" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_16">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_16" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2/2.5 overcounting</strong>: Complex variants with <code>REF &gt;&gt; ALT</code> now skip Phase 2 Case B and Phase 2.5 when <code>ref_len &gt; 2 × alt_len</code> — short ALT trivially matches, edit distance is biased toward shorter allele</li>
 <li><strong>Phase 3 bypass for pure DEL/INS</strong>: Removed <code>is_worth_realignment</code> prefilter — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> structure is ground truth for pure deletions/insertions, prefilter was overcounting</li>
@@ -17615,7 +17727,7 @@ This major release changes several output behaviours:
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
 </ul>
-<h3 id="development-changelog-fixed_16">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_16" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_17">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_17" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Allele-based dispatch</strong> (<code>check_allele_with_qual</code>): Routes by <code>ref_len × alt_len</code> instead of unreliable <code>variant_type</code> string labels. <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> (1×1), insertion (1×N), deletion (N×1), <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (N×N equal), complex (N×M unequal) — eliminates misrouting when callers emit inconsistent type annotations</li>
 <li><strong><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> semiglobal argument order</strong>: Fixed <code>ref_hap</code>/<code>alt_hap</code> argument swap in semiglobal alignment that was scoring reads against the wrong haplotype</li>
@@ -17633,7 +17745,7 @@ This major release changes several output behaviours:
 <li><strong>Tests</strong>: Updated <code>test_fuzzy_complex::TestLengthMismatch</code> expectation to reflect Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback behavior</li>
 </ul>
 <h2 id="development-changelog-261-2026-02-19">[2.6.1] - 2026-02-19<a class="headerlink" href="#development-changelog-261-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_17">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_17" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_18">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_18" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
@@ -17660,7 +17772,7 @@ This major release changes several output behaviours:
 <li><strong>Docs restructure</strong>: Split monolithic <code>variant-counting.md</code> into 4 focused pages: Variant Normalization, Allele Classification, Counting Metrics, Read Filters</li>
 <li><strong><abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> install docs</strong>: Micromamba-based source install with Python 3.13</li>
 </ul>
-<h3 id="development-changelog-fixed_18">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_18" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_19">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_19" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Interior REF guard</strong> for large deletions (&gt;50bp): Reads falling entirely within a deleted region are now correctly classified as REF instead of ALT by Smith-Waterman</li>
 <li><strong>Windowed reciprocal overlap</strong>: Improved shifted indel detection using bidirectional overlap scoring</li>
@@ -17686,7 +17798,7 @@ This major release changes several output behaviours:
 <li><strong>Nextflow <code>--filter_by_sample</code> parameter</strong> and samplesheet <code>tsb</code> column for multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows</li>
 <li><strong>Nextflow documentation</strong>: Samplesheet <code>tsb</code> column guide, <code>--filter_by_sample</code> parameter reference, multi-sample <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> filtering examples</li>
 </ul>
-<h3 id="development-changelog-fixed_19">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_19" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_20">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_20" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment quality extraction</strong> (critical): All variant-type handlers (<code>check_insertion</code>, <code>check_deletion</code>, <code>check_mnp</code>, <code>check_complex</code>) now return actual <code>base_qual</code> from <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walk instead of 0 — fixes systematic ALT undercount for indels in fragment-level consensus</li>
 <li><strong>FILTER_MAF heredoc conflict</strong>: Restructured script from Python shebang to <code>python3 &lt;&lt; 'PYEOF'</code> pattern, resolving <code>SyntaxError</code> from bash syntax in Python context</li>
@@ -17719,7 +17831,7 @@ This major release changes several output behaviours:
 <li><strong><code>--version</code> flag</strong>: Added to <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (<code>gbcms --version</code>)</li>
 <li><strong>Deploy-Docs Workflow</strong>: Replaced <code>mkdocs gh-deploy</code> with <code>mike</code> for multi-version documentation; deploys <code>stable</code> (tagged version) from main and <code>dev</code> from develop branch; added <code>extra.version.provider: mike</code> to <code>mkdocs.yml</code> with version switcher widget</li>
 </ul>
-<h3 id="development-changelog-fixed_20">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_20" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_21">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_21" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment double-counting bug</strong>: R1+R2 pairs previously counted as two independent observations; now collapsed via quality-weighted consensus</li>
 <li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Input Hardening</strong>: Graceful handling of missing/malformed fields with warnings instead of crashes</li>
@@ -17752,7 +17864,7 @@ This major release changes several output behaviours:
 <li><strong>GitHub Actions</strong>: Consolidated deploy-docs workflows, added caching and PR validation</li>
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Wheels</strong>: Migrated from <code>manylinux_2_28</code> to <code>manylinux_2_34</code> (AlmaLinux 9 with OpenSSL 3.0+)</li>
 </ul>
-<h3 id="development-changelog-fixed_21">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_21" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_22">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_22" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow</strong>: Empty <code>--suffix</code> argument no longer causes failures</li>
 <li><strong>Admonitions</strong>: Converted GitHub-style alerts to MkDocs syntax</li>
@@ -17781,7 +17893,7 @@ This major release changes several output behaviours:
 <li>Updated MkDocs with mermaid2 plugin and snippet includes</li>
 </ul>
 <h2 id="development-changelog-212-2025-11-25">[2.1.2] - 2025-11-25<a class="headerlink" href="#development-changelog-212-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-fixed_22">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_22" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_23">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_23" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Fixed source distribution size issue by correctly excluding large files (tests, docs, etc.) via <code>pyproject.toml</code> configuration.</li>
 </ul>
@@ -17790,7 +17902,7 @@ This major release changes several output behaviours:
 <p class="admonition-title">Yanked Release</p>
 <p>This release was yanked from PyPI due to a source distribution size limit error. Use 2.1.2 instead.</p>
 </div>
-<h3 id="development-changelog-fixed_23">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_23" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_24">🔧 Fixed<a class="headerlink" href="#development-changelog-fixed_24" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>PyPI Distribution</strong>: Added MANIFEST.in (failed to work with Hatchling) to reduce source distribution size</li>
 <li><strong>Documentation</strong>: Added comprehensive Installation guide</li>
@@ -17911,7 +18023,7 @@ This major release changes several output behaviours:
 <li><strong>Unused Dependencies</strong>: Removed <code>cyvcf2</code> and <code>numba</code> (no longer needed)</li>
 <li><strong>Pre-commit Hooks</strong>: Removed in favor of explicit linting in <abbr title="Continuous Integration - Automated build and test system">CI</abbr></li>
 </ul>
-<h3 id="development-changelog-fixed_24">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_24" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-fixed_25">🐛 Fixed<a class="headerlink" href="#development-changelog-fixed_25" title="Permanent link">¶</a></h3>
 <ul>
 <li>Correct handling of complex variants (MNPs, DelIns)</li>
 <li>Proper strand assignment for fragment counting</li>

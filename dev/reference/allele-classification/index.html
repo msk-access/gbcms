@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -875,6 +875,15 @@
 </nav>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#informative-reads-for-indels">
+<span class="md-ellipsis">
+      
+        Informative Reads for Indels
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#multi-allelic-behavior">
 <span class="md-ellipsis">
       
@@ -1516,6 +1525,15 @@
 </li>
 </ul>
 </nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#informative-reads-for-indels">
+<span class="md-ellipsis">
+      
+        Informative Reads for Indels
+      
+    </span>
+</a>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#multi-allelic-behavior">
@@ -2994,12 +3012,71 @@ The dual-trigger only applies to <strong>complex</strong> variants (e.g., <code>
 <p>For small Complex and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> variants, biological reads heavily affected by surrounding genetic polymorphism can result in 50% partial matches against the Alternate array. Mathematically, this scores an exact numerical <strong>tie</strong> between the <code>REF</code> and <code>ALT</code> haplotypes (<code>alt_score = 11, ref_score = 11</code>). </p>
 <p>These ambiguous reads are routed to <strong>neither</strong> (<code>is_ref = false, is_alt = false</code>). They still contribute to physical Total Depth (<code>DP</code>) via the anchor overlap gate, but do <strong>not</strong> inflate <code>RD</code> or <code>AD</code>. This preserves an unbiased <code>VAF = AD / (RD + AD)</code> — critical for low-<abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> detection where even small <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> inflation can push a variant below the clinical Limit of Detection.</p>
 <hr>
+<h2 id="informative-reads-for-indels">Informative Reads for Indels<a class="headerlink" href="#informative-reads-for-indels" title="Permanent link">¶</a></h2>
+<p>An indel inside a repeat can sit anywhere along its <strong>shift-equivalence region</strong>:
+the stretch it slides over without changing the haplotype (the whole tract for a
+homopolymer, every full and partial copy for an STR, the event itself in unique
+sequence). A read that starts or ends inside that region reads the same with or
+without the event, so the aligner places no gap and IGV cannot show which allele
+it carries. Counting such a read as REF biases <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> down. For a 1bp deletion in a
+10-base homopolymer, with 10 REF and 10 ALT reads spanning the tract and 10 of
+each ending inside it, <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> came out 25% instead of 50%.</p>
+<p>A <strong>REF call on a pure insertion or deletion</strong> therefore needs an informative read.
+Reading inward from one flank of the region, REF and ALT agree until one base,
+the first discriminating base. The read must cover that flank base and run one
+base past the first discriminating base on that side. Either side will do.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Event</th>
+<th style="text-align: left;">First discriminating base (left / right)</th>
+<th style="text-align: left;">Needs, in practice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Deletion of L bases over region <code>[lo, hi)</code></td>
+<td style="text-align: left;"><code>hi − L</code> / <code>lo + L − 1</code></td>
+<td style="text-align: left;">Homopolymer: the tract and both flanks. Deletion longer than a read: one junction plus two bases.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Insertion over boundaries <code>lo..=hi</code></td>
+<td style="text-align: left;"><code>hi</code> / <code>lo − 1</code></td>
+<td style="text-align: left;">The whole stretch, both flanks, and one more base on either side.</td>
+</tr>
+</tbody>
+</table>
+<p>The extra base past the discriminating one is an aligner margin. An ALT read
+ending on the discriminating base keeps a single terminal mismatch (cheaper than
+a clip) and would look like REF. With one more base, the mismatches cost more
+than the gap or the clip.</p>
+<p>Prep measures each pure indel's region over its own reference fetch, sized to
+the event (<code>Variant.shift_region</code>). A tandem duplication (an ITD, for example)
+slides over its whole duplicated segment, which can be far longer than the
+repeat context kept for alignment.</p>
+<p>Reads that fail the rule count toward <code>DP</code> and <code>DPF</code> but are neither REF nor ALT,
+the same as GATK's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, which counts only informative reads. The rule does not
+apply to substitution-bearing events (SNV, <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, delins): they have no shift
+region, and their first base already discriminates.</p>
+<hr>
 <h2 id="multi-allelic-behavior">Multi-Allelic Behavior<a class="headerlink" href="#multi-allelic-behavior" title="Permanent link">¶</a></h2>
 <p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
 <h3 id="phase-1-annotation">Phase 1: Annotation<a class="headerlink" href="#phase-1-annotation" title="Permanent link">¶</a></h3>
 <p>During normalization, <code>assign_multi_allelic_groups()</code> groups co-annotated variants with a fixed-point sweep over sorted <code>(chrom, pos)</code> coordinates, under two criteria: variants whose REF spans intersect (any types — tagged <code>MULTI_ALLELIC</code>), and length-changing variants whose scan windows (<code>max(5, repeat_span+2)</code> each side) overlap (tagged <code>TRACT_CLUSTER</code> when window-only). Groups close transitively and may be non-contiguous in position order; members share a <code>multi_allelic_group</code> ID and the tag is appended to <code>gbcms_status_reason</code> (the verdict stays <code>PASS</code>). Within a group the engine assigns <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> exclusively: a read's ALT call is demoted to <code>partial_alt</code> when a sibling explains it at least as well by span-explanation cost, and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence is never contested.</p>
 <h3 id="phase-2-sibling-alt-exclusion">Phase 2: Sibling ALT Exclusion<a class="headerlink" href="#phase-2-sibling-alt-exclusion" title="Permanent link">¶</a></h3>
-<p>During counting, reads classified as <strong>REF</strong> for a variant are additionally checked against all <strong>sibling variants</strong> in the same group. For each sibling, the full <code>check_allele_with_qual()</code> pipeline (including <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> reconstruction and <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> alignment) determines if the read actually carries the sibling's ALT allele. If so, the read is <strong>excluded from REF</strong> for the current variant.</p>
+<p>During counting, a read classified as <strong>REF</strong> for a variant is checked against the
+<strong>siblings whose change lies inside the variant's discrimination window</strong>: its
+shift-equivalence region (see <a href="#informative-reads-for-indels">Informative Reads for Indels</a>;
+the span for other variants) plus one base on each side. For each such sibling,
+the full <code>check_allele_with_qual()</code> pipeline determines whether the read carries
+the sibling's ALT. If it does, the read is <strong>excluded from REF</strong> for the current
+variant and counted as <code>partial_alt</code>.</p>
+<p>A carrier of a sibling whose change lies <strong>outside</strong> the window shows the reference
+across every base that could tell this variant's alleles apart, so it stays REF,
+as IGV shows it and as GATK counts REF at a site unless an event overlaps it.</p>
+<p>The exclusion runs before fragment evidence is recorded, so <code>ref_count</code> and
+<code>ref_count_fragment</code> drop the same molecules. The production, legacy parity and
+per-transcript paths apply the same rule.</p>
 <div class="admonition important">
 <p class="admonition-title">This prevents systematic REF inflation at multi-allelic loci, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> estimation.</p>
 </div>
@@ -3074,7 +3151,7 @@ constants and do not use it).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 24, 2026 01:52:29 UTC"><span class="timeago" datetime="2026-09-24T01:52:29+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 24, 2026 01:52:29 UTC">2026-09-24</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 17:26:03 UTC"><span class="timeago" datetime="2026-09-25T17:26:03+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 17:26:03 UTC">2026-09-25</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
