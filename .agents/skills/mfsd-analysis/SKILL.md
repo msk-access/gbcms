@@ -27,8 +27,10 @@ mFSD (modified Fragment Size Distribution) analysis is **opt-in** via `--mfsd`.
 
 ## Statistics (watch-outs)
 
-- KS p-value uses an asymptotic approximation — weak at the small ALT-fragment
-  counts (n≈5–20) typical of low-input cfDNA.
+- KS p-value is exact for small `n·m` (≤ 10,000, the low-input regime) and
+  asymptotic above. At small ALT counts it is calibrated but has little power
+  (about 10% at 5–10 fragments on real ACCESS data), so a non-significant
+  result there is not evidence of "no shift".
 - LLR is a fragment-size Gaussian log-ratio (distinct from the PairHMM LLR);
   guard against ±∞ from tail fragments by using the closed-form log-ratio.
 

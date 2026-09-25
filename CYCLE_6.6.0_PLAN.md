@@ -22,15 +22,15 @@
 > - Check `.agents/learnings/REJECTED.md` before proposing an alternative.
 
 Priority: **H** high, **M** medium, **L** low. **[counts]** marks a ticket that
-can change counts. **[decide]** marks a ticket that needs an operator decision
+can change counts. **[decide]** marks a ticket that needs an operator decision (**[decided]**: the decision is recorded under the ticket)
 before implementation.
 
 ## Summary
 
 | ID | Ticket | Pri | Flags | Issue |
 |:--|:--|:-:|:--|:--|
-| C1 | Local-alignment fallback reads stale semiglobal scores | H | [counts] | #141 (#92) |
-| C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [decide] | #119 |
+| C1 | Partial-ALT evidence in the SW local fallback | L | [counts] [decide] | #141 (#92) |
+| C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [decided] | #119 |
 | C3 | Homopolymer decomposition arbitration redesign | M | [counts] | #111, #145 (#112) |
 | C4 | Reference windows near contig ends | M | [counts] | #142 (#92) |
 | C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] | #120 |
@@ -38,12 +38,13 @@ before implementation.
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] | #144 (#92) |
 | C8 | One-base-REF delins without a shared anchor | L | [counts] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
-| R1 | Span-aware exon-edge BAQ rule | L | [counts] [decide] | #106 |
-| R2 | RNA strandedness gating observability | M | [decide] | #114 |
-| I1 | MAF allele base check | M | [decide] | #123 |
+| C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] | #157 |
+| R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
+| R2 | RNA strandedness gating observability | M | [decided] | #114 |
+| I1 | MAF allele base check | M | [decided] | #123 |
 | I2 | `End_Position` optional | L | | #124 |
-| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decide] | #125 |
-| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decide] | #126 |
+| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] | #125 |
+| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] | #126 |
 | I5 | Nextflow `convert` module | L | | #127 |
 | M1 | Merge rows whose flavors report different alleles | M | | #128 |
 | M2 | Merge inputs from different gbcms versions | M | | #129 |
@@ -56,8 +57,8 @@ before implementation.
 | P1 | Deep-bin fetch reduction (M5b) | L | | #150 (#134) |
 | P2 | Bin cost-sort (PF-2) | L | | #151 (#134) |
 | P3 | Document the bin-span soft floor (LO-3) | L | | #152 (#134) |
-| S1 | Mean LLR per fragment (CR-5) | L | [decide] | #153 (#135) |
-| S2 | `MIN_FOR_KS` floor (ME-9) | L | [decide] | #154 (#135) |
+| S1 | Mean LLR per fragment (CR-5) | L | [decided] | #153 (#135) |
+| S2 | `MIN_FOR_KS` floor (ME-9) | L | [decided] | #154 (#135) |
 | D1 | CI version-consistency check | M | | #136 |
 | D2 | Release workflow creates the GitHub Release | M | | #137 |
 | D3 | mkdocs-material 2.0 | L | | #138 |
@@ -67,22 +68,94 @@ before implementation.
 
 ## Counting correctness
 
-### C1 — Local-alignment fallback reads stale semiglobal scores (#141, under #92) · H [counts]
-**Finding.** When the local-alignment fallback triggers (the semiglobal
-alignment is judged unreliable), the REF-branch nearby-evidence check and the
-tie branch still read the semiglobal `alt_aln` / `ref_aln` scores
-(`rust/src/counting/alignment.rs`). That can suppress `partial_alt` evidence
-the local rescore found. Verified still present on 2026-09-25.
-**Direction.** Thread the effective (local) scores into the tail.
-**Measure first.** Count how often the local fallback fires on the real DNA
-and RNA truth sets (a debug counter), and which rows' `partial_alt` would move.
-**Tests.** A read built so the semiglobal alignment is unreliable and the local
-rescore finds nearby evidence: assert `partial_alt`, and the tie outcome, from
-the local scores. The code is shared by both counting paths, so parity holds.
-**Acceptance.** Real-data deltas confined to rows where the fallback fired;
-each adjudicated read by read.
+### C1 — Partial-ALT evidence in the Smith-Waterman local fallback (#141, under #92) · L [counts] [decide]
+**What the code does.** Under the Smith-Waterman backend (`--alignment-backend
+sw`, or its fallback when the default method fails), a read at a *complex*
+variant (both alleles longer than one base, unequal lengths) is classified in
+two tries:
+1. semiglobal alignment of the whole read to the REF and ALT haplotypes;
+2. only when the first try is weak or too close to call, local alignment
+   (which ignores badly matching read ends). This exists for sign-out alleles
+   that are slightly wrong or incomplete.
 
-### C2 — REF fragments at grouped rows (#119) · M [counts] [decide]
+The second try's scores decide REF / ALT. But the "this read shows some ALT
+evidence" flag, which feeds `partial_alt`, is still computed from the first
+try's discarded scores. That inconsistency is what #92 reported
+(`rust/src/counting/alignment.rs`).
+
+**Measured (2026-09-25; local data, aggregates).**
+- 129 real reads took the second try: 40 signed-out complex variants in 40
+  IMPACT samples, SW backend. Each read was compared with what it carries
+  (ALT- or REF-specific 8-mers).
+- **The originally planned fix (flag from the second try's scores) does not
+  help.** The flag is right for 36 of 67 REF/tie reads today, and for 32 with
+  that fix. Both fail for the same reason: the flag fires when the two scores
+  are *close*, not when the read *contains ALT sequence*. For example, 28 tie
+  reads showing neither allele get flagged.
+- **A second finding.** 22 of the 62 reads the second try calls ALT (35%)
+  carry no ALT-specific sequence, and they count in `alt_count`. Some may carry
+  a real event whose sign-out allele is wrong; others may be noise.
+- **Scope.** The default `pairhmm` backend never reaches this code, and the SW
+  fallback under it fired 0 times on the traced real runs. The affected users
+  are those who choose `--alignment-backend sw`: about 3 reads per complex
+  variant.
+
+**Options.**
+
+| | Change | Measured | Risk |
+|---|---|---|---|
+| A | Flag from the second try's scores (the original plan) | Slightly worse (32 vs 36 correct) | Adds error; ruled out |
+| B | Flag by read content: only when the read carries ALT-specific sequence | Removes the ~31 wrong flags | `partial_alt` drops for complex variants under SW |
+| C | B, plus: second-try ALT calls without ALT sequence become partial, unless reads share a recurring unannotated haplotype there | Also corrects up to 35% of those ALT calls | `alt_count` changes |
+| D | Leave it; document that `partial_alt` is score-based under SW | None | Known inaccuracy stays; ruled out |
+
+**Decision pending: B vs C.** It rests on a verification round with two
+questions:
+1. **Real carrier or noise?** Are the ALT calls without ALT sequence real
+   carriers (they share a recurring unannotated haplotype) or scattered noise?
+2. **Independent check of B.** B was scored with the same 8-mer rule it would
+   use. So each fallback read is linked back to its BAM read and re-judged
+   C2-style: rebuilt across the variant window and matched to REF / ALT /
+   OTHER by edit distance.
+
+**Round 1 (2026-09-25): inconclusive.**
+- Only 22 of the 129 fallback reads could be linked to a single BAM read. The
+  traced sequence also matches the overlapping mate, and the link demanded
+  exactly one hit.
+- 21 of those 22 did not cover the judging window (the MAF span ±10), so the
+  independent judge could not rule on them.
+- B's apparent 15/15 on REF/tie reads is therefore vacuous: B raised no flag,
+  and the judge had no verdict to compare with.
+- It does suggest something to check: the fallback may fire mostly on reads
+  that do not span the event.
+
+**Round 2 design.**
+- Link by read name, so the two mates of a fragment count as one.
+- Judge over the discrimination window built for C10 (the event ±1 base),
+  not ±10.
+- Report how many fallback reads are uninformative under C10's rule. If most
+  are, C10 already settles them (depth only), and the B-vs-C question shrinks
+  to the reads that span the event.
+
+**Effects map (B/C).**
+- **Changes:** `partial_alt`, `any_alt`, `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`.
+  C also changes `alt_count`/`ref_count`, the fragment counts, and the
+  REF/ALT-based consumers (observations export, ASJD partitions, mFSD fragment
+  classes). All of it is SW backend only, and identical in the production and
+  legacy paths (shared `classify_by_alignment`).
+- **Unchanged:** the default `pairhmm` path; SNVs and MNPs; MNP rescue (MNPs
+  only); tract-cluster claiming (complex rows exempt).
+
+**Acceptance.** The default backend is byte-identical on the RC set. Under
+SW, version-against-version on the D5 panel's complex variants, with a sample
+of changed reads adjudicated in IGV.
+
+**Priority: L** (was H). The originally planned fix doesn't improve accuracy,
+doing it right needs the verification round, and it affects only a
+non-default backend. C10 and C2 affect every repeat indel and every clustered
+row on the default path, so they go first.
+
+### C2 — REF fragments at grouped rows (#119) · M [counts] [decided]
 **Finding.** At rows in a multi-allelic or tract-cluster group, the main counts
 record a fragment as REF *before* the REF-side sibling guard runs. So a read
 excluded from `ref_count` (it carries a sibling's ALT) still counts in
@@ -98,6 +171,8 @@ in both the binned and legacy paths (`count_bam` parity).
 duplex and simplex, the complex-cluster IMPACT samples, MSI-high).
 **Acceptance.** Only grouped rows' RDF moves, and downward; `dpf ≥ rdf + adf`
 holds; the parity suite stays green.
+
+**Decision (2026-09-25, operator).** Window-aware rule: a read is excluded from REF at A only when a sibling's event lies inside A's discrimination window (its repeat tract, or its span in unique sequence, ±1 base). The same rule applies to read and fragment counts. This is GATK's overlap rule with the tract standing in for representation shifts. It uses the same window as C10. Evidence on #119: the IGV-lens census shows 1,142 reads wrongly dropped from `ref_count` and 439 fragments wrongly kept in `ref_count_fragment`.
 
 ### C3 — Homopolymer decomposition arbitration redesign (#111; #112 item 1 is #145) · M [counts]
 **Finding.** When a delins looks like a miscollapsed homopolymer event, two
@@ -174,9 +249,47 @@ form with the base after the event instead.
 **Direction.** Resolve such rows to the same base-after form in preparation
 and count them. Telomere-only.
 
+### C10 — Reads ending inside an indel's repeat tract are counted REF (#157) · H [counts]
+**Finding** (while measuring C2). A read that starts or ends inside an indel's
+repeat tract cannot show whether the tract carries the indel: its bases match
+both haplotypes, so the aligner places no gap and IGV cannot tell. gbcms counts
+it as REF.
+- **Synthetic:** a 10-A homopolymer with a 1bp deletion. With 10 REF and 10 ALT
+  reads spanning the tract, plus 10 of each ending mid-tract, gbcms reports VAF
+  25% where the informative reads give 50%.
+- **Real data:** 295 signed-out indel rows in the 6.5.0 RC runs. gbcms VAF ÷
+  informative VAF has a median of 0.91 (STR) / 0.92 (homopolymer) / 0.97
+  (unique), and 33 rows fall below 0.8.
+
+**Standard.** GATK's AD counts only informative reads.
+**Direction.** A read that doesn't span the indel's discrimination window
+(its tract, or its span in unique sequence, ±1 base) counts toward depth only:
+neither REF nor ALT. This is C2's window. Mirror it in the legacy parity oracle.
+**Measure first.** Deltas on the RC set and the D5 panel; adjudicate a sample
+of rows read by read in IGV. SNVs are unchanged.
+
+**Implementation refinement (2026-09-25).** Two sharper definitions came out of
+writing the tests; both keep the operator's rule.
+- **The window uses the indel's shift-equivalence region**, not the tract from
+  the repeat finder: the stretch the event slides over without changing the
+  haplotype. In a homopolymer the two are the same. It also counts partial STR
+  copies, and a one-base deletion inside a dinucleotide STR (which cannot
+  slide) stays local instead of taking the whole STR.
+- **A read is informative when it spans one side of the event**: a flank base
+  through one base past the first base where REF and ALT differ, reading
+  inward from that flank. The extra base is the aligner margin: one terminal
+  mismatch costs less than a clip, so an ALT read ending on the differing base
+  would otherwise look REF. For a homopolymer this is the tract ±1, as decided.
+  A deletion longer than a read still gets REF reads from either junction; a
+  whole-span rule would give it none.
+- C2 keeps the region ±1: its question is whether another event sits where
+  this row's alleles differ.
+- The rule applies to pure indels only. Substitution-bearing events have no
+  shift region, and their first base already discriminates.
+
 ## RNA
 
-### R1 — Span-aware exon-edge BAQ rule (#106, 6.5.0 § T9) · L [counts] [decide]
+### R1 — Span-aware exon-edge BAQ rule (#106, 6.5.0 § T9) · L [counts] [decided]
 **Finding.** The exon-edge BAQ exception keys on the variant's first base, so
 a multi-base variant reaching an exon's right edge keeps BAQ. MNP counts move
 at most 0.17%, and deletions are unaffected.
@@ -189,7 +302,9 @@ start at or after the exon start.
 **Acceptance.** SNV rows byte-identical; multi-base edge probes change as
 designed; affected sign-out rows adjudicated read by read.
 
-### R2 — RNA strandedness gating observability (#114) · M [decide]
+**Decision (2026-09-25, operator).** Span-based distance (option A), VEP-style: 0 when a boundary lies inside the REF span. `exon_boundary_dist` takes the same definition, and the change is documented as a column change. Evidence on #106: 41% of signed-out indels change distance, and 1 of the 94 RNA truth rows crosses the 5bp window.
+
+### R2 — RNA strandedness gating observability (#114) · M [decided]
 **Finding.** At RNA defaults (strandedness enforced), antisense reads are
 filtered before the sense/antisense tally. So `rna_antisense_depth` is always
 0, and ASJD's `STRAND_DISCORDANT` is effectively unreachable.
@@ -203,9 +318,15 @@ filtered before the sense/antisense tally. So `rna_antisense_depth` is always
 **Acceptance.** A red test at defaults for the chosen behaviour, and the doc
 note in output-formats; counts unchanged.
 
+**Decision (2026-09-25, operator).**
+1. `rna_antisense_depth` counts antisense reads before the strand filter, like `mq0_count`. REF/ALT are unchanged.
+2. `STRAND_DISCORDANT` is documented as a `--no-strandedness` diagnostic.
+
+Evidence on #114: 143 antisense reads (0.5%) at 18% of truth loci are reported as 0 today; antisense junction reads are 0.1%.
+
 ## Input and representation
 
-### I1 — MAF allele base check (#123) · M [decide]
+### I1 — MAF allele base check (#123) · M [decided]
 **Finding.** `MafReader` does not check allele bases. A MAF ALT with an IUPAC
 code (e.g. `R`) passes preparation and counts 0 ALT silently. The VCF reader
 skips such alleles since 6.5.0. The same check closes a cosmetic
@@ -215,13 +336,15 @@ recommended, because MAF→MAF output must keep every input row — or a skip
 with a WARN like VCF.
 **Tests.** MAF rows with `R`, `.`, and lowercase (valid) alleles.
 
+**Decision (2026-09-25, operator).** A visible `FAIL` row with a reason, so MAF→MAF output keeps every row. Lowercase bases are valid. Evidence on #123: the automated pipeline's 19.8M calls have 0 invalid alleles; the 9 in the 1.13M curated sign-out rows come from hand edits.
+
 ### I2 — `End_Position` optional (#124) · L
 **Finding.** `MafReader` requires an integer `End_Position` but nothing uses
 it; rows without one are skipped with a WARN. maf2vcf converts them.
 **Direction.** Parse it when present; don't require it. Update the
 required-columns table.
 
-### I3 — VCF→MAF `Tumor_Seq_Allele1` (#125) · L [decide]
+### I3 — VCF→MAF `Tumor_Seq_Allele1` (#125) · L [decided]
 **Finding.** For VCF input, `Tumor_Seq_Allele1`, `Strand` and
 `Variant_Classification` are empty. vcf2maf fills `Tumor_Seq_Allele1` from the
 genotype.
@@ -229,12 +352,16 @@ genotype.
 convention), or keep it empty (gbcms genotypes no sample GT). The other two
 stay empty: gbcms does not annotate.
 
-### I4 — maf2vcf's second ALT from `Tumor_Seq_Allele1` (#126) · L [decide]
+**Decision (2026-09-25, operator).** Fill `Tumor_Seq_Allele1` with REF. That is MSK's own convention (100% of 1.13M sign-out rows) and maf2vcf's round trip. No hom-alt inference from VAF. Evidence on #125.
+
+### I4 — maf2vcf's second ALT from `Tumor_Seq_Allele1` (#126) · L [decided]
 **Finding.** maf2vcf writes a `Tumor_Seq_Allele1` that differs from both REF
 and Allele2 as a second ALT. gbcms reads one variant allele per row. This is
 documented.
 **Decision.** Keep (recommended: one row, one allele) or genotype the second
 allele as its own row.
+
+**Decision (2026-09-25, operator).** Keep one row, one allele (vcf2maf's reading), and document that cBioPortal picks Allele1 for such rows. There are 0 such rows in MSK data. Evidence on #126.
 
 ### I5 — Nextflow `convert` module (#127) · L
 **Direction.** A `GBCMS_CONVERT` module, only if pipelines need conversion
@@ -313,14 +440,18 @@ invariant (`.agents/memory/bin-anchor-coverage.md`).
 
 ## Statistics (accepted deviations)
 
-### S1 — Mean LLR per fragment (CR-5) (#153, under #135) · L [decide]
+### S1 — Mean LLR per fragment (CR-5) (#153, under #135) · L [decided]
 Report the LLR per fragment rather than the sum. It changes displayed values,
 so coordinate with report consumers. Only if a consumer needs cross-variant
 comparability.
 
-### S2 — `MIN_FOR_KS` floor (ME-9) (#154, under #135) · L [decide]
+**Decision (2026-09-25, operator).** Report the per-fragment mean LLR (with n alongside) in the existing LLR columns; display only. Evidence on #153: on real cfDNA the sum grows about 22× with n, while the mean is flat.
+
+### S2 — `MIN_FOR_KS` floor (ME-9) (#154, under #135) · L [decided]
 Raise the floor above 5 only if a power analysis justifies it. With exact
 small-N KS and the `ks_valid` gate, 5 is defensible.
+
+**Decision (2026-09-25, operator).** Keep `MIN_FOR_KS` at 5: the exact test is calibrated at every n measured (false-positive rate about 0.05). Change the report so **CH-LIKE no longer rests on a non-significant KS at low power**. It requires an ALT-fragment count at which the test has useful power, derived from the real-data power curve (about 10% at 5–10 fragments). Evidence on #154.
 
 ## Release and docs infrastructure
 
@@ -453,13 +584,17 @@ string the code emits appears on the page, so the page stays complete.
 
 ## Suggested order
 
-1. **Decisions** (no code): C2, R1's column, R2, I1's reason, I3, I4, S1/S2.
-2. **Count-affecting, measured first:** C1, then C2, C4, R2, R1 — one branch
-   each.
+1. **Decisions: done** (2026-09-25; recorded under each ticket and on its
+   issue). All the recommendations were accepted.
+2. **Count-affecting, measured first:** C10 and C2 first (they share the
+   discrimination window: one branch), then R2, R1, and C1 once its B-vs-C
+   check is in — one branch each otherwise. C1 moved down on 2026-09-25: its
+   originally planned fix did not improve accuracy on real reads, and it
+   affects only the non-default SW backend.
 3. **The decomposition redesign:** C3 with M1's decomposition check and M3.
-4. **Hardening:** I1, I2, C9, M1 (rescue conflicts), M2, O1, H1, H2.
+4. **Hardening:** I1, I2, I3, C9, M1 (rescue conflicts), M2, O1, H1, H2.
 5. **Investigations and enhancements:** C5, C6, C7, C8, P1, then P2, O2, O3,
-   I3, I4, I5 as decided.
+   I4, I5, S1, S2.
 6. **Infrastructure and docs:** D1, D2, D4, D5 and D6 (before the 6.6.0 cut),
    D3, P3. D4 goes early if a dependency release breaks users first.
 
