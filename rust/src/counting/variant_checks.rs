@@ -833,8 +833,8 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
             ) {
                 if sub_seq.len() >= 3 {
                     trace!(
-                        "check_complex: Phase 0 bypass (soft-clips/indels), extracted {} bases",
-                        sub_seq.len()
+                        "check_complex: Phase 0 bypass (soft-clips/indels), extracted {} bases from read {}",
+                        sub_seq.len(), String::from_utf8_lossy(record.qname())
                     );
                     return match backend {
                         AlignmentBackend::SmithWaterman => classify_by_alignment(
@@ -1248,8 +1248,8 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         ) {
             if sub_seq.len() >= 3 {
                 trace!(
-                    "Phase 3 fallback: extracted {} raw bases over [{}, {})",
-                    sub_seq.len(), win_start, win_end
+                    "Phase 3 fallback: extracted {} raw bases over [{}, {}) from read {}",
+                    sub_seq.len(), win_start, win_end, String::from_utf8_lossy(record.qname())
                 );
                 return match backend {
                     AlignmentBackend::SmithWaterman => classify_by_alignment(
