@@ -164,6 +164,44 @@ toward depth only.
 - To confirm: add the read name to the fallback trace, then rerun the
   verification with exact linking on the 40 variants.
 
+**Round 3 (2026-09-25; read names in the trace, #162): 110 of 129 fallback reads linked exactly.**
+
+| Fallback reads | Count | Calls | Against what the read shows |
+|---|---|---|---|
+| Don't span the event (±1) | 77 (70%) | 30 ALT, 10 REF, 37 tie | Unjudgeable: the read doesn't show the whole allele |
+| Span the event | 33 | 23 ALT, 4 REF, 6 tie | ALT 23/23 right, REF 3/4; ties lost 2 ALT and 2 REF reads that had a clear answer |
+
+- 30 of the fallback's 53 ALT calls come from reads that don't span the event.
+- The 8-mer content rule (B) would demote 6 of the 23 true ALT carriers, so it
+  is ruled out as a detector. Round 1's "35% without ALT sequence" came largely
+  from non-spanning reads and detector misses.
+
+**How the standards do it** (VarDictJava and GATK Mutect2 source; see #141):
+- **Neither counts exactly the given allele.**
+  - VarDict matches its own CIGAR-derived allele text, then rescue moves
+    near-matching reads in (soft-clip consensus with up to 3 mismatches).
+    Its REF is a one-base count, and it has no given-allele mode.
+  - Mutect2 credits each read's best haplotype by likelihood, even when the read
+    carries extra events. `--alleles` injects the given allele, so reads carrying
+    an unassembled, slightly different allele can be credited to it.
+- **Mutect2 counts a read if its bases tell the alleles apart**, even when it
+  ends partway through the event. That is option (b) below. It drops
+  uninformative reads from both AD and DP.
+
+**Recommended: (a) REF and ALT only from reads that span the event.**
+- **Option (a)** is symmetric and follows "count the given allele": only a
+  spanning read shows a delins's whole inserted sequence. On these reads it
+  removes 30 ALT and 10 REF calls from non-spanning reads. 3 of those ALT
+  reads keep their fragment's ALT through a spanning mate.
+- **Option (b)**, Mutect2-style, would keep reads that show part of the ALT,
+  which the principle rules out. Counting REF from partial reads while
+  requiring full ALT would bias VAF down.
+- **Spanning ties:** decide them by a full haplotype comparison of the read
+  over the event (edit distance, as the census does), not by 8-mers.
+- **Expected differences:** gbcms REF will be below VarDict's one-base REF at
+  long events and repeats; document this for D5 comparisons against
+  VarDict-called sign-out.
+
 **Effects map (B/C).**
 - **Changes:** `partial_alt`, `any_alt`, `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`.
   C also changes `alt_count`/`ref_count`, the fragment counts, and the
