@@ -62,6 +62,8 @@ before implementation.
 | D2 | Release workflow creates the GitHub Release | M | | #137 |
 | D3 | mkdocs-material 2.0 | L | | #138 |
 | D4 | Dependency upgrade audit: does anything break on current releases? | M | | #139 |
+| D5 | Coverage-driven regression panel (replaces the 56-sample matrix) | M | | #155 |
+| D6 | One QC-flags reference page | M | | #156 |
 
 ## Counting correctness
 
@@ -386,6 +388,60 @@ Rust, `Cargo.toml` vs crates.io — mostly semver-major moves:
 **Acceptance.** A per-dependency table (upgraded / capped / blocked), gates
 green on the upgraded set, and the RC set byte-identical.
 
+### D5 — Coverage-driven regression panel (#155) · M
+**Why.** The HPC 56-sample IMPACT matrix is hand-picked, so it covers only what
+it happened to include. The operator runs the release comparison after 6.6.0
+(deferred from 6.5.0), so it should be a panel chosen for coverage.
+
+**Design.** Tag every signed-out variant in the local cBioPortal dump with the
+strata that exercise distinct code paths:
+- allele shape and size: SNV / DNP / TNP / ONP; insertions and deletions of 1,
+  2–5, 6–19, 20–49 and 50+ bases; delins with and without a shared first base;
+- repeat context of every non-SNV: homopolymer (6+), STR (3+ copies of a 2–6bp
+  unit), unique;
+- co-annotated structure: tract-cluster candidates (length-changing variants
+  within 50bp), same-position multi-allelic rows, SNVs between two indels,
+  homopolymer-twin candidates, FLT3-ITDs;
+- VAF and depth bins; X, Y and MT; REF == ALT and placeholder rows;
+- sample strata: assay (the IMPACT panels, IMPACT-HEME, ACCESS duplex +
+  simplex), MSI-high, TMB ≥ 20.
+
+Start from the existing acceptance samples, then let a greedy set cover pick
+the fewest BAMs that bring every stratum to its target (default 25 variants,
+or 4 samples for sample strata) within a run budget. Genotype each chosen
+sample on all its signed-out variants, and fill a subset's tumor variants into
+their matched normals. A local harness generates the selection (it names
+samples, so it stays local); the operator runs it on HPC.
+
+**Comparison.** Two per run:
+- version against version, every changed cell attributed to a ticket (as the
+  6.5.0 RC check did);
+- gbcms against the sign-out counts, concordance by stratum. The BAM is the
+  truth, so disagreements are adjudicated read by read.
+
+**Acceptance.** A coverage table (every stratum at its target or at the most
+the data has), the comparison scripts, and the panel run on HPC as the 6.6.0
+release gate.
+
+### D6 — One QC-flags reference page (#156) · M
+**Finding.** Every QC flag is documented in `output-formats.md`, but it is
+spread out:
+- the status reasons and ten `gbcms_diagnostic` flags each sit in one large
+  table cell;
+- the ASJD flags have their own subsection, the rescue outcomes live in the
+  `gbcms_rescue` cell, and the VCF equivalents in the INFO section;
+- related signals are on other pages: `rna_editing_site`, `mfsd_ch_flag`,
+  `mfsd_ks_valid`, and the mFSD report's TUMOR-LIKE / CH-LIKE / INSUFFICIENT
+  classes;
+- the glossary has only the status table.
+
+**Direction.** One page, `docs/reference/qc-flags.md`, with a table per family
+(verdict and status reasons; `gbcms_diagnostic`; ASJD; rescue outcomes; QC
+columns; mFSD classes). Each row says when the flag is set, the mode (DNA, RNA,
+opt-in), its MAF column and VCF field, and what to do about it.
+`output-formats.md` and the glossary link to it. A test asserts that every flag
+string the code emits appears on the page, so the page stays complete.
+
 ## Reviewed, no action
 
 - vcf2maf trims case-sensitively; gbcms compares bases case-insensitively (the
@@ -404,8 +460,9 @@ green on the upgraded set, and the RC set byte-identical.
 4. **Hardening:** I1, I2, C9, M1 (rescue conflicts), M2, O1, H1, H2.
 5. **Investigations and enhancements:** C5, C6, C7, C8, P1, then P2, O2, O3,
    I3, I4, I5 as decided.
-6. **Infrastructure and docs:** D1, D2 and D4 (before the 6.6.0 cut), D3, P3.
-   D4 goes early if a dependency release breaks users first.
+6. **Infrastructure and docs:** D1, D2, D4, D5 and D6 (before the 6.6.0 cut),
+   D3, P3. D4 goes early if a dependency release breaks users first.
 
-The 6.6.0 cut is gated on steps 2–4 plus D1, D2 and D4, with the same release-
+The 6.6.0 cut is gated on steps 2–4 plus D1, D2, D4 and D6, and the release
+comparison is the D5 panel run on HPC, with the same release-
 candidate check as 6.5.0: every changed cell attributed to a ticket.

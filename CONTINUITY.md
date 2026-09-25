@@ -40,20 +40,20 @@ RC check (develop vs the 6.4.0 release, every changed cell attributed; harness
   byte-identical, DNA 28/28 runs and RNA 33/33.
 
 **Next → 6.6.0.** The plan is `CYCLE_6.6.0_PLAN.md` on develop (#117). It has
-33 tickets, each with a GitHub issue in the **6.6.0 milestone**, all under the
+35 tickets, each with a GitHub issue in the **6.6.0 milestone**, all under the
 tracking issue **#140**. Grouped work is filed as sub-issues: #92 → #141–#144,
 #112 → #145–#147, #133 → #148–#149, #134 → #150–#152, #135 → #153–#154. The
-other top-level issues are #106, #111, #114 and #119–#139. Start with the operator
+other top-level issues are #106, #111, #114, #119–#139, #155 and #156. Start with the operator
 decisions (C2, R1, R2, I1, I3, I4, S1/S2), then the count-affecting tickets,
 each measured first.
 
-Still open from the 6.5.0 release:
-- The HPC 56-sample IMPACT matrix against 6.4.0 was not run before the tag. Run
-  it against the published `6.5.0` container as a post-release check
-  (`~/test/gbcms/dev_regression/` on HPC). If it feeds VCF input and compares MAF
-  output by `Start_Position`, key it on `vcf_pos`/`vcf_ref`/`vcf_alt` instead.
-- 6.4.0 has no GitHub Release page (optional to add).
-- Optional: a head-to-head against C++ GBCMS 1.2.4/1.2.5 (on HPC).
+Release comparison: the HPC run was not done before the 6.5.0 tag. The operator
+runs it after 6.6.0, on the coverage-driven regression panel (D5, #155) instead
+of the hand-picked 56 samples. The selection harness is local
+(`~/test/gbcms/harness/regression_panel/`, PHI) and the operator carries its
+output to HPC. If a comparison feeds VCF input and compares MAF output by
+`Start_Position`, key it on `vcf_pos`/`vcf_ref`/`vcf_alt` instead. Optional: a
+head-to-head against C++ GBCMS 1.2.4/1.2.5 (on HPC).
 
 ### Previous: code-review remediation
 Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)
