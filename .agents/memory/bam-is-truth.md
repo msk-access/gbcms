@@ -20,7 +20,8 @@ variants by hand and make mistakes (seen locally as garbage alleles like `LU`,
 representations). The truth standard is what IGV shows for the reads. So a
 read census must discover the haplotypes the reads carry, not only match the
 annotated ones, and a recurrent unannotated haplotype is a finding (a missed
-or mis-described allele), not noise.
+or mis-described allele), not noise — a finding for validation and
+diagnostics, never ALT evidence for the row ([[count-the-given-allele]]).
 
 **Why:** stated by the operator 2026-09-23 while reviewing the MNP rescue work
 (T7), after rescue matched sign-out by adopting a germline SNP on ACCESS data.
