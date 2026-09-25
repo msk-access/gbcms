@@ -29,7 +29,7 @@ before implementation.
 
 | ID | Ticket | Pri | Flags | Issue |
 |:--|:--|:-:|:--|:--|
-| C1 | Local-alignment fallback reads stale semiglobal scores | H | [counts] | #141 (#92) |
+| C1 | Partial-ALT evidence in the SW local fallback | L | [counts] [decide] | #141 (#92) |
 | C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [decided] | #119 |
 | C3 | Homopolymer decomposition arbitration redesign | M | [counts] | #111, #145 (#112) |
 | C4 | Reference windows near contig ends | M | [counts] | #142 (#92) |
@@ -68,20 +68,72 @@ before implementation.
 
 ## Counting correctness
 
-### C1 — Local-alignment fallback reads stale semiglobal scores (#141, under #92) · H [counts]
-**Finding.** When the local-alignment fallback triggers (the semiglobal
-alignment is judged unreliable), the REF-branch nearby-evidence check and the
-tie branch still read the semiglobal `alt_aln` / `ref_aln` scores
-(`rust/src/counting/alignment.rs`). That can suppress `partial_alt` evidence
-the local rescore found. Verified still present on 2026-09-25.
-**Direction.** Thread the effective (local) scores into the tail.
-**Measure first.** Count how often the local fallback fires on the real DNA
-and RNA truth sets (a debug counter), and which rows' `partial_alt` would move.
-**Tests.** A read built so the semiglobal alignment is unreliable and the local
-rescore finds nearby evidence: assert `partial_alt`, and the tie outcome, from
-the local scores. The code is shared by both counting paths, so parity holds.
-**Acceptance.** Real-data deltas confined to rows where the fallback fired;
-each adjudicated read by read.
+### C1 — Partial-ALT evidence in the Smith-Waterman local fallback (#141, under #92) · L [counts] [decide]
+**What the code does.** Under the Smith-Waterman backend (`--alignment-backend
+sw`, or its fallback when the default method fails), a read at a *complex*
+variant (both alleles longer than one base, unequal lengths) is classified in
+two tries:
+1. semiglobal alignment of the whole read to the REF and ALT haplotypes;
+2. only when the first try is weak or too close to call, local alignment
+   (which ignores badly matching read ends). This exists for sign-out alleles
+   that are slightly wrong or incomplete.
+
+The second try's scores decide REF / ALT. But the "this read shows some ALT
+evidence" flag, which feeds `partial_alt`, is still computed from the first
+try's discarded scores. That inconsistency is what #92 reported
+(`rust/src/counting/alignment.rs`).
+
+**Measured (2026-09-25; local data, aggregates).**
+- 129 real reads took the second try: 40 signed-out complex variants in 40
+  IMPACT samples, SW backend. Each read was compared with what it carries
+  (ALT- or REF-specific 8-mers).
+- **The originally planned fix (flag from the second try's scores) does not
+  help.** The flag is right for 36 of 67 REF/tie reads today, and for 32 with
+  that fix. Both fail for the same reason: the flag fires when the two scores
+  are *close*, not when the read *contains ALT sequence*. For example, 28 tie
+  reads showing neither allele get flagged.
+- **A second finding.** 22 of the 62 reads the second try calls ALT (35%)
+  carry no ALT-specific sequence, and they count in `alt_count`. Some may carry
+  a real event whose sign-out allele is wrong; others may be noise.
+- **Scope.** The default `pairhmm` backend never reaches this code, and the SW
+  fallback under it fired 0 times on the traced real runs. The affected users
+  are those who choose `--alignment-backend sw`: about 3 reads per complex
+  variant.
+
+**Options.**
+
+| | Change | Measured | Risk |
+|---|---|---|---|
+| A | Flag from the second try's scores (the original plan) | Slightly worse (32 vs 36 correct) | Adds error; ruled out |
+| B | Flag by read content: only when the read carries ALT-specific sequence | Removes the ~31 wrong flags | `partial_alt` drops for complex variants under SW |
+| C | B, plus: second-try ALT calls without ALT sequence become partial, unless reads share a recurring unannotated haplotype there | Also corrects up to 35% of those ALT calls | `alt_count` changes |
+| D | Leave it; document that `partial_alt` is score-based under SW | None | Known inaccuracy stays; ruled out |
+
+**Decision pending: B vs C.** It rests on one verification round:
+1. **Real carrier or noise?** Are the ALT calls without ALT sequence real
+   carriers (they share a recurring unannotated haplotype) or scattered noise?
+2. **Independent check of B.** B was scored with the same 8-mer rule it would
+   use. So each fallback read is linked back to its BAM read and re-judged
+   C2-style: rebuilt across the variant window and matched to REF / ALT /
+   OTHER by edit distance.
+
+**Effects map (B/C).**
+- **Changes:** `partial_alt`, `any_alt`, `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`.
+  C also changes `alt_count`/`ref_count`, the fragment counts, and the
+  REF/ALT-based consumers (observations export, ASJD partitions, mFSD fragment
+  classes). All of it is SW backend only, and identical in the production and
+  legacy paths (shared `classify_by_alignment`).
+- **Unchanged:** the default `pairhmm` path; SNVs and MNPs; MNP rescue (MNPs
+  only); tract-cluster claiming (complex rows exempt).
+
+**Acceptance.** The default backend is byte-identical on the RC set. Under
+SW, version-against-version on the D5 panel's complex variants, with a sample
+of changed reads adjudicated in IGV.
+
+**Priority: L** (was H). The originally planned fix doesn't improve accuracy,
+doing it right needs the verification round, and it affects only a
+non-default backend. C10 and C2 affect every repeat indel and every clustered
+row on the default path, so they go first.
 
 ### C2 — REF fragments at grouped rows (#119) · M [counts] [decided]
 **Finding.** At rows in a multi-allelic or tract-cluster group, the main counts
@@ -495,8 +547,11 @@ string the code emits appears on the page, so the page stays complete.
 
 1. **Decisions: done** (2026-09-25; recorded under each ticket and on its
    issue). All the recommendations were accepted.
-2. **Count-affecting, measured first:** C1, then C10 and C2 (they share the
-   discrimination window: one branch), R2, R1 — one branch each otherwise.
+2. **Count-affecting, measured first:** C10 and C2 first (they share the
+   discrimination window: one branch), then R2, R1, and C1 once its B-vs-C
+   check is in — one branch each otherwise. C1 moved down on 2026-09-25: its
+   originally planned fix did not improve accuracy on real reads, and it
+   affects only the non-default SW backend.
 3. **The decomposition redesign:** C3 with M1's decomposition check and M3.
 4. **Hardening:** I1, I2, I3, C9, M1 (rescue conflicts), M2, O1, H1, H2.
 5. **Investigations and enhancements:** C5, C6, C7, C8, P1, then P2, O2, O3,
