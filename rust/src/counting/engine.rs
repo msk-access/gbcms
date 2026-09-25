@@ -1582,7 +1582,7 @@ fn count_variant_from_cache(
 
     // The allele the reads carry when it is not the given one: diagnostic only
     // (OBSERVED_ALLELE); no count below depends on it.
-    if let Some(o) = observed::observed_allele(read_cache, variant, min_mapq, min_baseq) {
+    if let Some(o) = observed::observed_allele(read_cache, variant, sibling_variants, min_mapq, min_baseq) {
         counts.observed_pos = o.pos + 1;
         counts.observed_ref = o.ref_allele;
         counts.observed_alt = o.alt_allele;

@@ -161,3 +161,20 @@ def test_a_germline_snp_beside_the_event_is_not_named(tmp_path):
     ]
     (row,) = _run(tmp_path, ref, reads + _ref_reads(ref, 10), [SOX2_ROW])
     assert "OBSERVED_ALLELE" not in row["gbcms_diagnostic"]
+
+
+def test_an_allele_already_in_the_input_is_not_named(tmp_path):
+    """C>T and C>G are both input rows; the reads carry G. G is another row of the
+    input, not an allele the input misses, so the C>T row does not name it."""
+    ref = _ref()
+    hap = ref[: RUN + 5] + "G" + ref[RUN + 6 :]
+    carriers = [
+        make_read(f"g{i}", hap[s : s + READ], s, ((0, READ),))
+        for i, s in enumerate(range(240, 255))
+    ]
+    rows = _run(
+        tmp_path, ref, carriers + _ref_reads(ref, 10), [(RUN + 6, "C", "T"), (RUN + 6, "C", "G")]
+    )
+    t_row = next(r for r in rows if r["Tumor_Seq_Allele2"] == "T")
+    assert "MULTI_ALLELIC" in t_row["gbcms_status_reason"]
+    assert "OBSERVED_ALLELE" not in t_row["gbcms_diagnostic"]

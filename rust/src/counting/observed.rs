@@ -11,8 +11,9 @@
 //! is anchored. The flank itself is not compared, so a germline SNP beside the
 //! event is not an allele of this row. Reads with a base below min BQ in the core
 //! are skipped: the quality contract the classifiers use. Identical core
-//! sequences are counted; the most frequent one that is neither REF nor the
-//! given ALT is named when enough reads carry it exactly.
+//! sequences are counted; the most frequent one that is neither REF, the given
+//! ALT, nor a co-annotated sibling's ALT (already an input row) is named when
+//! enough reads carry it exactly.
 
 use std::collections::HashMap;
 
@@ -46,6 +47,7 @@ pub(crate) struct ObservedAllele {
 pub(crate) fn observed_allele(
     read_cache: &[Record],
     variant: &Variant,
+    siblings: &[Variant],
     min_mapq: u8,
     min_baseq: u8,
 ) -> Option<ObservedAllele> {
@@ -57,10 +59,9 @@ pub(crate) fn observed_allele(
     if variant.pos < core_lo || variant.pos + variant.ref_allele.len() as i64 > core_hi {
         return None;
     }
-    let vp = (variant.pos - core_lo) as usize;
-    let mut alt_core = ref_core[..vp].to_vec();
-    alt_core.extend(variant.alt_allele.bytes().map(|b| b.to_ascii_uppercase()));
-    alt_core.extend_from_slice(&ref_core[vp + variant.ref_allele.len()..]);
+    let alt_core = apply_to_core(&ref_core, core_lo, variant)?;
+    // Alleles already in the input: co-annotated siblings that fall inside the core.
+    let known: Vec<Vec<u8>> = siblings.iter().filter_map(|s| apply_to_core(&ref_core, core_lo, s)).collect();
 
     let (a_lo, a_hi) = (core_lo - FLANK, core_hi + FLANK);
     let mut seen: HashMap<Vec<u8>, u32> = HashMap::new();
@@ -85,7 +86,7 @@ pub(crate) fn observed_allele(
     // Most carriers first; ties broken by sequence so the choice is stable.
     let (best, &n) = seen
         .iter()
-        .filter(|(s, _)| **s != ref_core && **s != alt_core)
+        .filter(|(s, _)| **s != ref_core && **s != alt_core && !known.contains(*s))
         .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)))?;
     if n < MIN_CARRIERS || n <= given || (n as f64) < MIN_FRACTION * scanned as f64 {
         return None;
@@ -98,6 +99,24 @@ pub(crate) fn observed_allele(
         carriers: n,
         given_carriers: given,
     })
+}
+
+/// The core with `v`'s ALT applied, or None when `v`'s REF does not lie inside
+/// the core or does not match it.
+fn apply_to_core(ref_core: &[u8], core_lo: i64, v: &Variant) -> Option<Vec<u8>> {
+    let start = v.pos - core_lo;
+    let end = start + v.ref_allele.len() as i64;
+    if start < 0 || end as usize > ref_core.len() {
+        return None;
+    }
+    let (start, end) = (start as usize, end as usize);
+    if !ref_core[start..end].eq_ignore_ascii_case(v.ref_allele.as_bytes()) {
+        return None;
+    }
+    let mut out = ref_core[..start].to_vec();
+    out.extend(v.alt_allele.bytes().map(|b| b.to_ascii_uppercase()));
+    out.extend_from_slice(&ref_core[end..]);
+    Some(out)
 }
 
 /// Trim shared trailing then leading bases, keeping one base in each allele
