@@ -24,6 +24,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Lint-tool version skew (local vs CI)](black-version-skew-venv-vs-ci.md) — venv black 25.9 lags CI 26.5 (rustc caught up to 1.96 on 2026-09-23); run CI's versions before trusting a clean/drift result.
 - [Worktree tests need an isolated venv](worktree-tests-need-isolated-venv.md) — the shared .venv imports the MAIN checkout's gbcms; in a worktree build a scratch venv + maturin develop or tests exercise the wrong code.
 - [maturin develop: repo root only](maturin-develop-repo-root-only.md) — `-m rust/Cargo.toml` bypasses [tool.maturin] and leaves a stale src/gbcms/_rs.so shadowing every rebuild.
+- [No `timeout` on this Mac](macos-no-timeout-command.md) — `timeout N cmd && ok || fail` always says fail; check SFTP mounts with a plain read.
 - [Legacy count_bam parity oracle](legacy-parity-oracle.md) — feature-gated (`legacy-parity`, default on); shipped wheel omits it; mirror binned-path changes in both or parity breaks.
 
 ## Validation / testing
