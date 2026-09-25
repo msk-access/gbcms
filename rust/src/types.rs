@@ -32,12 +32,21 @@ pub struct Variant {
     /// None in DNA mode — zero cost, no branching impact.
     #[pyo3(get, set)]
     pub gene_strand: Option<char>,
+
+    /// For a pure indel: the 0-based half-open reference interval it slides
+    /// over without changing the haplotype (its shift-equivalence region; see
+    /// `counting::window`). Prep measures it over its own reference fetch,
+    /// sized to the event, so a long duplication or tract is not cut at the
+    /// edge of `ref_context`. None otherwise; counting then slides over
+    /// `ref_context`.
+    #[pyo3(get, set)]
+    pub shift_region: Option<(i64, i64)>,
 }
 
 #[pymethods]
 impl Variant {
     #[new]
-    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0, gene_strand=None))]
+    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0, gene_strand=None, shift_region=None))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         chrom: String,
@@ -49,6 +58,7 @@ impl Variant {
         ref_context_start: i64,
         repeat_span: usize,
         gene_strand: Option<char>,
+        shift_region: Option<(i64, i64)>,
     ) -> Self {
         Variant {
             chrom,
@@ -60,6 +70,7 @@ impl Variant {
             ref_context_start,
             repeat_span,
             gene_strand,
+            shift_region,
         }
     }
 }

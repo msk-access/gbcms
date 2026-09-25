@@ -433,6 +433,7 @@ mod tests {
             ref_context_start: ctx_start,
             repeat_span: 0,
             gene_strand: None,
+            shift_region: None,
         }
     }
 
@@ -473,6 +474,7 @@ mod tests {
             ref_context_start: 0,
             repeat_span: 0,
             gene_strand: None,
+            shift_region: None,
         };
         assert!(build_haplotype_matrix(&v, &[]).is_none());
     }

@@ -130,6 +130,13 @@ pub struct ClassifyResult {
     /// backend, where SW is the chosen scorer. Counted per variant (DP reads
     /// only) as `BaseCounts::sw_fallback_reads`.
     pub sw_fallback: bool,
+    /// Whether a REF call on a pure indel was withdrawn because the read
+    /// cannot tell the alleles apart: it starts or ends inside the event's
+    /// shift region (`window::read_is_informative`). Such a read counts
+    /// toward depth only. The sibling REF guard still checks it (a sibling's
+    /// allele it carries is partial evidence here), and a fragment whose reads
+    /// are all like this is left out of the mFSD classes.
+    pub ref_uninformative: bool,
 }
 
 impl ClassifyResult {
@@ -154,6 +161,7 @@ impl ClassifyResult {
             covers_locus: true,
             mnp_confirmed: false,
             sw_fallback: false,
+            ref_uninformative: false,
         }
     }
 

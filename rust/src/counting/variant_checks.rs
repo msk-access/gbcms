@@ -2667,6 +2667,7 @@ mod tests {
             ref_context_start,
             repeat_span: 0,
             gene_strand: None,
+            shift_region: None,
         }
     }
 

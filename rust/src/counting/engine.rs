@@ -52,6 +52,7 @@ use bio::alignment::distance::levenshtein;
 use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
+use super::window;
 use crate::shared::baq::apply_heuristic_baq;
 
 
@@ -1602,6 +1603,9 @@ fn count_variant_from_cache(
     };
     let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
     let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    // Siblings whose change lies inside this row's discrimination window:
+    // the only ones whose carriers the REF guard excludes.
+    let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
 
     // Per-phase classification counters
     let mut phase_counts = [0u32; 5];
@@ -1727,7 +1731,6 @@ fn count_variant_from_cache(
             continue;
         }
 
-        let is_ref = result.is_ref;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
         tally_clip_candidate(&mut counts, record, variant, first_class);
@@ -1742,15 +1745,26 @@ fn count_variant_from_cache(
             record, variant, &result, sibling_variants, effective_quals, min_baseq,
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
+        // ── MULTI-ALLELIC REF GUARD: a REF read that is ALT for a sibling
+        // whose change lies inside this row's discrimination window is the
+        // sibling's molecule. Excluded here, beside the AD guard, so RD and
+        // RDF drop the same molecules; recorded as partial_alt/any_alt below.
+        let ref_claimed_by_sibling = sibling_claims_ref(
+            record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
+            &mut alt_aligner, &mut ref_aligner, backend,
+        );
+        let is_ref = result.is_ref && !ref_claimed_by_sibling;
         // One line per classified read, named, so a count can be traced back to
         // the reads behind it (read-level validation against the BAM).
         trace!(
-            "read call {}:{} {}>{} read={} mate={} ref={} alt={} phase={:?} partial={} nearby={} sibling_claimed={}",
+            "read call {}:{} {}>{} read={} mate={} ref={} alt={} phase={:?} partial={} nearby={} \
+             sibling_claimed={} ref_sibling_claimed={} uninformative={}",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
             String::from_utf8_lossy(record.qname()),
             if record.is_first_in_template() { 1 } else { 2 },
             is_ref, is_alt, result.phase, result.partial_match_count,
-            result.has_nearby_evidence, claimed_by_sibling,
+            result.has_nearby_evidence, claimed_by_sibling, ref_claimed_by_sibling,
+            result.ref_uninformative,
         );
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
@@ -1850,7 +1864,8 @@ fn count_variant_from_cache(
         // (base_qual==0 && !is_ref && !is_alt) which could mis-classify
         // true third-allele reads with qual=0 as N-class fragments.
         let tlen = mfsd::calc_physical_insert_size(record);
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+        let informative = !result.ref_uninformative || ref_claimed_by_sibling;
+        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);
 
         // Secondary/supplementary records end here: they are fragment evidence
         // only. Every counter below (n_count, any_alt/partial_alt, RD/AD,
@@ -1886,14 +1901,15 @@ fn count_variant_from_cache(
         // sequences (e.g., PAX5 A>CCC) that were previously lost as silent REF calls.
         if !is_ref && !is_alt {
             // Check for partial ALT evidence before skipping. A read whose
-            // ALT match was claimed by a sibling is partial evidence
+            // ALT or REF call was claimed by a sibling is partial evidence
             // for this row: the molecule carries a variant in this tract but
             // belongs to the sibling's representation.
-            if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
+            let sibling_claimed = claimed_by_sibling || ref_claimed_by_sibling;
+            if result.partial_match_count > 0 || result.has_nearby_evidence || sibling_claimed {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
                 trace!("partial_alt++: partial_match={} nearby_evidence={} sibling_claimed={} (any_alt={}, partial_alt={})",
-                    result.partial_match_count, result.has_nearby_evidence, claimed_by_sibling,
+                    result.partial_match_count, result.has_nearby_evidence, sibling_claimed,
                     counts.any_alt, counts.partial_alt);
             }
             continue;
@@ -1911,43 +1927,6 @@ fn count_variant_from_cache(
         }
 
         if is_ref {
-            // Multi-allelic guard: if this read is classified as ALT for any
-            // sibling variant at this locus, don't count it as REF for this
-            // variant. This handles overlapping indels/complex variants where
-            // a read carrying one variant's ALT could be miscounted as REF
-            // for another variant at the same locus.
-            if !sibling_variants.is_empty() {
-                let mut is_sibling_alt = false;
-                for sib in sibling_variants {
-                    let sib_result = check_allele_with_qual(
-                        record, sib, &[], effective_quals, min_baseq,
-                        &mut alt_aligner, &mut ref_aligner, backend,
-                    );
-                    if sib_result.is_alt {
-                        trace!(
-                            "Multi-allelic guard: read is ALT for sibling {}>{} at {}:{}, \
-                             excluding from REF for {}>{}",
-                            sib.ref_allele, sib.alt_allele,
-                            variant.chrom, variant.pos + 1,
-                            variant.ref_allele, variant.alt_allele,
-                        );
-                        is_sibling_alt = true;
-                        break;
-                    }
-                }
-                if is_sibling_alt {
-                    // The molecule carries a sibling's allele in this tract:
-                    // structural evidence of a DIFFERENT allele, same category
-                    // as the wrong-length rule — surface it as partial_alt
-                    // rather than dropping it silently (it stays out of rd).
-                    // Skip if the nearby-evidence block above already counted it.
-                    if !result.has_nearby_evidence {
-                        counts.any_alt += 1;
-                        counts.partial_alt += 1;
-                    }
-                    continue;
-                }
-            }
             counts.rd += 1;
             if is_reverse { counts.rd_rev += 1; } else { counts.rd_fwd += 1; }
         } else if is_alt {
@@ -2100,9 +2079,11 @@ fn count_variant_from_cache(
                     alt_sizes.push(sz_f);
                 } else if evidence.has_n_base {
                     n_sizes.push(sz_f);
-                } else {
+                } else if evidence.has_informative_read {
                     nonref_sizes.push(sz_f);
                 }
+                // Otherwise every read ended inside the indel's repeat tract:
+                // the molecule carries no readable allele, so no class.
             }
         }
     }
@@ -2225,6 +2206,9 @@ fn count_single_variant(
     // ALT + REF: Same affine gap penalties for fair comparison.
     let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
     let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    // Siblings whose change lies inside this row's discrimination window:
+    // the only ones whose carriers the REF guard excludes.
+    let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
 
     // Per-phase classification counters
     // Indices: 0=Structural, 1=CigarRecon, 2=MaskedCompare, 3=Levenshtein, 4=Alignment
@@ -2321,7 +2305,6 @@ fn count_single_variant(
             continue;
         }
 
-        let is_ref = result.is_ref;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
         tally_clip_candidate(&mut counts, &record, variant, first_class);
@@ -2335,6 +2318,12 @@ fn count_single_variant(
             &record, variant, &result, sibling_variants, effective_quals, min_baseq,
         );
         let is_alt = result.is_alt && !claimed_by_sibling;
+        // ── MULTI-ALLELIC REF GUARD: mirrors the binned path.
+        let ref_claimed_by_sibling = sibling_claims_ref(
+            &record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
+            &mut alt_aligner, &mut ref_aligner, backend,
+        );
+        let is_ref = result.is_ref && !ref_claimed_by_sibling;
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends
@@ -2425,7 +2414,8 @@ fn count_single_variant(
         // mis-classified true third-allele reads as N-class.
         let is_n_base = result.has_n_base;
 
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq());
+        let informative = !result.ref_uninformative || ref_claimed_by_sibling;
+        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq(), informative);
 
         // Secondary/supplementary records end here: fragment evidence only —
         // read-level counters below are defined over the first-class read set
@@ -2444,9 +2434,10 @@ fn count_single_variant(
         // - Neither/REF with no evidence: no any_alt/partial_alt change
         if !is_ref && !is_alt {
             // Check for partial ALT evidence before skipping. A sibling-claimed
-            // ALT match is partial evidence for this row (see the binned
-            // path).
-            if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
+            // ALT or REF call is partial evidence for this row (see the
+            // binned path).
+            let sibling_claimed = claimed_by_sibling || ref_claimed_by_sibling;
+            if result.partial_match_count > 0 || result.has_nearby_evidence || sibling_claimed {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
             }
@@ -2460,42 +2451,6 @@ fn count_single_variant(
         }
 
         if is_ref {
-            // Multi-allelic guard: if this read is classified as ALT for any
-            // sibling variant at this locus, don't count it as REF for this
-            // variant. This handles overlapping indels/complex variants where
-            // a read carrying one variant's ALT could be miscounted as REF
-            // for another variant at the same locus.
-            if !sibling_variants.is_empty() {
-                let mut is_sibling_alt = false;
-                for sib in sibling_variants {
-                    let sib_result = check_allele_with_qual(
-                        &record, sib, &[], effective_quals, min_baseq,
-                        &mut alt_aligner, &mut ref_aligner, backend,
-                    );
-                    let sib_alt = sib_result.is_alt;
-                    if sib_alt {
-                        trace!(
-                            "Multi-allelic guard: read is ALT for sibling {}>{} at {}:{}, \
-                             excluding from REF for {}>{}",
-                            sib.ref_allele, sib.alt_allele,
-                            variant.chrom, variant.pos + 1,
-                            variant.ref_allele, variant.alt_allele,
-                        );
-                        is_sibling_alt = true;
-                        break;
-                    }
-                }
-                if is_sibling_alt {
-                    // Distinct-allele evidence (see binned path): out of rd,
-                    // surfaced as partial rather than dropped silently —
-                    // unless the nearby-evidence block already counted it.
-                    if !result.has_nearby_evidence {
-                        counts.any_alt += 1;
-                        counts.partial_alt += 1;
-                    }
-                    continue;
-                }
-            }
             counts.rd += 1;
             if is_reverse {
                 counts.rd_rev += 1;
@@ -2611,10 +2566,12 @@ fn count_single_variant(
                 } else if evidence.has_n_base {
                     // N class: ambiguous base at variant position
                     n_sizes.push(sz_f);
-                } else {
+                } else if evidence.has_informative_read {
                     // NonREF class: definite non-ref, non-alt, non-N base
                     nonref_sizes.push(sz_f);
                 }
+                // Otherwise no read could tell the alleles apart: no class
+                // (mirrors the binned path).
             }
         }
     }
@@ -2732,6 +2689,48 @@ fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
             *b = 0;
         }
     }
+}
+
+/// Whether a read classified REF for `variant` (or whose REF call was
+/// withdrawn as uninformative) is ALT for a co-annotated sibling whose change
+/// lies inside `variant`'s discrimination window
+/// (`window_siblings`, from `window::siblings_in_window`). Such a read
+/// carries a different allele where this row's REF is read, so it is not REF
+/// testimony here. A carrier of a sibling elsewhere in the group shows the
+/// reference across every base that could tell this row's alleles apart, and
+/// stays REF (as IGV shows it, and as GATK counts REF at a site unless an
+/// event overlaps it). Callers apply this before fragment evidence, so REF
+/// reads and REF fragments exclude the same molecules.
+#[allow(clippy::too_many_arguments)]
+fn sibling_claims_ref<F: Fn(u8, u8) -> i32>(
+    record: &Record,
+    variant: &Variant,
+    result: &ClassifyResult,
+    window_siblings: &[&Variant],
+    quals: &[u8],
+    min_baseq: u8,
+    alt_aligner: &mut Aligner<F>,
+    ref_aligner: &mut Aligner<F>,
+    backend: &AlignmentBackend,
+) -> bool {
+    if !result.is_ref && !result.ref_uninformative {
+        return false;
+    }
+    for sib in window_siblings {
+        let sib_result = check_allele_with_qual(
+            record, sib, &[], quals, min_baseq, alt_aligner, ref_aligner, backend,
+        );
+        if sib_result.is_alt {
+            trace!(
+                "Multi-allelic guard: read is ALT for sibling {}>{} at {}:{} inside the \
+                 window of {}>{} — excluded from its REF",
+                sib.ref_allele, sib.alt_allele, sib.chrom, sib.pos + 1,
+                variant.ref_allele, variant.alt_allele,
+            );
+            return true;
+        }
+    }
+    false
 }
 
 fn sibling_claims_alt(
@@ -2910,6 +2909,26 @@ fn warn_sw_fallback(variant: &Variant, n: u32) {
     }
 }
 
+/// A REF call on an insertion or deletion stands only when the read is
+/// informative (`window::read_is_informative`). A read that starts or ends
+/// inside the repeat tract matches both alleles (the aligner places no gap
+/// either way), so it counts toward depth and fragment depth but is neither
+/// REF nor ALT. The anchor quality and any nearby-indel evidence are kept.
+fn ref_needs_the_window(record: &Record, variant: &Variant, mut result: ClassifyResult) -> ClassifyResult {
+    if result.is_ref && !window::read_is_informative(record, variant) {
+        trace!(
+            "{}:{} {}>{}: read {}..{} spans neither informative window {:?} \
+             — uninformative, not REF",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+            record.pos(), read_ref_end(record), window::informative_windows(variant),
+        );
+        result.is_ref = false;
+        result.is_structural = false;
+        result.ref_uninformative = true;
+    }
+    result
+}
+
 /// Check if a read supports the reference or alternate allele.
 /// Returns `ClassifyResult` containing (is_ref, is_alt, base_quality, phase)
 /// where base_quality is the quality score at the variant position
@@ -3008,7 +3027,8 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         }
     } else if ref_len == 1 {
         // Pure insertion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
-        check_insertion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        let result = check_insertion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+        ref_needs_the_window(record, variant, result)
     } else if alt_len == 1 {
         // Distinguish pure deletion (anchor base preserved) from complex Del+SNV
         // (anchor base also substituted, e.g. GC→T where G is both the anchor
@@ -3042,7 +3062,8 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
 
         if anchor_preserved {
             // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
-            check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+            let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+            ref_needs_the_window(record, variant, result)
         } else {
             // Complex Del+SNV: anchor base also substituted — route to Phase 3
             trace!(
@@ -3163,6 +3184,7 @@ fn count_per_transcript(
         // Fresh aligners per transcript to avoid cross-contamination
         let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
         let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+        let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
 
         for record in read_cache {
             // ── Overlap check: does this read overlap the variant window?
@@ -3250,32 +3272,23 @@ fn count_per_transcript(
 
             // ── Multi-allelic guards (the main engine's read-level rules): an
             // ALT match won by a sibling is excluded from tx_ad and from
-            // ALT fragment evidence; a REF-classified read that is ALT for
-            // a sibling is excluded from tx_rd (its ALT lies outside this
-            // variant's span, so REF testimony here is vacuous). Both still
-            // count tx_dp. Unlike the main counts, which record the fragment
-            // as REF before their REF-side guard runs, the REF exclusion here
-            // happens first, so it also leaves the transcript's REF fragments.
+            // ALT fragment evidence; a REF-classified read that is ALT for a
+            // sibling whose change lies inside this variant's discrimination
+            // window is excluded from tx_rd and from REF fragment evidence.
+            // Both still count tx_dp.
             let claimed_by_sibling = sibling_claims_alt(
                 record, variant, &result, sibling_variants, effective_quals, min_baseq,
             );
             let is_alt = result.is_alt && !claimed_by_sibling;
-            let mut is_ref = result.is_ref;
-            if is_ref && !sibling_variants.is_empty() {
-                for sib in sibling_variants {
-                    let sib_result = check_allele_with_qual(
-                        record, sib, &[], effective_quals, min_baseq,
-                        &mut alt_aligner, &mut ref_aligner, backend,
-                    );
-                    if sib_result.is_alt {
-                        is_ref = false;
-                        break;
-                    }
-                }
-            }
+            let ref_claimed_by_sibling = sibling_claims_ref(
+                record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
+                &mut alt_aligner, &mut ref_aligner, backend,
+            );
+            let is_ref = result.is_ref && !ref_claimed_by_sibling;
+            let informative = !result.ref_uninformative || ref_claimed_by_sibling;
 
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-            evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+            evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);
 
             if first_class {
                 if is_ref {
@@ -4122,6 +4135,7 @@ mod tests {
             ref_context_start: 0,
             repeat_span: 0,
             gene_strand: None,
+            shift_region: None,
         }
     }
 
@@ -4791,6 +4805,7 @@ mod tests {
             ref_context_start: ctx_start,
             repeat_span: 0,
             gene_strand: None,
+            shift_region: None,
         }
     }
 

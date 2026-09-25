@@ -17,6 +17,24 @@ regenerating a section.
 
 ---
 
+## [LRN-20260925-001] rule-body | a census finding is not ALT evidence
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** For C1 I proposed option C: turn fallback ALT calls without ALT sequence
+  into partial, *unless* reads share a recurring unannotated haplotype. That exception
+  credits a mis-described event to the row's ALT (deconvolution). `bam-is-truth` said a
+  recurrent unannotated haplotype "is a finding" without saying it must never count
+  for the row, and no invariant stated that gbcms counts only the given allele. The
+  operator restated the principle: input is taken as correct, results are accurate for
+  it, caveats go to the status-reason and diagnostic columns.
+- **Promotion target:** `AGENTS.md` invariant 7 "Count the given allele";
+  `.agents/memory/bam-is-truth.md` clarifies that a finding is never ALT evidence; new
+  memory `count-the-given-allele.md`; `CYCLE_6.6.0_PLAN.md` C1 drops the exception,
+  and C3 is re-scoped to report the given allele, with the default-on decomposition
+  as an open decision.
+
+---
+
 ## [LRN-20260923-002] rule-body | reproduce a claim before stating it
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

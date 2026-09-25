@@ -37,6 +37,10 @@ native Parquet, Rayon per-bin parallelism. Full module map: `.agents/rules/archi
    `#[pyo3(signature)]` params exactly. (There is no second stub — the old top-level
    `src/gbcms_rs.pyi` mirrored a module that isn't imported and was removed in LO-1.)
 6. **mFSD/RNA columns are gated** — absent when off, never NA-filled.
+7. **Count the given allele.** Input alleles are taken as correct: never credit a read
+   to a row's ALT unless it carries that ALT, and never infer what a wrong input
+   "should" be. Explain mismatches via `gbcms_status_reason` / `gbcms_diagnostic`.
+   Opt-in rescues (`--rescue-mnp`) are the only exception.
 
 ## Counting test invariants (assert in every counting test)
 ```python

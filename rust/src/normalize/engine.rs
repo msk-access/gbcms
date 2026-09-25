@@ -15,6 +15,7 @@ use super::types::PreparedVariant;
 use super::decomp::check_homopolymer_decomp;
 use super::left_align::left_align_variant;
 use super::fasta::{fetch_region, resolve_maf_anchor, validate_ref};
+use crate::counting::window;
 use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_offset};
 
 /// Prepare variants for counting in a single pass over the reference FASTA.
@@ -387,6 +388,41 @@ fn variant_type_for(ref_al: &str, alt_al: &str) -> &'static str {
 /// Process a single variant through the full preparation pipeline.
 ///
 /// Steps: MAF anchor → validate REF → left-align → adaptive context → fetch ref_context.
+/// A pure indel's shift-equivalence region (see `counting::window`), measured
+/// over a reference fetch sized to the event: 256bp each side, doubled while
+/// the slide reaches the fetch's edge, up to 16kb. `ref_context` is padded for
+/// the repeat finder's 1-6bp motifs, so a duplication longer than that pad (an
+/// ITD) would be cut at its edge. None for other variants, or when the fetch
+/// fails; counting then slides over `ref_context`, which can only narrow it.
+fn indel_shift_region(
+    reader: &mut fasta::IndexedReader<File>,
+    chrom: &str,
+    pos: i64,
+    ref_al: &str,
+    alt_al: &str,
+) -> Option<(i64, i64)> {
+    if !window::is_pure_indel(ref_al, alt_al) {
+        return None;
+    }
+    let mut pad: i64 = 256;
+    loop {
+        let lo = (pos - pad).max(0);
+        let hi = pos + ref_al.len() as i64 + pad;
+        let seq = fetch_region(reader, chrom, lo as u64, hi as u64).ok()?;
+        let end = lo + seq.len() as i64;
+        let (a, b) = window::shift_region_over(pos, ref_al, alt_al, |g| {
+            (g >= lo && g < end).then(|| seq[(g - lo) as usize].to_ascii_uppercase())
+        });
+        // A slide stopped by the fetch's edge is the region's true end only at
+        // a contig start (lo = 0) or a contig end (the fetch came back short).
+        let cut = (a <= lo && lo > 0) || (b >= end && end == hi);
+        if !cut || pad >= 16_384 {
+            return Some((a, b));
+        }
+        pad *= 2;
+    }
+}
+
 fn prepare_single_variant(
     reader_result: &mut Result<fasta::IndexedReader<File>, anyhow::Error>,
     variant: &Variant,
@@ -530,6 +566,7 @@ fn prepare_single_variant(
                 ref_context_start: 0,
                 repeat_span: 0,
                 gene_strand: None,
+                shift_region: None,
             },
             gbcms_status: verdict,
             gbcms_status_reason: reason,
@@ -565,6 +602,7 @@ fn prepare_single_variant(
                 ref_context_start: 0,
                 repeat_span: 0,
                 gene_strand: None,
+                shift_region: None,
             },
             gbcms_status: "FAIL".to_string(),
             gbcms_status_reason: "ALT_CONTAINS_N".to_string(),
@@ -768,6 +806,7 @@ fn prepare_single_variant(
                     // explains and corrected no outcome, so it is not given one.
                     repeat_span: 0,
                     gene_strand: None,
+                    shift_region: None,
                 }
             })
         })
@@ -791,6 +830,8 @@ fn prepare_single_variant(
         0
     };
 
+    let shift_region = indel_shift_region(reader, &variant.chrom, pos, &ref_al, &alt_al);
+
     Ok(PreparedVariant {
         variant: Variant {
             chrom: variant.chrom.clone(),
@@ -802,6 +843,7 @@ fn prepare_single_variant(
             ref_context_start,
             repeat_span: variant_repeat_span,
             gene_strand: None,
+            shift_region,
         },
         gbcms_status: "PASS".to_string(),
         // Carry any WARN_REF_CORRECTED from validate_ref (empty otherwise). A later

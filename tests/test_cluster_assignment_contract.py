@@ -200,16 +200,23 @@ def test_cluster_sum_bounded_by_distinct_molecules(tmp_path):
 
 def test_tract_mate_carriers_surface_as_partial(tmp_path):
     """A tract-mate's carriers are structural indel evidence of a DIFFERENT
-    allele: they must surface in partial_alt (not vanish, not count REF)."""
+    allele: they must surface in partial_alt (not vanish, not count REF).
+
+    Row A's discrimination window is 299-303. B's deletion (302-304) lies in
+    it; C's same-sequence deletion (304-305) is claimed for A by the AD guard
+    and demoted. D's deletion (308-309) lies outside: its carriers show the
+    reference across A's window, so they are REF for A (as IGV shows them).
+    """
     ref, rows, reads = _cluster_setup(tmp_path)
     res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
     r_a = res[D_A + 1]
     # carriers of B and C (6+4) are distinct-allele evidence for row A
     assert (
-        int(r_a["partial_alt"]) >= 10
+        int(r_a["partial_alt"]) == 10
     ), f"tract-mate carriers must appear as partial for row A, got {r_a['partial_alt']}"
-    # and they never count REF for row A
-    assert int(r_a["ref_count"]) == 10, f"only true WT reads count REF, got {r_a['ref_count']}"
+    # 10 WT reads plus D's 3 carriers; reads and fragments agree
+    assert int(r_a["ref_count"]) == 13, f"WT + D carriers count REF, got {r_a['ref_count']}"
+    assert int(r_a["ref_count_fragment"]) == 13
 
 
 def test_distant_same_alleles_unaffected(tmp_path):

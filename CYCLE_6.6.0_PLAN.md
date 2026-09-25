@@ -39,6 +39,7 @@ before implementation.
 | C8 | One-base-REF delins without a shared anchor | L | [counts] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] | #157 |
+| C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] | #159 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
@@ -106,8 +107,16 @@ try's discarded scores. That inconsistency is what #92 reported
 |---|---|---|---|
 | A | Flag from the second try's scores (the original plan) | Slightly worse (32 vs 36 correct) | Adds error; ruled out |
 | B | Flag by read content: only when the read carries ALT-specific sequence | Removes the ~31 wrong flags | `partial_alt` drops for complex variants under SW |
-| C | B, plus: second-try ALT calls without ALT sequence become partial, unless reads share a recurring unannotated haplotype there | Also corrects up to 35% of those ALT calls | `alt_count` changes |
+| C | B, plus: second-try ALT calls without ALT sequence become partial | Also corrects up to 35% of those ALT calls | `alt_count` changes |
 | D | Leave it; document that `partial_alt` is score-based under SW | None | Known inaccuracy stays; ruled out |
+
+**Principle (operator, 2026-09-25): count the given allele.** A read counts ALT only
+if it carries the given ALT. A recurring unannotated haplotype is a diagnostic
+finding (`PARTIAL_DOMINANT` already surfaces heavy partial evidence), never ALT
+for the row. This removes the exception C originally had ("unless reads share a
+recurring unannotated haplotype"), and makes C the principled option: the local
+fallback exists to credit reads when the sign-out allele is slightly wrong,
+which is the deconvolution the principle rules out.
 
 **Decision pending: B vs C.** It rests on a verification round with two
 questions:
@@ -136,6 +145,112 @@ questions:
 - Report how many fallback reads are uninformative under C10's rule. If most
   are, C10 already settles them (depth only), and the B-vs-C question shrinks
   to the reads that span the event.
+
+**Round 2 (2026-09-25): points to a different fix.**
+- **Linking still fails for most reads:** 24 of 129 linked. The trace prints
+  only the read's sequence over the variant window, which many reads share, so
+  exact linking needs the read name in the trace line.
+- **Of the 24 linked, 16 do not span the event ±1.** The local fallback fires
+  mostly on reads that end in or at the event.
+- **A pure k-mer rule would demote real carriers:** 1 ALT call without an
+  ALT-specific 8-mer was judged ALT by the census.
+
+**Recommended direction (replaces B vs C).** Apply C10's rule to complex
+variants: a read is REF or ALT only if it spans the whole event (span ±1).
+Under "count the given allele", only such a read can carry the given ALT, and
+only such a read can rule it out. Reads that end inside the event count
+toward depth only.
+- This settles most fallback reads, whose local-alignment rescue is then moot.
+- The `partial_alt` flag for spanning reads follows what the read contains.
+- To confirm: add the read name to the fallback trace, then rerun the
+  verification with exact linking on the 40 variants.
+
+**Round 3 (2026-09-25; read names in the trace, #162): 110 of 129 fallback reads linked exactly.**
+
+| Fallback reads | Count | Calls | Against what the read shows |
+|---|---|---|---|
+| Don't span the event (±1) | 77 (70%) | 30 ALT, 10 REF, 37 tie | Unjudgeable: the read doesn't show the whole allele |
+| Span the event | 33 | 23 ALT, 4 REF, 6 tie | ALT 23/23 right, REF 3/4; ties lost 2 ALT and 2 REF reads that had a clear answer |
+
+- 30 of the fallback's 53 ALT calls come from reads that don't span the event.
+- The 8-mer content rule (B) would demote 6 of the 23 true ALT carriers, so it
+  is ruled out as a detector. Round 1's "35% without ALT sequence" came largely
+  from non-spanning reads and detector misses.
+
+**How the standards do it** (VarDictJava and GATK Mutect2 source; see #141):
+- **Neither counts exactly the given allele.**
+  - VarDict matches its own CIGAR-derived allele text, then rescue moves
+    near-matching reads in (soft-clip consensus with up to 3 mismatches).
+    Its REF is a one-base count, and it has no given-allele mode.
+  - Mutect2 credits each read's best haplotype by likelihood, even when the read
+    carries extra events. `--alleles` injects the given allele, so reads carrying
+    an unassembled, slightly different allele can be credited to it.
+- **Mutect2 counts a read if its bases tell the alleles apart**, even when it
+  ends partway through the event. That is option (b) below. It drops
+  uninformative reads from both AD and DP.
+
+**Recommended: (a) REF and ALT only from reads that span the event.**
+- **Option (a)** is symmetric and follows "count the given allele": only a
+  spanning read shows a delins's whole inserted sequence. On these reads it
+  removes 30 ALT and 10 REF calls from non-spanning reads. 3 of those ALT
+  reads keep their fragment's ALT through a spanning mate.
+- **Option (b)**, Mutect2-style, would keep reads that show part of the ALT,
+  which the principle rules out. Counting REF from partial reads while
+  requiring full ALT would bias VAF down.
+- **Spanning ties:** decide them by a full haplotype comparison of the read
+  over the event (edit distance, as the census does), not by 8-mers.
+- **Expected differences:** gbcms REF will be below VarDict's one-base REF at
+  long events and repeats; document this for D5 comparisons against
+  VarDict-called sign-out.
+
+**Rounds 4 and 5 (2026-09-25): soft clips and exact carriers.**
+- **Soft clips count.** 11 of the 12 ALT-called fallback reads clipped at the
+  event carry the whole given ALT in their clipped bases. So "spans" is judged
+  on the read's own sequence, clipped bases included, not on aligned extent.
+- **Given alleles are almost always right, but the fallback picks the
+  imperfect reads.**
+  - Across every read at the 40 variants, 96% of ALT-like reads carry the given
+    ALT exactly.
+  - Only 2 of the fallback's 23 aligned-spanning ALT calls do. It fires where
+    end-to-end alignment was poor, then credits near-matches.
+
+**Default backend (pairhmm), read by read** (a named trace per classified read,
+#162; 38 variants; anchor-overlapping reads judged over the event ±2):
+
+| Default call | Exact given allele | Partial (ends within 2 of the event) | Carries neither exactly |
+|---|---|---|---|
+| ALT (4,185) | 3,767 (90%) | 384 (9%) | 27 |
+| REF (13,390) | 11,017 (82%) | 2,278 (17%) | 69 |
+
+- Near-match crediting is rare on the default backend.
+- Its issue is C10's, on complex variants: it counts reads that end at or
+  inside the event, and credits them to REF almost twice as often as to ALT.
+
+**Decision (2026-09-25): an exact-carrier rule for complex variants, on both
+backends.**
+- ALT: the read's own bases (aligned or soft-clipped; bases below min BQ
+  masked) contain the given ALT with 2 reference bases of flank on each side.
+- REF: the same test against REF. Anything else is neither.
+  - A read closer to ALT counts as `partial_alt`.
+  - A recurring off allele is named in `gbcms_diagnostic`.
+- Tolerance comes from base quality only: one quality rule across backends.
+- On the 38 variants it keeps 90% of ALT calls and 82% of REF calls, and VAF
+  rises by a median of 3.8%.
+  - 12 variants move by more than 10% (0.84× to 2.84×).
+  - Acceptance adjudicates each mover read by read before release, as C10's
+    outliers were.
+- **Design notes:**
+  - Extend the flank past any repeat the event's ends can slide into, reusing
+    C10's shift-region machinery.
+  - The local-alignment fallback no longer decides complex calls, so #92's
+    stale flag goes with it.
+  - It builds on #160 (`counting/window.rs`).
+  - **Compare placement-independently, in canonical form.** Widen each read
+    over any indel whose shift region touches the event, and compare left-aligned
+    minimal alleles, as O4's scan does (#164). O4 showed that a fixed-window
+    comparison misreads carriers whose indel the aligner placed elsewhere in a
+    repeat: 4 of 5 "mis-described" complex variants were such artifacts. So the
+    90%-of-ALT-kept figure above is probably conservative.
 
 **Effects map (B/C).**
 - **Changes:** `partial_alt`, `any_alt`, `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`.
@@ -181,13 +296,38 @@ permissive classifiers compete: the called allele and a corrected allele
 most reads carry a third allele that both claim. When the corrected allele
 wins, per-transcript counts, ASJD and `NON_DISCRIMINATING_LOCUS` still
 describe the original (#112 item 1).
-**Direction** (6.5.0 plan § T11).
-- Arbitrate on exact haplotype support, the census method: count the reads
-  that carry each candidate exactly (the called allele, both corrected shapes,
-  "other").
-- Report the allele the reads carry, and flag when it is neither.
-- Make every consumer follow the reported allele.
-- Revisit `repeat_span` for any corrected allele kept.
+**Decision (2026-09-25, operator): count the given allele; the twin becomes opt-in;
+reads' own allele is named by a diagnostic (O4).**
+- **Why it was added** (commit 94e06f70, 2.6.0): callers sometimes merge a
+  1bp deletion plus an SNV in a homopolymer into one inflated delins. At SOX2,
+  `CCCCCC→T` was signed out with ALT 3, while 79 reads carried
+  `CCCCCC→CCCCT` (the 1bp deletion plus C→T).
+- **But the code builds a different allele than intended.** The docs'
+  arithmetic hid it: `C×(len−1)+T` is `CCCCCT`, a same-length SNV at the run's
+  end, not `CCCCT`. So even SOX2 is won by tolerance, not by an exact match.
+- **Its "self-validating" claim fails.** At 4 of the 11 real twin loci the
+  twin claims 93–97% of the called allele's exact carriers.
+- **What changes:**
+  - By default, the dual count is off: the row counts the given allele.
+  - `--rescue-homopolymer` keeps today's twin dual count, flagged
+    `WARN_HOMOPOLYMER_DECOMP`, like `--rescue-mnp`. Nextflow follows the CLI
+    default.
+  - O4's `OBSERVED_ALLELE` names what the reads carry. At SOX2 that would
+    say `CCCCT`, 79 reads exact, against 3 for the given allele.
+
+Earlier analysis:
+**Conflict with "count the given allele" (2026-09-25).** The
+decomposition is on by default. Every eligible deletion is counted twice, as
+given and as a corrected allele. When the corrected allele gets more ALT reads,
+its counts are reported under the row's label (`WARN_HOMOPOLYMER_DECOMP`).
+That is deconvolution of a possibly wrong input, on by default, unlike the
+opt-in `--rescue-mnp`.
+**Recommended direction** (replaces the 6.5.0 plan § T11 direction):
+- Count the given allele, always.
+- Measure the corrected shapes' exact haplotype support (the census method) as
+  a diagnostic, and flag when the reads carry a corrected shape or neither.
+- If corrected counts are still wanted, put them behind an opt-in flag that is
+  audited per row, like `--rescue-mnp`.
 
 **Truth set.** The census harness at the 11 real twin loci
 (`~/test/gbcms/harness/t9t10/`, local).
@@ -224,6 +364,12 @@ insert (observed at 1–6 reads on two long-insertion loci in the local data).
 ≥90% / non-low-complexity gates. The band exists for imperfect ALT
 representations and BQ masking cannot replace it, so test both policies
 (`.agents/memory/identity-band-annotation-tolerance.md`).
+**Count-the-given-allele check (2026-09-25).** A tolerant band credits reads
+whose insert confidently differs from the given ALT. That is accurate only
+when the differences are read errors. Measure both the existing truncation band
+and any new band at the loci where they admit reads: scattered mismatches mean
+errors (count them); one recurring alternative insert means a different allele
+or a wrong input (do not count it; flag what the reads carry).
 **Acceptance.** The two loci recover their carriers under both backends, and
 ladder and tract rows don't gain AD.
 
@@ -286,6 +432,47 @@ writing the tests; both keep the operator's rule.
   this row's alleles differ.
 - The rule applies to pure indels only. Substitution-bearing events have no
   shift region, and their first base already discriminates.
+- **Prep measures the region** (`Variant.shift_region`) over its own fetch sized
+  to the event. The slide over `ref_context` was cut short for tandem
+  duplications: the context is padded for 1–6bp motifs, and 12 of 82 RC
+  insertion rows have longer regions (up to 58bp). A synthetic 30bp
+  duplication read rd 30 instead of 10.
+
+**Status (2026-09-25): implemented with C2 on one branch; RC acceptance done.**
+Local data, aggregates only: the 6.5.0 RC runs, 1,060 DNA rows and 94 RNA rows.
+- **Scope held.**
+  - SNV and MNP rows: 0 of 825 changed.
+  - `alt_count` and `total_count`: never moved.
+  - `alt_count_fragment`: +1 to +2 on 3 rows, where a mate's vacuous REF call no longer contests the other mate's ALT.
+- **Convergence** (gbcms VAF ÷ informative-read VAF, median):
+
+  | Context | Before | After |
+  |---|---|---|
+  | STR | 0.910 | 0.983 |
+  | Homopolymer | 0.919 | 0.994 |
+  | Unique | 0.973 | 1.000 |
+
+  Rows below 0.8 went from 33 to 20.
+- **Outliers are census limits, not gate errors.**
+  - Of the 13 rows above 1.2, 8 are tandem duplications whose true region (16–58bp) is far longer than the census's tract window. Re-censused over the true region, gbcms REF matches read for read (for example 295/295, 119/119, 1,275/1,275; all within 4%).
+  - The other 5 are low-ALT rows that were already above 1.2: an ALT-side difference outside C10.
+  - The lowest row is a 113bp deletion: the census demands a whole-span read, while gbcms takes REF from either junction, as decided.
+
+### C11 — Phase-3 context misses tandem duplications (#159) · M [counts]
+**Finding** (while landing C10). Prep pads `ref_context` from the 1–6bp motif
+repeat span, capped at 50. A tandem duplication slides over its whole
+duplicated segment, so the context often ends inside it:
+- 12 of 82 insertion rows on the RC set, with true regions up to 58bp;
+- a synthetic 30bp duplication got an 11-base context.
+
+This breaks #91's rule that the haplotype window holds the whole tract. C10's
+REF rule no longer depends on the context. ALT-side and Phase-3 classification
+(the pangenomic matrix, WFA, S3, the AD-claiming windows) still do.
+**Measure first.** On the RC ITD rows and the D5 FLT3-ITD stratum, compare
+ALT/partial calls with the context padded to cover `shift_region` against
+today's. Watch `MAX_HAP_LEN` (C5).
+**Direction** (if calls change): pad `ref_context` to the shift region plus
+flank, bounded by the matrix cap.
 
 ## RNA
 
@@ -413,6 +600,33 @@ In a fillout of other timepoints or normals, where the MNP itself is absent,
 rescue can adopt a germline component. This is documented in `--rescue-mnp`'s
 help. Consider a diagnostic when the adopted component is present in the
 matched normal. An upstream-annotation question, from 6.5.0 T7.
+
+### O4 — Name the allele the reads carry (`OBSERVED_ALLELE`) · H [decided]
+**Why.** Under "count the given allele", a mis-described input gets honest,
+low counts. The caveat must say what the reads carry, or the low VAF misleads.
+- SOX2: a homopolymer twin case.
+- C1's rounds: one mis-described complex variant in 35.
+
+**Rule.**
+- For each indel, MNP or complex row, rebuild every spanning read across the
+  event (C10's shift region for pure indels, the span otherwise) plus 5 flank
+  bases. Aligned bases only in the first cut. Bases below min BQ disqualify
+  the read.
+- Count identical sequences. The most frequent sequence that is neither REF
+  nor the given ALT is the observed allele: n reads carry it exactly, m the
+  given ALT.
+- Emit `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/m)` in `gbcms_diagnostic` when
+  n ≥ 3 and n > m. The allele is trimmed to VCF form (1-based POS).
+- No new columns, and no count changes.
+
+**Tests.**
+- SOX2-shaped synthetic: given `CCCCCC>T`, reads carry `CCCCT`. The diagnostic
+  names it; the counts stay the given allele's.
+- A correct allele gets no flag.
+- Scattered sequencing errors (< 3 identical) get no flag.
+
+**Acceptance.** The RC set: flags only where the reads carry a different
+allele, each checked read by read. C1's mis-described variant is flagged.
 
 ## Hygiene
 
