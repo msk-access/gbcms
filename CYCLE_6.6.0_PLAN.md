@@ -145,6 +145,25 @@ questions:
   are, C10 already settles them (depth only), and the B-vs-C question shrinks
   to the reads that span the event.
 
+**Round 2 (2026-09-25): points to a different fix.**
+- **Linking still fails for most reads:** 24 of 129 linked. The trace prints
+  only the read's sequence over the variant window, which many reads share, so
+  exact linking needs the read name in the trace line.
+- **Of the 24 linked, 16 do not span the event ±1.** The local fallback fires
+  mostly on reads that end in or at the event.
+- **A pure k-mer rule would demote real carriers:** 1 ALT call without an
+  ALT-specific 8-mer was judged ALT by the census.
+
+**Recommended direction (replaces B vs C).** Apply C10's rule to complex
+variants: a read is REF or ALT only if it spans the whole event (span ±1).
+Under "count the given allele", only such a read can carry the given ALT, and
+only such a read can rule it out. Reads that end inside the event count
+toward depth only.
+- This settles most fallback reads, whose local-alignment rescue is then moot.
+- The `partial_alt` flag for spanning reads follows what the read contains.
+- To confirm: add the read name to the fallback trace, then rerun the
+  verification with exact linking on the 40 variants.
+
 **Effects map (B/C).**
 - **Changes:** `partial_alt`, `any_alt`, `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`.
   C also changes `alt_count`/`ref_count`, the fragment counts, and the
