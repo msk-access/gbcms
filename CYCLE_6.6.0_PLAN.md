@@ -109,13 +109,33 @@ try's discarded scores. That inconsistency is what #92 reported
 | C | B, plus: second-try ALT calls without ALT sequence become partial, unless reads share a recurring unannotated haplotype there | Also corrects up to 35% of those ALT calls | `alt_count` changes |
 | D | Leave it; document that `partial_alt` is score-based under SW | None | Known inaccuracy stays; ruled out |
 
-**Decision pending: B vs C.** It rests on one verification round:
+**Decision pending: B vs C.** It rests on a verification round with two
+questions:
 1. **Real carrier or noise?** Are the ALT calls without ALT sequence real
    carriers (they share a recurring unannotated haplotype) or scattered noise?
 2. **Independent check of B.** B was scored with the same 8-mer rule it would
    use. So each fallback read is linked back to its BAM read and re-judged
    C2-style: rebuilt across the variant window and matched to REF / ALT /
    OTHER by edit distance.
+
+**Round 1 (2026-09-25): inconclusive.**
+- Only 22 of the 129 fallback reads could be linked to a single BAM read. The
+  traced sequence also matches the overlapping mate, and the link demanded
+  exactly one hit.
+- 21 of those 22 did not cover the judging window (the MAF span ±10), so the
+  independent judge could not rule on them.
+- B's apparent 15/15 on REF/tie reads is therefore vacuous: B raised no flag,
+  and the judge had no verdict to compare with.
+- It does suggest something to check: the fallback may fire mostly on reads
+  that do not span the event.
+
+**Round 2 design.**
+- Link by read name, so the two mates of a fragment count as one.
+- Judge over the discrimination window built for C10 (the event ±1 base),
+  not ±10.
+- Report how many fallback reads are uninformative under C10's rule. If most
+  are, C10 already settles them (depth only), and the B-vs-C question shrinks
+  to the reads that span the event.
 
 **Effects map (B/C).**
 - **Changes:** `partial_alt`, `any_alt`, `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`.
@@ -247,6 +267,25 @@ it as REF.
 neither REF nor ALT. This is C2's window. Mirror it in the legacy parity oracle.
 **Measure first.** Deltas on the RC set and the D5 panel; adjudicate a sample
 of rows read by read in IGV. SNVs are unchanged.
+
+**Implementation refinement (2026-09-25).** Two sharper definitions came out of
+writing the tests; both keep the operator's rule.
+- **The window uses the indel's shift-equivalence region**, not the tract from
+  the repeat finder: the stretch the event slides over without changing the
+  haplotype. In a homopolymer the two are the same. It also counts partial STR
+  copies, and a one-base deletion inside a dinucleotide STR (which cannot
+  slide) stays local instead of taking the whole STR.
+- **A read is informative when it spans one side of the event**: a flank base
+  through one base past the first base where REF and ALT differ, reading
+  inward from that flank. The extra base is the aligner margin: one terminal
+  mismatch costs less than a clip, so an ALT read ending on the differing base
+  would otherwise look REF. For a homopolymer this is the tract ±1, as decided.
+  A deletion longer than a read still gets REF reads from either junction; a
+  whole-span rule would give it none.
+- C2 keeps the region ±1: its question is whether another event sits where
+  this row's alleles differ.
+- The rule applies to pure indels only. Substitution-bearing events have no
+  shift region, and their first base already discriminates.
 
 ## RNA
 
