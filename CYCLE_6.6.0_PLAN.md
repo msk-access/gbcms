@@ -22,7 +22,7 @@
 > - Check `.agents/learnings/REJECTED.md` before proposing an alternative.
 
 Priority: **H** high, **M** medium, **L** low. **[counts]** marks a ticket that
-can change counts. **[decide]** marks a ticket that needs an operator decision
+can change counts. **[decide]** marks a ticket that needs an operator decision (**[decided]**: the decision is recorded under the ticket)
 before implementation.
 
 ## Summary
@@ -30,7 +30,7 @@ before implementation.
 | ID | Ticket | Pri | Flags | Issue |
 |:--|:--|:-:|:--|:--|
 | C1 | Local-alignment fallback reads stale semiglobal scores | H | [counts] | #141 (#92) |
-| C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [decide] | #119 |
+| C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [decided] | #119 |
 | C3 | Homopolymer decomposition arbitration redesign | M | [counts] | #111, #145 (#112) |
 | C4 | Reference windows near contig ends | M | [counts] | #142 (#92) |
 | C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] | #120 |
@@ -38,12 +38,13 @@ before implementation.
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] | #144 (#92) |
 | C8 | One-base-REF delins without a shared anchor | L | [counts] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
-| R1 | Span-aware exon-edge BAQ rule | L | [counts] [decide] | #106 |
-| R2 | RNA strandedness gating observability | M | [decide] | #114 |
-| I1 | MAF allele base check | M | [decide] | #123 |
+| C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] | #157 |
+| R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
+| R2 | RNA strandedness gating observability | M | [decided] | #114 |
+| I1 | MAF allele base check | M | [decided] | #123 |
 | I2 | `End_Position` optional | L | | #124 |
-| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decide] | #125 |
-| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decide] | #126 |
+| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] | #125 |
+| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] | #126 |
 | I5 | Nextflow `convert` module | L | | #127 |
 | M1 | Merge rows whose flavors report different alleles | M | | #128 |
 | M2 | Merge inputs from different gbcms versions | M | | #129 |
@@ -56,8 +57,8 @@ before implementation.
 | P1 | Deep-bin fetch reduction (M5b) | L | | #150 (#134) |
 | P2 | Bin cost-sort (PF-2) | L | | #151 (#134) |
 | P3 | Document the bin-span soft floor (LO-3) | L | | #152 (#134) |
-| S1 | Mean LLR per fragment (CR-5) | L | [decide] | #153 (#135) |
-| S2 | `MIN_FOR_KS` floor (ME-9) | L | [decide] | #154 (#135) |
+| S1 | Mean LLR per fragment (CR-5) | L | [decided] | #153 (#135) |
+| S2 | `MIN_FOR_KS` floor (ME-9) | L | [decided] | #154 (#135) |
 | D1 | CI version-consistency check | M | | #136 |
 | D2 | Release workflow creates the GitHub Release | M | | #137 |
 | D3 | mkdocs-material 2.0 | L | | #138 |
@@ -82,7 +83,7 @@ the local scores. The code is shared by both counting paths, so parity holds.
 **Acceptance.** Real-data deltas confined to rows where the fallback fired;
 each adjudicated read by read.
 
-### C2 — REF fragments at grouped rows (#119) · M [counts] [decide]
+### C2 — REF fragments at grouped rows (#119) · M [counts] [decided]
 **Finding.** At rows in a multi-allelic or tract-cluster group, the main counts
 record a fragment as REF *before* the REF-side sibling guard runs. So a read
 excluded from `ref_count` (it carries a sibling's ALT) still counts in
@@ -98,6 +99,8 @@ in both the binned and legacy paths (`count_bam` parity).
 duplex and simplex, the complex-cluster IMPACT samples, MSI-high).
 **Acceptance.** Only grouped rows' RDF moves, and downward; `dpf ≥ rdf + adf`
 holds; the parity suite stays green.
+
+**Decision (2026-09-25, operator).** Window-aware rule: a read is excluded from REF at A only when a sibling's event lies inside A's discrimination window (its repeat tract, or its span in unique sequence, ±1 base). The same rule applies to read and fragment counts. This is GATK's overlap rule with the tract standing in for representation shifts. It uses the same window as C10. Evidence on #119: the IGV-lens census shows 1,142 reads wrongly dropped from `ref_count` and 439 fragments wrongly kept in `ref_count_fragment`.
 
 ### C3 — Homopolymer decomposition arbitration redesign (#111; #112 item 1 is #145) · M [counts]
 **Finding.** When a delins looks like a miscollapsed homopolymer event, two
@@ -174,9 +177,28 @@ form with the base after the event instead.
 **Direction.** Resolve such rows to the same base-after form in preparation
 and count them. Telomere-only.
 
+### C10 — Reads ending inside an indel's repeat tract are counted REF (#157) · H [counts]
+**Finding** (while measuring C2). A read that starts or ends inside an indel's
+repeat tract cannot show whether the tract carries the indel: its bases match
+both haplotypes, so the aligner places no gap and IGV cannot tell. gbcms counts
+it as REF.
+- **Synthetic:** a 10-A homopolymer with a 1bp deletion. With 10 REF and 10 ALT
+  reads spanning the tract, plus 10 of each ending mid-tract, gbcms reports VAF
+  25% where the informative reads give 50%.
+- **Real data:** 295 signed-out indel rows in the 6.5.0 RC runs. gbcms VAF ÷
+  informative VAF has a median of 0.91 (STR) / 0.92 (homopolymer) / 0.97
+  (unique), and 33 rows fall below 0.8.
+
+**Standard.** GATK's AD counts only informative reads.
+**Direction.** A read that doesn't span the indel's discrimination window
+(its tract, or its span in unique sequence, ±1 base) counts toward depth only:
+neither REF nor ALT. This is C2's window. Mirror it in the legacy parity oracle.
+**Measure first.** Deltas on the RC set and the D5 panel; adjudicate a sample
+of rows read by read in IGV. SNVs are unchanged.
+
 ## RNA
 
-### R1 — Span-aware exon-edge BAQ rule (#106, 6.5.0 § T9) · L [counts] [decide]
+### R1 — Span-aware exon-edge BAQ rule (#106, 6.5.0 § T9) · L [counts] [decided]
 **Finding.** The exon-edge BAQ exception keys on the variant's first base, so
 a multi-base variant reaching an exon's right edge keeps BAQ. MNP counts move
 at most 0.17%, and deletions are unaffected.
@@ -189,7 +211,9 @@ start at or after the exon start.
 **Acceptance.** SNV rows byte-identical; multi-base edge probes change as
 designed; affected sign-out rows adjudicated read by read.
 
-### R2 — RNA strandedness gating observability (#114) · M [decide]
+**Decision (2026-09-25, operator).** Span-based distance (option A), VEP-style: 0 when a boundary lies inside the REF span. `exon_boundary_dist` takes the same definition, and the change is documented as a column change. Evidence on #106: 41% of signed-out indels change distance, and 1 of the 94 RNA truth rows crosses the 5bp window.
+
+### R2 — RNA strandedness gating observability (#114) · M [decided]
 **Finding.** At RNA defaults (strandedness enforced), antisense reads are
 filtered before the sense/antisense tally. So `rna_antisense_depth` is always
 0, and ASJD's `STRAND_DISCORDANT` is effectively unreachable.
@@ -203,9 +227,15 @@ filtered before the sense/antisense tally. So `rna_antisense_depth` is always
 **Acceptance.** A red test at defaults for the chosen behaviour, and the doc
 note in output-formats; counts unchanged.
 
+**Decision (2026-09-25, operator).**
+1. `rna_antisense_depth` counts antisense reads before the strand filter, like `mq0_count`. REF/ALT are unchanged.
+2. `STRAND_DISCORDANT` is documented as a `--no-strandedness` diagnostic.
+
+Evidence on #114: 143 antisense reads (0.5%) at 18% of truth loci are reported as 0 today; antisense junction reads are 0.1%.
+
 ## Input and representation
 
-### I1 — MAF allele base check (#123) · M [decide]
+### I1 — MAF allele base check (#123) · M [decided]
 **Finding.** `MafReader` does not check allele bases. A MAF ALT with an IUPAC
 code (e.g. `R`) passes preparation and counts 0 ALT silently. The VCF reader
 skips such alleles since 6.5.0. The same check closes a cosmetic
@@ -215,13 +245,15 @@ recommended, because MAF→MAF output must keep every input row — or a skip
 with a WARN like VCF.
 **Tests.** MAF rows with `R`, `.`, and lowercase (valid) alleles.
 
+**Decision (2026-09-25, operator).** A visible `FAIL` row with a reason, so MAF→MAF output keeps every row. Lowercase bases are valid. Evidence on #123: the automated pipeline's 19.8M calls have 0 invalid alleles; the 9 in the 1.13M curated sign-out rows come from hand edits.
+
 ### I2 — `End_Position` optional (#124) · L
 **Finding.** `MafReader` requires an integer `End_Position` but nothing uses
 it; rows without one are skipped with a WARN. maf2vcf converts them.
 **Direction.** Parse it when present; don't require it. Update the
 required-columns table.
 
-### I3 — VCF→MAF `Tumor_Seq_Allele1` (#125) · L [decide]
+### I3 — VCF→MAF `Tumor_Seq_Allele1` (#125) · L [decided]
 **Finding.** For VCF input, `Tumor_Seq_Allele1`, `Strand` and
 `Variant_Classification` are empty. vcf2maf fills `Tumor_Seq_Allele1` from the
 genotype.
@@ -229,12 +261,16 @@ genotype.
 convention), or keep it empty (gbcms genotypes no sample GT). The other two
 stay empty: gbcms does not annotate.
 
-### I4 — maf2vcf's second ALT from `Tumor_Seq_Allele1` (#126) · L [decide]
+**Decision (2026-09-25, operator).** Fill `Tumor_Seq_Allele1` with REF. That is MSK's own convention (100% of 1.13M sign-out rows) and maf2vcf's round trip. No hom-alt inference from VAF. Evidence on #125.
+
+### I4 — maf2vcf's second ALT from `Tumor_Seq_Allele1` (#126) · L [decided]
 **Finding.** maf2vcf writes a `Tumor_Seq_Allele1` that differs from both REF
 and Allele2 as a second ALT. gbcms reads one variant allele per row. This is
 documented.
 **Decision.** Keep (recommended: one row, one allele) or genotype the second
 allele as its own row.
+
+**Decision (2026-09-25, operator).** Keep one row, one allele (vcf2maf's reading), and document that cBioPortal picks Allele1 for such rows. There are 0 such rows in MSK data. Evidence on #126.
 
 ### I5 — Nextflow `convert` module (#127) · L
 **Direction.** A `GBCMS_CONVERT` module, only if pipelines need conversion
@@ -313,14 +349,18 @@ invariant (`.agents/memory/bin-anchor-coverage.md`).
 
 ## Statistics (accepted deviations)
 
-### S1 — Mean LLR per fragment (CR-5) (#153, under #135) · L [decide]
+### S1 — Mean LLR per fragment (CR-5) (#153, under #135) · L [decided]
 Report the LLR per fragment rather than the sum. It changes displayed values,
 so coordinate with report consumers. Only if a consumer needs cross-variant
 comparability.
 
-### S2 — `MIN_FOR_KS` floor (ME-9) (#154, under #135) · L [decide]
+**Decision (2026-09-25, operator).** Report the per-fragment mean LLR (with n alongside) in the existing LLR columns; display only. Evidence on #153: on real cfDNA the sum grows about 22× with n, while the mean is flat.
+
+### S2 — `MIN_FOR_KS` floor (ME-9) (#154, under #135) · L [decided]
 Raise the floor above 5 only if a power analysis justifies it. With exact
 small-N KS and the `ks_valid` gate, 5 is defensible.
+
+**Decision (2026-09-25, operator).** Keep `MIN_FOR_KS` at 5: the exact test is calibrated at every n measured (false-positive rate about 0.05). Change the report so **CH-LIKE no longer rests on a non-significant KS at low power**. It requires an ALT-fragment count at which the test has useful power, derived from the real-data power curve (about 10% at 5–10 fragments). Evidence on #154.
 
 ## Release and docs infrastructure
 
@@ -453,13 +493,14 @@ string the code emits appears on the page, so the page stays complete.
 
 ## Suggested order
 
-1. **Decisions** (no code): C2, R1's column, R2, I1's reason, I3, I4, S1/S2.
-2. **Count-affecting, measured first:** C1, then C2, C4, R2, R1 — one branch
-   each.
+1. **Decisions: done** (2026-09-25; recorded under each ticket and on its
+   issue). All the recommendations were accepted.
+2. **Count-affecting, measured first:** C1, then C10 and C2 (they share the
+   discrimination window: one branch), R2, R1 — one branch each otherwise.
 3. **The decomposition redesign:** C3 with M1's decomposition check and M3.
-4. **Hardening:** I1, I2, C9, M1 (rescue conflicts), M2, O1, H1, H2.
+4. **Hardening:** I1, I2, I3, C9, M1 (rescue conflicts), M2, O1, H1, H2.
 5. **Investigations and enhancements:** C5, C6, C7, C8, P1, then P2, O2, O3,
-   I3, I4, I5 as decided.
+   I4, I5, S1, S2.
 6. **Infrastructure and docs:** D1, D2, D4, D5 and D6 (before the 6.6.0 cut),
    D3, P3. D4 goes early if a dependency release breaks users first.
 

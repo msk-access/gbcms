@@ -278,7 +278,8 @@ pub fn ks_test(a: &[f64], b: &[f64]) -> (f64, f64) {
 /// Exact for small `n·m` (the low-input cfDNA regime, where the asymptotic
 /// Kolmogorov approximation over/under-covers because D is highly discrete), and
 /// the asymptotic series for large `n·m` where it is accurate and the exact O(n·m)
-/// lattice DP would be wasteful. The 10_000 threshold matches SciPy's `ks_2samp`.
+/// lattice DP would be wasteful. The `n·m` threshold follows R's `ks.test` (exact
+/// when `n·m < 10_000`); SciPy's `ks_2samp` instead switches on each sample's size.
 fn ks_p_value(d: f64, n: usize, m: usize) -> f64 {
     if (n as u64) * (m as u64) <= 10_000 {
         ks_p_value_exact(d, n, m)
