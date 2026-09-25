@@ -8,7 +8,8 @@ WGS-scale performance.
 Architecture:
     1. Scan each input MAF lazily via ``io.batch.scan_maf``
     2. Detect whether columns are already prefixed or need renaming
-    3. Progressive outer join on the 5-column variant key
+    3. Progressive outer join on the 5-column variant key (plus the VCF
+       record — vcf_pos / vcf_ref / vcf_alt — when every input carries it)
     4. Optionally compute additive ``simplex_duplex_*`` combined columns
     5. Materialize and write via ``io.batch.write_maf``
 
@@ -54,8 +55,11 @@ _CONTIG_KEY = "_contig_key"
 JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
 # VCF-input MAFs also carry the VCF record each row came from. It is unique per
 # record ALT, whereas two records can trim to one MAF record (TCT>TCG and T>G at
-# the changed base), so the joins use it whenever every input has it.
-VCF_RECORD_KEY: list[str] = [_CONTIG_KEY, "vcf_pos", "vcf_ref", "vcf_alt"]
+# the changed base), so the joins add it whenever every input has it. The MAF
+# key stays in the join key: within one gbcms version it follows from the
+# record (the pairing is the record's), and a full join fills only key
+# columns, so a row only a later input has keeps its coordinates and alleles.
+VCF_RECORD_KEY: list[str] = [*JOIN_KEY, "vcf_pos", "vcf_ref", "vcf_alt"]
 # Prefixes of the other per-input join helpers (row numbers, each later
 # input's own contig names). Input columns with these names are rejected.
 _HELPER_PREFIXES = ("_row_", "_chrom_")
@@ -330,7 +334,7 @@ def merge_mafs(config: MergeConfig) -> None:
 def _join_key(input_columns: dict[str, list[str]]) -> list[str]:
     """The VCF record key when every input carries it (all VCF-derived), else
     the MAF variant key."""
-    if all(set(VCF_RECORD_KEY[1:]) <= set(cols) for cols in input_columns.values()):
+    if all(set(VCF_RECORD_KEY[len(JOIN_KEY) :]) <= set(cols) for cols in input_columns.values()):
         logger.info("  Joining on the VCF record (vcf_pos, vcf_ref, vcf_alt): every input has it")
         return VCF_RECORD_KEY
     return JOIN_KEY

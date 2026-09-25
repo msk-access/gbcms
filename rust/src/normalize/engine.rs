@@ -166,6 +166,14 @@ fn is_length_changing(v: &Variant) -> bool {
     v.ref_allele.len() != v.alt_allele.len()
 }
 
+/// A variant's grouping reach: its REF span `[pos, pos+ref_len)` and, when
+/// length-changing, its scan window (the span padded by `window_pad`).
+fn grouping_reach(v: &Variant) -> (i64, i64, Option<(i64, i64)>) {
+    let (lo, hi) = (v.pos, v.pos + v.ref_allele.len() as i64);
+    let window = is_length_changing(v).then(|| (lo - window_pad(v), hi + window_pad(v)));
+    (lo, hi, window)
+}
+
 /// Assign group IDs to co-annotated variants so the engine can evaluate them
 /// jointly (sibling exclusion + exclusive assignment).
 ///
@@ -179,8 +187,10 @@ fn is_length_changing(v: &Variant) -> bool {
 ///    neighborhood) whose spans never touch; window-only members are
 ///    tagged `TRACT_CLUSTER`.
 ///
-/// Groups may be non-contiguous in position order (an SNV can sit between
-/// two window-joined deletions without joining), so the sweep marks
+/// A candidate joins on a member's OWN span or window, never on the gap
+/// between members: an SNV between two window-joined deletions stays out
+/// (joining would drain its rd of every deletion carrier). Groups may
+/// therefore be non-contiguous in position order, so the sweep marks
 /// assigned indices instead of consuming a contiguous run.
 fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
     if variants.len() < 2 {
@@ -253,17 +263,13 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
         let (c_start, c_end) = runs[run_of[i]];
 
         let seed = &variants[idx].variant;
-        // Group reach as bounding boxes per criterion (matching the
-        // pre-widening sweep's bounding-box semantics for spans):
-        // [span_lo, span_hi) unions member spans; [win_lo, win_hi) unions
-        // length-changing members' padded windows (empty when none).
-        let mut span_lo = seed.pos;
-        let mut span_hi = seed.pos + seed.ref_allele.len() as i64;
-        let (mut win_lo, mut win_hi) = if is_length_changing(seed) {
-            (span_lo - window_pad(seed), span_hi + window_pad(seed))
-        } else {
-            (i64::MAX, i64::MIN)
-        };
+        // Each member's own reach decides membership. The bounding boxes —
+        // [span_lo, span_hi) over member spans, [win_lo, win_hi) over
+        // length-changing members' windows (empty when none) — only bound
+        // the scan below; they may contain gaps no member reaches.
+        let mut member_reach = vec![grouping_reach(seed)];
+        let (mut span_lo, mut span_hi, seed_window) = member_reach[0];
+        let (mut win_lo, mut win_hi) = seed_window.unwrap_or((i64::MAX, i64::MIN));
         let mut group_members: Vec<usize> = vec![idx];
         assigned[idx] = true;
 
@@ -290,20 +296,23 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
                 if vj.pos >= reach_hi || vj.pos + (vj.ref_allele.len() as i64) <= reach_lo {
                     continue;
                 }
-                let vj_end = vj.pos + vj.ref_allele.len() as i64;
-                let joins_span = vj.pos < span_hi && span_lo < vj_end;
-                let joins_window = is_length_changing(vj) && {
-                    let pad = window_pad(vj);
-                    vj.pos - pad < win_hi && win_lo < vj_end + pad
-                };
-                if joins_span || joins_window {
-                    span_lo = span_lo.min(vj.pos);
-                    span_hi = span_hi.max(vj_end);
-                    if is_length_changing(vj) {
-                        let pad = window_pad(vj);
-                        win_lo = win_lo.min(vj.pos - pad);
-                        win_hi = win_hi.max(vj_end + pad);
+                let (vj_lo, vj_hi, vj_window) = grouping_reach(vj);
+                let joins = member_reach.iter().any(|&(m_lo, m_hi, m_window)| {
+                    let joins_span = vj_lo < m_hi && m_lo < vj_hi;
+                    let joins_window = matches!(
+                        (vj_window, m_window),
+                        (Some((a_lo, a_hi)), Some((b_lo, b_hi))) if a_lo < b_hi && b_lo < a_hi
+                    );
+                    joins_span || joins_window
+                });
+                if joins {
+                    span_lo = span_lo.min(vj_lo);
+                    span_hi = span_hi.max(vj_hi);
+                    if let Some((w_lo, w_hi)) = vj_window {
+                        win_lo = win_lo.min(w_lo);
+                        win_hi = win_hi.max(w_hi);
                     }
+                    member_reach.push((vj_lo, vj_hi, vj_window));
                     group_members.push(jdx);
                     assigned[jdx] = true;
                     grew = true;

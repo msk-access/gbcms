@@ -680,7 +680,6 @@ def test_merge_joins_vcf_input_rows_by_their_record(tmp_path):
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="a later-only row loses its MAF key columns")
 def test_merge_by_record_keeps_later_only_rows_whole(tmp_path):
     """A variant only a later input has keeps its MAF coordinates and alleles."""
     _vcf_input_maf(tmp_path / "d.maf", [(101, "T", "A")])

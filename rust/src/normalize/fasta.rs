@@ -49,6 +49,10 @@ pub(crate) fn fetch_single_base(
     chrom: &str,
     pos_0based: i64,
 ) -> anyhow::Result<u8> {
+    if pos_0based < 0 {
+        // E.g. the anchor of a MAF deletion at Start 1: there is no base there.
+        anyhow::bail!("no reference base before the start of {} (position {})", chrom, pos_0based);
+    }
     let pos = pos_0based as u64;
     let buf = fetch_region(reader, chrom, pos, pos + 1)?;
     buf.first()

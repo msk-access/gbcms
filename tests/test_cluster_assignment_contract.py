@@ -22,7 +22,6 @@ import glob
 import random
 
 import pysam
-import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
@@ -481,9 +480,6 @@ def _gap_setup(n_d1=6, n_d2=5, n_snv=4, n_wt=8):
     return ref, rows, reads
 
 
-@pytest.mark.xfail(
-    strict=True, reason="the group's span box pulls in the SNV between the deletions"
-)
 def test_snv_between_window_joined_deletions_stays_ungrouped(tmp_path):
     ref, rows, _ = _gap_setup()
     fasta = _fasta(tmp_path, ref)
@@ -499,7 +495,6 @@ def test_snv_between_window_joined_deletions_stays_ungrouped(tmp_path):
     assert got == [(1, "TRACT_CLUSTER"), (None, ""), (1, "TRACT_CLUSTER")]
 
 
-@pytest.mark.xfail(strict=True, reason="deletion carriers leave the SNV's REF count")
 def test_snv_between_window_joined_deletions_keeps_its_ref_reads(tmp_path):
     """Deletion carriers show the reference base at the SNV: they are REF for it."""
     ref, rows, reads = _gap_setup()
