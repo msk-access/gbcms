@@ -202,6 +202,49 @@ toward depth only.
   long events and repeats; document this for D5 comparisons against
   VarDict-called sign-out.
 
+**Rounds 4 and 5 (2026-09-25): soft clips and exact carriers.**
+- **Soft clips count.** 11 of the 12 ALT-called fallback reads clipped at the
+  event carry the whole given ALT in their clipped bases. So "spans" is judged
+  on the read's own sequence, clipped bases included, not on aligned extent.
+- **Given alleles are almost always right, but the fallback picks the
+  imperfect reads.**
+  - Across every read at the 40 variants, 96% of ALT-like reads carry the given
+    ALT exactly.
+  - Only 2 of the fallback's 23 aligned-spanning ALT calls do. It fires where
+    end-to-end alignment was poor, then credits near-matches.
+
+**Default backend (pairhmm), read by read** (a named trace per classified read,
+#162; 38 variants; anchor-overlapping reads judged over the event ±2):
+
+| Default call | Exact given allele | Partial (ends within 2 of the event) | Carries neither exactly |
+|---|---|---|---|
+| ALT (4,185) | 3,767 (90%) | 384 (9%) | 27 |
+| REF (13,390) | 11,017 (82%) | 2,278 (17%) | 69 |
+
+- Near-match crediting is rare on the default backend.
+- Its issue is C10's, on complex variants: it counts reads that end at or
+  inside the event, and credits them to REF almost twice as often as to ALT.
+
+**Decision (2026-09-25): an exact-carrier rule for complex variants, on both
+backends.**
+- ALT: the read's own bases (aligned or soft-clipped; bases below min BQ
+  masked) contain the given ALT with 2 reference bases of flank on each side.
+- REF: the same test against REF. Anything else is neither.
+  - A read closer to ALT counts as `partial_alt`.
+  - A recurring off allele is named in `gbcms_diagnostic`.
+- Tolerance comes from base quality only: one quality rule across backends.
+- On the 38 variants it keeps 90% of ALT calls and 82% of REF calls, and VAF
+  rises by a median of 3.8%.
+  - 12 variants move by more than 10% (0.84× to 2.84×).
+  - Acceptance adjudicates each mover read by read before release, as C10's
+    outliers were.
+- **Design notes:**
+  - Extend the flank past any repeat the event's ends can slide into, reusing
+    C10's shift-region machinery.
+  - The local-alignment fallback no longer decides complex calls, so #92's
+    stale flag goes with it.
+  - It builds on #160 (`counting/window.rs`).
+
 **Effects map (B/C).**
 - **Changes:** `partial_alt`, `any_alt`, `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`.
   C also changes `alt_count`/`ref_count`, the fragment counts, and the
