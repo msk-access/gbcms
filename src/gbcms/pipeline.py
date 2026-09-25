@@ -785,7 +785,8 @@ class Pipeline:
                 represented as clips rather than I ops (inspect in IGV).
             SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
                 be evaluated by the pangenomic haplotype matrix (reference context
-                missing or not containing the variant — malformed input upstream);
+                missing — e.g. an indel near a contig end — or not containing the
+                variant, or an ALT haplotype over 400bp);
                 they were scored by Smith-Waterman where it can run, otherwise
                 left NEITHER, so counts here came partly from a different scorer
                 or are missing reads.

@@ -358,10 +358,11 @@ pub struct BaseCounts {
     /// Depth-contributing reads (first-class, anchor-overlapping — the DP
     /// population) that the PairHMM backend's pangenomic haplotype matrix
     /// could not evaluate: its reference context is missing (prep's fetch
-    /// failed — length-changing variants only; MNPs have none by design) or
-    /// does not contain the variant. Such reads are scored by the
-    /// Smith-Waterman fallback where SW can run, and otherwise left NEITHER.
-    /// Measured to be zero on well-formed input. Diagnostic only (feeds the
+    /// failed, e.g. an indel near a contig end — length-changing variants
+    /// only; MNPs have none by design), does not contain the variant, or the
+    /// ALT haplotype exceeds `MAX_HAP_LEN` (very long insertions). Such reads
+    /// are scored by the Smith-Waterman fallback where SW can run, and
+    /// otherwise left NEITHER. Zero on the traced real runs. Diagnostic only (feeds the
     /// SW_FALLBACK flag and a per-variant WARN); not an output column. Always 0
     /// under the explicit SW backend, where SW is the chosen scorer.
     #[pyo3(get)]

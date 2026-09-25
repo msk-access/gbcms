@@ -67,7 +67,8 @@ pub struct PreparedVariant {
     /// Corrected variant for homopolymer decomposition dual-counting.
     /// When a complex variant spans a homopolymer and appears to be a
     /// miscollapsed D(n)+SNV event, this holds the corrected allele
-    /// (e.g., CCCCCC→CCCCT instead of CCCCCC→T).
+    /// (e.g., CCCCCC→CCCCCT instead of CCCCCC→T: the run with its last base
+    /// replaced).
     /// `None` for normal variants where no decomposition is detected.
     #[pyo3(get)]
     pub decomposed_variant: Option<Variant>,

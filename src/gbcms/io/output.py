@@ -916,7 +916,7 @@ class VcfWriter(OutputWriter):
             if self.has_gtf:
                 headers.extend(
                     [
-                        '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) to nearest annotated exon boundary. Missing (.) when no GTF provided.">',
+                        '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) to nearest annotated exon boundary. Missing (.) when the contig has no annotation in the GTF.">',
                         '##INFO=<ID=TXRC,Number=1,Type=String,Description="Per-transcript read counts. Format: ENST:AD,RD,DP|ENST:AD,RD,DP. Empty when no GTF or no overlap.">',
                         '##INFO=<ID=TXFC,Number=1,Type=String,Description="Per-transcript fragment counts. Format: ENST:ADF,RDF,DPF|ENST:ADF,RDF,DPF. Empty when no GTF or no overlap.">',
                         # ASJD INFO headers

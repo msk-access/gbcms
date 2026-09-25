@@ -14,7 +14,11 @@ decomposed twin strand + per-sample flag (#113). 6.4.0 is released (#98, tag
 `6.4.0`) and main is merged back into develop. **T12 (#110) — VCF ↔ MAF
 representation follows vcf2maf / maf2vcf, plus `gbcms convert` — is PR #116,
 the last change before the cut** (operator decision; a breaking output change,
-see the CHANGELOG). Its evidence is in the plan's T12 section. On the RC data
+see the CHANGELOG). #116 also carries the fixes from verifying the plan against
+the code (2026-09-25): T1's grouping let an SNV between two window-joined
+deletions join their cluster and lose its deletion-carrier REF reads (2
+sign-out rows in 141,845 samples); merge by VCF record dropped later-only
+rows' coordinates; a MAF deletion at Start 1 wrapped u64 in debug builds. Its evidence is in the plan's T12 section. On the RC data
 with #116, DNA MAF output is byte-identical (1060/1060) and RNA too (33/33
 samples), so the RC result below holds.
 
@@ -32,13 +36,17 @@ The T1/T2 acceptance harnesses lost in the 2026-09-23 scratchpad wipe are rebuil
 there; per-ticket harnesses: `~/test/gbcms/harness/{t6,t7,t8,t9t10}/`.
 
 **Next → merge #116, then release 6.5.0** (same procedure as 6.4.0): cut `release/6.5.0` from
-develop — version bump in the 11 files the 6.4.0 cut touched (pyproject,
-`src/gbcms/__init__.py`, `rust/Cargo.toml` + lock, `nextflow/nextflow.config`, the
-five `nextflow/modules/local/gbcms/*/main.nf` container tags) + CHANGELOG cut →
+develop — version bump in the release guide's 11 references
+(`docs/development/release-guide.md`: pyproject, `src/gbcms/__init__.py`,
+`rust/Cargo.toml` + lock, `nextflow/nextflow.config`, the five
+`nextflow/modules/local/gbcms/*/main.nf` container tags, and the
+`nextflow/main.nf` banner — still `v6.3.1`, the 6.4.0 cut missed it) + CHANGELOG cut →
 PR → main, gated on: container build+push (operator) → the HPC 56-sample IMPACT
 matrix vs the 6.4.0 baseline (script at `~/test/gbcms/dev_regression/` on HPC,
-repointed at the rc container) + RNA smokes → tag `v6.5.0` → merge → back-merge
-develop. Optional: head-to-head vs C++ GBCMS 1.2.4/1.2.5 (on HPC). If the HPC
+repointed at the rc container) + RNA smokes → tag `6.5.0` (bare: the release
+workflow triggers only on `N.N.N` tags, as `6.4.0` was) → merge → back-merge
+develop. 6.4.0 has a tag and published artifacts but no GitHub Release page
+(the latest page is 6.3.1) — create one for 6.5.0 (and 6.4.0 if wanted). Optional: head-to-head vs C++ GBCMS 1.2.4/1.2.5 (on HPC). If the HPC
 matrix feeds VCF input and compares MAF output by `Start_Position`, key it on
 `vcf_pos`/`vcf_ref`/`vcf_alt` instead: T12 changes VCF-input MAF coordinates by
 design (MAF-input output is byte-identical).
@@ -58,13 +66,22 @@ design (MAF-input output is byte-identical).
   passes and counts 0 ALT silently (the VCF reader skips such alleles). First
   post-cut candidate.
 - `End_Position` is required but unused (rows without it are skipped, warned).
-- A MAF deletion at Start 1 is a `FETCH_FAILED` row (telomere only).
+- A MAF deletion at Start 1 is a `FETCH_FAILED` row (telomere only; the
+  engine cannot anchor it, while the VCF writer uses the base after).
 - VCF → MAF leaves `Tumor_Seq_Allele1` empty (vcf2maf fills it from GT).
 - Deliberate vs vcf2maf: case-insensitive trim; a differing
   `Tumor_Seq_Allele1` is not written as a second ALT.
 - Cosmetic: `is_indel` in prepare reduces to `ref_len != alt_len`; writer file
   handles on a mid-write exception.
 - The docs build prints mkdocs-material's MkDocs 2.0 notice; a pin may be needed.
+
+**Decision needed (found verifying the plan):** at grouped rows the main counts
+record a fragment as REF before the REF-side sibling guard runs, so a read
+excluded from `ref_count` (it carries a sibling's ALT) still counts in
+`ref_count_fragment`; the per-transcript counts exclude it from both.
+Pre-existing (the multi-allelic guard predates T1; T1 widened the groups).
+Aligning the main counts changes RDF at grouped rows in both the binned and
+legacy paths — its own measured round, after the cut.
 
 ### Previous: code-review remediation
 Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)
@@ -114,7 +131,7 @@ automatic Nextflow wiring; ~9s → ~0.05s per sample, #55). The rest were **drop
 low-ROI/liabilities**: ME-13 (0% re-fetch measured), PF-3 (decode threads oversubscribe
 under fan-out), PF-4 (moot at 1 sample/process). See the plan's §"M5 — empirical scoping".
 
-## Next
+### Previous: M6 (hygiene & contracts)
 **M6 (Hygiene & contracts) — COMPLETE.** All M6 tickets landed: HI-1 (exit non-zero on
 sample failure; empty variant set still exits 0), ME-1 (sub/mono-nuc reach VCF), ME-2
 (`|` transcript delimiter), ME-12 (fragment-consensus relabel; #64), LO-1 (single `_rs`
