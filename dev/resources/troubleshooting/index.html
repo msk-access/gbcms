@@ -463,6 +463,8 @@
       
         
       
+        
+      
     
     
     
@@ -618,6 +620,34 @@
     
   
     Normalize Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Convert Command
   
 
     
@@ -2030,8 +2060,9 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
 <p>Check in this order:</p>
 <ol>
 <li>
-<p><strong><code>gbcms_status</code></strong> column — if <code>REF_MISMATCH</code> or <code>FETCH_FAILED</code>, the variant
-   was excluded from counting. See <a href="#normalization-issues">Normalization Issues</a>.</p>
+<p><strong><code>gbcms_status</code></strong> column — if <code>FAIL</code>, the variant was excluded from counting;
+   <code>gbcms_status_reason</code> says why (<code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>EMPTY_ALLELE</code>,
+   <code>ALT_EQUALS_REF</code>, <code>ALT_CONTAINS_N</code>). See <a href="#normalization-issues">Normalization Issues</a>.</p>
 </li>
 <li>
 <p><strong>Complex Del+SNV routing</strong> — if your variant has deletion format (<code>REF</code> longer than <code>ALT</code>,
@@ -2189,6 +2220,23 @@ The comparison is a heuristic: both alleles can claim reads carrying other forms
 Inspect the reads at the locus before relying on either allele's counts (see
 <a href="../../reference/variant-normalization/">Variant Normalization</a>).</p>
 </details>
+<details class="question">
+<summary>After upgrading to 6.5.0, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> rows from a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> have different <code>Start_Position</code> / alleles</summary>
+<p>Since 6.5.0, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input is written to <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> exactly as vcf2maf writes it: the leading bases
+REF and ALT share are trimmed, so e.g. <code>TCT&gt;TCG</code> becomes the <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> <code>T&gt;G</code> at the changed
+base, and <code>TTAC&gt;A</code> stays a 4bp deletion. The <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> record itself is kept in <code>vcf_pos</code> /
+<code>vcf_ref</code> / <code>vcf_alt</code>; key on those to compare runs. Counts are unchanged. Re-genotype
+every flavor with the same version before <code>gbcms merge</code>: MAFs from different versions do
+not join. <code>gbcms convert</code> shows the conversion for a variant file without counting. See
+<a href="../../reference/output-formats/">Output Formats</a>.</p>
+</details>
+<details class="question">
+<summary>WARNING: <code>Skipped VCF ALT ... — not countable</code></summary>
+<p>The <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> reader skips alleles that name no sequence to count: <code>*</code>, symbolic <code>&lt;...&gt;</code>
+alleles, breakends, a missing <code>.</code>, other non-sequence alleles, and a REF that is not a
+base sequence. The first few are logged individually, then one WARNING gives the totals
+by reason. They get no output row. See <a href="../../reference/input-formats/#alt-alleles">Input Formats</a>.</p>
+</details>
 <hr>
 <h2 id="rna-mode-issues">RNA Mode Issues<a class="headerlink" href="#rna-mode-issues" title="Permanent link">¶</a></h2>
 <details class="question">
@@ -2345,7 +2393,7 @@ genuinely has nothing to count.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 24, 2026 21:32:23 UTC"><span class="timeago" datetime="2026-09-24T21:32:23+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 24, 2026 21:32:23 UTC">2026-09-24</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 04:55:26 UTC"><span class="timeago" datetime="2026-09-25T04:55:26+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 04:55:26 UTC">2026-09-25</span>
   </span>
 
     

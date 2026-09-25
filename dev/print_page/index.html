@@ -457,6 +457,8 @@
       
         
       
+        
+      
     
     
     
@@ -612,6 +614,34 @@
     
   
     Normalize Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Convert Command
   
 
     
@@ -1733,6 +1763,17 @@
     <span class="md-ellipsis">
       
         Normalize Command
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-convert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Convert Command
       
     </span>
   </a>
@@ -2971,6 +3012,10 @@ provides these dependencies.</p>
 <td style="text-align: left;">Standalone variant normalization (no counting)</td>
 </tr>
 <tr>
+<td style="text-align: left;"><a href="#cli-convert"><strong>convert</strong></a></td>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> ↔ <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> conversion as vcf2maf / maf2vcf write it (no counting)</td>
+</tr>
+<tr>
 <td style="text-align: left;"><strong>build-gtf-cache</strong></td>
 <td style="text-align: left;">Pre-build the shared GTF index once for a cohort so per-sample RNA runs reuse it (<code>gbcms build-gtf-cache --gtf &lt;file&gt; --variants &lt;vcf/maf&gt; --cache-dir &lt;dir&gt;</code>; see <a href="#cli-rna">rna</a>)</td>
 </tr>
@@ -2997,6 +3042,7 @@ provides these dependencies.</p>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#cli-__codelineno-1-2"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--help
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#cli-__codelineno-1-3"></a>gbcms<span class="w"> </span>rna<span class="w"> </span>--help
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#cli-__codelineno-1-4"></a>gbcms<span class="w"> </span>normalize<span class="w"> </span>--help
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#cli-__codelineno-1-5"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--help
 </code></pre></div>
 <h2 id="cli-related">Related<a class="headerlink" href="#cli-related" title="Permanent link">¶</a></h2>
 <ul>
@@ -3734,7 +3780,7 @@ transparently.  See <a href="#cli-dna-required-arguments">CRAM Support</a> for d
 <p class="admonition-title">What <code>--gtf</code> Enables</p>
 <p>When a GTF file is provided, gbcms builds a <code>COITree</code>-based annotation index and adds:</p>
 <ul>
-<li><strong><code>exon_boundary_dist</code></strong> — Signed distance to the nearest exon boundary (positive = exonic, negative = intronic)</li>
+<li><strong><code>exon_boundary_dist</code></strong> — Distance (bp, unsigned) to the nearest annotated exon boundary; empty when the variant's contig has no annotation in the GTF</li>
 <li><strong>Per-transcript read/fragment counts</strong> — <code>|</code>-separated <code>GENE:TX:READ_COUNT</code> and <code>GENE:TX:FRAG_COUNT</code> strings</li>
 <li><strong>ASJD detection</strong> — 14 columns for Aberrant Splice Junction Detection, comparing read splice junctions against annotated transcript splice sites</li>
 </ul>
@@ -4540,7 +4586,7 @@ Use mouse to pan and zoom
 <ol>
 <li><strong>Scan</strong> — Each input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> is lazily scanned with all columns as strings</li>
 <li><strong>Prefix Detection</strong> — Columns are checked for existing type prefixes; unprefixed gbcms columns are renamed (e.g., <code>ref_count</code> → <code>duplex_ref_count</code>)</li>
-<li><strong>Outer Join</strong> — Progressive full outer join on the 5-column variant key: <code>Chromosome</code>, <code>Start_Position</code>, <code>End_Position</code>, <code>Reference_Allele</code>, <code>Tumor_Seq_Allele2</code>. <code>Chromosome</code> is compared by the same rule counting uses to reconcile contigs (<code>chr1</code> ~ <code>1</code>, <code>chrM</code> ~ <code>MT</code>), so inputs counted from differently named variant files still join. Each contig is written one way. That is the first input's name for it, or, for a contig the first input lacks, the name used by the earliest input that has it. When a later input names contigs differently, the log says so (one INFO line per input). An input column named <code>_contig_key</code>, or starting with <code>_row_</code> or <code>_chrom_</code>, is rejected: those names are reserved for the join. If one input names a contig two ways (e.g. <code>chrM</code> and <code>MT</code>), a variant listed under both joins once per name, and merge logs a WARN.</li>
+<li><strong>Outer Join</strong> — Progressive full outer join on the 5-column variant key: <code>Chromosome</code>, <code>Start_Position</code>, <code>End_Position</code>, <code>Reference_Allele</code>, <code>Tumor_Seq_Allele2</code>. When every input is <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-derived (carries <code>vcf_pos</code> / <code>vcf_ref</code> / <code>vcf_alt</code>), the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> record is added to the key: two <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> records can describe one <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> record (<code>TCT&gt;TCG</code> and <code>T&gt;G</code> at the changed base), and each should stay its own row. The <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns stay in the key, so a variant only a later input has keeps its coordinates and alleles. An input that lists one join key more than once gets a WARN, since each such row pairs with every matching row of the other inputs. Merge MAFs genotyped by the same gbcms version: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> coordinates changed in 6.5.0. <code>Chromosome</code> is compared by the same rule counting uses to reconcile contigs (<code>chr1</code> ~ <code>1</code>, <code>chrM</code> ~ <code>MT</code>), so inputs counted from differently named variant files still join. Each contig is written one way. That is the first input's name for it, or, for a contig the first input lacks, the name used by the earliest input that has it. When a later input names contigs differently, the log says so (one INFO line per input). An input column named <code>_contig_key</code>, or starting with <code>_row_</code> or <code>_chrom_</code>, is rejected: those names are reserved for the join. If one input names a contig two ways (e.g. <code>chrM</code> and <code>MT</code>), a variant listed under both joins once per name, and merge logs a WARN.</li>
 <li><strong>Null Fill</strong> — Missing counts → <code>"0"</code>, missing meta → <code>""</code></li>
 <li><strong>Combined Columns</strong> — If both <code>simplex</code> and <code>duplex</code> are present and <code>--no-combined</code> is not set:<ul>
 <li><strong>Phase 1</strong>: Additive sums (12 columns: read + fragment + strand counts)</li>
@@ -4831,7 +4877,7 @@ left-alignment — but <strong>without</strong> performing any <abbr title="Bina
 </tr>
 <tr>
 <td style="text-align: left;"><code>variant_type</code></td>
-<td style="text-align: left;"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>, INSERTION, DELETION, or COMPLEX</td>
+<td style="text-align: left;"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>, INSERTION, DELETION, or COMPLEX — from the normalized alleles; INSERTION/DELETION only with a shared anchor base (see <a href="#reference-input-formats-variant-types">Input Formats</a>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_status</code></td>
@@ -4866,6 +4912,95 @@ left-alignment — but <strong>without</strong> performing any <abbr title="Bina
 <ul>
 <li><a href="#cli-dna">gbcms dna</a> — Full counting pipeline (with <code>--show-normalization</code> flag)</li>
 <li><a href="#reference-input-formats">Input Formats</a> — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> coordinate conventions</li>
+</ul>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="cli-convert" heading-number="3.6"><html><head>
+        <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function () {
+            remove_material_navigation();remove_mkdocs_theme_navigation();
+        })
+        </script>
+        </head><body><div><h1 id="gbcms-convert">gbcms convert<a class="headerlink" href="#cli-convert-gbcms-convert" title="Permanent link">¶</a></h1>
+<p>Convert variants between <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> without counting reads.</p>
+<h2 id="cli-convert-synopsis">Synopsis<a class="headerlink" href="#cli-convert-synopsis" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#cli-convert-__codelineno-0-1"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--variants<span class="w"> </span>&lt;VCF&gt;<span class="w"> </span>--output<span class="w"> </span>&lt;MAF&gt;
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#cli-convert-__codelineno-0-2"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--variants<span class="w"> </span>&lt;MAF&gt;<span class="w"> </span>--fasta<span class="w"> </span>&lt;FILE&gt;<span class="w"> </span>--output<span class="w"> </span>&lt;VCF&gt;
+</code></pre></div>
+<h2 id="cli-convert-description">Description<a class="headerlink" href="#cli-convert-description" title="Permanent link">¶</a></h2>
+<p>The <code>convert</code> subcommand writes the representation <code>gbcms dna</code> / <code>gbcms rna</code>
+use for their own output, without a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</p>
+<ul>
+<li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></strong> — each ALT allele as <a href="https://github.com/mskcc/vcf2maf">vcf2maf</a>
+  writes it: leading bases REF and ALT share are trimmed (never trailing ones),
+  <code>Start_Position</code> / <code>End_Position</code> and <code>Variant_Type</code> follow the trimmed alleles,
+  and the record itself is kept in <code>vcf_pos</code> / <code>vcf_ref</code> / <code>vcf_alt</code>. The columns
+  are those of a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input <code>--format maf</code> row before its count columns. ALT
+  alleles that cannot be counted (<code>*</code>, symbolic, breakends, <code>.</code>) are skipped the
+  same way: the first few are logged individually, then one WARNING gives the
+  totals by reason.</li>
+<li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> → <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr></strong> — each row as maf2vcf writes it: the reference base is prepended
+  when an allele is <code>-</code>, or when the alleles differ in length and first base
+  (the base after, at position 1). Alleles are read as maf2vcf reads them
+  (<code>Tumor_Seq_Allele1</code> when <code>Tumor_Seq_Allele2</code> is the reference). Records are
+  written in input order; contigs keep the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s naming.</li>
+</ul>
+<p>It converts representation only: REF is not checked against the reference and
+nothing is left-aligned (<a href="#cli-normalize">gbcms normalize</a> does both). The rules
+and worked examples are in <a href="#reference-output-formats">Output Formats</a>.</p>
+<h2 id="cli-convert-required-arguments">Required Arguments<a class="headerlink" href="#cli-convert-required-arguments" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--variants</code>, <code>-v</code></td>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (<code>.vcf</code>, <code>.vcf.gz</code>, <code>.vcf.bgz</code>) or <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (<code>.maf</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--output</code>, <code>-o</code></td>
+<td style="text-align: left;">Output path: <code>.maf</code> for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input, <code>.vcf</code> for <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input</td>
+</tr>
+</tbody>
+</table>
+<h2 id="cli-convert-optional-arguments">Optional Arguments<a class="headerlink" href="#cli-convert-optional-arguments" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--fasta</code>, <code>-f</code></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> with its <code>.fai</code> index (<code>samtools faidx</code>). Required for <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input: maf2vcf's anchor base comes from it. A base it cannot supply is written as <code>N</code> and counted in a WARNING. Not used for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input (a WARNING says so).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--verbose</code>, <code>-V</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Enable debug logging</td>
+</tr>
+</tbody>
+</table>
+<h2 id="cli-convert-examples">Examples<a class="headerlink" href="#cli-convert-examples" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#cli-convert-__codelineno-1-1"></a><span class="c1"># VCF -&gt; MAF (vcf2maf coordinates)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#cli-convert-__codelineno-1-2"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--variants<span class="w"> </span>calls.vcf.gz<span class="w"> </span>--output<span class="w"> </span>calls.maf
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#cli-convert-__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#cli-convert-__codelineno-1-4"></a><span class="c1"># MAF -&gt; VCF (maf2vcf records)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#cli-convert-__codelineno-1-5"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span>--output<span class="w"> </span>mutations.vcf
+</code></pre></div>
+<h2 id="cli-convert-related">Related<a class="headerlink" href="#cli-convert-related" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="#cli-normalize">gbcms normalize</a> — REF validation and left-alignment, no counting</li>
+<li><a href="#reference-output-formats">Output Formats</a> — the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output columns</li>
+<li><a href="#reference-input-formats">Input Formats</a> — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input conventions</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -6094,56 +6229,58 @@ Use mouse to pan and zoom
 <hr>
 <h2 id="reference-architecture-module-structure">Module Structure<a class="headerlink" href="#reference-architecture-module-structure" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#reference-architecture-__codelineno-2-1"></a>src/gbcms/
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#reference-architecture-__codelineno-2-2"></a>├── cli.py           # Typer CLI (dna, rna, merge, normalize commands)
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#reference-architecture-__codelineno-2-2"></a>├── cli.py           # Typer CLI (dna, rna, merge, normalize, convert commands)
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#reference-architecture-__codelineno-2-3"></a>├── pipeline.py      # Orchestration (~450 LOC)
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#reference-architecture-__codelineno-2-4"></a>├── merge.py         # Multi-BAM MAF merge engine (Polars lazy joins)
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#reference-architecture-__codelineno-2-5"></a>├── normalize.py     # Standalone normalization workflow
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#reference-architecture-__codelineno-2-6"></a>├── core/
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#reference-architecture-__codelineno-2-7"></a>│   └── kernel.py    # Coordinate normalization
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#reference-architecture-__codelineno-2-8"></a>├── io/
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#reference-architecture-__codelineno-2-9"></a>│   ├── input.py     # VcfReader, MafReader (streaming)
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#reference-architecture-__codelineno-2-10"></a>│   ├── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#reference-architecture-__codelineno-2-11"></a>│   └── batch.py     # Polars batch I/O (read/scan/write MAF, read Parquet)
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#reference-architecture-__codelineno-2-12"></a>├── models/
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#reference-architecture-__codelineno-2-13"></a>│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, MergeConfig)
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#reference-architecture-__codelineno-2-14"></a>└── utils/
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#reference-architecture-__codelineno-2-15"></a>    └── logging.py   # Structured logging
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#reference-architecture-__codelineno-2-16"></a>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#reference-architecture-__codelineno-2-17"></a>rust/src/
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#reference-architecture-__codelineno-2-18"></a>├── lib.rs                    # PyO3 module exports
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#reference-architecture-__codelineno-2-19"></a>├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>│   ├── mod.rs                # AnnotationIndex struct, COITree queries
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>│   ├── gtf.rs                # GTF parser (variant-guided streaming)
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>│   └── cache.rs              # GTF disk cache (GtfIndexBundle, bincode) — M5a
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>├── counting/
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── alignment.rs          # Smith-Waterman implementation
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#reference-architecture-__codelineno-2-29"></a>│   ├── pangenome.rs          # Haplotype matrix construction
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#reference-architecture-__codelineno-2-30"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
-<a id="__codelineno-2-31" name="__codelineno-2-31" href="#reference-architecture-__codelineno-2-31"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
-<a id="__codelineno-2-32" name="__codelineno-2-32" href="#reference-architecture-__codelineno-2-32"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
-<a id="__codelineno-2-33" name="__codelineno-2-33" href="#reference-architecture-__codelineno-2-33"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#reference-architecture-__codelineno-2-34"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#reference-architecture-__codelineno-2-35"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#reference-architecture-__codelineno-2-36"></a>├── normalize/
-<a id="__codelineno-2-37" name="__codelineno-2-37" href="#reference-architecture-__codelineno-2-37"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>│   ├── engine.rs             # Normalization pipeline
-<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>│   ├── left_align.rs         # bcftools-style left-alignment
-<a id="__codelineno-2-40" name="__codelineno-2-40" href="#reference-architecture-__codelineno-2-40"></a>│   ├── decomp.rs             # Homopolymer decomposition
-<a id="__codelineno-2-41" name="__codelineno-2-41" href="#reference-architecture-__codelineno-2-41"></a>│   ├── fasta.rs              # Reference sequence fetcher
-<a id="__codelineno-2-42" name="__codelineno-2-42" href="#reference-architecture-__codelineno-2-42"></a>│   ├── repeat.rs             # Tandem repeat detection
-<a id="__codelineno-2-43" name="__codelineno-2-43" href="#reference-architecture-__codelineno-2-43"></a>│   └── types.rs              # NormResult enum
-<a id="__codelineno-2-44" name="__codelineno-2-44" href="#reference-architecture-__codelineno-2-44"></a>├── shared/
-<a id="__codelineno-2-45" name="__codelineno-2-45" href="#reference-architecture-__codelineno-2-45"></a>│   ├── mod.rs                # Submodule re-exports
-<a id="__codelineno-2-46" name="__codelineno-2-46" href="#reference-architecture-__codelineno-2-46"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
-<a id="__codelineno-2-47" name="__codelineno-2-47" href="#reference-architecture-__codelineno-2-47"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
-<a id="__codelineno-2-48" name="__codelineno-2-48" href="#reference-architecture-__codelineno-2-48"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
-<a id="__codelineno-2-49" name="__codelineno-2-49" href="#reference-architecture-__codelineno-2-49"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
-<a id="__codelineno-2-50" name="__codelineno-2-50" href="#reference-architecture-__codelineno-2-50"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
-<a id="__codelineno-2-51" name="__codelineno-2-51" href="#reference-architecture-__codelineno-2-51"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#reference-architecture-__codelineno-2-6"></a>├── convert.py       # Standalone VCF &lt;-&gt; MAF conversion (vcf2maf / maf2vcf)
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#reference-architecture-__codelineno-2-7"></a>├── core/
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#reference-architecture-__codelineno-2-8"></a>│   └── kernel.py    # Coordinates + VCF &lt;-&gt; MAF representation, type labels
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#reference-architecture-__codelineno-2-9"></a>├── io/
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#reference-architecture-__codelineno-2-10"></a>│   ├── input.py     # VcfReader, MafReader (streaming)
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#reference-architecture-__codelineno-2-11"></a>│   ├── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#reference-architecture-__codelineno-2-12"></a>│   ├── reference.py # Reference bases for MAF -&gt; VCF anchors
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#reference-architecture-__codelineno-2-13"></a>│   └── batch.py     # Polars batch I/O (read/scan/write MAF, read Parquet)
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#reference-architecture-__codelineno-2-14"></a>├── models/
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#reference-architecture-__codelineno-2-15"></a>│   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, MergeConfig)
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#reference-architecture-__codelineno-2-16"></a>└── utils/
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#reference-architecture-__codelineno-2-17"></a>    └── logging.py   # Structured logging
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#reference-architecture-__codelineno-2-18"></a>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#reference-architecture-__codelineno-2-19"></a>rust/src/
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>├── lib.rs                    # PyO3 module exports
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>│   ├── mod.rs                # AnnotationIndex struct, COITree queries
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>│   ├── gtf.rs                # GTF parser (variant-guided streaming)
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   └── cache.rs              # GTF disk cache (GtfIndexBundle, bincode) — M5a
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>├── counting/
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#reference-architecture-__codelineno-2-28"></a>│   ├── variant_checks.rs     # check_snp/mnp/ins/del/complex + Phase 3 dispatch
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#reference-architecture-__codelineno-2-29"></a>│   ├── alignment.rs          # Smith-Waterman implementation
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#reference-architecture-__codelineno-2-30"></a>│   ├── pairhmm.rs            # PairHMM alignment backend (marginalized)
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#reference-architecture-__codelineno-2-31"></a>│   ├── pangenome.rs          # Haplotype matrix construction
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#reference-architecture-__codelineno-2-32"></a>│   ├── wfa_router.rs         # WFA2 fast-path alignment
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#reference-architecture-__codelineno-2-33"></a>│   ├── rna.rs                # RNA validation, splicing, editing site lookup
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#reference-architecture-__codelineno-2-34"></a>│   ├── fragment.rs           # Re-export of shared::fragment (backward compat)
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#reference-architecture-__codelineno-2-35"></a>│   ├── mfsd.rs               # Mutant Fragment Size Distribution analysis
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#reference-architecture-__codelineno-2-36"></a>│   ├── parquet_writer.rs     # write_fsd_parquet() — native Parquet via ZSTD
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#reference-architecture-__codelineno-2-37"></a>│   └── utils.rs              # Helpers, reconstruction, soft-clip
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#reference-architecture-__codelineno-2-38"></a>├── normalize/
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#reference-architecture-__codelineno-2-39"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#reference-architecture-__codelineno-2-40"></a>│   ├── engine.rs             # Normalization pipeline
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#reference-architecture-__codelineno-2-41"></a>│   ├── left_align.rs         # bcftools-style left-alignment
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#reference-architecture-__codelineno-2-42"></a>│   ├── decomp.rs             # Homopolymer decomposition
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#reference-architecture-__codelineno-2-43"></a>│   ├── fasta.rs              # Reference sequence fetcher
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#reference-architecture-__codelineno-2-44"></a>│   ├── repeat.rs             # Tandem repeat detection
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#reference-architecture-__codelineno-2-45"></a>│   └── types.rs              # NormResult enum
+<a id="__codelineno-2-46" name="__codelineno-2-46" href="#reference-architecture-__codelineno-2-46"></a>├── shared/
+<a id="__codelineno-2-47" name="__codelineno-2-47" href="#reference-architecture-__codelineno-2-47"></a>│   ├── mod.rs                # Submodule re-exports
+<a id="__codelineno-2-48" name="__codelineno-2-48" href="#reference-architecture-__codelineno-2-48"></a>│   ├── fragment.rs           # FragmentEvidence, quality consensus, UMI grouping
+<a id="__codelineno-2-49" name="__codelineno-2-49" href="#reference-architecture-__codelineno-2-49"></a>│   ├── stats.rs              # Fisher's exact test (strand bias), BH correction
+<a id="__codelineno-2-50" name="__codelineno-2-50" href="#reference-architecture-__codelineno-2-50"></a>│   ├── filters.rs            # ReadFilter struct, FilterCounts (BAM flag checks)
+<a id="__codelineno-2-51" name="__codelineno-2-51" href="#reference-architecture-__codelineno-2-51"></a>│   ├── baq.rs                # BAQ heuristic (Li 2011)
+<a id="__codelineno-2-52" name="__codelineno-2-52" href="#reference-architecture-__codelineno-2-52"></a>│   └── bam_utils.rs          # median_qual, find_read_pos
+<a id="__codelineno-2-53" name="__codelineno-2-53" href="#reference-architecture-__codelineno-2-53"></a>└── types.rs                  # Variant, BaseCounts, PyO3 bindings
 </code></pre></div>
 <hr>
 <h2 id="reference-architecture-configuration">Configuration<a class="headerlink" href="#reference-architecture-configuration" title="Permanent link">¶</a></h2>
@@ -6608,6 +6745,22 @@ column and the <abbr title="Variant Call Format - Standard variant call file for
 <li><code>#CHROM</code>, <code>POS</code>, <code>REF</code>, <code>ALT</code> columns required</li>
 <li>1-based positions</li>
 </ul>
+<h3 id="reference-input-formats-alt-alleles">ALT Alleles<a class="headerlink" href="#reference-input-formats-alt-alleles" title="Permanent link">¶</a></h3>
+<p>Each ALT allele of a record is genotyped as its own variant (a multi-allelic
+record gives one output row per ALT). An ALT allele that names no sequence to
+count is skipped, not genotyped: <code>*</code> (an overlapping deletion), symbolic alleles
+(<code>&lt;DEL&gt;</code>, <code>&lt;INS&gt;</code>, ...), breakends, a missing ALT (<code>.</code>), and any other allele with
+a base outside <code>A</code>/<code>C</code>/<code>G</code>/<code>T</code>/<code>N</code>. A record whose REF is not a base sequence
+(an empty REF reads as <code>.</code>) is skipped the same way. The first few skips are
+logged individually as WARNINGs and the totals once per file, by reason. An ALT
+containing <code>N</code> is kept: preparation reports it as a <code>FAIL</code> row (<code>ALT_CONTAINS_N</code>),
+and an ALT equal to its REF likewise (<code>ALT_EQUALS_REF</code>).</p>
+<h3 id="reference-input-formats-variant-types">Variant Types<a class="headerlink" href="#reference-input-formats-variant-types" title="Permanent link">¶</a></h3>
+<p>A record's type label comes from its alleles: <code>INSERTION</code> / <code>DELETION</code> only when
+the one-base allele is the other's first base (the shared anchor, e.g. <code>T&gt;TGT</code>,
+<code>TAA&gt;T</code>); every other unequal pair (a delins such as <code>TTAC&gt;A</code> or <code>C&gt;TA</code>) and every
+multi-base substitution is <code>COMPLEX</code>. <code>gbcms normalize</code> reports this label.
+Counting does not read it: reads are classified by the alleles themselves.</p>
 <h2 id="reference-input-formats-maf-mutation-annotation-format"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (Mutation Annotation Format)<a class="headerlink" href="#reference-input-formats-maf-mutation-annotation-format" title="Permanent link">¶</a></h2>
 <p>Standard <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> format with required columns:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-input-formats-__codelineno-1-1"></a>Hugo_Symbol  Chromosome  Start_Position  End_Position  Reference_Allele  Tumor_Seq_Allele2
@@ -6632,6 +6785,10 @@ column and the <abbr title="Variant Call Format - Standard variant call file for
 <td style="text-align: left;">1-based start position</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>End_Position</code></td>
+<td style="text-align: left;">1-based end position (an integer; rows without one are skipped with a WARNING)</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>Reference_Allele</code></td>
 <td style="text-align: left;">Reference allele</td>
 </tr>
@@ -6641,6 +6798,18 @@ column and the <abbr title="Variant Call Format - Standard variant call file for
 </tr>
 </tbody>
 </table>
+<p><code>Tumor_Seq_Allele1</code> is optional (see below).</p>
+<h3 id="reference-input-formats-maf-alleles"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Alleles<a class="headerlink" href="#reference-input-formats-maf-alleles" title="Permanent link">¶</a></h3>
+<p>Alleles are read as maf2vcf reads them:</p>
+<ul>
+<li>The variant allele is <code>Tumor_Seq_Allele2</code>, or <code>Tumor_Seq_Allele1</code> when
+  <code>Tumor_Seq_Allele2</code> is empty or equal to the reference (older MAFs put the
+  variant there). How many rows were read that way is logged as a WARNING.</li>
+<li>An allele made only of <code>-</code>, <code>?</code> or <code>0</code> is a placeholder for an empty allele
+  and is read as <code>-</code>.</li>
+<li>A row whose variant allele still equals its reference describes no change;
+  preparation reports it as a <code>FAIL</code> row (<code>ALT_EQUALS_REF</code>) rather than counting it.</li>
+</ul>
 <h3 id="reference-input-formats-maf-indel-normalization"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Indel Normalization<a class="headerlink" href="#reference-input-formats-maf-indel-normalization" title="Permanent link">¶</a></h3>
 <p><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> represents indels using <code>-</code> dashes, while gbcms internally uses <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style <strong>anchor-based</strong> coordinates. When a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> file contains insertions (<code>Reference_Allele = -</code>) or deletions (<code>Tumor_Seq_Allele2 = -</code>), gbcms automatically converts them at input time.</p>
 <div class="admonition warning">
@@ -6747,6 +6916,8 @@ Use mouse to pan and zoom
 <p class="admonition-title">Position Shift for Deletions</p>
 <p>For insertions, <code>Start_Position</code> already points to the anchor base. For deletions, <code>Start_Position</code> points to the <em>first deleted base</em>, so gbcms shifts back by one position to find the anchor.</p>
 </div>
+<p>A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row whose alleles are both sequences (an <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>, an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, or a delins such as
+<code>TTAC&gt;A</code>) is used as written, at <code>Start_Position</code>, with no anchor base.</p>
 <h2 id="reference-input-formats-variant-left-normalization">Variant Left-Normalization<a class="headerlink" href="#reference-input-formats-variant-left-normalization" title="Permanent link">¶</a></h2>
 <p>gbcms automatically <strong>left-aligns</strong> indels and complex variants during the preparation step. For full details on the normalization algorithm, homopolymer decomposition detection, and REF validation, see <a href="#reference-variant-normalization">Variant Normalization</a>.</p>
 <div class="admonition important">
@@ -7008,12 +7179,12 @@ without a length.</p>
 <tr>
 <td style="text-align: left;"><code>REF</code></td>
 <td style="text-align: left;">Reference allele</td>
-<td style="text-align: left;">From input; validated against <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></td>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input: as written. <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input: as maf2vcf writes it (below)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ALT</code></td>
 <td style="text-align: left;">Alternate allele</td>
-<td style="text-align: left;">From input</td>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input: as written. <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input: as maf2vcf writes it (below)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>QUAL</code></td>
@@ -7027,6 +7198,54 @@ without a length.</p>
 </tr>
 </tbody>
 </table>
+<div class="admonition info">
+<p class="admonition-title"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input written as <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> follows maf2vcf</p>
+<p>A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row is written as the record <a href="https://github.com/mskcc/vcf2maf">maf2vcf</a>
+writes: when an allele is <code>-</code>, or the two alleles differ in length <strong>and</strong> in
+their first base, the reference base before them is prepended (the base <strong>at</strong>
+<code>Start_Position</code> for a <code>-</code> insertion, whose Start is the base before the
+insertion) and <code>POS</code> moves to it. Anything else is written as-is at
+<code>Start_Position</code>. An event at position 1 has no base before it, so the base
+after it is appended instead (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec; maf2vcf skips such rows). The anchor
+base comes from <code>--fasta</code>; one the reference cannot supply is written as <code>N</code>
+and counted in a WARNING. The <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> alleles are read as maf2vcf reads them
+(see <a href="#reference-input-formats-maf-alleles">Input Formats</a>); unlike maf2vcf, a
+differing <code>Tumor_Seq_Allele1</code> is not written as a second ALT.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <code>Start</code> <code>Ref</code> &gt; <code>Alt</code></th>
+<th style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>POS</code> <code>REF</code> &gt; <code>ALT</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>462 AA &gt; -</code></td>
+<td style="text-align: left;"><code>461 TAA &gt; T</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>581 - &gt; GT</code></td>
+<td style="text-align: left;"><code>581 T &gt; TGT</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>701 TTAC &gt; A</code></td>
+<td style="text-align: left;"><code>700 TTTAC &gt; TA</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>942 AAA &gt; T</code></td>
+<td style="text-align: left;"><code>941 GAAA &gt; GT</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>1183 T &gt; G</code></td>
+<td style="text-align: left;"><code>1183 T &gt; G</code></td>
+</tr>
+</tbody>
+</table>
+<p>Counting is unaffected. Before counting, the engine anchors <code>-</code> alleles to
+this same record; other <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> alleles (e.g. <code>701 TTAC &gt; A</code>) it counts as
+written, an equivalent description of the same change. <code>gbcms convert</code>
+writes these records without counting.</p>
+</div>
 <hr>
 <h3 id="reference-output-formats-info-fields">INFO Fields<a class="headerlink" href="#reference-output-formats-info-fields" title="Permanent link">¶</a></h3>
 <p>The <code>INFO</code> column is a semicolon-separated list of <code>KEY=VALUE</code> pairs.</p>
@@ -7533,35 +7752,35 @@ have no <abbr title="Mutation Annotation Format - Standard mutation annotation f
 </tr>
 <tr>
 <td style="text-align: left;"><code>Start_Position</code></td>
-<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> start position</td>
+<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> start position (vcf2maf's, below)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>End_Position</code></td>
-<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> end position</td>
+<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> end position (vcf2maf's, below)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Strand</code></td>
-<td style="text-align: left;"><code>+</code></td>
+<td style="text-align: left;">Empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Variant_Classification</code></td>
-<td style="text-align: left;">Derived from variant type</td>
+<td style="text-align: left;">Empty — gbcms does not annotate effects</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Variant_Type</code></td>
-<td style="text-align: left;"><code>SNP</code>, <code>INS</code>, <code>DEL</code>, or <code>ONP</code></td>
+<td style="text-align: left;"><code>SNP</code>, <code>DNP</code>, <code>TNP</code>, <code>ONP</code>, <code>INS</code> or <code>DEL</code>, from the trimmed alleles</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Reference_Allele</code></td>
-<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>-style REF (<code>-</code> for pure insertions)</td>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF: shared leading bases trimmed, <code>-</code> when nothing is left</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Tumor_Seq_Allele1</code></td>
-<td style="text-align: left;">Reference allele (same as <code>Reference_Allele</code>)</td>
+<td style="text-align: left;">Empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Tumor_Seq_Allele2</code></td>
-<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>-style ALT (<code>-</code> for pure deletions)</td>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> ALT: shared leading bases trimmed, <code>-</code> when nothing is left</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Tumor_Sample_Barcode</code></td>
@@ -7573,7 +7792,7 @@ have no <abbr title="Mutation Annotation Format - Standard mutation annotation f
 </tr>
 <tr>
 <td style="text-align: left;"><code>vcf_id</code></td>
-<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>ID</code> field (rsID or <code>.</code>)</td>
+<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>ID</code> field (empty when the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> has <code>.</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>vcf_pos</code></td>
@@ -7583,9 +7802,73 @@ have no <abbr title="Mutation Annotation Format - Standard mutation annotation f
 <td style="text-align: left;"><code>vcf_region</code></td>
 <td style="text-align: left;"><code>chr:pos</code> tracking field</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>vcf_ref</code></td>
+<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>REF</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vcf_alt</code></td>
+<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>ALT</code> — this row's allele (a multi-allelic record gives one row per ALT)</td>
+</tr>
 </tbody>
 </table>
 <p>Then all <a href="#reference-output-formats-gbcms-count-columns">gbcms count columns</a> are appended.</p>
+<div class="admonition info">
+<p class="admonition-title">Coordinates follow vcf2maf</p>
+<p>Each record is converted exactly as <a href="https://github.com/mskcc/vcf2maf">vcf2maf</a>
+converts it: leading bases REF and ALT share are trimmed (trailing ones
+never are), moving <code>Start_Position</code> right; an allele trimmed to nothing
+becomes <code>-</code>. Equal lengths after the trim are <code>SNP</code>/<code>DNP</code>/<code>TNP</code>/<code>ONP</code> by
+length. Otherwise it is <code>INS</code> (ALT longer) or <code>DEL</code>: the row spans its REF
+bases, and an insertion whose REF trimmed to <code>-</code> spans the two bases around
+the insertion point. A delins with no shared first base keeps every base.
+Bases are compared case-insensitively (the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec's view); vcf2maf
+compares them as written, so only mixed-case alleles can differ.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>POS</code> <code>REF</code> &gt; <code>ALT</code></th>
+<th style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <code>Start</code>–<code>End</code> <code>Ref</code> &gt; <code>Alt</code></th>
+<th style="text-align: left;"><code>Variant_Type</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>461 TAA &gt; T</code></td>
+<td style="text-align: left;"><code>462–463 AA &gt; -</code></td>
+<td style="text-align: left;"><code>DEL</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>581 T &gt; TGT</code></td>
+<td style="text-align: left;"><code>581–582 - &gt; GT</code></td>
+<td style="text-align: left;"><code>INS</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>701 TTAC &gt; A</code></td>
+<td style="text-align: left;"><code>701–704 TTAC &gt; A</code></td>
+<td style="text-align: left;"><code>DEL</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>821 C &gt; TA</code></td>
+<td style="text-align: left;"><code>821–821 C &gt; TA</code></td>
+<td style="text-align: left;"><code>INS</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>1181 TCT &gt; TCG</code></td>
+<td style="text-align: left;"><code>1183–1183 T &gt; G</code></td>
+<td style="text-align: left;"><code>SNP</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>2021 TC &gt; TCGG</code></td>
+<td style="text-align: left;"><code>2022–2023 - &gt; GG</code></td>
+<td style="text-align: left;"><code>INS</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>norm_*</code> columns of <code>--show-normalization</code> are written the same way
+from the left-aligned variant. <code>gbcms convert</code> writes these columns
+without counting.</p>
+</div>
 </div>
 <div class="tabbed-block">
 <p>All original input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns are preserved <strong>exactly</strong> (values never
@@ -7658,7 +7941,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>gbcms_status_reason</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Reason tag(s), <code>\|</code>-separated; empty for a clean PASS. PASS reasons: <code>WARN_REF_CORRECTED</code>, <code>WARN_HOMOPOLYMER_DECOMP</code>, <code>MULTI_ALLELIC</code>, <code>TRACT_CLUSTER</code>. FAIL reasons: <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>EMPTY_ALLELE</code>, <code>ALT_CONTAINS_N</code>. Reasons stack, e.g. <code>WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP</code>. Identical string in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GSR</code> INFO.</td>
+<td style="text-align: left;">Reason tag(s), <code>\|</code>-separated; empty for a clean PASS. PASS reasons: <code>WARN_REF_CORRECTED</code>, <code>WARN_HOMOPOLYMER_DECOMP</code>, <code>MULTI_ALLELIC</code>, <code>TRACT_CLUSTER</code>. FAIL reasons: <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>EMPTY_ALLELE</code>, <code>ALT_EQUALS_REF</code>, <code>ALT_CONTAINS_N</code>. Reasons stack, e.g. <code>WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP</code>. Identical string in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GSR</code> INFO.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_diagnostic</code></td>
@@ -8690,7 +8973,10 @@ Use mouse to pan and zoom
 <p class="admonition-title">Dynamic Window Expansion</p>
 <p>If a variant shifts all the way to the window edge during left-alignment, it may not have fully converged. The engine automatically <strong>doubles the window</strong> (100 → 200 → 400 → ... → 2500bp) and retries. This ensures correct normalization even for variants in massive tandem repeats (e.g., centromeric regions) without penalizing the common case.</p>
 </div>
-<p>After alignment, the <strong>variant type is re-detected</strong> based on the new allele lengths:</p>
+<p>Every variant that reaches REF validation gets a <strong>type label derived from its
+final alleles</strong> (after anchor resolution, REF correction and alignment), with the
+same rule the readers use. A row rejected before that (<code>EMPTY_ALLELE</code>,
+<code>ALT_EQUALS_REF</code>, a failed <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> anchor fetch) keeps the reader's label.</p>
 <table>
 <thead>
 <tr>
@@ -8704,19 +8990,21 @@ Use mouse to pan and zoom
 <td style="text-align: left;"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>ref_len == 1 &amp;&amp; alt_len &gt; 1</code></td>
+<td style="text-align: left;"><code>ref_len == 1 &amp;&amp; alt_len &gt; 1</code> and ALT starts with the REF base</td>
 <td style="text-align: left;">INSERTION</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>ref_len &gt; 1 &amp;&amp; alt_len == 1</code></td>
+<td style="text-align: left;"><code>ref_len &gt; 1 &amp;&amp; alt_len == 1</code> and REF starts with the ALT base</td>
 <td style="text-align: left;">DELETION</td>
 </tr>
 <tr>
-<td style="text-align: left;">Otherwise</td>
+<td style="text-align: left;">Otherwise (a delins such as <code>TTAC&gt;A</code> or <code>C&gt;TA</code>, or an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>)</td>
 <td style="text-align: left;">COMPLEX</td>
 </tr>
 </tbody>
 </table>
+<p>Counting never reads this label — reads are classified by the alleles — so it is
+what <code>gbcms normalize</code> reports, not an input to counting.</p>
 <div class="admonition tip">
 <p class="admonition-title">Debugging Normalization</p>
 <p>Use <code>gbcms normalize</code> to see exactly how each variant was transformed. The output <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> shows original and normalized coordinates side by side, plus granular flags: <code>was_anchor_resolved</code> (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> dash-allele conversion), <code>was_left_aligned</code> (left-shifting), and <code>was_normalized</code> (either one).</p>
@@ -9022,6 +9310,12 @@ string is byte-identical in the <abbr title="Mutation Annotation Format - Standa
 <td style="text-align: left;"><code>FAIL</code></td>
 <td style="text-align: left;"><code>EMPTY_ALLELE</code></td>
 <td style="text-align: left;">Empty REF or ALT (malformed / non-left-anchored indel)</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAIL</code></td>
+<td style="text-align: left;"><code>ALT_EQUALS_REF</code></td>
+<td style="text-align: left;">ALT equals REF (any case; <code>-</code> for both in a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>): no change to count</td>
 <td style="text-align: center;">❌</td>
 </tr>
 <tr>
@@ -14094,6 +14388,21 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
 <td style="text-align: left;"><strong>FETCH_FAILED</strong></td>
 <td style="text-align: left;">Could not fetch the reference region (chromosome not found, etc.)</td>
 </tr>
+<tr>
+<td style="text-align: left;"><strong>FAIL</strong></td>
+<td style="text-align: left;"><strong>EMPTY_ALLELE</strong></td>
+<td style="text-align: left;">Empty REF or ALT (malformed indel)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>FAIL</strong></td>
+<td style="text-align: left;"><strong>ALT_EQUALS_REF</strong></td>
+<td style="text-align: left;">ALT equals REF (any case; <code>-</code> for both in a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>): no change to count</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>FAIL</strong></td>
+<td style="text-align: left;"><strong>ALT_CONTAINS_N</strong></td>
+<td style="text-align: left;">ALT allele contains an <code>N</code> base</td>
+</tr>
 </tbody>
 </table>
 <h2 id="reference-glossary-rna-terms">RNA Terms<a class="headerlink" href="#reference-glossary-rna-terms" title="Permanent link">¶</a></h2>
@@ -14291,6 +14600,7 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
     subgraph Python["src/gbcms/"]
         CLI["cli.py"] --&gt; Pipeline["pipeline.py"]
         CLI --&gt; Normalize["normalize.py"]
+        CLI --&gt; Convert["convert.py"]
         Pipeline --&gt; IO["io/"]
         Pipeline --&gt; Models["models/"]
     end
@@ -15108,6 +15418,13 @@ DEBUG (Python and Rust — Rust records are forwarded through <code>pyo3-log</co
 <td style="text-align: left;"><code>warn</code> (validation)</td>
 </tr>
 <tr>
+<td style="text-align: left;">ALT equal to REF in input <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></td>
+<td style="text-align: left;"><code>FAIL</code> + reason <code>ALT_EQUALS_REF</code></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;"><code>warn</code> (validation)</td>
+</tr>
+<tr>
 <td style="text-align: left;">ThirdAllele with partial match</td>
 <td style="text-align: left;">neither + partial</td>
 <td style="text-align: left;">—</td>
@@ -15323,7 +15640,7 @@ DEBUG (Python and Rust — Rust records are forwarded through <code>pyo3-log</co
 </tr>
 <tr>
 <td style="text-align: left;"><code>nextflow/modules/local/gbcms/dna/main.nf</code></td>
-<td style="text-align: left;">7</td>
+<td style="text-align: left;">9</td>
 <td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
 </tr>
 <tr>
@@ -15333,7 +15650,7 @@ DEBUG (Python and Rust — Rust records are forwarded through <code>pyo3-log</co
 </tr>
 <tr>
 <td style="text-align: left;"><code>nextflow/modules/local/gbcms/rna/main.nf</code></td>
-<td style="text-align: left;">7</td>
+<td style="text-align: left;">9</td>
 <td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
 </tr>
 <tr>
@@ -15343,12 +15660,12 @@ DEBUG (Python and Rust — Rust records are forwarded through <code>pyo3-log</co
 </tr>
 <tr>
 <td style="text-align: left;"><code>nextflow/modules/local/gbcms/merge/main.nf</code></td>
-<td style="text-align: left;">7</td>
+<td style="text-align: left;">9</td>
 <td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>nextflow/main.nf</code></td>
-<td style="text-align: left;">53</td>
+<td style="text-align: left;">51</td>
 <td style="text-align: left;"><code>gbcms vX.Y.Z — Nextflow Pipeline</code></td>
 </tr>
 <tr>
@@ -15695,6 +16012,76 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-breaking-changes-vcf-maf-representation-follows-vcf2maf-maf2vcf-110">⚠️ Breaking Changes — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> ↔ <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> representation follows vcf2maf / maf2vcf (#110)<a class="headerlink" href="#development-changelog-breaking-changes-vcf-maf-representation-follows-vcf2maf-maf2vcf-110" title="Permanent link">¶</a></h3>
+<blockquote>
+<p><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output changes coordinates, alleles and <code>Variant_Type</code> for many
+indel and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> shapes and gains two columns; <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>-input <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output changes
+<code>POS</code>/<code>REF</code>/<code>ALT</code> for indels. Counts are unchanged for every countable
+allele shape; only the edge rows below (Allele1 fallback, <code>ALT_EQUALS_REF</code>,
+skipped ALTs) change. Re-genotype every flavor
+(e.g. duplex and simplex) with the same version before <code>gbcms merge</code>.</p>
+</blockquote>
+<ul>
+<li><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> writes each record exactly as vcf2maf does. It trims the
+  leading bases REF and ALT share, never trailing ones; <code>Start_Position</code>,
+  <code>End_Position</code> and <code>Variant_Type</code> follow the trimmed alleles. Before, the
+  conversion followed a length-only type label, so 9 of 17 allele shapes
+  differed from vcf2maf. For example:</li>
+<li><code>TTAC&gt;A</code> became <code>702–704 TAC&gt;-</code> (vcf2maf: <code>701–704 TTAC&gt;A</code>, DEL);</li>
+<li><code>C&gt;TA</code> became <code>-&gt;A</code> (vcf2maf: <code>821 C&gt;TA</code>, INS);</li>
+<li><code>TCT&gt;TCG</code> stayed a 3bp TNP (vcf2maf: <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> <code>T&gt;G</code> at the changed base);</li>
+<li><code>TC&gt;TCGG</code> stayed untrimmed (vcf2maf: <code>- &gt; GG</code>).</li>
+</ul>
+<p>Bases are compared case-insensitively, so only mixed-case alleles can differ
+  from vcf2maf.
+- New <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns <code>vcf_ref</code> / <code>vcf_alt</code> keep the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> record itself, alongside
+  <code>vcf_pos</code> (vcf2maf's names). Each row's <code>vcf_alt</code> is its own allele;
+  multi-allelic records give one row per ALT. These columns appear only for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  input.
+- <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input → <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output writes each row as maf2vcf does. When an allele is <code>-</code>,
+  or the alleles differ in length and first base, the reference base before
+  them is prepended from <code>--fasta</code>. At position 1, the base after the event is
+  appended instead (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec). Before, <code>-</code> alleles were written into the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  (<code>462 AA&gt;-</code>), which is not valid <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>.
+- <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> alleles are read as maf2vcf reads them:
+  - <code>Tumor_Seq_Allele1</code> is the variant allele when <code>Tumor_Seq_Allele2</code> is empty
+    or the reference (older MAFs). Such rows were genotyped as REF against
+    itself; the reader now logs how many rows it read this way.
+  - Alleles made only of <code>-</code>, <code>?</code> or <code>0</code> are read as <code>-</code>.
+- A variant whose ALT equals its REF (any case; <code>-</code> for both in a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) is a
+  <code>FAIL</code> row with the new reason <code>ALT_EQUALS_REF</code>. Before, it passed and was
+  counted, meaninglessly.
+- <code>--show-normalization</code> <code>norm_*</code> <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns follow the left-aligned alleles,
+  not a type label (a delins was written with its first base stripped).
+- Type labels come from the alleles in both readers and in variant preparation.
+  INSERTION / DELETION now requires a shared anchor base; a delins such as
+  <code>TTAC&gt;A</code> or <code>C&gt;TA</code> is COMPLEX. <code>gbcms normalize</code> reports these labels.
+  Counting never read them.
+- The <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> reader skips alleles it cannot count, with a WARNING and per-reason
+  totals: ALT <code>*</code>, symbolic <code>&lt;...&gt;</code>, breakends, a missing <code>.</code>, other
+  non-sequence alleles, and a REF that is not a base sequence. Before, <code>*</code> and
+  <code>&lt;DEL&gt;</code> were genotyped as nonsense rows, <code>.</code> was dropped silently, and an
+  empty REF (read as <code>.</code>) was genotyped. ALT <code>N</code> still reaches preparation,
+  which reports it as a <code>FAIL</code> row.
+- <code>gbcms merge</code> adds the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> record (<code>vcf_pos</code> / <code>vcf_ref</code> / <code>vcf_alt</code>) to its
+  join key when every input is <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-derived, because two <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> records can trim
+  to one <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> record. It also warns when an input repeats a join key; each such
+  row joined every matching row of the other inputs, silently.
+- The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> HTML report finds each variant's <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row by the key its Parquet uses
+  (the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> record for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input). <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input indels, and some other shapes, were
+  reported without their <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row (no gene, no statistics).
+- Counting is otherwise unchanged: every countable allele shape counts
+  identically from <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input.
+- Docs: for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input, <code>Strand</code>, <code>Variant_Classification</code> and
+  <code>Tumor_Seq_Allele1</code> are empty, and <code>vcf_id</code> is empty for a <code>.</code> ID. They had
+  been documented otherwise. <code>End_Position</code> is listed as a required <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column.</p>
+<h3 id="development-changelog-added-gbcms-convert">Added — <code>gbcms convert</code><a class="headerlink" href="#development-changelog-added-gbcms-convert" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>gbcms convert</code> converts <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (vcf2maf's coordinates, with <code>vcf_pos</code> /
+  <code>vcf_ref</code> / <code>vcf_alt</code>) or <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> → <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (maf2vcf's records; needs an indexed
+  <code>--fasta</code>) without counting. It uses the same conversion as the <code>dna</code> / <code>rna</code>
+  output.</li>
+</ul>
 <h3 id="development-changelog-fixed-homopolymer-decomposed-twin-strand-and-per-sample-flag-107">Fixed — homopolymer-decomposed twin: strand and per-sample flag (#107)<a class="headerlink" href="#development-changelog-fixed-homopolymer-decomposed-twin-strand-and-per-sample-flag-107" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>WARN_HOMOPOLYMER_DECOMP</code> is per sample again. The prepared variants are
@@ -15719,8 +16106,9 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   records read <code>1</code> under a <code>##contig=&lt;ID=chr1&gt;</code> header, a malformed <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> that htslib
   rejects (<code>Contig '1' is not defined in the header</code>). Rescue labels and the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>
   Parquet follow the same naming. Counting is unchanged: contigs are still reconciled
-  internally between the variant file, <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> and <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>. One INFO line per run names
-  the two conventions when they differ. Unprefixed (b37, Ensembl) input is
+  internally between the variant file, <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> and <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>. One INFO line per distinct
+  naming pair names the two conventions when they differ. Unprefixed (b37,
+  Ensembl) input against a reference and <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> that use the same naming is
   unaffected.</li>
 <li>The reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> now reconciles the mitochondrion's spellings as the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> side
   already did. Before, a <code>chrM</code> (or <code>M</code>, <code>MT</code>, <code>chrMT</code>) variant against a <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>
@@ -15779,16 +16167,19 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   naming the reason and outcome: under the default <code>pairhmm</code> backend, n
   depth-contributing reads could not be evaluated by the pangenomic haplotype
   matrix because the variant's reference context is missing (prep's fetch
-  failed) or does not contain it. They are scored by the Smith-Waterman fallback
+  failed, e.g. an indel near a contig end) or does not contain it, or the ALT
+  haplotype exceeds 400bp (very long insertions). They are scored by the
+  Smith-Waterman fallback
   where it can run and otherwise end NEITHER — previously with no trace on the
-  row. Measured to never fire on well-formed input. Never set under
+  row. It never fired on the traced real runs. Never set under
   <code>--alignment-backend sw</code>.</li>
 <li><code>CLIP_CANDIDATES(n)</code> in <code>gbcms_diagnostic</code>: an insertion with no confirmed
   ALT where n (≥ 2) reads carry a ≥ 8bp soft clip within the insert's
   duplication reach — clip-represented carriers (typically a tandem-duplication
   ITD) the engine cannot claim.</li>
-<li><code>--umi-tag TAG</code> that no processed read carries now logs one WARN per <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:
-  fragment grouping silently fell back to read names.</li>
+<li><code>--umi-tag TAG</code> that no processed read carries now logs one WARN per counting
+  pass over a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> (a <code>--rescue-mnp</code> recount can repeat it): fragment grouping
+  silently fell back to read names.</li>
 </ul>
 <h3 id="development-changelog-changed-smith-waterman-gap-extend-is-a-documented-constant">Changed — Smith-Waterman gap-extend is a documented constant<a class="headerlink" href="#development-changelog-changed-smith-waterman-gap-extend-is-a-documented-constant" title="Permanent link">¶</a></h3>
 <ul>
@@ -15801,7 +16192,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>asjd_diagnostic</code> gains two markers that read the population the
   splice-aware evidence rule excludes — fragments whose <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code> spans the
   variant — at variants within two bases of an annotated intron boundary
-  on the gene's strand, above ASJD's own junction-evidence floors:
+  on the gene's strand, at or above ASJD's own junction-evidence floors:
   <code>RETENTION_DOMINANT(n)</code> (spliced-over fragments dominate a junction-free
   classified population, so <code>vaf</code> is the retention-population <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>) and
   <code>NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)</code> (an anchored, unannotated junction
@@ -15831,10 +16222,12 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   explains the read strictly better over a window covering both spans
   (equal cost = equivalent representations, both rows keep the read).
   True carriers — pure indels, delins/complex, shifted self
-  representations, noisy but real reads — keep <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>.</li>
-<li><strong>REF-side symmetry.</strong> Sibling-claimed reads excluded from <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> (all
-  paths, now including per-transcript) surface as <code>partial_alt</code> instead of
-  vanishing silently.</li>
+  representations, noisy but real reads — keep <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, except a pure-indel
+  carrier resolved only by alignment (e.g. soft-clipped), which surfaces as
+  <code>partial_alt</code>.</li>
+<li><strong>REF-side symmetry.</strong> Sibling-claimed reads are excluded from <abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr> on every
+  path (now including per-transcript); in the main counts they surface as
+  <code>partial_alt</code> instead of vanishing silently.</li>
 <li>Validated against a signed-out ACCESS hypermutation cluster: per-row
   fragment ALT counts land exactly on (or within counting-basis of)
   sign-out where the previous windowed counting over-attributed 2–5×;
@@ -15890,7 +16283,8 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Fixed: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GR</code> was split by parsers.</strong> The audit's positions list was
   comma-separated and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> parsers (htslib/pysam) split a comma-bearing
   Number=1 INFO value, silently truncating the audit. Positions are now
-  joined with <code>+</code>; the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GR</code> carry identical content.</li>
+  joined with <code>+</code>; the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> column and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GR</code> carry the same content (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>
+  writes <code>;</code> as <code>|</code>).</li>
 <li>Per-sample INFO outcome summary; warnings for anomalies (a component SNV
   failing preparation). With <code>--mfsd-parquet</code>, a rescued row's record keeps
   the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s coordinates but carries the adopted component's fragment sizes
@@ -17842,8 +18236,9 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
 <p>Check in this order:</p>
 <ol>
 <li>
-<p><strong><code>gbcms_status</code></strong> column — if <code>REF_MISMATCH</code> or <code>FETCH_FAILED</code>, the variant
-   was excluded from counting. See <a href="#resources-troubleshooting-normalization-issues">Normalization Issues</a>.</p>
+<p><strong><code>gbcms_status</code></strong> column — if <code>FAIL</code>, the variant was excluded from counting;
+   <code>gbcms_status_reason</code> says why (<code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>EMPTY_ALLELE</code>,
+   <code>ALT_EQUALS_REF</code>, <code>ALT_CONTAINS_N</code>). See <a href="#resources-troubleshooting-normalization-issues">Normalization Issues</a>.</p>
 </li>
 <li>
 <p><strong>Complex Del+SNV routing</strong> — if your variant has deletion format (<code>REF</code> longer than <code>ALT</code>,
@@ -18000,6 +18395,23 @@ flag is set per sample.</p>
 The comparison is a heuristic: both alleles can claim reads carrying other forms of the run.
 Inspect the reads at the locus before relying on either allele's counts (see
 <a href="#reference-variant-normalization">Variant Normalization</a>).</p>
+</details>
+<details class="question">
+<summary>After upgrading to 6.5.0, <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> rows from a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> have different <code>Start_Position</code> / alleles</summary>
+<p>Since 6.5.0, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input is written to <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> exactly as vcf2maf writes it: the leading bases
+REF and ALT share are trimmed, so e.g. <code>TCT&gt;TCG</code> becomes the <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> <code>T&gt;G</code> at the changed
+base, and <code>TTAC&gt;A</code> stays a 4bp deletion. The <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> record itself is kept in <code>vcf_pos</code> /
+<code>vcf_ref</code> / <code>vcf_alt</code>; key on those to compare runs. Counts are unchanged. Re-genotype
+every flavor with the same version before <code>gbcms merge</code>: MAFs from different versions do
+not join. <code>gbcms convert</code> shows the conversion for a variant file without counting. See
+<a href="#reference-output-formats">Output Formats</a>.</p>
+</details>
+<details class="question">
+<summary>WARNING: <code>Skipped VCF ALT ... — not countable</code></summary>
+<p>The <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> reader skips alleles that name no sequence to count: <code>*</code>, symbolic <code>&lt;...&gt;</code>
+alleles, breakends, a missing <code>.</code>, other non-sequence alleles, and a REF that is not a
+base sequence. The first few are logged individually, then one WARNING gives the totals
+by reason. They get no output row. See <a href="#reference-input-formats-alt-alleles">Input Formats</a>.</p>
 </details>
 <hr>
 <h2 id="resources-troubleshooting-rna-mode-issues">RNA Mode Issues<a class="headerlink" href="#resources-troubleshooting-rna-mode-issues" title="Permanent link">¶</a></h2>
@@ -18213,6 +18625,11 @@ genuinely has nothing to count.</p>
 
                 .print-site-enumerate-headings #cli-normalize h2:before { content: '3.5.' counter(counter-cli-normalize-2) ' ' }
                 .print-site-enumerate-headings #cli-normalize h2 {  counter-increment: counter-cli-normalize-2 }
+            
+.print-site-enumerate-headings #cli-convert > h1:before { content: '3.6 ' }
+
+                .print-site-enumerate-headings #cli-convert h2:before { content: '3.6.' counter(counter-cli-convert-2) ' ' }
+                .print-site-enumerate-headings #cli-convert h2 {  counter-increment: counter-cli-convert-2 }
             
 .print-site-enumerate-headings #section-4 > h1:before { content: '4 ' }
 .print-site-enumerate-headings #nextflow > h1:before { content: '4.1 ' }

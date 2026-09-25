@@ -288,6 +288,18 @@
   </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/convert/">
+<span class="md-ellipsis">
+    
+  
+    Convert Command
+  
+
+    
+  </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -440,6 +452,24 @@
     </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#alt-alleles">
+<span class="md-ellipsis">
+      
+        ALT Alleles
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#variant-types">
+<span class="md-ellipsis">
+      
+        Variant Types
+      
+    </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -458,6 +488,15 @@
 <span class="md-ellipsis">
       
         Required Columns
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#maf-alleles">
+<span class="md-ellipsis">
+      
+        MAF Alleles
       
     </span>
 </a>
@@ -839,6 +878,24 @@
     </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#alt-alleles">
+<span class="md-ellipsis">
+      
+        ALT Alleles
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#variant-types">
+<span class="md-ellipsis">
+      
+        Variant Types
+      
+    </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -857,6 +914,15 @@
 <span class="md-ellipsis">
       
         Required Columns
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#maf-alleles">
+<span class="md-ellipsis">
+      
+        MAF Alleles
       
     </span>
 </a>
@@ -970,6 +1036,22 @@
 <li><code>#CHROM</code>, <code>POS</code>, <code>REF</code>, <code>ALT</code> columns required</li>
 <li>1-based positions</li>
 </ul>
+<h3 id="alt-alleles">ALT Alleles<a class="headerlink" href="#alt-alleles" title="Permanent link">¶</a></h3>
+<p>Each ALT allele of a record is genotyped as its own variant (a multi-allelic
+record gives one output row per ALT). An ALT allele that names no sequence to
+count is skipped, not genotyped: <code>*</code> (an overlapping deletion), symbolic alleles
+(<code>&lt;DEL&gt;</code>, <code>&lt;INS&gt;</code>, ...), breakends, a missing ALT (<code>.</code>), and any other allele with
+a base outside <code>A</code>/<code>C</code>/<code>G</code>/<code>T</code>/<code>N</code>. A record whose REF is not a base sequence
+(an empty REF reads as <code>.</code>) is skipped the same way. The first few skips are
+logged individually as WARNINGs and the totals once per file, by reason. An ALT
+containing <code>N</code> is kept: preparation reports it as a <code>FAIL</code> row (<code>ALT_CONTAINS_N</code>),
+and an ALT equal to its REF likewise (<code>ALT_EQUALS_REF</code>).</p>
+<h3 id="variant-types">Variant Types<a class="headerlink" href="#variant-types" title="Permanent link">¶</a></h3>
+<p>A record's type label comes from its alleles: <code>INSERTION</code> / <code>DELETION</code> only when
+the one-base allele is the other's first base (the shared anchor, e.g. <code>T&gt;TGT</code>,
+<code>TAA&gt;T</code>); every other unequal pair (a delins such as <code>TTAC&gt;A</code> or <code>C&gt;TA</code>) and every
+multi-base substitution is <code>COMPLEX</code>. <code>gbcms normalize</code> reports this label.
+Counting does not read it: reads are classified by the alleles themselves.</p>
 <h2 id="maf-mutation-annotation-format"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (Mutation Annotation Format)<a class="headerlink" href="#maf-mutation-annotation-format" title="Permanent link">¶</a></h2>
 <p>Standard <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> format with required columns:</p>
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>Hugo_Symbol  Chromosome  Start_Position  End_Position  Reference_Allele  Tumor_Seq_Allele2
@@ -994,6 +1076,10 @@
 <td style="text-align: left;">1-based start position</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>End_Position</code></td>
+<td style="text-align: left;">1-based end position (an integer; rows without one are skipped with a WARNING)</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>Reference_Allele</code></td>
 <td style="text-align: left;">Reference allele</td>
 </tr>
@@ -1003,6 +1089,18 @@
 </tr>
 </tbody>
 </table>
+<p><code>Tumor_Seq_Allele1</code> is optional (see below).</p>
+<h3 id="maf-alleles"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Alleles<a class="headerlink" href="#maf-alleles" title="Permanent link">¶</a></h3>
+<p>Alleles are read as maf2vcf reads them:</p>
+<ul>
+<li>The variant allele is <code>Tumor_Seq_Allele2</code>, or <code>Tumor_Seq_Allele1</code> when
+  <code>Tumor_Seq_Allele2</code> is empty or equal to the reference (older MAFs put the
+  variant there). How many rows were read that way is logged as a WARNING.</li>
+<li>An allele made only of <code>-</code>, <code>?</code> or <code>0</code> is a placeholder for an empty allele
+  and is read as <code>-</code>.</li>
+<li>A row whose variant allele still equals its reference describes no change;
+  preparation reports it as a <code>FAIL</code> row (<code>ALT_EQUALS_REF</code>) rather than counting it.</li>
+</ul>
 <h3 id="maf-indel-normalization"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Indel Normalization<a class="headerlink" href="#maf-indel-normalization" title="Permanent link">¶</a></h3>
 <p><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> represents indels using <code>-</code> dashes, while gbcms internally uses <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style <strong>anchor-based</strong> coordinates. When a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> file contains insertions (<code>Reference_Allele = -</code>) or deletions (<code>Tumor_Seq_Allele2 = -</code>), gbcms automatically converts them at input time.</p>
 <div class="admonition warning">
@@ -1108,6 +1206,8 @@ Use mouse to pan and zoom
 <p class="admonition-title">Position Shift for Deletions</p>
 <p>For insertions, <code>Start_Position</code> already points to the anchor base. For deletions, <code>Start_Position</code> points to the <em>first deleted base</em>, so gbcms shifts back by one position to find the anchor.</p>
 </div>
+<p>A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row whose alleles are both sequences (an <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>, an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, or a delins such as
+<code>TTAC&gt;A</code>) is used as written, at <code>Start_Position</code>, with no anchor base.</p>
 <h2 id="variant-left-normalization">Variant Left-Normalization<a class="headerlink" href="#variant-left-normalization" title="Permanent link">¶</a></h2>
 <p>gbcms automatically <strong>left-aligns</strong> indels and complex variants during the preparation step. For full details on the normalization algorithm, homopolymer decomposition detection, and REF validation, see <a href="../variant-normalization/">Variant Normalization</a>.</p>
 <div class="admonition important">
@@ -1164,7 +1264,7 @@ Index discovery is automatic — see <a href="../../nextflow/samplesheet/#index-
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 24, 2026 04:28:09 UTC"><span class="timeago" datetime="2026-09-24T04:28:09+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 24, 2026 04:28:09 UTC">2026-09-24</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 03:48:59 UTC"><span class="timeago" datetime="2026-09-25T03:48:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 03:48:59 UTC">2026-09-25</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

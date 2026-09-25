@@ -9,13 +9,13 @@
         <meta name="author" content="MSK-ACCESS">
       
       
-        <link rel="canonical" href="https://msk-access.github.io/gbcms/dev/getting-started/installation/">
+        <link rel="canonical" href="https://msk-access.github.io/gbcms/dev/cli/convert/">
       
       
-        <link rel="prev" href="../">
+        <link rel="prev" href="../normalize/">
       
       
-        <link rel="next" href="../quickstart/">
+        <link rel="next" href="../../nextflow/">
       
       
         
@@ -26,7 +26,7 @@
     
     
       
-        <title>Installation - gbcms</title>
+        <title>Convert Command - gbcms</title>
       
     
     
@@ -98,7 +98,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#installation" class="md-skip">
+        <a href="#gbcms-convert" class="md-skip">
           Skip to content
         </a>
       
@@ -138,7 +138,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Installation
+              Convert Command
             
           </span>
         </div>
@@ -310,8 +310,6 @@
       
   
   
-    
-  
   
   
     
@@ -334,15 +332,17 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked="">
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../" class="md-nav__link ">
+            <a href="../../getting-started/" class="md-nav__link ">
               
   
   
@@ -366,7 +366,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -383,37 +383,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Installation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
         
   
   
@@ -429,131 +402,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
-      
-        <li class="md-nav__item">
-  <a href="#quick-install" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick Install
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#requirements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Requirements
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Requirements">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#for-nextflow-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        For Nextflow Workflow
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#legacy-linux-rhel-8-hpc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Legacy Linux (RHEL 8 / HPC)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#verification" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Verification
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#docker-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Docker Usage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#upgrade" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Upgrade
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#related" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Related
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -566,7 +414,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../quickstart/" class="md-nav__link">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
         
   
   
@@ -598,6 +446,8 @@
       
   
   
+    
+  
   
   
     
@@ -626,17 +476,15 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3">
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked="">
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../cli/" class="md-nav__link ">
+            <a href="../" class="md-nav__link ">
               
   
   
@@ -660,7 +508,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -680,7 +528,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli/dna/" class="md-nav__link">
+      <a href="../dna/" class="md-nav__link">
         
   
   
@@ -708,7 +556,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli/rna/" class="md-nav__link">
+      <a href="../rna/" class="md-nav__link">
         
   
   
@@ -736,7 +584,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli/merge/" class="md-nav__link">
+      <a href="../merge/" class="md-nav__link">
         
   
   
@@ -764,7 +612,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli/normalize/" class="md-nav__link">
+      <a href="../normalize/" class="md-nav__link">
         
   
   
@@ -789,10 +637,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../cli/convert/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Convert Command
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -808,6 +683,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#synopsis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Synopsis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Description
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#required-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required Arguments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Arguments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1802,10 +1763,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#quick-install" class="md-nav__link">
+  <a href="#synopsis" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Install
+        Synopsis
       
     </span>
   </a>
@@ -1813,38 +1774,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#requirements" class="md-nav__link">
+  <a href="#description" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Requirements
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Requirements">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#for-nextflow-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        For Nextflow Workflow
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#legacy-linux-rhel-8-hpc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Legacy Linux (RHEL 8 / HPC)
+        Description
       
     </span>
   </a>
@@ -1852,10 +1785,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#verification" class="md-nav__link">
+  <a href="#required-arguments" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Verification
+        Required Arguments
       
     </span>
   </a>
@@ -1863,10 +1796,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#docker-usage" class="md-nav__link">
+  <a href="#optional-arguments" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Docker Usage
+        Optional Arguments
       
     </span>
   </a>
@@ -1874,21 +1807,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
+  <a href="#examples" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#upgrade" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Upgrade
+        Examples
       
     </span>
   </a>
@@ -1952,7 +1874,7 @@
         <a href="../" class="md-path__link">
           
   <span class="md-ellipsis">
-    Getting Started
+    CLI Reference
   </span>
 
         </a>
@@ -1974,166 +1896,86 @@
   
 
 
-<div><h1 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">¶</a></h1>
-<h2 id="quick-install">Quick Install<a class="headerlink" href="#quick-install" title="Permanent link">¶</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="" id="__tabbed_1_1" name="__tabbed_1" type="radio"><input id="__tabbed_1_2" name="__tabbed_1" type="radio"><input id="__tabbed_1_3" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="__tabbed_1_1">PyPI (Recommended)</label><label for="__tabbed_1_2">Docker</label><label for="__tabbed_1_3">From Source</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>gbcms
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>gbcms<span class="w"> </span>--version
+<div><h1 id="gbcms-convert">gbcms convert<a class="headerlink" href="#gbcms-convert" title="Permanent link">¶</a></h1>
+<p>Convert variants between <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> without counting reads.</p>
+<h2 id="synopsis">Synopsis<a class="headerlink" href="#synopsis" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--variants<span class="w"> </span>&lt;VCF&gt;<span class="w"> </span>--output<span class="w"> </span>&lt;MAF&gt;
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--variants<span class="w"> </span>&lt;MAF&gt;<span class="w"> </span>--fasta<span class="w"> </span>&lt;FILE&gt;<span class="w"> </span>--output<span class="w"> </span>&lt;VCF&gt;
 </code></pre></div>
-<div class="admonition info">
-<p class="admonition-title">System Requirements</p>
-<p>PyPI wheels require <strong>glibc 2.34+</strong> (Ubuntu 22.04+, RHEL 9+, Debian 12+).
-For older systems, see <a href="#legacy-linux-rhel-8-hpc">Legacy Linux</a>.</p>
-</div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span>gbcms<span class="w"> </span>--help
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>gbcms
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
-</code></pre></div>
-</div>
-</div>
-</div>
-<hr>
-<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">¶</a></h2>
+<h2 id="description">Description<a class="headerlink" href="#description" title="Permanent link">¶</a></h2>
+<p>The <code>convert</code> subcommand writes the representation <code>gbcms dna</code> / <code>gbcms rna</code>
+use for their own output, without a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</p>
+<ul>
+<li><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> → <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr></strong> — each ALT allele as <a href="https://github.com/mskcc/vcf2maf">vcf2maf</a>
+  writes it: leading bases REF and ALT share are trimmed (never trailing ones),
+  <code>Start_Position</code> / <code>End_Position</code> and <code>Variant_Type</code> follow the trimmed alleles,
+  and the record itself is kept in <code>vcf_pos</code> / <code>vcf_ref</code> / <code>vcf_alt</code>. The columns
+  are those of a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input <code>--format maf</code> row before its count columns. ALT
+  alleles that cannot be counted (<code>*</code>, symbolic, breakends, <code>.</code>) are skipped the
+  same way: the first few are logged individually, then one WARNING gives the
+  totals by reason.</li>
+<li><strong><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> → <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr></strong> — each row as maf2vcf writes it: the reference base is prepended
+  when an allele is <code>-</code>, or when the alleles differ in length and first base
+  (the base after, at position 1). Alleles are read as maf2vcf reads them
+  (<code>Tumor_Seq_Allele1</code> when <code>Tumor_Seq_Allele2</code> is the reference). Records are
+  written in input order; contigs keep the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s naming.</li>
+</ul>
+<p>It converts representation only: REF is not checked against the reference and
+nothing is left-aligned (<a href="../normalize/">gbcms normalize</a> does both). The rules
+and worked examples are in <a href="../../reference/output-formats/">Output Formats</a>.</p>
+<h2 id="required-arguments">Required Arguments<a class="headerlink" href="#required-arguments" title="Permanent link">¶</a></h2>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Component</th>
-<th style="text-align: left;">Requirement</th>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">Python</td>
-<td style="text-align: left;">3.10+</td>
+<td style="text-align: left;"><code>--variants</code>, <code>-v</code></td>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (<code>.vcf</code>, <code>.vcf.gz</code>, <code>.vcf.bgz</code>) or <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (<code>.maf</code>)</td>
 </tr>
 <tr>
-<td style="text-align: left;">OS</td>
-<td style="text-align: left;">Linux (glibc 2.34+), macOS, Windows (WSL2)</td>
-</tr>
-<tr>
-<td style="text-align: left;">Memory</td>
-<td style="text-align: left;">4GB+ (8GB for large BAMs)</td>
+<td style="text-align: left;"><code>--output</code>, <code>-o</code></td>
+<td style="text-align: left;">Output path: <code>.maf</code> for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input, <code>.vcf</code> for <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input</td>
 </tr>
 </tbody>
 </table>
-<h3 id="for-nextflow-workflow">For Nextflow Workflow<a class="headerlink" href="#for-nextflow-workflow" title="Permanent link">¶</a></h3>
-<ul>
-<li>Nextflow 21.10.3+</li>
-<li>Docker or Singularity</li>
-</ul>
-<hr>
-<h2 id="legacy-linux-rhel-8-hpc">Legacy Linux (RHEL 8 / <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>)<a class="headerlink" href="#legacy-linux-rhel-8-hpc" title="Permanent link">¶</a></h2>
-<p>For RHEL 8, CentOS 8, or <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr> systems with glibc &lt; 2.34:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:4"><input checked="" id="__tabbed_2_1" name="__tabbed_2" type="radio"><input id="__tabbed_2_2" name="__tabbed_2" type="radio"><input id="__tabbed_2_3" name="__tabbed_2" type="radio"><input id="__tabbed_2_4" name="__tabbed_2" type="radio"><div class="tabbed-labels"><label for="__tabbed_2_1">Micromamba (Recommended)</label><label for="__tabbed_2_2">Conda</label><label for="__tabbed_2_3">Singularity (<abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr>)</label><label for="__tabbed_2_4">Docker</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Create environment with build dependencies</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># Note: clangdev (not clang) provides headers needed by bindgen</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>micromamba<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>gbcms_env<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.13<span class="w"> </span>clangdev<span class="w"> </span>rust<span class="w"> </span>-c<span class="w"> </span>conda-forge
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>micromamba<span class="w"> </span>activate<span class="w"> </span>gbcms_env
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># Set libclang path for the Rust build</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LIBCLANG_PATH</span><span class="o">=</span><span class="nv">$CONDA_PREFIX</span>/lib
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="c1"># Install from source</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="nb">cd</span><span class="w"> </span>gbcms
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>pip<span class="w"> </span>install<span class="w"> </span>.
+<h2 id="optional-arguments">Optional Arguments<a class="headerlink" href="#optional-arguments" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--fasta</code>, <code>-f</code></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> with its <code>.fai</code> index (<code>samtools faidx</code>). Required for <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input: maf2vcf's anchor base comes from it. A base it cannot supply is written as <code>N</code> and counted in a WARNING. Not used for <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input (a WARNING says so).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--verbose</code>, <code>-V</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Enable debug logging</td>
+</tr>
+</tbody>
+</table>
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># VCF -&gt; MAF (vcf2maf coordinates)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--variants<span class="w"> </span>calls.vcf.gz<span class="w"> </span>--output<span class="w"> </span>calls.maf
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># MAF -&gt; VCF (maf2vcf records)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>gbcms<span class="w"> </span>convert<span class="w"> </span>--variants<span class="w"> </span>mutations.maf<span class="w"> </span>--fasta<span class="w"> </span>reference.fa<span class="w"> </span>--output<span class="w"> </span>mutations.vcf
 </code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>gbcms_env<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.13<span class="w"> </span>clangdev<span class="w"> </span>rust<span class="w"> </span>-c<span class="w"> </span>conda-forge
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>conda<span class="w"> </span>activate<span class="w"> </span>gbcms_env
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LIBCLANG_PATH</span><span class="o">=</span><span class="nv">$CONDA_PREFIX</span>/lib
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="nb">cd</span><span class="w"> </span>gbcms
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>pip<span class="w"> </span>install<span class="w"> </span>.
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>singularity<span class="w"> </span>pull<span class="w"> </span>docker://ghcr.io/msk-access/gbcms:X.Y.Z
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>singularity<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>gbcms_X.Y.Z.sif<span class="w"> </span>gbcms<span class="w"> </span>--help
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># With data binding</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>singularity<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-B<span class="w"> </span>/path/to/data:/data<span class="w"> </span>gbcms_X.Y.Z.sif<span class="w"> </span>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span>--bam<span class="w"> </span>/data/sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span>--fasta<span class="w"> </span>/data/ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/data/results/
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span>gbcms<span class="w"> </span>--help
-</code></pre></div>
-</div>
-</div>
-</div>
-<div class="admonition note">
-<p class="admonition-title">Why not pip install?</p>
-<p>PyPI wheels require glibc 2.34+. On RHEL 8 (glibc 2.28), pip falls back to 
-source compilation which requires Rust and clang headers. The conda environment
-provides these dependencies.</p>
-</div>
-<hr>
-<h2 id="verification">Verification<a class="headerlink" href="#verification" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Check installation</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>gbcms<span class="w"> </span>--version
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># Expected: X.Y.Z (your installed version)</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Test help</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>gbcms<span class="w"> </span>--help
-</code></pre></div>
-<hr>
-<h2 id="docker-usage">Docker Usage<a class="headerlink" href="#docker-usage" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/data<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>ghcr.io/msk-access/gbcms:X.Y.Z<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>gbcms<span class="w"> </span>dna<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span>--variants<span class="w"> </span>/data/variants.vcf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span>--bam<span class="w"> </span>/data/sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span>--fasta<span class="w"> </span>/data/reference.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">    </span>--output-dir<span class="w"> </span>/data/results/
-</code></pre></div>
-<div class="admonition tip">
-<p class="admonition-title">Docker Volume</p>
-<p>Use <code>-v</code> to mount your data directory.</p>
-</div>
-<hr>
-<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">¶</a></h2>
-<p>See the <strong><a href="../../resources/troubleshooting/">full Troubleshooting Guide</a></strong> for detailed solutions.</p>
-<p>Quick checks:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># BAM index missing</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>samtools<span class="w"> </span>index<span class="w"> </span>sample.bam
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># FASTA index missing</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>samtools<span class="w"> </span>faidx<span class="w"> </span>reference.fa
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># Chromosome mismatch — compare names between FASTA, BAM, VCF/MAF</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>grep<span class="w"> </span><span class="s2">"^&gt;"</span><span class="w"> </span>reference.fa<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>samtools<span class="w"> </span>view<span class="w"> </span>-H<span class="w"> </span>sample.bam<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"^@SQ"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-5
-</code></pre></div>
-<p>For glibc errors, installation failures, or Docker permission issues, see <a href="../../resources/troubleshooting/#installation-issues">Troubleshooting → Installation Issues</a>.</p>
-<hr>
-<h2 id="upgrade">Upgrade<a class="headerlink" href="#upgrade" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>gbcms
-</code></pre></div>
-<hr>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">¶</a></h2>
 <ul>
-<li><a href="../quickstart/">Quick Start</a> — Common usage patterns with DNA and RNA examples</li>
-<li><a href="../../cli/dna/"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference — DNA</a> — Full option reference for <code>gbcms dna</code></li>
-<li><a href="../../cli/rna/"><abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> Reference — RNA</a> — Full option reference for <code>gbcms rna</code></li>
-<li><a href="../../nextflow/">Nextflow Pipeline</a> — Running many samples in parallel on <abbr title="High-Performance Computing - Cluster computing environment">HPC</abbr></li>
-<li><a href="../../resources/troubleshooting/">Troubleshooting</a> — Installation issues and common errors</li>
+<li><a href="../normalize/">gbcms normalize</a> — REF validation and left-alignment, no counting</li>
+<li><a href="../../reference/output-formats/">Output Formats</a> — the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> and <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output columns</li>
+<li><a href="../../reference/input-formats/">Input Formats</a> — <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>/<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input conventions</li>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
@@ -2160,7 +2002,7 @@ provides these dependencies.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="March 20, 2026 14:38:22 UTC"><span class="timeago" datetime="2026-03-20T14:38:22+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="March 20, 2026 14:38:22 UTC">2026-03-20</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 03:48:59 UTC"><span class="timeago" datetime="2026-09-25T03:48:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 03:48:59 UTC">2026-09-25</span>
   </span>
 
     
@@ -2170,7 +2012,7 @@ provides these dependencies.</p>
     <span class="md-icon" title="Created">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="February 6, 2026 16:48:48 UTC"><span class="timeago" datetime="2026-02-06T16:48:48+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="February 6, 2026 16:48:48 UTC">2026-02-06</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 03:29:54 UTC"><span class="timeago" datetime="2026-09-25T03:29:54+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 03:29:54 UTC">2026-09-25</span>
   </span>
 
     

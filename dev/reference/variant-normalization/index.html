@@ -288,6 +288,18 @@
   </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/convert/">
+<span class="md-ellipsis">
+    
+  
+    Convert Command
+  
+
+    
+  </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -1219,7 +1231,10 @@ Use mouse to pan and zoom
 <p class="admonition-title">Dynamic Window Expansion</p>
 <p>If a variant shifts all the way to the window edge during left-alignment, it may not have fully converged. The engine automatically <strong>doubles the window</strong> (100 → 200 → 400 → ... → 2500bp) and retries. This ensures correct normalization even for variants in massive tandem repeats (e.g., centromeric regions) without penalizing the common case.</p>
 </div>
-<p>After alignment, the <strong>variant type is re-detected</strong> based on the new allele lengths:</p>
+<p>Every variant that reaches REF validation gets a <strong>type label derived from its
+final alleles</strong> (after anchor resolution, REF correction and alignment), with the
+same rule the readers use. A row rejected before that (<code>EMPTY_ALLELE</code>,
+<code>ALT_EQUALS_REF</code>, a failed <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> anchor fetch) keeps the reader's label.</p>
 <table>
 <thead>
 <tr>
@@ -1233,19 +1248,21 @@ Use mouse to pan and zoom
 <td style="text-align: left;"><abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>ref_len == 1 &amp;&amp; alt_len &gt; 1</code></td>
+<td style="text-align: left;"><code>ref_len == 1 &amp;&amp; alt_len &gt; 1</code> and ALT starts with the REF base</td>
 <td style="text-align: left;">INSERTION</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>ref_len &gt; 1 &amp;&amp; alt_len == 1</code></td>
+<td style="text-align: left;"><code>ref_len &gt; 1 &amp;&amp; alt_len == 1</code> and REF starts with the ALT base</td>
 <td style="text-align: left;">DELETION</td>
 </tr>
 <tr>
-<td style="text-align: left;">Otherwise</td>
+<td style="text-align: left;">Otherwise (a delins such as <code>TTAC&gt;A</code> or <code>C&gt;TA</code>, or an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>)</td>
 <td style="text-align: left;">COMPLEX</td>
 </tr>
 </tbody>
 </table>
+<p>Counting never reads this label — reads are classified by the alleles — so it is
+what <code>gbcms normalize</code> reports, not an input to counting.</p>
 <div class="admonition tip">
 <p class="admonition-title">Debugging Normalization</p>
 <p>Use <code>gbcms normalize</code> to see exactly how each variant was transformed. The output <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> shows original and normalized coordinates side by side, plus granular flags: <code>was_anchor_resolved</code> (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> dash-allele conversion), <code>was_left_aligned</code> (left-shifting), and <code>was_normalized</code> (either one).</p>
@@ -1552,6 +1569,12 @@ string is byte-identical in the <abbr title="Mutation Annotation Format - Standa
 </tr>
 <tr>
 <td style="text-align: left;"><code>FAIL</code></td>
+<td style="text-align: left;"><code>ALT_EQUALS_REF</code></td>
+<td style="text-align: left;">ALT equals REF (any case; <code>-</code> for both in a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>): no change to count</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAIL</code></td>
 <td style="text-align: left;"><code>ALT_CONTAINS_N</code></td>
 <td style="text-align: left;">ALT allele contains an <code>N</code> base</td>
 <td style="text-align: center;">❌</td>
@@ -1588,7 +1611,7 @@ counting but still <strong>written to the output</strong> with their <code>FAIL<
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 24, 2026 21:32:23 UTC"><span class="timeago" datetime="2026-09-24T21:32:23+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 24, 2026 21:32:23 UTC">2026-09-24</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 03:48:59 UTC"><span class="timeago" datetime="2026-09-25T03:48:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 03:48:59 UTC">2026-09-25</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

@@ -288,6 +288,18 @@
   </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../cli/convert/">
+<span class="md-ellipsis">
+    
+  
+    Convert Command
+  
+
+    
+  </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -1428,12 +1440,12 @@ without a length.</p>
 <tr>
 <td style="text-align: left;"><code>REF</code></td>
 <td style="text-align: left;">Reference allele</td>
-<td style="text-align: left;">From input; validated against <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr></td>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input: as written. <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input: as maf2vcf writes it (below)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ALT</code></td>
 <td style="text-align: left;">Alternate allele</td>
-<td style="text-align: left;">From input</td>
+<td style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input: as written. <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input: as maf2vcf writes it (below)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>QUAL</code></td>
@@ -1447,6 +1459,54 @@ without a length.</p>
 </tr>
 </tbody>
 </table>
+<div class="admonition info">
+<p class="admonition-title"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input written as <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> follows maf2vcf</p>
+<p>A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row is written as the record <a href="https://github.com/mskcc/vcf2maf">maf2vcf</a>
+writes: when an allele is <code>-</code>, or the two alleles differ in length <strong>and</strong> in
+their first base, the reference base before them is prepended (the base <strong>at</strong>
+<code>Start_Position</code> for a <code>-</code> insertion, whose Start is the base before the
+insertion) and <code>POS</code> moves to it. Anything else is written as-is at
+<code>Start_Position</code>. An event at position 1 has no base before it, so the base
+after it is appended instead (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec; maf2vcf skips such rows). The anchor
+base comes from <code>--fasta</code>; one the reference cannot supply is written as <code>N</code>
+and counted in a WARNING. The <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> alleles are read as maf2vcf reads them
+(see <a href="../input-formats/#maf-alleles">Input Formats</a>); unlike maf2vcf, a
+differing <code>Tumor_Seq_Allele1</code> is not written as a second ALT.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <code>Start</code> <code>Ref</code> &gt; <code>Alt</code></th>
+<th style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>POS</code> <code>REF</code> &gt; <code>ALT</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>462 AA &gt; -</code></td>
+<td style="text-align: left;"><code>461 TAA &gt; T</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>581 - &gt; GT</code></td>
+<td style="text-align: left;"><code>581 T &gt; TGT</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>701 TTAC &gt; A</code></td>
+<td style="text-align: left;"><code>700 TTTAC &gt; TA</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>942 AAA &gt; T</code></td>
+<td style="text-align: left;"><code>941 GAAA &gt; GT</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>1183 T &gt; G</code></td>
+<td style="text-align: left;"><code>1183 T &gt; G</code></td>
+</tr>
+</tbody>
+</table>
+<p>Counting is unaffected. Before counting, the engine anchors <code>-</code> alleles to
+this same record; other <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> alleles (e.g. <code>701 TTAC &gt; A</code>) it counts as
+written, an equivalent description of the same change. <code>gbcms convert</code>
+writes these records without counting.</p>
+</div>
 <hr>
 <h3 id="info-fields">INFO Fields<a class="headerlink" href="#info-fields" title="Permanent link">¶</a></h3>
 <p>The <code>INFO</code> column is a semicolon-separated list of <code>KEY=VALUE</code> pairs.</p>
@@ -1953,35 +2013,35 @@ have no <abbr title="Mutation Annotation Format - Standard mutation annotation f
 </tr>
 <tr>
 <td style="text-align: left;"><code>Start_Position</code></td>
-<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> start position</td>
+<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> start position (vcf2maf's, below)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>End_Position</code></td>
-<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> end position</td>
+<td style="text-align: left;">1-based <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> end position (vcf2maf's, below)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Strand</code></td>
-<td style="text-align: left;"><code>+</code></td>
+<td style="text-align: left;">Empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Variant_Classification</code></td>
-<td style="text-align: left;">Derived from variant type</td>
+<td style="text-align: left;">Empty — gbcms does not annotate effects</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Variant_Type</code></td>
-<td style="text-align: left;"><code>SNP</code>, <code>INS</code>, <code>DEL</code>, or <code>ONP</code></td>
+<td style="text-align: left;"><code>SNP</code>, <code>DNP</code>, <code>TNP</code>, <code>ONP</code>, <code>INS</code> or <code>DEL</code>, from the trimmed alleles</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Reference_Allele</code></td>
-<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>-style REF (<code>-</code> for pure insertions)</td>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> REF: shared leading bases trimmed, <code>-</code> when nothing is left</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Tumor_Seq_Allele1</code></td>
-<td style="text-align: left;">Reference allele (same as <code>Reference_Allele</code>)</td>
+<td style="text-align: left;">Empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Tumor_Seq_Allele2</code></td>
-<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>-style ALT (<code>-</code> for pure deletions)</td>
+<td style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> ALT: shared leading bases trimmed, <code>-</code> when nothing is left</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Tumor_Sample_Barcode</code></td>
@@ -1993,7 +2053,7 @@ have no <abbr title="Mutation Annotation Format - Standard mutation annotation f
 </tr>
 <tr>
 <td style="text-align: left;"><code>vcf_id</code></td>
-<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>ID</code> field (rsID or <code>.</code>)</td>
+<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>ID</code> field (empty when the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> has <code>.</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>vcf_pos</code></td>
@@ -2003,9 +2063,73 @@ have no <abbr title="Mutation Annotation Format - Standard mutation annotation f
 <td style="text-align: left;"><code>vcf_region</code></td>
 <td style="text-align: left;"><code>chr:pos</code> tracking field</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>vcf_ref</code></td>
+<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>REF</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vcf_alt</code></td>
+<td style="text-align: left;">Original <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>ALT</code> — this row's allele (a multi-allelic record gives one row per ALT)</td>
+</tr>
 </tbody>
 </table>
 <p>Then all <a href="#gbcms-count-columns">gbcms count columns</a> are appended.</p>
+<div class="admonition info">
+<p class="admonition-title">Coordinates follow vcf2maf</p>
+<p>Each record is converted exactly as <a href="https://github.com/mskcc/vcf2maf">vcf2maf</a>
+converts it: leading bases REF and ALT share are trimmed (trailing ones
+never are), moving <code>Start_Position</code> right; an allele trimmed to nothing
+becomes <code>-</code>. Equal lengths after the trim are <code>SNP</code>/<code>DNP</code>/<code>TNP</code>/<code>ONP</code> by
+length. Otherwise it is <code>INS</code> (ALT longer) or <code>DEL</code>: the row spans its REF
+bases, and an insertion whose REF trimmed to <code>-</code> spans the two bases around
+the insertion point. A delins with no shared first base keeps every base.
+Bases are compared case-insensitively (the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec's view); vcf2maf
+compares them as written, so only mixed-case alleles can differ.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>POS</code> <code>REF</code> &gt; <code>ALT</code></th>
+<th style="text-align: left;"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <code>Start</code>–<code>End</code> <code>Ref</code> &gt; <code>Alt</code></th>
+<th style="text-align: left;"><code>Variant_Type</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>461 TAA &gt; T</code></td>
+<td style="text-align: left;"><code>462–463 AA &gt; -</code></td>
+<td style="text-align: left;"><code>DEL</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>581 T &gt; TGT</code></td>
+<td style="text-align: left;"><code>581–582 - &gt; GT</code></td>
+<td style="text-align: left;"><code>INS</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>701 TTAC &gt; A</code></td>
+<td style="text-align: left;"><code>701–704 TTAC &gt; A</code></td>
+<td style="text-align: left;"><code>DEL</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>821 C &gt; TA</code></td>
+<td style="text-align: left;"><code>821–821 C &gt; TA</code></td>
+<td style="text-align: left;"><code>INS</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>1181 TCT &gt; TCG</code></td>
+<td style="text-align: left;"><code>1183–1183 T &gt; G</code></td>
+<td style="text-align: left;"><code>SNP</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>2021 TC &gt; TCGG</code></td>
+<td style="text-align: left;"><code>2022–2023 - &gt; GG</code></td>
+<td style="text-align: left;"><code>INS</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>norm_*</code> columns of <code>--show-normalization</code> are written the same way
+from the left-aligned variant. <code>gbcms convert</code> writes these columns
+without counting.</p>
+</div>
 </div>
 <div class="tabbed-block">
 <p>All original input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns are preserved <strong>exactly</strong> (values never
@@ -2078,7 +2202,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>gbcms_status_reason</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Reason tag(s), <code>\|</code>-separated; empty for a clean PASS. PASS reasons: <code>WARN_REF_CORRECTED</code>, <code>WARN_HOMOPOLYMER_DECOMP</code>, <code>MULTI_ALLELIC</code>, <code>TRACT_CLUSTER</code>. FAIL reasons: <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>EMPTY_ALLELE</code>, <code>ALT_CONTAINS_N</code>. Reasons stack, e.g. <code>WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP</code>. Identical string in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GSR</code> INFO.</td>
+<td style="text-align: left;">Reason tag(s), <code>\|</code>-separated; empty for a clean PASS. PASS reasons: <code>WARN_REF_CORRECTED</code>, <code>WARN_HOMOPOLYMER_DECOMP</code>, <code>MULTI_ALLELIC</code>, <code>TRACT_CLUSTER</code>. FAIL reasons: <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>EMPTY_ALLELE</code>, <code>ALT_EQUALS_REF</code>, <code>ALT_CONTAINS_N</code>. Reasons stack, e.g. <code>WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP</code>. Identical string in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GSR</code> INFO.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_diagnostic</code></td>
@@ -2935,7 +3059,7 @@ or <code>0.0</code> (incorrect p-value due to floating-point underflow).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 24, 2026 04:34:03 UTC"><span class="timeago" datetime="2026-09-24T04:34:03+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 24, 2026 04:34:03 UTC">2026-09-24</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 03:48:59 UTC"><span class="timeago" datetime="2026-09-25T03:48:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 03:48:59 UTC">2026-09-25</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
