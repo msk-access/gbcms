@@ -237,10 +237,12 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ??? question "`WARN_HOMOPOLYMER_DECOMP` reason (verdict `PASS`) — what changed?"
 
-    The variant is a homopolymer run called as a larger deletion (e.g. `CCCCCC→T`). In this
-    sample, the corrected allele (the run with its last base replaced, `CCCCCC→CCCCCT`) got
-    more ALT support, so its counts were used. `used_decomposed = True` in the output, and the
-    flag is set per sample.
+    The run used `--rescue-homopolymer`, and the variant is a homopolymer run called as a
+    larger deletion (e.g. `CCCCCC→T`). In this sample, the corrected allele (the run with its
+    last base replaced, `CCCCCC→CCCCCT`) got more ALT support, so its counts were used.
+    `used_decomposed = True` in the output, and the flag is set per sample. Without the flag,
+    the row counts the given allele, and `OBSERVED_ALLELE` in `gbcms_diagnostic` names the
+    allele the reads carry.
 
     It suggests the caller collapsed a smaller change at the run's end into one complex variant.
     The comparison is a heuristic: both alleles can claim reads carrying other forms of the run.

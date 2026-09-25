@@ -154,8 +154,14 @@ pub(crate) fn read_is_informative(record: &Record, v: &Variant) -> bool {
     let Some(windows) = informative_windows(v) else {
         return true;
     };
-    let start = record.pos();
-    let mut end = start;
+    let (start, end) = (record.pos(), ref_end(record));
+    windows.iter().any(|&(lo, hi)| start <= lo && end >= hi)
+}
+
+/// End (exclusive) of the read's aligned reference extent: M/=/X/D/N; clips
+/// excluded.
+pub(crate) fn ref_end(record: &Record) -> i64 {
+    let mut end = record.pos();
     for op in record.cigar().iter() {
         match op {
             Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len)
@@ -163,7 +169,7 @@ pub(crate) fn read_is_informative(record: &Record, v: &Variant) -> bool {
             _ => {}
         }
     }
-    windows.iter().any(|&(lo, hi)| start <= lo && end >= hi)
+    end
 }
 
 /// The siblings whose change lies inside `variant`'s discrimination window:
@@ -189,7 +195,7 @@ mod tests {
     fn var(ctx: &str, pos: i64, r: &str, a: &str) -> Variant {
         Variant::new(
             "1".into(), pos, r.into(), a.into(), "X".into(),
-            Some(ctx.into()), 0, 0, None, None,
+            Some(ctx.into()), 0, 0, None, None, None,
         )
     }
 
@@ -266,7 +272,7 @@ mod tests {
 
     #[test]
     fn without_context_the_region_is_the_event_itself() {
-        let v = Variant::new("1".into(), 2, "CA".into(), "C".into(), "DELETION".into(), None, 0, 0, None, None);
+        let v = Variant::new("1".into(), 2, "CA".into(), "C".into(), "DELETION".into(), None, 0, 0, None, None, None);
         assert_eq!(change_interval(&v), (3, 4));
     }
 

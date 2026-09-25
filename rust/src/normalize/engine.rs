@@ -423,6 +423,18 @@ fn indel_shift_region(
     }
 }
 
+/// Reference bases over the event's core: its change interval (the shift
+/// region for a pure indel) plus one base on each side, widened to cover the
+/// alleles' own span. For the observed-allele diagnostic; None when the fetch
+/// fails.
+fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Option<(i64, String)> {
+    let (c_lo, c_hi) = window::change_interval(v);
+    let lo = (c_lo - 1).min(v.pos).max(0);
+    let hi = (c_hi + 1).max(v.pos + v.ref_allele.len() as i64);
+    let seq = fetch_region(reader, &v.chrom, lo as u64, hi as u64).ok()?;
+    (seq.len() as i64 == hi - lo).then(|| (lo, String::from_utf8_lossy(&seq).to_ascii_uppercase()))
+}
+
 fn prepare_single_variant(
     reader_result: &mut Result<fasta::IndexedReader<File>, anyhow::Error>,
     variant: &Variant,
@@ -567,6 +579,7 @@ fn prepare_single_variant(
                 repeat_span: 0,
                 gene_strand: None,
                 shift_region: None,
+                event_ref: None,
             },
             gbcms_status: verdict,
             gbcms_status_reason: reason,
@@ -603,6 +616,7 @@ fn prepare_single_variant(
                 repeat_span: 0,
                 gene_strand: None,
                 shift_region: None,
+                event_ref: None,
             },
             gbcms_status: "FAIL".to_string(),
             gbcms_status_reason: "ALT_CONTAINS_N".to_string(),
@@ -807,6 +821,7 @@ fn prepare_single_variant(
                     repeat_span: 0,
                     gene_strand: None,
                     shift_region: None,
+                    event_ref: None,
                 }
             })
         })
@@ -831,20 +846,23 @@ fn prepare_single_variant(
     };
 
     let shift_region = indel_shift_region(reader, &variant.chrom, pos, &ref_al, &alt_al);
+    let mut prepared = Variant {
+        chrom: variant.chrom.clone(),
+        pos,
+        variant_type: variant_type_for(&ref_al, &alt_al).to_string(),
+        ref_allele: ref_al,
+        alt_allele: alt_al,
+        ref_context,
+        ref_context_start,
+        repeat_span: variant_repeat_span,
+        gene_strand: None,
+        shift_region,
+        event_ref: None,
+    };
+    prepared.event_ref = event_core_ref(reader, &prepared);
 
     Ok(PreparedVariant {
-        variant: Variant {
-            chrom: variant.chrom.clone(),
-            pos,
-            variant_type: variant_type_for(&ref_al, &alt_al).to_string(),
-            ref_allele: ref_al,
-            alt_allele: alt_al,
-            ref_context,
-            ref_context_start,
-            repeat_span: variant_repeat_span,
-            gene_strand: None,
-            shift_region,
-        },
+        variant: prepared,
         gbcms_status: "PASS".to_string(),
         // Carry any WARN_REF_CORRECTED from validate_ref (empty otherwise). A later
         // pass may append MULTI_ALLELIC; the pipeline may append WARN_HOMOPOLYMER_DECOMP.

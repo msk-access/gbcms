@@ -168,6 +168,18 @@ for the full design.
     gbcms dna --rescue-mnp --rescue-mnp-threshold 0.5 --variants input.maf --bam sample:sample.bam --fasta ref.fa -o out/
     ```
 
+## Homopolymer Twin Option
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--rescue-homopolymer` | `false` | Dual-count the [homopolymer twin](../reference/variant-normalization.md#step-5-homopolymer-decomposition-detection). For a delins whose REF is a run of one base and whose ALT is the base after the run (`CCCCCC>T`), also count the run with its last base replaced (`CCCCCT`), and report whichever form has more ALT reads, flagged `WARN_HOMOPOLYMER_DECOMP`. |
+
+!!! warning "Off by default: the row counts the given allele"
+    Both forms accept near-matches, so the winner can report another allele's reads under
+    the row's label. By default gbcms counts the allele it is given, and when the reads carry
+    a different one, `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/m)` in `gbcms_diagnostic` names it
+    (see [output formats](../reference/output-formats.md)).
+
 ## Debugging Options
 
 | Option | Default | Description |

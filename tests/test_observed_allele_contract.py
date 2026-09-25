@@ -16,7 +16,6 @@ import glob
 import random
 
 import pysam
-import pytest
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
@@ -90,14 +89,12 @@ def _sox2_carriers(ref, n):
 SOX2_ROW = (RUN + 1, "C" * RUN_LEN, "T")
 
 
-@pytest.mark.xfail(strict=True, reason="the twin is dual-counted by default")
 def test_the_given_allele_is_counted_by_default(tmp_path):
     ref = _ref()
     (row,) = _run(tmp_path, ref, _sox2_carriers(ref, 20) + _ref_reads(ref, 10), [SOX2_ROW])
     assert "WARN_HOMOPOLYMER_DECOMP" not in row["gbcms_status_reason"]
 
 
-@pytest.mark.xfail(strict=True, reason="--rescue-homopolymer does not exist yet")
 def test_rescue_homopolymer_keeps_the_twin(tmp_path):
     ref = _ref()
     reads = _sox2_carriers(ref, 20) + _ref_reads(ref, 10)
@@ -105,7 +102,6 @@ def test_rescue_homopolymer_keeps_the_twin(tmp_path):
     assert "WARN_HOMOPOLYMER_DECOMP" in row["gbcms_status_reason"]
 
 
-@pytest.mark.xfail(strict=True, reason="no OBSERVED_ALLELE diagnostic yet")
 def test_the_diagnostic_names_what_the_reads_carry(tmp_path):
     ref = _ref()
     (row,) = _run(tmp_path, ref, _sox2_carriers(ref, 20) + _ref_reads(ref, 10), [SOX2_ROW])
@@ -140,7 +136,6 @@ def test_scattered_errors_do_not_name_an_allele(tmp_path):
     assert "OBSERVED_ALLELE" not in row["gbcms_diagnostic"]
 
 
-@pytest.mark.xfail(strict=True, reason="no OBSERVED_ALLELE diagnostic yet")
 def test_a_mis_described_snv_is_named(tmp_path):
     """Given C>T at the run's last base; the reads carry C>G."""
     ref = _ref()

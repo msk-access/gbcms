@@ -13,6 +13,7 @@
 //! - [`variant_checks`] — Per-variant-type classification (SNP, MNP, Ins, Del, Complex)
 //! - [`utils`] — Classification types, haplotype helpers, masked comparison
 //! - [`window`] — Discrimination windows: what a read must span to tell alleles apart
+//! - [`observed`] — The allele the reads carry when it is not the given one (diagnostic)
 //! - [`mfsd`] — Mutant Fragment Size Distribution statistics (KS test, LLR, mean)
 //! - [`rna`] — RNA-seq-specific alignment filters and utilities
 //! - [`parquet_writer`] — Parquet output for fragment size distributions
@@ -25,6 +26,7 @@ pub(crate) mod pangenome;
 pub(crate) mod wfa_router;
 mod variant_checks;
 pub(crate) mod window;
+mod observed;
 mod utils;
 pub(crate) mod mfsd;
 pub(crate) mod rna;

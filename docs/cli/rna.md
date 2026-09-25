@@ -82,7 +82,7 @@ flowchart LR
 ## Required Arguments
 
 !!! info "Shared Arguments"
-    RNA mode shares all [required arguments](dna.md#required-arguments), [output options](dna.md#output-options), [filtering options](dna.md#filtering-options), [BAQ options](dna.md#baq-options), [UMI options](dna.md#umi-options), [MNP rescue options](dna.md#mnp-rescue-options), and [debugging options](dna.md#debugging-options) with DNA mode. See the [`gbcms dna` reference](dna.md) for full descriptions.
+    RNA mode shares all [required arguments](dna.md#required-arguments), [output options](dna.md#output-options), [filtering options](dna.md#filtering-options), [BAQ options](dna.md#baq-options), [UMI options](dna.md#umi-options), [MNP rescue options](dna.md#mnp-rescue-options), the [homopolymer twin option](dna.md#homopolymer-twin-option), and [debugging options](dna.md#debugging-options) with DNA mode. See the [`gbcms dna` reference](dna.md) for full descriptions.
 
 !!! tip "Provenance & CRAM Support (v5.3.0+)"
     RNA output includes the same provenance metadata as DNA mode — `##gbcms_command`,

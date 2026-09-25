@@ -53,6 +53,7 @@ use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
 use super::window;
+use super::observed;
 use crate::shared::baq::apply_heuristic_baq;
 
 
@@ -1578,6 +1579,16 @@ fn count_variant_from_cache(
         annot.nearest_splice_distance(&variant.chrom, variant.pos)
     });
     counts.exon_boundary_dist = exon_boundary_dist;
+
+    // The allele the reads carry when it is not the given one: diagnostic only
+    // (OBSERVED_ALLELE); no count below depends on it.
+    if let Some(o) = observed::observed_allele(read_cache, variant, min_mapq, min_baseq) {
+        counts.observed_pos = o.pos + 1;
+        counts.observed_ref = o.ref_allele;
+        counts.observed_alt = o.alt_allele;
+        counts.observed_reads = o.carriers;
+        counts.observed_given_reads = o.given_carriers;
+    }
     let use_baq = baq_applies(apply_baq, exon_boundary_dist);
     if apply_baq && !use_baq {
         debug!(
@@ -4124,6 +4135,7 @@ mod tests {
             repeat_span: 0,
             gene_strand: None,
             shift_region: None,
+            event_ref: None,
         }
     }
 
@@ -4794,6 +4806,7 @@ mod tests {
             repeat_span: 0,
             gene_strand: None,
             shift_region: None,
+            event_ref: None,
         }
     }
 

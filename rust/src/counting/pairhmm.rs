@@ -535,6 +535,7 @@ mod tests {
             repeat_span: 0,
             gene_strand: None,
             shift_region: None,
+            event_ref: None,
         }
     }
 
@@ -658,6 +659,7 @@ mod tests {
             repeat_span: 0,
             gene_strand: None,
             shift_region: None,
+            event_ref: None,
         };
         assert!(build_haplotypes(&variant).is_none());
     }

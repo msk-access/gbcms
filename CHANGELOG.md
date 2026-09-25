@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a row counts the given allele; the homopolymer twin is opt-in (#163)
+
+- The homopolymer twin is no longer dual-counted by default. It was the corrected
+  allele gbcms counted for a delins like `CCCCCC>T` (`CCCCCT`), reporting whichever
+  form had more ALT reads. The row now counts the allele it is given.
+  `--rescue-homopolymer` (Nextflow `--rescue_homopolymer`) restores the dual count,
+  flagged `WARN_HOMOPOLYMER_DECOMP` as before.
+  - Why: both forms accept near-matches, so the winner could report another
+    allele's reads under the row's label. At the case the twin was built for
+    (SOX2), the reads carry `CCCCT`, not the twin. The twin won by tolerance.
+  - It won at 2 of 11 real twin loci, and on 0 of the 6.5.0 RC rows, so counts
+    change only where it used to win.
+- `observe_molecules()` takes `rescue_homopolymer` and threads the twin the same
+  way.
+
+### Added
+
+- `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/m)` in `gbcms_diagnostic`: the allele the
+  reads carry when it is not the given one, in VCF form, with n reads carrying it
+  exactly and m carrying the given ALT (named when n ≥ 3, n > m and at least 5% of
+  the scanned reads).
+  - The scan covers every variant type: each spanning read is compared over the
+    event plus one base each side, so a germline SNP beside the event does not
+    count.
+  - Counts are unchanged; the flag says what the reads show so the input can be
+    checked.
+  - Prep stores the event's reference bases on `Variant.event_ref`.
+
 ### Fixed
 
 - **Indel REF counts use only reads that can tell the alleles apart** (#157).

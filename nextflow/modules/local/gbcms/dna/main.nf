@@ -50,6 +50,9 @@ process GBCMS_DNA {
     // MNP rescue pass (v4.3.0 — decomposes MNPs into SNPs for re-counting)
     def rescue_mnp_arg = asBool(params.rescue_mnp) ? "--rescue-mnp --rescue-mnp-threshold ${params.rescue_mnp_threshold}" : ""
 
+    // Homopolymer twin dual-count (opt-in; by default a row counts the given allele)
+    def rescue_homopolymer_arg = asBool(params.rescue_homopolymer) ? "--rescue-homopolymer" : ""
+
     // Adaptive context padding in repeat regions
     def adaptive_arg = asBool(params.adaptive_context) ? "" : "--no-adaptive-context"
 
@@ -98,6 +101,7 @@ process GBCMS_DNA {
         ${preserve_barcode_arg} \\
         ${show_norm_arg} \\
         ${rescue_mnp_arg} \\
+        ${rescue_homopolymer_arg} \\
         ${adaptive_arg} \\
         ${backend_arg} \\
         ${hmm_args} \\

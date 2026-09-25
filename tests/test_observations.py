@@ -534,13 +534,14 @@ def test_public_wrapper_returns_observations(tmp_path):
     assert Counter(o.allele for o in result.observations) == {1: 2, 0: 1}
 
 
-def test_wrapper_forwards_decomposition_so_alt_is_not_lost(tmp_path):
-    """Normalization's *decomposed* form must reach the counter, or ALT rows vanish.
+def test_wrapper_threads_the_twin_like_the_pipeline(tmp_path):
+    """The homopolymer twin reaches the counter exactly as in the pipeline: only on request.
 
-    `prepare_variants` can rewrite a complex indel into a decomposed form that is what the
-    reads actually carry. An earlier revision kept only `p.variant` and passed
-    `decomposed=[None] * n`, so those molecules were exported as OTHER with **zero ALT
-    rows** — silently, with PASS status. Regression guard for that.
+    `prepare_variants` builds a twin for a delins like CCCCCC>T (CCCCCT). By default a row
+    counts the given allele, so molecules carrying the twin are OTHER. With
+    `rescue_homopolymer=True` (the pipeline's `--rescue-homopolymer`) the twin is
+    dual-counted and wins, so they are ALT. An earlier revision dropped the twin even when
+    the pipeline used it; this guards that the two stay in step.
     """
     import gbcms
     from gbcms.models.core import Variant as PyVariant
@@ -567,9 +568,18 @@ def test_wrapper_forwards_decomposition_so_alt_is_not_lost(tmp_path):
     ]
     result = gbcms.observe_molecules(bam, variants, reference_fasta=str(fasta))
     alleles = Counter(o.allele for o in result.observations)
-    assert alleles[ALLELE_ALT] == 6, f"ALT molecules lost: {dict(alleles)}"
-    assert alleles[ALLELE_REF] == 4
+    # Whether the twin's carriers then land in REF or OTHER is the complex-variant
+    # classifier's call, not the wrapper's; this checks only that the twin is not counted.
+    assert alleles[ALLELE_ALT] == 0, f"the given allele is counted: {dict(alleles)}"
+    assert sum(alleles.values()) == 10
     assert result.variant_status == ["PASS"]
+
+    rescued = gbcms.observe_molecules(
+        bam, variants, reference_fasta=str(fasta), rescue_homopolymer=True
+    )
+    alleles = Counter(o.allele for o in rescued.observations)
+    assert alleles[ALLELE_ALT] == 6, f"the twin did not reach the counter: {dict(alleles)}"
+    assert alleles[ALLELE_REF] == 4
 
 
 def test_vcf_and_maf_representations_converge(tmp_path):

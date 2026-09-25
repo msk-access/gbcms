@@ -2668,6 +2668,7 @@ mod tests {
             repeat_span: 0,
             gene_strand: None,
             shift_region: None,
+            event_ref: None,
         }
     }
 
