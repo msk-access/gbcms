@@ -8,6 +8,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Identity band = annotation tolerance](identity-band-annotation-tolerance.md) — the ≥90% insert band exists for imperfect ALT representations; BQ masking can't replace it — test both policies. No new columns/flags: new signal goes to logs/diagnostics/validation tooling.
 - [Commit before review workflows](commit-before-review-workflows.md) — same-checkout review agents may `git stash`; concurrent sessions write .agents/memory — commit first, stage explicit paths only.
 - [BAM is truth](bam-is-truth.md) — reads are the truth; sign-out is a comparison. Validate read-by-read across every assay (IMPACT+normal, ACCESS duplex+simplex).
+- [Use GitHub sub-issues](github-sub-issues.md) — group related work as parent + sub-issues (cycle tracker, umbrella items), not combined issues or checklists.
 
 ## References
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.

@@ -40,8 +40,10 @@ RC check (develop vs the 6.4.0 release, every changed cell attributed; harness
   byte-identical, DNA 28/28 runs and RNA 33/33.
 
 **Next → 6.6.0.** The plan is `CYCLE_6.6.0_PLAN.md` on develop (#117). It has
-33 tickets, each with a GitHub issue in the **6.6.0 milestone**: the new issues
-#119–#139, plus #92, #106, #111, #112 and #114. Start with the operator
+33 tickets, each with a GitHub issue in the **6.6.0 milestone**, all under the
+tracking issue **#140**. Grouped work is filed as sub-issues: #92 → #141–#144,
+#112 → #145–#147, #133 → #148–#149, #134 → #150–#152, #135 → #153–#154. The
+other top-level issues are #106, #111, #114 and #119–#139. Start with the operator
 decisions (C2, R1, R2, I1, I3, I4, S1/S2), then the count-affecting tickets,
 each measured first.
 

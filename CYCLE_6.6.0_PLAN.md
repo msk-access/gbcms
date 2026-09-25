@@ -1,7 +1,8 @@
 # 6.6.0 cycle — plan
 
-> Every open finding after the 6.5.0 cut, whatever its priority; each ticket has
-> a GitHub issue in the **6.6.0 milestone**. Sources: the
+> Every open finding after the 6.5.0 cut, whatever its priority. Each ticket has
+> a GitHub issue in the **6.6.0 milestone**, under the tracking issue **#140**
+> (grouped work as sub-issues). Sources: the
 > open issues (#92, #106, #111, #112, #114); the leftovers in `CONTINUITY.md` and
 > `CYCLE_6.5.0_PLAN.md`; the #116 adversarial reviews and the plan-vs-code
 > verification of 2026-09-25; and the deferred items of
@@ -28,13 +29,13 @@ before implementation.
 
 | ID | Ticket | Pri | Flags | Issue |
 |:--|:--|:-:|:--|:--|
-| C1 | Local-alignment fallback reads stale semiglobal scores | H | [counts] | #92 |
+| C1 | Local-alignment fallback reads stale semiglobal scores | H | [counts] | #141 (#92) |
 | C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [decide] | #119 |
-| C3 | Homopolymer decomposition arbitration redesign | M | [counts] | #111, #112 |
-| C4 | Reference windows near contig ends | M | [counts] | #92 |
+| C3 | Homopolymer decomposition arbitration redesign | M | [counts] | #111, #145 (#112) |
+| C4 | Reference windows near contig ends | M | [counts] | #142 (#92) |
 | C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] | #120 |
-| C6 | Error-tolerant exact-length insertion matching | L | [counts] | #92 |
-| C7 | Rescue for clip-borne ITD carriers | L | [counts] | #92 |
+| C6 | Error-tolerant exact-length insertion matching | L | [counts] | #143 (#92) |
+| C7 | Rescue for clip-borne ITD carriers | L | [counts] | #144 (#92) |
 | C8 | One-base-REF delins without a shared anchor | L | [counts] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decide] | #106 |
@@ -46,17 +47,17 @@ before implementation.
 | I5 | Nextflow `convert` module | L | | #127 |
 | M1 | Merge rows whose flavors report different alleles | M | | #128 |
 | M2 | Merge inputs from different gbcms versions | M | | #129 |
-| M3 | Decomposed-allele hardening (observations, list length) | M | | #112 |
+| M3 | Decomposed-allele hardening (observations, list length) | M | | #146, #147 (#112) |
 | O1 | UMI warning repeated by the rescue recount | L | | #130 |
 | O2 | Run-start summary of enabled options | L | | #131 |
 | O3 | Rescue in fillouts without the MNP | L | | #132 |
-| H1 | Writers closed when a write fails | L | | #133 |
-| H2 | `is_indel` in preparation | L | | #133 |
-| P1 | Deep-bin fetch reduction (M5b) | L | | #134 |
-| P2 | Bin cost-sort (PF-2) | L | | #134 |
-| P3 | Document the bin-span soft floor (LO-3) | L | | #134 |
-| S1 | Mean LLR per fragment (CR-5) | L | [decide] | #135 |
-| S2 | `MIN_FOR_KS` floor (ME-9) | L | [decide] | #135 |
+| H1 | Writers closed when a write fails | L | | #148 (#133) |
+| H2 | `is_indel` in preparation | L | | #149 (#133) |
+| P1 | Deep-bin fetch reduction (M5b) | L | | #150 (#134) |
+| P2 | Bin cost-sort (PF-2) | L | | #151 (#134) |
+| P3 | Document the bin-span soft floor (LO-3) | L | | #152 (#134) |
+| S1 | Mean LLR per fragment (CR-5) | L | [decide] | #153 (#135) |
+| S2 | `MIN_FOR_KS` floor (ME-9) | L | [decide] | #154 (#135) |
 | D1 | CI version-consistency check | M | | #136 |
 | D2 | Release workflow creates the GitHub Release | M | | #137 |
 | D3 | mkdocs-material 2.0 | L | | #138 |
@@ -64,7 +65,7 @@ before implementation.
 
 ## Counting correctness
 
-### C1 — Local-alignment fallback reads stale semiglobal scores (#92) · H [counts]
+### C1 — Local-alignment fallback reads stale semiglobal scores (#141, under #92) · H [counts]
 **Finding.** When the local-alignment fallback triggers (the semiglobal
 alignment is judged unreliable), the REF-branch nearby-evidence check and the
 tie branch still read the semiglobal `alt_aln` / `ref_aln` scores
@@ -96,7 +97,7 @@ duplex and simplex, the complex-cluster IMPACT samples, MSI-high).
 **Acceptance.** Only grouped rows' RDF moves, and downward; `dpf ≥ rdf + adf`
 holds; the parity suite stays green.
 
-### C3 — Homopolymer decomposition arbitration redesign (#111, #112 item 1) · M [counts]
+### C3 — Homopolymer decomposition arbitration redesign (#111; #112 item 1 is #145) · M [counts]
 **Finding.** When a delins looks like a miscollapsed homopolymer event, two
 permissive classifiers compete: the called allele and a corrected allele
 (`REF[..len-1] + X`). The margins are thin, and at 4 of the 11 real twin loci
@@ -117,7 +118,7 @@ describe the original (#112 item 1).
 at non-twin loci. RNA: the transcript and ASJD columns agree with the reported
 allele. Merge's mixed-winner check (M1) lands in the same PR.
 
-### C4 — Reference windows near contig ends (#92) · M [counts]
+### C4 — Reference windows near contig ends (#142, under #92) · M [counts]
 **Finding.** The left-align wide window is not clamped to the contig length,
 so an indel within about 100bp of a contig end is not left-aligned (a WARN
 only). Prep's `ref_context` fetch fails the same way near the end, which is
@@ -138,7 +139,7 @@ their `SW_FALLBACK` counts.
 **Direction.** If demand exists, size the cap from the variant (insert length
 + padding), bounded by a documented memory limit.
 
-### C6 — Error-tolerant exact-length insertion matching (#92 enhancement) · L [counts]
+### C6 — Error-tolerant exact-length insertion matching (#143, under #92) · L [counts]
 **Finding.** Exact-length insertions whose bases confidently mismatch count as
 `partial_alt`. Some are true ALT molecules with a sequencing error inside the
 insert (observed at 1–6 reads on two long-insertion loci in the local data).
@@ -149,7 +150,7 @@ representations and BQ masking cannot replace it, so test both policies
 **Acceptance.** The two loci recover their carriers under both backends, and
 ladder and tract rows don't gain AD.
 
-### C7 — Rescue for clip-borne ITD carriers (#92) · L [counts]
+### C7 — Rescue for clip-borne ITD carriers (#144, under #92) · L [counts]
 **Finding.** When every carrier of an insertion is represented as a soft clip,
 the insertion counts no ALT. `CLIP_CANDIDATES(n)` (6.5.0) makes it visible.
 **Direction.** The design filed on #92: validate clip sequence against the
@@ -259,7 +260,7 @@ rows. The same happens when some inputs carry `vcf_pos` / `vcf_ref` /
 across the 6.5.0 representation boundary, or when the VCF-record columns are
 present in only some inputs.
 
-### M3 — Decomposed-allele hardening (#112 items 3–4) · M
+### M3 — Decomposed-allele hardening (#112 items 3–4: #146, #147) · M
 **Finding.** The observations export cannot tell that a variant's per-molecule
 rows describe the corrected allele. The `decomposed` list is not
 length-validated or padded as `sibling_variants` is: a short list panics the
@@ -286,36 +287,36 @@ matched normal. An upstream-annotation question, from 6.5.0 T7.
 
 ## Hygiene
 
-### H1 — Writers closed when a write fails (#133) · L
+### H1 — Writers closed when a write fails (#148, under #133) · L
 `_write_output` does not close the writer (or its reference handle) when a
 write raises. Use context managers.
 
-### H2 — `is_indel` in preparation (#133) · L
+### H2 — `is_indel` in preparation (#149, under #133) · L
 `is_indel` reduces to `ref_len != alt_len`; its second clause is exactly
 `is_mnp`. Simplify it.
 
 ## Performance (M5 leftovers)
 
-### P1 — Deep-bin fetch reduction (M5b) (#134) · L
+### P1 — Deep-bin fetch reduction (M5b) (#150, under #134) · L
 Deep cfDNA bins read 150k+ reads to count a few variants. Narrowing the fetch
 is the only remaining cfDNA lever. It is parity-sensitive, so scope it behind
 the binned↔legacy parity gate. Investigation first.
 
-### P2 — Bin cost-sort (PF-2) (#134) · L
+### P2 — Bin cost-sort (PF-2) (#151, under #134) · L
 Niche: cfDNA has no long-pole bin. Cheap if a skewed workload appears.
 
-### P3 — Document the bin-span soft floor (LO-3) (#134) · L
+### P3 — Document the bin-span soft floor (LO-3) (#152, under #134) · L
 Doc only. Never cap the span: a cap risks re-breaking the bin-anchor
 invariant (`.agents/memory/bin-anchor-coverage.md`).
 
 ## Statistics (accepted deviations)
 
-### S1 — Mean LLR per fragment (CR-5) (#135) · L [decide]
+### S1 — Mean LLR per fragment (CR-5) (#153, under #135) · L [decide]
 Report the LLR per fragment rather than the sum. It changes displayed values,
 so coordinate with report consumers. Only if a consumer needs cross-variant
 comparability.
 
-### S2 — `MIN_FOR_KS` floor (ME-9) (#135) · L [decide]
+### S2 — `MIN_FOR_KS` floor (ME-9) (#154, under #135) · L [decide]
 Raise the floor above 5 only if a power analysis justifies it. With exact
 small-N KS and the `ks_valid` gate, 5 is defensible.
 
