@@ -391,8 +391,11 @@ fn has_indel_in_window(record: &Record, wstart: i64, wend: i64) -> bool {
 pub enum MnpResult {
     /// All unmasked bases match REF. (quality, had_n_at_any_position)
     Ref(u8, bool),
-    /// All unmasked bases match ALT. (quality, had_n_at_any_position)
-    Alt(u8, bool),
+    /// All unmasked bases match ALT. (quality, had_n_at_any_position,
+    /// confirmed) — `confirmed` when no discriminating base was masked, i.e.
+    /// every one was read and matched ALT: the read itself shows the whole
+    /// haplotype rather than inferring it from the unmasked subset.
+    Alt(u8, bool, bool),
     /// All discriminating positions masked (BQ < threshold or N).
     /// Carries (positions_matching_alt, had_n_at_any_position).
     /// Used for `partial_alt` counting when positions_matching_alt > 0.
@@ -596,7 +599,7 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
         MnpResult::Ref(med_qual, had_n_base)
     } else if n_unmasked_match_alt == n_unmasked && n_unmasked_match_ref == 0 {
         // All unmasked discriminating positions match ALT
-        MnpResult::Alt(med_qual, had_n_base)
+        MnpResult::Alt(med_qual, had_n_base, n_masked == 0)
     } else {
         // Mixed or neither — log per-position breakdown for diagnostics
         if log::log_enabled!(log::Level::Trace) {
@@ -634,140 +637,35 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
 }
 
 
-/// Check if a read supports a complex variant (indel + substitution).
-///
-/// Uses **haplotype reconstruction**: walks the CIGAR to rebuild what the read
-/// shows for the genomic region covered by REF, then compares the reconstructed
-/// sequence to both REF and ALT using **quality-aware masked comparison**.
-///
-/// ## Masked Comparison ("Reliable Intersection")
-///
-/// Instead of requiring exact byte-for-byte match, bases with quality below
-/// `min_baseq` are **masked out** — they cannot vote for either allele. Only
-/// "reliable" (high-quality) bases participate in the comparison.
-///
-/// Three cases based on reconstructed sequence length:
-/// - **Case A** (`recon == alt == ref` length): simultaneous REF/ALT check with
-///   ambiguity detection. If reliable bases match *both*, read is discarded.
-/// - **Case B** (`recon == alt` length only): masked comparison against ALT only.
-/// - **Case C** (`recon == ref` length only): masked comparison against REF only.
-///
-/// Returns `ClassifyResult` where base_qual is the median quality
-/// across the reconstructed haplotype bases, used for fragment consensus.
-#[allow(clippy::too_many_arguments)]
-pub fn check_complex<F: Fn(u8, u8) -> i32>(
-    record: &Record,
-    variant: &Variant,
-    siblings: &[Variant],
-    quals: &[u8],
-    min_baseq: u8,
-    alt_aligner: &mut Aligner<F>,
-    ref_aligner: &mut Aligner<F>,
-    backend: &AlignmentBackend,
-) -> ClassifyResult {
-    let start_pos = variant.pos;
-    let end_pos = variant.pos + variant.ref_allele.len() as i64; // exclusive
+/// A read's CIGAR-projected reconstruction over a genomic span.
+pub(crate) struct SpanRecon {
+    /// The bases the read shows for [start_pos, end_pos), with insertions at
+    /// or inside the span included (trailing insertions deliberately so —
+    /// see the Ins branch) and deletions consuming reference silently.
+    pub seq: Vec<u8>,
+    /// Per-base qualities aligned with `seq`.
+    pub quals: Vec<u8>,
+    /// A CIGAR `N` (RefSkip) overlapped the span: the reconstruction would
+    /// stitch exon arms together and masquerade as deletion evidence, so
+    /// callers must refuse to string-compare when this is set.
+    pub splice_skip: bool,
+}
 
+/// Walk the CIGAR and reconstruct what the read shows for [start_pos,
+/// end_pos). Shared by `check_complex` Phase 1 and the engine's
+/// multi-allelic AD-claiming contest (span-explanation cost).
+pub(crate) fn reconstruct_span(
+    record: &Record,
+    quals: &[u8],
+    start_pos: i64,
+    end_pos: i64,
+) -> SpanRecon {
     let cigar = record.cigar();
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
     let seq = record.seq();
-    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
-
-    // Pre-allocate reconstruction buffers for performance
-    let capacity = seq.len();
-    let mut reconstructed_seq: Vec<u8> = Vec::with_capacity(capacity);
-    let mut quals_per_base: Vec<u8> = Vec::with_capacity(capacity);
-
-    trace!(
-        "check_complex start: pos={} ref={} alt={}",
-        start_pos, variant.ref_allele, variant.alt_allele
-    );
-
-    // --- Phase 0: Structural Anomaly Fast-Track ---
-    // If the read has Soft-Clips (S) or explicit indels (I/D) within the window,
-    // Phase 1's CIGAR-projected reconstruction will produce a severely truncated
-    // or garbaged sequence. Phase 2 (masked comparison) then artificially matches
-    // this truncated string perfectly to REF, erroneously rejecting complex ALT reads!
-    // To prevent this false REF classification, we IMMEDIATELY route all
-    // structurally anomalous reads (is_worth_realignment) to alignment-based
-    // classification, which extracts raw bases and aligns against full haplotypes.
-    if let Some(ref ctx) = variant.ref_context {
-        let win_start = variant.ref_context_start;
-        let win_end = win_start + ctx.len() as i64;
-
-        if is_worth_realignment(record, win_start, win_end) {
-            // A structurally anomalous read whose splice N overlaps the
-            // context window cannot be alignment-classified (extraction
-            // refuses to stitch across the splice) — and letting it fall
-            // through to Phase 1/2 string comparison is exactly the false-REF
-            // path this Phase-0 bypass exists to prevent: with its indel
-            // shifted outside the variant span, the reconstruction over the
-            // span is clean REF sequence and Phase 2 absorbs an ALT carrier
-            // into rd. No clean evidence exists for such a read → neither.
-            // (Splice-aware Phase-3 scoring would need a spliced haplotype
-            // with an explicit genomic→spliced coordinate map and
-            // junction-compatible extraction — tracked in issue #94; until
-            // real-data measurement justifies that machinery, this stays
-            // conservative.)
-            if super::rna::has_splice_junction(record)
-                && observe_read_span(record, win_start, win_end).skipped
-            {
-                trace!(
-                    "check_complex: structurally anomalous read has a splice N inside \
-                     the context window [{}, {}) at {}:{} — unscoreable across the \
-                     splice, refusing string comparison → neither",
-                    win_start, win_end, variant.chrom, variant.pos + 1
-                );
-                return ClassifyResult::neither(ClassifyPhase::Alignment);
-            }
-            if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
-                record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
-            ) {
-                if sub_seq.len() >= 3 {
-                    trace!(
-                        "check_complex: Phase 0 bypass (soft-clips/indels), extracted {} bases",
-                        sub_seq.len()
-                    );
-                    return match backend {
-                        AlignmentBackend::SmithWaterman => classify_by_alignment(
-                            &sub_seq, &sub_quals, variant, min_baseq,
-                            alt_aligner, ref_aligner,
-                        ),
-                        AlignmentBackend::PairHMM {
-                            llr_threshold, gap_open, gap_extend,
-                            gap_open_repeat, gap_extend_repeat,
-                        } => {
-                            // Pangenomic WFA → marginalized PairHMM pipeline.
-                            // Falls back to SW if matrix construction fails.
-                            pangenomic_classify(
-                                &sub_seq, &sub_quals, variant, siblings,
-                                min_baseq, *gap_open, *gap_extend,
-                                *gap_open_repeat, *gap_extend_repeat, *llr_threshold,
-                            ).unwrap_or_else(|| {
-                                trace!(
-                                    "check_complex: Phase 0 pangenomic failed, SW fallback at {}:{}",
-                                    variant.chrom, variant.pos + 1,
-                                );
-                                classify_by_alignment(
-                                    &sub_seq, &sub_quals, variant, min_baseq,
-                                    alt_aligner, ref_aligner,
-                                )
-                            })
-                        }
-                    };
-                }
-            }
-        }
-    }
-
-    // --- Phase 1: Haplotype Reconstruction ---
-    // Walk the CIGAR to reconstruct what the read shows for [start_pos, end_pos).
-    // A splice N overlapping the window poisons the reconstruction: treating
-    // it like a D stitches the exon arms together, and the exon-joined string
-    // is exactly what a deletion allele looks like — so a read that merely
-    // splices over part of the variant span would masquerade as ALT evidence.
-    // Track it and refuse to string-compare such reads (see below).
+    let mut reconstructed_seq: Vec<u8> = Vec::with_capacity(seq.len());
+    let mut quals_per_base: Vec<u8> = Vec::with_capacity(seq.len());
     let mut splice_skip_in_window = false;
     for op in cigar.iter() {
         match op {
@@ -850,10 +748,136 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
             Cigar::HardClip(_) | Cigar::Pad(_) => {}
         }
     }
+    SpanRecon { seq: reconstructed_seq, quals: quals_per_base, splice_skip: splice_skip_in_window }
+}
 
-    if splice_skip_in_window {
+/// Check if a read supports a complex variant (indel + substitution).
+///
+/// Uses **haplotype reconstruction**: walks the CIGAR to rebuild what the read
+/// shows for the genomic region covered by REF, then compares the reconstructed
+/// sequence to both REF and ALT using **quality-aware masked comparison**.
+///
+/// ## Masked Comparison ("Reliable Intersection")
+///
+/// Instead of requiring exact byte-for-byte match, bases with quality below
+/// `min_baseq` are **masked out** — they cannot vote for either allele. Only
+/// "reliable" (high-quality) bases participate in the comparison.
+///
+/// Three cases based on reconstructed sequence length:
+/// - **Case A** (`recon == alt == ref` length): simultaneous REF/ALT check with
+///   ambiguity detection. If reliable bases match *both*, read is discarded.
+/// - **Case B** (`recon == alt` length only): masked comparison against ALT only.
+/// - **Case C** (`recon == ref` length only): masked comparison against REF only.
+///
+/// Returns `ClassifyResult` where base_qual is the median quality
+/// across the reconstructed haplotype bases, used for fragment consensus.
+#[allow(clippy::too_many_arguments)]
+pub fn check_complex<F: Fn(u8, u8) -> i32>(
+    record: &Record,
+    variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
+    min_baseq: u8,
+    alt_aligner: &mut Aligner<F>,
+    ref_aligner: &mut Aligner<F>,
+    backend: &AlignmentBackend,
+) -> ClassifyResult {
+    let start_pos = variant.pos;
+    let end_pos = variant.pos + variant.ref_allele.len() as i64; // exclusive
+
+    // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
+    trace!(
+        "check_complex start: pos={} ref={} alt={}",
+        start_pos, variant.ref_allele, variant.alt_allele
+    );
+
+    // --- Phase 0: Structural Anomaly Fast-Track ---
+    // If the read has Soft-Clips (S) or explicit indels (I/D) within the window,
+    // Phase 1's CIGAR-projected reconstruction will produce a severely truncated
+    // or garbaged sequence. Phase 2 (masked comparison) then artificially matches
+    // this truncated string perfectly to REF, erroneously rejecting complex ALT reads!
+    // To prevent this false REF classification, we IMMEDIATELY route all
+    // structurally anomalous reads (is_worth_realignment) to alignment-based
+    // classification, which extracts raw bases and aligns against full haplotypes.
+    if let Some(ref ctx) = variant.ref_context {
+        let win_start = variant.ref_context_start;
+        let win_end = win_start + ctx.len() as i64;
+
+        if is_worth_realignment(record, win_start, win_end) {
+            // A structurally anomalous read whose splice N overlaps the
+            // context window cannot be alignment-classified (extraction
+            // refuses to stitch across the splice) — and letting it fall
+            // through to Phase 1/2 string comparison is exactly the false-REF
+            // path this Phase-0 bypass exists to prevent: with its indel
+            // shifted outside the variant span, the reconstruction over the
+            // span is clean REF sequence and Phase 2 absorbs an ALT carrier
+            // into rd. No clean evidence exists for such a read → neither.
+            // (Splice-aware Phase-3 scoring would need a spliced haplotype
+            // with an explicit genomic→spliced coordinate map and
+            // junction-compatible extraction — tracked in issue #94; until
+            // real-data measurement justifies that machinery, this stays
+            // conservative.)
+            if super::rna::has_splice_junction(record)
+                && observe_read_span(record, win_start, win_end).skipped
+            {
+                trace!(
+                    "check_complex: structurally anomalous read has a splice N inside \
+                     the context window [{}, {}) at {}:{} — unscoreable across the \
+                     splice, refusing string comparison → neither",
+                    win_start, win_end, variant.chrom, variant.pos + 1
+                );
+                return ClassifyResult::neither(ClassifyPhase::Alignment);
+            }
+            if let Some((sub_seq, sub_quals)) = extract_raw_read_window(
+                record, quals, win_start, win_end, variant.pos, variant.ref_allele.len()
+            ) {
+                if sub_seq.len() >= 3 {
+                    trace!(
+                        "check_complex: Phase 0 bypass (soft-clips/indels), extracted {} bases",
+                        sub_seq.len()
+                    );
+                    return match backend {
+                        AlignmentBackend::SmithWaterman => classify_by_alignment(
+                            &sub_seq, &sub_quals, variant, min_baseq,
+                            alt_aligner, ref_aligner,
+                        ),
+                        AlignmentBackend::PairHMM {
+                            llr_threshold, gap_open, gap_extend,
+                            gap_open_repeat, gap_extend_repeat,
+                        } => {
+                            // Pangenomic WFA → marginalized PairHMM pipeline.
+                            // Falls back to SW if matrix construction fails.
+                            pangenomic_classify(
+                                &sub_seq, &sub_quals, variant, siblings,
+                                min_baseq, *gap_open, *gap_extend,
+                                *gap_open_repeat, *gap_extend_repeat, *llr_threshold,
+                            ).unwrap_or_else(|| {
+                                trace!(
+                                    "check_complex: Phase 0 pangenomic failed, SW fallback at {}:{}",
+                                    variant.chrom, variant.pos + 1,
+                                );
+                                let mut r = classify_by_alignment(
+                                    &sub_seq, &sub_quals, variant, min_baseq,
+                                    alt_aligner, ref_aligner,
+                                );
+                                r.sw_fallback = true;
+                                r
+                            })
+                        }
+                    };
+                }
+            }
+        }
+    }
+
+    // --- Phase 1: Haplotype Reconstruction ---
+    // Walk the CIGAR to reconstruct what the read shows for [start_pos,
+    // end_pos) (reconstruct_span — shared with the engine's multi-allelic
+    // AD-claiming contest).
+    let recon = reconstruct_span(record, quals, start_pos, end_pos);
+    if recon.splice_skip {
         // The read asserts splicing over part of [start_pos, end_pos): the
-        // reconstruction above joined bases across the N gap, so comparing it
+        // reconstruction joined bases across the N gap, so comparing it
         // against the alleles would read exon-stitching as deletion evidence.
         // No clean string comparison exists for such a read — classify
         // neither. (Reads whose N covers EVERY discriminating position never
@@ -868,6 +892,8 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         );
         return ClassifyResult::neither(ClassifyPhase::CigarRecon);
     }
+    let reconstructed_seq = recon.seq;
+    let quals_per_base = recon.quals;
 
     let reconstructed_str = String::from_utf8_lossy(&reconstructed_seq);
     trace!(
@@ -920,7 +946,7 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     // > 2*5=10 and skips to Phase 3.
     let ref_len = ref_bytes.len();
     let alt_len = alt_bytes.len();
-    let read_len = seq.len();
+    let read_len = record.seq_len();
     let large_ref_threshold = std::cmp::max(50, read_len / 3);
 
     let skip_phase2 = if ref_len > large_ref_threshold && recon_len > 0 && recon_len < ref_len / 10 {
@@ -1245,10 +1271,12 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                                 "check_complex: Phase 3 pangenomic failed, SW fallback at {}:{}",
                                 variant.chrom, variant.pos + 1,
                             );
-                            classify_by_alignment(
+                            let mut r = classify_by_alignment(
                                 &sub_seq, &sub_quals, variant, min_baseq,
                                 alt_aligner, ref_aligner,
-                            )
+                            );
+                            r.sw_fallback = true;
+                            r
                         })
                     }
                 };
@@ -1256,7 +1284,22 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
         }
     }
 
-    ClassifyResult::neither(ClassifyPhase::Alignment)
+    // A read reaching here without a reference context was never evaluated by
+    // the requested scorer. For a length-changing variant (indel or delins —
+    // the variants prep fetches a context for) that means prep's context fetch
+    // failed (it logs once), so no haplotype matrix — and no SW either — can be
+    // built. Under PairHMM this is the same malformed-input condition the SW
+    // fallback covers; mark it so the row carries SW_FALLBACK instead of
+    // silently losing the read. MNPs carry no context by design (no Phase 3),
+    // so their structural reads ending here are expected, not a fallback.
+    let mut r = ClassifyResult::neither(ClassifyPhase::Alignment);
+    if variant.ref_context.is_none()
+        && variant.ref_allele.len() != variant.alt_allele.len()
+        && matches!(backend, AlignmentBackend::PairHMM { .. })
+    {
+        r.sw_fallback = true;
+    }
+    r
 }
 
 

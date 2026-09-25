@@ -77,6 +77,7 @@ flowchart LR
     subgraph Python["src/gbcms/"]
         CLI["cli.py"] --> Pipeline["pipeline.py"]
         CLI --> Normalize["normalize.py"]
+        CLI --> Convert["convert.py"]
         Pipeline --> IO["io/"]
         Pipeline --> Models["models/"]
     end
@@ -204,11 +205,11 @@ Key invariants to check:
 
 ### MNP Rescue Pass (`--rescue-mnp`)
 
-!!! warning "Rescue Invariant Exception"
-    When `--rescue-mnp` is used, **Invariant 1** (`any_alt = ad + partial_alt`) intentionally breaks
-    for rescued variants. The `ad` is updated with the best decomposed SNP count, while `any_alt`
-    and `partial_alt` retain original MNP-level values as forensic evidence. The `gbcms_rescue`
-    audit trail documents the rescue provenance.
+!!! info "Rescued rows keep every counting invariant"
+    A rescued row carries the adopted component SNV's `BaseCounts` wholesale, so all
+    counting invariants (including `any_alt = ad + partial_alt`) hold on it. The MNP's own
+    `rd`/`ad`/`partial_alt`/`mnp_confirmed_alt` live only in the `gbcms_rescue` audit trail
+    (`original_ref`/`original_alt`/`original_partial`/`original_confirmed`).
 
 **Architecture**: The rescue engine is implemented in **Python** (`pipeline.py::_rescue_mnp_pass()`)
 calling the existing **Rust** counting engine (`count_bam_binned()`). This was a deliberate choice:
@@ -234,19 +235,26 @@ count_bam_binned() → _merge_counts() → _compute_diagnostics() → _rescue_mn
 # Enable rescue with debug logging to see per-variant decisions
 gbcms dna --verbose --rescue-mnp --variants input.maf --bam sample:sample.bam --fasta ref.fa --format maf --output-dir out/
 
-# Look for rescue log lines:
-# INFO  — "MNP rescue: 3 candidate(s) for SAMPLE"
-# DEBUG — "MNP rescue: chr5:1295251 GAGGG>AAGGA → rescued alt=108 via decomposed SNPs"
-# INFO  — "MNP rescue: 2/3 rescued, 1 failed (0.342s) for SAMPLE"
+# Rescue log lines:
+# WARNING — "MNP rescue enabled (--rescue-mnp, threshold=1.00): rescued rows report a component SNV's counts ..."  (once per run)
+# INFO    — "MNP rescue for SAMPLE: rescued=2, skipped_grouped=1 (0.342s)"   (per-sample outcome summary)
+# WARNING — "MNP rescue: 5:1295250 GAGGG>AAGGA now reports component 5:1295250(G>A) (ALT 88, REF 487); the MNP itself had ALT 1 (0 showing the whole haplotype), partial 88"
+# DEBUG   — "MNP rescue: ... skipped — co-annotated group 3 owns its reads"
+# DEBUG   — "MNP rescue: ... kept — 36 read(s) show the whole haplotype"
+# WARNING — "Mixed MNP rescue at 5:1295250 GAGGG>AAGGA — duplex reports component ..., simplex reports the MNP ..."  (gbcms merge)
+# DEBUG   — "MNP rescue: ... not rescued (no_improvement) ..."  (partial evidence was not component carriers)
+# WARNING — "MNP rescue: ... not rescued (ref_validation_failed) ..."  (anomaly: investigate)
+# WARNING — "MNP rescue: synthetic SNV ... failed preparation (...) — reported as ref_fail"
 ```
 
-**Extending rescue**: If adding a new rescue strategy (e.g. coordinate shift for the BRCA2 case):
+**Extending rescue**: If adding a new rescue strategy (e.g. coordinate shift):
 
 1. Add the strategy as a new code path in `_rescue_mnp_pass()`
-2. Use a different `method=` value in the audit trail (e.g. `method=coordinate_shift`)
-3. The `outcome=no_signal` sentinel is reserved for failed decomposed rescue
-4. Always log at DEBUG per-variant and INFO summary
-5. Add tests to `test_rescue_mnp.py` covering the new strategy's candidate criteria
+2. Use a different `method=` value in the audit trail (e.g. `method=coordinate_shift`) and
+   keep `outcome=` and `original_*` keys, built by `gbcms.rescue_audit.format_rescue_audit()`
+3. Decide outcomes in a pure function (like `_resolve_mnp_rescue()`) so they are unit-testable
+4. Log DEBUG per variant, INFO per-sample summary, WARNING for anomalies
+5. Add end-to-end tests to `test_rescue_mnp.py` asserting the counting invariants on written rows
 
 **Test fixtures**: Any manually instantiated `MafWriter`/`VcfWriter` (via `__new__`) **must**
 set `rescue_mnp=False` (or `True`) explicitly, or `_gbcms_column_names()` will raise

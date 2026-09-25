@@ -19,6 +19,8 @@ alwaysApply: true
 - [ ] Update commenting — all new functions have docstrings, complex logic has "why" comments
 - [ ] Update logging — all significant operations have structured log entries
 - [ ] Update monitoring — timing/counts for data operations, progress for long loops
+- [ ] Reproduce every claim before stating it (a review finding, an "unreachable" branch,
+      behavior across inputs) with a run — synthetic BAM or CLI; otherwise say it is unverified
 
 **AFTER implementing, compare code against implementation plan:**
 - [ ] Re-read the relevant plan section(s)

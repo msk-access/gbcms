@@ -33,7 +33,7 @@ from .models.core import (
 from .pipeline import Pipeline
 from .utils import setup_logging
 
-__all__ = ["app", "dna", "rna", "normalize", "merge"]
+__all__ = ["app", "dna", "rna", "normalize", "convert", "merge"]
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,18 @@ _COMPRESSED_VCF_SUFFIXES: tuple[str, ...] = (".vcf.gz", ".vcf.bgz")
 # Column-prefix charset: only letters, digits, underscores
 _COLUMN_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]*$")
 
+# Shared by the dna and rna commands.
+_RESCUE_MNP_HELP = (
+    "Enable the MNP rescue pass, for annotated MNPs whose carriers hold only a "
+    "component of the haplotype. When partial_alt > alt_count and no read shows "
+    "every changed base (MNP_RESCUE_ELIGIBLE MNPs outside co-annotated groups), each "
+    "discriminating position is re-counted as an "
+    "SNV and the best component's counts replace the row's; the MNP's own counts and "
+    "the per-position split go to gbcms_rescue. Where the MNP itself is absent (e.g. "
+    "a fillout of other timepoints or normals) a germline SNP component can still be "
+    "adopted — check gbcms_rescue before trusting a rescued VAF."
+)
+
 app = typer.Typer(help="gbcms: Get Base Counts Multi-Sample")
 
 
@@ -85,6 +97,22 @@ def _is_compressed_vcf(path: Path) -> bool:
     """
     name_lower = path.name.lower()
     return any(name_lower.endswith(suffix) for suffix in _COMPRESSED_VCF_SUFFIXES)
+
+
+def _variant_format(path: Path) -> str:
+    """``"vcf"`` or ``"maf"`` by extension; an unsupported extension is logged
+    and exits 1 before any I/O (every command that reads a variant file)."""
+    if _is_compressed_vcf(path) or path.suffix.lower() == ".vcf":
+        return "vcf"
+    if path.suffix.lower() == ".maf":
+        return "maf"
+    logger.error(
+        "Unsupported variant file extension '%s'. "
+        "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
+        path.suffix.lower(),
+        path,
+    )
+    raise typer.Exit(code=1)
 
 
 def _exit_on_sample_failure(result: dict) -> None:
@@ -299,12 +327,7 @@ def dna(
     rescue_mnp: bool = typer.Option(
         False,
         "--rescue-mnp",
-        help=(
-            "Enable MNP rescue pass for multi-base substitutions. "
-            "When alt_count=0, decomposes the MNP into individual SNPs "
-            "and re-counts using the best discriminating position. "
-            "Populates gbcms_rescue with a structured audit trail."
-        ),
+        help=_RESCUE_MNP_HELP,
     ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
@@ -389,25 +412,10 @@ def dna(
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
     logger.info("Running gbcms v%s in DNA mode", __version__)
-    if rescue_mnp:
-        logger.info(
-            "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
-            rescue_mnp_threshold,
-        )
-
     # ── 2. Pre-model validation (semantic + cross-option checks) ───────────────
 
     # GAP 12: Reject unsupported variant file extensions before any I/O.
-    _is_vcf_gz = _is_compressed_vcf(variant_file)
-    _ext = variant_file.suffix.lower()
-    if not _is_vcf_gz and _ext not in _VALID_VARIANT_EXTENSIONS:
-        logger.error(
-            "Unsupported variant file extension '%s'. "
-            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
-            _ext,
-            variant_file,
-        )
-        raise typer.Exit(code=1)
+    is_maf = _variant_format(variant_file) == "maf"
 
     # GAP 10: Validate --column-prefix charset (letters, digits, underscores only).
     if column_prefix and not _COLUMN_PREFIX_RE.match(column_prefix):
@@ -419,7 +427,7 @@ def dna(
         raise typer.Exit(code=1)
 
     # GAP 9: Warn when --preserve-barcode is used with non-MAF input (it is a no-op).
-    if preserve_barcode and not _is_vcf_gz and _ext != ".maf":
+    if preserve_barcode and not is_maf:
         logger.warning(
             "--preserve-barcode has no effect when the variant file is not a MAF "
             "(got '%s'). The BAM sample name will be used in all output rows.",
@@ -703,12 +711,7 @@ def rna(
     rescue_mnp: bool = typer.Option(
         False,
         "--rescue-mnp",
-        help=(
-            "Enable MNP rescue pass for multi-base substitutions. "
-            "When alt_count=0, decomposes the MNP into individual SNPs "
-            "and re-counts using the best discriminating position. "
-            "Populates gbcms_rescue with a structured audit trail."
-        ),
+        help=_RESCUE_MNP_HELP,
     ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
@@ -793,23 +796,8 @@ def rna(
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
     logger.info("Running gbcms v%s in RNA mode", __version__)
-    if rescue_mnp:
-        logger.info(
-            "MNP rescue pass enabled (--rescue-mnp, threshold=%.2f)",
-            rescue_mnp_threshold,
-        )
-
     # ── 2. Pre-model validation ──
-    _is_vcf_gz = _is_compressed_vcf(variant_file)
-    _ext = variant_file.suffix.lower()
-    if not _is_vcf_gz and _ext not in _VALID_VARIANT_EXTENSIONS:
-        logger.error(
-            "Unsupported variant file extension '%s'. "
-            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
-            _ext,
-            variant_file,
-        )
-        raise typer.Exit(code=1)
+    is_maf = _variant_format(variant_file) == "maf"
 
     if column_prefix and not _COLUMN_PREFIX_RE.match(column_prefix):
         logger.error(
@@ -818,7 +806,7 @@ def rna(
         )
         raise typer.Exit(code=1)
 
-    if preserve_barcode and not _is_vcf_gz and _ext != ".maf":
+    if preserve_barcode and not is_maf:
         logger.warning(
             "--preserve-barcode has no effect when the variant file is not a MAF.",
         )
@@ -996,16 +984,7 @@ def build_gtf_cache(
 
     setup_logging(verbose=verbose, trace=False)
 
-    # Extension pre-check (mirrors the dna/rna/normalize commands).
-    if (
-        not _is_compressed_vcf(variants)
-        and variants.suffix.lower() not in _VALID_VARIANT_EXTENSIONS
-    ):
-        logger.error(
-            "Unsupported variant file extension '%s'. Expected .vcf, .vcf.gz, .vcf.bgz, or .maf.",
-            variants.suffix,
-        )
-        raise typer.Exit(code=1)
+    _variant_format(variants)
 
     chroms = [v.chrom for v in read_variant_file(variants)]
     if not chroms:
@@ -1055,17 +1034,7 @@ def normalize(
 
     setup_logging(verbose=verbose, trace=trace)
 
-    # Apply the same file extension pre-check as the 'run' command.
-    _is_vcf_gz = _is_compressed_vcf(variant_file)
-    _ext = variant_file.suffix.lower()
-    if not _is_vcf_gz and _ext not in _VALID_VARIANT_EXTENSIONS:
-        logger.error(
-            "Unsupported variant file extension '%s'. "
-            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
-            _ext,
-            variant_file,
-        )
-        raise typer.Exit(code=1)
+    _variant_format(variant_file)
 
     normalize_variants(
         variant_file=variant_file,
@@ -1073,6 +1042,66 @@ def normalize(
         output=output,
         threads=threads,
     )
+
+
+@app.command()
+def convert(
+    variant_file: Path = typer.Option(
+        ...,
+        "--variants",
+        "-v",
+        exists=True,
+        dir_okay=False,
+        help="VCF (.vcf, .vcf.gz, .vcf.bgz; written as MAF) or MAF (.maf; written as VCF)",
+    ),
+    output: Path = typer.Option(
+        ..., "--output", "-o", help="Output file: .maf for VCF input, .vcf for MAF input"
+    ),
+    reference: Path | None = typer.Option(
+        None,
+        "--fasta",
+        "-f",
+        exists=True,
+        dir_okay=False,
+        help="Reference FASTA with its .fai index. Required for MAF input: the anchor "
+        "base maf2vcf prepends to '-' alleles comes from it.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
+):
+    """
+    Convert between VCF and MAF without counting, as vcf2maf / maf2vcf do.
+
+    VCF input is written as MAF with vcf2maf's coordinates, keeping each record
+    in vcf_pos / vcf_ref / vcf_alt; MAF input is written as VCF with maf2vcf's
+    records. This is the conversion gbcms dna / rna apply to their own output.
+    """
+    from .convert import maf_to_vcf_file, vcf_to_maf_file
+
+    setup_logging(verbose=verbose, trace=False)
+    is_vcf = _variant_format(variant_file) == "vcf"
+    want = ".maf" if is_vcf else ".vcf"
+    if output.suffix.lower() != want:
+        logger.error(
+            "%s input is converted to %s: --output must end in %s (got %s)",
+            "VCF" if is_vcf else "MAF",
+            want[1:].upper(),
+            want,
+            output,
+        )
+        raise typer.Exit(code=1)
+    if is_vcf:
+        if reference is not None:
+            logger.warning("--fasta is not used for VCF input (VCF -> MAF needs no reference)")
+        vcf_to_maf_file(variant_file, output, _log_command())
+        return
+    if reference is None:
+        logger.error("MAF input needs --fasta: maf2vcf's anchor base comes from the reference")
+        raise typer.Exit(code=1)
+    fai = Path(f"{reference}.fai")
+    if not fai.exists():
+        logger.error("Reference FASTA is not indexed: %s is missing (samtools faidx)", fai)
+        raise typer.Exit(code=1)
+    maf_to_vcf_file(variant_file, reference, output, _log_command())
 
 
 @app.command()

@@ -30,3 +30,18 @@ assay, never universal calibration — stutter/error rates vary by sample type,
 assay, and duplex collapsing ([[tolerant-deletion-deliberate]]). No new CLI
 flags or output columns for this (standing rule: new signal goes to logs,
 existing diagnostics, or validation tooling).
+
+**MEASURED (2026-09-22, mismatch-anatomy survey, local IMPACT 74-set):** at
+the three covered ≥4bp insertion loci (38bp, 19bp ×2 samples; ~900 carrier
+reads total): (1) the dominant non-exact class is **zero-mismatch
+truncations** (219 candidates ≈ 24% of carriers) — pure length containment,
+BQ policy irrelevant to them; (2) mismatching candidates are ~2%, mostly
+HIGH-BQ (Q20–35), and every high-BQ pattern is a **singleton at a unique
+position** — isolated base errors inside otherwise-exact long inserts, not
+systematic representation shifts; the ≥90% band correctly admits them as
+same-event, a BQ-first policy would wrongly demote them; (3) all-lowBQ
+mismatch class (both policies agree) is tiny (6 reads). Recommendation:
+keep the band as primary, no BQ-first switch (it helps nothing and harms
+the rare class). Re-check on ACCESS duplex (BQ93 consensus bases make
+mismatches more meaningful) when the ACCESS MAFs arrive. Survey script:
+scratchpad mismatch_survey/survey.py.

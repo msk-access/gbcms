@@ -10,6 +10,36 @@ Newest at the top.
 
 ---
 
+## [REJ-20260923-004] Drop the contig name from MNP rescue labels
+- **Target:** `src/gbcms/pipeline.py` — `RESCUED_COMPONENT(...)` / `gbcms_rescue` labels
+- **Proposed:** write `pos(REF>ALT)` only, since the row names the contig.
+- **Reason vetoed:** operator — labels follow the output file's own contig naming.
+- **Date:** 2026-09-23
+
+## [REJ-20260923-003] Return the MNP rescue gate to the original strict `ad == 0` (T7 "path B")
+- **Target:** `src/gbcms/pipeline.py` — `_rescue_mnp_pass` candidate gate
+- **Proposed:** keep only the rescue bug fixes, drop the partial-dominance gate.
+- **Reason vetoed:** operator chose path A (simplify the gate to "rescue only when no read
+  shows the whole MNP") — the TERT C250T-shaped rows must remain rescuable.
+- **Date:** 2026-09-23
+
+## [REJ-20260923-002] Error allowance `ceil(partial_alt × 10^(−min_baseq/10))` for confirmed whole-MNP reads
+- **Target:** `src/gbcms/pipeline.py` — `_confirmed_error_allowance`
+- **Proposed:** tolerate that many fully-read full-MNP reads as sequencing error.
+- **Reason vetoed:** real ACCESS data: BRCA2 AAG>TAC duplex rescued to a germline SNP
+  (6 real whole-MNP reads ≤ allowance 8); KRAS ACC>CCA simplex rescued with 1 real
+  whole-MNP read (allowance rounds up to 1). Replaced by "no read shows the whole MNP".
+- **Date:** 2026-09-23
+
+## [REJ-20260923-001] Report-only MNP rescue (component counts only in `gbcms_rescue`, row keeps MNP counts)
+- **Target:** `src/gbcms/pipeline.py` — `_rescue_mnp_pass`
+- **Proposed:** never replace counts; put the component split in the audit or flags.
+- **Reason vetoed:** operator — it would get lost; rescue is opt-in and exists to put the
+  component count in the count columns, flagged (`RESCUED_COMPONENT`) and warned.
+- **Date:** 2026-09-23
+
+---
+
 ## [REJ-20260701-001] Gate structural-ALT INDEL win on the REF mate's base quality (ME-12b)
 - **Target:** `rust/src/shared/fragment.rs` — `FragmentEvidence::resolve` (~:206)
 - **Proposed:** before a structural ALT (matching CIGAR I/D op) wins a fragment,

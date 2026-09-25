@@ -78,14 +78,14 @@ flowchart LR
 
 1. **Scan** — Each input MAF is lazily scanned with all columns as strings
 2. **Prefix Detection** — Columns are checked for existing type prefixes; unprefixed gbcms columns are renamed (e.g., `ref_count` → `duplex_ref_count`)
-3. **Outer Join** — Progressive full outer join on the 5-column variant key: `Chromosome`, `Start_Position`, `End_Position`, `Reference_Allele`, `Tumor_Seq_Allele2`
+3. **Outer Join** — Progressive full outer join on the 5-column variant key: `Chromosome`, `Start_Position`, `End_Position`, `Reference_Allele`, `Tumor_Seq_Allele2`. When every input is VCF-derived (carries `vcf_pos` / `vcf_ref` / `vcf_alt`), the VCF record is added to the key: two VCF records can describe one MAF record (`TCT>TCG` and `T>G` at the changed base), and each should stay its own row. The MAF columns stay in the key, so a variant only a later input has keeps its coordinates and alleles. An input that lists one join key more than once gets a WARN, since each such row pairs with every matching row of the other inputs. Merge MAFs genotyped by the same gbcms version: VCF-input MAF coordinates changed in 6.5.0. `Chromosome` is compared by the same rule counting uses to reconcile contigs (`chr1` ~ `1`, `chrM` ~ `MT`), so inputs counted from differently named variant files still join. Each contig is written one way. That is the first input's name for it, or, for a contig the first input lacks, the name used by the earliest input that has it. When a later input names contigs differently, the log says so (one INFO line per input). An input column named `_contig_key`, or starting with `_row_` or `_chrom_`, is rejected: those names are reserved for the join. If one input names a contig two ways (e.g. `chrM` and `MT`), a variant listed under both joins once per name, and merge logs a WARN.
 4. **Null Fill** — Missing counts → `"0"`, missing meta → `""`
 5. **Combined Columns** — If both `simplex` and `duplex` are present and `--no-combined` is not set:
     - **Phase 1**: Additive sums (12 columns: read + fragment + strand counts)
     - **Phase 2a**: Derived totals (`total_count`, `total_count_fragment`)
     - **Phase 2b**: Derived VAFs (`vaf`, `vaf_fragment`)
     - **Phase 3**: Fisher's exact test for strand bias (read + fragment level, via Rust)
-6. **Write** — Materialized DataFrame written as tab-separated MAF
+6. **Write** — Materialized DataFrame written as tab-separated MAF. Rows follow the inputs: the first input's rows in its order, then rows only a later input has, in that input's order. The output is identical on every run.
 
 !!! info "Provenance Comment Lines (v5.3.0+)"
     Starting in v5.3.0, gbcms MAF output includes `#gbcms` and `#command`
@@ -127,6 +127,19 @@ columns are computed (assuming all strand-level counts are present in the input)
     If the input MAFs do not contain strand-level columns (e.g., from an older
     gbcms version), only the available columns are summed. Missing metrics are
     logged at INFO level and skipped — the pipeline does not fail.
+
+!!! warning "Mixed MNP rescue between duplex and simplex"
+    With inputs genotyped using `--rescue-mnp`, a row can be rescued in one flavor
+    (its counts are then a component SNV's) but not the other (the MNP's own
+    counts), or rescued to different components. The two flavors' columns then
+    describe different alleles in one row, and with `--add-combined` the combined
+    columns add them. `gbcms merge` names every such row in a WARNING (with or
+    without `--add-combined`; the combined-column note is added only when those
+    columns are written) and logs a per-run count; the counts themselves are left
+    unchanged. If only one flavor was genotyped with `--rescue-mnp`, merge logs
+    that once and names every row rescued in that flavor, since the other flavor
+    reports the MNP there.
+    Check `duplex_gbcms_rescue` / `simplex_gbcms_rescue` for those rows.
 
 ---
 

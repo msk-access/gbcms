@@ -192,6 +192,21 @@ fn apply_variants_to_context(
 /// Matrix construction is O(2^k × k × L) where k = min(siblings, 4)
 /// and L = ref_context length. For typical calls (k ≤ 4, L ≈ 40bp),
 /// this is ~5KB of byte ops — negligible vs PairHMM alignment cost.
+/// Human-readable reason `build_haplotype_matrix` cannot build a matrix for
+/// `variant` — for the Smith-Waterman fallback WARN. Mirrors the function's
+/// own rejection conditions in order: no context, variant outside its
+/// context window, or the ALT haplotype could not be constructed.
+pub(crate) fn matrix_failure_reason(variant: &Variant) -> &'static str {
+    let Some(ctx) = variant.ref_context.as_ref() else {
+        return "the variant has no reference context";
+    };
+    let offset = variant.pos - variant.ref_context_start;
+    if offset < 0 || offset as usize + variant.ref_allele.len() > ctx.len() {
+        return "the variant lies outside its reference-context window";
+    }
+    "the ALT haplotype could not be constructed within MAX_HAP_LEN"
+}
+
 pub fn build_haplotype_matrix(
     variant: &Variant,
     siblings: &[Variant],
@@ -247,6 +262,16 @@ pub fn build_haplotype_matrix(
     valid_siblings.sort_by_key(|sib| (sib.pos - variant.pos).unsigned_abs());
 
     let max_sibs = valid_siblings.len().min(MAX_SIBS);
+    if valid_siblings.len() > MAX_SIBS {
+        // Routine for widened tract-cluster groups: the combination matrix
+        // keeps only the nearest MAX_SIBS siblings; farther co-annotations
+        // are not modeled as haplotypes here (the engine's AD-claiming guard
+        // still contests them individually).
+        debug!(
+            "build_haplotype_matrix: {} valid siblings at {}:{} exceed MAX_SIBS={} — keeping the {} nearest",
+            valid_siblings.len(), variant.chrom, variant.pos + 1, MAX_SIBS, MAX_SIBS,
+        );
+    }
 
     // === H0 (pure REF) and H1 (test ALT only) — always at positions 0 and 1 ===
     let h0 = ref_context.to_vec();

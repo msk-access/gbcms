@@ -8,7 +8,8 @@ WGS-scale performance.
 Architecture:
     1. Scan each input MAF lazily via ``io.batch.scan_maf``
     2. Detect whether columns are already prefixed or need renaming
-    3. Progressive outer join on the 5-column variant key
+    3. Progressive outer join on the 5-column variant key (plus the VCF
+       record — vcf_pos / vcf_ref / vcf_alt — when every input carries it)
     4. Optionally compute additive ``simplex_duplex_*`` combined columns
     5. Materialize and write via ``io.batch.write_maf``
 
@@ -27,8 +28,10 @@ from pathlib import Path
 
 import polars as pl
 
+from gbcms.core.kernel import CoordinateKernel
 from gbcms.io.batch import scan_maf, write_maf
 from gbcms.models.core import MergeConfig
+from gbcms.rescue_audit import rescued_component
 
 __all__ = ["merge_mafs"]
 
@@ -45,6 +48,68 @@ VARIANT_KEY: list[str] = [
     "Reference_Allele",
     "Tumor_Seq_Allele2",
 ]
+
+# Naming-independent contig key the joins use in place of Chromosome, so MAFs
+# whose inputs name contigs differently (chr1 vs 1, chrM vs MT) still join.
+_CONTIG_KEY = "_contig_key"
+JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
+# VCF-input MAFs also carry the VCF record each row came from. It is unique per
+# record ALT, whereas two records can trim to one MAF record (TCT>TCG and T>G at
+# the changed base), so the joins add it whenever every input has it. The MAF
+# key stays in the join key: within one gbcms version it follows from the
+# record (the pairing is the record's), and a full join fills only key
+# columns, so a row only a later input has keeps its coordinates and alleles.
+VCF_RECORD_KEY: list[str] = [*JOIN_KEY, "vcf_pos", "vcf_ref", "vcf_alt"]
+# Prefixes of the other per-input join helpers (row numbers, each later
+# input's own contig names). Input columns with these names are rejected.
+_HELPER_PREFIXES = ("_row_", "_chrom_")
+
+
+def _row_col(bam_type: str) -> str:
+    """Per-input row-number column carried through the joins, so merged rows
+    can be put back in the inputs' order (a full join guarantees none)."""
+    return f"_row_{bam_type}"
+
+
+def _reject_helper_columns(columns: list[str], bam_type: str, path: Path) -> None:
+    """Refuse input columns that collide with merge's join helpers: they would
+    be overwritten or shadow the helper and corrupt the join."""
+    clash = [c for c in columns if c == _CONTIG_KEY or c.startswith(_HELPER_PREFIXES)]
+    if clash:
+        raise ValueError(
+            f"{bam_type} MAF ({path}) has column(s) {clash} that gbcms merge reserves "
+            "for its join helpers; rename or drop them"
+        )
+
+
+def _with_contig_key(lf: pl.LazyFrame, bam_type: str) -> pl.LazyFrame:
+    """Add the join's contig key: :meth:`CoordinateKernel.contig_key` (the
+    counting engine's rule), computed once per distinct contig name.
+
+    Warns when this input names one contig more than one way (e.g. ``chrM``
+    and ``MT``): the same variant under both names joins twice, so the merged
+    output carries a duplicate row for it.
+    """
+    names = lf.select(pl.col("Chromosome").unique()).collect().to_series().drop_nulls()
+    keys = {n: CoordinateKernel.contig_key(n) for n in names.to_list()}
+    spellings: dict[str, list[str]] = {}
+    for name, key in keys.items():
+        spellings.setdefault(key, []).append(name)
+    for aliases in spellings.values():
+        if len(aliases) > 1:
+            logger.warning(
+                "  '%s' names one contig %d ways (%s): a variant listed under more than "
+                "one of them joins once per name, so the merged output repeats it",
+                bam_type,
+                len(aliases),
+                ", ".join(sorted(aliases)),
+            )
+    return lf.with_columns(
+        pl.col("Chromosome")
+        .replace_strict(keys, default=None, return_dtype=pl.String)
+        .alias(_CONTIG_KEY)
+    )
+
 
 # gbcms count column basenames (without any prefix).
 # These columns contain numeric counts/rates and will be type-prefixed.
@@ -125,8 +190,9 @@ COMBINED_ADDITIVE_ALL: list[str] = (
 def merge_mafs(config: MergeConfig) -> None:
     """Merge per-BAM-type genotyped MAFs into a single type-prefixed output.
 
-    Performs an outer join on the 5-column variant key, prefixes gbcms count
-    columns with the BAM type label, optionally computes combined
+    Performs an outer join on the 5-column variant key (on the VCF record —
+    vcf_pos / vcf_ref / vcf_alt — when every input is VCF-derived), prefixes
+    gbcms count columns with the BAM type label, optionally computes combined
     simplex_duplex columns, and writes the merged result.
 
     Args:
@@ -145,6 +211,7 @@ def merge_mafs(config: MergeConfig) -> None:
 
     # ── 1. Scan and rename ────────────────────────────────────────────────────
     frames: dict[str, pl.LazyFrame] = {}
+    input_columns: dict[str, list[str]] = {}
     for bam_type, path in config.inputs.items():
         logger.info("Scanning %s MAF: %s", bam_type, path)
         lf = scan_maf(path)
@@ -152,6 +219,7 @@ def merge_mafs(config: MergeConfig) -> None:
         # Validate variant key columns exist
         schema_names = lf.collect_schema().names()
         _validate_variant_key(schema_names, bam_type, path)
+        _reject_helper_columns(schema_names, bam_type, path)
 
         # Detect and rename gbcms columns with type prefix
         rename_map = _build_rename_map(schema_names, bam_type)
@@ -165,32 +233,35 @@ def merge_mafs(config: MergeConfig) -> None:
         else:
             logger.info("  Columns already prefixed for '%s', using as-is", bam_type)
 
-        frames[bam_type] = lf
+        frames[bam_type] = _with_contig_key(lf, bam_type).with_row_index(_row_col(bam_type))
+        input_columns[bam_type] = schema_names
 
     # ── 2. Progressive outer join ─────────────────────────────────────────────
+    join_key = _join_key(input_columns)
+    for bam_type, lf in frames.items():
+        _warn_duplicate_keys(lf, join_key, bam_type)
     types = list(frames.keys())
     merged = frames[types[0]]
 
     for join_type in types[1:]:
         # Select only variant key + gbcms columns from the joining frame
         # to avoid duplicating annotation columns across inputs.
+        # The joining frame's own Chromosome is kept aside (not a join key) so
+        # rows only it has keep their name, and naming differences can be
+        # reported after materialization.
         join_frame = frames[join_type]
-        join_cols = [
-            c
-            for c in join_frame.collect_schema().names()
-            if c in VARIANT_KEY or _is_prefixed_gbcms_col(c, join_type)
+        count_cols = [
+            c for c in join_frame.collect_schema().names() if _is_prefixed_gbcms_col(c, join_type)
         ]
         merged = merged.join(
-            join_frame.select(join_cols),
-            on=VARIANT_KEY,
+            join_frame.select([*join_key, "Chromosome", _row_col(join_type), *count_cols]).rename(
+                {"Chromosome": f"_chrom_{join_type}"}
+            ),
+            on=join_key,
             how="full",
             coalesce=True,
         )
-        logger.info(
-            "  Joined '%s' (%d count cols)",
-            join_type,
-            len(join_cols) - len(VARIANT_KEY),
-        )
+        logger.info("  Joined '%s' (%d count cols)", join_type, len(count_cols))
 
     # ── 3. Fill nulls → "0" for count columns, "" for meta columns ─────────
     output_schema = merged.collect_schema().names()
@@ -217,7 +288,7 @@ def merge_mafs(config: MergeConfig) -> None:
         logger.info("  Added simplex_duplex combined columns")
 
     # ── 5. Materialize and write ──────────────────────────────────────────────
-    result = merged.collect()
+    result = _in_input_order(_resolve_contig_names(merged.collect(), types), types)
     logger.info(
         "Merged result: %d rows × %d columns",
         result.height,
@@ -244,6 +315,9 @@ def merge_mafs(config: MergeConfig) -> None:
                     t,
                 )
 
+    if "duplex" in frames and "simplex" in frames:
+        _warn_mixed_rescue(result, combined=config.add_combined)
+
     # Legacy naming pass (rename {type}_{metric} → t_{metric}_{type})
     if config.legacy_naming:
         result = _apply_legacy_naming(result, types)
@@ -255,6 +329,131 @@ def merge_mafs(config: MergeConfig) -> None:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _join_key(input_columns: dict[str, list[str]]) -> list[str]:
+    """The VCF record key when every input carries it (all VCF-derived), else
+    the MAF variant key."""
+    if all(set(VCF_RECORD_KEY[len(JOIN_KEY) :]) <= set(cols) for cols in input_columns.values()):
+        logger.info("  Joining on the VCF record (vcf_pos, vcf_ref, vcf_alt): every input has it")
+        return VCF_RECORD_KEY
+    return JOIN_KEY
+
+
+def _warn_duplicate_keys(lf: pl.LazyFrame, join_key: list[str], bam_type: str) -> None:
+    """Warn when an input lists one join key more than once: a full join pairs
+    each such row with every matching row of the other inputs, so the merged
+    output repeats them."""
+    dups = lf.group_by(join_key).len().filter(pl.col("len") > 1).collect()
+    if dups.height:
+        logger.warning(
+            "  '%s' has %d duplicate join key(s) (%d rows): each joins with every matching "
+            "row of the other inputs, so the merged output repeats them",
+            bam_type,
+            dups.height,
+            int(dups["len"].sum()),
+        )
+
+
+def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
+    """Settle Chromosome after naming-independent joins and drop the helpers.
+
+    Each contig is written one way: the first input's name for it, or — for a
+    contig the first input lacks — the name of the earliest input that has it.
+    Rows the first input has keep its name as written. One INFO line per later
+    input that names contigs differently from the output; its rows still
+    joined, on the normalized contig.
+    """
+    later = [f"_chrom_{t}" for t in types[1:]]
+    written: dict[str, str] = {}
+    for col in ["Chromosome", *later]:
+        pairs = result.select(_CONTIG_KEY, col).drop_nulls().unique(maintain_order=True)
+        for key, name in pairs.iter_rows():
+            written.setdefault(key, name)
+    result = result.with_columns(
+        pl.coalesce(
+            "Chromosome",
+            pl.col(_CONTIG_KEY).replace_strict(written, default=None, return_dtype=pl.String),
+        ).alias("Chromosome")
+    )
+    for t, col in zip(types[1:], later, strict=True):
+        differ = result.filter(pl.col(col).is_not_null() & (pl.col(col) != pl.col("Chromosome")))
+        if differ.height:
+            row = differ.row(0, named=True)
+            logger.info(
+                "  '%s' and the merged output name contigs differently ('%s' vs '%s', "
+                "%d row(s)): joined on the normalized contig; the output names each "
+                "contig one way",
+                t,
+                row[col],
+                row["Chromosome"],
+                differ.height,
+            )
+    return result.drop([_CONTIG_KEY, *later])
+
+
+def _in_input_order(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
+    """Merged rows in the inputs' order, then the row numbers dropped.
+
+    The first input's rows as it lists them, then rows only a later input has,
+    in that input's order. A full join guarantees no order — without this the
+    merged rows came out differently on every run.
+    """
+    rows = [_row_col(t) for t in types]
+    return result.sort(rows, nulls_last=True).drop(rows)
+
+
+def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
+    """Warn on rows whose duplex and simplex MNP rescue outcomes differ.
+
+    A rescued row reports a component SNV's counts under the MNP's coordinates.
+    When only one flavor was rescued — or the two adopted different components —
+    the two flavors' counts describe different alleles in one row: anyone
+    comparing or summing the duplex and simplex columns would be misled, with
+    or without ``--add-combined``. With it, the ``simplex_duplex_*`` columns
+    add them outright, and the per-row message says so. Counts are left as
+    they are; the rows are named in the log. No-op when rescue was run on
+    neither flavor (no ``gbcms_rescue`` column). When it was run on only one,
+    that is logged once and the other flavor is treated as reporting the MNP on
+    every row, so each row rescued in the rescue-on flavor is named.
+    """
+    d, s = "duplex_gbcms_rescue", "simplex_gbcms_rescue"
+    present = [col for col in (d, s) if col in result.columns]
+    if not present:
+        return
+    if len(present) == 1:
+        ran, other = ("duplex", "simplex") if present[0] == d else ("simplex", "duplex")
+        logger.warning(
+            "MNP rescue was run on %s only (%s was genotyped without --rescue-mnp): rows "
+            "rescued in %s report a component while %s reports the MNP",
+            ran,
+            other,
+            ran,
+            other,
+        )
+    mixed = 0
+    for row in result.select([*VARIANT_KEY, *present]).iter_rows(named=True):
+        d_comp = rescued_component(row.get(d) or "")
+        s_comp = rescued_component(row.get(s) or "")
+        if d_comp == s_comp:
+            continue
+        mixed += 1
+        logger.warning(
+            "Mixed MNP rescue at %s:%s %s>%s — duplex %s, simplex %s%s",
+            row["Chromosome"],
+            row["Start_Position"],
+            row["Reference_Allele"],
+            row["Tumor_Seq_Allele2"],
+            f"reports component {d_comp}" if d_comp else "reports the MNP",
+            f"reports component {s_comp}" if s_comp else "reports the MNP",
+            "; the simplex_duplex_* columns add counts of different alleles" if combined else "",
+        )
+    if mixed:
+        logger.warning(
+            "Mixed MNP rescue: %d row(s) where duplex and simplex rescue outcomes differ "
+            "(see gbcms_rescue per flavor)",
+            mixed,
+        )
 
 
 def _validate_variant_key(

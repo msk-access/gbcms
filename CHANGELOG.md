@@ -7,6 +7,290 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.5.0] - 2026-09-25
+
+### ⚠️ Breaking Changes — VCF ↔ MAF representation follows vcf2maf / maf2vcf (#110)
+
+> VCF-input MAF output changes coordinates, alleles and `Variant_Type` for many
+> indel and MNP shapes and gains two columns; MAF-input VCF output changes
+> `POS`/`REF`/`ALT` for indels. Counts are unchanged for every countable
+> allele shape; only the edge rows below (Allele1 fallback, `ALT_EQUALS_REF`,
+> skipped ALTs) change. Re-genotype every flavor
+> (e.g. duplex and simplex) with the same version before `gbcms merge`.
+
+- VCF input → MAF writes each record exactly as vcf2maf does. It trims the
+  leading bases REF and ALT share, never trailing ones; `Start_Position`,
+  `End_Position` and `Variant_Type` follow the trimmed alleles. Before, the
+  conversion followed a length-only type label, so 9 of 17 allele shapes
+  differed from vcf2maf. For example:
+  - `TTAC>A` became `702–704 TAC>-` (vcf2maf: `701–704 TTAC>A`, DEL);
+  - `C>TA` became `->A` (vcf2maf: `821 C>TA`, INS);
+  - `TCT>TCG` stayed a 3bp TNP (vcf2maf: SNP `T>G` at the changed base);
+  - `TC>TCGG` stayed untrimmed (vcf2maf: `- > GG`).
+
+  Bases are compared case-insensitively, so only mixed-case alleles can differ
+  from vcf2maf.
+- New MAF columns `vcf_ref` / `vcf_alt` keep the VCF record itself, alongside
+  `vcf_pos` (vcf2maf's names). Each row's `vcf_alt` is its own allele;
+  multi-allelic records give one row per ALT. These columns appear only for VCF
+  input.
+- MAF input → VCF output writes each row as maf2vcf does. When an allele is `-`,
+  or the alleles differ in length and first base, the reference base before
+  them is prepended from `--fasta`. At position 1, the base after the event is
+  appended instead (VCF spec). Before, `-` alleles were written into the VCF
+  (`462 AA>-`), which is not valid VCF.
+- MAF alleles are read as maf2vcf reads them:
+  - `Tumor_Seq_Allele1` is the variant allele when `Tumor_Seq_Allele2` is empty
+    or the reference (older MAFs). Such rows were genotyped as REF against
+    itself; the reader now logs how many rows it read this way.
+  - Alleles made only of `-`, `?` or `0` are read as `-`.
+- A variant whose ALT equals its REF (any case; `-` for both in a MAF) is a
+  `FAIL` row with the new reason `ALT_EQUALS_REF`. Before, it passed and was
+  counted, meaninglessly.
+- `--show-normalization` `norm_*` MAF columns follow the left-aligned alleles,
+  not a type label (a delins was written with its first base stripped).
+- Type labels come from the alleles in both readers and in variant preparation.
+  INSERTION / DELETION now requires a shared anchor base; a delins such as
+  `TTAC>A` or `C>TA` is COMPLEX. `gbcms normalize` reports these labels.
+  Counting never read them.
+- The VCF reader skips alleles it cannot count, with a WARNING and per-reason
+  totals: ALT `*`, symbolic `<...>`, breakends, a missing `.`, other
+  non-sequence alleles, and a REF that is not a base sequence. Before, `*` and
+  `<DEL>` were genotyped as nonsense rows, `.` was dropped silently, and an
+  empty REF (read as `.`) was genotyped. ALT `N` still reaches preparation,
+  which reports it as a `FAIL` row.
+- `gbcms merge` adds the VCF record (`vcf_pos` / `vcf_ref` / `vcf_alt`) to its
+  join key when every input is VCF-derived, because two VCF records can trim
+  to one MAF record. It also warns when an input repeats a join key; each such
+  row joined every matching row of the other inputs, silently.
+- The mFSD HTML report finds each variant's MAF row by the key its Parquet uses
+  (the VCF record for VCF input). VCF-input indels, and some other shapes, were
+  reported without their MAF row (no gene, no statistics).
+- Counting is otherwise unchanged: every countable allele shape counts
+  identically from VCF and MAF input.
+- Docs: for VCF input, `Strand`, `Variant_Classification` and
+  `Tumor_Seq_Allele1` are empty, and `vcf_id` is empty for a `.` ID. They had
+  been documented otherwise. `End_Position` is listed as a required MAF column.
+
+### Added — `gbcms convert`
+
+- `gbcms convert` converts VCF → MAF (vcf2maf's coordinates, with `vcf_pos` /
+  `vcf_ref` / `vcf_alt`) or MAF → VCF (maf2vcf's records; needs an indexed
+  `--fasta`) without counting. It uses the same conversion as the `dna` / `rna`
+  output.
+
+### Fixed — homopolymer-decomposed twin: strand and per-sample flag (#107)
+
+- `WARN_HOMOPOLYMER_DECOMP` is per sample again. The prepared variants are
+  shared by every sample of a run, so once one sample's corrected allele won,
+  every *later* sample's row carried the flag, whatever its reads showed.
+  Output depended on sample order.
+- In RNA with a GTF, the corrected allele takes its original's gene strand, so
+  `--enforce-strandedness` applies to it. Before, where it won, its counts
+  included antisense reads (measured: 0.065% of its depth at synthetic
+  probes).
+- The docs describe the corrected allele as built: the run with its last base
+  replaced, the same length as REF (`CCCCCC→CCCCCT`). They had described a 1bp
+  deletion plus the change (`CCCCCT` was written `CCCCT`). The SOX2 example's
+  chromosome is corrected to 3.
+
+### Fixed — output keeps the input's contig naming (#103)
+
+- `chr`-named input (e.g. hg38 with UCSC names) no longer loses its naming in the
+  output. VCF input → MAF writes `Chromosome`/`vcf_region` as the input names them
+  (was the stripped `1`), and VCF output writes `CHROM` in the input's naming with
+  `##contig` lines declared under the same names (reference lengths kept) — before,
+  records read `1` under a `##contig=<ID=chr1>` header, a malformed VCF that htslib
+  rejects (`Contig '1' is not defined in the header`). Rescue labels and the mFSD
+  Parquet follow the same naming. Counting is unchanged: contigs are still reconciled
+  internally between the variant file, FASTA and BAM. One INFO line per distinct
+  naming pair names the two conventions when they differ. Unprefixed (b37,
+  Ensembl) input against a reference and BAM that use the same naming is
+  unaffected.
+- The reference FASTA now reconciles the mitochondrion's spellings as the BAM side
+  already did. Before, a `chrM` (or `M`, `MT`, `chrMT`) variant against a FASTA
+  naming it differently was rejected `FAIL` / `FETCH_FAILED` with zero counts.
+- `gbcms merge` joins inputs whose `Chromosome` naming differs (`chr1` ~ `1`,
+  `chrM` ~ `MT`) into one row instead of two half-empty ones. It writes each
+  contig one way, the first input's name where it has the contig, and logs each
+  later input's difference.
+  - An input that names one contig two ways now gets a WARN, since a variant
+    listed under both names is repeated.
+  - Input columns that collide with merge's join helpers are rejected with the
+    column named.
+
+### Fixed — `gbcms merge` row order is deterministic
+
+- Merged rows came out in a different order on every run: the full outer join
+  guarantees no order (5 runs on the same real inputs gave 5 orders), so merged
+  MAFs could not be diffed across runs. Rows now follow the inputs: the first
+  input's rows as it lists them, then rows only a later input has, in that
+  input's order. Row contents are unchanged.
+
+### Fixed — one BAQ rule across RNA views; deterministic ASJD junctions
+
+- Per-transcript counts and ASJD now apply the main counts' exon-boundary BAQ
+  exception: BAQ is skipped at variants within 5bp of an annotated exon boundary,
+  where its CIGAR-N penalty lands on exactly the reads that splice there.
+  Before, both applied BAQ regardless. Measured on three junction-rich RNA
+  samples at 2010 exon-edge probes:
+  - per-transcript REF counts were ~3% low overall, and some transcripts lost
+    all their spliced REF reads. The median gap to the main counts drops from
+    2.5% to 0.05%, and the per-transcript mismatch rate now equals the main
+    counts';
+  - ASJD saw no junction at some edge variants, including known junctions
+    carried by thousands of fragments.
+
+  Main counts are unchanged. Away from exon edges, per-transcript counts are
+  unchanged. ASJD rows change there only where the tie rule below applies, or
+  through `asjd_qval`, which is corrected across the sample.
+- ASJD's dominant junction no longer depends on hash order. On a tie, the same
+  input could report a significant divergence on one run and none on the next.
+  A tie is now not a divergence: when a REF top junction and an ALT top junction
+  are the same splice event (both ends within 5bp, ASJD's tolerance
+  throughout), each allele reports its own of the pair and no test is run.
+  Otherwise each allele reports the tied junction the other allele's fragments
+  use most, and the leftmost only on a further tie. Coordinates alone could
+  otherwise decide the Fisher cells and `asjd_flag`.
+- `exon_boundary_dist` is found in any contig naming. A `chrM` variant against
+  an `MT`-named GTF read `2147483647`, and so did any contig the GTF does not
+  annotate. The first now reads the real distance, so the exon-edge rule
+  applies there. The second is now empty. The column is documented as the
+  unsigned distance it has always been; it was previously documented as
+  signed.
+
+### Added — observability for silent fallbacks (no count changes)
+
+- `SW_FALLBACK(n)` in `gbcms_diagnostic`, plus one WARN per affected variant
+  naming the reason and outcome: under the default `pairhmm` backend, n
+  depth-contributing reads could not be evaluated by the pangenomic haplotype
+  matrix because the variant's reference context is missing (prep's fetch
+  failed, e.g. an indel near a contig end) or does not contain it, or the ALT
+  haplotype exceeds 400bp (very long insertions). They are scored by the
+  Smith-Waterman fallback
+  where it can run and otherwise end NEITHER — previously with no trace on the
+  row. It never fired on the traced real runs. Never set under
+  `--alignment-backend sw`.
+- `CLIP_CANDIDATES(n)` in `gbcms_diagnostic`: an insertion with no confirmed
+  ALT where n (≥ 2) reads carry a ≥ 8bp soft clip within the insert's
+  duplication reach — clip-represented carriers (typically a tandem-duplication
+  ITD) the engine cannot claim.
+- `--umi-tag TAG` that no processed read carries now logs one WARN per counting
+  pass over a BAM (a `--rescue-mnp` recount can repeat it): fragment grouping
+  silently fell back to read names.
+
+### Changed — Smith-Waterman gap-extend is a documented constant
+
+- `dynamic_sw_gap_extend` rounded to −1 for every repeat span, so its repeat
+  relaxation never engaged. It is replaced by `SW_GAP_OPEN = -5` /
+  `SW_GAP_EXTEND = -1` constants; alignment scores are unchanged.
+
+### Added — ASJD-2 splice-disruption markers (RNA + GTF)
+
+- `asjd_diagnostic` gains two markers that read the population the
+  splice-aware evidence rule excludes — fragments whose CIGAR `N` spans the
+  variant — at variants within two bases of an annotated intron boundary
+  on the gene's strand, at or above ASJD's own junction-evidence floors:
+  `RETENTION_DOMINANT(n)` (spliced-over fragments dominate a junction-free
+  classified population, so `vaf` is the retention-population VAF) and
+  `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` (an anchored, unannotated junction
+  on those fragments outnumbers confirmed ALT — the mutant allele's exon-skip
+  or alternative-site outcome). Both are population comparisons with no tuned
+  rates; they previously surfaced only as `LOW_REF_JUNC;LOW_ALT_JUNC`
+  (issue #97). No new columns.
+- Docs now state the `asjd_*_junction` coordinate convention (0-based,
+  half-open intron).
+
+### ⚠️ Changed — exclusive assignment at co-annotated tract clusters (user-visible)
+
+- **Tract-cluster grouping.** `assign_multi_allelic_groups` gains a second
+  membership criterion: length-changing variants (indels/delins — never
+  SNV/MNP) whose scan windows (`max(5, repeat_span+2)` each side) overlap
+  join a group transitively, even when their REF spans never touch. Members
+  whose spans truly intersect keep the `MULTI_ALLELIC` reason tag;
+  window-only members get the new `TRACT_CLUSTER` tag.
+- **AD-claiming contest.** At a grouped locus, anchor-exact (Phase 0)
+  evidence is never contested; every other ALT read is demoted to
+  `partial_alt`/`any_alt` (excluded from AD *and* ADF) when any of three
+  tests fires: the read's window does not favor the row's ALT haplotype
+  strictly over its REF haplotype (foreign flank events); the call is
+  alignment-phase on an anchor-preserved pure indel (no matching
+  structural op anywhere — unannotated ladder absorption in tracts;
+  complex/MNP rows exempt); or a co-annotated sibling's ALT haplotype
+  explains the read strictly better over a window covering both spans
+  (equal cost = equivalent representations, both rows keep the read).
+  True carriers — pure indels, delins/complex, shifted self
+  representations, noisy but real reads — keep AD, except a pure-indel
+  carrier resolved only by alignment (e.g. soft-clipped), which surfaces as
+  `partial_alt`.
+- **REF-side symmetry.** Sibling-claimed reads are excluded from RD on every
+  path (now including per-transcript); in the main counts they surface as
+  `partial_alt` instead of vanishing silently.
+- Validated against a signed-out ACCESS hypermutation cluster: per-row
+  fragment ALT counts land exactly on (or within counting-basis of)
+  sign-out where the previous windowed counting over-attributed 2–5×;
+  panels without co-annotated clusters are byte-identical.
+
+### ⚠️ Changed — MNP rescue reports a coherent component genotype (opt-in `--rescue-mnp`)
+
+- **Candidate gate is partial dominance.** Rescue now considers PASS
+  `MNP_RESCUE_ELIGIBLE` MNPs with `partial_alt > alt_count` instead of only
+  `alt_count == 0`. Masked per-position evaluation counts a component carrier
+  whose other discriminating base is low-BQ as full ALT, so a single such
+  read blocked rescue of MNPs whose carriers hold only one component (a
+  TERT promoter GAGGG>AAGGA row sat at alt 1 / partial 88).
+- **Rescued rows adopt the component's full counts.** Previously only
+  `alt_count` (and read VAF) changed, leaving strand, fragment, strand-bias,
+  mFSD and diagnostic columns at MNP values and breaking
+  `alt_count = alt_count_forward + alt_count_reverse` in the output. A rescued
+  row now carries the winning component SNV's counts in every column (all
+  counting invariants hold, including `any_alt = ad + partial_alt`), and
+  `gbcms_diagnostic` is recomputed from them. Fragment-level consumers
+  (ACCESS, `gbcms merge --add-combined`) now see rescued counts.
+- **`gbcms_rescue` format** (downstream parsers): every entry has
+  `outcome=` (`rescued`, `skipped_grouped`, `haplotype_confirmed`, `no_improvement`,
+  `ref_validation_failed`) and the MNP's own `original_ref`/`original_alt`/
+  `original_partial` (`original_alt` was hard-coded `0`); rescued rows add
+  `adopted=`. A position whose synthetic SNV failed preparation reads
+  `ref_fail` instead of a silent `0`. `outcome=no_signal` is gone.
+- **MNPs whose haplotype the BAM shows are kept** (`outcome=haplotype_confirmed`,
+  no re-count): the engine now counts MNP ALT reads in which every
+  discriminating base was read (internal `BaseCounts.mnp_confirmed_alt`, not an
+  output column), and rescue fires only when that count is **zero** — no read
+  in the BAM shows the annotated MNP. Validation with matched normals found
+  rescue adopting germline het SNPs where reads carried the real MNP (IMPACT:
+  36 such reads; ACCESS duplex: 6); such rows now keep the MNP's counts. The
+  audit gains `original_confirmed`.
+- **Rescue labels use the output's contig naming** (an input MAF's own
+  `Chromosome`, e.g. `chr1`, rather than the stripped internal name).
+- **`gbcms merge` warns on mixed rescue:** when duplex and simplex rescue
+  outcomes differ (one rescued, or different components), each row is named in
+  a WARNING with a per-run count — with or without `--add-combined`, since the
+  two flavors' columns then describe different alleles in one row (with it, the
+  `simplex_duplex_*` columns add them); counts are unchanged. When only one
+  flavor was genotyped with `--rescue-mnp`, merge says so once and names every
+  row rescued in that flavor (previously that case was silently skipped).
+- **Grouped MNPs are skipped** (`outcome=skipped_grouped`) so rescue cannot
+  hand back reads that exclusive assignment gave a co-annotated sibling.
+- **Fixed: rescue audit leaked across samples.** In a multi-BAM run a later
+  sample's row could show an earlier sample's `gbcms_rescue`.
+- **Rescued rows say so:** `gbcms_diagnostic` (MAF column, VCF `GD`) gains
+  `RESCUED_COMPONENT(chrom:pos:REF>ALT)` on every rescued row, each rescue
+  logs a WARNING (the component and the MNP's own counts), and enabling
+  `--rescue-mnp` logs a WARNING that rescued rows report a component.
+- **Fixed: VCF `GR` was split by parsers.** The audit's positions list was
+  comma-separated and VCF parsers (htslib/pysam) split a comma-bearing
+  Number=1 INFO value, silently truncating the audit. Positions are now
+  joined with `+`; the MAF column and VCF `GR` carry the same content (VCF
+  writes `;` as `|`).
+- Per-sample INFO outcome summary; warnings for anomalies (a component SNV
+  failing preparation). With `--mfsd-parquet`, a rescued row's record keeps
+  the MNP's coordinates but carries the adopted component's fragment sizes
+  (logged per sample).
+- `BaseCounts.with_ad()` removed from the Python bindings (no remaining
+  callers).
+- Default runs (`--rescue-mnp` off) are unchanged.
+
 ## [6.4.0] - 2026-09-22
 
 > The changes below alter reported counts at wrong-length indel loci and at

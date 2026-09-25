@@ -22,8 +22,9 @@ pub struct Variant {
     #[pyo3(get, set)]
     pub ref_context_start: i64,
     /// Span of the tandem repeat region surrounding the variant (0 if not in a repeat).
-    /// Used to dynamically tune Smith-Waterman gap penalties: repeat_span >= 10
-    /// triggers gap_extend = 0 to absorb polymerase slippage noise.
+    /// Drives the PairHMM repeat-scaled gap blending, the windowed-scan width
+    /// (`max(5, repeat_span + 2)`) and tract-cluster grouping reach. The
+    /// Smith-Waterman penalties are constants and do not use it.
     #[pyo3(get, set)]
     pub repeat_span: usize,
 
@@ -306,6 +307,14 @@ pub struct BaseCounts {
     #[pyo3(get)]
     pub partial_alt: u32,
 
+    /// MNP ALT reads whose every discriminating base was read (none masked
+    /// for base quality, none N): reads that show the whole haplotype rather
+    /// than inferring it from an unmasked subset. A subset of `ad`; always 0
+    /// for non-MNP variants. Not an output column — the MNP rescue pass uses
+    /// it to tell a present haplotype from one only its components carry.
+    #[pyo3(get)]
+    pub mnp_confirmed_alt: u32,
+
     /// Reads with N base at ≥1 discriminating position (NAD in VCF).
     /// N bases arise from duplex collapsing (fgbio masks disagreeing bases)
     /// or sequencer failure. These reads are uninformative (neither REF nor
@@ -346,6 +355,29 @@ pub struct BaseCounts {
     /// default 21bp, as N).
     #[pyo3(get)]
     pub splice_skip_excluded: u32,
+    /// Depth-contributing reads (first-class, anchor-overlapping — the DP
+    /// population) that the PairHMM backend's pangenomic haplotype matrix
+    /// could not evaluate: its reference context is missing (prep's fetch
+    /// failed, e.g. an indel near a contig end — length-changing variants
+    /// only; MNPs have none by design), does not contain the variant, or the
+    /// ALT haplotype exceeds `MAX_HAP_LEN` (very long insertions). Such reads
+    /// are scored by the Smith-Waterman fallback where SW can run, and
+    /// otherwise left NEITHER. Zero on the traced real runs. Diagnostic only (feeds the
+    /// SW_FALLBACK flag and a per-variant WARN); not an output column. Always 0
+    /// under the explicit SW backend, where SW is the chosen scorer.
+    #[pyo3(get)]
+    pub sw_fallback_reads: u32,
+    /// Insertion loci only: first-class reads carrying a soft clip ≥ 8bp
+    /// whose clip boundary lies within the insert's duplication reach
+    /// (anchor ± (insert length + 10)) — where clip-represented carriers of
+    /// a tandem duplication land. Diagnostic only (feeds CLIP_CANDIDATES when
+    /// no ALT is confirmed); not an output column; 0 for other variant types.
+    #[pyo3(get)]
+    pub clip_candidates: u32,
+    /// Reads processed with the requested `--umi-tag` present. Internal only
+    /// (no Python getter): summed per BAM to warn when a requested UMI tag is
+    /// never seen and fragment grouping silently fell back to QNAME.
+    pub umi_tagged_reads: u32,
 
     // ── GTF-informed annotation (None when no GTF provided) ──────────────
     /// Distance (bp) to nearest annotated exon boundary (EBD in VCF).
@@ -426,23 +458,6 @@ pub struct BaseCounts {
     /// RD/AD is explained rather than silent. PairHMM backend only.
     #[pyo3(get)]
     pub non_discriminating_locus: bool,
-}
-
-#[pymethods]
-impl BaseCounts {
-    /// Return a copy with `ad` replaced by `new_ad`.
-    ///
-    /// Used by the Python MNP rescue pass (`--rescue-mnp`) which needs to
-    /// update `ad` after decomposing a sparse MNP into individual SNPs.
-    /// Preserves immutability of the original struct from the Python side —
-    /// all fields are `#[pyo3(get)]` only, so this copy-on-write method is
-    /// the only way to produce a modified `BaseCounts` from Python.
-    fn with_ad(&self, new_ad: u32) -> BaseCounts {
-        BaseCounts {
-            ad: new_ad,
-            ..self.clone()
-        }
-    }
 }
 
 /// Allele state of one molecule at one variant, as resolved by

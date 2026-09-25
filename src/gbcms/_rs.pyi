@@ -101,6 +101,9 @@ class BaseCounts:
     # Invariant: any_alt = ad + partial_alt
     any_alt: int
     partial_alt: int
+    # MNP ALT reads whose every discriminating base was read (none masked, none N);
+    # a subset of ad, 0 for non-MNP variants. Internal — not an output column.
+    mnp_confirmed_alt: int
     # N-base diagnostic: reads with N at ≥1 discriminating position (NAD in VCF).
     # Tracks duplex masking burden for QC. Follows bam-readcount N:count model.
     n_count: int
@@ -114,6 +117,13 @@ class BaseCounts:
     # Reads excluded by the splice-skip triage (CIGAR N over every
     # discriminating position — no observation, no DP/DPF). Diagnostic only.
     splice_skip_excluded: int
+    # Depth reads the PairHMM haplotype matrix could not evaluate (reference
+    # context missing or misplaced): SW-scored where SW can run, else NEITHER.
+    # Diagnostic only (SW_FALLBACK flag).
+    sw_fallback_reads: int
+    # Insertion loci: reads with a >= 8bp soft clip whose boundary lies within
+    # the insert's duplication reach. Diagnostic only (CLIP_CANDIDATES flag).
+    clip_candidates: int
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # P4b: Per-transcript counts (empty string when no GTF or no overlap)
@@ -137,10 +147,6 @@ class BaseCounts:
     # NON_DISCRIMINATING_LOCUS marker: a sibling combo reconstructs REF, so REF/ALT
     # are sequence-indistinguishable (PairHMM backend) and reads tie to NEITHER.
     non_discriminating_locus: bool
-    # Copy-on-write method for MNP rescue pass (BaseCounts is frozen from Python)
-    def with_ad(self, new_ad: int) -> BaseCounts:
-        """Return a copy with `ad` replaced by `new_ad`."""
-        ...
 
 class Observation:
     """One molecule's resolved allele at one variant (see `count_bam_binned_observations`).
@@ -171,16 +177,16 @@ class PreparedVariant:
     original_alt: str
     gbcms_status: str  # verdict: "PASS" or "FAIL"
     # Status reason tags, '|'-separated; empty when a clean PASS.
-    # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC.
-    # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, ALT_CONTAINS_N.
+    # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC, TRACT_CLUSTER.
+    # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, ALT_EQUALS_REF, ALT_CONTAINS_N.
     gbcms_status_reason: str
     # Post-counting diagnostic flags (set by pipeline._compute_diagnostics).
     # Semicolon-separated. Empty string when no diagnostics.
     # Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
     gbcms_diagnostic: str
-    # Rescue audit trail (set by pipeline._rescue_mnp_pass).
-    # Semicolon-separated key=value pairs. Empty string when no rescue attempted.
-    # Only populated when --rescue-mnp is enabled.
+    # Rescue audit trail (set by pipeline._rescue_mnp_pass; format in
+    # gbcms.rescue_audit.format_rescue_audit). Semicolon-separated key=value pairs, reset
+    # per sample. Empty string for non-candidates and when --rescue-mnp is off.
     gbcms_rescue: str
     was_anchor_resolved: bool
     was_left_aligned: bool

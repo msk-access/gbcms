@@ -20,6 +20,7 @@
 //!           ├── exon_trees: HashMap<u32, COITree>  (interval queries)
 //!           ├── splice_sites: HashMap<u32, Vec<i32>>  (sorted boundary positions)
 //!           ├── transcript_introns: HashMap<String, Vec<(i32, i32)>>
+//!           ├── intron_boundaries: HashMap<u32, Vec<(i32, char)>>  (derived: donor/acceptor sites + strand)
 //!           └── chrom_map: HashMap<String, u32>
 //! ```
 //!
@@ -101,6 +102,12 @@ pub struct AnnotationIndex {
     /// Used by per-transcript compatibility and ASJD.
     transcript_introns: HashMap<String, TranscriptIntrons>,
 
+    /// Chromosome → sorted (position, strand) of every annotated intron
+    /// boundary: true donor/acceptor sites only (no transcript termini).
+    /// Derived in `new()` from `transcript_introns` + exon strands — never
+    /// serialized, so the GTF cache format is unaffected.
+    intron_boundaries: HashMap<u32, Vec<(i32, char)>>,
+
     /// Chromosome name → numeric ID mapping (e.g., "1" → 0, "X" → 22).
     /// Normalized: no "chr" prefix.
     chrom_map: HashMap<String, u32>,
@@ -127,6 +134,31 @@ pub(crate) fn build_exon_trees(exons: &[ExonRecord]) -> HashMap<u32, COITree<usi
         .collect()
 }
 
+/// Per-chromosome sorted, deduplicated (position, strand) list of annotated
+/// intron boundaries (each intron's start and exclusive end), with each
+/// transcript's strand taken from its exons ('.' when unstranded or unknown).
+fn derive_intron_boundaries(
+    exons: &[ExonRecord],
+    transcript_introns: &HashMap<String, TranscriptIntrons>,
+) -> HashMap<u32, Vec<(i32, char)>> {
+    let strand_of: HashMap<&str, char> =
+        exons.iter().map(|e| (e.transcript_id.as_str(), e.strand)).collect();
+    let mut out: HashMap<u32, Vec<(i32, char)>> = HashMap::new();
+    for ti in transcript_introns.values() {
+        let strand = strand_of.get(ti.transcript_id.as_str()).copied().unwrap_or('.');
+        let v = out.entry(ti.chrom_id).or_default();
+        for &(a, b) in &ti.introns {
+            v.push((a, strand));
+            v.push((b, strand));
+        }
+    }
+    for v in out.values_mut() {
+        v.sort_unstable();
+        v.dedup();
+    }
+    out
+}
+
 impl AnnotationIndex {
     /// Create a new AnnotationIndex from pre-parsed components.
     ///
@@ -141,55 +173,62 @@ impl AnnotationIndex {
         let n_chroms = exon_trees.len();
         let n_exons = exons.len();
         let n_transcripts = transcript_introns.len();
+        let intron_boundaries = derive_intron_boundaries(&exons, &transcript_introns);
         debug!(
-            "AnnotationIndex built: {} chromosomes, {} exons, {} transcripts",
-            n_chroms, n_exons, n_transcripts,
+            "AnnotationIndex built: {} chromosomes, {} exons, {} transcripts, {} intron boundaries",
+            n_chroms,
+            n_exons,
+            n_transcripts,
+            intron_boundaries.values().map(|v| v.len()).sum::<usize>(),
         );
         Self {
             exon_trees,
             exons,
             splice_sites,
             transcript_introns,
+            intron_boundaries,
             chrom_map,
         }
     }
 
     // ─── Splice Mask ─────────────────────────────────────────────────────────
 
-    /// Distance (bp) from `pos` to the nearest known exon boundary on `chrom`.
+    /// Distance (bp, unsigned) from `pos` to the nearest known exon boundary
+    /// on `chrom`, exonic and intronic alike.
     ///
-    /// Returns `i32::MAX` if:
-    /// - The chromosome has no annotation (not in GTF, or filtered out by
-    ///   variant-guided streaming).
-    /// - The chromosome has no exon boundaries after dedup.
+    /// None when the contig has no annotation (not in the GTF, filtered out by
+    /// variant-guided streaming, or no exon boundaries after dedup) — never a
+    /// sentinel distance.
     ///
     /// Uses binary search on the pre-sorted `splice_sites` vec — O(log n).
     ///
     /// # Parameters
     ///
-    /// - `chrom`: normalized chromosome name (no "chr" prefix).
+    /// - `chrom`: contig name in any naming; normalized here like every other
+    ///   annotation lookup (`chr1` ~ `1`, `chrM` ~ `M` ~ `MT`).
     /// - `pos`: 0-based variant position.
-    pub fn nearest_splice_distance(&self, chrom: &str, pos: i64) -> i32 {
-        let chrom_id = match self.chrom_map.get(chrom) {
+    pub fn nearest_splice_distance(&self, chrom: &str, pos: i64) -> Option<i32> {
+        let key = crate::shared::contig::normalize_contig(chrom);
+        let chrom_id = match self.chrom_map.get(&key) {
             Some(id) => *id,
             None => {
                 trace!(
                     "nearest_splice_distance: chrom '{}' not in annotation index",
                     chrom
                 );
-                return i32::MAX;
+                return None;
             }
         };
 
         let sites = match self.splice_sites.get(&chrom_id) {
             Some(s) if !s.is_empty() => s,
-            _ => return i32::MAX,
+            _ => return None,
         };
 
         let pos_i32 = pos as i32;
 
         // Binary search for the insertion point
-        match sites.binary_search(&pos_i32) {
+        Some(match sites.binary_search(&pos_i32) {
             Ok(_) => 0, // Exact match — variant is AT an exon boundary
             Err(idx) => {
                 // Check distance to neighbors on both sides
@@ -203,9 +242,36 @@ impl AnnotationIndex {
                 } else {
                     i32::MAX
                 };
+                // `sites` is non-empty, so at least one neighbor exists.
                 dist_left.min(dist_right)
             }
-        }
+        })
+    }
+
+    /// Whether an annotated intron boundary (a true donor/acceptor site —
+    /// transcript termini excluded) lies in `[lo, hi]` (inclusive, 0-based:
+    /// an intron's first base or its exclusive end). With `strand` given,
+    /// only boundaries of transcripts on that strand (or unstranded ones)
+    /// count, so an antisense gene's splice sites cannot stand in for the
+    /// variant's own. Binary search to the range, then a short scan.
+    pub fn intron_boundary_in_range(
+        &self,
+        chrom: &str,
+        lo: i64,
+        hi: i64,
+        strand: Option<char>,
+    ) -> bool {
+        let sites = match self.chrom_map.get(chrom).and_then(|id| self.intron_boundaries.get(id)) {
+            Some(s) => s,
+            None => return false,
+        };
+        let lo = lo.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let hi = hi.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let idx = sites.partition_point(|&(p, _)| p < lo);
+        sites[idx..]
+            .iter()
+            .take_while(|&&(p, _)| p <= hi)
+            .any(|&(_, s)| strand.is_none_or(|want| s == want || s == '.'))
     }
 
     // ─── Per-Transcript Counting ─────────────────────────────────────────────
@@ -468,33 +534,65 @@ mod tests {
     // ── nearest_splice_distance tests ──
 
     #[test]
+    fn test_intron_boundary_in_range() {
+        // build_test_index: exons [100,200) [300,400) on '+' → intron [200,300).
+        // splice_sites also holds termini 100 and 400; intron boundaries must not.
+        let idx = build_test_index();
+        assert!(idx.intron_boundary_in_range("1", 200, 200, None), "donor boundary, degenerate range");
+        assert!(idx.intron_boundary_in_range("1", 298, 301, None), "acceptor boundary inside range");
+        assert!(idx.intron_boundary_in_range("1", 150, 200, Some('+')), "same strand, inclusive upper end");
+        assert!(!idx.intron_boundary_in_range("1", 150, 200, Some('-')), "antisense query ignores '+' introns");
+        assert!(!idx.intron_boundary_in_range("1", 95, 105, None), "transcript start is not a splice site");
+        assert!(!idx.intron_boundary_in_range("1", 395, 405, None), "transcript end is not a splice site");
+        assert!(!idx.intron_boundary_in_range("1", 201, 299, None), "inside the intron, no boundary");
+        assert!(!idx.intron_boundary_in_range("2", 0, 1000, None), "unannotated chromosome");
+    }
+
+    #[test]
     fn test_at_exon_boundary() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("1", 100), 0);
-        assert_eq!(idx.nearest_splice_distance("1", 200), 0);
-        assert_eq!(idx.nearest_splice_distance("1", 300), 0);
-        assert_eq!(idx.nearest_splice_distance("1", 400), 0);
+        assert_eq!(idx.nearest_splice_distance("1", 100), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 200), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 300), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 400), Some(0));
     }
 
     #[test]
     fn test_near_boundary() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("1", 197), 3);
-        assert_eq!(idx.nearest_splice_distance("1", 203), 3);
-        assert_eq!(idx.nearest_splice_distance("1", 298), 2);
+        assert_eq!(idx.nearest_splice_distance("1", 197), Some(3));
+        assert_eq!(idx.nearest_splice_distance("1", 203), Some(3));
+        assert_eq!(idx.nearest_splice_distance("1", 298), Some(2));
     }
 
     #[test]
     fn test_mid_exon() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("1", 150), 50);
-        assert_eq!(idx.nearest_splice_distance("1", 350), 50);
+        assert_eq!(idx.nearest_splice_distance("1", 150), Some(50));
+        assert_eq!(idx.nearest_splice_distance("1", 350), Some(50));
     }
 
     #[test]
     fn test_unknown_chrom() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("X", 100), i32::MAX);
+        assert_eq!(idx.nearest_splice_distance("X", 100), None, "no sentinel distance");
+    }
+
+    #[test]
+    fn test_distance_lookup_normalizes_contig_naming() {
+        // The index is keyed by normalized names (the GTF parser applies
+        // normalize_contig); callers pass the input's contig, so a chr-named or
+        // chrM-named variant must still find its annotation.
+        let idx = build_test_index();
+        assert_eq!(idx.nearest_splice_distance("chr1", 298), Some(2));
+        let mut chrom_map = HashMap::new();
+        chrom_map.insert("MT".to_string(), 0u32);
+        let mut splice_sites = HashMap::new();
+        splice_sites.insert(0u32, vec![100i32, 200]);
+        let mt = AnnotationIndex::new(HashMap::new(), vec![], splice_sites, HashMap::new(), chrom_map);
+        for name in ["chrM", "M", "MT", "chrMT"] {
+            assert_eq!(mt.nearest_splice_distance(name, 198), Some(2), "{name}");
+        }
     }
 
     // ── overlapping_transcripts tests ──

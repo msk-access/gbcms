@@ -46,8 +46,9 @@ use log::{debug, info, trace, warn};
 use bio::alignment::pairwise::Aligner;
 
 use super::fragment::{FragmentEvidence, hash_qname, hash_molecule};
-use super::pairhmm::dynamic_sw_gap_extend;
-use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, MnpResult};
+use super::alignment::{SW_GAP_EXTEND, SW_GAP_OPEN};
+use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, reconstruct_span, MnpResult};
+use bio::alignment::distance::levenshtein;
 use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
@@ -595,7 +596,7 @@ fn count_bam_binned_core(
     observations_path: Option<&str>,
     bam_path: String,
     mut variants: Vec<Variant>,
-    decomposed: Vec<Option<Variant>>,
+    mut decomposed: Vec<Option<Variant>>,
     min_mapq: u8,
     min_baseq: u8,
     filter_duplicates: bool,
@@ -705,6 +706,16 @@ fn count_bam_binned_core(
             resolved, variants.len(),
         );
     }
+    // A decomposed twin shares its original's contig and position, so it takes
+    // the same strand (resolved above or supplied upstream); without it the twin
+    // counts antisense reads the original excludes wherever it wins the dual-count.
+    for (v, twin) in variants.iter().zip(decomposed.iter_mut()) {
+        if let Some(twin) = twin {
+            if twin.gene_strand.is_none() {
+                twin.gene_strand = v.gene_strand;
+            }
+        }
+    }
     // Strandedness enforcement needs a gene strand per variant; variants left
     // without one (no GTF, intergenic locus, or a GTF/variant contig mismatch)
     // pass every read as sense — the antisense artifacts the flag exists to
@@ -782,6 +793,9 @@ fn count_bam_binned_core(
     let mut sibling_variants = sibling_variants;
     let n = variants.len();
     sibling_variants.resize_with(n, Vec::new);
+
+    // Kept for the post-run UMI-tag check (bam_path moves into the workers).
+    let bam_label = bam_path.clone();
 
     // Parse UMI tag for thread-local use
     let umi_tag_owned: Option<[u8; 2]> = umi_tag.and_then(|tag| {
@@ -915,6 +929,22 @@ fn count_bam_binned_core(
         Ok((pairs, mut observations)) => {
             for (vi, counts) in pairs {
                 all_counts[vi] = counts;
+            }
+
+            // A requested UMI tag that no processed read carries means fragment
+            // grouping silently fell back to QNAME for this BAM. Counts are
+            // unaffected (QNAME grouping is the no-UMI behaviour), and mixed
+            // tagged/untagged workflows are legitimate — so warn, don't fail.
+            if let (Some(tag), Some(tag_bytes)) = (umi_tag, umi_tag_owned) {
+                let tagged: u64 = all_counts.iter().map(|c| c.umi_tagged_reads as u64).sum();
+                let depth: u64 = all_counts.iter().map(|c| c.dp as u64).sum();
+                if tagged == 0 && depth > 0 {
+                    warn!(
+                        "--umi-tag {}: no processed read in {} carries the {} tag; fragment \
+                         grouping fell back to read names (QNAME) for this BAM",
+                        tag, bam_label, String::from_utf8_lossy(&tag_bytes),
+                    );
+                }
             }
 
             // Deterministic observation order. `HashMap<u64, FragmentEvidence>` iteration
@@ -1377,10 +1407,13 @@ fn count_bin_shared(
         // are compatible with that transcript's intron structure. Reuses the
         // same read cache — no additional BAM I/O.
         if let Some(ref annot) = *annotation {
+            // The main counts' BAQ rule on the main counts' own distance (a
+            // decomposed form keeps the variant's contig and position).
+            let use_baq = baq_applies(apply_baq, final_counts.exon_boundary_dist);
             let (read_cts, frag_cts) = count_per_transcript(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
-                backend, apply_baq, umi_tag, enforce_strandedness, strandedness,
+                backend, use_baq, umi_tag, enforce_strandedness, strandedness,
                 amplicon_mode,
             );
             final_counts.transcript_read_counts = read_cts;
@@ -1392,7 +1425,7 @@ fn count_bin_shared(
             // via benjamini_hochberg() in count_bam_binned().
             let asjd = detect_asjd(
                 &read_cache, variant, siblings, annot,
-                min_mapq, min_baseq, backend, apply_baq, enforce_strandedness, strandedness,
+                min_mapq, min_baseq, backend, use_baq, enforce_strandedness, strandedness,
                 fasta_reader,
             );
             final_counts.asjd_flag = asjd.flag;
@@ -1540,10 +1573,17 @@ fn count_variant_from_cache(
     // ── Compute exon boundary distance (GTF-informed) ──
     // Set once per variant, not per read. Used for BAQ suppression
     // and as an output column. None when no GTF is provided.
-    let exon_boundary_dist: Option<i32> = annotation.as_ref().map(|annot| {
+    let exon_boundary_dist: Option<i32> = annotation.as_ref().and_then(|annot| {
         annot.nearest_splice_distance(&variant.chrom, variant.pos)
     });
     counts.exon_boundary_dist = exon_boundary_dist;
+    let use_baq = baq_applies(apply_baq, exon_boundary_dist);
+    if apply_baq && !use_baq {
+        debug!(
+            "BAQ skipped at {}:{}: {}bp from an annotated exon boundary",
+            variant.chrom, variant.pos + 1, exon_boundary_dist.unwrap_or_default(),
+        );
+    }
 
     // Fragment tracking: QNAME hash -> FragmentEvidence
     let mut fragments: HashMap<u64, FragmentEvidence> = HashMap::new();
@@ -1560,10 +1600,8 @@ fn count_variant_from_cache(
     let score_fn = |a: u8, b: u8| -> i32 {
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
-    let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
-    let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
-    let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
 
     // Per-phase classification counters
     let mut phase_counts = [0u32; 5];
@@ -1657,13 +1695,9 @@ fn count_variant_from_cache(
         // ── HEURISTIC BAQ: resolve adjusted qualities for classification.
         // When BAQ is enabled, bases near indels and splice junctions
         // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
-        // on for RNA (no upstream BQ recalibration).
-        // ── GTF-informed BAQ suppression ──
-        // At annotated splice boundaries (within 5bp), BAQ downgrade
-        // would incorrectly penalize reads that legitimately span the
-        // exon junction. Suppress BAQ when exon_boundary_dist <= 5.
-        let suppress_baq = matches!(exon_boundary_dist, Some(d) if d <= 5);
-        let baq_adjusted = if apply_baq && !suppress_baq {
+        // on for RNA (no upstream BQ recalibration). Skipped at exon edges:
+        // `use_baq` is `baq_applies`, resolved once per variant above.
+        let baq_adjusted = if use_baq {
             apply_heuristic_baq(record)
         } else {
             None
@@ -1694,9 +1728,20 @@ fn count_variant_from_cache(
         }
 
         let is_ref = result.is_ref;
-        let is_alt = result.is_alt;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
+        tally_clip_candidate(&mut counts, record, variant, first_class);
+
+        // ── MULTI-ALLELIC AD-CLAIMING GUARD: an ALT match contested and won
+        // by a co-annotated sibling is the sibling's molecule. Downgrade
+        // it here — before distance tracking, fragment evidence, and
+        // read-level counting — so AD and ADF exclude it consistently. The
+        // read still counts toward DP/DPF and is recorded as
+        // partial_alt/any_alt below.
+        let claimed_by_sibling = sibling_claims_alt(
+            record, variant, &result, sibling_variants, effective_quals, min_baseq,
+        );
+        let is_alt = result.is_alt && !claimed_by_sibling;
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends
@@ -1744,6 +1789,12 @@ fn count_variant_from_cache(
             } else {
                 counts.dp_fwd += 1;
             }
+            // Counted with DP, not at classification: SW_FALLBACK claims the
+            // row's counts came partly from a different scorer, which is only
+            // true for reads that contribute to those counts.
+            if result.sw_fallback {
+                counts.sw_fallback_reads += 1;
+            }
         }
 
         // ── FRAGMENT TRACKING: track ALL fragments for DPF.
@@ -1760,6 +1811,9 @@ fn count_variant_from_cache(
                     rust_htslib::bam::record::Aux::String(s) => Some(s.as_bytes()),
                     _ => None,
                 });
+            if umi_bytes.is_some() {
+                counts.umi_tagged_reads += 1;
+            }
             hash_molecule(record.qname(), umi_bytes)
         } else {
             hash_qname(record.qname())
@@ -1821,12 +1875,15 @@ fn count_variant_from_cache(
         // and alignment backends. This captures reads with right-length INDELs but wrong
         // sequences (e.g., PAX5 A>CCC) that were previously lost as silent REF calls.
         if !is_ref && !is_alt {
-            // Check for partial ALT evidence before skipping
-            if result.partial_match_count > 0 || result.has_nearby_evidence {
+            // Check for partial ALT evidence before skipping. A read whose
+            // ALT match was claimed by a sibling is partial evidence
+            // for this row: the molecule carries a variant in this tract but
+            // belongs to the sibling's representation.
+            if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
-                trace!("partial_alt++: partial_match={} nearby_evidence={} (any_alt={}, partial_alt={})",
-                    result.partial_match_count, result.has_nearby_evidence,
+                trace!("partial_alt++: partial_match={} nearby_evidence={} sibling_claimed={} (any_alt={}, partial_alt={})",
+                    result.partial_match_count, result.has_nearby_evidence, claimed_by_sibling,
                     counts.any_alt, counts.partial_alt);
             }
             continue;
@@ -1869,6 +1926,15 @@ fn count_variant_from_cache(
                     }
                 }
                 if is_sibling_alt {
+                    // The molecule carries a sibling's allele in this tract:
+                    // structural evidence of a DIFFERENT allele, same category
+                    // as the wrong-length rule — surface it as partial_alt
+                    // rather than dropping it silently (it stays out of rd).
+                    // Skip if the nearby-evidence block above already counted it.
+                    if !result.has_nearby_evidence {
+                        counts.any_alt += 1;
+                        counts.partial_alt += 1;
+                    }
                     continue;
                 }
             }
@@ -1877,6 +1943,7 @@ fn count_variant_from_cache(
         } else if is_alt {
             counts.ad += 1;
             counts.any_alt += 1; // Full ALT → counts toward any_alt
+            if result.mnp_confirmed { counts.mnp_confirmed_alt += 1; }
             if is_reverse { counts.ad_rev += 1; } else { counts.ad_fwd += 1; }
 
             // ── RNA-SPECIFIC ALT TRACKING ──
@@ -2049,12 +2116,14 @@ fn count_variant_from_cache(
         compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
     }
 
+    warn_sw_fallback(variant, counts.sw_fallback_reads);
+
     // Log per-phase classification breakdown + reads considered
     debug!(
-        "Phase stats {}:{} {}→{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} ({} backend, {} reads from cache)",
+        "Phase stats {}:{} {}→{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} sw_fallback={} clip_candidates={} ({} backend, {} reads from cache)",
         variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
-        counts.splice_skip_excluded,
+        counts.splice_skip_excluded, counts.sw_fallback_reads, counts.clip_candidates,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2076,7 +2145,7 @@ fn count_variant_from_cache(
 // RNA behavioral divergences remain, both binned-only because they need
 // inputs this legacy path never receives (RNA features are exempt from the
 // parity oracle per AGENTS.md invariant #1): exon-boundary BAQ suppression
-// (suppress when exon_boundary_dist <= 5; needs the GTF annotation) and
+// (`baq_applies`; needs the GTF annotation) and
 // rna_editing_site_overlap (needs the REDIportal editing-sites set).
 #[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
@@ -2144,13 +2213,8 @@ fn count_single_variant(
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
     // ALT + REF: Same affine gap penalties for fair comparison.
-    // NOTE: dynamic_sw_gap_extend is currently a constant -1 for every
-    // repeat_span — the intended tight-to-free relaxation never engages
-    // with the fixed default curve (see its doc; issue #92).
-    let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
-    let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
-    let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
 
     // Per-phase classification counters
     // Indices: 0=Structural, 1=CigarRecon, 2=MaskedCompare, 3=Levenshtein, 4=Alignment
@@ -2248,9 +2312,19 @@ fn count_single_variant(
         }
 
         let is_ref = result.is_ref;
-        let is_alt = result.is_alt;
         let base_qual = result.qual;
         phase_counts[result.phase as usize] += 1;
+        tally_clip_candidate(&mut counts, &record, variant, first_class);
+
+        // ── MULTI-ALLELIC AD-CLAIMING GUARD: mirrors the binned path — an
+        // ALT match contested and won by a co-annotated sibling is
+        // downgraded before fragment evidence and read-level counting so AD
+        // and ADF exclude it consistently; it is recorded as
+        // partial_alt/any_alt below.
+        let claimed_by_sibling = sibling_claims_alt(
+            &record, variant, &result, sibling_variants, effective_quals, min_baseq,
+        );
+        let is_alt = result.is_alt && !claimed_by_sibling;
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends
@@ -2299,6 +2373,12 @@ fn count_single_variant(
             } else {
                 counts.dp_fwd += 1;
             }
+            // Counted with DP, not at classification: SW_FALLBACK claims the
+            // row's counts came partly from a different scorer, which is only
+            // true for reads that contribute to those counts.
+            if result.sw_fallback {
+                counts.sw_fallback_reads += 1;
+            }
         }
 
         // ── FRAGMENT TRACKING: track ALL fragments for DPF.
@@ -2330,7 +2410,10 @@ fn count_single_variant(
         // is_n_base: a fragment is in the N class when the base at the variant
         // position was 'N' — proxied by base_qual==0 with no REF or ALT call.
         let tlen = mfsd::calc_physical_insert_size(&record);
-        let is_n_base = base_qual == 0 && !is_ref && !is_alt;
+        // Same explicit N flag as the binned path (set by the checkers when
+        // an N sits at a discriminating position); the old qual-0 heuristic
+        // mis-classified true third-allele reads as N-class.
+        let is_n_base = result.has_n_base;
 
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq());
 
@@ -2350,8 +2433,10 @@ fn count_single_variant(
         // - Nearby evidence (right-length INDEL, close alignment score): any_alt++, partial_alt++
         // - Neither/REF with no evidence: no any_alt/partial_alt change
         if !is_ref && !is_alt {
-            // Check for partial ALT evidence before skipping
-            if result.partial_match_count > 0 || result.has_nearby_evidence {
+            // Check for partial ALT evidence before skipping. A sibling-claimed
+            // ALT match is partial evidence for this row (see the binned
+            // path).
+            if result.partial_match_count > 0 || result.has_nearby_evidence || claimed_by_sibling {
                 counts.any_alt += 1;
                 counts.partial_alt += 1;
             }
@@ -2391,7 +2476,14 @@ fn count_single_variant(
                     }
                 }
                 if is_sibling_alt {
-                    continue; // Skip REF counting — this read belongs to a sibling
+                    // Distinct-allele evidence (see binned path): out of rd,
+                    // surfaced as partial rather than dropped silently —
+                    // unless the nearby-evidence block already counted it.
+                    if !result.has_nearby_evidence {
+                        counts.any_alt += 1;
+                        counts.partial_alt += 1;
+                    }
+                    continue;
                 }
             }
             counts.rd += 1;
@@ -2403,6 +2495,9 @@ fn count_single_variant(
         } else if is_alt {
             counts.ad += 1;
             counts.any_alt += 1; // Full ALT → counts toward any_alt
+            if result.mnp_confirmed {
+                counts.mnp_confirmed_alt += 1;
+            }
             if is_reverse {
                 counts.ad_rev += 1;
             } else {
@@ -2535,12 +2630,14 @@ fn count_single_variant(
     // as the binned path so the two can never drift.
     compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
 
+    warn_sw_fallback(variant, counts.sw_fallback_reads);
+
     // Log per-phase classification breakdown
     debug!(
-        "Phase stats {}:{} {}→{}: P0(Structural)={} P1(CigarRecon)={} P2(Masked)={} P2.5(Lev)={} P3(Align)={} splice_skip_excluded={} ({} backend)",
+        "Phase stats {}:{} {}→{}: P0(Structural)={} P1(CigarRecon)={} P2(Masked)={} P2.5(Lev)={} P3(Align)={} splice_skip_excluded={} sw_fallback={} clip_candidates={} ({} backend)",
         variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
-        counts.splice_skip_excluded,
+        counts.splice_skip_excluded, counts.sw_fallback_reads, counts.clip_candidates,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2550,6 +2647,258 @@ fn count_single_variant(
     Ok(counts)
 }
 
+
+/// Build the REF and ALT haplotypes of `v` restricted to the genomic
+/// window `[w_lo, w_hi)`. Requires the variant's (genomic) ref_context to
+/// cover the window and the window to contain the full event span —
+/// otherwise the comparison would be lopsided and the caller keeps the
+/// read's classification.
+fn window_haplotypes(v: &Variant, w_lo: i64, w_hi: i64) -> Option<(Vec<u8>, Vec<u8>)> {
+    let ctx = v.ref_context.as_ref()?.as_bytes();
+    let cs = v.ref_context_start;
+    let ce = cs + ctx.len() as i64;
+    let span_end = v.pos + v.ref_allele.len() as i64;
+    if w_lo < cs || w_hi > ce || w_lo > v.pos || w_hi < span_end {
+        return None;
+    }
+    let left = &ctx[(w_lo - cs) as usize..(v.pos - cs) as usize];
+    let right = &ctx[(span_end - cs) as usize..(w_hi - cs) as usize];
+    let mut ref_hap = Vec::with_capacity(left.len() + v.ref_allele.len() + right.len());
+    ref_hap.extend_from_slice(left);
+    ref_hap.extend_from_slice(v.ref_allele.as_bytes());
+    ref_hap.extend_from_slice(right);
+    let mut alt_hap = Vec::with_capacity(left.len() + v.alt_allele.len() + right.len());
+    alt_hap.extend_from_slice(left);
+    alt_hap.extend_from_slice(v.alt_allele.as_bytes());
+    alt_hap.extend_from_slice(right);
+    Some((ref_hap, alt_hap))
+}
+
+/// Multi-allelic AD-claiming guard: decide whether a representation-tolerant
+/// ALT classification really belongs to this row at a co-annotated locus.
+///
+/// Representation-tolerant matching (windowed S3 shifts, BQ-masked
+/// comparison, PairHMM alignment) lets one physical event satisfy several
+/// co-annotated rows in the same tract — and lets unannotated same-tract
+/// ladder events be absorbed as ALT — so without this guard the per-locus
+/// AD sum exceeds the number of distinct ALT molecules (measured 2-5x at a
+/// real hypermutation cluster; sign-out uses exclusive assignment).
+///
+/// Anchor-exact evidence (Phase 0: a structural CIGAR op at the annotated
+/// left-aligned position, or a direct SNP base observation) is never
+/// contested — a molecule genuinely carrying two anchor-exact ops counts
+/// full AD on both rows. Everything else faces three demotion tests, each
+/// decisive for a distinct failure mode measured on signed-out data:
+///
+/// 1. **REF test** (foreign events): over the read-covered slice of this
+///    variant's genomic context, the read's reconstruction must explain
+///    strictly better with the row's ALT haplotype than its REF haplotype
+///    (Levenshtein). A read carrying only an event in the flanks ties or
+///    favors REF → demote.
+/// 2. **Probabilistic pure indel** (unannotated ladders): an
+///    Alignment-phase (Phase 3) ALT on a *pure* indel row carries no
+///    matching structural op at any position — in a contested tract that
+///    is ambiguity (PairHMM absorbs D11 into a D14 row because 3 edits
+///    beat 11), so demote. Complex/MNP rows are exempt: Phase 3 is their
+///    own carriers' normal resolution path.
+/// 3. **Strictly-better sibling** (same-tract competitors): over a window
+///    covering both spans, a sibling whose ALT haplotype explains the
+///    read at strictly lower cost claims it. Equal cost means equivalent
+///    representations of the same event (e.g. a delins double-annotated
+///    as an insertion) — both rows keep the read rather than zeroing one.
+///
+/// Demoted reads surface as partial evidence (any_alt/partial_alt) and are
+/// excluded from AD and ADF (the caller downgrades before fragment
+/// evidence). Reads that do not fully span the event, or splice-poisoned
+/// windows, keep their classification. Isolated variants are untouched.
+/// Mask sub-threshold and N bases to a sentinel byte that matches no
+/// haplotype base: the contest then charges them equally against every
+/// candidate instead of letting sequencing noise coincidentally vote for
+/// one — the same bases the BQ-aware classification masked (cross-backend
+/// quality contract).
+fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
+    for (b, &q) in seq.iter_mut().zip(quals.iter()) {
+        if q < min_baseq || *b == b'N' || *b == b'n' {
+            *b = 0;
+        }
+    }
+}
+
+fn sibling_claims_alt(
+    record: &Record,
+    variant: &Variant,
+    result: &ClassifyResult,
+    sibling_variants: &[Variant],
+    quals: &[u8],
+    min_baseq: u8,
+) -> bool {
+    if !result.is_alt || sibling_variants.is_empty() {
+        return false;
+    }
+    if result.phase == ClassifyPhase::Structural {
+        return false;
+    }
+
+    let read_lo = record.pos();
+    let read_hi = read_ref_end(record);
+    let own_ctx_end = variant.ref_context_start
+        + variant.ref_context.as_ref().map_or(0, |c| c.len() as i64);
+    let w_lo = read_lo.max(variant.ref_context_start);
+    let w_hi = read_hi.min(own_ctx_end);
+
+    // Test 1: the read's window must favor ALT strictly over REF.
+    let (ref_hap, alt_hap) = match window_haplotypes(variant, w_lo, w_hi) {
+        Some(h) => h,
+        None => return false,
+    };
+    let mut recon = reconstruct_span(record, quals, w_lo, w_hi);
+    if recon.splice_skip || recon.seq.is_empty() {
+        return false;
+    }
+    let recon_quals = std::mem::take(&mut recon.quals);
+    mask_low_qual(&mut recon.seq, &recon_quals, min_baseq);
+    let cost_alt = levenshtein(&recon.seq, &alt_hap);
+    let cost_ref = levenshtein(&recon.seq, &ref_hap);
+    if cost_alt >= cost_ref {
+        trace!(
+            "AD-claiming guard: ALT for {}>{} at {}:{} not favored over REF \
+             (ALT cost {} vs REF cost {}) — partial_alt, not ad",
+            variant.ref_allele, variant.alt_allele,
+            variant.chrom, variant.pos + 1, cost_alt, cost_ref,
+        );
+        return true;
+    }
+
+    // Test 2: probabilistic call on a pure indel row. Known tradeoff: a true
+    // carrier whose only evidence is soft-clipped (no I/D op anywhere) is
+    // also demoted here — measured to be a rare sensitivity tail (clip
+    // survey: 12/12 ITD loci I-op-dominant), it stays visible as
+    // partial_alt, and clip rescue is tracked separately (CLIP_CANDIDATES).
+    // Pure = anchor-preserved
+    // deletion/insertion; a delins that merely has a 1-base side (e.g.
+    // CAG>T) is complex and exempt (Phase 3 is its carriers' normal path).
+    let ref_al = variant.ref_allele.as_bytes();
+    let alt_al = variant.alt_allele.as_bytes();
+    let pure_indel = (alt_al.len() == 1 && ref_al.len() > 1 && ref_al[0] == alt_al[0])
+        || (ref_al.len() == 1 && alt_al.len() > 1 && alt_al[0] == ref_al[0]);
+    if result.phase == ClassifyPhase::Alignment && pure_indel {
+        trace!(
+            "AD-claiming guard: alignment-phase ALT on pure indel {}>{} at {}:{} \
+             in a co-annotated cluster (no structural op) — partial_alt, not ad",
+            variant.ref_allele, variant.alt_allele,
+            variant.chrom, variant.pos + 1,
+        );
+        return true;
+    }
+
+    // Test 3: a sibling that explains the read strictly better claims it.
+    for sib in sibling_variants {
+        let sib_ctx_end = sib.ref_context_start
+            + sib.ref_context.as_ref().map_or(0, |c| c.len() as i64);
+        let s_lo = w_lo.max(sib.ref_context_start);
+        let s_hi = w_hi.min(sib_ctx_end);
+        let own_hap_s = match window_haplotypes(variant, s_lo, s_hi) {
+            Some((_, a)) => a,
+            None => continue,
+        };
+        let sib_hap_s = match window_haplotypes(sib, s_lo, s_hi) {
+            Some((_, a)) => a,
+            None => continue,
+        };
+        let recon_s = if (s_lo, s_hi) == (w_lo, w_hi) {
+            recon.seq.clone()
+        } else {
+            let mut r = reconstruct_span(record, quals, s_lo, s_hi);
+            if r.splice_skip || r.seq.is_empty() {
+                continue;
+            }
+            let rq = std::mem::take(&mut r.quals);
+            mask_low_qual(&mut r.seq, &rq, min_baseq);
+            r.seq
+        };
+        let own_c = levenshtein(&recon_s, &own_hap_s);
+        let sib_c = levenshtein(&recon_s, &sib_hap_s);
+        if sib_c < own_c {
+            trace!(
+                "AD-claiming guard: ALT for {}>{} at {}:{} (cost {}) claimed by \
+                 sibling {}>{} at {}:{} (cost {}) — partial_alt, not ad",
+                variant.ref_allele, variant.alt_allele,
+                variant.chrom, variant.pos + 1, own_c,
+                sib.ref_allele, sib.alt_allele,
+                sib.chrom, sib.pos + 1, sib_c,
+            );
+            return true;
+        }
+    }
+    false
+}
+
+/// Minimum soft-clip length for an insertion clip candidate: shorter clips
+/// are routine adapter/quality trimming, not unaligned inserted sequence.
+const CLIP_CANDIDATE_MIN_LEN: u32 = 8;
+
+/// Slack (bp) added to the insert length when bounding where a
+/// clip-represented tandem-duplication carrier's clip boundary can land
+/// relative to the anchor.
+const CLIP_REACH_SLACK: i64 = 10;
+
+/// Insertion loci only: count a first-class read carrying a clip candidate.
+/// Shared by the binned and legacy loops and called right after
+/// classification — deliberately before the anchor-overlap gate, because a
+/// clip-represented tandem-duplication carrier can align entirely past the
+/// anchor (its clip covers the inserted copy) and still be the evidence the
+/// CLIP_CANDIDATES flag points at.
+fn tally_clip_candidate(
+    counts: &mut BaseCounts,
+    record: &Record,
+    variant: &Variant,
+    first_class: bool,
+) {
+    let ins_len = variant.alt_allele.len() as i64 - variant.ref_allele.len() as i64;
+    if first_class && ins_len > 0 {
+        let reach = ins_len + CLIP_REACH_SLACK;
+        if has_clip_boundary_in(record, variant.pos - reach, variant.pos + reach) {
+            counts.clip_candidates += 1;
+        }
+    }
+}
+
+/// Whether the read has a soft clip of at least `CLIP_CANDIDATE_MIN_LEN`
+/// whose boundary (the reference position where the clipped bases would
+/// continue the alignment) lies in `[lo, hi]`. Hard clips at the read ends
+/// are skipped when locating the soft clip.
+fn has_clip_boundary_in(record: &Record, lo: i64, hi: i64) -> bool {
+    let cigar = record.cigar();
+    let ops: Vec<&Cigar> = cigar.iter().filter(|op| !matches!(op, Cigar::HardClip(_))).collect();
+    let leading = matches!(ops.first(), Some(Cigar::SoftClip(n)) if *n >= CLIP_CANDIDATE_MIN_LEN);
+    let trailing = ops.len() > 1
+        && matches!(ops.last(), Some(Cigar::SoftClip(n)) if *n >= CLIP_CANDIDATE_MIN_LEN);
+    (leading && (lo..=hi).contains(&record.pos()))
+        || (trailing && (lo..=hi).contains(&read_ref_end(record)))
+}
+
+/// One WARN per variant when depth reads could not be evaluated by the
+/// PairHMM backend's pangenomic haplotype matrix. The Smith-Waterman fallback
+/// is kept (operator decision) but must not be silent: it only fires when the
+/// variant's reference context is missing or does not contain it, i.e.
+/// upstream input was malformed. Without any context no scorer can run, so
+/// those reads end NEITHER — the message says which outcome applied.
+fn warn_sw_fallback(variant: &Variant, n: u32) {
+    if n > 0 {
+        let outcome = if variant.ref_context.is_none() {
+            "no scorer can run without a reference context, so they were left NEITHER"
+        } else {
+            "they were scored by the Smith-Waterman fallback instead (NEITHER where SW \
+             could not run either)"
+        };
+        warn!(
+            "{}:{} {}>{}: {} read(s) could not be evaluated by the pangenomic haplotype \
+             matrix ({}); {} — flagged SW_FALLBACK({})",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+            n, super::pangenome::matrix_failure_reason(variant), outcome, n,
+        );
+    }
+}
 
 /// Check if a read supports the reference or alternate allele.
 /// Returns `ClassifyResult` containing (is_ref, is_alt, base_quality, phase)
@@ -2608,9 +2957,10 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 r.has_n_base = had_n;
                 r
             }
-            MnpResult::Alt(q, had_n) => {
+            MnpResult::Alt(q, had_n, confirmed) => {
                 let mut r = ClassifyResult::is_alt(q, ClassifyPhase::MaskedCompare);
                 r.has_n_base = had_n;
+                r.mnp_confirmed = confirmed;
                 r
             }
             MnpResult::LowQuality(partial, had_n) => {
@@ -2733,6 +3083,9 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
 /// - Typical gene loci have 1–3 overlapping transcripts
 /// - RNA-seq depth is modest (50–200×)
 /// - No additional BAM I/O — reuses the existing read cache
+///
+/// `use_baq`: whether heuristic BAQ applies at this variant, as resolved by
+/// `baq_applies` (the main counts' rule).
 #[allow(clippy::too_many_arguments)]
 fn count_per_transcript(
     read_cache: &[Record],
@@ -2743,7 +3096,7 @@ fn count_per_transcript(
     min_baseq: u8,
     fragment_qual_threshold: u8,
     backend: &AlignmentBackend,
-    apply_baq: bool,
+    use_baq: bool,
     umi_tag: Option<[u8; 2]>,
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
@@ -2772,8 +3125,6 @@ fn count_per_transcript(
     let score_fn = |a: u8, b: u8| -> i32 {
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
-    let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
 
     // Step 4: Per-transcript counting
     let mut read_entries: Vec<String> = Vec::with_capacity(transcript_ids.len());
@@ -2800,8 +3151,8 @@ fn count_per_transcript(
         let mut tx_fragments: HashMap<u64, FragmentEvidence> = HashMap::new();
 
         // Fresh aligners per transcript to avoid cross-contamination
-        let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
-        let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+        let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+        let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
 
         for record in read_cache {
             // ── Overlap check: does this read overlap the variant window?
@@ -2827,13 +3178,9 @@ fn count_per_transcript(
                 continue; // Incompatible junctions → skip for this transcript
             }
 
-            // ── BAQ. NOTE: unlike the main counting path, this applies BAQ
-            // unconditionally — the exon-boundary suppression (skip BAQ within
-            // 5bp of an annotated boundary, where it would penalize legitimate
-            // junction-spanning reads) is NOT applied here or in detect_asjd.
-            // Per-transcript counts near exon boundaries can therefore be
-            // slightly more conservative than the main counts.
-            let baq_adjusted = if apply_baq {
+            // ── BAQ under the main counts' rule (`use_baq`), so the spliced
+            // reads at an exon edge count here as they do in the main counts.
+            let baq_adjusted = if use_baq {
                 apply_heuristic_baq(record)
             } else {
                 None
@@ -2891,13 +3238,39 @@ fn count_per_transcript(
                 mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
             }
 
+            // ── Multi-allelic guards (the main engine's read-level rules): an
+            // ALT match won by a sibling is excluded from tx_ad and from
+            // ALT fragment evidence; a REF-classified read that is ALT for
+            // a sibling is excluded from tx_rd (its ALT lies outside this
+            // variant's span, so REF testimony here is vacuous). Both still
+            // count tx_dp. Unlike the main counts, which record the fragment
+            // as REF before their REF-side guard runs, the REF exclusion here
+            // happens first, so it also leaves the transcript's REF fragments.
+            let claimed_by_sibling = sibling_claims_alt(
+                record, variant, &result, sibling_variants, effective_quals, min_baseq,
+            );
+            let is_alt = result.is_alt && !claimed_by_sibling;
+            let mut is_ref = result.is_ref;
+            if is_ref && !sibling_variants.is_empty() {
+                for sib in sibling_variants {
+                    let sib_result = check_allele_with_qual(
+                        record, sib, &[], effective_quals, min_baseq,
+                        &mut alt_aligner, &mut ref_aligner, backend,
+                    );
+                    if sib_result.is_alt {
+                        is_ref = false;
+                        break;
+                    }
+                }
+            }
+
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-            evidence.observe(result.is_ref, result.is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+            evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
 
             if first_class {
-                if result.is_ref {
+                if is_ref {
                     tx_rd += 1;
-                } else if result.is_alt {
+                } else if is_alt {
                     tx_ad += 1;
                 }
             }
@@ -3069,7 +3442,145 @@ impl JunctionTally {
     }
 }
 
-/// Detect allele-specific junction divergence at a variant site.
+/// Coordinate tolerance (bp) for matching an observed junction endpoint to an
+/// annotated one — shared by ASJD's known-junction test and the ASJD-2
+/// anchoring test so the two cannot disagree about what "annotated" means.
+const JUNCTION_TOLERANCE: i32 = 5;
+
+/// Heuristic BAQ is skipped at variants within this distance (bp) of an
+/// annotated exon boundary: its CIGAR-N penalty would land on exactly the
+/// reads that splice there, which are the evidence at an exon edge.
+const BAQ_BOUNDARY_SUPPRESS_BP: i32 = 5;
+
+/// Whether heuristic BAQ applies at a variant. The one rule every view that
+/// classifies alleles uses (main counts, per-transcript counts, ASJD), so a
+/// transcript's counts decompose the main counts: BAQ was requested, and the
+/// variant is not within `BAQ_BOUNDARY_SUPPRESS_BP` of an annotated exon
+/// boundary (`exon_boundary_dist`; None without a GTF).
+fn baq_applies(apply_baq: bool, exon_boundary_dist: Option<i32>) -> bool {
+    apply_baq && !matches!(exon_boundary_dist, Some(d) if d <= BAQ_BOUNDARY_SUPPRESS_BP)
+}
+
+/// Minimum fragments of REF-side junction evidence ASJD speaks on (below it:
+/// `LOW_REF_JUNC`). Also the floor for `RETENTION_DOMINANT`, whose count is
+/// the spliced (overwhelmingly wild-type) population — REF-side evidence.
+const ASJD_MIN_REF_JUNC: u32 = 10;
+
+/// Minimum fragments of ALT-side junction evidence ASJD speaks on (below it:
+/// `LOW_ALT_JUNC`). Also the floor for `NOVEL_JUNC_AT_SPLICE_LOSS`, whose
+/// count is the mutant allele's splicing outcome — ALT-side evidence.
+const ASJD_MIN_ALT_JUNC: u32 = 5;
+
+/// ASJD-2 splice-disruption markers for `asjd_diagnostic` (issue #97).
+///
+/// ASJD's tallies only see allele-classified reads, but at a splice-site
+/// variant the informative reads are often the ones the splice-aware
+/// evidence rule excludes: reads whose CIGAR N spans the variant observe
+/// nothing there. Both markers read that excluded population, and both are
+/// population comparisons — no tuned rates:
+///
+/// - `RETENTION_DOMINANT(n)`: spliced-over fragments (`n`) outnumber the
+///   allele-classified ones, and the classified fragments are mostly
+///   junction-free. The reads that genotype this locus are then the
+///   intron-retaining minority, so `vaf` is the VAF *within that
+///   population*, not allelic balance (an allele-specific retention reads as
+///   a very high `vaf`).
+/// - `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)`: the excluded population's
+///   top unannotated junction — anchored to an annotated splice site (an
+///   exon-skip or alternative-site event in the gene's splice graph, not
+///   aligner noise) and not the deletion itself written as a splice — is
+///   carried by more fragments than confirm ALT: the mutant allele's
+///   splicing outcome is visible here while `ad` is not. Coordinates follow
+///   the `asjd_*_junction` convention (0-based, half-open intron).
+///
+/// Both require the variant's REF span to reach within two bases of an
+/// annotated intron boundary of a transcript on the variant's gene strand
+/// (the canonical splice dinucleotide and the adjacent exonic bases;
+/// transcript termini and antisense genes' sites do not count), and both
+/// speak only above ASJD's own junction-evidence floors
+/// (`ASJD_MIN_REF_JUNC` for the spliced population, `ASJD_MIN_ALT_JUNC` for
+/// the novel junction). Returns the markers to append, possibly empty.
+#[allow(clippy::too_many_arguments)]
+fn splice_disruption_markers(
+    annotation: &AnnotationIndex,
+    chrom: &str,
+    variant: &Variant,
+    window_pad: i64,
+    excluded: &JunctionTally,
+    classified_frags: &std::collections::HashSet<u64>,
+    classified_with_junc: usize,
+    n_alt_frags: usize,
+) -> Vec<String> {
+    let span_start = variant.pos;
+    let span_end = variant.pos + variant.ref_allele.len() as i64;
+    // Span [s, e) intersects a boundary B's window [B-2, B+2) iff B lies in [s-1, e+1].
+    if !annotation.intron_boundary_in_range(chrom, span_start - 1, span_end + 1, variant.gene_strand) {
+        return Vec::new();
+    }
+
+    let mut markers = Vec::new();
+    // A fragment with one classified mate is classified, not excluded.
+    let n_excluded = excluded
+        .frag_seen
+        .iter()
+        .filter(|qh| !classified_frags.contains(qh))
+        .count();
+    let n_classified = classified_frags.len();
+    let junction_free = n_classified.saturating_sub(classified_with_junc);
+
+    if n_excluded >= ASJD_MIN_REF_JUNC as usize
+        && n_excluded > n_classified
+        && junction_free > classified_with_junc
+    {
+        debug!(
+            "ASJD-2 RETENTION_DOMINANT at {}:{}: {} spliced-over fragments vs {} classified \
+             ({} junction-free)",
+            variant.chrom, variant.pos + 1, n_excluded, n_classified, junction_free,
+        );
+        markers.push(format!("RETENTION_DOMINANT({})", n_excluded));
+    }
+
+    let del_len = variant.ref_allele.len().saturating_sub(variant.alt_allele.len()) as i64;
+    let tol = JUNCTION_TOLERANCE as i64;
+    let anchored = |x: i64| {
+        annotation.intron_boundary_in_range(chrom, x - tol, x + tol, variant.gene_strand)
+    };
+    let top_novel = excluded
+        .counts
+        .iter()
+        .filter(|(&(a, b), _)| {
+            // The deletion itself, written by the aligner as a splice of the
+            // same length at the locus, is the ALT carriers — not a splicing
+            // consequence (SPLICE_SKIP_DOMINANT covers that representation).
+            let is_deletion_as_splice = del_len > 0
+                && b - a == del_len
+                && (a - (span_start + 1)).abs() <= window_pad;
+            !is_deletion_as_splice
+                && !annotation.is_junction_known(chrom, a, b, JUNCTION_TOLERANCE)
+                && (anchored(a) || anchored(b))
+        })
+        .map(|(&j, sc)| (sc.total(), j))
+        // Highest depth first; ties broken by leftmost coordinates (deterministic).
+        .max_by(|x, y| x.0.cmp(&y.0).then_with(|| y.1.cmp(&x.1)));
+    if let Some((n, (a, b))) = top_novel {
+        if n >= ASJD_MIN_ALT_JUNC && n as usize > n_alt_frags {
+            debug!(
+                "ASJD-2 NOVEL_JUNC_AT_SPLICE_LOSS at {}:{}: junction {}-{} on {} excluded \
+                 fragments vs {} ALT fragments",
+                variant.chrom, variant.pos + 1, a, b, n, n_alt_frags,
+            );
+            markers.push(format!("NOVEL_JUNC_AT_SPLICE_LOSS({}@{}-{})", n, a, b));
+        } else {
+            trace!(
+                "ASJD-2: top anchored novel junction {}-{} ({} fragments) at {}:{} is below \
+                 the ALT-evidence floor ({}) or does not exceed {} ALT fragments — no marker",
+                a, b, n, variant.chrom, variant.pos + 1, ASJD_MIN_ALT_JUNC, n_alt_frags,
+            );
+        }
+    }
+    markers
+}
+
 /// Classify the splice motif at a junction by reading donor/acceptor dinucleotides
 /// from the reference FASTA.
 ///
@@ -3156,11 +3667,42 @@ fn canonical_motif(donor: [u8; 2], acceptor: [u8; 2]) -> Option<&'static str> {
     }
 }
 
+/// Two junctions are the same splice event when both ends agree within
+/// `JUNCTION_TOLERANCE`: aligners place a junction a few bases apart when the
+/// sequence at the boundary is ambiguous.
+fn same_junction(a: (i64, i64), b: (i64, i64)) -> bool {
+    let tol = JUNCTION_TOLERANCE as i64;
+    (a.0 - b.0).abs() <= tol && (a.1 - b.1).abs() <= tol
+}
+
+/// The junctions tied for the most fragments in one ASJD partition, leftmost
+/// first. Empty for an empty partition.
+fn top_junctions(counts: &HashMap<(i64, i64), JunctionStrandCounts>) -> Vec<(i64, i64)> {
+    let max = counts.values().map(|sc| sc.total()).max().unwrap_or(0);
+    let mut top: Vec<(i64, i64)> =
+        counts.iter().filter(|(_, sc)| sc.total() == max).map(|(j, _)| *j).collect();
+    top.sort_unstable();
+    top
+}
+
+/// Of one partition's tied junctions (`top`, leftmost first, non-empty), the
+/// one the other partition's fragments use most; the leftmost on a further tie.
+fn most_supported(
+    top: &[(i64, i64)],
+    other: &HashMap<(i64, i64), JunctionStrandCounts>,
+) -> (i64, i64) {
+    let support = |j: &(i64, i64)| other.get(j).map_or(0, |sc| sc.total());
+    // `top` is sorted, so the first maximum is the leftmost.
+    let best = top.iter().map(support).max().unwrap_or(0);
+    *top.iter().find(|j| support(j) == best).expect("top junctions are non-empty")
+}
+
 /// Canonical motif name, or `"OTHER"` when non-canonical.
 fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
     canonical_motif(donor, acceptor).unwrap_or("OTHER").to_string()
 }
 
+/// Detect allele-specific junction divergence at a variant site.
 ///
 /// Partitions reads from the cache into REF- and ALT-classified sets,
 /// collects splice junctions from each partition, and tests whether
@@ -3182,6 +3724,8 @@ fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
 /// - `sibling_variants`: Multi-allelic sibling variants at the same locus
 /// - `annotation`: The GTF annotation index
 /// - `min_mapq`, `min_baseq`, etc.: Standard counting parameters
+/// - `use_baq`: whether heuristic BAQ applies at this variant, as resolved by
+///   `baq_applies` (the main counts' rule)
 #[allow(clippy::too_many_arguments)]
 fn detect_asjd(
     read_cache: &[Record],
@@ -3191,7 +3735,7 @@ fn detect_asjd(
     min_mapq: u8,
     min_baseq: u8,
     backend: &AlignmentBackend,
-    apply_baq: bool,
+    use_baq: bool,
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
@@ -3208,10 +3752,8 @@ fn detect_asjd(
     let score_fn = |a: u8, b: u8| -> i32 {
         if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
     };
-    let gap_open: i32 = -5;
-    let gap_extend: i32 = dynamic_sw_gap_extend(variant.repeat_span);
-    let mut alt_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
-    let mut ref_aligner = Aligner::new(gap_open, gap_extend, &score_fn);
+    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
 
     // Step 1: Partition reads into REF/ALT and collect junctions with strand info.
     // Tracks per-junction transcript-strand counts for STRAND_DISCORDANT detection:
@@ -3225,6 +3767,14 @@ fn detect_asjd(
     // strand — verified 0/319k disagreements on real RNA — so first-seen wins).
     let mut ref_tally = JunctionTally::default();
     let mut alt_tally = JunctionTally::default();
+    // Splice-disruption populations (ASJD-2): fragments whose CIGAR N spans
+    // the variant (excluded from counting as no-observation) with the
+    // junctions they carry over the locus, and the allele-classified
+    // fragments split by whether they carry any junction.
+    let mut excluded_tally = JunctionTally::default();
+    let mut classified_frags: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let mut alt_frags: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let var_span = (variant.pos, variant.pos + variant.ref_allele.len() as i64);
 
     for record in read_cache {
         let r_start = record.pos();
@@ -3241,8 +3791,9 @@ fn detect_asjd(
             continue;
         }
 
-        // BAQ
-        let baq_adjusted = if apply_baq {
+        // BAQ under the main counts' rule (`use_baq`): at an exon edge the
+        // spliced reads are exactly ASJD's evidence.
+        let baq_adjusted = if use_baq {
             apply_heuristic_baq(record)
         } else {
             None
@@ -3257,6 +3808,14 @@ fn detect_asjd(
             record, variant, sibling_variants, effective_quals, min_baseq,
             &mut alt_aligner, &mut ref_aligner, backend,
         );
+
+        let qh = crate::shared::fragment::hash_qname(record.qname());
+        if result.is_ref || result.is_alt {
+            classified_frags.insert(qh);
+            if result.is_alt {
+                alt_frags.insert(qh);
+            }
+        }
 
         // Only interested in reads with splice junctions
         let junctions = super::rna::extract_splice_junctions(record);
@@ -3273,11 +3832,21 @@ fn detect_asjd(
         let tx_minus = super::rna::read_transcript_strand(record, strandedness) == Some('-');
 
         // Dedup by fragment (QNAME hash): vote once per allele-total and per junction.
-        let qh = crate::shared::fragment::hash_qname(record.qname());
         if result.is_ref {
             ref_tally.add(qh, &junctions, tx_minus);
         } else if result.is_alt {
             alt_tally.add(qh, &junctions, tx_minus);
+        } else if !result.covers_locus {
+            // Spliced over the locus: keep only the junction(s) spanning the
+            // variant — the ones that explain why the read saw nothing here.
+            let over_locus: Vec<(i64, i64)> = junctions
+                .iter()
+                .copied()
+                .filter(|&(a, b)| a < var_span.1 && var_span.0 < b)
+                .collect();
+            if !over_locus.is_empty() {
+                excluded_tally.add(qh, &over_locus, tx_minus);
+            }
         }
     }
 
@@ -3296,14 +3865,33 @@ fn detect_asjd(
     }
 
     // Step 2: Check minimum evidence thresholds
-    let mut diag_flags: Vec<&str> = Vec::new();
+    let mut diag_flags: Vec<String> = Vec::new();
 
-    if n_ref_total < 10 {
-        diag_flags.push("LOW_REF_JUNC");
+    if n_ref_total < ASJD_MIN_REF_JUNC {
+        diag_flags.push("LOW_REF_JUNC".to_string());
     }
-    if n_alt_total < 5 {
-        diag_flags.push("LOW_ALT_JUNC");
+    if n_alt_total < ASJD_MIN_ALT_JUNC {
+        diag_flags.push("LOW_ALT_JUNC".to_string());
     }
+
+    // Step 2b: splice-disruption markers (ASJD-2). Computed before the
+    // no-junction early return below: they explain exactly the loci where
+    // the classified reads carry no junctions (LOW_*_JUNC).
+    let classified_with_junc = ref_tally
+        .frag_seen
+        .union(&alt_tally.frag_seen)
+        .filter(|qh| classified_frags.contains(qh))
+        .count();
+    diag_flags.extend(splice_disruption_markers(
+        annotation,
+        chrom,
+        variant,
+        window_pad,
+        &excluded_tally,
+        &classified_frags,
+        classified_with_junc,
+        alt_frags.len(),
+    ));
 
     // If either partition has no junction reads, no divergence can be detected
     if ref_junction_counts.is_empty() || alt_junction_counts.is_empty() {
@@ -3315,32 +3903,40 @@ fn detect_asjd(
         };
     }
 
-    // Step 3: Find dominant junction in each partition (by total reads across both strands)
-    let (ref_dom_junc, ref_dom_strand_info) = ref_junction_counts
-        .iter()
-        .max_by_key(|(_, sc)| sc.total())
-        .map(|(j, sc)| (*j, sc))
-        .unwrap(); // safe: checked non-empty above
+    // Step 3: Find dominant junction in each partition (by total fragments across
+    // both strands). A tie is read the least divergent way, from the reads, never
+    // from hash order (which varies run to run):
+    // - when a REF top junction and an ALT top junction are the same splice
+    //   event (`same_junction`, an exact match preferred), each partition
+    //   reports its own of that pair — a tie is not a divergence;
+    // - otherwise each partition reports the tied junction the other partition
+    //   supports most, then the leftmost.
+    let ref_top = top_junctions(&ref_junction_counts);
+    let alt_top = top_junctions(&alt_junction_counts);
+    let pairs = || ref_top.iter().flat_map(|r| alt_top.iter().map(move |a| (*r, *a)));
+    let (ref_dom_junc, alt_dom_junc) = pairs()
+        .find(|(r, a)| r == a)
+        .or_else(|| pairs().find(|&(r, a)| same_junction(r, a)))
+        .unwrap_or_else(|| {
+            (
+                most_supported(&ref_top, &alt_junction_counts),
+                most_supported(&alt_top, &ref_junction_counts),
+            )
+        });
+    let ref_dom_strand_info = &ref_junction_counts[&ref_dom_junc];
     let n_ref_junc = ref_dom_strand_info.total();
-
-    let (alt_dom_junc, alt_dom_strand_info) = alt_junction_counts
-        .iter()
-        .max_by_key(|(_, sc)| sc.total())
-        .map(|(j, sc)| (*j, sc))
-        .unwrap(); // safe: checked non-empty above
+    let alt_dom_strand_info = &alt_junction_counts[&alt_dom_junc];
     let n_alt_junc = alt_dom_strand_info.total();
 
     // Check for multi-junction in ALT reads
     let alt_distinct_junctions = alt_junction_counts.len();
     if alt_distinct_junctions > 2 {
-        diag_flags.push("MULTI_JUNCTION");
+        diag_flags.push("MULTI_JUNCTION".to_string());
     }
 
     // Step 4: Compare dominant junctions
-    let same_junction = (ref_dom_junc.0 - alt_dom_junc.0).abs() <= 5
-        && (ref_dom_junc.1 - alt_dom_junc.1).abs() <= 5;
-
-    let (pval, flag) = if same_junction {
+    let is_same = same_junction(ref_dom_junc, alt_dom_junc);
+    let (pval, flag) = if is_same {
         // Same dominant junction → no divergence
         (1.0, false)
     } else {
@@ -3356,15 +3952,15 @@ fn detect_asjd(
             alt_on_ref_junc, alt_on_alt_junc,
         );
 
-        (p, p < 0.05 && n_alt_junc >= 5 && n_ref_junc >= 10)
+        (p, p < 0.05 && n_alt_junc >= ASJD_MIN_ALT_JUNC && n_ref_junc >= ASJD_MIN_REF_JUNC)
     };
 
     // Step 5: Classify splice motifs and GTF annotation
-    let ref_known = annotation.is_junction_known(chrom, ref_dom_junc.0, ref_dom_junc.1, 5);
-    let alt_known = annotation.is_junction_known(chrom, alt_dom_junc.0, alt_dom_junc.1, 5);
+    let ref_known = annotation.is_junction_known(chrom, ref_dom_junc.0, ref_dom_junc.1, JUNCTION_TOLERANCE);
+    let alt_known = annotation.is_junction_known(chrom, alt_dom_junc.0, alt_dom_junc.1, JUNCTION_TOLERANCE);
 
-    if !alt_known && !same_junction {
-        diag_flags.push("NOVEL_ALT_JUNC");
+    if !alt_known && !is_same {
+        diag_flags.push("NOVEL_ALT_JUNC".to_string());
     }
 
     let ref_junction_str = format!("{}-{}", ref_dom_junc.0, ref_dom_junc.1);
@@ -3383,8 +3979,8 @@ fn detect_asjd(
     );
 
     // NON_CANONICAL_MOTIF diagnostic flag
-    if !same_junction && alt_motif == "OTHER" {
-        diag_flags.push("NON_CANONICAL_MOTIF");
+    if !is_same && alt_motif == "OTHER" {
+        diag_flags.push("NON_CANONICAL_MOTIF".to_string());
     }
 
     // Step 5c: Strand discordance detection on the dominant ALT junction.
@@ -3394,11 +3990,11 @@ fn detect_asjd(
     // Undefined for an unstranded library (no transcript strand), so gate it off there.
     let alt_minority_frac = alt_dom_strand_info.minority_strand_fraction();
     if strandedness != rna::Strandedness::Unstranded
-        && !same_junction
-        && n_alt_junc >= 5
+        && !is_same
+        && n_alt_junc >= ASJD_MIN_ALT_JUNC
         && alt_minority_frac >= 0.30
     {
-        diag_flags.push("STRAND_DISCORDANT");
+        diag_flags.push("STRAND_DISCORDANT".to_string());
         debug!(
             "STRAND_DISCORDANT: {}:{} alt_junc={}-{} tx+={} tx-={} minority_frac={:.2}",
             variant.chrom, variant.pos + 1,
@@ -3440,6 +4036,26 @@ mod tests {
     use super::*;
     use rust_htslib::bam::record::CigarString;
     use std::ffi::CString;
+
+    #[test]
+    fn test_baq_applies_threshold() {
+        // Skipped within BAQ_BOUNDARY_SUPPRESS_BP of an annotated exon edge,
+        // applied beyond it and without annotation, never when not requested.
+        assert!(!baq_applies(true, Some(0)));
+        assert!(!baq_applies(true, Some(BAQ_BOUNDARY_SUPPRESS_BP)));
+        assert!(baq_applies(true, Some(BAQ_BOUNDARY_SUPPRESS_BP + 1)));
+        assert!(baq_applies(true, None));
+        assert!(!baq_applies(false, Some(50)));
+        assert!(!baq_applies(false, None));
+    }
+
+    #[test]
+    fn test_same_junction_tolerance() {
+        let j = (300, 500);
+        assert!(same_junction(j, j));
+        assert!(same_junction(j, (300 + JUNCTION_TOLERANCE as i64, 500 - JUNCTION_TOLERANCE as i64)));
+        assert!(!same_junction(j, (300, 500 + JUNCTION_TOLERANCE as i64 + 1)));
+    }
 
     #[test]
     fn test_splice_motif_orientation_by_strand() {
@@ -3685,7 +4301,10 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
+            MnpResult::Alt(q, _, confirmed) => {
+                assert!(q >= 20, "Quality should be >= 20, got {}", q);
+                assert!(confirmed, "both discriminating bases read as ALT → confirmed");
+            }
             other => panic!("Expected MnpResult::Alt, got {:?}", format_mnp_result(&other)),
         }
     }
@@ -3708,7 +4327,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
+            MnpResult::Alt(q, _, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
             other => panic!(
                 "Expected Alt for DNP with one masked position (recovered by masked eval), got {:?}",
                 format_mnp_result(&other)
@@ -3828,7 +4447,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
+            MnpResult::Alt(q, _, _) => assert!(q >= 20, "Quality should be >= 20, got {}", q),
             other => panic!("Expected MnpResult::Alt for TERT-like 5bp MNP, got {:?}",
                            format_mnp_result(&other)),
         }
@@ -3846,7 +4465,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q >= 20, "Should pass at exact threshold boundary"),
+            MnpResult::Alt(q, _, _) => assert!(q >= 20, "Should pass at exact threshold boundary"),
             other => panic!("Expected Alt at exact BQ threshold, got {:?}",
                            format_mnp_result(&other)),
         }
@@ -3856,7 +4475,7 @@ mod tests {
     fn format_mnp_result(result: &MnpResult) -> String {
         match result {
             MnpResult::Ref(q, n) => format!("Ref(q={}, had_n={})", q, n),
-            MnpResult::Alt(q, n) => format!("Alt(q={}, had_n={})", q, n),
+            MnpResult::Alt(q, n, c) => format!("Alt(q={}, had_n={}, confirmed={})", q, n, c),
             MnpResult::LowQuality(p, n) => format!("LowQuality(partial={}, had_n={})", p, n),
             MnpResult::ThirdAllele(p, n) => format!("ThirdAllele(partial={}, had_n={})", p, n),
             MnpResult::Structural => "Structural".to_string(),
@@ -3881,7 +4500,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q >= 20,
+            MnpResult::Alt(q, _, _) => assert!(q >= 20,
                 "Should classify as ALT when non-discriminating bases are low quality, got q={}", q),
             other => panic!(
                 "Expected Alt for TERT ONP with low-qual non-discriminating pos, got {:?}",
@@ -3904,7 +4523,7 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
+            MnpResult::Alt(q, _, _) => assert!(q > 0, "Expected Alt with quality > 0, got {}", q),
             other => panic!(
                 "Expected Alt for DNP with one masked discriminating position, got {:?}",
                 format_mnp_result(&other)
@@ -3988,11 +4607,12 @@ mod tests {
         let result = check_mnp(&record, &variant, record.qual(), 20);
 
         match result {
-            MnpResult::Alt(q, had_n) => {
+            MnpResult::Alt(q, had_n, confirmed) => {
                 assert!(q > 0,
                     "Expected Alt when N masks one position but other unmasked matches ALT, got q={}", q);
                 assert!(had_n,
                     "Expected had_n=true when N base present at discriminating position");
+                assert!(!confirmed, "an N-masked discriminating base → not confirmed");
             }
             other => panic!(
                 "Expected Alt for ONP with N at one discriminating position, got {:?}",
@@ -4326,8 +4946,9 @@ mod tests {
 
         // N at first position is masked, G at second matches ALT → classified as ALT
         match result {
-            MnpResult::Alt(_, had_n) => {
+            MnpResult::Alt(_, had_n, confirmed) => {
                 assert!(had_n, "MNP Alt with N at one position should report had_n=true");
+                assert!(!confirmed, "an N-masked discriminating base → not confirmed");
             }
             other => panic!("Expected MnpResult::Alt, got {:?}", other),
         }
@@ -4360,6 +4981,24 @@ mod tests {
 
         assert!(result.is_alt, "MNP with N-masked + ALT-matching should be ALT");
         assert!(result.has_n_base, "MNP ALT with N at one position should propagate has_n_base=true");
+        assert!(!result.mnp_confirmed, "an N-masked discriminating base → not confirmed");
+
+        // Same read with the N replaced by the ALT base: every discriminating
+        // base read → confirmed through the dispatch.
+        let full = build_record(b"GGCGGGGGGG", qual, &cigar, 0);
+        let result = check_allele_with_qual(
+            &full, &variant, &[], full.qual(), 20,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+        );
+        assert!(result.is_alt && result.mnp_confirmed, "fully read MNP ALT → confirmed");
+
+        // An SNV ALT call through the same dispatch is never MNP-confirmed.
+        let snv = build_variant_with_context(2, "A", "C", "GGATGGGGGG", 0);
+        let result = check_allele_with_qual(
+            &full, &snv, &[], full.qual(), 20,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+        );
+        assert!(result.is_alt && !result.mnp_confirmed, "SNV ALT → never MNP-confirmed");
     }
 
     // ── G4: check_complex N base propagation tests ──

@@ -17,6 +17,32 @@ regenerating a section.
 
 ---
 
+## [LRN-20260923-002] rule-body | reproduce a claim before stating it
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** In the T7 rescue work I wrote "no_improvement is unreachable" into code,
+  docs and the skill without trying a counterexample (a reviewer found one: indel-disrupted
+  reads), and reported a review finding ("rescue label contig differs from the row") as
+  general when running it showed it only happens for chr-prefixed MAF input. The step
+  review checklist asked for comments/logs/monitoring but never for evidence behind claims.
+- **Promotion target:** `.agents/rules/code-quality.md` — `DONE:` "AFTER implementing each
+  step" gains "Reproduce every claim before stating it … otherwise say it is unverified".
+
+## [LRN-20260923-001] rule-body | real-data acceptance must cover every assay the change reaches
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** The T7 rescue gate was validated on two IMPACT cohorts (68 samples) and
+  presented as done; the ACCESS duplex/simplex study (the fragment-scored assay, combined
+  by `gbcms merge`) then exposed a germline-SNP adoption (BRCA2, combined fragment ALT
+  25 → 724) and duplex/simplex rescue conflicts. Each fix layered another heuristic
+  (loosened gate → confirmed guard → error allowance) without first checking it against
+  the operator's principle (the BAM is truth), which read as a rabbit hole. The add-feature
+  procedure had lint/test QA but no real-data acceptance step at all.
+- **Promotion target:** `.agents/skills/add-feature/SKILL.md` step 6 — `DONE:` "Real-data
+  acceptance … every assay the change reaches (IMPACT tumour + matched normal; ACCESS
+  duplex + simplex through `gbcms merge`) … score against the reads".
+- **Related:** [[bam-is-truth]] memory.
+
 ## [LRN-20260627-001] rule-body | code comments & logs must explain behavior, not cite ticket labels
 - **Status:** resolved (rule promoted); cleanup of existing labels tracked as plan DX-1
 - **Cause:** rule-body

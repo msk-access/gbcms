@@ -93,14 +93,20 @@ For indels and complex variants, gbcms applies **bcftools-style left-alignment**
 !!! tip "Dynamic Window Expansion"
     If a variant shifts all the way to the window edge during left-alignment, it may not have fully converged. The engine automatically **doubles the window** (100 → 200 → 400 → ... → 2500bp) and retries. This ensures correct normalization even for variants in massive tandem repeats (e.g., centromeric regions) without penalizing the common case.
 
-After alignment, the **variant type is re-detected** based on the new allele lengths:
+Every variant that reaches REF validation gets a **type label derived from its
+final alleles** (after anchor resolution, REF correction and alignment), with the
+same rule the readers use. A row rejected before that (`EMPTY_ALLELE`,
+`ALT_EQUALS_REF`, a failed MAF anchor fetch) keeps the reader's label.
 
 | Condition | Assigned Type |
 |:----------|:-------------|
 | `ref_len == 1 && alt_len == 1` | SNP |
-| `ref_len == 1 && alt_len > 1` | INSERTION |
-| `ref_len > 1 && alt_len == 1` | DELETION |
-| Otherwise | COMPLEX |
+| `ref_len == 1 && alt_len > 1` and ALT starts with the REF base | INSERTION |
+| `ref_len > 1 && alt_len == 1` and REF starts with the ALT base | DELETION |
+| Otherwise (a delins such as `TTAC>A` or `C>TA`, or an MNP) | COMPLEX |
+
+Counting never reads this label — reads are classified by the alleles — so it is
+what `gbcms normalize` reports, not an input to counting.
 
 !!! tip "Debugging Normalization"
     Use `gbcms normalize` to see exactly how each variant was transformed. The output TSV shows original and normalized coordinates side by side, plus granular flags: `was_anchor_resolved` (MAF dash-allele conversion), `was_left_aligned` (left-shifting), and `was_normalized` (either one).
@@ -169,7 +175,7 @@ Adaptive padding=13: GCTTAAAAA... + REF/ALT + ...AAAAATTGAC  (anchored)
 
 ## Step 5: Homopolymer Decomposition Detection
 
-Some variant callers merge nearby events (e.g., a 1bp deletion + SNV in a homopolymer) into a single complex variant with an inflated deletion size. For example, `CCCCCC→T` when the reads actually show `CCCCCC→CCCCT` (a D(1) + C→T).
+Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. `CCCCCC→T` where the reads show a smaller change at the run's end. For such calls gbcms also counts a **corrected allele** and reports whichever of the two more reads support.
 
 ### Detection Criteria
 
@@ -200,14 +206,14 @@ flowchart LR
 
 ### Corrected Allele Construction
 
-When detected, a **corrected ALT allele** is built by keeping most of the homopolymer intact and appending the SNV base:
+When detected, a **corrected ALT allele** is built by keeping every base of the run but the last and replacing that last base with the base that follows the run. The corrected allele has the same length as REF:
 
 ```
 Example:  REF = CCCCCC, ALT = T, next_ref_base = T
 
 Step 1: homopolymer base = C
 Step 2: Confirmed: alt_last (T) == next_ref_base (T), T ≠ C
-Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCT
+Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCCT
 ```
 
 ### Dual-Counting Flow
@@ -221,7 +227,7 @@ flowchart TD
     Input -->|"in parallel"| CountDecomp
 
     CountOrig["count_bam(original: CCCCCC→T)"]
-    CountDecomp["count_bam(corrected: CCCCCC→CCCCT)"]
+    CountDecomp["count_bam(corrected: CCCCCC→CCCCCT)"]
 
     CountOrig --> Compare
     CountDecomp --> Compare
@@ -234,12 +240,14 @@ flowchart TD
     classDef pass fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
 ```
 
-!!! info "Self-Validating"
-    The warning flag only appears when reads *actually* support the decomposed representation better. If the original variant gets more ALT support, it's used as-is with a normal `PASS` status. This makes the approach safe — it never blindly corrects variants.
+The corrected allele is scored as unique sequence (`repeat_span` 0). In RNA with a GTF it takes the original's gene strand, so `--enforce-strandedness` applies to it as to the original. `WARN_HOMOPOLYMER_DECOMP` is set **per sample**: a row carries it only when that sample's corrected allele won.
+
+!!! warning "A heuristic arbitration"
+    The flag appears only when the corrected allele got more ALT support than the called one. If the original gets more, it is used as-is with a normal `PASS` status. The comparison is not an exact haplotype match, though. Reads at real loci carry several forms: the called delins, the corrected allele, a 1bp deletion plus the change, or other alleles of the run. Both classifiers can claim reads of forms neither describes exactly. Inspect the reads at flagged loci; a redesign is tracked in the project plan.
 
 !!! example "Real-World: SOX2"
-    **SOX2** at chr17:181430901: `CCCCCC→T` (6bp→1bp, net −5bp).
-    Original count: **alt=3**. Corrected `CCCCCC→CCCCT` count: **alt=79**.
+    **SOX2** at chr3:181430901: `CCCCCC→T` (6bp→1bp, net −5bp).
+    Original count: **alt=3**. Corrected `CCCCCC→CCCCCT` count: **alt=79**.
     Corrected wins → `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
 
 ---
@@ -258,9 +266,11 @@ string is byte-identical in the MAF and the VCF.
 | `PASS` | `WARN_REF_CORRECTED` | REF ≥90% match; corrected to FASTA REF | ✅ |
 | `PASS` | `WARN_HOMOPOLYMER_DECOMP` | Passed, but the corrected/decomposed allele was used | ✅ |
 | `PASS` | `MULTI_ALLELIC` | Passed; overlaps a sibling variant at the same locus (sibling-ALT exclusion active) | ✅ |
+| `PASS` | `TRACT_CLUSTER` | Passed; shares a repeat-tract scan window with a co-annotated length-changing variant (exclusive AD assignment active) | ✅ |
 | `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
 | `FAIL` | `FETCH_FAILED` | Could not fetch the reference region | ❌ |
 | `FAIL` | `EMPTY_ALLELE` | Empty REF or ALT (malformed / non-left-anchored indel) | ❌ |
+| `FAIL` | `ALT_EQUALS_REF` | ALT equals REF (any case; `-` for both in a MAF): no change to count | ❌ |
 | `FAIL` | `ALT_CONTAINS_N` | ALT allele contains an `N` base | ❌ |
 
 Reasons **stack**: a PASS variant can carry `WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP`.
