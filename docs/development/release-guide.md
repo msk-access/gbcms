@@ -117,6 +117,19 @@ Add new section at top:
 - Changes description
 ```
 
+### 3b. Remove cycle plans
+
+Cycle plans (`CYCLE_X.Y.Z_PLAN.md`) live on `develop` and never ship. Delete
+every one on the release branch, and point `CONTINUITY.md` elsewhere if it
+references them:
+
+```bash
+git rm CYCLE_*_PLAN.md
+```
+
+The back-merge (step 10) then removes the finished cycle's plan from `develop`
+too. The next cycle's plan is added to `develop` after the back-merge.
+
 ### 4. Run Pre-Release Checks
 
 ```bash
