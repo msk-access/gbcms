@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-24_
+_Last updated: 2026-09-25_
 
 ## Now
 **6.5.0 cycle complete on develop; release-candidate validation PASSED
@@ -11,7 +11,12 @@ _Last updated: 2026-09-24_
 ASJD-2 markers (#100), T3–T5 observability (#102), T7 MNP rescue (#101), T8
 contig naming + merge (#104), T6 one BAQ rule across RNA views (#105), T10
 decomposed twin strand + per-sample flag (#113). 6.4.0 is released (#98, tag
-`6.4.0`) and main is merged back into develop.
+`6.4.0`) and main is merged back into develop. **T12 (#110) — VCF ↔ MAF
+representation follows vcf2maf / maf2vcf, plus `gbcms convert` — is PR #116,
+the last change before the cut** (operator decision; a breaking output change,
+see the CHANGELOG). Its evidence is in the plan's T12 section. On the RC data
+with #116, DNA MAF output is byte-identical (1060/1060) and RNA too (33/33
+samples), so the RC result below holds.
 
 RC check (develop 3ed1a4d3 vs the 6.4.0 release, every changed cell attributed;
 harness `~/test/gbcms/harness/rc650/`, local only, README there):
@@ -26,21 +31,40 @@ harness `~/test/gbcms/harness/rc650/`, local only, README there):
 The T1/T2 acceptance harnesses lost in the 2026-09-23 scratchpad wipe are rebuilt
 there; per-ticket harnesses: `~/test/gbcms/harness/{t6,t7,t8,t9t10}/`.
 
-**Next → release 6.5.0** (same procedure as 6.4.0): cut `release/6.5.0` from
+**Next → merge #116, then release 6.5.0** (same procedure as 6.4.0): cut `release/6.5.0` from
 develop — version bump in the 11 files the 6.4.0 cut touched (pyproject,
 `src/gbcms/__init__.py`, `rust/Cargo.toml` + lock, `nextflow/nextflow.config`, the
 five `nextflow/modules/local/gbcms/*/main.nf` container tags) + CHANGELOG cut →
 PR → main, gated on: container build+push (operator) → the HPC 56-sample IMPACT
 matrix vs the 6.4.0 baseline (script at `~/test/gbcms/dev_regression/` on HPC,
 repointed at the rc container) + RNA smokes → tag `v6.5.0` → merge → back-merge
-develop. Optional: head-to-head vs C++ GBCMS 1.2.4/1.2.5 (on HPC).
+develop. Optional: head-to-head vs C++ GBCMS 1.2.4/1.2.5 (on HPC). If the HPC
+matrix feeds VCF input and compares MAF output by `Start_Position`, key it on
+`vcf_pos`/`vcf_ref`/`vcf_alt` instead: T12 changes VCF-input MAF coordinates by
+design (MAF-input output is byte-identical).
 
-**After the cut:** T9 span-aware exon-edge BAQ rule (#106, low priority), T11
-decomposition arbitration redesign (#111), #112 (consumers of a decomposed
-winner), #110 (VCF delins with a one-base ALT treated as a pure deletion — decide
-whether it rides 6.5.0), #114 (RNA strandedness gating: `rna_antisense_depth`
-always 0 and `STRAND_DISCORDANT` unreachable at defaults — an open decision
-carried from #94), and #92's three remaining items.
+**After the cut** (open issues):
+- #114: RNA strandedness gating — `rna_antisense_depth` always 0 and
+  `STRAND_DISCORDANT` unreachable at defaults; an open decision carried from #94.
+- #92's three remaining items: stale semiglobal scores in the local-alignment
+  fallback tail (medium, can hide `partial_alt`); clamp the left-align window to
+  the contig end (low); clip-rescue for clip-borne ITDs (low).
+- #112: consumers of a decomposed winner. #111: T11 arbitration redesign
+  (measure first; twins are rare).
+- #106: T9 span-aware exon-edge BAQ rule (low priority).
+
+**Low priority, from the T12 reviews** (documented or deferred, no issue yet):
+- MafReader does not check allele bases: a MAF ALT with an IUPAC code (e.g. `R`)
+  passes and counts 0 ALT silently (the VCF reader skips such alleles). First
+  post-cut candidate.
+- `End_Position` is required but unused (rows without it are skipped, warned).
+- A MAF deletion at Start 1 is a `FETCH_FAILED` row (telomere only).
+- VCF → MAF leaves `Tumor_Seq_Allele1` empty (vcf2maf fills it from GT).
+- Deliberate vs vcf2maf: case-insensitive trim; a differing
+  `Tumor_Seq_Allele1` is not written as a second ALT.
+- Cosmetic: `is_indel` in prepare reduces to `ref_len != alt_len`; writer file
+  handles on a mid-write exception.
+- The docs build prints mkdocs-material's MkDocs 2.0 notice; a pin may be needed.
 
 ### Previous: code-review remediation
 Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)

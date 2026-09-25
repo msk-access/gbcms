@@ -671,7 +671,41 @@ twin's allele (`REF[..len-1] + X`) does not match its documentation
 - Related, filed separately:
   - #112: when the corrected allele wins, per-transcript/ASJD, merge,
     observations and input validation don't follow the winner;
-  - #110: a VCF delins with a one-base ALT is treated as a pure deletion.
+  - #110: a VCF delins with a one-base ALT is treated as a pure deletion
+    (fixed by T12, #116).
+
+## T12 — VCF ↔ MAF representation follows vcf2maf / maf2vcf (#110; #116)
+
+**Finding.** VCF → MAF conversion followed a length-only type label, so 9 of 17
+allele shapes differed from vcf2maf (e.g. `TTAC>A` written `702–704 TAC>-`).
+MAF input wrote `-` alleles into VCF output. `*` / `<DEL>` ALTs were genotyped
+as nonsense rows, and REF == ALT passed and was counted. Counts were right for
+every shape; only the representation was wrong.
+
+**Done (PR #116; operator decision to ship before the cut).**
+- The rules are vcf2maf's and maf2vcf's, run locally as the oracle (commit
+  589406f; see `.agents/memory/vcf2maf-oracle.md`). They live in one place,
+  `CoordinateKernel`: `vcf_to_maf`, `maf_to_vcf`, `maf_alleles`, `allele_type`.
+- `gbcms convert` does the same conversion without counting.
+- VCF-input MAFs gain `vcf_ref` / `vcf_alt` (operator request, vcf2maf's
+  names). This is the one exception to the no-new-columns rule.
+- The new FAIL reason `ALT_EQUALS_REF`, and the VCF reader's per-reason skips.
+- Merge and the mFSD report key VCF-input rows on the VCF record.
+- It is a breaking output change: re-genotype every flavor with one version
+  before `gbcms merge`.
+
+**Evidence** (local; aggregates only).
+- The synthetic 17-shape oracle battery.
+- 102,238 unique sign-out shapes: MAF→VCF matches maf2vcf on 102,074 of
+  102,076 comparable rows, and VCF→MAF matches vcf2maf on every row. The
+  exceptions are the only two REF == ALT rows.
+- The 28 RC DNA runs:
+  - MAF→MAF byte-identical to develop, 1060/1060;
+  - MAF→VCF consistent, 1060/1060;
+  - VCF input counts the same as MAF input, 1060/1060.
+- The 33-sample FORTE RNA cohort: MAF→MAF byte-identical to develop, 33/33
+  samples (94 rows). The RC result below therefore holds for develop with
+  #116.
 
 ## Release-candidate validation (2026-09-24) — PASSED
 
