@@ -182,6 +182,7 @@ Every N/masked/partial path must produce a deterministic, traceable outcome:
 | MNP with N + low-BQ | `LowQuality` (DP only) | +1 | 0 | `trace` |
 | Complex with N in haplotype | via masked compare | +1 | depends on match | `trace` |
 | ALT = "N" in input VCF/MAF | `FAIL` + reason `ALT_CONTAINS_N` | — | — | `warn` (validation) |
+| ALT equal to REF in input VCF/MAF | `FAIL` + reason `ALT_EQUALS_REF` | — | — | `warn` (validation) |
 | ThirdAllele with partial match | neither + partial | — | +1 | `trace` |
 
 ---

@@ -93,9 +93,10 @@ For indels and complex variants, gbcms applies **bcftools-style left-alignment**
 !!! tip "Dynamic Window Expansion"
     If a variant shifts all the way to the window edge during left-alignment, it may not have fully converged. The engine automatically **doubles the window** (100 → 200 → 400 → ... → 2500bp) and retries. This ensures correct normalization even for variants in massive tandem repeats (e.g., centromeric regions) without penalizing the common case.
 
-Every prepared variant's **type label is derived from its final alleles**
-(after anchor resolution, REF correction and alignment), with the same rule the
-readers use:
+Every variant that reaches REF validation gets a **type label derived from its
+final alleles** (after anchor resolution, REF correction and alignment), with the
+same rule the readers use. A row rejected before that (`EMPTY_ALLELE`,
+`ALT_EQUALS_REF`, a failed MAF anchor fetch) keeps the reader's label.
 
 | Condition | Assigned Type |
 |:----------|:-------------|
@@ -269,6 +270,7 @@ string is byte-identical in the MAF and the VCF.
 | `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
 | `FAIL` | `FETCH_FAILED` | Could not fetch the reference region | ❌ |
 | `FAIL` | `EMPTY_ALLELE` | Empty REF or ALT (malformed / non-left-anchored indel) | ❌ |
+| `FAIL` | `ALT_EQUALS_REF` | ALT equals REF (any case; `-` for both in a MAF): no change to count | ❌ |
 | `FAIL` | `ALT_CONTAINS_N` | ALT allele contains an `N` base | ❌ |
 
 Reasons **stack**: a PASS variant can carry `WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP`.

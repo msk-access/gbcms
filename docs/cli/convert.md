@@ -20,10 +20,13 @@ use for their own output, without a BAM:
   and the record itself is kept in `vcf_pos` / `vcf_ref` / `vcf_alt`. The columns
   are those of a VCF-input `--format maf` row before its count columns. ALT
   alleles that cannot be counted (`*`, symbolic, breakends, `.`) are skipped the
-  same way, with a WARNING per reason.
+  same way: the first few are logged individually, then one WARNING gives the
+  totals by reason.
 - **MAF → VCF** — each row as maf2vcf writes it: the reference base is prepended
-  when an allele is `-`, or when the alleles differ in length and first base.
-  Records are written in input order; contigs keep the MAF's naming.
+  when an allele is `-`, or when the alleles differ in length and first base
+  (the base after, at position 1). Alleles are read as maf2vcf reads them
+  (`Tumor_Seq_Allele1` when `Tumor_Seq_Allele2` is the reference). Records are
+  written in input order; contigs keep the MAF's naming.
 
 It converts representation only: REF is not checked against the reference and
 nothing is left-aligned ([gbcms normalize](normalize.md) does both). The rules
@@ -40,9 +43,8 @@ and worked examples are in [Output Formats](../reference/output-formats.md).
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--fasta`, `-f` | — | Reference FASTA (indexed). Required for MAF input: maf2vcf's anchor base comes from it. A base it cannot supply is written as `N` and counted in a WARNING. |
+| `--fasta`, `-f` | — | Reference FASTA with its `.fai` index (`samtools faidx`). Required for MAF input: maf2vcf's anchor base comes from it. A base it cannot supply is written as `N` and counted in a WARNING. Not used for VCF input (a WARNING says so). |
 | `--verbose`, `-V` | `false` | Enable debug logging |
-| `--trace`, `-T` | `false` | Enable per-read Rust trace logging (slow). Implies `--verbose`. |
 
 ## Examples
 

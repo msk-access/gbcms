@@ -394,25 +394,38 @@ fn prepare_single_variant(
     let original_ref = variant.ref_allele.clone();
     let original_alt = variant.alt_allele.clone();
 
-    // Step 0: reject structurally empty alleles up front. The internal representation
-    // is VCF-style (anchor-based) — a true indel keeps its anchor base, and MAF dash
-    // alleles arrive as the literal "-" (resolved in Step 1), never "". An empty REF or
-    // ALT is therefore always malformed input: counting it would lean on the engine's
-    // defensive empty-allele guards and silently yield zero counts. Reject it loudly
-    // here with a FAIL status (mirrors the ALT-contains-N gate below) so the variant is
-    // surfaced, not quietly dropped to all-zero.
-    if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
+    // Step 0: reject malformed alleles up front, each as a FAIL row (mirrors the
+    // ALT-contains-N gate below) so the variant is surfaced, not quietly zeroed or
+    // counted as something it is not:
+    // - EMPTY_ALLELE: the internal representation is VCF-style (anchor-based) — a
+    //   true indel keeps its anchor base, and MAF dash alleles arrive as the literal
+    //   "-" (resolved in Step 1), never "". An empty REF or ALT is always malformed;
+    //   counting it would lean on the engine's defensive empty-allele guards and
+    //   silently yield zero counts.
+    // - ALT_EQUALS_REF: an ALT equal to its REF (bases compared case-insensitively;
+    //   "-" for both in a MAF) describes no change, so every read would match both
+    //   alleles and the counts would mean nothing.
+    let malformed = if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
+        Some(("EMPTY_ALLELE", "malformed indel; MAF dash alleles must be '-', not ''"))
+    } else if variant.ref_allele.eq_ignore_ascii_case(&variant.alt_allele) {
+        Some(("ALT_EQUALS_REF", "ALT equals REF, no change to count"))
+    } else {
+        None
+    };
+    if let Some((reason, why)) = malformed {
         warn!(
-            "Empty allele at {}:{} {:?}>{:?} — rejecting (malformed indel; MAF dash alleles must be '-', not '')",
+            "Rejecting {}:{} {:?}>{:?} — {} ({})",
             variant.chrom,
             variant.pos + 1,
             variant.ref_allele,
             variant.alt_allele,
+            reason,
+            why,
         );
         return Ok(PreparedVariant {
             variant: variant.clone(),
             gbcms_status: "FAIL".to_string(),
-            gbcms_status_reason: "EMPTY_ALLELE".to_string(),
+            gbcms_status_reason: reason.to_string(),
             gbcms_diagnostic: String::new(),
             gbcms_rescue: String::new(),
             was_anchor_resolved: false,
@@ -431,7 +444,7 @@ fn prepare_single_variant(
     let (mut pos, mut ref_al, mut alt_al) = if is_maf
         && (variant.ref_allele == "-" || variant.alt_allele == "-")
     {
-        // MAF indel/complex: resolve anchor base
+        // MAF '-' allele: resolve the anchor base
         // variant.pos is 0-based (from maf_to_internal), start_pos is 1-based
         let start_pos_1based = variant.pos + 1;
         match resolve_maf_anchor(

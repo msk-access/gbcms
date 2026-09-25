@@ -584,7 +584,6 @@ def test_convert_output_must_be_the_other_format(tmp_path):
 # ── MAF alleles as maf2vcf reads them ────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="Tumor_Seq_Allele1 and placeholder alleles are ignored")
 def test_maf_alleles_follow_maf2vcf():
     """The variant allele is Tumor_Seq_Allele2, or Tumor_Seq_Allele1 when
     Allele2 is empty or the reference (older MAFs); alleles made only of
@@ -601,7 +600,6 @@ def test_maf_alleles_follow_maf2vcf():
     assert maf("A", "A", "A") == ("A", "A")
 
 
-@pytest.mark.xfail(strict=True, reason="MafReader reads Tumor_Seq_Allele2 only")
 def test_maf_reader_uses_allele1_when_allele2_is_the_reference(tmp_path, caplog):
     maf = tmp_path / "s.maf"
     maf.write_text(
@@ -616,7 +614,6 @@ def test_maf_reader_uses_allele1_when_allele2_is_the_reference(tmp_path, caplog)
     assert any("Tumor_Seq_Allele1" in m and "1 row" in m for m in caplog.messages)
 
 
-@pytest.mark.xfail(strict=True, reason="position 1 gets an anchor at POS 0")
 def test_maf_to_vcf_at_position_1_uses_the_base_after():
     """VCF spec: an event at position 1 carries the base after it."""
     bases = {1: "C", 2: "G", 3: "T"}
@@ -624,7 +621,6 @@ def test_maf_to_vcf_at_position_1_uses_the_base_after():
     assert CoordinateKernel.maf_to_vcf(1, "CG", "A", bases.__getitem__) == (1, "CGT", "AT")
 
 
-@pytest.mark.xfail(strict=True, reason="REF '.' is yielded; '.' in an ALT list is a 'breakend'")
 def test_vcf_reader_skips_non_sequence_ref_and_names_missing_alts(tmp_path, caplog):
     vcf = tmp_path / "s.vcf"
     vcf.write_text(
@@ -640,7 +636,6 @@ def test_vcf_reader_skips_non_sequence_ref_and_names_missing_alts(tmp_path, capl
     assert "REF" in summary and "missing ALT" in summary and "breakend" not in summary
 
 
-@pytest.mark.xfail(strict=True, reason="REF == ALT passes preparation and is counted")
 def test_prepare_rejects_alt_equal_to_ref(tmp_path):
     """A 'variant' whose ALT is its REF (any case; or '-' for both in a MAF)
     is a visible FAIL row, not a silent PASS with meaningless counts."""
@@ -667,7 +662,6 @@ def _vcf_input_maf(path, records):
     w.close()
 
 
-@pytest.mark.xfail(strict=True, reason="merge joins VCF-input rows on the trimmed MAF key")
 def test_merge_joins_vcf_input_rows_by_their_record(tmp_path):
     """TCT>TCG and T>G trim to the same MAF record; each VCF record stays one
     merged row, joined to its own counterpart."""
@@ -686,7 +680,6 @@ def test_merge_joins_vcf_input_rows_by_their_record(tmp_path):
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="duplicate join keys multiply rows silently")
 def test_merge_warns_on_duplicate_join_keys(tmp_path, caplog):
     maf = (
         "Chromosome\tStart_Position\tEnd_Position\tReference_Allele\tTumor_Seq_Allele2\t"
@@ -706,7 +699,6 @@ def test_merge_warns_on_duplicate_join_keys(tmp_path, caplog):
     assert any("duplicate" in m and "duplex" in m for m in caplog.messages)
 
 
-@pytest.mark.xfail(strict=True, reason="the report keys VCF-input rows by MAF coordinates")
 def test_mfsd_report_keys_rows_by_the_parquet_record():
     """The fragment-size Parquet is keyed by the variant as genotyped (the VCF
     record for VCF input; the MAF alleles, Allele1 fallback included, for MAF
@@ -729,8 +721,7 @@ def test_mfsd_report_keys_rows_by_the_parquet_record():
 # ── gbcms convert: input checks ──────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="convert has no input checks yet")
-def test_convert_checks_its_inputs(tmp_path, caplog):
+def test_convert_checks_its_inputs(tmp_path):
     (tmp_path / "s.maf").write_text(_maf_text())
     (tmp_path / "s.vcf").write_text(_vcf_text())
     missing = runner.invoke(
@@ -754,18 +745,9 @@ def test_convert_checks_its_inputs(tmp_path, caplog):
     assert res.exit_code == 1 and not (tmp_path / "o.vcf").exists()
     assert not (tmp_path / "raw.fa.fai").exists()
     fasta = _fasta(tmp_path)
-    with caplog.at_level(logging.WARNING):
-        ok = runner.invoke(
-            app,
-            [
-                "convert",
-                "-v",
-                str(tmp_path / "s.vcf"),
-                "-f",
-                str(fasta),
-                "-o",
-                str(tmp_path / "o.maf"),
-            ],
-        )
+    ok = runner.invoke(
+        app,
+        ["convert", "-v", str(tmp_path / "s.vcf"), "-f", str(fasta), "-o", str(tmp_path / "o.maf")],
+    )
     assert ok.exit_code == 0
-    assert any("--fasta" in m and "VCF input" in m for m in caplog.messages)
+    assert "--fasta is not used for VCF input" in ok.output

@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed — VCF ↔ MAF representation follows vcf2maf / maf2vcf (#110)
+### ⚠️ Breaking Changes — VCF ↔ MAF representation follows vcf2maf / maf2vcf (#110)
+
+> VCF-input MAF output changes coordinates, alleles and `Variant_Type` for many
+> indel and MNP shapes and gains two columns; MAF-input VCF output changes
+> `POS`/`REF`/`ALT` for indels. Counts are unchanged. Re-genotype every flavor
+> (e.g. duplex and simplex) with the same version before `gbcms merge`.
 
 - VCF input → MAF writes each record exactly as vcf2maf does. It trims the
   leading bases REF and ALT share, never trailing ones; `Start_Position`,
@@ -18,35 +23,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `C>TA` became `->A` (vcf2maf: `821 C>TA`, INS);
   - `TCT>TCG` stayed a 3bp TNP (vcf2maf: SNP `T>G` at the changed base);
   - `TC>TCGG` stayed untrimmed (vcf2maf: `- > GG`).
+
+  Bases are compared case-insensitively, so only mixed-case alleles can differ
+  from vcf2maf.
 - New MAF columns `vcf_ref` / `vcf_alt` keep the VCF record itself, alongside
   `vcf_pos` (vcf2maf's names). Each row's `vcf_alt` is its own allele;
   multi-allelic records give one row per ALT. These columns appear only for VCF
   input.
 - MAF input → VCF output writes each row as maf2vcf does. When an allele is `-`,
   or the alleles differ in length and first base, the reference base before
-  them is prepended from `--fasta`. Before, `-` alleles were written into the
-  VCF (`462 AA>-`), which is not valid VCF.
+  them is prepended from `--fasta`. At position 1, the base after the event is
+  appended instead (VCF spec). Before, `-` alleles were written into the VCF
+  (`462 AA>-`), which is not valid VCF.
+- MAF alleles are read as maf2vcf reads them:
+  - `Tumor_Seq_Allele1` is the variant allele when `Tumor_Seq_Allele2` is empty
+    or the reference (older MAFs). Such rows were genotyped as REF against
+    itself; the reader now logs how many rows it read this way.
+  - Alleles made only of `-`, `?` or `0` are read as `-`.
+- A variant whose ALT equals its REF (any case; `-` for both in a MAF) is a
+  `FAIL` row with the new reason `ALT_EQUALS_REF`. Before, it passed and was
+  counted, meaninglessly.
 - `--show-normalization` `norm_*` MAF columns follow the left-aligned alleles,
   not a type label (a delins was written with its first base stripped).
 - Type labels come from the alleles in both readers and in variant preparation.
   INSERTION / DELETION now requires a shared anchor base; a delins such as
   `TTAC>A` or `C>TA` is COMPLEX. `gbcms normalize` reports these labels.
   Counting never read them.
-- The VCF reader skips ALT alleles it cannot count, with a WARNING and
-  per-reason totals: `*`, symbolic `<...>`, breakends, a missing `.`, and other
-  non-sequence alleles. Before, `*` and `<DEL>` were genotyped as nonsense rows
-  and `.` was dropped silently. ALT `N` still reaches preparation, which reports
-  it as a `FAIL` row.
+- The VCF reader skips alleles it cannot count, with a WARNING and per-reason
+  totals: ALT `*`, symbolic `<...>`, breakends, a missing `.`, other
+  non-sequence alleles, and a REF that is not a base sequence. Before, `*` and
+  `<DEL>` were genotyped as nonsense rows, `.` was dropped silently, and an
+  empty REF (read as `.`) was genotyped. ALT `N` still reaches preparation,
+  which reports it as a `FAIL` row.
+- `gbcms merge` joins on the VCF record (`vcf_pos` / `vcf_ref` / `vcf_alt`) when
+  every input is VCF-derived, because two VCF records can trim to one MAF
+  record. It also warns when an input repeats a join key; each such row joined
+  every matching row of the other inputs, silently.
+- The mFSD HTML report finds each variant's MAF row by the key its Parquet uses
+  (the VCF record for VCF input). VCF-input indels, and some other shapes, were
+  reported without their MAF row (no gene, no statistics).
 - Counting is unchanged: every allele shape counts identically from VCF and MAF
   input.
 - Docs: for VCF input, `Strand`, `Variant_Classification` and
-  `Tumor_Seq_Allele1` are empty. They had been documented as filled.
+  `Tumor_Seq_Allele1` are empty, and `vcf_id` is empty for a `.` ID. They had
+  been documented otherwise. `End_Position` is listed as a required MAF column.
 
 ### Added — `gbcms convert`
 
 - `gbcms convert` converts VCF → MAF (vcf2maf's coordinates, with `vcf_pos` /
-  `vcf_ref` / `vcf_alt`) or MAF → VCF (maf2vcf's records; needs `--fasta`)
-  without counting. It uses the same conversion as the `dna` / `rna` output.
+  `vcf_ref` / `vcf_alt`) or MAF → VCF (maf2vcf's records; needs an indexed
+  `--fasta`) without counting. It uses the same conversion as the `dna` / `rna`
+  output.
 
 ### Fixed — homopolymer-decomposed twin: strand and per-sample flag (#107)
 

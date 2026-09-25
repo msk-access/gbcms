@@ -52,6 +52,10 @@ VARIANT_KEY: list[str] = [
 # whose inputs name contigs differently (chr1 vs 1, chrM vs MT) still join.
 _CONTIG_KEY = "_contig_key"
 JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
+# VCF-input MAFs also carry the VCF record each row came from. It is unique per
+# record ALT, whereas two records can trim to one MAF record (TCT>TCG and T>G at
+# the changed base), so the joins use it whenever every input has it.
+VCF_RECORD_KEY: list[str] = [_CONTIG_KEY, "vcf_pos", "vcf_ref", "vcf_alt"]
 # Prefixes of the other per-input join helpers (row numbers, each later
 # input's own contig names). Input columns with these names are rejected.
 _HELPER_PREFIXES = ("_row_", "_chrom_")
@@ -182,8 +186,9 @@ COMBINED_ADDITIVE_ALL: list[str] = (
 def merge_mafs(config: MergeConfig) -> None:
     """Merge per-BAM-type genotyped MAFs into a single type-prefixed output.
 
-    Performs an outer join on the 5-column variant key, prefixes gbcms count
-    columns with the BAM type label, optionally computes combined
+    Performs an outer join on the 5-column variant key (on the VCF record —
+    vcf_pos / vcf_ref / vcf_alt — when every input is VCF-derived), prefixes
+    gbcms count columns with the BAM type label, optionally computes combined
     simplex_duplex columns, and writes the merged result.
 
     Args:
@@ -202,6 +207,7 @@ def merge_mafs(config: MergeConfig) -> None:
 
     # ── 1. Scan and rename ────────────────────────────────────────────────────
     frames: dict[str, pl.LazyFrame] = {}
+    input_columns: dict[str, list[str]] = {}
     for bam_type, path in config.inputs.items():
         logger.info("Scanning %s MAF: %s", bam_type, path)
         lf = scan_maf(path)
@@ -224,8 +230,12 @@ def merge_mafs(config: MergeConfig) -> None:
             logger.info("  Columns already prefixed for '%s', using as-is", bam_type)
 
         frames[bam_type] = _with_contig_key(lf, bam_type).with_row_index(_row_col(bam_type))
+        input_columns[bam_type] = schema_names
 
     # ── 2. Progressive outer join ─────────────────────────────────────────────
+    join_key = _join_key(input_columns)
+    for bam_type, lf in frames.items():
+        _warn_duplicate_keys(lf, join_key, bam_type)
     types = list(frames.keys())
     merged = frames[types[0]]
 
@@ -240,10 +250,10 @@ def merge_mafs(config: MergeConfig) -> None:
             c for c in join_frame.collect_schema().names() if _is_prefixed_gbcms_col(c, join_type)
         ]
         merged = merged.join(
-            join_frame.select([*JOIN_KEY, "Chromosome", _row_col(join_type), *count_cols]).rename(
+            join_frame.select([*join_key, "Chromosome", _row_col(join_type), *count_cols]).rename(
                 {"Chromosome": f"_chrom_{join_type}"}
             ),
-            on=JOIN_KEY,
+            on=join_key,
             how="full",
             coalesce=True,
         )
@@ -315,6 +325,30 @@ def merge_mafs(config: MergeConfig) -> None:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _join_key(input_columns: dict[str, list[str]]) -> list[str]:
+    """The VCF record key when every input carries it (all VCF-derived), else
+    the MAF variant key."""
+    if all(set(VCF_RECORD_KEY[1:]) <= set(cols) for cols in input_columns.values()):
+        logger.info("  Joining on the VCF record (vcf_pos, vcf_ref, vcf_alt): every input has it")
+        return VCF_RECORD_KEY
+    return JOIN_KEY
+
+
+def _warn_duplicate_keys(lf: pl.LazyFrame, join_key: list[str], bam_type: str) -> None:
+    """Warn when an input lists one join key more than once: a full join pairs
+    each such row with every matching row of the other inputs, so the merged
+    output repeats them."""
+    dups = lf.group_by(join_key).len().filter(pl.col("len") > 1).collect()
+    if dups.height:
+        logger.warning(
+            "  '%s' has %d duplicate join key(s) (%d rows): each joins with every matching "
+            "row of the other inputs, so the merged output repeats them",
+            bam_type,
+            dups.height,
+            int(dups["len"].sum()),
+        )
 
 
 def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:

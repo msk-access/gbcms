@@ -99,6 +99,22 @@ def _is_compressed_vcf(path: Path) -> bool:
     return any(name_lower.endswith(suffix) for suffix in _COMPRESSED_VCF_SUFFIXES)
 
 
+def _variant_format(path: Path) -> str:
+    """``"vcf"`` or ``"maf"`` by extension; an unsupported extension is logged
+    and exits 1 before any I/O (every command that reads a variant file)."""
+    if _is_compressed_vcf(path) or path.suffix.lower() == ".vcf":
+        return "vcf"
+    if path.suffix.lower() == ".maf":
+        return "maf"
+    logger.error(
+        "Unsupported variant file extension '%s'. "
+        "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
+        path.suffix.lower(),
+        path,
+    )
+    raise typer.Exit(code=1)
+
+
 def _exit_on_sample_failure(result: dict) -> None:
     """Propagate per-sample *failures* to the process exit code (HI-1).
 
@@ -399,16 +415,7 @@ def dna(
     # ── 2. Pre-model validation (semantic + cross-option checks) ───────────────
 
     # GAP 12: Reject unsupported variant file extensions before any I/O.
-    _is_vcf_gz = _is_compressed_vcf(variant_file)
-    _ext = variant_file.suffix.lower()
-    if not _is_vcf_gz and _ext not in _VALID_VARIANT_EXTENSIONS:
-        logger.error(
-            "Unsupported variant file extension '%s'. "
-            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
-            _ext,
-            variant_file,
-        )
-        raise typer.Exit(code=1)
+    is_maf = _variant_format(variant_file) == "maf"
 
     # GAP 10: Validate --column-prefix charset (letters, digits, underscores only).
     if column_prefix and not _COLUMN_PREFIX_RE.match(column_prefix):
@@ -420,7 +427,7 @@ def dna(
         raise typer.Exit(code=1)
 
     # GAP 9: Warn when --preserve-barcode is used with non-MAF input (it is a no-op).
-    if preserve_barcode and not _is_vcf_gz and _ext != ".maf":
+    if preserve_barcode and not is_maf:
         logger.warning(
             "--preserve-barcode has no effect when the variant file is not a MAF "
             "(got '%s'). The BAM sample name will be used in all output rows.",
@@ -790,16 +797,7 @@ def rna(
     command_line = _log_command()
     logger.info("Running gbcms v%s in RNA mode", __version__)
     # ── 2. Pre-model validation ──
-    _is_vcf_gz = _is_compressed_vcf(variant_file)
-    _ext = variant_file.suffix.lower()
-    if not _is_vcf_gz and _ext not in _VALID_VARIANT_EXTENSIONS:
-        logger.error(
-            "Unsupported variant file extension '%s'. "
-            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
-            _ext,
-            variant_file,
-        )
-        raise typer.Exit(code=1)
+    is_maf = _variant_format(variant_file) == "maf"
 
     if column_prefix and not _COLUMN_PREFIX_RE.match(column_prefix):
         logger.error(
@@ -808,7 +806,7 @@ def rna(
         )
         raise typer.Exit(code=1)
 
-    if preserve_barcode and not _is_vcf_gz and _ext != ".maf":
+    if preserve_barcode and not is_maf:
         logger.warning(
             "--preserve-barcode has no effect when the variant file is not a MAF.",
         )
@@ -986,16 +984,7 @@ def build_gtf_cache(
 
     setup_logging(verbose=verbose, trace=False)
 
-    # Extension pre-check (mirrors the dna/rna/normalize commands).
-    if (
-        not _is_compressed_vcf(variants)
-        and variants.suffix.lower() not in _VALID_VARIANT_EXTENSIONS
-    ):
-        logger.error(
-            "Unsupported variant file extension '%s'. Expected .vcf, .vcf.gz, .vcf.bgz, or .maf.",
-            variants.suffix,
-        )
-        raise typer.Exit(code=1)
+    _variant_format(variants)
 
     chroms = [v.chrom for v in read_variant_file(variants)]
     if not chroms:
@@ -1045,17 +1034,7 @@ def normalize(
 
     setup_logging(verbose=verbose, trace=trace)
 
-    # Apply the same file extension pre-check as the 'run' command.
-    _is_vcf_gz = _is_compressed_vcf(variant_file)
-    _ext = variant_file.suffix.lower()
-    if not _is_vcf_gz and _ext not in _VALID_VARIANT_EXTENSIONS:
-        logger.error(
-            "Unsupported variant file extension '%s'. "
-            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
-            _ext,
-            variant_file,
-        )
-        raise typer.Exit(code=1)
+    _variant_format(variant_file)
 
     normalize_variants(
         variant_file=variant_file,
@@ -1071,6 +1050,8 @@ def convert(
         ...,
         "--variants",
         "-v",
+        exists=True,
+        dir_okay=False,
         help="VCF (.vcf, .vcf.gz, .vcf.bgz; written as MAF) or MAF (.maf; written as VCF)",
     ),
     output: Path = typer.Option(
@@ -1080,16 +1061,12 @@ def convert(
         None,
         "--fasta",
         "-f",
-        help="Reference FASTA (indexed). Required for MAF input: the anchor base "
-        "maf2vcf prepends to '-' alleles comes from it.",
+        exists=True,
+        dir_okay=False,
+        help="Reference FASTA with its .fai index. Required for MAF input: the anchor "
+        "base maf2vcf prepends to '-' alleles comes from it.",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
-    trace: bool = typer.Option(
-        False,
-        "--trace",
-        "-T",
-        help="Enable per-read Rust trace logging (slow). Implies --verbose.",
-    ),
 ):
     """
     Convert between VCF and MAF without counting, as vcf2maf / maf2vcf do.
@@ -1100,17 +1077,8 @@ def convert(
     """
     from .convert import maf_to_vcf_file, vcf_to_maf_file
 
-    setup_logging(verbose=verbose, trace=trace)
-    ext = variant_file.suffix.lower()
-    is_vcf = _is_compressed_vcf(variant_file) or ext == ".vcf"
-    if not is_vcf and ext != ".maf":
-        logger.error(
-            "Unsupported variant file extension '%s'. "
-            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
-            ext,
-            variant_file,
-        )
-        raise typer.Exit(code=1)
+    setup_logging(verbose=verbose, trace=False)
+    is_vcf = _variant_format(variant_file) == "vcf"
     want = ".maf" if is_vcf else ".vcf"
     if output.suffix.lower() != want:
         logger.error(
@@ -1122,12 +1090,18 @@ def convert(
         )
         raise typer.Exit(code=1)
     if is_vcf:
+        if reference is not None:
+            logger.warning("--fasta is not used for VCF input (VCF -> MAF needs no reference)")
         vcf_to_maf_file(variant_file, output, _log_command())
-    elif reference is None:
+        return
+    if reference is None:
         logger.error("MAF input needs --fasta: maf2vcf's anchor base comes from the reference")
         raise typer.Exit(code=1)
-    else:
-        maf_to_vcf_file(variant_file, reference, output, _log_command())
+    fai = Path(f"{reference}.fai")
+    if not fai.exists():
+        logger.error("Reference FASTA is not indexed: %s is missing (samtools faidx)", fai)
+        raise typer.Exit(code=1)
+    maf_to_vcf_file(variant_file, reference, output, _log_command())
 
 
 @app.command()

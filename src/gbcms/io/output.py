@@ -94,6 +94,37 @@ def _fmt_vcf_sci(v: float) -> str:
     return f"{v:.4e}"
 
 
+def declared_contigs(
+    reference: list[tuple[str, int]], variants: list[Variant]
+) -> list[tuple[str, int | None]]:
+    """VCF ``##contig`` entries in the output's naming.
+
+    Each reference contig is declared under the name(s) the variant file uses
+    for it (keeping the reference length), so records written with the input's
+    naming are always declared; reference contigs the input never names keep
+    the reference's name. Names are paired with the engine's own rule
+    (:meth:`CoordinateKernel.contig_key`: ``chr1``~``1``, ``chrM``~``MT``). Input
+    contigs the reference lacks are declared without a length rather than left
+    undeclared; each name is declared once.
+    """
+    key = CoordinateKernel.contig_key
+    input_names: dict[str, list[str]] = {}
+    for v in variants:
+        names = input_names.setdefault(key(v.output_chrom), [])
+        if v.output_chrom not in names:
+            names.append(v.output_chrom)
+    declared: dict[str, int | None] = {}
+    for name, length in reference:
+        for out in input_names.get(key(name), [name]):
+            # A reference listing one contig under two aliases maps both to the
+            # same input name: declare it once.
+            declared.setdefault(out, length)
+    for names in input_names.values():
+        for out in names:
+            declared.setdefault(out, None)
+    return list(declared.items())
+
+
 def vcf_contig_lines(contigs: list[tuple[str, int | None]]) -> list[str]:
     """``##contig`` header lines; a contig without a known length is declared
     without one rather than left undeclared."""

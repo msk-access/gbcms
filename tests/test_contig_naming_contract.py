@@ -29,9 +29,9 @@ from typer.testing import CliRunner
 
 from gbcms.cli import app
 from gbcms.core.kernel import CoordinateKernel
+from gbcms.io.output import declared_contigs
 from gbcms.merge import merge_mafs
 from gbcms.models.core import MergeConfig, Variant, VariantType
-from gbcms.pipeline import _declared_contigs
 
 runner = CliRunner()
 
@@ -274,7 +274,7 @@ def test_reference_aliases_declare_each_name_once():
     produce a duplicate ##contig line for the input's name."""
     v = Variant(chrom="1", pos=0, ref="A", alt="C", variant_type=VariantType.SNP)
     v.original_chrom = "chr1"
-    assert _declared_contigs([("chr1", 600), ("1", 600), ("2", 900)], [v]) == [
+    assert declared_contigs([("chr1", 600), ("1", 600), ("2", 900)], [v]) == [
         ("chr1", 600),
         ("2", 900),
     ]

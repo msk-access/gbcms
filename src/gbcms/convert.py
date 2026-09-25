@@ -29,10 +29,9 @@ from pathlib import Path
 
 from . import __version__
 from .core.kernel import CoordinateKernel
-from .io.input import MafReader, VcfReader
-from .io.output import MafWriter, vcf_contig_lines
+from .io.output import MafWriter, declared_contigs, vcf_contig_lines
 from .io.reference import ReferenceBases
-from .pipeline import _declared_contigs
+from .pipeline import read_variant_file
 
 logger = logging.getLogger(__name__)
 
@@ -41,31 +40,26 @@ __all__ = ["vcf_to_maf_file", "maf_to_vcf_file"]
 
 def vcf_to_maf_file(variant_file: Path, output: Path, command_line: str = "") -> int:
     """Write every countable ALT allele of a VCF as a MAF row; returns the row count."""
-    reader = VcfReader(variant_file)
-    rows = 0
-    try:
-        with open(output, "w", newline="") as fh:
-            fh.write(f"#gbcms v{__version__}\n")
-            if command_line:
-                fh.write(f"#command {command_line}\n")
-            writer = csv.DictWriter(fh, fieldnames=MafWriter.vcf_input_headers(), delimiter="\t")
-            writer.writeheader()
-            for variant in reader:
-                row = dict.fromkeys(writer.fieldnames, "")
-                row.update(MafWriter.vcf_input_fields(variant))
-                writer.writerow(row)
-                rows += 1
-    finally:
-        reader.close()
-    logger.info("Converted %s to %d MAF rows: %s", variant_file, rows, output)
-    return rows
+    variants = read_variant_file(variant_file)
+    with open(output, "w", newline="") as fh:
+        fh.write(f"#gbcms v{__version__}\n")
+        if command_line:
+            fh.write(f"#command {command_line}\n")
+        writer = csv.DictWriter(fh, fieldnames=MafWriter.vcf_input_headers(), delimiter="\t")
+        writer.writeheader()
+        for variant in variants:
+            row = dict.fromkeys(writer.fieldnames, "")
+            row.update(MafWriter.vcf_input_fields(variant))
+            writer.writerow(row)
+    logger.info("Converted %s to %d MAF rows: %s", variant_file, len(variants), output)
+    return len(variants)
 
 
 def maf_to_vcf_file(
     variant_file: Path, reference: Path, output: Path, command_line: str = ""
 ) -> int:
     """Write every MAF row as a VCF record; returns the record count."""
-    variants = list(MafReader(variant_file))
+    variants = read_variant_file(variant_file)
     bases = ReferenceBases(reference)
     try:
         header = ["##fileformat=VCFv4.2", f"##source=gbcms v{__version__}"]
@@ -73,7 +67,7 @@ def maf_to_vcf_file(
             header.append(f"##gbcms_command={command_line}")
         header.append(f"##reference=file://{reference}")
         # Contigs in the MAF's own naming, as gbcms's VCF output declares them.
-        header.extend(vcf_contig_lines(_declared_contigs(bases.contigs, variants)))
+        header.extend(vcf_contig_lines(declared_contigs(bases.contigs, variants)))
         header.append("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")
         with open(output, "w") as fh:
             fh.write("\n".join(header) + "\n")

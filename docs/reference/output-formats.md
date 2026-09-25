@@ -180,8 +180,12 @@ self-describing.
     their first base, the reference base before them is prepended (the base **at**
     `Start_Position` for a `-` insertion, whose Start is the base before the
     insertion) and `POS` moves to it. Anything else is written as-is at
-    `Start_Position`. The anchor base comes from `--fasta`; one the reference
-    cannot supply is written as `N` and counted in a WARNING.
+    `Start_Position`. An event at position 1 has no base before it, so the base
+    after it is appended instead (VCF spec; maf2vcf skips such rows). The anchor
+    base comes from `--fasta`; one the reference cannot supply is written as `N`
+    and counted in a WARNING. The MAF alleles are read as maf2vcf reads them
+    (see [Input Formats](input-formats.md#maf-alleles)); unlike maf2vcf, a
+    differing `Tumor_Seq_Allele1` is not written as a second ALT.
 
     | MAF `Start` `Ref` > `Alt` | VCF `POS` `REF` > `ALT` |
     |:--------------------------|:------------------------|
@@ -191,8 +195,10 @@ self-describing.
     | `942 AAA > T` | `941 GAAA > GT` |
     | `1183 T > G` | `1183 T > G` |
 
-    Counting is unaffected: the engine resolves MAF alleles the same way before
-    counting. `gbcms convert` writes the same records without counting.
+    Counting is unaffected. Before counting, the engine anchors `-` alleles to
+    this same record; other MAF alleles (e.g. `701 TTAC > A`) it counts as
+    written, an equivalent description of the same change. `gbcms convert`
+    writes these records without counting.
 
 ---
 
@@ -385,7 +391,7 @@ The set of columns in the first row of the header depends on whether the
     | `Tumor_Seq_Allele2` | MAF ALT: shared leading bases trimmed, `-` when nothing is left |
     | `Tumor_Sample_Barcode` | BAM sample name (from `--bam name:path`) |
     | `Matched_Norm_Sample_Barcode` | Empty |
-    | `vcf_id` | Original VCF `ID` field (rsID or `.`) |
+    | `vcf_id` | Original VCF `ID` field (empty when the VCF has `.`) |
     | `vcf_pos` | Original VCF 1-based `POS` |
     | `vcf_region` | `chr:pos` tracking field |
     | `vcf_ref` | Original VCF `REF` |
@@ -401,6 +407,8 @@ The set of columns in the first row of the header depends on whether the
         length. Otherwise it is `INS` (ALT longer) or `DEL`: the row spans its REF
         bases, and an insertion whose REF trimmed to `-` spans the two bases around
         the insertion point. A delins with no shared first base keeps every base.
+        Bases are compared case-insensitively (the VCF spec's view); vcf2maf
+        compares them as written, so only mixed-case alleles can differ.
 
         | VCF `POS` `REF` > `ALT` | MAF `Start`–`End` `Ref` > `Alt` | `Variant_Type` |
         |:------------------------|:-------------------------------|:---------------|
@@ -453,7 +461,7 @@ These columns are **always** appended regardless of input format.
     | Column | Type | Description |
     |:-------|:-----|:------------|
     | `gbcms_status` | String | Verdict: exactly `PASS` or `FAIL`. |
-    | `gbcms_status_reason` | String | Reason tag(s), `\|`-separated; empty for a clean PASS. PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`, `TRACT_CLUSTER`. FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `ALT_CONTAINS_N`. Reasons stack, e.g. `WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP`. Identical string in the VCF `GSR` INFO. |
+    | `gbcms_status_reason` | String | Reason tag(s), `\|`-separated; empty for a clean PASS. PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`, `TRACT_CLUSTER`. FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `ALT_EQUALS_REF`, `ALT_CONTAINS_N`. Reasons stack, e.g. `WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP`. Identical string in the VCF `GSR` INFO. |
     | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: `ZERO_ALT`, `PARTIAL_DOMINANT`, `MNP_DISC_RATIO(n/m)`, `MNP_RESCUE_ELIGIBLE`, `HIGH_N_FRACTION(f)`, `CLIP_CANDIDATES(n)` — an insertion locus with no confirmed ALT where n (≥ 2) reads carry a soft clip ≥ 8bp whose boundary lies within the insert's duplication reach (anchor ± insert length + 10): carriers the aligner may have represented as clips rather than insertions (inspect in IGV) — `SW_FALLBACK(n)` — under the default `pairhmm` backend, n depth-contributing reads could not be evaluated by the pangenomic haplotype matrix because the variant's reference context is missing (prep's fetch failed) or does not contain it; they were scored by the Smith-Waterman fallback where SW can run, otherwise left NEITHER (one WARN per variant names the reason and outcome), so the row's counts came partly from a different scorer or are missing reads — `SPLICE_SKIP_DOMINANT(n)` — a deletion-type locus where more reads asserted splicing over the deleted span (CIGAR `N`, excluded from DP as no-observation) than confirmed ALT; RNA aligners write large deletions as splices (STAR: ≥ `alignIntronMin`, default 21bp), so `alt_count`=0 here may mean the carriers exist as junction reads — and `NON_DISCRIMINATING_LOCUS` — the last (PairHMM backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed `ref_count`/`alt_count` at a covered locus rather than leaving it silent. With `--rescue-mnp`, a rescued row also carries `RESCUED_COMPONENT(chrom:pos:REF>ALT)`: its counts are that component SNV's, not the annotated MNP's. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`. |
     | `gbcms_rescue` | String | **Conditional** — only present when `--rescue-mnp` is enabled. MNP rescue audit trail, empty for non-candidates. Format: `method=decomposed;outcome=<o>;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad\|ref_fail>+...]` (positions joined with `+` so the VCF `GR` value parses as one string). Outcomes: `rescued` (the row's counts are the adopted component SNV's), `skipped_grouped`, `haplotype_confirmed`, `no_improvement`, `ref_validation_failed` (counts stay the MNP's). `original_*` are always the MNP's own counts; `original_confirmed` counts reads that showed the whole haplotype. See [Architecture → MNP Rescue Pass](architecture.md#mnp-rescue-pass-rescue-mnp-v430). |
     | `ref_count` | Integer | REF read depth |

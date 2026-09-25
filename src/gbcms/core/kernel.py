@@ -25,11 +25,15 @@ only. Allele counting is dispatched via :mod:`gbcms.pipeline` →
 parallel iteration in the Rust layer (see ``py.allow_threads``).
 """
 
+import re
 from collections.abc import Callable
 
 from gbcms.models.core import Variant, VariantType
 
 __all__ = ["CoordinateKernel"]
+
+# maf2vcf's placeholders for an empty MAF allele: only '-', '?' or '0' characters.
+_MAF_EMPTY_ALLELE = re.compile(r"[-?0]+")
 
 
 class CoordinateKernel:
@@ -70,6 +74,26 @@ class CoordinateKernel:
             original_id=original_id,
             original_chrom=chrom,
         )
+
+    @staticmethod
+    def maf_alleles(ref: str, allele1: str, allele2: str) -> tuple[str, str]:
+        """(REF, ALT) of a MAF row, read the way maf2vcf reads it.
+
+        The variant allele is ``Tumor_Seq_Allele2``, or ``Tumor_Seq_Allele1``
+        when Allele2 is empty or equal to the reference (older MAFs put the
+        variant in Allele1). An allele made only of ``-``, ``?`` or ``0`` is an
+        empty-allele placeholder and becomes ``-``. When neither allele differs
+        from the reference, REF == ALT is returned as-is; preparation rejects it
+        (``ALT_EQUALS_REF``).
+        """
+
+        def norm(allele: str) -> str:
+            return "-" if _MAF_EMPTY_ALLELE.fullmatch(allele) else allele
+
+        ref, allele1, allele2 = norm(ref), norm(allele1), norm(allele2)
+        if allele2 in ("", ref) and allele1 not in ("", ref):
+            return ref, allele1
+        return ref, allele2
 
     @staticmethod
     def maf_to_internal(chrom: str, start_pos: int, end_pos: int, ref: str, alt: str) -> Variant:
@@ -191,7 +215,10 @@ class CoordinateKernel:
         AT Start for a ``-`` insertion (MAF Start is the base before the
         insertion), else the base before Start, which becomes POS. Anything
         else (an SNP or MNP, or unequal alleles that already share their first
-        base) is written as-is at Start, and no base is fetched.
+        base) is written as-is at Start, and no base is fetched. An event at
+        position 1 has no base before it: as the VCF spec requires, the base
+        after the event is appended instead and POS stays 1 (maf2vcf skips such
+        rows).
 
         Args:
             start: MAF Start_Position (1-based).
@@ -207,6 +234,9 @@ class CoordinateKernel:
         if ref and alt and (len(ref) == len(alt) or ref[0].upper() == alt[0].upper()):
             return start, ref, alt
         pos = start if not ref else start - 1
+        if pos < 1:
+            after = base_at(start + len(ref))
+            return start, ref + after, alt + after
         anchor = base_at(pos)
         return pos, anchor + ref, anchor + alt
 
