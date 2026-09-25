@@ -237,6 +237,12 @@ insert (observed at 1–6 reads on two long-insertion loci in the local data).
 ≥90% / non-low-complexity gates. The band exists for imperfect ALT
 representations and BQ masking cannot replace it, so test both policies
 (`.agents/memory/identity-band-annotation-tolerance.md`).
+**Count-the-given-allele check (2026-09-25).** A tolerant band credits reads
+whose insert confidently differs from the given ALT. That is accurate only
+when the differences are read errors. Measure both the existing truncation band
+and any new band at the loci where they admit reads: scattered mismatches mean
+errors (count them); one recurring alternative insert means a different allele
+or a wrong input (do not count it; flag what the reads carry).
 **Acceptance.** The two loci recover their carriers under both backends, and
 ladder and tract rows don't gain AD.
 

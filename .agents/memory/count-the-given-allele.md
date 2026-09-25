@@ -24,9 +24,27 @@ results … explain with all caveats using the failure reason and diagnostic
 columns"). The prompt was a C1 option I proposed that kept ALT calls when reads
 shared a recurring unannotated haplotype, which is deconvolution.
 
+**The boundary** (sharpened with the operator, who invited critique of the
+principle, 2026-09-25):
+1. **Normalize** anything the reference fully determines, and flag it: REF
+   bases (`WARN_REF_CORRECTED`), anchoring, left-alignment, and equivalent
+   representations that give the same ALT haplotype.
+2. **Tolerate read-side noise**: sequencing errors, BQ masking, and how the
+   aligner writes the reads.
+3. **Never infer a different ALT haplotype** for the counts.
+
+The ≥90% insert identity band ([[identity-band-annotation-tolerance]]) sits on
+this boundary. It is right only when the mismatches are read errors. Measure
+it: scattered mismatches are errors; one recurring alternative insert is a
+different allele or a wrong input, and must not count.
+
+**Risk of the principle:** an honest low VAF for a mis-described allele misleads
+anyone who ignores `gbcms_diagnostic`. So the caveat must be specific: say what
+the reads carry, rather than only "partial".
+
 **How to apply:** for any counting change, ask "does this credit a read to the
-row's ALT when the read does not carry the given ALT?" If yes, it is out,
-unless it is an opt-in rescue.
+row's ALT when the read does not carry the given ALT haplotype?" If yes, it is
+out, unless it is an opt-in rescue.
 - Tolerating how *reads* are written (aligner representation, sequencing
   errors, truncated inserts in reads that end inside them) is fine; that is
   reading the given allele accurately.
