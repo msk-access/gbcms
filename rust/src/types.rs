@@ -42,8 +42,8 @@ pub struct Variant {
     #[pyo3(get, set)]
     pub shift_region: Option<(i64, i64)>,
 
-    /// Reference bases over the event's core (its change interval plus one base
-    /// on each side), with their 0-based start. Prep fetches them for every
+    /// Reference bases around the event (its change interval plus 60 bases on
+    /// each side), with their 0-based start. Prep fetches them for every
     /// variant, SNVs and MNPs included (those carry no `ref_context`); only the
     /// observed-allele diagnostic reads them.
     #[pyo3(get, set)]

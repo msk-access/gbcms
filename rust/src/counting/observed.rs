@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 
-use rust_htslib::bam::Record;
+use rust_htslib::bam::record::{Cigar, Record};
 
 use super::variant_checks::reconstruct_span;
 use super::window;
@@ -40,10 +40,13 @@ pub(crate) struct ObservedAllele {
     pub given_carriers: u32,
 }
 
-/// The most frequent non-REF, non-given allele the reads carry over the
-/// event's core, if at least [`MIN_CARRIERS`] reads carry it exactly, more
-/// than carry the given ALT, and at least [`MIN_FRACTION`] of the scanned
-/// reads. None without prep's `event_ref`.
+/// An allele in canonical form: 0-based POS, REF, ALT (left-aligned, minimal).
+type Allele = (i64, Vec<u8>, Vec<u8>);
+
+/// The most frequent allele the reads carry at the event that is neither REF,
+/// the given allele, nor a co-annotated sibling's, if at least [`MIN_CARRIERS`]
+/// reads carry it exactly, more than carry the given allele, and at least
+/// [`MIN_FRACTION`] of the scanned reads. None without prep's `event_ref`.
 pub(crate) fn observed_allele(
     read_cache: &[Record],
     variant: &Variant,
@@ -51,100 +54,194 @@ pub(crate) fn observed_allele(
     min_mapq: u8,
     min_baseq: u8,
 ) -> Option<ObservedAllele> {
-    // The core and its reference bases, as prep fetched them (every variant type).
-    let (core_lo, core_seq) = variant.event_ref.as_ref()?;
-    let core_lo = *core_lo;
-    let ref_core: Vec<u8> = core_seq.bytes().map(|b| b.to_ascii_uppercase()).collect();
-    let core_hi = core_lo + ref_core.len() as i64;
-    if variant.pos < core_lo || variant.pos + variant.ref_allele.len() as i64 > core_hi {
+    let (ev_start, ev_seq) = variant.event_ref.as_ref()?;
+    let ev_start = *ev_start;
+    let refseq: Vec<u8> = ev_seq.bytes().map(|b| b.to_ascii_uppercase()).collect();
+    let ev_end = ev_start + refseq.len() as i64;
+    let base = |g: i64| -> Option<u8> { (g >= ev_start && g < ev_end).then(|| refseq[(g - ev_start) as usize]) };
+
+    let (c_lo, c_hi) = window::change_interval(variant);
+    let core_lo = (c_lo - 1).min(variant.pos);
+    let core_hi = (c_hi + 1).max(variant.pos + variant.ref_allele.len() as i64);
+    if core_lo - FLANK - 1 < ev_start || core_hi + FLANK > ev_end {
         return None;
     }
-    let alt_core = apply_to_core(&ref_core, core_lo, variant)?;
-    // Alleles already in the input: co-annotated siblings that fall inside the core.
-    let known: Vec<Vec<u8>> = siblings.iter().filter_map(|s| apply_to_core(&ref_core, core_lo, s)).collect();
 
-    let (a_lo, a_hi) = (core_lo - FLANK, core_hi + FLANK);
-    let mut seen: HashMap<Vec<u8>, u32> = HashMap::new();
+    let upper = |s: &str| -> Vec<u8> { s.bytes().map(|b| b.to_ascii_uppercase()).collect() };
+    let given = canonical(variant.pos, upper(&variant.ref_allele), upper(&variant.alt_allele), &base)?;
+    let known: Vec<Allele> = siblings
+        .iter()
+        .filter_map(|s| canonical(s.pos, upper(&s.ref_allele), upper(&s.alt_allele), &base))
+        .collect();
+
+    let mut seen: HashMap<Allele, u32> = HashMap::new();
     let mut scanned: u32 = 0;
     for record in read_cache {
         if record.is_secondary() || record.is_supplementary() || record.mapq() < min_mapq {
             continue;
         }
-        if record.pos() > a_lo || window::ref_end(record) < a_hi {
+        let read_end = window::ref_end(record);
+        if record.pos() > core_lo - FLANK || read_end < core_hi + FLANK {
             continue;
         }
-        let recon = reconstruct_span(record, record.qual(), core_lo, core_hi);
+        // Widen the comparison over any indel of the read that could sit on the
+        // core: its shift region (every equivalent placement) touches it. A longer
+        // event is then read whole, and one indel aligned at different places in a
+        // repeat is read the same way.
+        let (mut lo, mut hi) = (core_lo, core_hi);
+        let (mut ref_pos, mut read_pos) = (record.pos(), 0usize);
+        let seq = record.seq();
+        for op in record.cigar().iter() {
+            match op {
+                Cigar::Del(len) => {
+                    let d_end = ref_pos + *len as i64;
+                    let anchor = base(ref_pos - 1);
+                    let deleted: Option<Vec<u8>> = (ref_pos..d_end).map(&base).collect();
+                    if let (Some(anc), Some(del)) = (anchor, deleted) {
+                        let mut r = vec![anc];
+                        r.extend(del);
+                        let (r0, r1) = window::shift_region_over(
+                            ref_pos - 1,
+                            &String::from_utf8_lossy(&r),
+                            &String::from_utf8_lossy(&[anc]),
+                            base,
+                        );
+                        if r0 <= hi && r1 >= lo {
+                            lo = lo.min(r0);
+                            hi = hi.max(r1);
+                        }
+                    }
+                    ref_pos = d_end;
+                }
+                Cigar::Ins(len) => {
+                    let ins: Vec<u8> = (read_pos..read_pos + *len as usize)
+                        .map(|i| seq[i].to_ascii_uppercase())
+                        .collect();
+                    if let Some(anc) = base(ref_pos - 1) {
+                        let mut a = vec![anc];
+                        a.extend(ins);
+                        let (r0, r1) = window::shift_region_over(
+                            ref_pos - 1,
+                            &String::from_utf8_lossy(&[anc]),
+                            &String::from_utf8_lossy(&a),
+                            base,
+                        );
+                        if r0 <= hi && r1 >= lo {
+                            lo = lo.min(r0);
+                            hi = hi.max(r1);
+                        }
+                    }
+                    read_pos += *len as usize;
+                }
+                Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) => {
+                    ref_pos += *len as i64;
+                    read_pos += *len as usize;
+                }
+                Cigar::RefSkip(len) => ref_pos += *len as i64,
+                Cigar::SoftClip(len) => read_pos += *len as usize,
+                _ => {}
+            }
+        }
+        // One reference base before the stretch anchors the allele (VCF form).
+        let lo = lo - 1;
+        if lo < ev_start || hi > ev_end || record.pos() > lo || read_end < hi {
+            continue;
+        }
+        let recon = reconstruct_span(record, record.qual(), lo, hi);
         if recon.splice_skip || recon.quals.iter().any(|&q| q < min_baseq) {
             continue;
         }
         scanned += 1;
-        let key: Vec<u8> = recon.seq.iter().map(u8::to_ascii_uppercase).collect();
-        *seen.entry(key).or_insert(0) += 1;
+        let ref_part: Vec<u8> = refseq[(lo - ev_start) as usize..(hi - ev_start) as usize].to_vec();
+        let read_part: Vec<u8> = recon.seq.iter().map(u8::to_ascii_uppercase).collect();
+        if let Some(allele) = canonical(lo, ref_part, read_part, &base) {
+            *seen.entry(allele).or_insert(0) += 1;
+        }
     }
 
-    let given = seen.get(&alt_core).copied().unwrap_or(0);
-    // Most carriers first; ties broken by sequence so the choice is stable.
+    let given_n = seen.get(&given).copied().unwrap_or(0);
+    // Most carriers first; ties broken by allele so the choice is stable.
     let (best, &n) = seen
         .iter()
-        .filter(|(s, _)| **s != ref_core && **s != alt_core && !known.contains(*s))
+        .filter(|(a, _)| **a != given && !known.contains(*a))
         .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)))?;
-    if n < MIN_CARRIERS || n <= given || (n as f64) < MIN_FRACTION * scanned as f64 {
+    if n < MIN_CARRIERS || n <= given_n || (n as f64) < MIN_FRACTION * scanned as f64 {
         return None;
     }
-    let (pos, r, a) = trim_to_vcf(core_lo, &ref_core, best);
     Some(ObservedAllele {
-        pos,
-        ref_allele: String::from_utf8_lossy(&r).into_owned(),
-        alt_allele: String::from_utf8_lossy(&a).into_owned(),
+        pos: best.0,
+        ref_allele: String::from_utf8_lossy(&best.1).into_owned(),
+        alt_allele: String::from_utf8_lossy(&best.2).into_owned(),
         carriers: n,
-        given_carriers: given,
+        given_carriers: given_n,
     })
 }
 
-/// The core with `v`'s ALT applied, or None when `v`'s REF does not lie inside
-/// the core or does not match it.
-fn apply_to_core(ref_core: &[u8], core_lo: i64, v: &Variant) -> Option<Vec<u8>> {
-    let start = v.pos - core_lo;
-    let end = start + v.ref_allele.len() as i64;
-    if start < 0 || end as usize > ref_core.len() {
+/// Canonical (left-aligned, minimal VCF) form of `REF>ALT` at 0-based `pos`,
+/// or None when the alleles are equal (no change) or left-alignment runs off
+/// the known reference. The standard algorithm: while the last bases agree,
+/// drop them; when an allele empties, extend both one reference base left;
+/// then drop shared leading bases, keeping one.
+fn canonical(pos: i64, r: Vec<u8>, a: Vec<u8>, base: &dyn Fn(i64) -> Option<u8>) -> Option<Allele> {
+    if r == a {
         return None;
     }
-    let (start, end) = (start as usize, end as usize);
-    if !ref_core[start..end].eq_ignore_ascii_case(v.ref_allele.as_bytes()) {
-        return None;
+    let (mut pos, mut r, mut a) = (pos, r, a);
+    loop {
+        if !r.is_empty() && !a.is_empty() && r.last() == a.last() {
+            r.pop();
+            a.pop();
+        } else if r.is_empty() || a.is_empty() {
+            let b = base(pos - 1)?;
+            r.insert(0, b);
+            a.insert(0, b);
+            pos -= 1;
+        } else {
+            break;
+        }
     }
-    let mut out = ref_core[..start].to_vec();
-    out.extend(v.alt_allele.bytes().map(|b| b.to_ascii_uppercase()));
-    out.extend_from_slice(&ref_core[end..]);
-    Some(out)
-}
-
-/// Trim shared trailing then leading bases, keeping one base in each allele
-/// (VCF form). Returns the 0-based position of the first kept base.
-fn trim_to_vcf(start: i64, r: &[u8], a: &[u8]) -> (i64, Vec<u8>, Vec<u8>) {
-    let (mut r, mut a) = (r.to_vec(), a.to_vec());
-    while r.len() > 1 && a.len() > 1 && r.last() == a.last() {
-        r.pop();
-        a.pop();
+    while r.len() > 1 && a.len() > 1 && r[0] == a[0] {
+        r.remove(0);
+        a.remove(0);
+        pos += 1;
     }
-    let mut k = 0;
-    while k + 1 < r.len() && k + 1 < a.len() && r[k] == a[k] {
-        k += 1;
-    }
-    (start + k as i64, r[k..].to_vec(), a[k..].to_vec())
+    Some((pos, r, a))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn at(seq: &'static [u8], start: i64) -> impl Fn(i64) -> Option<u8> {
+        move |g| (g >= start && ((g - start) as usize) < seq.len()).then(|| seq[(g - start) as usize])
+    }
+
     #[test]
-    fn trimming_keeps_one_anchor_base() {
-        // X CCCCCC T -> X CCCCT T: the change is CC>T at offset 5.
-        assert_eq!(trim_to_vcf(10, b"GCCCCCCT", b"GCCCCTT"), (15, b"CC".to_vec(), b"T".to_vec()));
-        // A pure deletion keeps its anchor.
-        assert_eq!(trim_to_vcf(0, b"ACGT", b"AT"), (0, b"ACG".to_vec(), b"A".to_vec()));
-        // A substitution.
-        assert_eq!(trim_to_vcf(4, b"ACA", b"AGA"), (5, b"C".to_vec(), b"G".to_vec()));
+    fn a_substitution_is_trimmed_to_its_base() {
+        let b = at(b"ACAGT", 10);
+        assert_eq!(canonical(10, b"ACA".to_vec(), b"AGA".to_vec(), &b), Some((11, b"C".to_vec(), b"G".to_vec())));
+    }
+
+    #[test]
+    fn a_homopolymer_deletion_left_aligns_to_the_run_start() {
+        // G CCCCCC T: deleting the last C is the same allele as deleting the first.
+        let b = at(b"AGCCCCCCTA", 0);
+        assert_eq!(canonical(6, b"CC".to_vec(), b"C".to_vec(), &b), Some((1, b"GC".to_vec(), b"G".to_vec())));
+    }
+
+    #[test]
+    fn a_delins_keeps_its_own_bases() {
+        // G CCCCCC T -> G CCCCT T: CC>T at the run's end.
+        let b = at(b"AGCCCCCCTA", 0);
+        assert_eq!(
+            canonical(1, b"GCCCCCCT".to_vec(), b"GCCCCTT".to_vec(), &b),
+            Some((6, b"CC".to_vec(), b"T".to_vec()))
+        );
+    }
+
+    #[test]
+    fn equal_alleles_are_no_change() {
+        let b = at(b"ACGT", 0);
+        assert_eq!(canonical(0, b"ACG".to_vec(), b"ACG".to_vec(), &b), None);
     }
 }

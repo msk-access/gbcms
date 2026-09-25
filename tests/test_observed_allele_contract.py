@@ -178,3 +178,61 @@ def test_an_allele_already_in_the_input_is_not_named(tmp_path):
     t_row = next(r for r in rows if r["Tumor_Seq_Allele2"] == "T")
     assert "MULTI_ALLELIC" in t_row["gbcms_status_reason"]
     assert "OBSERVED_ALLELE" not in t_row["gbcms_diagnostic"]
+
+
+def _norm(ref, pos0, r, a):
+    """Left-aligned, minimal VCF form (the standard normalization), 0-based."""
+    while True:
+        if r and a and r[-1] == a[-1]:
+            r, a = r[:-1], a[:-1]
+        elif not r or not a:
+            pos0 -= 1
+            r, a = ref[pos0] + r, ref[pos0] + a
+        else:
+            break
+    while len(r) > 1 and len(a) > 1 and r[0] == a[0]:
+        r, a, pos0 = r[1:], a[1:], pos0 + 1
+    return pos0, r, a
+
+
+def _del_reads(ref, d0, length, starts, prefix):
+    hap = ref[:d0] + ref[d0 + length :]
+    return [
+        make_read(
+            f"{prefix}{i}",
+            hap[s : s + READ],
+            s,
+            ((0, d0 - s), (2, length), (0, READ - (d0 - s))),
+        )
+        for i, s in enumerate(starts)
+    ]
+
+
+def test_one_deletion_aligned_two_ways_counts_once(tmp_path):
+    """Given a 2bp deletion in the C run; the reads carry a 1bp deletion, aligned at
+    the run's start in half the reads and at its end in the other half. It is one
+    allele, named once with all its carriers, in left-aligned form."""
+    ref = _ref()
+    reads = _del_reads(ref, RUN, 1, range(240, 250), "l") + _del_reads(
+        ref, RUN + RUN_LEN - 1, 1, range(250, 260), "r"
+    )
+    anchor = ref[RUN - 1]
+    (row,) = _run(
+        tmp_path, ref, reads + _ref_reads(ref, 10, start=230), [(RUN, anchor + "CC", anchor)]
+    )
+    assert f"OBSERVED_ALLELE(1:{RUN}:{anchor}C>{anchor}:20/0)" in row["gbcms_diagnostic"].split(";")
+
+
+def test_a_deletion_past_the_event_is_named_whole(tmp_path):
+    """Given an SNV in unique sequence; the reads carry a 5bp deletion over it. The
+    allele named is the whole deletion, not the part inside the SNV's window."""
+    ref = _ref()
+    snv = RUN + RUN_LEN + 25
+    alt_base = "A" if ref[snv] != "A" else "G"
+    d0 = snv - 2
+    reads = _del_reads(ref, d0, 5, range(270, 285), "d")
+    pos0, r, a = _norm(ref, d0 - 1, ref[d0 - 1 : d0 + 5], ref[d0 - 1])
+    (row,) = _run(
+        tmp_path, ref, reads + _ref_reads(ref, 10, start=280), [(snv + 1, ref[snv], alt_base)]
+    )
+    assert f"OBSERVED_ALLELE(1:{pos0 + 1}:{r}>{a}:15/0)" in row["gbcms_diagnostic"].split(";")

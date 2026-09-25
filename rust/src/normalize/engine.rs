@@ -423,17 +423,20 @@ fn indel_shift_region(
     }
 }
 
-/// Reference bases over the event's core: its change interval (the shift
-/// region for a pure indel) plus one base on each side, widened to cover the
-/// alleles' own span. For the observed-allele diagnostic; None when the fetch
-/// fails.
+/// Reference bases around the event: its change interval (the shift region for
+/// a pure indel), widened to the alleles' own span, plus [`EVENT_REF_MARGIN`]
+/// bases on each side (room to left-align the alleles reads carry there). For
+/// the observed-allele diagnostic; None when the fetch fails.
 fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Option<(i64, String)> {
     let (c_lo, c_hi) = window::change_interval(v);
-    let lo = (c_lo - 1).min(v.pos).max(0);
-    let hi = (c_hi + 1).max(v.pos + v.ref_allele.len() as i64);
+    let lo = (c_lo.min(v.pos) - EVENT_REF_MARGIN).max(0);
+    let hi = c_hi.max(v.pos + v.ref_allele.len() as i64) + EVENT_REF_MARGIN;
     let seq = fetch_region(reader, &v.chrom, lo as u64, hi as u64).ok()?;
-    (seq.len() as i64 == hi - lo).then(|| (lo, String::from_utf8_lossy(&seq).to_ascii_uppercase()))
+    (!seq.is_empty()).then(|| (lo, String::from_utf8_lossy(&seq).to_ascii_uppercase()))
 }
+
+/// Reference margin kept around each event for the observed-allele diagnostic.
+const EVENT_REF_MARGIN: i64 = 60;
 
 fn prepare_single_variant(
     reader_result: &mut Result<fasta::IndexedReader<File>, anyhow::Error>,
