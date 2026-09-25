@@ -290,3 +290,40 @@ def test_sibling_carrier_ending_inside_the_tract_is_still_partial(tmp_path):
     a = next(r for r in read_maf_output(out) if r["vcf_ref"] == "CA")
     assert (int(a["ref_count"]), int(a["ref_count_fragment"])) == (6, 6)
     assert int(a["partial_alt"]) == 12
+
+
+def test_tandem_duplication_longer_than_the_context_pad(tmp_path):
+    """A 30bp tandem duplication slides over its whole duplicated segment. Prep
+    measures that region over its own fetch; the repeat-finder-sized
+    ref_context would cut it after a few bases and let reads ending inside the
+    segment count REF."""
+    ref = _ref(())
+    dup = ref[201:231]
+    alt = ref[:201] + dup + ref[201:]
+    reads = []
+    for i in range(10):
+        s = 150 + i
+        reads.append(make_read(f"ref_span{i}", ref[s : s + READ], s, ((0, READ),)))
+        left = 201 - s
+        reads.append(
+            make_read(
+                f"alt_span{i}",
+                alt[s : s + READ],
+                s,
+                ((0, left), (1, 30), (0, READ - left - 30)),
+            )
+        )
+    for i in range(10):  # last base 210..219, inside the duplicated segment
+        s = 111 + i
+        reads.append(make_read(f"ref_part{i}", ref[s : s + READ], s, ((0, READ),)))
+        reads.append(make_read(f"alt_part{i}", alt[s : s + READ], s, ((0, READ),)))
+    fa, bam = _files(tmp_path, ref, reads)
+    (pv,) = gbcms_rs.prepare_variants(
+        [gbcms_rs.Variant("1", 200, ref[200], ref[200] + dup, "INSERTION")], fa, 5, False, 1, True
+    )
+    lo, hi = pv.variant.shift_region
+    assert hi - lo >= 30
+    c = count_both(bam, [pv.variant])[0]
+    _invariants(c)
+    assert (c.rd, c.ad) == (10, 10)
+    assert c.dp == 40

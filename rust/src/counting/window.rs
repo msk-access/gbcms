@@ -35,19 +35,41 @@ use crate::types::Variant;
 ///   and `lo`.
 /// - Anything else (SNV, MNP, delins): the span after the shared leading bases.
 ///
-/// The slide is measured over `ref_context` and stops at its edges, so a
-/// region that runs past the context is cut there: never wider than the true
-/// region, only possibly narrower.
+/// Prep stores a pure indel's region on the variant (`shift_region`),
+/// measured over a fetch sized to the event. Without it the slide runs over
+/// `ref_context` and stops at its edges, so a region that runs past the
+/// context is cut there: never wider than the true region, only narrower.
 pub(crate) fn change_interval(v: &Variant) -> (i64, i64) {
-    let r = v.ref_allele.as_bytes();
-    let a = v.alt_allele.as_bytes();
-    let p = first_change_offset(&v.ref_allele, &v.alt_allele) as usize;
+    if let Some(region) = v.shift_region {
+        return region;
+    }
     let ctx = v.ref_context.as_deref().map_or(&[][..], str::as_bytes);
-    let base = |g: i64| -> Option<u8> {
+    shift_region_over(v.pos, &v.ref_allele, &v.alt_allele, |g| {
         let i = g - v.ref_context_start;
         (i >= 0 && (i as usize) < ctx.len()).then(|| ctx[i as usize].to_ascii_uppercase())
-    };
-    let start = v.pos + p as i64;
+    })
+}
+
+/// Whether the alleles are a pure insertion or deletion: one allele is the
+/// other plus bases after their shared prefix.
+pub(crate) fn is_pure_indel(ref_allele: &str, alt_allele: &str) -> bool {
+    let (r, a) = (ref_allele.len() as i64, alt_allele.len() as i64);
+    let p = first_change_offset(ref_allele, alt_allele);
+    (a < r && p == a) || (r < a && p == r)
+}
+
+/// [`change_interval`] for an event at `pos`, sliding over the reference
+/// bases `base` returns (uppercase; None past its known extent).
+pub(crate) fn shift_region_over(
+    pos: i64,
+    ref_allele: &str,
+    alt_allele: &str,
+    base: impl Fn(i64) -> Option<u8>,
+) -> (i64, i64) {
+    let r = ref_allele.as_bytes();
+    let a = alt_allele.as_bytes();
+    let p = first_change_offset(ref_allele, alt_allele) as usize;
+    let start = pos + p as i64;
 
     if a.len() < r.len() && p == a.len() {
         // Pure deletion of [start, start + len).
@@ -76,7 +98,7 @@ pub(crate) fn change_interval(v: &Variant) -> (i64, i64) {
         }
         return (start - left, start + right);
     }
-    (start.min(v.pos + r.len() as i64), v.pos + r.len() as i64)
+    (start.min(pos + r.len() as i64), pos + r.len() as i64)
 }
 
 /// Reference interval `[lo, hi)` a read must span to discriminate the
@@ -112,16 +134,16 @@ pub(crate) fn discrimination_window(v: &Variant) -> (i64, i64) {
 /// `None` for anything but a pure indel: a substitution-bearing event has no
 /// shift region, and its first base already discriminates.
 pub(crate) fn informative_windows(v: &Variant) -> Option<[(i64, i64); 2]> {
+    if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
+        return None;
+    }
     let (lo, hi) = change_interval(v);
     let (r, a) = (v.ref_allele.len() as i64, v.alt_allele.len() as i64);
-    let p = first_change_offset(&v.ref_allele, &v.alt_allele);
-    if a < r && p == a {
+    if a < r {
         let len = r - a;
         Some([(lo - 1, hi - len + 2), (lo + len - 2, hi + 1)])
-    } else if r < a && p == r {
-        Some([(lo - 1, hi + 2), (lo - 2, hi + 1)])
     } else {
-        None
+        Some([(lo - 1, hi + 2), (lo - 2, hi + 1)])
     }
 }
 
@@ -167,7 +189,7 @@ mod tests {
     fn var(ctx: &str, pos: i64, r: &str, a: &str) -> Variant {
         Variant::new(
             "1".into(), pos, r.into(), a.into(), "X".into(),
-            Some(ctx.into()), 0, 0, None,
+            Some(ctx.into()), 0, 0, None, None,
         )
     }
 
@@ -244,7 +266,7 @@ mod tests {
 
     #[test]
     fn without_context_the_region_is_the_event_itself() {
-        let v = Variant::new("1".into(), 2, "CA".into(), "C".into(), "DELETION".into(), None, 0, 0, None);
+        let v = Variant::new("1".into(), 2, "CA".into(), "C".into(), "DELETION".into(), None, 0, 0, None, None);
         assert_eq!(change_interval(&v), (3, 4));
     }
 
@@ -276,6 +298,25 @@ mod tests {
     fn substitution_bearing_events_have_no_informative_windows() {
         assert_eq!(informative_windows(&var(HOMO, 2, "C", "GA")), None);
         assert_eq!(informative_windows(&var(HOMO, 5, "A", "G")), None);
+    }
+
+    #[test]
+    fn a_stored_shift_region_wins_over_the_context_slide() {
+        // The context would cut this tract at 8; prep measured it to 12.
+        let mut v = var("TGCAAAAA", 2, "CA", "C");
+        assert_eq!(change_interval(&v), (3, 8));
+        v.shift_region = Some((3, 12));
+        assert_eq!(change_interval(&v), (3, 12));
+        assert_eq!(informative_windows(&v), Some([(2, 13), (2, 13)]));
+    }
+
+    #[test]
+    fn tandem_duplication_slides_over_the_duplicated_segment() {
+        // Inserting a copy of ACGTTG right after itself: it can sit anywhere
+        // along the segment, plus the next base that repeats the pattern.
+        let ctx = "TTTACGTTGAGGG";
+        let v = var(ctx, 2, "T", "TACGTTG");
+        assert_eq!(change_interval(&v), (3, 10));
     }
 
     #[test]

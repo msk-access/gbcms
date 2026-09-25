@@ -16,7 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read 25% in a synthetic test; on the 6.5.0 RC data the median gbcms-to-
   informative VAF ratio was 0.91 for STRs and 0.92 for homopolymers). Such reads
   now count toward depth only, as in GATK's AD. A deletion longer than a read
-  still gets REF reads from either junction.
+  still gets REF reads from either junction. A tandem duplication (an ITD)
+  slides over its whole duplicated segment, so REF needs a read across all of
+  it. Prep measures that region over its own fetch (`Variant.shift_region`);
+  the repeat context kept for alignment is often too short (a 30bp duplication
+  had an 11-base context).
   [Informative reads](docs/reference/allele-classification.md#informative-reads-for-indels).
 - **Grouped rows: REF reads and REF fragments exclude the same molecules** (#119).
   The sibling-ALT guard dropped a read from `ref_count` when it carried any

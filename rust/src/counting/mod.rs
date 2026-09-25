@@ -24,7 +24,7 @@ pub mod pairhmm;
 pub(crate) mod pangenome;
 pub(crate) mod wfa_router;
 mod variant_checks;
-mod window;
+pub(crate) mod window;
 mod utils;
 pub(crate) mod mfsd;
 pub(crate) mod rna;

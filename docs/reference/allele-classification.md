@@ -920,6 +920,11 @@ ending on the discriminating base keeps a single terminal mismatch (cheaper than
 a clip) and would look like REF. With one more base, the mismatches cost more
 than the gap or the clip.
 
+Prep measures each pure indel's region over its own reference fetch, sized to
+the event (`Variant.shift_region`). A tandem duplication (an ITD, for example)
+slides over its whole duplicated segment, which can be far longer than the
+repeat context kept for alignment.
+
 Reads that fail the rule count toward `DP` and `DPF` but are neither REF nor ALT,
 the same as GATK's AD, which counts only informative reads. The rule does not
 apply to substitution-bearing events (SNV, MNP, delins): they have no shift

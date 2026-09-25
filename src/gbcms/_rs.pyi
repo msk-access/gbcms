@@ -13,6 +13,7 @@ class Variant:
     ref_context_start: int
     repeat_span: int
     gene_strand: str | None
+    shift_region: tuple[int, int] | None
     def __init__(
         self,
         chrom: str,
@@ -24,6 +25,7 @@ class Variant:
         ref_context_start: int = 0,
         repeat_span: int = 0,
         gene_strand: str | None = None,
+        shift_region: tuple[int, int] | None = None,
     ) -> None: ...
 
 class BaseCounts:
