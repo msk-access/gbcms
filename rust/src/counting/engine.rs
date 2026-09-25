@@ -1765,6 +1765,18 @@ fn count_variant_from_cache(
             &mut alt_aligner, &mut ref_aligner, backend,
         );
         let is_ref = result.is_ref && !ref_claimed_by_sibling;
+        // One line per classified read, named, so a count can be traced back to
+        // the reads behind it (read-level validation against the BAM).
+        trace!(
+            "read call {}:{} {}>{} read={} mate={} ref={} alt={} phase={:?} partial={} nearby={} \
+             sibling_claimed={} ref_sibling_claimed={} uninformative={}",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+            String::from_utf8_lossy(record.qname()),
+            if record.is_first_in_template() { 1 } else { 2 },
+            is_ref, is_alt, result.phase, result.partial_match_count,
+            result.has_nearby_evidence, claimed_by_sibling, ref_claimed_by_sibling,
+            result.ref_uninformative,
+        );
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends
