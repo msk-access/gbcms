@@ -680,6 +680,27 @@ def test_merge_joins_vcf_input_rows_by_their_record(tmp_path):
     ]
 
 
+@pytest.mark.xfail(strict=True, reason="a later-only row loses its MAF key columns")
+def test_merge_by_record_keeps_later_only_rows_whole(tmp_path):
+    """A variant only a later input has keeps its MAF coordinates and alleles."""
+    _vcf_input_maf(tmp_path / "d.maf", [(101, "T", "A")])
+    _vcf_input_maf(tmp_path / "s.maf", [(101, "T", "A"), (1183, "T", "G")])
+    out = tmp_path / "m.maf"
+    merge_mafs(
+        MergeConfig(
+            inputs={"duplex": tmp_path / "d.maf", "simplex": tmp_path / "s.maf"}, output=out
+        )
+    )
+    got = [
+        tuple(
+            r[c]
+            for c in ("Start_Position", "End_Position", "Reference_Allele", "Tumor_Seq_Allele2")
+        )
+        for r in read_maf_output(out)
+    ]
+    assert got == [("101", "101", "T", "A"), ("1183", "1183", "T", "G")]
+
+
 def test_merge_warns_on_duplicate_join_keys(tmp_path, caplog):
     maf = (
         "Chromosome\tStart_Position\tEnd_Position\tReference_Allele\tTumor_Seq_Allele2\t"

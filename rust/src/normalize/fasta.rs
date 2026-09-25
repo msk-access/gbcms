@@ -158,3 +158,23 @@ pub(crate) fn resolve_maf_anchor(
     };
     Ok((anchor_pos_0based, vcf_ref, vcf_alt))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fetch_single_base_before_contig_start_is_an_error() {
+        // A MAF deletion at Start 1 asks for the anchor at 0-based -1: an
+        // error (FETCH_FAILED), never a u64 wrap.
+        let dir = std::env::temp_dir();
+        let fa = dir.join(format!("gbcms-fetch-neg-{}.fa", std::process::id()));
+        std::fs::write(&fa, ">1\nACGT\n").unwrap();
+        std::fs::write(fa.with_extension("fa.fai"), "1\t4\t3\t4\t5\n").unwrap();
+        let mut reader = fasta::IndexedReader::from_file(&fa).unwrap();
+        assert!(fetch_single_base(&mut reader, "1", -1).is_err());
+        assert_eq!(fetch_single_base(&mut reader, "1", 0).unwrap(), b'A');
+        let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
+        let _ = std::fs::remove_file(&fa);
+    }
+}
