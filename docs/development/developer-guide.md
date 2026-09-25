@@ -77,6 +77,7 @@ flowchart LR
     subgraph Python["src/gbcms/"]
         CLI["cli.py"] --> Pipeline["pipeline.py"]
         CLI --> Normalize["normalize.py"]
+        CLI --> Convert["convert.py"]
         Pipeline --> IO["io/"]
         Pipeline --> Models["models/"]
     end

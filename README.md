@@ -14,12 +14,13 @@
 - 📊 **Orientation-Aware**: Forward and reverse strand analysis with fragment counting
 - 📏 **mFSD (Mutant Fragment Size Distribution)**: Per-allele cfDNA fragment size profiling with KS test and log-likelihood ratio
 - 🔬 **Statistical Analysis**: Fisher's exact test for strand bias (read-level and fragment-level)
-- 📁 **Flexible I/O**: BAM and CRAM input; VCF and MAF variant input/output formats
+- 📁 **Flexible I/O**: BAM and CRAM input; VCF and MAF variant input/output formats, converted as vcf2maf / maf2vcf do
 - 🎯 **Quality Filters**: 8 configurable read and quality filtering options with heuristic BAQ
 - 🧬 **RNA Mode**: Transcriptome-aware counting with strandedness, splice detection, and A-to-I editing
 - 🔗 **UMI Support**: Molecule-level deduplication with UMI-aware fragment grouping
 - 🔬 **Per-Molecule Observations**: Export which molecule carried which allele at each variant — the layer beneath the counts — enabling read-backed phasing and allelic imbalance
 - 🔧 **Normalize Command**: Standalone variant normalization (left-align + REF validation) without counting
+- 🔁 **Convert Command**: VCF ↔ MAF conversion with vcf2maf / maf2vcf coordinates, without counting
 
 ## Installation
 
@@ -69,6 +70,7 @@ gbcms dna \
 - 📖 [CLI Reference — DNA](https://msk-access.github.io/gbcms/cli/dna/)
 - 📖 [CLI Reference — RNA](https://msk-access.github.io/gbcms/cli/rna/)
 - 📖 [CLI Reference — Normalize](https://msk-access.github.io/gbcms/cli/normalize/)
+- 📖 [CLI Reference — Convert](https://msk-access.github.io/gbcms/cli/convert/)
 
 ---
 
@@ -138,6 +140,12 @@ gbcms normalize \
     --variants variants.vcf \
     --fasta hg19.fa \
     --output results/normalized.tsv
+```
+
+### CLI: Convert VCF ↔ MAF
+```bash
+gbcms convert --variants variants.vcf --output variants.maf
+gbcms convert --variants variants.maf --fasta hg19.fa --output variants.vcf
 ```
 
 ### CLI: Multiple Samples (Sequential)

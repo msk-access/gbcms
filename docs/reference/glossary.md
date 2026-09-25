@@ -69,6 +69,9 @@ Status is two fields: `gbcms_status` (verdict `PASS`/`FAIL`) and `gbcms_status_r
 | **PASS** | **TRACT_CLUSTER** | Variant shares a repeat-tract scan window with a co-annotated length-changing variant (spans need not touch); sibling exclusion and exclusive AD assignment active |
 | **FAIL** | **REF_MISMATCH** | REF allele does not match the reference genome at the stated position |
 | **FAIL** | **FETCH_FAILED** | Could not fetch the reference region (chromosome not found, etc.) |
+| **FAIL** | **EMPTY_ALLELE** | Empty REF or ALT (malformed indel) |
+| **FAIL** | **ALT_EQUALS_REF** | ALT equals REF (any case; `-` for both in a MAF): no change to count |
+| **FAIL** | **ALT_CONTAINS_N** | ALT allele contains an `N` base |
 
 ## RNA Terms
 
