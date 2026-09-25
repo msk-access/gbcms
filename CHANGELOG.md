@@ -24,10 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/m)` in `gbcms_diagnostic`: the allele the
-  reads carry when it is not the given one, in VCF form, with n reads carrying it
-  exactly and m carrying the given ALT (named when n ≥ 3, n > m and at least 5% of
-  the scanned reads).
+- Two `gbcms_diagnostic` flags name the allele the reads carry when it is not the
+  given one (canonical VCF form; n reads carry it exactly, m the given allele):
+  - `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)`: no read carries the given allele
+    exactly, so the input is likely mis-described.
+  - `COEXISTING_ALLELE(chrom:pos:REF>ALT:n/m)`: the given allele is present, but a
+    different allele in the same stretch is more frequent (e.g. a germline indel
+    or stutter in a repeat). A caveat for reading the VAF.
+  - Both need n ≥ 3, n > m, at least 5% of the scanned reads, and an allele that
+    is not already an input row.
   - The scan covers every variant type: each spanning read is compared over the
     event plus one base each side, so a germline SNP beside the event does not
     count.

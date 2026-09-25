@@ -615,8 +615,17 @@ low counts. The caveat must say what the reads carry, or the low VAF misleads.
 - Count identical sequences. The most frequent sequence that is neither REF
   nor the given ALT is the observed allele: n reads carry it exactly, m the
   given ALT.
-- Emit `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/m)` in `gbcms_diagnostic` when
-  n ≥ 3 and n > m. The allele is trimmed to VCF form (1-based POS).
+- Emit in `gbcms_diagnostic` when n ≥ 3, n > m, n ≥ 5% of the scanned reads,
+  and the allele is not already an input row. The allele is in canonical VCF
+  form (1-based POS).
+  - `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)`: no read carries the given allele
+    exactly, so the input is likely mis-described.
+  - `COEXISTING_ALLELE(chrom:pos:REF>ALT:n/m)`: the given allele is present
+    (m > 0) beside a more frequent one. Operator, 2026-09-25: distinguish the
+    two rather than choose one.
+- As built (#164), the comparison is placement-independent: it widens over any
+  read indel whose shift region touches the core, and compares canonical
+  alleles.
 - No new columns, and no count changes.
 
 **Tests.**

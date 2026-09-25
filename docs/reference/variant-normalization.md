@@ -178,7 +178,7 @@ Adaptive padding=13: GCTTAAAAA... + REF/ALT + ...AAAAATTGAC  (anchored)
 Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. `CCCCCC→T` where the reads show a smaller change at the run's end. With `--rescue-homopolymer`, gbcms also counts a **corrected allele** for such calls and reports whichever of the two more reads support.
 
 !!! info "Off by default: the row counts the given allele"
-    gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/m)` in `gbcms_diagnostic` names it: the allele the reads carry exactly, with n of its carriers against m for the given ALT. Prep still builds the corrected allele; it is counted only with `--rescue-homopolymer`.
+    gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, `gbcms_diagnostic` names it: `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)` when no read carries the given allele, `COEXISTING_ALLELE(...:n/m)` when the given allele is present beside a more frequent one. Prep still builds the corrected allele; it is counted only with `--rescue-homopolymer`.
 
     The twin became opt-in because its arbitration is not an exact haplotype match. At the case it was built for (SOX2, below), the reads carry `CCCCT`, a 1bp deletion plus C→T, not the twin `CCCCCT`. The twin wins there by tolerance. At other real twin loci it claims most of the called allele's own exact carriers. `OBSERVED_ALLELE` names `CCCCT` exactly.
 

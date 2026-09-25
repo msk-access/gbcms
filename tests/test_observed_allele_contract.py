@@ -236,3 +236,23 @@ def test_a_deletion_past_the_event_is_named_whole(tmp_path):
         tmp_path, ref, reads + _ref_reads(ref, 10, start=280), [(snv + 1, ref[snv], alt_base)]
     )
     assert f"OBSERVED_ALLELE(1:{pos0 + 1}:{r}>{a}:15/0)" in row["gbcms_diagnostic"].split(";")
+
+
+def test_a_present_allele_with_a_more_frequent_neighbour_is_coexisting(tmp_path):
+    """Given C>T is carried by 5 reads; 15 reads carry C>G. The given allele is
+    present, so this is a coexisting allele, not a mis-described input."""
+    ref = _ref()
+    g_hap = ref[: RUN + 5] + "G" + ref[RUN + 6 :]
+    t_hap = ref[: RUN + 5] + "T" + ref[RUN + 6 :]
+    reads = [
+        make_read(f"g{i}", g_hap[s : s + READ], s, ((0, READ),))
+        for i, s in enumerate(range(240, 255))
+    ]
+    reads += [
+        make_read(f"t{i}", t_hap[s : s + READ], s, ((0, READ),))
+        for i, s in enumerate(range(255, 260))
+    ]
+    (row,) = _run(tmp_path, ref, reads + _ref_reads(ref, 10), [(RUN + 6, "C", "T")])
+    flags = row["gbcms_diagnostic"].split(";")
+    assert "COEXISTING_ALLELE(1:306:C>G:15/5)" in flags
+    assert not any(f.startswith("OBSERVED_ALLELE") for f in flags)

@@ -177,8 +177,9 @@ for the full design.
 !!! warning "Off by default: the row counts the given allele"
     Both forms accept near-matches, so the winner can report another allele's reads under
     the row's label. By default gbcms counts the allele it is given, and when the reads carry
-    a different one, `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/m)` in `gbcms_diagnostic` names it
-    (see [output formats](../reference/output-formats.md)).
+    a different one, `gbcms_diagnostic` names it: `OBSERVED_ALLELE` when no read carries the
+    given allele, `COEXISTING_ALLELE` when it is present beside a more frequent one (see
+    [output formats](../reference/output-formats.md)).
 
 ## Debugging Options
 

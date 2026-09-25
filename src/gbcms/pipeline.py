@@ -790,12 +790,15 @@ class Pipeline:
                 (>= 2) reads carry a soft clip >= 8bp whose boundary lies within
                 the insert's duplication reach — carriers the aligner may have
                 represented as clips rather than I ops (inspect in IGV).
-            OBSERVED_ALLELE(chrom:pos:REF>ALT:n/m): the reads carry a different
-                allele than the input. n reads carry it exactly over the event (VCF
-                form, 1-based POS), m carry the given ALT exactly; named when n >= 3,
-                n > m and n is at least 5% of the scanned reads. Counts stay the
-                given allele's (count the given allele); this names what the reads
-                show so the input can be checked.
+            OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0): no read carries the given allele
+                exactly, and n reads carry this one (canonical VCF form, 1-based
+                POS): the input is likely mis-described.
+            COEXISTING_ALLELE(chrom:pos:REF>ALT:n/m): the given allele is present
+                (m reads carry it exactly), but n reads carry a different allele in
+                the same stretch: a caveat for reading the VAF.
+                Both are named when n >= 3, n > m, n is at least 5% of the scanned
+                reads, and the allele is not already an input row. Counts stay the
+                given allele's (count the given allele).
             SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
                 be evaluated by the pangenomic haplotype matrix (reference context
                 missing — e.g. an indel near a contig end — or not containing the
@@ -862,15 +865,18 @@ class Pipeline:
         if sw_fallback > 0:
             flags.append(f"SW_FALLBACK({sw_fallback})")
 
-        # OBSERVED_ALLELE: the reads carry a different allele than the input,
-        # more often than the given one. The counts stay the given allele's; this
-        # names what the reads show so the input can be checked.
+        # The reads carry a different allele than the input, more often than the
+        # given one. The counts stay the given allele's; the flag names what the
+        # reads show. No read carrying the given allele exactly (m = 0) points at
+        # a mis-described input (OBSERVED_ALLELE); a present given allele beside a
+        # more frequent one is a coexisting allele (COEXISTING_ALLELE).
         observed = getattr(counts, "observed_reads", 0)
         if observed > 0:
+            given = counts.observed_given_reads
+            name = "OBSERVED_ALLELE" if given == 0 else "COEXISTING_ALLELE"
             flags.append(
-                f"OBSERVED_ALLELE({variant.chrom}:{counts.observed_pos}:"
-                f"{counts.observed_ref}>{counts.observed_alt}:"
-                f"{observed}/{counts.observed_given_reads})"
+                f"{name}({variant.chrom}:{counts.observed_pos}:"
+                f"{counts.observed_ref}>{counts.observed_alt}:{observed}/{given})"
             )
 
         return flags
