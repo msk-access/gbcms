@@ -673,6 +673,27 @@ twin's allele (`REF[..len-1] + X`) does not match its documentation
     observations and input validation don't follow the winner;
   - #110: a VCF delins with a one-base ALT is treated as a pure deletion.
 
+## Release-candidate validation (2026-09-24) — PASSED
+
+Develop 3ed1a4d3 against the 6.4.0 release on real data (local; aggregates
+only). Every changed cell was attributed to a merged ticket; anything else would
+have been reported unexplained.
+- **DNA:** 28 runs (FLT3-ITD IMPACT, ACCESS duplex and simplex including the
+  BRCA2 cluster, complex-cluster IMPACT, MSI-high).
+  - Headers are identical, and 1030 of 1060 rows are byte-identical.
+  - The 30 changed rows are 29 T1 cluster rows and one T3 `CLIP_CANDIDATES`
+    flag.
+  - The BRCA2 cluster reproduces the T1 record: 28/28, 32/32, 21/21 exact;
+    33bp 37 v 22; 14bp 51 v 45.
+- **RNA:** the rebuilt FORTE truth cohort, 33 samples / 94 rows, with a
+  sequence-anchored hg38 lift.
+  - Zero main-count changes.
+  - The changed rows are the six T2 marker rows of the T2 record and one T6
+    exon-edge row. No spurious markers.
+
+The gate above ("6.5.0 cut only after T1's ACCESS rerun and T2's cohort
+recheck") is met.
+
 ## Order & discipline
 
 T1 (own branch, own review) → T2 (own branch; needs the FORTE geometries) →
