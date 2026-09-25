@@ -106,8 +106,16 @@ try's discarded scores. That inconsistency is what #92 reported
 |---|---|---|---|
 | A | Flag from the second try's scores (the original plan) | Slightly worse (32 vs 36 correct) | Adds error; ruled out |
 | B | Flag by read content: only when the read carries ALT-specific sequence | Removes the ~31 wrong flags | `partial_alt` drops for complex variants under SW |
-| C | B, plus: second-try ALT calls without ALT sequence become partial, unless reads share a recurring unannotated haplotype there | Also corrects up to 35% of those ALT calls | `alt_count` changes |
+| C | B, plus: second-try ALT calls without ALT sequence become partial | Also corrects up to 35% of those ALT calls | `alt_count` changes |
 | D | Leave it; document that `partial_alt` is score-based under SW | None | Known inaccuracy stays; ruled out |
+
+**Principle (operator, 2026-09-25): count the given allele.** A read counts ALT only
+if it carries the given ALT. A recurring unannotated haplotype is a diagnostic
+finding (`PARTIAL_DOMINANT` already surfaces heavy partial evidence), never ALT
+for the row. This removes the exception C originally had ("unless reads share a
+recurring unannotated haplotype"), and makes C the principled option: the local
+fallback exists to credit reads when the sign-out allele is slightly wrong,
+which is the deconvolution the principle rules out.
 
 **Decision pending: B vs C.** It rests on a verification round with two
 questions:
@@ -181,13 +189,18 @@ permissive classifiers compete: the called allele and a corrected allele
 most reads carry a third allele that both claim. When the corrected allele
 wins, per-transcript counts, ASJD and `NON_DISCRIMINATING_LOCUS` still
 describe the original (#112 item 1).
-**Direction** (6.5.0 plan § T11).
-- Arbitrate on exact haplotype support, the census method: count the reads
-  that carry each candidate exactly (the called allele, both corrected shapes,
-  "other").
-- Report the allele the reads carry, and flag when it is neither.
-- Make every consumer follow the reported allele.
-- Revisit `repeat_span` for any corrected allele kept.
+**Conflict with "count the given allele" (2026-09-25; decision pending).** The
+decomposition is on by default. Every eligible deletion is counted twice, as
+given and as a corrected allele. When the corrected allele gets more ALT reads,
+its counts are reported under the row's label (`WARN_HOMOPOLYMER_DECOMP`).
+That is deconvolution of a possibly wrong input, on by default, unlike the
+opt-in `--rescue-mnp`.
+**Recommended direction** (replaces the 6.5.0 plan § T11 direction):
+- Count the given allele, always.
+- Measure the corrected shapes' exact haplotype support (the census method) as
+  a diagnostic, and flag when the reads carry a corrected shape or neither.
+- If corrected counts are still wanted, put them behind an opt-in flag that is
+  audited per row, like `--rescue-mnp`.
 
 **Truth set.** The census harness at the 11 real twin loci
 (`~/test/gbcms/harness/t9t10/`, local).
