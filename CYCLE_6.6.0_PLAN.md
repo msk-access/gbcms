@@ -289,7 +289,27 @@ permissive classifiers compete: the called allele and a corrected allele
 most reads carry a third allele that both claim. When the corrected allele
 wins, per-transcript counts, ASJD and `NON_DISCRIMINATING_LOCUS` still
 describe the original (#112 item 1).
-**Conflict with "count the given allele" (2026-09-25; decision pending).** The
+**Decision (2026-09-25, operator): count the given allele; the twin becomes opt-in;
+reads' own allele is named by a diagnostic (O4).**
+- **Why it was added** (commit 94e06f70, 2.6.0): callers sometimes merge a
+  1bp deletion plus an SNV in a homopolymer into one inflated delins. At SOX2,
+  `CCCCCC→T` was signed out with ALT 3, while 79 reads carried
+  `CCCCCC→CCCCT` (the 1bp deletion plus C→T).
+- **But the code builds a different allele than intended.** The docs'
+  arithmetic hid it: `C×(len−1)+T` is `CCCCCT`, a same-length SNV at the run's
+  end, not `CCCCT`. So even SOX2 is won by tolerance, not by an exact match.
+- **Its "self-validating" claim fails.** At 4 of the 11 real twin loci the
+  twin claims 93–97% of the called allele's exact carriers.
+- **What changes:**
+  - By default, the dual count is off: the row counts the given allele.
+  - `--rescue-homopolymer` keeps today's twin dual count, flagged
+    `WARN_HOMOPOLYMER_DECOMP`, like `--rescue-mnp`. Nextflow follows the CLI
+    default.
+  - O4's `OBSERVED_ALLELE` names what the reads carry. At SOX2 that would
+    say `CCCCT`, 79 reads exact, against 3 for the given allele.
+
+Earlier analysis:
+**Conflict with "count the given allele" (2026-09-25).** The
 decomposition is on by default. Every eligible deletion is counted twice, as
 given and as a corrected allele. When the corrected allele gets more ALT reads,
 its counts are reported under the row's label (`WARN_HOMOPOLYMER_DECOMP`).
@@ -532,6 +552,33 @@ In a fillout of other timepoints or normals, where the MNP itself is absent,
 rescue can adopt a germline component. This is documented in `--rescue-mnp`'s
 help. Consider a diagnostic when the adopted component is present in the
 matched normal. An upstream-annotation question, from 6.5.0 T7.
+
+### O4 — Name the allele the reads carry (`OBSERVED_ALLELE`) · H [decided]
+**Why.** Under "count the given allele", a mis-described input gets honest,
+low counts. The caveat must say what the reads carry, or the low VAF misleads.
+- SOX2: a homopolymer twin case.
+- C1's rounds: one mis-described complex variant in 35.
+
+**Rule.**
+- For each indel, MNP or complex row, rebuild every spanning read across the
+  event (C10's shift region for pure indels, the span otherwise) plus 5 flank
+  bases. Aligned bases only in the first cut. Bases below min BQ disqualify
+  the read.
+- Count identical sequences. The most frequent sequence that is neither REF
+  nor the given ALT is the observed allele: n reads carry it exactly, m the
+  given ALT.
+- Emit `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/m)` in `gbcms_diagnostic` when
+  n ≥ 3 and n > m. The allele is trimmed to VCF form (1-based POS).
+- No new columns, and no count changes.
+
+**Tests.**
+- SOX2-shaped synthetic: given `CCCCCC>T`, reads carry `CCCCT`. The diagnostic
+  names it; the counts stay the given allele's.
+- A correct allele gets no flag.
+- Scattered sequencing errors (< 3 identical) get no flag.
+
+**Acceptance.** The RC set: flags only where the reads carry a different
+allele, each checked read by read. C1's mis-described variant is flagged.
 
 ## Hygiene
 
