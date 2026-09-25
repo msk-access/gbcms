@@ -250,3 +250,43 @@ def test_snv_outside_the_span_is_not_a_sibling_and_its_carriers_are_ref(tmp_path
     a = next(r for r in read_maf_output(out) if r["vcf_ref"] == "CA")
     assert "MULTI_ALLELIC" not in a["gbcms_status_reason"]
     assert (int(a["ref_count"]), int(a["ref_count_fragment"])) == (14, 14)
+
+
+def test_uninformative_fragments_are_left_out_of_mfsd_classes(tmp_path):
+    """A molecule whose reads all end inside the tract carries no readable
+    allele: it counts in fragment depth but in no mFSD class (not NonREF,
+    which means a third allele)."""
+    ref = _ref(TRACT)
+    reads = _deletion_reads(ref)
+    for r in reads:
+        r.template_length = 200
+    fa, bam = _files(tmp_path, ref, reads)
+    (v,) = _prepared(fa, [gbcms_rs.Variant("1", 199, "CA", "C", "DELETION")])
+    (c,) = gbcms_rs.count_bam_binned(
+        bam, [v], [None], 20, 20, True, True, True, False, False, False, 1, mfsd=True
+    )
+    assert c.dpf == 40
+    assert (c.mfsd_ref_count, c.mfsd_alt_count, c.mfsd_nonref_count, c.mfsd_n_count) == (
+        10,
+        10,
+        0,
+        0,
+    )
+
+
+def test_sibling_carrier_ending_inside_the_tract_is_still_partial(tmp_path):
+    """A read that ends inside A's tract cannot show A's tract length, but one
+    carrying a sibling's allele on A's site is still a different allele here:
+    partial evidence, not REF and not silently dropped."""
+    ref = _ref(TWO_TRACTS)
+    reads = _twin_reads(ref, "snv")  # 6 wild-type + 8 spanning carriers
+    hap = ref[:200] + "G" + ref[201:]
+    for i in range(4):  # carriers whose last base is 202..205, inside the A-run
+        s = 103 + i
+        reads.append(make_read(f"sibp{i}", hap[s : s + READ], s, ((0, READ),)))
+    rows = [(200, "CA", "C"), SIBLING_ROWS["snv"]]
+    _run_cli(tmp_path, ref, reads, rows)
+    out = glob.glob(str(tmp_path / "out" / "*.maf"))[0]
+    a = next(r for r in read_maf_output(out) if r["vcf_ref"] == "CA")
+    assert (int(a["ref_count"]), int(a["ref_count_fragment"])) == (6, 6)
+    assert int(a["partial_alt"]) == 12

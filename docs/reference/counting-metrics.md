@@ -282,8 +282,12 @@ Enabled with `--mfsd`. All 41 columns (and their VCF INFO equivalents) are absen
 |:------|:-----------|
 | `REF` | Fragment supporting the reference allele, valid insert size (50–1000 bp) |
 | `ALT` | Fragment supporting the alternate allele, valid insert size |
-| `NonREF` | Fragment supporting a third allele (neither REF nor ALT) |
+| `NonREF` | Fragment supporting a third allele, or with no REF/ALT consensus (neither REF nor ALT, not N) |
 | `N` | Fragment where the base at the variant position was called `N` |
+
+A fragment whose reads all start or end inside an indel's repeat tract carries no
+readable allele ([informative reads](allele-classification.md#informative-reads-for-indels)).
+It counts in fragment depth but in none of the four classes.
 
 ### MAF Columns (41 total)
 
@@ -415,8 +419,8 @@ RNA-seq reads exhibit orientation biases (dUTP strandedness), splice junctions (
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `rna_sense_depth` | u32 | Reads aligning to the gene **sense** strand |
-| `rna_antisense_depth` | u32 | Reads aligning to the gene **antisense** strand |
+| `rna_sense_depth` | u32 | REF and ALT reads aligning to the gene **sense** strand |
+| `rna_antisense_depth` | u32 | REF and ALT reads aligning to the gene **antisense** strand |
 | `rna_alt_sense_count` | u32 | ALT-classified reads on the sense strand |
 | `rna_editing_site` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
 | `rna_splice_spanning` | u32 | ALT-classified reads containing splice junctions (CIGAR `N`) spanning the variant |

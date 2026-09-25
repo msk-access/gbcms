@@ -28,7 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Carriers of a sibling outside the window count REF again: IGV shows them as
     REF at this row.
   - Carriers of a sibling inside the window now also leave `ref_count_fragment`.
-- `alt_count`, `total_count` and their fragment forms are unchanged. SNV and
+- What moves with these fixes:
+  - `ref_count`, `ref_count_fragment` and their strand forms, VAF, strand
+    bias, and VCF `AD`/`ADF`/`ADR`/`FAD`;
+  - values built from REF + ALT: the merged `simplex_duplex_total_count`, and
+    RNA `rna_sense_depth`/`rna_antisense_depth` (these count REF and ALT reads;
+    the docs now say so);
+  - per-transcript REF counts and the ASJD REF partition;
+  - `partial_alt`: sibling carriers outside the window count REF, not partial.
+    A carrier of an in-window sibling still counts partial, even when it ends
+    inside the tract.
+  - mFSD: a fragment whose reads all end inside the tract lands in no class. It
+    used to land in REF, and must not look like a third allele (NonREF). In the
+    observation export it is `OTHER`.
+- Unchanged: `alt_count`, `total_count` (DP) and their fragment forms. SNV and
   MNP rows change only when they share a site with a co-annotated indel.
 
 ## [6.5.0] - 2026-09-25

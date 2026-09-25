@@ -71,6 +71,12 @@ pub struct FragmentEvidence {
     /// make the observation vanish from consensus (rd>0 with rdf=0 was the
     /// exact ALT-side failure fixed above).
     pub has_structural_ref: bool,
+    /// Sticky flag: some read in this fragment could tell the alleles apart
+    /// (every read except an indel read that starts or ends inside the event's
+    /// shift region). A neither-REF-nor-ALT fragment without one carries no
+    /// allele at all, so mFSD leaves it out of its classes instead of calling
+    /// it a third allele.
+    pub has_informative_read: bool,
 
     // ── Mapping confidence ──────────────────────────────────────────────────────────
     /// Worst (minimum) MAPQ among the reads that contributed evidence to this fragment.
@@ -99,6 +105,7 @@ impl FragmentEvidence {
             has_n_base: false,
             has_structural_alt: false,
             has_structural_ref: false,
+            has_informative_read: false,
             min_mapq: u8::MAX,
         }
     }
@@ -135,6 +142,8 @@ impl FragmentEvidence {
     ///   Appended last on purpose: every other trailing parameter is a `bool`, so a
     ///   mis-ordered call fails to compile rather than silently swapping two `u8`s
     ///   (which is what inserting it next to `base_qual` would have risked).
+    /// - `informative`: whether this read could tell the alleles apart; sets
+    ///   the sticky `has_informative_read`.
     #[allow(clippy::too_many_arguments)]
     pub fn observe(
         &mut self,
@@ -147,6 +156,7 @@ impl FragmentEvidence {
         is_n_base: bool,
         is_structural: bool,
         mapq: u8,
+        informative: bool,
     ) {
         // Unconditional, and before any allele branching: a read that is neither REF nor
         // ALT still counts toward DPF, so its mapping confidence still describes the
@@ -186,6 +196,9 @@ impl FragmentEvidence {
         }
         if is_structural && is_ref {
             self.has_structural_ref = true;
+        }
+        if informative {
+            self.has_informative_read = true;
         }
 
         // mFSD: capture physical insert size — keep the MOST corrected value
@@ -358,10 +371,10 @@ mod tests {
     ) -> FragmentEvidence {
         let mut ev = FragmentEvidence::new();
         if ref_qual > 0 {
-            ev.observe(true, false, ref_qual, true, true, 200, false, false, TEST_MAPQ);
+            ev.observe(true, false, ref_qual, true, true, 200, false, false, TEST_MAPQ, true);
         }
         if alt_qual > 0 {
-            ev.observe(false, true, alt_qual, false, false, 200, false, structural_alt, TEST_MAPQ);
+            ev.observe(false, true, alt_qual, false, false, 200, false, structural_alt, TEST_MAPQ, true);
         }
         ev
     }
@@ -373,13 +386,13 @@ mod tests {
         // A fragment is only as trustworthy as its least confidently placed read. Taking
         // the max (or last) would let one well-placed mate launder a badly-placed one.
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 30, true, true, 200, false, false, 60);
-        ev.observe(false, true, 30, false, false, 200, false, false, 11);
+        ev.observe(true, false, 30, true, true, 200, false, false, 60, true);
+        ev.observe(false, true, 30, false, false, 200, false, false, 11, true);
         assert_eq!(ev.min_mapq, 11);
         // order must not matter
         let mut rev = FragmentEvidence::new();
-        rev.observe(false, true, 30, false, false, 200, false, false, 11);
-        rev.observe(true, false, 30, true, true, 200, false, false, 60);
+        rev.observe(false, true, 30, false, false, 200, false, false, 11, true);
+        rev.observe(true, false, 30, true, true, 200, false, false, 60, true);
         assert_eq!(rev.min_mapq, 11);
     }
 
@@ -389,7 +402,7 @@ mod tests {
         // the fragment's mapping confidence. Gating the update on is_ref/is_alt would leave
         // those fragments reporting the "unavailable" sentinel instead of what was measured.
         let mut ev = FragmentEvidence::new();
-        ev.observe(false, false, 0, true, true, 200, false, false, 7);
+        ev.observe(false, false, 0, true, true, 200, false, false, 7, true);
         assert_eq!(ev.min_mapq, 7);
     }
 
@@ -407,7 +420,7 @@ mod tests {
     fn mapq_zero_is_recorded_faithfully() {
         // The flip side: a genuine MAPQ 0 must survive as 0, not be treated as "missing".
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 30, true, true, 200, false, false, 0);
+        ev.observe(true, false, 30, true, true, 200, false, false, 0, true);
         assert_eq!(ev.min_mapq, 0);
     }
 
@@ -482,7 +495,7 @@ mod tests {
         // an M-N-D-M junction) is still CIGAR evidence — the fragment must
         // resolve ALT, not vanish into dpf-only.
         let mut ev = FragmentEvidence::new();
-        ev.observe(false, true, 0, true, true, 200, false, true, TEST_MAPQ);
+        ev.observe(false, true, 0, true, true, 200, false, true, TEST_MAPQ, true);
         assert_eq!(
             ev.resolve(10),
             (false, true),
@@ -495,7 +508,7 @@ mod tests {
         // Without the structural flag, a qual-0 ALT observation carries no
         // usable evidence — unchanged behavior.
         let mut ev = FragmentEvidence::new();
-        ev.observe(false, true, 0, true, true, 200, false, false, TEST_MAPQ);
+        ev.observe(false, true, 0, true, true, 200, false, false, TEST_MAPQ, true);
         assert_eq!(ev.resolve(10), (false, false));
     }
 
@@ -507,10 +520,10 @@ mod tests {
         // a subsequent non-structural observation is made.
         let mut ev = FragmentEvidence::new();
         // First read: structural ALT
-        ev.observe(false, true, 30, true, true, 200, false, true, TEST_MAPQ);
+        ev.observe(false, true, 30, true, true, 200, false, true, TEST_MAPQ, true);
         assert!(ev.has_structural_alt, "should be set after structural ALT");
         // Second read: non-structural REF
-        ev.observe(true, false, 90, false, false, 200, false, false, TEST_MAPQ);
+        ev.observe(true, false, 90, false, false, 200, false, false, TEST_MAPQ, true);
         assert!(ev.has_structural_alt, "should remain set (sticky)");
     }
 
@@ -520,7 +533,7 @@ mod tests {
         // span-aligned REF testimony at a spliced deletion locus. It sets
         // the REF flag and never the ALT flag.
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 50, true, true, 200, false, true, TEST_MAPQ);
+        ev.observe(true, false, 50, true, true, 200, false, true, TEST_MAPQ, true);
         assert!(!ev.has_structural_alt, "REF obs must not set structural ALT flag");
         assert!(ev.has_structural_ref, "structural REF obs must set the REF flag");
     }
@@ -532,7 +545,7 @@ mod tests {
         // REF, not vanish into dpf-only — the mirror of the structural-ALT
         // rule above.
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ);
+        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ, true);
         assert_eq!(ev.resolve(10), (true, false));
     }
 
@@ -542,8 +555,8 @@ mod tests {
         // structural ALT keeps its unconditional priority (direct event
         // evidence beats absence-side coverage).
         let mut ev = FragmentEvidence::new();
-        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ);
-        ev.observe(false, true, 0, false, false, 200, false, true, TEST_MAPQ);
+        ev.observe(true, false, 0, true, true, 200, false, true, TEST_MAPQ, true);
+        ev.observe(false, true, 0, false, false, 200, false, true, TEST_MAPQ, true);
         assert_eq!(ev.resolve(10), (false, true));
     }
 
@@ -551,7 +564,7 @@ mod tests {
     fn observe_non_structural_alt_does_not_set_flag() {
         // Non-structural ALT (e.g., Phase 3 alignment) should not set the flag.
         let mut ev = FragmentEvidence::new();
-        ev.observe(false, true, 50, true, true, 200, false, false, TEST_MAPQ);
+        ev.observe(false, true, 50, true, true, 200, false, false, TEST_MAPQ, true);
         assert!(!ev.has_structural_alt, "non-structural ALT should not set flag");
     }
 }

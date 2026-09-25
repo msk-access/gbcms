@@ -528,8 +528,8 @@ These columns are **always** appended regardless of input format.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `rna_sense_depth` | Integer | Total reads on the transcript sense strand at this position |
-| `rna_antisense_depth` | Integer | Total reads on the antisense strand |
+| `rna_sense_depth` | Integer | REF and ALT reads on the transcript sense strand at this position |
+| `rna_antisense_depth` | Integer | REF and ALT reads on the antisense strand |
 | `rna_alt_sense_count` | Integer | ALT reads on the sense strand |
 | `rna_editing_site` | Boolean | `True` if the locus overlaps a known A-to-I editing site (requires `--rna-editing-db`) |
 | `rna_splice_spanning` | Integer | ALT reads whose alignment spans a splice junction (`N` CIGAR operation) |

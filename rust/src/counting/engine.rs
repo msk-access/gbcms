@@ -1852,7 +1852,8 @@ fn count_variant_from_cache(
         // (base_qual==0 && !is_ref && !is_alt) which could mis-classify
         // true third-allele reads with qual=0 as N-class fragments.
         let tlen = mfsd::calc_physical_insert_size(record);
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+        let informative = !result.ref_uninformative || ref_claimed_by_sibling;
+        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);
 
         // Secondary/supplementary records end here: they are fragment evidence
         // only. Every counter below (n_count, any_alt/partial_alt, RD/AD,
@@ -2066,9 +2067,11 @@ fn count_variant_from_cache(
                     alt_sizes.push(sz_f);
                 } else if evidence.has_n_base {
                     n_sizes.push(sz_f);
-                } else {
+                } else if evidence.has_informative_read {
                     nonref_sizes.push(sz_f);
                 }
+                // Otherwise every read ended inside the indel's repeat tract:
+                // the molecule carries no readable allele, so no class.
             }
         }
     }
@@ -2399,7 +2402,8 @@ fn count_single_variant(
         // mis-classified true third-allele reads as N-class.
         let is_n_base = result.has_n_base;
 
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq());
+        let informative = !result.ref_uninformative || ref_claimed_by_sibling;
+        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq(), informative);
 
         // Secondary/supplementary records end here: fragment evidence only —
         // read-level counters below are defined over the first-class read set
@@ -2550,10 +2554,12 @@ fn count_single_variant(
                 } else if evidence.has_n_base {
                     // N class: ambiguous base at variant position
                     n_sizes.push(sz_f);
-                } else {
+                } else if evidence.has_informative_read {
                     // NonREF class: definite non-ref, non-alt, non-N base
                     nonref_sizes.push(sz_f);
                 }
+                // Otherwise no read could tell the alleles apart: no class
+                // (mirrors the binned path).
             }
         }
     }
@@ -2673,8 +2679,9 @@ fn mask_low_qual(seq: &mut [u8], quals: &[u8], min_baseq: u8) {
     }
 }
 
-/// Whether a read classified REF for `variant` is ALT for a co-annotated
-/// sibling whose change lies inside `variant`'s discrimination window
+/// Whether a read classified REF for `variant` (or whose REF call was
+/// withdrawn as uninformative) is ALT for a co-annotated sibling whose change
+/// lies inside `variant`'s discrimination window
 /// (`window_siblings`, from `window::siblings_in_window`). Such a read
 /// carries a different allele where this row's REF is read, so it is not REF
 /// testimony here. A carrier of a sibling elsewhere in the group shows the
@@ -2694,7 +2701,7 @@ fn sibling_claims_ref<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> bool {
-    if !result.is_ref {
+    if !result.is_ref && !result.ref_uninformative {
         return false;
     }
     for sib in window_siblings {
@@ -2905,6 +2912,7 @@ fn ref_needs_the_window(record: &Record, variant: &Variant, mut result: Classify
         );
         result.is_ref = false;
         result.is_structural = false;
+        result.ref_uninformative = true;
     }
     result
 }
@@ -3260,13 +3268,15 @@ fn count_per_transcript(
                 record, variant, &result, sibling_variants, effective_quals, min_baseq,
             );
             let is_alt = result.is_alt && !claimed_by_sibling;
-            let is_ref = result.is_ref && !sibling_claims_ref(
+            let ref_claimed_by_sibling = sibling_claims_ref(
                 record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
                 &mut alt_aligner, &mut ref_aligner, backend,
             );
+            let is_ref = result.is_ref && !ref_claimed_by_sibling;
+            let informative = !result.ref_uninformative || ref_claimed_by_sibling;
 
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-            evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq());
+            evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);
 
             if first_class {
                 if is_ref {
