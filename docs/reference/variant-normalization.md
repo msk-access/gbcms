@@ -93,14 +93,19 @@ For indels and complex variants, gbcms applies **bcftools-style left-alignment**
 !!! tip "Dynamic Window Expansion"
     If a variant shifts all the way to the window edge during left-alignment, it may not have fully converged. The engine automatically **doubles the window** (100 → 200 → 400 → ... → 2500bp) and retries. This ensures correct normalization even for variants in massive tandem repeats (e.g., centromeric regions) without penalizing the common case.
 
-After alignment, the **variant type is re-detected** based on the new allele lengths:
+Every prepared variant's **type label is derived from its final alleles**
+(after anchor resolution, REF correction and alignment), with the same rule the
+readers use:
 
 | Condition | Assigned Type |
 |:----------|:-------------|
 | `ref_len == 1 && alt_len == 1` | SNP |
-| `ref_len == 1 && alt_len > 1` | INSERTION |
-| `ref_len > 1 && alt_len == 1` | DELETION |
-| Otherwise | COMPLEX |
+| `ref_len == 1 && alt_len > 1` and ALT starts with the REF base | INSERTION |
+| `ref_len > 1 && alt_len == 1` and REF starts with the ALT base | DELETION |
+| Otherwise (a delins such as `TTAC>A` or `C>TA`, or an MNP) | COMPLEX |
+
+Counting never reads this label — reads are classified by the alleles — so it is
+what `gbcms normalize` reports, not an input to counting.
 
 !!! tip "Debugging Normalization"
     Use `gbcms normalize` to see exactly how each variant was transformed. The output TSV shows original and normalized coordinates side by side, plus granular flags: `was_anchor_resolved` (MAF dash-allele conversion), `was_left_aligned` (left-shifting), and `was_normalized` (either one).

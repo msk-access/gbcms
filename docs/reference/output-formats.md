@@ -169,10 +169,30 @@ self-describing.
 | `CHROM` | Variant chromosome | The input's own naming (e.g. `chr1` stays `chr1` against a `1`-named reference or BAM) |
 | `POS` | Variant position | 1-based (VCF convention) |
 | `ID` | Original VCF `ID` field | `.` when input is MAF (no `ID` column) |
-| `REF` | Reference allele | From input; validated against FASTA |
-| `ALT` | Alternate allele | From input |
+| `REF` | Reference allele | VCF input: as written. MAF input: as maf2vcf writes it (below) |
+| `ALT` | Alternate allele | VCF input: as written. MAF input: as maf2vcf writes it (below) |
 | `QUAL` | `.` | Always missing — gbcms does not perform variant calling |
 | `FILTER` | `.` | Not set |
+
+!!! info "MAF input written as VCF follows maf2vcf"
+    A MAF row is written as the record [maf2vcf](https://github.com/mskcc/vcf2maf)
+    writes: when an allele is `-`, or the two alleles differ in length **and** in
+    their first base, the reference base before them is prepended (the base **at**
+    `Start_Position` for a `-` insertion, whose Start is the base before the
+    insertion) and `POS` moves to it. Anything else is written as-is at
+    `Start_Position`. The anchor base comes from `--fasta`; one the reference
+    cannot supply is written as `N` and counted in a WARNING.
+
+    | MAF `Start` `Ref` > `Alt` | VCF `POS` `REF` > `ALT` |
+    |:--------------------------|:------------------------|
+    | `462 AA > -` | `461 TAA > T` |
+    | `581 - > GT` | `581 T > TGT` |
+    | `701 TTAC > A` | `700 TTTAC > TA` |
+    | `942 AAA > T` | `941 GAAA > GT` |
+    | `1183 T > G` | `1183 T > G` |
+
+    Counting is unaffected: the engine resolves MAF alleles the same way before
+    counting. `gbcms convert` writes the same records without counting.
 
 ---
 
@@ -355,21 +375,45 @@ The set of columns in the first row of the header depends on whether the
     |:-------|:------------|
     | `Hugo_Symbol` | Empty — not populated from VCF input |
     | `Chromosome` | Chromosome name, in the input VCF's own naming (`vcf_region` likewise) |
-    | `Start_Position` | 1-based MAF start position |
-    | `End_Position` | 1-based MAF end position |
-    | `Strand` | `+` |
-    | `Variant_Classification` | Derived from variant type |
-    | `Variant_Type` | `SNP`, `INS`, `DEL`, or `ONP` |
-    | `Reference_Allele` | MAF-style REF (`-` for pure insertions) |
-    | `Tumor_Seq_Allele1` | Reference allele (same as `Reference_Allele`) |
-    | `Tumor_Seq_Allele2` | MAF-style ALT (`-` for pure deletions) |
+    | `Start_Position` | 1-based MAF start position (vcf2maf's, below) |
+    | `End_Position` | 1-based MAF end position (vcf2maf's, below) |
+    | `Strand` | Empty |
+    | `Variant_Classification` | Empty — gbcms does not annotate effects |
+    | `Variant_Type` | `SNP`, `DNP`, `TNP`, `ONP`, `INS` or `DEL`, from the trimmed alleles |
+    | `Reference_Allele` | MAF REF: shared leading bases trimmed, `-` when nothing is left |
+    | `Tumor_Seq_Allele1` | Empty |
+    | `Tumor_Seq_Allele2` | MAF ALT: shared leading bases trimmed, `-` when nothing is left |
     | `Tumor_Sample_Barcode` | BAM sample name (from `--bam name:path`) |
     | `Matched_Norm_Sample_Barcode` | Empty |
     | `vcf_id` | Original VCF `ID` field (rsID or `.`) |
     | `vcf_pos` | Original VCF 1-based `POS` |
     | `vcf_region` | `chr:pos` tracking field |
+    | `vcf_ref` | Original VCF `REF` |
+    | `vcf_alt` | Original VCF `ALT` — this row's allele (a multi-allelic record gives one row per ALT) |
 
     Then all [gbcms count columns](#gbcms-count-columns) are appended.
+
+    !!! info "Coordinates follow vcf2maf"
+        Each record is converted exactly as [vcf2maf](https://github.com/mskcc/vcf2maf)
+        converts it: leading bases REF and ALT share are trimmed (trailing ones
+        never are), moving `Start_Position` right; an allele trimmed to nothing
+        becomes `-`. Equal lengths after the trim are `SNP`/`DNP`/`TNP`/`ONP` by
+        length. Otherwise it is `INS` (ALT longer) or `DEL`: the row spans its REF
+        bases, and an insertion whose REF trimmed to `-` spans the two bases around
+        the insertion point. A delins with no shared first base keeps every base.
+
+        | VCF `POS` `REF` > `ALT` | MAF `Start`–`End` `Ref` > `Alt` | `Variant_Type` |
+        |:------------------------|:-------------------------------|:---------------|
+        | `461 TAA > T` | `462–463 AA > -` | `DEL` |
+        | `581 T > TGT` | `581–582 - > GT` | `INS` |
+        | `701 TTAC > A` | `701–704 TTAC > A` | `DEL` |
+        | `821 C > TA` | `821–821 C > TA` | `INS` |
+        | `1181 TCT > TCG` | `1183–1183 T > G` | `SNP` |
+        | `2021 TC > TCGG` | `2022–2023 - > GG` | `INS` |
+
+        The `norm_*` columns of `--show-normalization` are written the same way
+        from the left-aligned variant. `gbcms convert` writes these columns
+        without counting.
 
 === "MAF → MAF"
 

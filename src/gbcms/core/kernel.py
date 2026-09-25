@@ -1,5 +1,6 @@
 """
-Coordinate Kernel: The source of truth for genomic coordinate systems.
+Coordinate Kernel: The source of truth for genomic coordinate systems and
+variant representation.
 
 Handles conversion between:
 - VCF (1-based)
@@ -11,11 +12,20 @@ Ensures consistent representation of variants:
 - Insertions: 0-based index of the ANCHOR base (preceding the insertion).
 - Deletions: 0-based index of the ANCHOR base (preceding the deletion).
 
+VCF <-> MAF conversion follows vcf2maf / maf2vcf (github.com/mskcc/vcf2maf):
+:meth:`CoordinateKernel.vcf_to_maf` and :meth:`CoordinateKernel.maf_to_vcf`
+are the one place either direction is decided, for the writers and for
+``gbcms convert``. Type labels come from the alleles
+(:meth:`CoordinateKernel.allele_type`); the engine applies the same rule to
+its prepared variants.
+
 Note: This module is pure Python and performs coordinate transformations
 only. Allele counting is dispatched via :mod:`gbcms.pipeline` →
 ``gbcms_rs.count_bam_*`` (Rust FFI). The GIL is released before rayon
 parallel iteration in the Rust layer (see ``py.allow_threads``).
 """
+
+from collections.abc import Callable
 
 from gbcms.models.core import Variant, VariantType
 
@@ -46,33 +56,10 @@ class CoordinateKernel:
         """
         norm_chrom = CoordinateKernel.normalize_chromosome(chrom)
 
-        # Determine variant type and internal position
-        if len(ref) == 1 and len(alt) == 1:
-            vtype = VariantType.SNP
-            # SNP: VCF POS is the base itself.
-            # 1-based 10 -> 0-based 9
-            internal_pos = pos - 1
-
-        elif len(ref) == 1 and len(alt) > 1:
-            vtype = VariantType.INSERTION
-            # Insertion: VCF POS is the base BEFORE the insertion (the anchor).
-            # VCF: POS=10, REF=A, ALT=AT (Insertion of T after A at 10)
-            # Internal: 0-based index of the ANCHOR base.
-            # 1-based 10 -> 0-based 9
-            internal_pos = pos - 1
-
-        elif len(ref) > 1 and len(alt) == 1:
-            vtype = VariantType.DELETION
-            # Deletion: VCF POS is the base BEFORE the deletion (the anchor).
-            # VCF: POS=10, REF=AT, ALT=A (Deletion of T after A at 10)
-            # Internal POS: 0-based index of the ANCHOR base.
-            # 1-based 10 -> 0-based 9
-            internal_pos = pos - 1
-
-        else:
-            vtype = VariantType.COMPLEX
-            # Complex: Treat start as 0-based index of first ref base
-            internal_pos = pos - 1
+        # VCF POS is the first REF base: the anchor for an indel, the first
+        # substituted base otherwise. 1-based 10 -> 0-based 9.
+        internal_pos = pos - 1
+        vtype = CoordinateKernel.allele_type(ref, alt)
 
         return Variant(
             chrom=norm_chrom,
@@ -114,17 +101,10 @@ class CoordinateKernel:
                 # for proper anchor-based normalization via MafReader.
                 internal_pos = start_pos - 1
 
-        elif len(ref) == len(alt) == 1:
-            vtype = VariantType.SNP
-            internal_pos = start_pos - 1
-
         else:
-            # MNPs (same-length multi-base substitutions: DNP, TNP, ONP) and
-            # true DelIns variants (e.g., EPHA7: GC→T) are both classified as
-            # COMPLEX here. The Rust counting engine dispatches by allele
-            # length (ref_len == alt_len → check_mnp), not by this type label.
-            # See commit 5f2d4f6 for the original COMPLEX introduction.
-            vtype = VariantType.COMPLEX
+            # Sequence alleles on both sides are used as written (the engine
+            # anchors only '-' alleles), so they take the VCF-style label.
+            vtype = CoordinateKernel.allele_type(ref, alt)
             internal_pos = start_pos - 1
 
         return Variant(
@@ -137,104 +117,98 @@ class CoordinateKernel:
         )
 
     @staticmethod
-    def _gdc_variant_type(variant: Variant) -> str:
+    def allele_type(ref: str, alt: str) -> VariantType:
+        """Type of a VCF-style allele pair (bases compared case-insensitively).
+
+        INSERTION / DELETION only when the one-base allele is the other's first
+        base — the shared anchor — so the rest of the longer allele is exactly
+        what was inserted or deleted. Anything else of unequal length (a delins,
+        with or without a shared first base) and every multi-base substitution
+        is COMPLEX. The engine's ``variant_type_for`` (rust/src/normalize) is the
+        same rule for prepared variants; the counting engine itself dispatches
+        on the alleles, never on this label.
         """
-        Map internal variant type to GDC MAF TCGAv2 Variant_Type.
-
-        GDC standard defines: SNP, DNP, TNP, ONP, INS, DEL.
-        COMPLEX variants are mapped based on allele length comparison:
-        - ref > alt → DEL (net deletion)
-        - alt > ref → INS (net insertion)
-        - equal length: DNP (len=2), TNP (len=3), ONP (len>3)
-
-        Reference: https://docs.gdc.cancer.gov/Encyclopedia/pages/Mutation_Annotation_Format_TCGAv2/
-
-        Args:
-            variant: Internal normalized Variant.
-
-        Returns:
-            GDC-compliant Variant_Type string.
-        """
-        if variant.variant_type == VariantType.SNP:
-            return "SNP"
-        elif variant.variant_type == VariantType.INSERTION:
-            return "INS"
-        elif variant.variant_type == VariantType.DELETION:
-            return "DEL"
-        else:  # COMPLEX — infer from allele lengths
-            ref_len = len(variant.ref)
-            alt_len = len(variant.alt)
-            if ref_len > alt_len:
-                return "DEL"  # net deletion
-            elif alt_len > ref_len:
-                return "INS"  # net insertion
-            elif ref_len == 2:
-                return "DNP"  # di-nucleotide polymorphism
-            elif ref_len == 3:
-                return "TNP"  # tri-nucleotide polymorphism
-            else:
-                return "ONP"  # oligo-nucleotide polymorphism
+        r, a = ref.upper(), alt.upper()
+        if len(r) == 1 and len(a) == 1:
+            return VariantType.SNP
+        if len(r) == 1 and len(a) > 1 and a[0] == r[0]:
+            return VariantType.INSERTION
+        if len(a) == 1 and len(r) > 1 and r[0] == a[0]:
+            return VariantType.DELETION
+        return VariantType.COMPLEX
 
     @staticmethod
-    def internal_to_maf(variant: Variant) -> dict[str, str]:
-        """
-        Convert internal 0-based VCF-style variant to GDC MAF coordinates.
+    def vcf_to_maf(pos: int, ref: str, alt: str) -> dict[str, str]:
+        """MAF coordinates for a VCF record, exactly as vcf2maf writes them.
 
-        This is the reverse of maf_to_internal() / vcf_to_internal().
-        Produces MAF-compliant fields following GDC MAF TCGAv2 specification:
-        - Start_Position / End_Position are 1-based inclusive
-        - Deletions: REF = deleted bases (no anchor), ALT = '-'
-        - Insertions: REF = '-', ALT = inserted bases (no anchor)
-        - SNP/DNP/TNP/ONP: alleles as-is
-
-        GDC validation rules this satisfies:
-        - DEL: End - Start + 1 == len(Reference_Allele), len(ref) >= len(alt)
-        - INS: End - Start == 1, len(ref) <= len(alt)
-        - SNP/DNP/TNP/ONP: alleles don't contain '-'
+        The leading bases REF and ALT share are trimmed (never trailing ones),
+        advancing the position; an allele trimmed to nothing becomes ``-``.
+        Equal trimmed lengths are SNP / DNP / TNP / ONP by length and span the
+        allele; otherwise the type is INS (ALT longer) or DEL. A DEL, or an INS
+        that still has REF bases, spans its REF bases; an INS whose REF trimmed
+        to ``-`` spans the two bases around the insertion point. The trim is
+        decided from the alleles alone, so a delins with no shared first base
+        keeps every base (``TTAC>A`` is a 4bp DEL, ``C>TA`` a 1bp INS).
 
         Args:
-            variant: Internal normalized Variant (0-based, VCF-style alleles).
+            pos: 1-based VCF POS.
+            ref: VCF REF allele.
+            alt: VCF ALT allele (one allele).
 
         Returns:
-            Dictionary with MAF coordinate fields:
-            Start_Position, End_Position, Reference_Allele,
-            Tumor_Seq_Allele2, Variant_Type (all as strings).
+            Start_Position, End_Position, Reference_Allele, Tumor_Seq_Allele2
+            and Variant_Type, as strings.
         """
-        pos_1based = variant.pos + 1
-        vtype = CoordinateKernel._gdc_variant_type(variant)
-
-        if variant.variant_type == VariantType.DELETION:
-            # VCF: POS=10, REF=AT, ALT=A → strip anchor base
-            # MAF: Start=11 (first deleted base), End=11, REF=T, ALT=-
-            maf_ref = variant.ref[1:]  # strip anchor base
-            return {
-                "Start_Position": str(pos_1based + 1),
-                "End_Position": str(pos_1based + len(variant.ref) - 1),
-                "Reference_Allele": maf_ref,
-                "Tumor_Seq_Allele2": "-",
-                "Variant_Type": vtype,
-            }
-        elif variant.variant_type == VariantType.INSERTION:
-            # VCF: POS=10, REF=A, ALT=AT → strip anchor base
-            # MAF: Start=10 (anchor), End=11, REF=-, ALT=T
-            maf_alt = variant.alt[1:]  # strip anchor base
-            return {
-                "Start_Position": str(pos_1based),
-                "End_Position": str(pos_1based + 1),
-                "Reference_Allele": "-",
-                "Tumor_Seq_Allele2": maf_alt,
-                "Variant_Type": vtype,
-            }
+        ref_len, alt_len = len(ref), len(alt)
+        while ref and alt and ref[0].upper() == alt[0].upper() and ref.upper() != alt.upper():
+            ref, alt = ref[1:] or "-", alt[1:] or "-"
+            ref_len, alt_len, pos = ref_len - 1, alt_len - 1, pos + 1
+        if ref_len == alt_len:
+            start, end = pos, pos + alt_len - 1
+            vtype = {1: "SNP", 2: "DNP", 3: "TNP"}.get(alt_len, "ONP")
+        elif ref_len < alt_len:
+            start, end = (pos - 1, pos) if ref == "-" else (pos, pos + ref_len - 1)
+            vtype = "INS"
         else:
-            # SNP, COMPLEX (DNP/TNP/ONP/DEL/INS by GDC label)
-            # Coordinates span the reference allele, alleles written as-is
-            return {
-                "Start_Position": str(pos_1based),
-                "End_Position": str(pos_1based + len(variant.ref) - 1),
-                "Reference_Allele": variant.ref,
-                "Tumor_Seq_Allele2": variant.alt,
-                "Variant_Type": vtype,
-            }
+            start, end = pos, pos + ref_len - 1
+            vtype = "DEL"
+        return {
+            "Start_Position": str(start),
+            "End_Position": str(end),
+            "Reference_Allele": ref,
+            "Tumor_Seq_Allele2": alt,
+            "Variant_Type": vtype,
+        }
+
+    @staticmethod
+    def maf_to_vcf(
+        start: int, ref: str, alt: str, base_at: Callable[[int], str]
+    ) -> tuple[int, str, str]:
+        """VCF POS / REF / ALT for a MAF row, exactly as maf2vcf writes them.
+
+        The reference base is prepended to both alleles when an allele is
+        ``-``, or when the lengths differ and the first bases differ: the base
+        AT Start for a ``-`` insertion (MAF Start is the base before the
+        insertion), else the base before Start, which becomes POS. Anything
+        else (an SNP or MNP, or unequal alleles that already share their first
+        base) is written as-is at Start, and no base is fetched.
+
+        Args:
+            start: MAF Start_Position (1-based).
+            ref: Reference_Allele (``-`` for an insertion).
+            alt: Tumor_Seq_Allele2 (``-`` for a deletion).
+            base_at: Returns the reference base at a 1-based position of the
+                row's contig.
+
+        Returns:
+            (POS, REF, ALT), POS 1-based.
+        """
+        ref, alt = ("" if ref == "-" else ref), ("" if alt == "-" else alt)
+        if ref and alt and (len(ref) == len(alt) or ref[0].upper() == alt[0].upper()):
+            return start, ref, alt
+        pos = start if not ref else start - 1
+        anchor = base_at(pos)
+        return pos, anchor + ref, anchor + alt
 
     @staticmethod
     def contig_key(chrom: str) -> str:

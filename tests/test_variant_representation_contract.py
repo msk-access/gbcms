@@ -213,7 +213,6 @@ def test_battery_matches_the_oracle_inputs():
 # ── Kernel: one representation module ────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="no allele-derived VCF->MAF conversion yet")
 def test_vcf_to_maf_is_vcf2maf():
     got = {}
     for k, (p, r, a) in VCF_INPUT.items():
@@ -228,7 +227,6 @@ def test_vcf_to_maf_is_vcf2maf():
     assert got == VCF2MAF
 
 
-@pytest.mark.xfail(strict=True, reason="no MAF->VCF record conversion yet")
 def test_maf_to_vcf_is_maf2vcf():
     """The anchor base is fetched only when maf2vcf prepends one."""
     got, fetched = {}, {}
@@ -246,7 +244,6 @@ def test_maf_to_vcf_is_maf2vcf():
     assert fetched == padded
 
 
-@pytest.mark.xfail(strict=True, reason="type labels are length-only today")
 def test_allele_type_rule():
     """INSERTION/DELETION only when the single-base allele is the other's
     first base (the shared anchor, compared case-insensitively); a multi-base
@@ -265,7 +262,6 @@ def test_allele_type_rule():
     assert {k: CoordinateKernel.allele_type(*k) for k in table} == table
 
 
-@pytest.mark.xfail(strict=True, reason="readers label delins by length today")
 def test_readers_label_by_allele_type():
     """Both readers use the one rule; MAF '-' alleles stay INSERTION/DELETION."""
     for p, r, a in VCF_INPUT.values():
@@ -280,7 +276,6 @@ def test_readers_label_by_allele_type():
     assert maf("1", 701, 704, "TTAC", "A").variant_type == VariantType.COMPLEX
 
 
-@pytest.mark.xfail(strict=True, reason="the engine passes the input label through")
 def test_engine_labels_follow_the_alleles(tmp_path):
     """prepare_variants derives every PASS label from its final alleles with the
     same rule as the kernel, whatever label it was given."""
@@ -305,7 +300,6 @@ def test_engine_labels_follow_the_alleles(tmp_path):
 # ── Writers ──────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="VCF->MAF rows follow the type label today")
 def test_maf_writer_vcf_rows_are_vcf2maf(tmp_path):
     out = tmp_path / "o.maf"
     w = MafWriter(out)
@@ -330,7 +324,6 @@ def test_maf_writer_vcf_rows_are_vcf2maf(tmp_path):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="norm columns follow the type label today")
 def test_maf_writer_norm_columns_follow_the_alleles(tmp_path):
     """A left-aligned delins handed over with a DELETION label is still written
     by its alleles (TTAC>A keeps its first base: vcf2maf's DEL 701-704)."""
@@ -348,7 +341,6 @@ def test_maf_writer_norm_columns_follow_the_alleles(tmp_path):
     assert got == ("701", "704", "TTAC", "A")
 
 
-@pytest.mark.xfail(strict=True, reason="MAF->VCF rows are written with '-' alleles today")
 def test_vcf_writer_maf_rows_are_maf2vcf(tmp_path):
     fasta = _fasta(tmp_path)
     out = tmp_path / "o.vcf"
@@ -370,7 +362,6 @@ def test_vcf_writer_vcf_rows_echo_the_input(tmp_path):
     assert got == VCF_INPUT
 
 
-@pytest.mark.xfail(strict=True, reason="MAF->VCF rows never read the reference today")
 def test_vcf_writer_maf_row_needs_the_reference(tmp_path):
     w = VcfWriter(tmp_path / "o.vcf")
     with pytest.raises(ValueError, match="reference"):
@@ -378,7 +369,6 @@ def test_vcf_writer_maf_row_needs_the_reference(tmp_path):
     w.close()
 
 
-@pytest.mark.xfail(strict=True, reason="MAF->VCF rows never read the reference today")
 def test_vcf_writer_unfetchable_anchor_is_n_and_warned(tmp_path, caplog):
     """A contig the FASTA lacks: the record stays valid VCF (anchor N) and the
     run says how many anchors it could not fetch."""
@@ -397,7 +387,6 @@ def test_vcf_writer_unfetchable_anchor_is_n_and_warned(tmp_path, caplog):
 # ── VCF reader: ALT alleles that cannot be counted ───────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="special ALTs are counted or dropped silently today")
 def test_vcf_reader_skips_uncountable_alts(tmp_path, caplog):
     vcf = tmp_path / "s.vcf"
     vcf.write_text(
@@ -419,7 +408,7 @@ def test_vcf_reader_skips_uncountable_alts(tmp_path, caplog):
     summary = " ".join(caplog.messages)
     for reason in ("'*'", "symbolic", "breakend", "missing", "non-sequence"):
         assert reason in summary, reason
-    assert "5 ALT" in summary
+    assert "6 ALT" in summary
 
 
 # ── End to end: coordinates change, counts do not ────────────────────────
@@ -494,7 +483,6 @@ def _vcf_samples(path):
     return out
 
 
-@pytest.mark.xfail(strict=True, reason="VCF->MAF and MAF->VCF output follow labels / echo '-'")
 def test_e2e_output_coordinates(e2e):
     rows = _maf_rows(e2e["vcf_in"])
     got = {
@@ -538,7 +526,6 @@ def test_e2e_counts_unchanged(e2e):
 # ── gbcms convert: the representation on its own ────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="no convert command yet")
 def test_convert_vcf_to_maf(tmp_path):
     (tmp_path / "s.vcf").write_text(_vcf_text())
     res = runner.invoke(
@@ -562,7 +549,6 @@ def test_convert_vcf_to_maf(tmp_path):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="no convert command yet")
 def test_convert_maf_to_vcf(tmp_path):
     fasta = _fasta(tmp_path)
     (tmp_path / "s.maf").write_text(_maf_text())
@@ -576,7 +562,6 @@ def test_convert_maf_to_vcf(tmp_path):
     assert got == [MAF2VCF[k] for k in VCF_INPUT]
 
 
-@pytest.mark.xfail(strict=True, reason="no convert command yet")
 def test_convert_maf_needs_the_reference(tmp_path):
     (tmp_path / "s.maf").write_text(_maf_text())
     res = runner.invoke(
@@ -586,7 +571,6 @@ def test_convert_maf_needs_the_reference(tmp_path):
     assert not (tmp_path / "o.vcf").exists()
 
 
-@pytest.mark.xfail(strict=True, reason="no convert command yet")
 def test_convert_output_must_be_the_other_format(tmp_path):
     (tmp_path / "s.vcf").write_text(_vcf_text())
     res = runner.invoke(

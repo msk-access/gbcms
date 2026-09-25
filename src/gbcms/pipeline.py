@@ -30,7 +30,7 @@ from rich.progress import (
 from .core.kernel import CoordinateKernel
 from .io.input import MafReader, VariantReader, VcfReader
 from .io.output import MafWriter, VcfWriter
-from .models.core import GbcmsBaseConfig, OutputFormat, Variant
+from .models.core import GbcmsBaseConfig, OutputFormat, Variant, VariantType
 from .rescue_audit import (
     MNP_RESCUE_ELIGIBLE,
     OUTCOME_HAPLOTYPE_CONFIRMED,
@@ -1257,7 +1257,7 @@ class Pipeline:
                     pos=pv.variant.pos,
                     ref=pv.variant.ref_allele,
                     alt=pv.variant.alt_allele,
-                    variant_type=v.variant_type,
+                    variant_type=VariantType(pv.variant.variant_type),
                 )
 
             writer.write(

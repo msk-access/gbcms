@@ -33,7 +33,7 @@ from .models.core import (
 from .pipeline import Pipeline
 from .utils import setup_logging
 
-__all__ = ["app", "dna", "rna", "normalize", "merge"]
+__all__ = ["app", "dna", "rna", "normalize", "convert", "merge"]
 
 logger = logging.getLogger(__name__)
 
@@ -1063,6 +1063,71 @@ def normalize(
         output=output,
         threads=threads,
     )
+
+
+@app.command()
+def convert(
+    variant_file: Path = typer.Option(
+        ...,
+        "--variants",
+        "-v",
+        help="VCF (.vcf, .vcf.gz, .vcf.bgz; written as MAF) or MAF (.maf; written as VCF)",
+    ),
+    output: Path = typer.Option(
+        ..., "--output", "-o", help="Output file: .maf for VCF input, .vcf for MAF input"
+    ),
+    reference: Path | None = typer.Option(
+        None,
+        "--fasta",
+        "-f",
+        help="Reference FASTA (indexed). Required for MAF input: the anchor base "
+        "maf2vcf prepends to '-' alleles comes from it.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
+    trace: bool = typer.Option(
+        False,
+        "--trace",
+        "-T",
+        help="Enable per-read Rust trace logging (slow). Implies --verbose.",
+    ),
+):
+    """
+    Convert between VCF and MAF without counting, as vcf2maf / maf2vcf do.
+
+    VCF input is written as MAF with vcf2maf's coordinates, keeping each record
+    in vcf_pos / vcf_ref / vcf_alt; MAF input is written as VCF with maf2vcf's
+    records. This is the conversion gbcms dna / rna apply to their own output.
+    """
+    from .convert import maf_to_vcf_file, vcf_to_maf_file
+
+    setup_logging(verbose=verbose, trace=trace)
+    ext = variant_file.suffix.lower()
+    is_vcf = _is_compressed_vcf(variant_file) or ext == ".vcf"
+    if not is_vcf and ext != ".maf":
+        logger.error(
+            "Unsupported variant file extension '%s'. "
+            "Expected .vcf, .vcf.gz, .vcf.bgz, or .maf. Got: %s",
+            ext,
+            variant_file,
+        )
+        raise typer.Exit(code=1)
+    want = ".maf" if is_vcf else ".vcf"
+    if output.suffix.lower() != want:
+        logger.error(
+            "%s input is converted to %s: --output must end in %s (got %s)",
+            "VCF" if is_vcf else "MAF",
+            want[1:].upper(),
+            want,
+            output,
+        )
+        raise typer.Exit(code=1)
+    if is_vcf:
+        vcf_to_maf_file(variant_file, output, _log_command())
+    elif reference is None:
+        logger.error("MAF input needs --fasta: maf2vcf's anchor base comes from the reference")
+        raise typer.Exit(code=1)
+    else:
+        maf_to_vcf_file(variant_file, reference, output, _log_command())
 
 
 @app.command()

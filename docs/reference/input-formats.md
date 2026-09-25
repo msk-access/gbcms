@@ -18,6 +18,24 @@ chr2    67890   .       G       C       .       PASS    .
 - `#CHROM`, `POS`, `REF`, `ALT` columns required
 - 1-based positions
 
+### ALT Alleles
+
+Each ALT allele of a record is genotyped as its own variant (a multi-allelic
+record gives one output row per ALT). An ALT allele that names no sequence to
+count is skipped, not genotyped: `*` (an overlapping deletion), symbolic alleles
+(`<DEL>`, `<INS>`, ...), breakends, a missing ALT (`.`), and any other allele with
+a base outside `A`/`C`/`G`/`T`/`N`. The first few skips are logged individually as
+WARNINGs and the totals once per file, by reason. An ALT containing `N` is kept:
+preparation reports it as a `FAIL` row (`ALT_CONTAINS_N`).
+
+### Variant Types
+
+A record's type label comes from its alleles: `INSERTION` / `DELETION` only when
+the one-base allele is the other's first base (the shared anchor, e.g. `T>TGT`,
+`TAA>T`); every other unequal pair (a delins such as `TTAC>A` or `C>TA`) and every
+multi-base substitution is `COMPLEX`. `gbcms normalize` reports this label.
+Counting does not read it: reads are classified by the alleles themselves.
+
 ## MAF (Mutation Annotation Format)
 
 Standard MAF format with required columns:
@@ -83,6 +101,9 @@ Delete `CG` at chr1:101–102 (where the reference base at position 100 is `A`):
 
 !!! note "Position Shift for Deletions"
     For insertions, `Start_Position` already points to the anchor base. For deletions, `Start_Position` points to the *first deleted base*, so gbcms shifts back by one position to find the anchor.
+
+A MAF row whose alleles are both sequences (an SNP, an MNP, or a delins such as
+`TTAC>A`) is used as written, at `Start_Position`, with no anchor base.
 
 ## Variant Left-Normalization
 

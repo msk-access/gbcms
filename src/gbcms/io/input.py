@@ -13,7 +13,9 @@ Note:
 
 import csv
 import logging
+import re
 import sys
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -29,6 +31,9 @@ csv.field_size_limit(sys.maxsize)
 
 logger = logging.getLogger(__name__)
 
+# A countable allele: bases only (N included; preparation rejects it visibly).
+_SEQUENCE_ALLELE = re.compile(r"[ACGTNacgtn]+")
+
 __all__ = ["VariantReader", "VcfReader", "MafReader"]
 
 
@@ -40,28 +45,62 @@ class VariantReader:
 
 
 class VcfReader(VariantReader):
-    """Reads variants from a VCF file."""
+    """Reads variants from a VCF file, one Variant per ALT allele.
+
+    ALT alleles that name no sequence to count are skipped with a WARNING, not
+    yielded: ``*`` (an overlapping deletion), symbolic ``<...>`` alleles,
+    breakends, a missing ALT (``.``), and any other allele with a base outside
+    A/C/G/T/N. ``N`` is kept so preparation reports it as a visible FAIL row
+    (``ALT_CONTAINS_N``). Records with an empty REF are skipped the same way.
+    Each skip is counted by reason and the totals are logged once per file.
+    """
 
     def __init__(self, path: Path):
         self.path = path
         self._vcf = pysam.VariantFile(str(path))
 
-    def __iter__(self) -> Iterator[Variant]:
-        skipped = 0
-        for record in self._vcf:
-            # pysam record.pos is 0-based. VCF POS is 1-based.
-            # CoordinateKernel.vcf_to_internal expects 1-based VCF POS.
-            for alt in record.alts or []:
-                if not record.ref:
-                    skipped += 1
-                    if skipped <= 5:
-                        logger.warning(
-                            "Skipped VCF record with empty REF: %s:%d",
-                            record.chrom,
-                            record.pos + 1,
-                        )
-                    continue
+    @staticmethod
+    def _uncountable(alt: str) -> str | None:
+        """Why an ALT allele cannot be counted, or None when it can."""
+        if alt == "*":
+            return "overlapping deletion '*'"
+        if alt.startswith("<"):
+            return "symbolic allele"
+        if "[" in alt or "]" in alt or alt.startswith(".") or alt.endswith("."):
+            return "breakend"
+        if not _SEQUENCE_ALLELE.fullmatch(alt):
+            return "non-sequence allele"
+        return None
 
+    def __iter__(self) -> Iterator[Variant]:
+        skipped: Counter[str] = Counter()
+
+        def skip(record: pysam.VariantRecord, alt: str, reason: str) -> None:
+            skipped[reason] += 1
+            if sum(skipped.values()) <= 5:
+                logger.warning(
+                    "Skipped VCF ALT %s:%d %s>%s: %s — not countable",
+                    record.chrom,
+                    record.pos,
+                    record.ref,
+                    alt,
+                    reason,
+                )
+
+        for record in self._vcf:
+            # pysam record.pos is the 1-based VCF POS (record.start is 0-based),
+            # which is what CoordinateKernel.vcf_to_internal expects.
+            if not record.alts:
+                skip(record, ".", "missing ALT '.'")
+                continue
+            for alt in record.alts:
+                if not record.ref:
+                    skip(record, alt, "empty REF")
+                    continue
+                reason = self._uncountable(alt)
+                if reason:
+                    skip(record, alt, reason)
+                    continue
                 yield CoordinateKernel.vcf_to_internal(
                     chrom=record.chrom,
                     pos=record.pos,
@@ -69,10 +108,13 @@ class VcfReader(VariantReader):
                     alt=alt,
                     original_id=record.id,
                 )
-        if skipped > 5:
-            logger.warning("... and %d more VCF records with empty REF", skipped - 5)
         if skipped:
-            logger.info("VcfReader: skipped %d records with empty REF allele", skipped)
+            logger.warning(
+                "VcfReader: skipped %d ALT alleles that cannot be counted (%s) in %s",
+                sum(skipped.values()),
+                ", ".join(f"{reason}: {n}" for reason, n in skipped.most_common()),
+                self.path,
+            )
 
     def close(self):
         self._vcf.close()

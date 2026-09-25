@@ -358,6 +358,23 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
     }
 }
 
+/// Type label of a prepared VCF-style allele pair, derived from the alleles
+/// (bases compared case-insensitively) — the same rule as the kernel's
+/// `CoordinateKernel.allele_type`. INSERTION / DELETION only when the one-base
+/// allele is the other's first base (a shared anchor); any other unequal pair
+/// and every multi-base substitution is COMPLEX. Counting dispatches on the
+/// alleles, never on this label; it is what `gbcms normalize` reports.
+fn variant_type_for(ref_al: &str, alt_al: &str) -> &'static str {
+    let (r, a) = (ref_al.as_bytes(), alt_al.as_bytes());
+    let anchor_shared = r.first().map(u8::to_ascii_uppercase) == a.first().map(u8::to_ascii_uppercase);
+    match (r.len(), a.len()) {
+        (1, 1) => "SNP",
+        (1, n) if n > 1 && anchor_shared => "INSERTION",
+        (n, 1) if n > 1 && anchor_shared => "DELETION",
+        _ => "COMPLEX",
+    }
+}
+
 /// Process a single variant through the full preparation pipeline.
 ///
 /// Steps: MAF anchor → validate REF → left-align → adaptive context → fetch ref_context.
@@ -411,7 +428,7 @@ fn prepare_single_variant(
     // Step 1: MAF anchor resolution (only for dash-allele variants)
     // Non-dash MAF variants with different-length alleles (e.g., GG>A) already have
     // complete alleles and don't need an anchor base prepended.
-    let (mut pos, mut ref_al, mut alt_al, mut vtype) = if is_maf
+    let (mut pos, mut ref_al, mut alt_al) = if is_maf
         && (variant.ref_allele == "-" || variant.alt_allele == "-")
     {
         // MAF indel/complex: resolve anchor base
@@ -451,13 +468,8 @@ fn prepare_single_variant(
             }
         }
     } else {
-        // VCF-style or MAF SNP: use coords as-is
-        (
-            variant.pos,
-            variant.ref_allele.clone(),
-            variant.alt_allele.clone(),
-            variant.variant_type.clone(),
-        )
+        // VCF-style, or MAF sequence alleles: use coords as-is
+        (variant.pos, variant.ref_allele.clone(), variant.alt_allele.clone())
     };
 
     // Track whether MAF anchor resolution changed pos/ref/alt (Step 1).
@@ -489,9 +501,9 @@ fn prepare_single_variant(
             variant: Variant {
                 chrom: variant.chrom.clone(),
                 pos,
+                variant_type: variant_type_for(&ref_al, &alt_al).to_string(),
                 ref_allele: ref_al,
                 alt_allele: alt_al,
-                variant_type: vtype,
                 ref_context: None,
                 ref_context_start: 0,
                 repeat_span: 0,
@@ -524,9 +536,9 @@ fn prepare_single_variant(
             variant: Variant {
                 chrom: variant.chrom.clone(),
                 pos,
+                variant_type: variant_type_for(&ref_al, &alt_al).to_string(),
                 ref_allele: ref_al,
                 alt_allele: alt_al,
-                variant_type: vtype,
                 ref_context: None,
                 ref_context_start: 0,
                 repeat_span: 0,
@@ -602,17 +614,6 @@ fn prepare_single_variant(
                                 alt_al = new_alt_s;
                                 was_left_aligned = true;
 
-                                // Re-determine variant type after normalization
-                                vtype = if ref_al.len() == 1 && alt_al.len() == 1 {
-                                    "SNP".to_string()
-                                } else if ref_al.len() == 1 && alt_al.len() > 1 {
-                                    "INSERTION".to_string()
-                                } else if ref_al.len() > 1 && alt_al.len() == 1 {
-                                    "DELETION".to_string()
-                                } else {
-                                    "COMPLEX".to_string()
-                                };
-
                                 // Check: did the variant shift all the way to the window
                                 // edge? If so, it may not have fully converged — expand
                                 // and retry.
@@ -674,7 +675,7 @@ fn prepare_single_variant(
     //         With adaptive_context, padding is increased in repeat regions.
     //         MNPs are excluded: they are pure substitutions that don't need
     //         ref_context for SW/HMM indel realignment.
-    let (ref_context, ref_context_start) = if is_indel || (vtype == "COMPLEX" && !is_mnp) {
+    let (ref_context, ref_context_start) = if is_indel {
         // Scan for repeats at the FIRST CHANGED base, not the shared anchor:
         // a left-aligned repeat indel's anchor sits one base left of the
         // tract, where the scan finds span 1 and adaptive padding never
@@ -732,21 +733,12 @@ fn prepare_single_variant(
 
         next_base.and_then(|nb| {
             check_homopolymer_decomp(&ref_al, &alt_al, nb).map(|corrected_alt| {
-                let decomp_vtype = if ref_al.len() == corrected_alt.len() {
-                    if ref_al.len() == 1 { "SNP" } else { "COMPLEX" }
-                } else if ref_al.len() > corrected_alt.len() {
-                    "DELETION"
-                } else {
-                    "INSERTION"
-                }
-                .to_string();
-
                 Variant {
                     chrom: variant.chrom.clone(),
                     pos,
+                    variant_type: variant_type_for(&ref_al, &corrected_alt).to_string(),
                     ref_allele: ref_al.clone(),
                     alt_allele: corrected_alt,
-                    variant_type: decomp_vtype,
                     ref_context: ref_context.clone(),
                     ref_context_start,
                     // Scored as unique sequence. Its tract's span was measured at real
@@ -781,9 +773,9 @@ fn prepare_single_variant(
         variant: Variant {
             chrom: variant.chrom.clone(),
             pos,
+            variant_type: variant_type_for(&ref_al, &alt_al).to_string(),
             ref_allele: ref_al,
             alt_allele: alt_al,
-            variant_type: vtype,
             ref_context,
             ref_context_start,
             repeat_span: variant_repeat_span,
@@ -812,6 +804,25 @@ fn prepare_single_variant(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_variant_type_for_needs_a_shared_anchor() {
+        // Same table as the kernel's allele_type contract test.
+        let table = [
+            ("T", "A", "SNP"),
+            ("TAA", "T", "DELETION"),
+            ("T", "TGT", "INSERTION"),
+            ("tAA", "T", "DELETION"),
+            ("t", "TG", "INSERTION"),
+            ("TTAC", "A", "COMPLEX"),
+            ("C", "TA", "COMPLEX"),
+            ("GAAA", "GT", "COMPLEX"),
+            ("AG", "CT", "COMPLEX"),
+        ];
+        for (r, a, want) in table {
+            assert_eq!(variant_type_for(r, a), want, "{r}>{a}");
+        }
+    }
 
     // -- left_align_variant tests --
 
