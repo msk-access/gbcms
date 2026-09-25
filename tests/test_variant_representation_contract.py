@@ -31,9 +31,10 @@ from typer.testing import CliRunner
 from gbcms import _rs as gbcms_rs
 from gbcms.cli import app
 from gbcms.core.kernel import CoordinateKernel
-from gbcms.io.input import VcfReader
+from gbcms.io.input import MafReader, VcfReader
 from gbcms.io.output import MafWriter, VcfWriter
-from gbcms.models.core import Variant, VariantType
+from gbcms.merge import merge_mafs
+from gbcms.models.core import MergeConfig, Variant, VariantType
 from gbcms.pipeline import _zero_counts
 
 runner = CliRunner()
@@ -578,3 +579,193 @@ def test_convert_output_must_be_the_other_format(tmp_path):
     )
     assert res.exit_code == 1
     assert not (tmp_path / "o.vcf").exists()
+
+
+# ── MAF alleles as maf2vcf reads them ────────────────────────────────────
+
+
+@pytest.mark.xfail(strict=True, reason="Tumor_Seq_Allele1 and placeholder alleles are ignored")
+def test_maf_alleles_follow_maf2vcf():
+    """The variant allele is Tumor_Seq_Allele2, or Tumor_Seq_Allele1 when
+    Allele2 is empty or the reference (older MAFs); alleles made only of
+    '-', '?' or '0' are placeholders for an empty allele ('-')."""
+    maf = CoordinateKernel.maf_alleles
+    assert maf("A", "A", "G") == ("A", "G")
+    assert maf("A", "G", "A") == ("A", "G")
+    assert maf("A", "G", "") == ("A", "G")
+    assert maf("C", "C", "--") == ("C", "-")
+    assert maf("C", "C", "0") == ("C", "-")
+    assert maf("--", "--", "TT") == ("-", "TT")
+    assert maf("-", "GT", "-") == ("-", "GT")
+    # Nothing else to use: REF == ALT stays, and preparation rejects it.
+    assert maf("A", "A", "A") == ("A", "A")
+
+
+@pytest.mark.xfail(strict=True, reason="MafReader reads Tumor_Seq_Allele2 only")
+def test_maf_reader_uses_allele1_when_allele2_is_the_reference(tmp_path, caplog):
+    maf = tmp_path / "s.maf"
+    maf.write_text(
+        "Chromosome\tStart_Position\tEnd_Position\tReference_Allele\tTumor_Seq_Allele1\t"
+        "Tumor_Seq_Allele2\n"
+        "1\t101\t101\tT\tT\tA\n"
+        "1\t221\t222\tAG\tCT\tAG\n"
+    )
+    with caplog.at_level(logging.WARNING):
+        got = [(v.pos + 1, v.ref, v.alt) for v in MafReader(maf)]
+    assert got == [(101, "T", "A"), (221, "AG", "CT")]
+    assert any("Tumor_Seq_Allele1" in m and "1 row" in m for m in caplog.messages)
+
+
+@pytest.mark.xfail(strict=True, reason="position 1 gets an anchor at POS 0")
+def test_maf_to_vcf_at_position_1_uses_the_base_after():
+    """VCF spec: an event at position 1 carries the base after it."""
+    bases = {1: "C", 2: "G", 3: "T"}
+    assert CoordinateKernel.maf_to_vcf(1, "C", "-", bases.__getitem__) == (1, "CG", "G")
+    assert CoordinateKernel.maf_to_vcf(1, "CG", "A", bases.__getitem__) == (1, "CGT", "AT")
+
+
+@pytest.mark.xfail(strict=True, reason="REF '.' is yielded; '.' in an ALT list is a 'breakend'")
+def test_vcf_reader_skips_non_sequence_ref_and_names_missing_alts(tmp_path, caplog):
+    vcf = tmp_path / "s.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=1,length=2400>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "1\t101\t.\t.\tA\t.\t.\t.\n"
+        "1\t221\t.\tA\tG,.\t.\t.\t.\n"
+    )
+    with caplog.at_level(logging.WARNING):
+        got = [(v.pos + 1, v.ref, v.alt) for v in VcfReader(vcf)]
+    assert got == [(221, "A", "G")]
+    summary = caplog.messages[-1]
+    assert "REF" in summary and "missing ALT" in summary and "breakend" not in summary
+
+
+@pytest.mark.xfail(strict=True, reason="REF == ALT passes preparation and is counted")
+def test_prepare_rejects_alt_equal_to_ref(tmp_path):
+    """A 'variant' whose ALT is its REF (any case; or '-' for both in a MAF)
+    is a visible FAIL row, not a silent PASS with meaningless counts."""
+    fasta = _fasta(tmp_path)
+    vcf_style = [
+        gbcms_rs.Variant("1", 220, "AG", "AG", "COMPLEX"),
+        gbcms_rs.Variant("1", 100, "t", "T", "SNP"),
+    ]
+    maf_style = [gbcms_rs.Variant("1", 580, "-", "-", "INSERTION")]
+    prepared = gbcms_rs.prepare_variants(vcf_style, str(fasta), 5, False, 1, True)
+    prepared += gbcms_rs.prepare_variants(maf_style, str(fasta), 5, True, 1, True)
+    assert [(pv.gbcms_status, pv.gbcms_status_reason) for pv in prepared] == [
+        ("FAIL", "ALT_EQUALS_REF")
+    ] * 3
+
+
+# ── Consumers keyed on the VCF record ────────────────────────────────────
+
+
+def _vcf_input_maf(path, records):
+    w = MafWriter(path)
+    for p, r, a in records:
+        w.write(CoordinateKernel.vcf_to_internal("1", p, r, a), _zero_counts())
+    w.close()
+
+
+@pytest.mark.xfail(strict=True, reason="merge joins VCF-input rows on the trimmed MAF key")
+def test_merge_joins_vcf_input_rows_by_their_record(tmp_path):
+    """TCT>TCG and T>G trim to the same MAF record; each VCF record stays one
+    merged row, joined to its own counterpart."""
+    records = [(101, "T", "A"), (1181, "TCT", "TCG"), (1183, "T", "G")]
+    _vcf_input_maf(tmp_path / "d.maf", records)
+    _vcf_input_maf(tmp_path / "s.maf", records)
+    out = tmp_path / "m.maf"
+    merge_mafs(
+        MergeConfig(
+            inputs={"duplex": tmp_path / "d.maf", "simplex": tmp_path / "s.maf"}, output=out
+        )
+    )
+    rows = list(read_maf_output(out))
+    assert [(r["vcf_pos"], r["vcf_ref"], r["vcf_alt"]) for r in rows] == [
+        (str(p), r, a) for p, r, a in records
+    ]
+
+
+@pytest.mark.xfail(strict=True, reason="duplicate join keys multiply rows silently")
+def test_merge_warns_on_duplicate_join_keys(tmp_path, caplog):
+    maf = (
+        "Chromosome\tStart_Position\tEnd_Position\tReference_Allele\tTumor_Seq_Allele2\t"
+        "ref_count\talt_count\n"
+        "1\t101\t101\tT\tA\t5\t1\n"
+        "1\t101\t101\tT\tA\t5\t1\n"
+    )
+    (tmp_path / "d.maf").write_text(maf)
+    (tmp_path / "s.maf").write_text(maf)
+    with caplog.at_level(logging.WARNING):
+        merge_mafs(
+            MergeConfig(
+                inputs={"duplex": tmp_path / "d.maf", "simplex": tmp_path / "s.maf"},
+                output=tmp_path / "m.maf",
+            )
+        )
+    assert any("duplicate" in m and "duplex" in m for m in caplog.messages)
+
+
+@pytest.mark.xfail(strict=True, reason="the report keys VCF-input rows by MAF coordinates")
+def test_mfsd_report_keys_rows_by_the_parquet_record():
+    """The fragment-size Parquet is keyed by the variant as genotyped (the VCF
+    record for VCF input; the MAF alleles, Allele1 fallback included, for MAF
+    input); the report's MAF lookup must use the same key."""
+    from gbcms.report.mfsd_report import _maf_row_key
+
+    for k, (p, r, a) in VCF_INPUT.items():
+        row = MafWriter.vcf_input_fields(CoordinateKernel.vcf_to_internal("1", p, r, a))
+        assert _maf_row_key(row) == f"1:{p}:{r}:{a}", k
+    maf_row = {
+        "Chromosome": "1",
+        "Start_Position": "221",
+        "Reference_Allele": "AG",
+        "Tumor_Seq_Allele1": "CT",
+        "Tumor_Seq_Allele2": "AG",
+    }
+    assert _maf_row_key(maf_row) == "1:221:AG:CT"
+
+
+# ── gbcms convert: input checks ──────────────────────────────────────────
+
+
+@pytest.mark.xfail(strict=True, reason="convert has no input checks yet")
+def test_convert_checks_its_inputs(tmp_path, caplog):
+    (tmp_path / "s.maf").write_text(_maf_text())
+    (tmp_path / "s.vcf").write_text(_vcf_text())
+    missing = runner.invoke(
+        app, ["convert", "-v", str(tmp_path / "none.maf"), "-o", str(tmp_path / "o.vcf")]
+    )
+    assert missing.exit_code == 2 and missing.exception is not None
+    unindexed = tmp_path / "raw.fa"
+    unindexed.write_text(">1\n" + REF_SEQ + "\n")
+    res = runner.invoke(
+        app,
+        [
+            "convert",
+            "-v",
+            str(tmp_path / "s.maf"),
+            "-f",
+            str(unindexed),
+            "-o",
+            str(tmp_path / "o.vcf"),
+        ],
+    )
+    assert res.exit_code == 1 and not (tmp_path / "o.vcf").exists()
+    assert not (tmp_path / "raw.fa.fai").exists()
+    fasta = _fasta(tmp_path)
+    with caplog.at_level(logging.WARNING):
+        ok = runner.invoke(
+            app,
+            [
+                "convert",
+                "-v",
+                str(tmp_path / "s.vcf"),
+                "-f",
+                str(fasta),
+                "-o",
+                str(tmp_path / "o.maf"),
+            ],
+        )
+    assert ok.exit_code == 0
+    assert any("--fasta" in m and "VCF input" in m for m in caplog.messages)
