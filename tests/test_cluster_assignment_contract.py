@@ -25,6 +25,7 @@ import pysam
 from helpers import make_read, read_maf_output
 from typer.testing import CliRunner
 
+from gbcms import _rs as gbcms_rs
 from gbcms.cli import app
 
 runner = CliRunner()
@@ -451,3 +452,57 @@ def test_complex_cluster_maf_and_vcf_paths_agree(tmp_path):
             assert (
                 res_v[kv][col] == res_m[km][col]
             ), f"{col} differs at {kv}/{km}: vcf={res_v[kv][col]} maf={res_m[km][col]}"
+
+
+# ── An SNV between window-joined deletions stays out of the cluster ─────
+# Two 3bp deletions whose scan windows overlap while their spans do not, with
+# an annotated SNV in the gap between them. The SNV must not join their group
+# (it would lose every deletion carrier from its REF count): a candidate joins
+# on a member's own span or window, not on the box from the group's first
+# member to its last.
+GAP_D1, GAP_SNV, GAP_D2 = 151, 157, 163  # 0-based: first deleted base / SNV base
+
+
+def _gap_setup(n_d1=6, n_d2=5, n_snv=4, n_wt=8):
+    ref = _mk_ref(seed=29, plants=((150, "TCGG"), (157, "A"), (162, "GACA")))
+    rows = [(151, "TCGG", "T"), (158, "A", "C"), (163, "GACA", "G")]
+    snv_reads = []
+    for i in range(n_snv):
+        s = GAP_SNV - 50 + (i % 5)
+        seq = ref[s:GAP_SNV] + "C" + ref[GAP_SNV + 1 : s + READ_LEN]
+        snv_reads.append(make_read(f"s{i}", seq, s, ((0, READ_LEN),)))
+    reads = (
+        _del_reads(ref, GAP_D1, 3, n_d1, "p")
+        + _del_reads(ref, GAP_D2, 3, n_d2, "q")
+        + snv_reads
+        + _ref_reads(ref, GAP_SNV, n_wt)
+    )
+    return ref, rows, reads
+
+
+def test_snv_between_window_joined_deletions_stays_ungrouped(tmp_path):
+    ref, rows, _ = _gap_setup()
+    fasta = _fasta(tmp_path, ref)
+    prepared = gbcms_rs.prepare_variants(
+        [gbcms_rs.Variant("1", p - 1, r, a, "SNP") for p, r, a in rows],
+        str(fasta),
+        5,
+        False,
+        1,
+        True,
+    )
+    got = [(pv.multi_allelic_group, pv.gbcms_status_reason) for pv in prepared]
+    assert got == [(1, "TRACT_CLUSTER"), (None, ""), (1, "TRACT_CLUSTER")]
+
+
+def test_snv_between_window_joined_deletions_keeps_its_ref_reads(tmp_path):
+    """Deletion carriers show the reference base at the SNV: they are REF for it."""
+    ref, rows, reads = _gap_setup()
+    res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
+    snv = res[GAP_SNV + 1]
+    assert (int(snv["ref_count"]), int(snv["alt_count"]), int(snv["partial_alt"])) == (19, 4, 0)
+    assert int(snv["ref_count"]) == int(snv["ref_count_forward"]) + int(snv["ref_count_reverse"])
+    assert int(snv["alt_count"]) == int(snv["alt_count_forward"]) + int(snv["alt_count_reverse"])
+    assert int(snv["total_count_fragment"]) >= int(snv["ref_count_fragment"]) + int(
+        snv["alt_count_fragment"]
+    )

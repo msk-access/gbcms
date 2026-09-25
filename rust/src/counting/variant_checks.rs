@@ -637,9 +637,6 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
 }
 
 
-/// Check if a read supports a complex variant (indel + substitution).
-///
-/// Uses **haplotype reconstruction**: walks the CIGAR to rebuild what the read
 /// A read's CIGAR-projected reconstruction over a genomic span.
 pub(crate) struct SpanRecon {
     /// The bases the read shows for [start_pos, end_pos), with insertions at
@@ -754,6 +751,9 @@ pub(crate) fn reconstruct_span(
     SpanRecon { seq: reconstructed_seq, quals: quals_per_base, splice_skip: splice_skip_in_window }
 }
 
+/// Check if a read supports a complex variant (indel + substitution).
+///
+/// Uses **haplotype reconstruction**: walks the CIGAR to rebuild what the read
 /// shows for the genomic region covered by REF, then compares the reconstructed
 /// sequence to both REF and ALT using **quality-aware masked comparison**.
 ///

@@ -93,14 +93,20 @@ For indels and complex variants, gbcms applies **bcftools-style left-alignment**
 !!! tip "Dynamic Window Expansion"
     If a variant shifts all the way to the window edge during left-alignment, it may not have fully converged. The engine automatically **doubles the window** (100 → 200 → 400 → ... → 2500bp) and retries. This ensures correct normalization even for variants in massive tandem repeats (e.g., centromeric regions) without penalizing the common case.
 
-After alignment, the **variant type is re-detected** based on the new allele lengths:
+Every variant that reaches REF validation gets a **type label derived from its
+final alleles** (after anchor resolution, REF correction and alignment), with the
+same rule the readers use. A row rejected before that (`EMPTY_ALLELE`,
+`ALT_EQUALS_REF`, a failed MAF anchor fetch) keeps the reader's label.
 
 | Condition | Assigned Type |
 |:----------|:-------------|
 | `ref_len == 1 && alt_len == 1` | SNP |
-| `ref_len == 1 && alt_len > 1` | INSERTION |
-| `ref_len > 1 && alt_len == 1` | DELETION |
-| Otherwise | COMPLEX |
+| `ref_len == 1 && alt_len > 1` and ALT starts with the REF base | INSERTION |
+| `ref_len > 1 && alt_len == 1` and REF starts with the ALT base | DELETION |
+| Otherwise (a delins such as `TTAC>A` or `C>TA`, or an MNP) | COMPLEX |
+
+Counting never reads this label — reads are classified by the alleles — so it is
+what `gbcms normalize` reports, not an input to counting.
 
 !!! tip "Debugging Normalization"
     Use `gbcms normalize` to see exactly how each variant was transformed. The output TSV shows original and normalized coordinates side by side, plus granular flags: `was_anchor_resolved` (MAF dash-allele conversion), `was_left_aligned` (left-shifting), and `was_normalized` (either one).
@@ -264,6 +270,7 @@ string is byte-identical in the MAF and the VCF.
 | `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
 | `FAIL` | `FETCH_FAILED` | Could not fetch the reference region | ❌ |
 | `FAIL` | `EMPTY_ALLELE` | Empty REF or ALT (malformed / non-left-anchored indel) | ❌ |
+| `FAIL` | `ALT_EQUALS_REF` | ALT equals REF (any case; `-` for both in a MAF): no change to count | ❌ |
 | `FAIL` | `ALT_CONTAINS_N` | ALT allele contains an `N` base | ❌ |
 
 Reasons **stack**: a PASS variant can carry `WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP`.

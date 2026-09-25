@@ -198,15 +198,17 @@ N bases are **strictly uninformative** — they increment `n_count` for QC monit
 
 ```
 src/gbcms/
-├── cli.py           # Typer CLI (dna, rna, merge, normalize commands)
+├── cli.py           # Typer CLI (dna, rna, merge, normalize, convert commands)
 ├── pipeline.py      # Orchestration (~450 LOC)
 ├── merge.py         # Multi-BAM MAF merge engine (Polars lazy joins)
 ├── normalize.py     # Standalone normalization workflow
+├── convert.py       # Standalone VCF <-> MAF conversion (vcf2maf / maf2vcf)
 ├── core/
-│   └── kernel.py    # Coordinate normalization
+│   └── kernel.py    # Coordinates + VCF <-> MAF representation, type labels
 ├── io/
 │   ├── input.py     # VcfReader, MafReader (streaming)
 │   ├── output.py    # VcfWriter, MafWriter (mode-aware: DNA/RNA columns)
+│   ├── reference.py # Reference bases for MAF -> VCF anchors
 │   └── batch.py     # Polars batch I/O (read/scan/write MAF, read Parquet)
 ├── models/
 │   └── core.py      # Pydantic configs (GbcmsDnaConfig, GbcmsRnaConfig, MergeConfig)

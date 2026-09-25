@@ -49,6 +49,10 @@ pub(crate) fn fetch_single_base(
     chrom: &str,
     pos_0based: i64,
 ) -> anyhow::Result<u8> {
+    if pos_0based < 0 {
+        // E.g. the anchor of a MAF deletion at Start 1: there is no base there.
+        anyhow::bail!("no reference base before the start of {} (position {})", chrom, pos_0based);
+    }
     let pos = pos_0based as u64;
     let buf = fetch_region(reader, chrom, pos, pos + 1)?;
     buf.first()
@@ -123,71 +127,58 @@ pub(crate) fn validate_ref(
     }
 }
 
-/// Convert a MAF-style indel to VCF-style by fetching the anchor base.
+/// Convert a MAF `-` allele to VCF style by fetching the anchor base.
 ///
-/// Handles three cases based on the `is_maf` flag:
-/// - `ref = "-"` (insertion): Anchor is at `start_pos` (1-based), prepend to ALT
-/// - `alt = "-"` (deletion): Anchor is at `start_pos - 1` (1-based), prepend to REF
-/// - Complex (different-length, non-dash): Anchor at `start_pos - 1`, prepend to both
+/// - `ref = "-"` (insertion): MAF Start is the base before the insertion; that
+///   base is the anchor, prepended to ALT (and it is the REF).
+/// - `alt = "-"` (deletion): MAF Start is the first deleted base; the base
+///   before it is the anchor, prepended to REF (and it is the ALT).
+///
+/// Called only for rows with a `-` allele; sequence alleles are used as
+/// written. The prepared label is derived from the result's alleles.
 ///
 /// # Returns
-/// `(pos_0based, vcf_ref, vcf_alt, variant_type)` or error if FASTA fetch fails.
+/// `(pos_0based, vcf_ref, vcf_alt)` or error if the FASTA fetch fails.
 pub(crate) fn resolve_maf_anchor(
     reader: &mut fasta::IndexedReader<File>,
     chrom: &str,
     start_pos: i64,
     ref_allele: &str,
     alt_allele: &str,
-) -> anyhow::Result<(i64, String, String, String)> {
+) -> anyhow::Result<(i64, String, String)> {
     let is_insertion = ref_allele == "-";
-    let is_deletion = alt_allele == "-";
-    let is_snp = ref_allele.len() == 1
-        && alt_allele.len() == 1
-        && !is_insertion
-        && !is_deletion;
-
-    if is_snp {
-        // SNPs: MAF Start_Position == VCF POS (1-based), convert to 0-based
-        return Ok((
-            start_pos - 1,
-            ref_allele.to_string(),
-            alt_allele.to_string(),
-            "SNP".to_string(),
-        ));
-    }
-
-    // Determine anchor position (0-based) and variant type
-    let (anchor_pos_0based, vtype) = if is_insertion {
-        // MAF insertion: Start_Position is the base BEFORE the insertion
-        // Anchor is at start_pos (1-based) → start_pos - 1 (0-based)
-        (start_pos - 1, "INSERTION")
-    } else if is_deletion {
-        // MAF deletion: Start_Position is the FIRST DELETED base
-        // Anchor is one base before → start_pos - 2 (0-based)
-        (start_pos - 2, "DELETION")
-    } else {
-        // Complex: different-length, non-dash alleles
-        // Anchor is one base before start → start_pos - 2 (0-based)
-        (start_pos - 2, "COMPLEX")
-    };
+    // Insertion: anchor at Start (1-based) -> Start - 1 (0-based).
+    // Deletion: anchor one base before Start -> Start - 2 (0-based).
+    let anchor_pos_0based = if is_insertion { start_pos - 1 } else { start_pos - 2 };
 
     // Fetch anchor base, trying both chrom names
     let anchor_base = fetch_single_base(reader, chrom, anchor_pos_0based)?;
-    let anchor_upper = (anchor_base as char).to_uppercase().to_string();
+    let anchor = (anchor_base as char).to_uppercase().to_string();
 
-    // Build VCF-style alleles
     let (vcf_ref, vcf_alt) = if is_insertion {
-        (anchor_upper.clone(), format!("{}{}", anchor_upper, alt_allele))
-    } else if is_deletion {
-        (format!("{}{}", anchor_upper, ref_allele), anchor_upper.clone())
+        (anchor.clone(), format!("{anchor}{alt_allele}"))
     } else {
-        // Complex
-        (
-            format!("{}{}", anchor_upper, ref_allele),
-            format!("{}{}", anchor_upper, alt_allele),
-        )
+        (format!("{anchor}{ref_allele}"), anchor)
     };
+    Ok((anchor_pos_0based, vcf_ref, vcf_alt))
+}
 
-    // VCF POS (0-based) = anchor position
-    Ok((anchor_pos_0based, vcf_ref, vcf_alt, vtype.to_string()))
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fetch_single_base_before_contig_start_is_an_error() {
+        // A MAF deletion at Start 1 asks for the anchor at 0-based -1: an
+        // error (FETCH_FAILED), never a u64 wrap.
+        let dir = std::env::temp_dir();
+        let fa = dir.join(format!("gbcms-fetch-neg-{}.fa", std::process::id()));
+        std::fs::write(&fa, ">1\nACGT\n").unwrap();
+        std::fs::write(fa.with_extension("fa.fai"), "1\t4\t3\t4\t5\n").unwrap();
+        let mut reader = fasta::IndexedReader::from_file(&fa).unwrap();
+        assert!(fetch_single_base(&mut reader, "1", -1).is_err());
+        assert_eq!(fetch_single_base(&mut reader, "1", 0).unwrap(), b'A');
+        let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
+        let _ = std::fs::remove_file(&fa);
+    }
 }

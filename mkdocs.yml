@@ -84,6 +84,7 @@ nav:
     - RNA Command: cli/rna.md
     - Merge Command: cli/merge.md
     - Normalize Command: cli/normalize.md
+    - Convert Command: cli/convert.md
   
   - Nextflow Pipeline:
     - Overview: nextflow/index.md

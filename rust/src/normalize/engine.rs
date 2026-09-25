@@ -166,6 +166,14 @@ fn is_length_changing(v: &Variant) -> bool {
     v.ref_allele.len() != v.alt_allele.len()
 }
 
+/// A variant's grouping reach: its REF span `[pos, pos+ref_len)` and, when
+/// length-changing, its scan window (the span padded by `window_pad`).
+fn grouping_reach(v: &Variant) -> (i64, i64, Option<(i64, i64)>) {
+    let (lo, hi) = (v.pos, v.pos + v.ref_allele.len() as i64);
+    let window = is_length_changing(v).then(|| (lo - window_pad(v), hi + window_pad(v)));
+    (lo, hi, window)
+}
+
 /// Assign group IDs to co-annotated variants so the engine can evaluate them
 /// jointly (sibling exclusion + exclusive assignment).
 ///
@@ -179,8 +187,10 @@ fn is_length_changing(v: &Variant) -> bool {
 ///    neighborhood) whose spans never touch; window-only members are
 ///    tagged `TRACT_CLUSTER`.
 ///
-/// Groups may be non-contiguous in position order (an SNV can sit between
-/// two window-joined deletions without joining), so the sweep marks
+/// A candidate joins on a member's OWN span or window, never on the gap
+/// between members: an SNV between two window-joined deletions stays out
+/// (joining would drain its rd of every deletion carrier). Groups may
+/// therefore be non-contiguous in position order, so the sweep marks
 /// assigned indices instead of consuming a contiguous run.
 fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
     if variants.len() < 2 {
@@ -253,17 +263,13 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
         let (c_start, c_end) = runs[run_of[i]];
 
         let seed = &variants[idx].variant;
-        // Group reach as bounding boxes per criterion (matching the
-        // pre-widening sweep's bounding-box semantics for spans):
-        // [span_lo, span_hi) unions member spans; [win_lo, win_hi) unions
-        // length-changing members' padded windows (empty when none).
-        let mut span_lo = seed.pos;
-        let mut span_hi = seed.pos + seed.ref_allele.len() as i64;
-        let (mut win_lo, mut win_hi) = if is_length_changing(seed) {
-            (span_lo - window_pad(seed), span_hi + window_pad(seed))
-        } else {
-            (i64::MAX, i64::MIN)
-        };
+        // Each member's own reach decides membership. The bounding boxes —
+        // [span_lo, span_hi) over member spans, [win_lo, win_hi) over
+        // length-changing members' windows (empty when none) — only bound
+        // the scan below; they may contain gaps no member reaches.
+        let mut member_reach = vec![grouping_reach(seed)];
+        let (mut span_lo, mut span_hi, seed_window) = member_reach[0];
+        let (mut win_lo, mut win_hi) = seed_window.unwrap_or((i64::MAX, i64::MIN));
         let mut group_members: Vec<usize> = vec![idx];
         assigned[idx] = true;
 
@@ -290,20 +296,23 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
                 if vj.pos >= reach_hi || vj.pos + (vj.ref_allele.len() as i64) <= reach_lo {
                     continue;
                 }
-                let vj_end = vj.pos + vj.ref_allele.len() as i64;
-                let joins_span = vj.pos < span_hi && span_lo < vj_end;
-                let joins_window = is_length_changing(vj) && {
-                    let pad = window_pad(vj);
-                    vj.pos - pad < win_hi && win_lo < vj_end + pad
-                };
-                if joins_span || joins_window {
-                    span_lo = span_lo.min(vj.pos);
-                    span_hi = span_hi.max(vj_end);
-                    if is_length_changing(vj) {
-                        let pad = window_pad(vj);
-                        win_lo = win_lo.min(vj.pos - pad);
-                        win_hi = win_hi.max(vj_end + pad);
+                let (vj_lo, vj_hi, vj_window) = grouping_reach(vj);
+                let joins = member_reach.iter().any(|&(m_lo, m_hi, m_window)| {
+                    let joins_span = vj_lo < m_hi && m_lo < vj_hi;
+                    let joins_window = matches!(
+                        (vj_window, m_window),
+                        (Some((a_lo, a_hi)), Some((b_lo, b_hi))) if a_lo < b_hi && b_lo < a_hi
+                    );
+                    joins_span || joins_window
+                });
+                if joins {
+                    span_lo = span_lo.min(vj_lo);
+                    span_hi = span_hi.max(vj_hi);
+                    if let Some((w_lo, w_hi)) = vj_window {
+                        win_lo = win_lo.min(w_lo);
+                        win_hi = win_hi.max(w_hi);
                     }
+                    member_reach.push((vj_lo, vj_hi, vj_window));
                     group_members.push(jdx);
                     assigned[jdx] = true;
                     grew = true;
@@ -358,6 +367,23 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
     }
 }
 
+/// Type label of a prepared VCF-style allele pair, derived from the alleles
+/// (bases compared case-insensitively) — the same rule as the kernel's
+/// `CoordinateKernel.allele_type`. INSERTION / DELETION only when the one-base
+/// allele is the other's first base (a shared anchor); any other unequal pair
+/// and every multi-base substitution is COMPLEX. Counting dispatches on the
+/// alleles, never on this label; it is what `gbcms normalize` reports.
+fn variant_type_for(ref_al: &str, alt_al: &str) -> &'static str {
+    let (r, a) = (ref_al.as_bytes(), alt_al.as_bytes());
+    let anchor_shared = r.first().map(u8::to_ascii_uppercase) == a.first().map(u8::to_ascii_uppercase);
+    match (r.len(), a.len()) {
+        (1, 1) => "SNP",
+        (1, n) if n > 1 && anchor_shared => "INSERTION",
+        (n, 1) if n > 1 && anchor_shared => "DELETION",
+        _ => "COMPLEX",
+    }
+}
+
 /// Process a single variant through the full preparation pipeline.
 ///
 /// Steps: MAF anchor → validate REF → left-align → adaptive context → fetch ref_context.
@@ -377,25 +403,38 @@ fn prepare_single_variant(
     let original_ref = variant.ref_allele.clone();
     let original_alt = variant.alt_allele.clone();
 
-    // Step 0: reject structurally empty alleles up front. The internal representation
-    // is VCF-style (anchor-based) — a true indel keeps its anchor base, and MAF dash
-    // alleles arrive as the literal "-" (resolved in Step 1), never "". An empty REF or
-    // ALT is therefore always malformed input: counting it would lean on the engine's
-    // defensive empty-allele guards and silently yield zero counts. Reject it loudly
-    // here with a FAIL status (mirrors the ALT-contains-N gate below) so the variant is
-    // surfaced, not quietly dropped to all-zero.
-    if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
+    // Step 0: reject malformed alleles up front, each as a FAIL row (mirrors the
+    // ALT-contains-N gate below) so the variant is surfaced, not quietly zeroed or
+    // counted as something it is not:
+    // - EMPTY_ALLELE: the internal representation is VCF-style (anchor-based) — a
+    //   true indel keeps its anchor base, and MAF dash alleles arrive as the literal
+    //   "-" (resolved in Step 1), never "". An empty REF or ALT is always malformed;
+    //   counting it would lean on the engine's defensive empty-allele guards and
+    //   silently yield zero counts.
+    // - ALT_EQUALS_REF: an ALT equal to its REF (bases compared case-insensitively;
+    //   "-" for both in a MAF) describes no change, so every read would match both
+    //   alleles and the counts would mean nothing.
+    let malformed = if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
+        Some(("EMPTY_ALLELE", "malformed indel; MAF dash alleles must be '-', not ''"))
+    } else if variant.ref_allele.eq_ignore_ascii_case(&variant.alt_allele) {
+        Some(("ALT_EQUALS_REF", "ALT equals REF, no change to count"))
+    } else {
+        None
+    };
+    if let Some((reason, why)) = malformed {
         warn!(
-            "Empty allele at {}:{} {:?}>{:?} — rejecting (malformed indel; MAF dash alleles must be '-', not '')",
+            "Rejecting {}:{} {:?}>{:?} — {} ({})",
             variant.chrom,
             variant.pos + 1,
             variant.ref_allele,
             variant.alt_allele,
+            reason,
+            why,
         );
         return Ok(PreparedVariant {
             variant: variant.clone(),
             gbcms_status: "FAIL".to_string(),
-            gbcms_status_reason: "EMPTY_ALLELE".to_string(),
+            gbcms_status_reason: reason.to_string(),
             gbcms_diagnostic: String::new(),
             gbcms_rescue: String::new(),
             was_anchor_resolved: false,
@@ -411,10 +450,10 @@ fn prepare_single_variant(
     // Step 1: MAF anchor resolution (only for dash-allele variants)
     // Non-dash MAF variants with different-length alleles (e.g., GG>A) already have
     // complete alleles and don't need an anchor base prepended.
-    let (mut pos, mut ref_al, mut alt_al, mut vtype) = if is_maf
+    let (mut pos, mut ref_al, mut alt_al) = if is_maf
         && (variant.ref_allele == "-" || variant.alt_allele == "-")
     {
-        // MAF indel/complex: resolve anchor base
+        // MAF '-' allele: resolve the anchor base
         // variant.pos is 0-based (from maf_to_internal), start_pos is 1-based
         let start_pos_1based = variant.pos + 1;
         match resolve_maf_anchor(
@@ -451,13 +490,8 @@ fn prepare_single_variant(
             }
         }
     } else {
-        // VCF-style or MAF SNP: use coords as-is
-        (
-            variant.pos,
-            variant.ref_allele.clone(),
-            variant.alt_allele.clone(),
-            variant.variant_type.clone(),
-        )
+        // VCF-style, or MAF sequence alleles: use coords as-is
+        (variant.pos, variant.ref_allele.clone(), variant.alt_allele.clone())
     };
 
     // Track whether MAF anchor resolution changed pos/ref/alt (Step 1).
@@ -489,9 +523,9 @@ fn prepare_single_variant(
             variant: Variant {
                 chrom: variant.chrom.clone(),
                 pos,
+                variant_type: variant_type_for(&ref_al, &alt_al).to_string(),
                 ref_allele: ref_al,
                 alt_allele: alt_al,
-                variant_type: vtype,
                 ref_context: None,
                 ref_context_start: 0,
                 repeat_span: 0,
@@ -524,9 +558,9 @@ fn prepare_single_variant(
             variant: Variant {
                 chrom: variant.chrom.clone(),
                 pos,
+                variant_type: variant_type_for(&ref_al, &alt_al).to_string(),
                 ref_allele: ref_al,
                 alt_allele: alt_al,
-                variant_type: vtype,
                 ref_context: None,
                 ref_context_start: 0,
                 repeat_span: 0,
@@ -602,17 +636,6 @@ fn prepare_single_variant(
                                 alt_al = new_alt_s;
                                 was_left_aligned = true;
 
-                                // Re-determine variant type after normalization
-                                vtype = if ref_al.len() == 1 && alt_al.len() == 1 {
-                                    "SNP".to_string()
-                                } else if ref_al.len() == 1 && alt_al.len() > 1 {
-                                    "INSERTION".to_string()
-                                } else if ref_al.len() > 1 && alt_al.len() == 1 {
-                                    "DELETION".to_string()
-                                } else {
-                                    "COMPLEX".to_string()
-                                };
-
                                 // Check: did the variant shift all the way to the window
                                 // edge? If so, it may not have fully converged — expand
                                 // and retry.
@@ -674,7 +697,7 @@ fn prepare_single_variant(
     //         With adaptive_context, padding is increased in repeat regions.
     //         MNPs are excluded: they are pure substitutions that don't need
     //         ref_context for SW/HMM indel realignment.
-    let (ref_context, ref_context_start) = if is_indel || (vtype == "COMPLEX" && !is_mnp) {
+    let (ref_context, ref_context_start) = if is_indel {
         // Scan for repeats at the FIRST CHANGED base, not the shared anchor:
         // a left-aligned repeat indel's anchor sits one base left of the
         // tract, where the scan finds span 1 and adaptive padding never
@@ -732,21 +755,12 @@ fn prepare_single_variant(
 
         next_base.and_then(|nb| {
             check_homopolymer_decomp(&ref_al, &alt_al, nb).map(|corrected_alt| {
-                let decomp_vtype = if ref_al.len() == corrected_alt.len() {
-                    if ref_al.len() == 1 { "SNP" } else { "COMPLEX" }
-                } else if ref_al.len() > corrected_alt.len() {
-                    "DELETION"
-                } else {
-                    "INSERTION"
-                }
-                .to_string();
-
                 Variant {
                     chrom: variant.chrom.clone(),
                     pos,
+                    variant_type: variant_type_for(&ref_al, &corrected_alt).to_string(),
                     ref_allele: ref_al.clone(),
                     alt_allele: corrected_alt,
-                    variant_type: decomp_vtype,
                     ref_context: ref_context.clone(),
                     ref_context_start,
                     // Scored as unique sequence. Its tract's span was measured at real
@@ -781,9 +795,9 @@ fn prepare_single_variant(
         variant: Variant {
             chrom: variant.chrom.clone(),
             pos,
+            variant_type: variant_type_for(&ref_al, &alt_al).to_string(),
             ref_allele: ref_al,
             alt_allele: alt_al,
-            variant_type: vtype,
             ref_context,
             ref_context_start,
             repeat_span: variant_repeat_span,
@@ -812,6 +826,25 @@ fn prepare_single_variant(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_variant_type_for_needs_a_shared_anchor() {
+        // Same table as the kernel's allele_type contract test.
+        let table = [
+            ("T", "A", "SNP"),
+            ("TAA", "T", "DELETION"),
+            ("T", "TGT", "INSERTION"),
+            ("tAA", "T", "DELETION"),
+            ("t", "TG", "INSERTION"),
+            ("TTAC", "A", "COMPLEX"),
+            ("C", "TA", "COMPLEX"),
+            ("GAAA", "GT", "COMPLEX"),
+            ("AG", "CT", "COMPLEX"),
+        ];
+        for (r, a, want) in table {
+            assert_eq!(variant_type_for(r, a), want, "{r}>{a}");
+        }
+    }
 
     // -- left_align_variant tests --
 

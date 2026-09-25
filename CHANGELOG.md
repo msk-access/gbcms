@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Breaking Changes — VCF ↔ MAF representation follows vcf2maf / maf2vcf (#110)
+
+> VCF-input MAF output changes coordinates, alleles and `Variant_Type` for many
+> indel and MNP shapes and gains two columns; MAF-input VCF output changes
+> `POS`/`REF`/`ALT` for indels. Counts are unchanged for every countable
+> allele shape; only the edge rows below (Allele1 fallback, `ALT_EQUALS_REF`,
+> skipped ALTs) change. Re-genotype every flavor
+> (e.g. duplex and simplex) with the same version before `gbcms merge`.
+
+- VCF input → MAF writes each record exactly as vcf2maf does. It trims the
+  leading bases REF and ALT share, never trailing ones; `Start_Position`,
+  `End_Position` and `Variant_Type` follow the trimmed alleles. Before, the
+  conversion followed a length-only type label, so 9 of 17 allele shapes
+  differed from vcf2maf. For example:
+  - `TTAC>A` became `702–704 TAC>-` (vcf2maf: `701–704 TTAC>A`, DEL);
+  - `C>TA` became `->A` (vcf2maf: `821 C>TA`, INS);
+  - `TCT>TCG` stayed a 3bp TNP (vcf2maf: SNP `T>G` at the changed base);
+  - `TC>TCGG` stayed untrimmed (vcf2maf: `- > GG`).
+
+  Bases are compared case-insensitively, so only mixed-case alleles can differ
+  from vcf2maf.
+- New MAF columns `vcf_ref` / `vcf_alt` keep the VCF record itself, alongside
+  `vcf_pos` (vcf2maf's names). Each row's `vcf_alt` is its own allele;
+  multi-allelic records give one row per ALT. These columns appear only for VCF
+  input.
+- MAF input → VCF output writes each row as maf2vcf does. When an allele is `-`,
+  or the alleles differ in length and first base, the reference base before
+  them is prepended from `--fasta`. At position 1, the base after the event is
+  appended instead (VCF spec). Before, `-` alleles were written into the VCF
+  (`462 AA>-`), which is not valid VCF.
+- MAF alleles are read as maf2vcf reads them:
+  - `Tumor_Seq_Allele1` is the variant allele when `Tumor_Seq_Allele2` is empty
+    or the reference (older MAFs). Such rows were genotyped as REF against
+    itself; the reader now logs how many rows it read this way.
+  - Alleles made only of `-`, `?` or `0` are read as `-`.
+- A variant whose ALT equals its REF (any case; `-` for both in a MAF) is a
+  `FAIL` row with the new reason `ALT_EQUALS_REF`. Before, it passed and was
+  counted, meaninglessly.
+- `--show-normalization` `norm_*` MAF columns follow the left-aligned alleles,
+  not a type label (a delins was written with its first base stripped).
+- Type labels come from the alleles in both readers and in variant preparation.
+  INSERTION / DELETION now requires a shared anchor base; a delins such as
+  `TTAC>A` or `C>TA` is COMPLEX. `gbcms normalize` reports these labels.
+  Counting never read them.
+- The VCF reader skips alleles it cannot count, with a WARNING and per-reason
+  totals: ALT `*`, symbolic `<...>`, breakends, a missing `.`, other
+  non-sequence alleles, and a REF that is not a base sequence. Before, `*` and
+  `<DEL>` were genotyped as nonsense rows, `.` was dropped silently, and an
+  empty REF (read as `.`) was genotyped. ALT `N` still reaches preparation,
+  which reports it as a `FAIL` row.
+- `gbcms merge` adds the VCF record (`vcf_pos` / `vcf_ref` / `vcf_alt`) to its
+  join key when every input is VCF-derived, because two VCF records can trim
+  to one MAF record. It also warns when an input repeats a join key; each such
+  row joined every matching row of the other inputs, silently.
+- The mFSD HTML report finds each variant's MAF row by the key its Parquet uses
+  (the VCF record for VCF input). VCF-input indels, and some other shapes, were
+  reported without their MAF row (no gene, no statistics).
+- Counting is otherwise unchanged: every countable allele shape counts
+  identically from VCF and MAF input.
+- Docs: for VCF input, `Strand`, `Variant_Classification` and
+  `Tumor_Seq_Allele1` are empty, and `vcf_id` is empty for a `.` ID. They had
+  been documented otherwise. `End_Position` is listed as a required MAF column.
+
+### Added — `gbcms convert`
+
+- `gbcms convert` converts VCF → MAF (vcf2maf's coordinates, with `vcf_pos` /
+  `vcf_ref` / `vcf_alt`) or MAF → VCF (maf2vcf's records; needs an indexed
+  `--fasta`) without counting. It uses the same conversion as the `dna` / `rna`
+  output.
+
 ### Fixed — homopolymer-decomposed twin: strand and per-sample flag (#107)
 
 - `WARN_HOMOPOLYMER_DECOMP` is per sample again. The prepared variants are
@@ -31,8 +101,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   records read `1` under a `##contig=<ID=chr1>` header, a malformed VCF that htslib
   rejects (`Contig '1' is not defined in the header`). Rescue labels and the mFSD
   Parquet follow the same naming. Counting is unchanged: contigs are still reconciled
-  internally between the variant file, FASTA and BAM. One INFO line per run names
-  the two conventions when they differ. Unprefixed (b37, Ensembl) input is
+  internally between the variant file, FASTA and BAM. One INFO line per distinct
+  naming pair names the two conventions when they differ. Unprefixed (b37,
+  Ensembl) input against a reference and BAM that use the same naming is
   unaffected.
 - The reference FASTA now reconciles the mitochondrion's spellings as the BAM side
   already did. Before, a `chrM` (or `M`, `MT`, `chrMT`) variant against a FASTA
@@ -92,16 +163,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   naming the reason and outcome: under the default `pairhmm` backend, n
   depth-contributing reads could not be evaluated by the pangenomic haplotype
   matrix because the variant's reference context is missing (prep's fetch
-  failed) or does not contain it. They are scored by the Smith-Waterman fallback
+  failed, e.g. an indel near a contig end) or does not contain it, or the ALT
+  haplotype exceeds 400bp (very long insertions). They are scored by the
+  Smith-Waterman fallback
   where it can run and otherwise end NEITHER — previously with no trace on the
-  row. Measured to never fire on well-formed input. Never set under
+  row. It never fired on the traced real runs. Never set under
   `--alignment-backend sw`.
 - `CLIP_CANDIDATES(n)` in `gbcms_diagnostic`: an insertion with no confirmed
   ALT where n (≥ 2) reads carry a ≥ 8bp soft clip within the insert's
   duplication reach — clip-represented carriers (typically a tandem-duplication
   ITD) the engine cannot claim.
-- `--umi-tag TAG` that no processed read carries now logs one WARN per BAM:
-  fragment grouping silently fell back to read names.
+- `--umi-tag TAG` that no processed read carries now logs one WARN per counting
+  pass over a BAM (a `--rescue-mnp` recount can repeat it): fragment grouping
+  silently fell back to read names.
 
 ### Changed — Smith-Waterman gap-extend is a documented constant
 
@@ -114,7 +188,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `asjd_diagnostic` gains two markers that read the population the
   splice-aware evidence rule excludes — fragments whose CIGAR `N` spans the
   variant — at variants within two bases of an annotated intron boundary
-  on the gene's strand, above ASJD's own junction-evidence floors:
+  on the gene's strand, at or above ASJD's own junction-evidence floors:
   `RETENTION_DOMINANT(n)` (spliced-over fragments dominate a junction-free
   classified population, so `vaf` is the retention-population VAF) and
   `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` (an anchored, unannotated junction
@@ -144,10 +218,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explains the read strictly better over a window covering both spans
   (equal cost = equivalent representations, both rows keep the read).
   True carriers — pure indels, delins/complex, shifted self
-  representations, noisy but real reads — keep AD.
-- **REF-side symmetry.** Sibling-claimed reads excluded from RD (all
-  paths, now including per-transcript) surface as `partial_alt` instead of
-  vanishing silently.
+  representations, noisy but real reads — keep AD, except a pure-indel
+  carrier resolved only by alignment (e.g. soft-clipped), which surfaces as
+  `partial_alt`.
+- **REF-side symmetry.** Sibling-claimed reads are excluded from RD on every
+  path (now including per-transcript); in the main counts they surface as
+  `partial_alt` instead of vanishing silently.
 - Validated against a signed-out ACCESS hypermutation cluster: per-row
   fragment ALT counts land exactly on (or within counting-basis of)
   sign-out where the previous windowed counting over-attributed 2–5×;
@@ -203,7 +279,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fixed: VCF `GR` was split by parsers.** The audit's positions list was
   comma-separated and VCF parsers (htslib/pysam) split a comma-bearing
   Number=1 INFO value, silently truncating the audit. Positions are now
-  joined with `+`; the MAF column and VCF `GR` carry identical content.
+  joined with `+`; the MAF column and VCF `GR` carry the same content (VCF
+  writes `;` as `|`).
 - Per-sample INFO outcome summary; warnings for anomalies (a component SNV
   failing preparation). With `--mfsd-parquet`, a rescued row's record keeps
   the MNP's coordinates but carries the adopted component's fragment sizes

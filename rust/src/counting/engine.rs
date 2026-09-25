@@ -3238,12 +3238,14 @@ fn count_per_transcript(
                 mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
             }
 
-            // ── Multi-allelic guards (same rules as the main engine): an
+            // ── Multi-allelic guards (the main engine's read-level rules): an
             // ALT match won by a sibling is excluded from tx_ad and from
             // ALT fragment evidence; a REF-classified read that is ALT for
             // a sibling is excluded from tx_rd (its ALT lies outside this
             // variant's span, so REF testimony here is vacuous). Both still
-            // count tx_dp.
+            // count tx_dp. Unlike the main counts, which record the fragment
+            // as REF before their REF-side guard runs, the REF exclusion here
+            // happens first, so it also leaves the transcript's REF fragments.
             let claimed_by_sibling = sibling_claims_alt(
                 record, variant, &result, sibling_variants, effective_quals, min_baseq,
             );
@@ -3579,7 +3581,6 @@ fn splice_disruption_markers(
     markers
 }
 
-/// Detect allele-specific junction divergence at a variant site.
 /// Classify the splice motif at a junction by reading donor/acceptor dinucleotides
 /// from the reference FASTA.
 ///
@@ -3701,6 +3702,7 @@ fn motif_label(donor: [u8; 2], acceptor: [u8; 2]) -> String {
     canonical_motif(donor, acceptor).unwrap_or("OTHER").to_string()
 }
 
+/// Detect allele-specific junction divergence at a variant site.
 ///
 /// Partitions reads from the cache into REF- and ALT-classified sets,
 /// collects splice junctions from each partition, and tests whether

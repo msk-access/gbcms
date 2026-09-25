@@ -4,8 +4,9 @@
 > (xfail-strict battery committed before the fix), adversarially reviewed
 > before commit, and validated on the local truth data named in its
 > Evidence line. No new output columns anywhere — new signal goes to
-> `gbcms_diagnostic`, logs, or validation tooling. Evidence links live on
-> issues #92 / #94 / #97 (T9/T10: #106 / #107).
+> `gbcms_diagnostic`, logs, or validation tooling (one exception: T12's
+> `vcf_ref` / `vcf_alt`, at the operator's request). Evidence links live on
+> issues #92 / #94 / #97 (T9/T10: #106 / #107; T12: #110).
 
 ## T1 — Cluster exclusive assignment (count-affecting; the cycle's core)
 
@@ -24,9 +25,13 @@ comparison to an engine-level sibling contest that covers delins).**
    criterion — **length-changing** variants (ref_len ≠ alt_len; never
    SNV/MNP, which would drain rd via the REF-side guard) whose scan windows
    overlap (window = `max(5, repeat_span+2)` each side, uncapped — the
-   engine's own formula). Groups are transitive closures and may be
-   non-contiguous in position order (visited-marker sweep; look-ahead bound
-   derived from the input's max pad). Honest reason tags: true span
+   engine's own formula). A candidate joins on a member's own span or
+   window, never on the gap between members, so groups may be non-contiguous
+   in position order (visited-marker sweep; look-ahead bound derived from the
+   input's max pad). *Post-review fix (2026-09-25):* the first version tested
+   the group's span bounding box, which let an SNV between two window-joined
+   deletions join (and lose every deletion carrier from its rd); 2 signed-out
+   rows in 141,845 samples, 0 after the fix. Honest reason tags: true span
    intersection → `MULTI_ALLELIC`, window-only membership → `TRACT_CLUSTER`.
    Existing sibling plumbing (`sibling_variants`) carries the wider groups —
    zero new FFI.
@@ -51,7 +56,8 @@ comparison to an engine-level sibling contest that covers delins).**
    per-sibling span-cost with tie-demote (anchor-exact siblings stole
    delins carriers — complex rows zeroed), ALT-vs-REF alone (same-tract
    same-length dels and ladders both beat REF). No sibling
-   re-classification calls remain. Downgrade happens at classification
+   re-classification calls remain in the AD-claiming guard (the REF-side
+   guard still re-classifies REF reads against siblings). Downgrade happens at classification
    time (before fragment evidence), so AD **and ADF** exclude demoted
    reads consistently; they surface as `partial_alt`/`any_alt`. Applied
    at binned, legacy, and per-transcript sites (the per-transcript site
@@ -64,7 +70,9 @@ comparison to an engine-level sibling contest that covers delins).**
 
 **Files.** `rust/src/normalize/engine.rs` (grouping rewrite + summary log);
 `rust/src/counting/engine.rs` (claiming helper + 3 sites + REF-guard
-partial); `src/gbcms/_rs.pyi` (reason-tag docs); tests.
+partial); `rust/src/counting/variant_checks.rs` (`reconstruct_span` split
+out of `check_complex`) and `pangenome.rs`; `src/gbcms/_rs.pyi` (reason-tag
+docs); tests.
 
 **Tests (red-first, committed 81a761d/510ac71, flipped green).** Synthetic
 four-deletion tract cluster (already-canonical, canonically distinct; D is
@@ -80,10 +88,12 @@ cluster rows within a few molecules of sign-out (table from #92), all other
 252 variants unchanged; FLT3/MSI/FORTE suites byte-identical (no cluster →
 no change).
 
-**Risks.** Canonicalization must use genomic ref_context (guaranteed since
-B1); grouping too eager (window overlap on dense SNV+indel mix — group
-same-type only); left-align loop bounds at ctx edges (reuse the guarded
-normalize code, don't re-implement).
+**Risks (as built).** Grouping reach is the engine's scan window, so a wide
+repeat tract can chain distant length-changing variants of any type
+(deletions, insertions and delins group together); only a member's own
+span or window admits a candidate. Test 2 of the claiming guard demotes
+every Phase-3 ALT on a grouped pure indel, so a true carrier seen only
+through alignment (e.g. soft-clipped) surfaces as `partial_alt`, not AD.
 
 ## T2 — ASJD-2: retention + novel-junction markers (#97)
 
@@ -109,8 +119,9 @@ the novel E1→E3 skip, 41).
    sites only; review found the first cut's `splice_sites` lookup admitted
    transcript termini and antisense genes' sites). Replaces the planned
    `exon_boundary_dist ≤ 2`: B2M's deletion starts 17bp from a boundary but
-   contains both of exon 2's splice sites. Both markers also speak only above
-   ASJD's own junction-evidence floors (10 REF-side / 5 ALT-side fragments).
+   contains both of exon 2's splice sites. Both markers also speak only at or
+   above ASJD's own junction-evidence floors (10 REF-side / 5 ALT-side
+   fragments).
 2. *`RETENTION_DOMINANT(n)`:* excluded fragments > classified fragments AND
    classified fragments mostly junction-free. Describes observability (the
    genotyping reads are the retention population; `vaf` is retention-VAF),
@@ -126,10 +137,10 @@ the novel E1→E3 skip, 41).
    outside the deletion by construction.
 4. Both computed before ASJD's no-junction early return; RNA+GTF only.
 
-**Files.** `rust/src/counting/engine.rs` (triage-adjacent junction counter;
-ASJD assembly at the `detect_asjd` call site), `annotation/` lookup,
-`types.rs` internal fields (not columns), docs `rna-annotation.md` +
-`rna-splice-handling.md`.
+**Files.** `rust/src/counting/engine.rs` (`detect_asjd` +
+`splice_disruption_markers`), `rust/src/annotation/mod.rs`
+(`intron_boundary_in_range`); no `types.rs` change; docs
+`rna-annotation.md` + `rna-splice-handling.md`.
 
 **Tests (red-first).** Synthetic TP53-retention geometry (boundary SNV, ALT
 M-through population + excluded spliced population) → RETENTION_DOMINANT;
@@ -147,7 +158,9 @@ sensitivity-tail case, deprioritized; analysts still need a pointer at the
 affected zeros.
 
 **Design.** At insertion-type loci with `ad == 0`: during the existing read
-walk, count soft-clips `≥8bp` whose clip start lies within
+walk, count reads with a soft clip `≥8bp` whose boundary (where the
+alignment resumes: the read start for a leading clip, its alignment end for
+a trailing one) lies within
 `[anchor − (ins_len+10), anchor + (ins_len+10)]` (duplication reach —
 structural bound from the insert's own length). If count ≥ 2, append
 `CLIP_CANDIDATES(n)` to `gbcms_diagnostic`. Counter on BaseCounts
@@ -161,10 +174,11 @@ acceptance: the clip-only ZERO_ALT ITD locus (t_alt=7) flags; the 12 survey loci
 ## T4 — UMI-tag warn
 
 **Design.** When `--umi-tag TAG` is set and, at the end of a sample's run,
-zero processed reads carried TAG: one WARN per sample ("umi-tag TAG never
-seen; fragment grouping fell back to QNAME"). Count during observe-side
-extraction (a bool per worker, OR-reduced); no per-read logging. Warn, not
-fail (mixed-BAM workflows legitimate).
+zero processed reads carried TAG: one WARN per counting pass ("umi-tag TAG
+never seen; fragment grouping fell back to QNAME"), when the pass saw any
+depth; a `--rescue-mnp` recount of the same BAM can repeat it. As built, each
+variant counts its tagged reads (`umi_tagged_reads`) and the pass sums them;
+no per-read logging. Warn, not fail (mixed-BAM workflows legitimate).
 
 **Tests.** BAM without RX + `--umi-tag RX` → warning in caplog, counts
 unchanged; BAM with RX → no warning.
@@ -176,8 +190,11 @@ backend (kept — concordance tests and the cross-backend quality contract
 depend on it), and a silent last-resort fallback under the PairHMM backend
 when the pangenomic matrix cannot be built. The fallback fired zero times
 on traced real runs (ACCESS duplex, MSI-high): prep always supplies
-ref_context and post-B1 it is always genomic, so matrix construction cannot
-fail on well-formed input. `dynamic_sw_gap_extend` is arithmetically
+ref_context and post-B1 it is always genomic. Matrix construction still
+fails on three inputs: a missing context (an indel within its padding of a
+contig end, where prep's fetch fails), a context not containing the
+variant, and an ALT haplotype over `MAX_HAP_LEN` (400bp; very long
+insertions). `dynamic_sw_gap_extend` is arithmetically
 constant (−1).
 
 **Design (operator decision 2026-09-22: keep-but-warn, log AND flag).**
@@ -234,14 +251,16 @@ tx-count pin first.
 
 **As implemented.**
 - One rule, `baq_applies` (+ `BAQ_BOUNDARY_SUPPRESS_BP`). The main counts
-  resolve it once per variant. The per-transcript and ASJD passes resolve it at
-  their own variant's position and receive it as `use_baq`.
+  resolve it once per variant; the per-transcript and ASJD passes reuse the
+  main counts' `exon_boundary_dist` and receive the decision as `use_baq`
+  (as the review round below settled).
 - A DEBUG line names each skipped variant.
 - The measurement surfaced a second defect: ASJD took each partition's
   dominant junction in hash order. Ties flipped junction and p-value between
   runs of the same input, which also moved 4 "control" probes. Now
-  `top_junctions` breaks ties: when REF's and ALT's tied-top sets overlap,
-  both report the shared junction and no test is run; otherwise the leftmost.
+  `top_junctions` returns the sorted tied set and `detect_asjd` breaks the
+  tie: an exact shared junction, then a `same_junction` (±5bp) pair (no test
+  is run), then the evidence rule below, then the leftmost.
 
 Review round:
 - The tie match is tolerance-aware. One `same_junction` predicate (±5bp) now
@@ -257,8 +276,8 @@ Review round:
   reads.
 - Shared RNA fixtures moved to `tests/rna_fixtures.py`.
 - Pre-existing and out of scope, flagged separately: the BAQ rule and
-  `exon_boundary_dist` key on `pos`, not the variant span; the decomposed twin
-  never receives `gene_strand`.
+  `exon_boundary_dist` key on `pos`, not the variant span (T9, #106); the
+  decomposed twin never received `gene_strand` (since fixed by T10, #107).
 
 ## T7 — MNP rescue (`--rescue-mnp`, opt-in): report only what the BAM shows
 
@@ -274,17 +293,17 @@ position as an SNV and, when the annotated MNP is absent, reports the
 best-supported component under the MNP's row, flagged and audited. It
 relabels; it never invents reads.
 
-### Where we are (PR #101, open against develop)
+### State at merge (PR #101, merged as 61da9ae8)
 
 | Area | State |
 |---|---|
 | Default output (rescue off) | Unchanged — 35/35 recorded real-data runs identical to develop |
 | Bug fixes | Done (list below) |
-| Rescue gate | Works on IMPACT; **too generous on ACCESS** (below) — item 12a |
-| Merge of rescued duplex/simplex | Can add two different alleles — item 12b |
-| Review nits | Contig label, test invariants, indel test — items 12c–12d |
+| Rescue gate | One rule (12a): rescue only when no read shows the whole MNP |
+| Merge of rescued duplex/simplex | Warned on every row whose flavors disagree (12b) |
+| Review nits | Done (12c–12d) |
 
-**Done and staying, whatever the gate decision** (history: items 1–11 below):
+**Done** (history: items 1–11 below):
 - Rescued rows are one coherent genotype: all count, fragment, strand,
   strand-bias and mFSD columns come from the adopted component's own counting
   pass (previously only `alt_count` changed).
@@ -293,7 +312,8 @@ relabels; it never invents reads.
 - Grouped MNPs skipped, so rescue cannot undo T1 exclusive assignment.
 - Failed positions read `ref_fail`, not a silent 0.
 - Every rescued row flagged `RESCUED_COMPONENT(...)`, a WARNING per rescue and
-  one when the flag is enabled; MAF and VCF carry identical content.
+  one when the flag is enabled; MAF and VCF carry the same content (VCF writes
+  `;` as `|`).
 - Engine counts `mnp_confirmed_alt`: MNP ALT reads in which every changed base
   was read (none low-quality, none N) — reads that *show* the whole MNP.
 
@@ -310,7 +330,7 @@ Cause: the error allowance `ceil(partial × 10^(−q/10))` is loose twice over �
 it counts any error rather than an error to the one ALT base (~1/3), and
 rounding up always excuses one read.
 
-### Remaining work — item 12 "simplify and close"
+### Item 12 "simplify and close" (done)
 
 **Decision (operator, 2026-09-23): path A** — simplify the gate, steps
 12a–12g. (Path B, returning to `ad == 0`, was declined; logged in
@@ -338,7 +358,7 @@ MAF.
 **12c. Labels use the output file's contig naming** (operator decision;
 dropping the contig was declined). `RESCUED_COMPONENT(...)` and audit labels
 take the contig exactly as the row writes it: the input MAF's `Chromosome`
-for MAF input (today they show the stripped internal name — row `chr1`,
+for MAF input (before, they showed the stripped internal name — row `chr1`,
 label `1`); for VCF input, whatever the output writes, which T8 makes the
 input's own naming. Never surfaced on b37 data, which has no `chr`.
 
@@ -380,7 +400,7 @@ absent but a germline component is present (upstream annotation). The
 always-on `mnp_confirmed_alt` counter stays (one check per MNP ALT read) — an
 accepted deviation from "engine should be output-aware".
 
-### History (items 1–11, all merged on the branch)
+### History (items 1–11, merged with #101)
 1. Gate `partial_alt > ad` instead of `ad == 0` (a single masked read blocked TERT).
 2. Replace only if the component beats the MNP; else `no_improvement` (reads with an indel inside the block).
 3. Adopt the component's whole `BaseCounts`.
@@ -397,8 +417,8 @@ accepted deviation from "engine should be output-aware".
 invariants on written rows, audit/outcome units),
 `tests/test_mnp_concordance.py` (`TestONPCarrierShapes`, confirmed-read engine
 pins). Harnesses (local, patient data): flag-off parity, IMPACT cohort with
-matched normals, per-read traces, partial-read make-up, BAQ effect, ACCESS
-duplex/simplex merge.
+matched normals, per-read traces, ACCESS duplex/simplex merge (the
+partial-read make-up and BAQ-effect studies were one-offs, not kept; 12f).
 
 ## T8 — Output keeps the input's contig naming (#103; own branch — changes default output)
 
@@ -465,7 +485,10 @@ keys on `variant.pos`:
   the rule that is wrong.
 - With `--rescue-mnp`, the MNP row (BAQ on) and its component recount at `E-4`
   (BAQ off) are counted under two BAQ regimes.
-- Left edges are safe: `pos` is the leftmost base.
+- Left edges are safe for spans starting at or after the exon start: `pos` is
+  the leftmost base. A span starting more than 5bp inside the intron and
+  reaching the exon's first bases keeps BAQ today (heuristic BAQ also
+  penalizes the 5 bases after an N); option A would change it.
 
 **Options.**
 - **A (recommended). Span-aware variant rule.** The distance is from the
@@ -504,7 +527,8 @@ distance too?
   equals main, and ASJD sees them.
 - With `--rescue-mnp`, the MNP row and its component recount resolve the rule
   identically.
-- Guards: SNV rows unchanged; left-edge geometries unchanged; BAQ still applies
+- Guards: SNV rows unchanged; left-edge geometries starting at or after the
+  exon start unchanged; BAQ still applies
   away from edges.
 
 **Fix.** Add a span distance to `AnnotationIndex` (the binary search to the
@@ -577,11 +601,13 @@ otherwise.
   - The antisense reads are not counted.
   - The arbitration is decided by sense reads.
   - The per-transcript counts are consistent with the row.
-- A `repeat_span` case, if the audit finds a behavioral difference.
+- A `repeat_span` case, if the audit finds a behavioral difference (none
+  kept: see "As implemented").
 
 **Fix.**
-- `repeat_span`: set it where the twin is built, in `prepare_variants`, to the
-  original's computed value. Today it is computed just *after* the twin
+- *Superseded — T10 was narrowed (see "As implemented"): the twin keeps
+  `repeat_span: 0`.* `repeat_span`: set it where the twin is built, in
+  `prepare_variants`, to the original's computed value. Today it is computed just *after* the twin
   (Step 5 builds the twin; the `repeat_span` computation follows), so compute
   it first. The legacy oracle then dual-counts the same twin, so binned↔legacy
   parity holds (invariant 1).
@@ -618,7 +644,7 @@ reporting both alleles' counts at every dual-count.
 - **RNA,** 40 homopolymer-decomposable probes × 3 FORTE samples, strandedness
   on and off.
   - The missing strand leaks antisense reads into the twin at 14 of 120 loci:
-    52 reads, 0.065% of the twin's RD.
+    52 reads, 0.065% of the twin's depth.
   - No output change and no winner flip.
   - `repeat_span` had no effect on these REF-only loci, as expected: it acts on
     windowed ALT evidence.
@@ -654,8 +680,8 @@ reporting both alleles' counts at every dual-count.
 two permissive classifiers against each other. Reads at real loci often carry
 a third allele that neither describes, and "more ALT wins" hangs on thin
 margins (the twin claims 93–97% of the called allele's own carriers). The
-twin's allele (`REF[..len-1] + X`) does not match its documentation
-(`C^(L-2)X`).
+twin's allele is `REF[..len-1] + X`; its documentation said `C^(L-2)X` until
+T10 corrected it.
 
 **Direction.** Arbitrate on exact haplotype support, the census method.
 - Reduce each read to its sequence across the run plus flanks (from the
@@ -671,7 +697,41 @@ twin's allele (`REF[..len-1] + X`) does not match its documentation
 - Related, filed separately:
   - #112: when the corrected allele wins, per-transcript/ASJD, merge,
     observations and input validation don't follow the winner;
-  - #110: a VCF delins with a one-base ALT is treated as a pure deletion.
+  - #110: a VCF delins with a one-base ALT is treated as a pure deletion
+    (fixed by T12, #116).
+
+## T12 — VCF ↔ MAF representation follows vcf2maf / maf2vcf (#110; #116)
+
+**Finding.** VCF → MAF conversion followed a length-only type label, so 9 of 17
+allele shapes differed from vcf2maf (e.g. `TTAC>A` written `702–704 TAC>-`).
+MAF input wrote `-` alleles into VCF output. `*` / `<DEL>` ALTs were genotyped
+as nonsense rows, and REF == ALT passed and was counted. Counts were right for
+every shape; only the representation was wrong.
+
+**Done (PR #116; operator decision to ship before the cut).**
+- The rules are vcf2maf's and maf2vcf's, run locally as the oracle (commit
+  589406f; see `.agents/memory/vcf2maf-oracle.md`). They live in one place,
+  `CoordinateKernel`: `vcf_to_maf`, `maf_to_vcf`, `maf_alleles`, `allele_type`.
+- `gbcms convert` does the same conversion without counting.
+- VCF-input MAFs gain `vcf_ref` / `vcf_alt` (operator request, vcf2maf's
+  names). This is the one exception to the no-new-columns rule.
+- The new FAIL reason `ALT_EQUALS_REF`, and the VCF reader's per-reason skips.
+- Merge and the mFSD report key VCF-input rows on the VCF record.
+- It is a breaking output change: re-genotype every flavor with one version
+  before `gbcms merge`.
+
+**Evidence** (local; aggregates only).
+- The synthetic 17-shape oracle battery.
+- 102,238 unique sign-out shapes: MAF→VCF matches maf2vcf on 102,074 of
+  102,076 comparable rows, and VCF→MAF matches vcf2maf on every row. The
+  exceptions are the only two REF == ALT rows.
+- The 28 RC DNA runs:
+  - MAF→MAF byte-identical to develop, 1060/1060;
+  - MAF→VCF consistent, 1060/1060;
+  - VCF input counts the same as MAF input, 1060/1060.
+- The 33-sample FORTE RNA cohort: MAF→MAF byte-identical to develop, 33/33
+  samples (94 rows). The RC result below therefore holds for develop with
+  #116.
 
 ## Release-candidate validation (2026-09-24) — PASSED
 
@@ -691,7 +751,7 @@ have been reported unexplained.
   - The changed rows are the six T2 marker rows of the T2 record and one T6
     exon-edge row. No spurious markers.
 
-The gate above ("6.5.0 cut only after T1's ACCESS rerun and T2's cohort
+The gate in "Order & discipline" ("6.5.0 cut only after T1's ACCESS rerun and T2's cohort
 recheck") is met.
 
 ## Order & discipline
@@ -705,11 +765,14 @@ Each branch: battery red → implement → suites + clippy + lint gate →
 sonnet adversarial review → real-data acceptance named above → merge to
 develop. 6.5.0 cut only after T1's ACCESS rerun and T2's cohort recheck.
 T10 then T9, each on its own branch; both were measured on 2026-09-24.
-- **T10 before the 6.5.0 cut.** It is small, and it is count-affecting for DNA
-  at real twin loci: `repeat_span` biases the dual-count arbitration.
+- **T10 before the 6.5.0 cut** — done (#113), narrowed to the per-sample flag
+  and the twin's strand; the `repeat_span` change was measured and dropped.
 - **T9 is low priority.** Deletions are unaffected, and MNP counts move at most
   0.17%. It restores MNP confirmation at right exon edges, which only the
   opt-in RNA rescue safeguard uses. It can follow the cut. The measurement
   recommends keeping `exon_boundary_dist` `pos`-based.
 - **T11 is a redesign.** It measures first on the T10 census harness and
   follows the cut. Twins are rare (0.02% of deletion loci).
+- **T12 before the cut** (operator decision, #116): the VCF ↔ MAF
+  representation, plus the plan-vs-code fixes found while verifying this plan
+  (T1 gap join, merge by record, anchor at Start 1).
