@@ -9,6 +9,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Commit before review workflows](commit-before-review-workflows.md) — same-checkout review agents may `git stash`; concurrent sessions write .agents/memory — commit first, stage explicit paths only.
 - [BAM is truth](bam-is-truth.md) — reads are the truth; sign-out is a comparison. Validate read-by-read across every assay (IMPACT+normal, ACCESS duplex+simplex).
 - [Use GitHub sub-issues](github-sub-issues.md) — group related work as parent + sub-issues (cycle tracker, umbrella items), not combined issues or checklists.
+- [Holistic effects map](holistic-effects-map.md) — before any fix/decision, map every place it lands (both counting paths, per-transcript/ASJD/mFSD/observations, rescue/clusters/merge, writers/flags, docs/tests/Nextflow).
 
 ## References
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.
