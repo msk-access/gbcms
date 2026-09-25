@@ -894,6 +894,44 @@ These ambiguous reads are routed to **neither** (`is_ref = false, is_alt = false
 
 ---
 
+## Informative Reads for Indels
+
+An indel inside a repeat can sit anywhere along its **shift-equivalence region**:
+the stretch it slides over without changing the haplotype (the whole tract for a
+homopolymer, every full and partial copy for an STR, the event itself in unique
+sequence). A read that starts or ends inside that region reads the same with or
+without the event, so the aligner places no gap and IGV cannot show which allele
+it carries. Counting such a read as REF biases VAF down. For a 1bp deletion in a
+10-base homopolymer, with 10 REF and 10 ALT reads spanning the tract and 10 of
+each ending inside it, VAF came out 25% instead of 50%.
+
+A **REF call on a pure insertion or deletion** therefore needs an informative read.
+Reading inward from one flank of the region, REF and ALT agree until one base,
+the first discriminating base. The read must cover that flank base and run one
+base past the first discriminating base on that side. Either side will do.
+
+| Event | First discriminating base (left / right) | Needs, in practice |
+|:------|:------------------------------------------|:-------------------|
+| Deletion of L bases over region `[lo, hi)` | `hi − L` / `lo + L − 1` | Homopolymer: the tract and both flanks. Deletion longer than a read: one junction plus two bases. |
+| Insertion over boundaries `lo..=hi` | `hi` / `lo − 1` | The whole stretch, both flanks, and one more base on either side. |
+
+The extra base past the discriminating one is an aligner margin. An ALT read
+ending on the discriminating base keeps a single terminal mismatch (cheaper than
+a clip) and would look like REF. With one more base, the mismatches cost more
+than the gap or the clip.
+
+Prep measures each pure indel's region over its own reference fetch, sized to
+the event (`Variant.shift_region`). A tandem duplication (an ITD, for example)
+slides over its whole duplicated segment, which can be far longer than the
+repeat context kept for alignment.
+
+Reads that fail the rule count toward `DP` and `DPF` but are neither REF nor ALT,
+the same as GATK's AD, which counts only informative reads. The rule does not
+apply to substitution-bearing events (SNV, MNP, delins): they have no shift
+region, and their first base already discriminates.
+
+---
+
 ## Multi-Allelic Behavior
 
 When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:
@@ -904,7 +942,21 @@ During normalization, `assign_multi_allelic_groups()` groups co-annotated varian
 
 ### Phase 2: Sibling ALT Exclusion
 
-During counting, reads classified as **REF** for a variant are additionally checked against all **sibling variants** in the same group. For each sibling, the full `check_allele_with_qual()` pipeline (including CIGAR reconstruction and SW alignment) determines if the read actually carries the sibling's ALT allele. If so, the read is **excluded from REF** for the current variant.
+During counting, a read classified as **REF** for a variant is checked against the
+**siblings whose change lies inside the variant's discrimination window**: its
+shift-equivalence region (see [Informative Reads for Indels](#informative-reads-for-indels);
+the span for other variants) plus one base on each side. For each such sibling,
+the full `check_allele_with_qual()` pipeline determines whether the read carries
+the sibling's ALT. If it does, the read is **excluded from REF** for the current
+variant and counted as `partial_alt`.
+
+A carrier of a sibling whose change lies **outside** the window shows the reference
+across every base that could tell this variant's alleles apart, so it stays REF,
+as IGV shows it and as GATK counts REF at a site unless an event overlaps it.
+
+The exclusion runs before fragment evidence is recorded, so `ref_count` and
+`ref_count_fragment` drop the same molecules. The production, legacy parity and
+per-transcript paths apply the same rule.
 
 !!! important "This prevents systematic REF inflation at multi-allelic loci, preserving unbiased VAF estimation."
 

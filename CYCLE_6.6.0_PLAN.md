@@ -39,6 +39,7 @@ before implementation.
 | C8 | One-base-REF delins without a shared anchor | L | [counts] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] | #157 |
+| C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] | #159 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
@@ -286,6 +287,47 @@ writing the tests; both keep the operator's rule.
   this row's alleles differ.
 - The rule applies to pure indels only. Substitution-bearing events have no
   shift region, and their first base already discriminates.
+- **Prep measures the region** (`Variant.shift_region`) over its own fetch sized
+  to the event. The slide over `ref_context` was cut short for tandem
+  duplications: the context is padded for 1–6bp motifs, and 12 of 82 RC
+  insertion rows have longer regions (up to 58bp). A synthetic 30bp
+  duplication read rd 30 instead of 10.
+
+**Status (2026-09-25): implemented with C2 on one branch; RC acceptance done.**
+Local data, aggregates only: the 6.5.0 RC runs, 1,060 DNA rows and 94 RNA rows.
+- **Scope held.**
+  - SNV and MNP rows: 0 of 825 changed.
+  - `alt_count` and `total_count`: never moved.
+  - `alt_count_fragment`: +1 to +2 on 3 rows, where a mate's vacuous REF call no longer contests the other mate's ALT.
+- **Convergence** (gbcms VAF ÷ informative-read VAF, median):
+
+  | Context | Before | After |
+  |---|---|---|
+  | STR | 0.910 | 0.983 |
+  | Homopolymer | 0.919 | 0.994 |
+  | Unique | 0.973 | 1.000 |
+
+  Rows below 0.8 went from 33 to 20.
+- **Outliers are census limits, not gate errors.**
+  - Of the 13 rows above 1.2, 8 are tandem duplications whose true region (16–58bp) is far longer than the census's tract window. Re-censused over the true region, gbcms REF matches read for read (for example 295/295, 119/119, 1,275/1,275; all within 4%).
+  - The other 5 are low-ALT rows that were already above 1.2: an ALT-side difference outside C10.
+  - The lowest row is a 113bp deletion: the census demands a whole-span read, while gbcms takes REF from either junction, as decided.
+
+### C11 — Phase-3 context misses tandem duplications (#159) · M [counts]
+**Finding** (while landing C10). Prep pads `ref_context` from the 1–6bp motif
+repeat span, capped at 50. A tandem duplication slides over its whole
+duplicated segment, so the context often ends inside it:
+- 12 of 82 insertion rows on the RC set, with true regions up to 58bp;
+- a synthetic 30bp duplication got an 11-base context.
+
+This breaks #91's rule that the haplotype window holds the whole tract. C10's
+REF rule no longer depends on the context. ALT-side and Phase-3 classification
+(the pangenomic matrix, WFA, S3, the AD-claiming windows) still do.
+**Measure first.** On the RC ITD rows and the D5 FLT3-ITD stratum, compare
+ALT/partial calls with the context padded to cover `shift_region` against
+today's. Watch `MAX_HAP_LEN` (C5).
+**Direction** (if calls change): pad `ref_context` to the shift region plus
+flank, bounded by the matrix cap.
 
 ## RNA
 

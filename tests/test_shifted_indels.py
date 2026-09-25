@@ -234,8 +234,12 @@ class TestDeletionStrict:
         assert counts.rd == 0
 
     def test_ref_no_deletion(self, tmp_path):
-        """Read covers anchor without deletion → REF."""
-        reads = [_make_read("r1", "AAAAAAAAAA", 196, ((0, 10),))]
+        """Read spans the T-run (201-205) and its right flank without a deletion → REF.
+
+        Covering the anchor alone is not enough: a read ending inside the run
+        reads the same with or without one T, so it is uninformative.
+        """
+        reads = [_make_read("r1", "AAAAAAAAAAA", 196, ((0, 11),))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, DEL_VARIANT)
         assert counts.rd == 1, f"Expected rd=1 (REF), got {counts.rd}"

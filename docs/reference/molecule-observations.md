@@ -73,7 +73,7 @@ despite parallel processing. Compression is Zstandard level 1.
 | `0` REF | Molecule carried the reference allele. **First-class** — reference observations are themselves signal for some analyses (e.g. back-mutation). |
 | `1` ALT | Molecule carried the alternate allele. |
 | `2` N | Ambiguous base. In consensus BAMs this marks a **strand-discordant** molecule — diagnostic, not noise. |
-| `3` OTHER | A third allele, or no fragment consensus. |
+| `3` OTHER | A third allele, no fragment consensus, or (for an indel) a molecule whose reads all start or end inside the event's repeat tract, so they cannot tell the alleles apart ([informative reads](allele-classification.md#informative-reads-for-indels)). |
 
 !!! info "N rows depend on `--min-baseq`"
     N bases carry low quality, so they are usually filtered before reaching fragment
