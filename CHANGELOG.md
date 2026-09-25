@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Indel REF counts use only reads that can tell the alleles apart** (#157).
+  A read that starts or ends inside an indel's repeat tract matches both
+  alleles: the aligner places no gap either way. It was counted REF from anchor
+  coverage alone, which biased repeat-indel VAF down (a 50% homopolymer deletion
+  read 25% in a synthetic test; on the 6.5.0 RC data the median gbcms-to-
+  informative VAF ratio was 0.91 for STRs and 0.92 for homopolymers). Such reads
+  now count toward depth only, as in GATK's AD. A deletion longer than a read
+  still gets REF reads from either junction.
+  [Informative reads](docs/reference/allele-classification.md#informative-reads-for-indels).
+- **Grouped rows: REF reads and REF fragments exclude the same molecules** (#119).
+  The sibling-ALT guard dropped a read from `ref_count` when it carried any
+  co-annotated sibling's ALT, even one far from this row, and only after its
+  fragment had been recorded as REF. The guard now applies only to siblings
+  whose change lies inside the row's discrimination window. It runs before
+  fragment evidence in every counting path, so `ref_count` and
+  `ref_count_fragment` agree.
+  - Carriers of a sibling outside the window count REF again: IGV shows them as
+    REF at this row.
+  - Carriers of a sibling inside the window now also leave `ref_count_fragment`.
+- `alt_count`, `total_count` and their fragment forms are unchanged. SNV and
+  MNP rows change only when they share a site with a co-annotated indel.
+
 ## [6.5.0] - 2026-09-25
 
 ### ⚠️ Breaking Changes — VCF ↔ MAF representation follows vcf2maf / maf2vcf (#110)

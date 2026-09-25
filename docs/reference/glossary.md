@@ -11,6 +11,7 @@ Technical terms used throughout the documentation.
 | **Strand Bias** | Fisher's exact test for read direction imbalance |
 | **AD** | Alternate allele depth (supporting reads) |
 | **RD** | Reference allele depth |
+| **Informative read** | For an indel, a read that covers a flank of the event's shift-equivalence region and runs one base past the first base where REF and ALT differ. Only informative reads count REF; the others count toward DP only ([details](allele-classification.md#informative-reads-for-indels)). |
 
 ## File Formats
 
