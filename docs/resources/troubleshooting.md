@@ -97,8 +97,9 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     Check in this order:
 
-    1. **`gbcms_status`** column — if `REF_MISMATCH` or `FETCH_FAILED`, the variant
-       was excluded from counting. See [Normalization Issues](#normalization-issues).
+    1. **`gbcms_status`** column — if `FAIL`, the variant was excluded from counting;
+       `gbcms_status_reason` says why (`REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`,
+       `ALT_EQUALS_REF`, `ALT_CONTAINS_N`). See [Normalization Issues](#normalization-issues).
 
     2. **Complex Del+SNV routing** — if your variant has deletion format (`REF` longer than `ALT`,
        `ALT` is a single base) but the anchor base also changes (e.g., `GC→T`, `AG→T`), it is a
@@ -245,6 +246,23 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     The comparison is a heuristic: both alleles can claim reads carrying other forms of the run.
     Inspect the reads at the locus before relying on either allele's counts (see
     [Variant Normalization](../reference/variant-normalization.md)).
+
+??? question "After upgrading to 6.5.0, MAF rows from a VCF have different `Start_Position` / alleles"
+
+    Since 6.5.0, VCF input is written to MAF exactly as vcf2maf writes it: the leading bases
+    REF and ALT share are trimmed, so e.g. `TCT>TCG` becomes the SNP `T>G` at the changed
+    base, and `TTAC>A` stays a 4bp deletion. The VCF record itself is kept in `vcf_pos` /
+    `vcf_ref` / `vcf_alt`; key on those to compare runs. Counts are unchanged. Re-genotype
+    every flavor with the same version before `gbcms merge`: MAFs from different versions do
+    not join. `gbcms convert` shows the conversion for a variant file without counting. See
+    [Output Formats](../reference/output-formats.md).
+
+??? question "WARNING: `Skipped VCF ALT ... — not countable`"
+
+    The VCF reader skips alleles that name no sequence to count: `*`, symbolic `<...>`
+    alleles, breakends, a missing `.`, other non-sequence alleles, and a REF that is not a
+    base sequence. The first few are logged individually, then one WARNING gives the totals
+    by reason. They get no output row. See [Input Formats](../reference/input-formats.md#alt-alleles).
 
 ---
 

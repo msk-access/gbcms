@@ -13,6 +13,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from gbcms.core.kernel import CoordinateKernel
 from gbcms.io.output import CH_GENES
 
 logger = logging.getLogger(__name__)
@@ -226,6 +227,22 @@ def _compute_kde(
     return x_grid, density
 
 
+def _maf_row_key(row: dict[str, str]) -> str:
+    """``chrom:pos:ref:alt`` of a MAF row as the fragment-size Parquet keys it:
+    the variant as genotyped — the VCF record for VCF input (``vcf_pos`` /
+    ``vcf_ref`` / ``vcf_alt``), the MAF alleles as the reader chose them
+    (:meth:`CoordinateKernel.maf_alleles`) for MAF input."""
+    chrom = row.get("Chromosome") or ""
+    if row.get("vcf_pos"):
+        return f"{chrom}:{row['vcf_pos']}:{row.get('vcf_ref') or ''}:{row.get('vcf_alt') or ''}"
+    ref, alt = CoordinateKernel.maf_alleles(
+        row.get("Reference_Allele") or "",
+        row.get("Tumor_Seq_Allele1") or "",
+        row.get("Tumor_Seq_Allele2") or "",
+    )
+    return f"{chrom}:{row.get('Start_Position') or ''}:{ref}:{alt}"
+
+
 def generate_mfsd_report(
     parquet_path: Path,
     maf_path: Path,
@@ -268,10 +285,7 @@ def generate_mfsd_report(
 
     # Load MAF for Hugo_Symbol and mFSD stats
     maf_pl = batch_read_maf(maf_path)
-    maf_data: dict[str, dict[str, str]] = {}
-    for row in maf_pl.iter_rows(named=True):
-        key = f"{row.get('Chromosome', '')}:{row.get('Start_Position', '')}:{row.get('Reference_Allele', '')}:{row.get('Tumor_Seq_Allele2', '')}"
-        maf_data[key] = row
+    maf_data = {_maf_row_key(row): row for row in maf_pl.iter_rows(named=True)}
     logger.info("Loaded %d variants from MAF", len(maf_data))
 
     # ── Build variant records ────────────────────────────────────────────────

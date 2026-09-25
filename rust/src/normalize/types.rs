@@ -22,8 +22,10 @@ pub struct PreparedVariant {
     pub gbcms_status: String,
 
     /// Status reason tags, `|`-separated; empty string when a clean PASS.
-    /// PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`.
-    /// FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `ALT_CONTAINS_N`.
+    /// PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`,
+    /// `TRACT_CLUSTER`.
+    /// FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `ALT_EQUALS_REF`,
+    /// `ALT_CONTAINS_N`.
     /// `|` is used (not `;`/`,`, both VCF-INFO-unsafe) so the value is byte-identical
     /// in the MAF column and the VCF `GSR` INFO — no boundary conversion needed.
     #[pyo3(get, set)]
@@ -65,7 +67,8 @@ pub struct PreparedVariant {
     /// Corrected variant for homopolymer decomposition dual-counting.
     /// When a complex variant spans a homopolymer and appears to be a
     /// miscollapsed D(n)+SNV event, this holds the corrected allele
-    /// (e.g., CCCCCC→CCCCT instead of CCCCCC→T).
+    /// (e.g., CCCCCC→CCCCCT instead of CCCCCC→T: the run with its last base
+    /// replaced).
     /// `None` for normal variants where no decomposition is detected.
     #[pyo3(get)]
     pub decomposed_variant: Option<Variant>,

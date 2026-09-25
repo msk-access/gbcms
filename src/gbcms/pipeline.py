@@ -29,8 +29,8 @@ from rich.progress import (
 
 from .core.kernel import CoordinateKernel
 from .io.input import MafReader, VariantReader, VcfReader
-from .io.output import MafWriter, VcfWriter
-from .models.core import GbcmsBaseConfig, OutputFormat, Variant
+from .io.output import MafWriter, VcfWriter, declared_contigs
+from .models.core import GbcmsBaseConfig, OutputFormat, Variant, VariantType
 from .rescue_audit import (
     MNP_RESCUE_ELIGIBLE,
     OUTCOME_HAPLOTYPE_CONFIRMED,
@@ -252,37 +252,6 @@ def _resolve_mnp_rescue(
     return OUTCOME_RESCUED, best_idx
 
 
-def _declared_contigs(
-    reference: list[tuple[str, int]], variants: list[Variant]
-) -> list[tuple[str, int | None]]:
-    """VCF ``##contig`` entries in the output's naming.
-
-    Each reference contig is declared under the name(s) the variant file uses
-    for it (keeping the reference length), so records written with the input's
-    naming are always declared; reference contigs the input never names keep
-    the reference's name. Names are paired with the engine's own rule
-    (:meth:`CoordinateKernel.contig_key`: ``chr1``~``1``, ``chrM``~``MT``). Input
-    contigs the reference lacks are declared without a length rather than left
-    undeclared; each name is declared once.
-    """
-    key = CoordinateKernel.contig_key
-    input_names: dict[str, list[str]] = {}
-    for v in variants:
-        names = input_names.setdefault(key(v.output_chrom), [])
-        if v.output_chrom not in names:
-            names.append(v.output_chrom)
-    declared: dict[str, int | None] = {}
-    for name, length in reference:
-        for out in input_names.get(key(name), [name]):
-            # A reference listing one contig under two aliases maps both to the
-            # same input name: declare it once.
-            declared.setdefault(out, length)
-    for names in input_names.values():
-        for out in names:
-            declared.setdefault(out, None)
-    return list(declared.items())
-
-
 def _naming_difference(variants: list[Variant], other_names: list[str]) -> tuple[str, str] | None:
     """The first ``(input name, other name)`` pair naming the same contig
     differently, or None when the variant file's naming matches."""
@@ -404,7 +373,7 @@ class Pipeline:
         self._log_naming_difference(
             variants, [name for name, _ in self._reference_contigs], "reference"
         )
-        self._declared_contigs = _declared_contigs(self._reference_contigs, variants)
+        self._declared_contigs = declared_contigs(self._reference_contigs, variants)
 
         if not variants:
             logger.error("No variants found. Exiting.")
@@ -816,7 +785,8 @@ class Pipeline:
                 represented as clips rather than I ops (inspect in IGV).
             SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
                 be evaluated by the pangenomic haplotype matrix (reference context
-                missing or not containing the variant — malformed input upstream);
+                missing — e.g. an indel near a contig end — or not containing the
+                variant, or an ALT haplotype over 400bp);
                 they were scored by Smith-Waterman where it can run, otherwise
                 left NEITHER, so counts here came partly from a different scorer
                 or are missing reads.
@@ -1257,7 +1227,7 @@ class Pipeline:
                     pos=pv.variant.pos,
                     ref=pv.variant.ref_allele,
                     alt=pv.variant.alt_allele,
-                    variant_type=v.variant_type,
+                    variant_type=VariantType(pv.variant.variant_type),
                 )
 
             writer.write(

@@ -13,6 +13,7 @@ from typing import Any
 
 from ..core.kernel import CoordinateKernel
 from ..models.core import Variant
+from .reference import ReferenceBases
 
 __all__ = ["OutputWriter", "MafWriter", "VcfWriter"]
 
@@ -93,6 +94,46 @@ def _fmt_vcf_sci(v: float) -> str:
     return f"{v:.4e}"
 
 
+def declared_contigs(
+    reference: list[tuple[str, int]], variants: list[Variant]
+) -> list[tuple[str, int | None]]:
+    """VCF ``##contig`` entries in the output's naming.
+
+    Each reference contig is declared under the name(s) the variant file uses
+    for it (keeping the reference length), so records written with the input's
+    naming are always declared; reference contigs the input never names keep
+    the reference's name. Names are paired with the engine's own rule
+    (:meth:`CoordinateKernel.contig_key`: ``chr1``~``1``, ``chrM``~``MT``). Input
+    contigs the reference lacks are declared without a length rather than left
+    undeclared; each name is declared once.
+    """
+    key = CoordinateKernel.contig_key
+    input_names: dict[str, list[str]] = {}
+    for v in variants:
+        names = input_names.setdefault(key(v.output_chrom), [])
+        if v.output_chrom not in names:
+            names.append(v.output_chrom)
+    declared: dict[str, int | None] = {}
+    for name, length in reference:
+        for out in input_names.get(key(name), [name]):
+            # A reference listing one contig under two aliases maps both to the
+            # same input name: declare it once.
+            declared.setdefault(out, length)
+    for names in input_names.values():
+        for out in names:
+            declared.setdefault(out, None)
+    return list(declared.items())
+
+
+def vcf_contig_lines(contigs: list[tuple[str, int | None]]) -> list[str]:
+    """``##contig`` header lines; a contig without a known length is declared
+    without one rather than left undeclared."""
+    return [
+        f"##contig=<ID={name}>" if length is None else f"##contig=<ID={name},length={length}>"
+        for name, length in contigs
+    ]
+
+
 class OutputWriter:
     """Abstract base class for output writers."""
 
@@ -114,8 +155,9 @@ class MafWriter(OutputWriter):
       (e.g. ``ref_count`` from a previous genotyping run, or ``t_alt_count``
       with the legacy prefix): those values are REPLACED by this run's, and a
       warning names every colliding column at write time.
-    - VCF→MAF: Generates GDC-compliant MAF coordinates from internal VCF-style
-      representation using CoordinateKernel.internal_to_maf().
+    - VCF→MAF: Writes each record's MAF coordinates exactly as vcf2maf does
+      (CoordinateKernel.vcf_to_maf) and keeps the record itself in
+      vcf_pos / vcf_ref / vcf_alt.
 
     Count column names are controlled by the column_prefix parameter:
     - Default (empty): 'ref_count', 'alt_count', 'total_count', etc.
@@ -137,6 +179,30 @@ class MafWriter(OutputWriter):
         "Tumor_Sample_Barcode",
         "Matched_Norm_Sample_Barcode",
     ]
+    # VCF-origin columns for VCF input: the ID, the record as written (vcf2maf's
+    # vcf_pos / vcf_ref / vcf_alt, before its leading-base trim) and a chr:pos key.
+    _VCF_ORIGIN_HEADERS = ["vcf_id", "vcf_pos", "vcf_region", "vcf_ref", "vcf_alt"]
+
+    @classmethod
+    def vcf_input_headers(cls) -> list[str]:
+        """Columns of a VCF-input row before the gbcms count columns."""
+        return cls._DEFAULT_MAF_HEADERS + cls._VCF_ORIGIN_HEADERS
+
+    @staticmethod
+    def vcf_input_fields(variant: Variant) -> dict[str, str]:
+        """A VCF-input row's representation: vcf2maf's coordinates, alleles and
+        Variant_Type, plus the VCF record it came from."""
+        vcf_pos = variant.pos + 1
+        fields = CoordinateKernel.vcf_to_maf(vcf_pos, variant.ref, variant.alt)
+        fields.update(
+            Chromosome=variant.output_chrom,
+            vcf_id=variant.original_id or "",
+            vcf_pos=str(vcf_pos),
+            vcf_region=f"{variant.output_chrom}:{vcf_pos}",
+            vcf_ref=variant.ref,
+            vcf_alt=variant.alt,
+        )
+        return fields
 
     def __init__(
         self,
@@ -634,8 +700,8 @@ class MafWriter(OutputWriter):
           append gbcms count columns. Non-gbcms originals are never overwritten;
           input columns sharing a gbcms output name are refreshed (warned at
           header time).
-        - VCF→MAF (no metadata): Generate GDC-compliant MAF coordinates from
-          internal representation using CoordinateKernel.internal_to_maf().
+        - VCF→MAF (no metadata): vcf2maf's MAF coordinates for the record
+          (CoordinateKernel.vcf_to_maf), plus vcf_pos / vcf_ref / vcf_alt.
 
         Args:
             variant: Normalized Variant with optional metadata from input MAF.
@@ -653,12 +719,7 @@ class MafWriter(OutputWriter):
                 self._init_writer(list(variant.metadata.keys()))
             else:
                 # VCF→MAF: use default GDC MAF headers + VCF-origin fields
-                vcf_headers = self._DEFAULT_MAF_HEADERS + [
-                    "vcf_id",
-                    "vcf_pos",
-                    "vcf_region",
-                ]
-                self._init_writer(vcf_headers)
+                self._init_writer(self.vcf_input_headers())
 
         assert self.writer is not None
 
@@ -667,20 +728,9 @@ class MafWriter(OutputWriter):
             # MAF→MAF: start with ALL original metadata (preserves every column)
             row = dict(variant.metadata)
         else:
-            # VCF→MAF: build row from internal representation
+            # VCF→MAF: vcf2maf's coordinates and the VCF record itself
             row = dict.fromkeys(self.fieldnames, "")
-
-            # Convert internal coordinates to GDC MAF format
-            maf_coords = CoordinateKernel.internal_to_maf(variant)
-            row.update(maf_coords)
-            row["Chromosome"] = variant.output_chrom
-
-            # VCF-origin tracking fields
-            vcf_pos = variant.pos + 1
-            row["vcf_pos"] = str(vcf_pos)
-            row["vcf_region"] = f"{variant.output_chrom}:{vcf_pos}"
-            if variant.original_id:
-                row["vcf_id"] = variant.original_id
+            row.update(self.vcf_input_fields(variant))
 
         # Set sample barcode:
         # - VCF→MAF: always use BAM sample name (no barcode in VCF)
@@ -704,7 +754,10 @@ class MafWriter(OutputWriter):
 
         # Normalization columns (only when --show-normalization is enabled)
         if self.show_normalization and norm_variant:
-            maf_norm = CoordinateKernel.internal_to_maf(norm_variant)
+            # The prepared (VCF-style) variant, written by its alleles as vcf2maf would.
+            maf_norm = CoordinateKernel.vcf_to_maf(
+                norm_variant.pos + 1, norm_variant.ref, norm_variant.alt
+            )
             p = self.column_prefix
             row[f"{p}norm_Start_Position"] = maf_norm["Start_Position"]
             row[f"{p}norm_End_Position"] = maf_norm["End_Position"]
@@ -720,7 +773,14 @@ class MafWriter(OutputWriter):
 
 
 class VcfWriter(OutputWriter):
-    """Writes results to a VCF file."""
+    """Writes results to a VCF file.
+
+    A VCF-input row is written as its input record. A MAF-input row (the reader
+    keeps the MAF row as metadata) is written as maf2vcf writes it
+    (CoordinateKernel.maf_to_vcf): ``-`` alleles, and unequal alleles with
+    different first bases, get the reference base before them, fetched from
+    ``reference_fasta``.
+    """
 
     def __init__(
         self,
@@ -747,6 +807,8 @@ class VcfWriter(OutputWriter):
         self.contigs = contigs or []
         self.file = open(path, "w")
         self._headers_written = False
+        # Opened on the first MAF-input row that needs an anchor base.
+        self._reference: ReferenceBases | None = None
         logger.debug(
             "VcfWriter initialized: path=%s, sample=%s, show_normalization=%s, "
             "mfsd=%s, mode=%s, rescue_mnp=%s, has_gtf=%s",
@@ -780,11 +842,7 @@ class VcfWriter(OutputWriter):
         # Contig headers — recommended by VCF 4.2 spec, required by some tools
         # Names follow the records' naming (the input's); a contig the reference
         # lacks is declared without a length rather than left undeclared.
-        for name, length in self.contigs:
-            if length is None:
-                headers.append(f"##contig=<ID={name}>")
-            else:
-                headers.append(f"##contig=<ID={name},length={length}>")
+        headers.extend(vcf_contig_lines(self.contigs))
         # FILTER header — required by VCF 4.2 spec even when only PASS is used
         headers.append('##FILTER=<ID=PASS,Description="All filters passed">')
         # INFO fields
@@ -858,7 +916,7 @@ class VcfWriter(OutputWriter):
             if self.has_gtf:
                 headers.extend(
                     [
-                        '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) to nearest annotated exon boundary. Missing (.) when no GTF provided.">',
+                        '##INFO=<ID=EBD,Number=1,Type=Integer,Description="Distance (bp) to nearest annotated exon boundary. Missing (.) when the contig has no annotation in the GTF.">',
                         '##INFO=<ID=TXRC,Number=1,Type=String,Description="Per-transcript read counts. Format: ENST:AD,RD,DP|ENST:AD,RD,DP. Empty when no GTF or no overlap.">',
                         '##INFO=<ID=TXFC,Number=1,Type=String,Description="Per-transcript fragment counts. Format: ENST:ADF,RDF,DPF|ENST:ADF,RDF,DPF. Empty when no GTF or no overlap.">',
                         # ASJD INFO headers
@@ -910,6 +968,29 @@ class VcfWriter(OutputWriter):
         self.file.write("\n".join(headers) + "\n")
         self._headers_written = True
 
+    def _anchor_base(self, chrom: str, pos: int) -> str:
+        """Reference base for a MAF-input row's anchor (1-based ``pos``)."""
+        if self._reference is None:
+            if not self.reference_fasta:
+                raise ValueError(
+                    "A MAF-input row needs the reference FASTA for its VCF anchor base "
+                    "(VcfWriter reference_fasta is not set)"
+                )
+            self._reference = ReferenceBases(self.reference_fasta)
+        return self._reference.base(chrom, pos)
+
+    def _record(self, variant: Variant) -> tuple[int, str, str]:
+        """(POS, REF, ALT) to write: the input record for VCF input, maf2vcf's
+        record for MAF input."""
+        if not variant.metadata:
+            return variant.pos + 1, variant.ref, variant.alt
+        return CoordinateKernel.maf_to_vcf(
+            variant.pos + 1,
+            variant.ref,
+            variant.alt,
+            lambda pos: self._anchor_base(variant.chrom, pos),
+        )
+
     def write(
         self,
         variant: Variant,
@@ -924,8 +1005,7 @@ class VcfWriter(OutputWriter):
         if not self._headers_written:
             self._write_header()
 
-        # VCF POS is 1-based
-        pos = variant.pos + 1
+        pos, ref, alt = self._record(variant)
 
         # INFO fields (VCF spec: missing values use '.' not 'NA').
         # GS is the bare verdict (PASS/FAIL — no separators). GSR (reasons) and GD
@@ -1071,8 +1151,8 @@ class VcfWriter(OutputWriter):
             variant.output_chrom,
             str(pos),
             variant.original_id or ".",
-            variant.ref,
-            variant.alt,
+            ref,
+            alt,
             ".",  # QUAL
             ".",  # FILTER
             info,
@@ -1083,4 +1163,6 @@ class VcfWriter(OutputWriter):
         self.file.write("\t".join(row) + "\n")
 
     def close(self):
+        if self._reference is not None:
+            self._reference.close()
         self.file.close()

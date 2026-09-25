@@ -18,6 +18,26 @@ chr2    67890   .       G       C       .       PASS    .
 - `#CHROM`, `POS`, `REF`, `ALT` columns required
 - 1-based positions
 
+### ALT Alleles
+
+Each ALT allele of a record is genotyped as its own variant (a multi-allelic
+record gives one output row per ALT). An ALT allele that names no sequence to
+count is skipped, not genotyped: `*` (an overlapping deletion), symbolic alleles
+(`<DEL>`, `<INS>`, ...), breakends, a missing ALT (`.`), and any other allele with
+a base outside `A`/`C`/`G`/`T`/`N`. A record whose REF is not a base sequence
+(an empty REF reads as `.`) is skipped the same way. The first few skips are
+logged individually as WARNINGs and the totals once per file, by reason. An ALT
+containing `N` is kept: preparation reports it as a `FAIL` row (`ALT_CONTAINS_N`),
+and an ALT equal to its REF likewise (`ALT_EQUALS_REF`).
+
+### Variant Types
+
+A record's type label comes from its alleles: `INSERTION` / `DELETION` only when
+the one-base allele is the other's first base (the shared anchor, e.g. `T>TGT`,
+`TAA>T`); every other unequal pair (a delins such as `TTAC>A` or `C>TA`) and every
+multi-base substitution is `COMPLEX`. `gbcms normalize` reports this label.
+Counting does not read it: reads are classified by the alleles themselves.
+
 ## MAF (Mutation Annotation Format)
 
 Standard MAF format with required columns:
@@ -34,8 +54,23 @@ KRAS         chr12       25398284        25398284      G                 A
 |:-------|:------------|
 | `Chromosome` | Chromosome name |
 | `Start_Position` | 1-based start position |
+| `End_Position` | 1-based end position (an integer; rows without one are skipped with a WARNING) |
 | `Reference_Allele` | Reference allele |
 | `Tumor_Seq_Allele2` | Alternate allele |
+
+`Tumor_Seq_Allele1` is optional (see below).
+
+### MAF Alleles
+
+Alleles are read as maf2vcf reads them:
+
+- The variant allele is `Tumor_Seq_Allele2`, or `Tumor_Seq_Allele1` when
+  `Tumor_Seq_Allele2` is empty or equal to the reference (older MAFs put the
+  variant there). How many rows were read that way is logged as a WARNING.
+- An allele made only of `-`, `?` or `0` is a placeholder for an empty allele
+  and is read as `-`.
+- A row whose variant allele still equals its reference describes no change;
+  preparation reports it as a `FAIL` row (`ALT_EQUALS_REF`) rather than counting it.
 
 ### MAF Indel Normalization
 
@@ -83,6 +118,9 @@ Delete `CG` at chr1:101–102 (where the reference base at position 100 is `A`):
 
 !!! note "Position Shift for Deletions"
     For insertions, `Start_Position` already points to the anchor base. For deletions, `Start_Position` points to the *first deleted base*, so gbcms shifts back by one position to find the anchor.
+
+A MAF row whose alleles are both sequences (an SNP, an MNP, or a delins such as
+`TTAC>A`) is used as written, at `Start_Position`, with no anchor base.
 
 ## Variant Left-Normalization
 

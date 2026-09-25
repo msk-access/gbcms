@@ -13,10 +13,14 @@ gbcms/
 │   ├── cli.py           # Typer CLI (DNA + RNA commands)
 │   ├── pipeline.py      # Orchestration, progress, Parquet dispatch
 │   ├── normalize.py     # Standalone normalization workflow
+│   ├── convert.py       # Standalone VCF <-> MAF conversion
 │   ├── _rs.pyi          # Primary Rust type stubs (authoritative)
+│   ├── core/
+│   │   └── kernel.py    # Coordinates; the one VCF<->MAF rule (vcf2maf/maf2vcf) + type labels
 │   ├── io/
-│   │   ├── input.py     # VcfReader, MafReader, ReferenceChecker
-│   │   └── output.py    # VcfWriter, MafWriter (mFSD/RNA column gating)
+│   │   ├── input.py     # VcfReader (skips uncountable ALTs), MafReader
+│   │   ├── output.py    # VcfWriter, MafWriter (mFSD/RNA column gating)
+│   │   └── reference.py # Reference bases for MAF -> VCF anchors
 │   ├── models/
 │   │   └── core.py      # GbcmsConfig, OutputConfig, AlignmentConfig (Pydantic)
 │   ├── report/

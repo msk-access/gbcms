@@ -3,44 +3,64 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-24_
+_Last updated: 2026-09-25_
 
 ## Now
-**6.5.0 cycle complete on develop; release-candidate validation PASSED
-(2026-09-24).** Merged to develop: T1 cluster exclusive assignment (#99), T2
-ASJD-2 markers (#100), T3–T5 observability (#102), T7 MNP rescue (#101), T8
-contig naming + merge (#104), T6 one BAQ rule across RNA views (#105), T10
-decomposed twin strand + per-sample flag (#113). 6.4.0 is released (#98, tag
-`6.4.0`) and main is merged back into develop.
+**Release 6.5.0 is cut: `release/6.5.0` → PR to main.** It bumps the release
+guide's 11 version references (the `nextflow/main.nf` banner included; the 6.4.0
+cut had missed it) and cuts the CHANGELOG. The cycle plan was removed from the
+repo at the cut (operator decision). Cycle plans are kept locally, outside the
+repo, from now on.
 
-RC check (develop 3ed1a4d3 vs the 6.4.0 release, every changed cell attributed;
-harness `~/test/gbcms/harness/rc650/`, local only, README there):
+6.5.0 on develop:
+- T1 cluster exclusive assignment (#99).
+- T2 ASJD-2 markers (#100).
+- T3–T5 observability (#102).
+- T7 MNP rescue (#101).
+- T8 contig naming + merge (#104).
+- T6 one BAQ rule across RNA views (#105).
+- T10 decomposed twin strand + per-sample flag (#113).
+- T12 VCF ↔ MAF representation per vcf2maf / maf2vcf, plus `gbcms convert`
+  (#116, closes #110). A breaking output change: see the CHANGELOG.
+  - #116 also fixed what verifying the plan against the code found: T1's
+    grouping let an SNV between two window-joined deletions join their cluster;
+    merge by VCF record dropped later-only rows' coordinates; a MAF deletion at
+    Start 1 wrapped u64 in debug builds.
+
+RC check (develop vs the 6.4.0 release, every changed cell attributed; harness
+`~/test/gbcms/harness/rc650/`, local only):
 - DNA, 28 runs (FLT3 IMPACT, ACCESS duplex+simplex incl. BRCA2, complex-cluster,
-  MSI-high): headers identical; 1030/1060 rows byte-identical; 30 changed = 29 T1
-  cluster rows + 1 T3 flag; 0 unexplained. BRCA2 cluster reproduces the T1
-  record: 28/28, 32/32, 21/21 exact; 33bp 37 v 22; 14bp 51 v 45.
-- RNA, rebuilt FORTE truth cohort (33 samples / 94 rows, sequence-anchored hg38
-  lift): zero main-count changes; the six T2 marker rows of the T2 record and one
-  T6 exon-edge row; 0 unexplained.
+  MSI-high): 1030/1060 rows byte-identical; 30 changed = 29 T1 cluster rows + 1
+  T3 flag; 0 unexplained. BRCA2 reproduces the T1 record.
+- RNA, FORTE truth cohort (33 samples / 94 rows): zero main-count changes; the six
+  T2 marker rows and one T6 exon-edge row; 0 unexplained.
+- Re-checked with #116's code: byte-identical DNA (1060/1060) and RNA (33/33).
+  The final develop HEAD is re-checked the same way
+  (`~/test/gbcms/harness/t110/real/final_rc.py`).
 
-The T1/T2 acceptance harnesses lost in the 2026-09-23 scratchpad wipe are rebuilt
-there; per-ticket harnesses: `~/test/gbcms/harness/{t6,t7,t8,t9t10}/`.
+**Next → operator gates for 6.5.0:**
+1. Build and push the container.
+2. Run the HPC 56-sample IMPACT matrix against the 6.4.0 baseline (script at
+   `~/test/gbcms/dev_regression/` on HPC, repointed at the rc container), plus
+   RNA smokes.
+   - If the matrix feeds VCF input and compares MAF output by `Start_Position`,
+     key it on `vcf_pos`/`vcf_ref`/`vcf_alt`: T12 changes VCF-input MAF
+     coordinates by design. MAF-input output is byte-identical.
+3. Merge the release PR, then tag `6.5.0` (bare: the release workflow triggers
+   only on `N.N.N` tags).
+4. Create the GitHub Release page. 6.4.0 has none; the latest page is 6.3.1.
+5. Back-merge main into develop.
 
-**Next → release 6.5.0** (same procedure as 6.4.0): cut `release/6.5.0` from
-develop — version bump in the 11 files the 6.4.0 cut touched (pyproject,
-`src/gbcms/__init__.py`, `rust/Cargo.toml` + lock, `nextflow/nextflow.config`, the
-five `nextflow/modules/local/gbcms/*/main.nf` container tags) + CHANGELOG cut →
-PR → main, gated on: container build+push (operator) → the HPC 56-sample IMPACT
-matrix vs the 6.4.0 baseline (script at `~/test/gbcms/dev_regression/` on HPC,
-repointed at the rc container) + RNA smokes → tag `v6.5.0` → merge → back-merge
-develop. Optional: head-to-head vs C++ GBCMS 1.2.4/1.2.5 (on HPC).
+Optional: head-to-head vs C++ GBCMS 1.2.4/1.2.5 (on HPC).
 
-**After the cut:** T9 span-aware exon-edge BAQ rule (#106, low priority), T11
-decomposition arbitration redesign (#111), #112 (consumers of a decomposed
-winner), #110 (VCF delins with a one-base ALT treated as a pure deletion — decide
-whether it rides 6.5.0), #114 (RNA strandedness gating: `rna_antisense_depth`
-always 0 and `STRAND_DISCORDANT` unreachable at defaults — an open decision
-carried from #94), and #92's three remaining items.
+**After the cut → 6.6.0.** The plan is local (`~/test/gbcms/plans/`). It carries
+every open finding, whatever its priority:
+- the open issues #92, #106, #111, #112, #114;
+- the T12 review leftovers;
+- the grouped-row REF-fragment decision;
+- the M5 / accepted-deviation items;
+- release-infra checks;
+- a dependency-upgrade audit.
 
 ### Previous: code-review remediation
 Working the code-review remediation plan (`CODE_REVIEW_IMPLEMENTATION_PLAN.md`)
@@ -90,7 +110,7 @@ automatic Nextflow wiring; ~9s → ~0.05s per sample, #55). The rest were **drop
 low-ROI/liabilities**: ME-13 (0% re-fetch measured), PF-3 (decode threads oversubscribe
 under fan-out), PF-4 (moot at 1 sample/process). See the plan's §"M5 — empirical scoping".
 
-## Next
+### Previous: M6 (hygiene & contracts)
 **M6 (Hygiene & contracts) — COMPLETE.** All M6 tickets landed: HI-1 (exit non-zero on
 sample failure; empty variant set still exits 0), ME-1 (sub/mono-nuc reach VCF), ME-2
 (`|` transcript delimiter), ME-12 (fragment-consensus relabel; #64), LO-1 (single `_rs`
