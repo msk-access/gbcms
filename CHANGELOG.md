@@ -41,8 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - mFSD: a fragment whose reads all end inside the tract lands in no class. It
     used to land in REF, and must not look like a third allele (NonREF). In the
     observation export it is `OTHER`.
-- Unchanged: `alt_count`, `total_count` (DP) and their fragment forms. SNV and
-  MNP rows change only when they share a site with a co-annotated indel.
+- `alt_count_fragment` can rise by a molecule or two: a mate whose REF call was
+  vacuous (it ended in the tract, or carried a sibling) no longer contests the
+  other mate's ALT. This happened on 3 of 1,060 rows in the 6.5.0 RC DNA runs,
+  by +1 to +2.
+- Unchanged: `alt_count`, `total_count` (DP) and `total_count_fragment`. SNV and
+  MNP rows change only when they share a site with a co-annotated indel. None
+  did in the RC runs.
 
 ## [6.5.0] - 2026-09-25
 
