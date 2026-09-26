@@ -505,3 +505,163 @@ def test_reads_that_cannot_cover_the_window_stay_out_of_mfsd_classes(tmp_path):
         bam, [v], [None], 20, 20, True, True, True, False, False, False, 1, mfsd=True
     )
     assert (c.mfsd_ref_count, c.mfsd_alt_count, c.mfsd_nonref_count) == (10, 10, 0)
+
+
+# ── how an aligner may place the event; what else the reads may carry ────
+
+
+def _other(b):
+    return {"A": "C", "C": "G", "G": "T", "T": "A"}[b]
+
+
+def _run_before(runlen):
+    """TA>ACC right after an A run: the ALT's first A continues the run, so an
+    aligner may place the inserted A anywhere in it."""
+    left, ref = _flanked("GCGTCAGTC" + "A" * runlen + "TA" + "CGTGGTCAGCTT", 21)
+    return ref, len(left) + 9 + runlen
+
+
+@pytest.mark.parametrize("runlen", [2, 6])
+def test_an_insertion_aligned_into_the_run_before_the_event_still_counts(tmp_path, runlen):
+    ref, p = _run_before(runlen)
+    hap = ref[:p] + "ACC" + ref[p + 2 :]
+    x = p - runlen  # the inserted A at the run's start: the same read, scored the same
+    reads = [
+        make_read(f"a{i}", hap[s : s + READ], s, ((0, x - s), (1, 1), (0, READ - (x - s) - 1)))
+        for i, s in enumerate(range(p - 80, p - 60))
+    ]
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, "TA", "ACC", pos=p)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad) == (0, 20)
+
+
+def test_one_more_base_in_that_run_is_another_allele(tmp_path):
+    ref, p = _run_before(4)
+    hap = ref[:p] + "AACC" + ref[p + 2 :]
+    x = p - 4
+    reads = [
+        make_read(f"x{i}", hap[s : s + READ], s, ((0, x - s), (1, 2), (0, READ - (x - s) - 2)))
+        for i, s in enumerate(range(p - 80, p - 60))
+    ]
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, "TA", "ACC", pos=p)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad) == (0, 0)
+
+
+def _long_delins(tmp_path, change):
+    """A 60bp REF to a 10bp ALT; reads carry `change(alt)` (or the ALT with one
+    base changed at the given hap offset from the event)."""
+    ref = _ref()
+    rng = random.Random(9)
+    alt = ""
+    while not alt or alt[0] == ref[POS] or alt[-1] == ref[POS + 59]:
+        alt = "".join(rng.choice("ACGT") for _ in range(10))
+    carried, off = change(alt)
+    hap = ref[:POS] + carried + ref[POS + 60 :]
+    reads = []
+    for i, s in enumerate(range(POS - 60, POS - 40)):
+        k = POS - s
+        seq = list(hap[s : s + READ])
+        if off is not None:
+            seq[k + off] = _other(seq[k + off])
+        reads.append(make_read(f"a{i}", "".join(seq), s, ((0, k), (2, 50), (0, READ - k))))
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, ref[POS : POS + 60], alt)])[0]
+    _invariants(c)
+    return c
+
+
+def test_a_long_event_reads_the_whole_short_allele(tmp_path):
+    """60>10: every base of the 10bp ALT is read, not only its ends."""
+    (tmp_path / "x").mkdir()
+    (tmp_path / "m").mkdir()
+    assert _long_delins(tmp_path / "x", lambda a: (a, None)).ad == 20
+    middle = _long_delins(
+        tmp_path / "m", lambda a: (a[:2] + "".join(map(_other, a[2:8])) + a[8:], None)
+    )
+    assert middle.ad == 0
+
+
+def test_a_mismatch_at_either_junction_rules_the_read_out(tmp_path):
+    """The exact ALT but one confident base off just after it: not a carrier."""
+    c = _long_delins(tmp_path, lambda a: (a, 10))
+    assert (c.rd, c.ad) == (0, 0)
+
+
+def test_an_event_ending_a_long_run_is_judged_exactly(tmp_path):
+    """ATT>GC where the A ends a 70-base run: the event grows through the run, and
+    prep's reference must hold it, or reads carrying GG would count as GC."""
+    left, ref = _flanked("GCGTCAGTCG" + "A" * 70 + "TT" + "CGTGGTCAGCTTGACCA", 33)
+    p = len(left) + 79
+    for allele, carriers in (("GC", 20), ("GG", 0)):
+        hap = ref[:p] + allele + ref[p + 3 :]
+        reads = [
+            make_read(
+                f"{allele}{i}", hap[s : s + READ], s, ((0, p - s), (2, 1), (0, READ - (p - s)))
+            )
+            for i, s in enumerate(range(p - 60, p - 40))
+        ]
+        (tmp_path / allele).mkdir()
+        fa, bam = _files(tmp_path / allele, ref, reads)
+        c = count_both(bam, [_prepared(fa, "ATT", "GC", pos=p)])[0]
+        _invariants(c)
+        assert (c.rd, c.ad) == (0, carriers)
+
+
+def test_reads_ending_inside_the_event_are_not_partial(tmp_path):
+    """ALT reads ending inside a 45bp insertion, clipped there as aligners do, show
+    only part of it: depth only, never partial_alt."""
+    ref = _ref()
+    rng = random.Random(3)
+    alt = ""
+    while not alt or alt[0] == ref[POS] or alt[-1] == ref[POS + 1]:
+        alt = "".join(rng.choice("ACGT") for _ in range(45))
+    hap = ref[:POS] + alt + ref[POS + 2 :]
+    reads = [
+        make_read(f"a{i}", hap[s : s + READ], s, ((0, POS - s + 2), (4, READ - (POS - s) - 2)))
+        for i, s in enumerate(range(POS - READ + 5, POS - READ + 35))
+    ]
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad, c.partial_alt) == (0, 0, 0)
+    assert c.dp == 30
+
+
+def test_an_mnp_carrier_aligned_with_indels_beside_the_block_counts(tmp_path):
+    """TACAT>GTACA (the block shifted by one): carriers aligned as an insertion
+    just before the block and a deletion just after it are ALT, not REF."""
+    left, ref = _flanked("CAGTCAGGTACATTGCAGCGTTACG", 77)
+    p = len(left) + 8
+    alt = ref[p - 1] + ref[p : p + 4]
+    hap = ref[:p] + alt + ref[p + 5 :]
+    reads = [
+        make_read(
+            f"a{i}",
+            hap[s : s + READ],
+            s,
+            ((0, p - s), (1, 1), (0, 5), (2, 1), (0, READ - (p - s) - 6)),
+        )
+        for i, s in enumerate(range(p - 60, p - 40))
+    ]
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, ref[p : p + 5], alt, pos=p)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad) == (0, 20)
+
+
+def test_a_record_without_bases_is_not_read(tmp_path):
+    """A record stored without its sequence (SEQ '*') is skipped, not a crash."""
+    ref = _ref()
+    alt = _distinct_alt(ref, 3)
+    _, reads = _delins_case(ref, alt)
+    x = pysam.AlignedSegment()
+    x.query_name, x.flag, x.reference_id, x.reference_start = "noseq", 0, 0, 250
+    x.mapping_quality, x.cigartuples = 60, ((0, READ),)
+    reads.append(x)
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad) == (10, 10)
