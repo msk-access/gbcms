@@ -95,11 +95,28 @@ def test_the_given_allele_is_counted_by_default(tmp_path):
     assert "WARN_HOMOPOLYMER_DECOMP" not in row["gbcms_status_reason"]
 
 
+def _twin_carriers(ref, n):
+    """Reads carrying the twin exactly: the run's last C read as T (CCCCCT)."""
+    hap = ref[: RUN + RUN_LEN - 1] + "T" + ref[RUN + RUN_LEN :]
+    return [
+        make_read(f"t{i}", hap[s : s + READ], s, ((0, READ),))
+        for i, s in enumerate(range(240, 240 + n))
+    ]
+
+
 def test_rescue_homopolymer_keeps_the_twin(tmp_path):
+    """With --rescue-homopolymer the twin is dual-counted and wins where the
+    reads carry it exactly; without it the row counts the given allele and the
+    diagnostic names the change the reads carry."""
     ref = _ref()
-    reads = _sox2_carriers(ref, 20) + _ref_reads(ref, 10)
-    (row,) = _run(tmp_path, ref, reads, [SOX2_ROW], "--rescue-homopolymer")
-    assert "WARN_HOMOPOLYMER_DECOMP" in row["gbcms_status_reason"]
+    reads = _twin_carriers(ref, 20) + _ref_reads(ref, 10)
+    (rescued,) = _run(tmp_path, ref, reads, [SOX2_ROW], "--rescue-homopolymer")
+    assert "WARN_HOMOPOLYMER_DECOMP" in rescued["gbcms_status_reason"]
+    assert int(rescued["alt_count"]) == 20
+    (tmp_path / "plain").mkdir()
+    (plain,) = _run(tmp_path / "plain", ref, reads, [SOX2_ROW])
+    assert int(plain["alt_count"]) == 0
+    assert f"OBSERVED_ALLELE(1:{RUN + RUN_LEN}:C>T:20/0)" in plain["gbcms_diagnostic"].split(";")
 
 
 def test_the_diagnostic_names_what_the_reads_carry(tmp_path):

@@ -54,6 +54,7 @@ use super::mfsd;
 use super::rna;
 use super::window;
 use super::observed;
+use super::carrier;
 use crate::shared::baq::apply_heuristic_baq;
 
 
@@ -3032,8 +3033,9 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 ClassifyResult::neither_with_partial(ClassifyPhase::MaskedCompare, partial, had_n)
             }
             MnpResult::Structural => {
-                trace!("MNP structural issue, falling back to Phase 3");
-                check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+                // The read carries an indel or clip at the MNP: it counts only if
+                // its own bases carry the whole allele (exact-carrier rule).
+                classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
             }
         }
     } else if ref_len == 1 {
@@ -3078,16 +3080,43 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         } else {
             // Complex Del+SNV: anchor base also substituted — route to Phase 3
             trace!(
-                "Complex Del+SNV at {}:{} (ref[0]={} ≠ alt[0]={}): routing to check_complex",
+                "Complex Del+SNV at {}:{} (ref[0]={} ≠ alt[0]={}): exact-carrier classification",
                 variant.chrom,
                 variant.pos + 1,
                 variant.ref_allele.chars().next().unwrap_or('?'),
                 variant.alt_allele.chars().next().unwrap_or('?'),
             );
-            check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+            classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
         }
     } else {
-        // Complex: ref_len != alt_len, both > 1 (e.g., DelIns)
+        // Complex: ref_len != alt_len, both > 1 (e.g., DelIns).
+        classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+    }
+}
+
+/// A complex variant (delins, a deletion whose anchor also changes, or an MNP
+/// read carrying an indel) counts a read only when the read's own bases carry
+/// the whole allele: the exact-carrier rule (`carrier`). A variant the rule
+/// cannot judge (built without prep, or its reference fetch failed) goes to the
+/// previous classifier, whose SW_FALLBACK flag keeps that case visible.
+#[allow(clippy::too_many_arguments)]
+fn classify_complex<F: Fn(u8, u8) -> i32>(
+    record: &Record,
+    variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
+    min_baseq: u8,
+    alt_aligner: &mut Aligner<F>,
+    ref_aligner: &mut Aligner<F>,
+    backend: &AlignmentBackend,
+) -> ClassifyResult {
+    if carrier::can_judge(variant) {
+        carrier::check_complex_exact(record, variant, quals, min_baseq)
+    } else {
+        trace!(
+            "{}:{} {}>{}: no reference holds the event, previous complex classifier",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+        );
         check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     }
 }
