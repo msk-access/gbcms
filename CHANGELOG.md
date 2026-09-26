@@ -22,6 +22,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `observe_molecules()` takes `rescue_homopolymer` and threads the twin the same
   way.
 
+### Changed — complex variants count exact carriers only (#141)
+
+- A delins, a deletion whose anchor also changes (Del+SNV), or an MNP read with
+  an indel now counts a read as REF or ALT only when the read's own bases carry
+  that allele across the whole event, with two reference flank bases each side.
+  Soft clips count; bases below `--min-baseq` match anything, the only tolerance.
+  - Why: local alignment, likelihoods and the edit-distance margin credited
+    near-matches, so reads carrying another allele, or ending inside the event,
+    were counted for the given one.
+  - The windows are read at the event's own position, grown through repeats
+    touching the event, and padded to equal length so neither allele is favoured
+    by where reads start. Events over 50 bases are judged at both junctions.
+  - A read that cannot hold both windows is depth only (no allele, no mFSD class).
+    A read closer to ALT than REF that is neither counts in `partial_alt`.
+- `--alignment-backend pairhmm` and `sw` now give identical counts for these
+  variants: the rule uses no alignment scoring.
+
 ### Added
 
 - Two `gbcms_diagnostic` flags name the allele the reads carry when it is not the

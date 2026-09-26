@@ -101,13 +101,16 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
        `gbcms_status_reason` says why (`REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`,
        `ALT_EQUALS_REF`, `ALT_CONTAINS_N`). See [Normalization Issues](#normalization-issues).
 
-    2. **Complex Del+SNV routing** — if your variant has deletion format (`REF` longer than `ALT`,
-       `ALT` is a single base) but the anchor base also changes (e.g., `GC→T`, `AG→T`), it is a
-       **complex Del+SNV** routed to `check_complex`, not `check_deletion`.
-       Use `--trace` logging to confirm:
+    2. **Complex variants count exact carriers only** — a delins, or a deletion whose anchor
+       also changes (e.g., `GC→T`, `AG→T`), counts a read as ALT only when its bases carry the
+       whole given allele with two flank bases each side
+       ([exact-carrier rule](../reference/allele-classification.md#the-exact-carrier-rule)).
+       Reads carrying a different allele there are neither (`partial_alt` when closer to ALT),
+       and `gbcms_diagnostic` names the allele they carry (`OBSERVED_ALLELE` /
+       `COEXISTING_ALLELE`). Use `--trace` to see each read's call:
        ```bash
        gbcms dna --trace --variants variants.maf --bam sample.bam \
-           --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep "check_complex\|check_deletion"
+           --fasta ref.fa --output-dir /tmp/debug/ 2>&1 | grep "read call"
        ```
        See [Complex Indels](../reference/complex-indels.md) for detailed case studies.
 
@@ -132,15 +135,17 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ??? question "`ref_count = 0` for a large deletion"
 
-    For large deletions (~100bp+), REF reads have clean M-only CIGARs. gbcms's
-    `is_worth_realignment()` skips Phase 3 for clean CIGARs, and the **M-block REF fallback**
-    in `check_complex` classifies these as REF.
+    A pure large deletion counts a clean read spanning its anchor as REF (`check_deletion`).
+    A large delins (a deletion with a replacement) is judged by the
+    [exact-carrier rule](../reference/allele-classification.md#the-exact-carrier-rule): no read
+    holds a ~100bp window whole, so each end is judged by a junction window, and a REF read
+    counts when it carries the reference across either junction.
 
     If `ref = 0`, check:
-    - The variant was normalized correctly (M-block REF fallback only applies in `check_complex`)
-    - The BAM slice has coverage at the anchor position (`samtools depth -a sample.bam -r chr22:30038094-30038095`)
-    - Reads actually **span the anchor**: reads mapping entirely inside a large deleted span
-      carry no information about the variant and count as neither, not REF
+    - The variant was normalized correctly (`gbcms_status` is `PASS`)
+    - The BAM slice has coverage at the event's ends (`samtools depth -a sample.bam -r chr22:30038094-30038095`)
+    - Reads actually **reach a junction**: reads mapping entirely inside a large deleted span,
+      or ending inside the event, carry no information about the variant and count as depth only
 
     See [NF2 Case Study](../reference/complex-indels.md#case-2-nf2-large-deletion-ref-reads-invisible).
 
