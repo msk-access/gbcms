@@ -43,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (an aligner may write a shifted block as an insertion and a deletion); an
     indel further off leaves the base-by-base comparison in place.
   - Prep fetches enough reference to hold an event grown through a long repeat.
+- In a multi-allelic group, a read that matches this row's ALT and a sibling's
+  ALT exactly (the two differ only at bases the read has masked) is neither
+  row's AD: it counts in `partial_alt`.
 - `--alignment-backend pairhmm` and `sw` now give identical counts for these
   variants: the rule uses no alignment scoring.
 

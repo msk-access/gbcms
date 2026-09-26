@@ -1,7 +1,7 @@
 //! Exact-carrier classification for complex variants.
 //!
 //! A complex variant (a delins, a deletion whose anchor also changes, or an MNP
-//! read carrying an indel) is REF or ALT for a read only when the read's own
+//! read with an indel in or right beside its block) is REF or ALT for a read only when the read's own
 //! bases carry that allele across the whole event, with [`FLANK`] reference bases
 //! on each side. The read's bases include soft clips; bases below min BQ (and N)
 //! match anything, the one quality rule every backend shares. Nothing else is
@@ -28,9 +28,10 @@
 //! - **Long events.** When the windows exceed [`LONG_EVENT`] bases no read can
 //!   hold them whole. Both alleles are then judged by equal-length junction
 //!   windows at each end, reading inward: a flank through one base past the first
-//!   base where they differ, and through the whole shorter allele when that fits
-//!   in [`LONG_EVENT`] bases. A read must match the same allele at every junction
-//!   it holds.
+//!   base where they differ, and through the shorter allele when that fits in
+//!   [`LONG_EVENT`] bases (the right junction from just before its first
+//!   difference, so growth on the left favours neither allele). A read must match
+//!   the same allele at every junction it holds.
 //! - **Outcomes.** A read decides only where it holds both the REF and the ALT
 //!   window (padding can let one complete where the other cannot). A read
 //!   matching both (through masked bases) is neither. A read holding no pair is

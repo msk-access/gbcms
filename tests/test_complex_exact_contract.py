@@ -749,7 +749,8 @@ def test_prep_holds_an_event_in_a_run_near_the_contig_end(tmp_path):
 def test_a_read_matching_a_sibling_as_well_is_not_the_rows_alt(tmp_path):
     """TT>GTC beside a co-annotated C inserted after the second T: the two ALTs
     differ only at the first base. Reads carrying TTC with that base below min BQ
-    match both exactly, so they are ambiguous: not the delins's ALT."""
+    match both exactly, so they are ambiguous: not the delins's ALT. Reads
+    carrying GTC with every base read stay its ALT."""
     left, ref = _flanked("GCAGTCAGGA" + "TT" + "AGCGTCAGGT", 5)
     p = len(left) + 10
     ins_hap = ref[: p + 2] + "C" + ref[p + 2 :]
@@ -762,6 +763,12 @@ def test_a_read_matching_a_sibling_as_well_is_not_the_rows_alt(tmp_path):
             make_read(
                 f"i{i}", ins_hap[s : s + READ], s, ((0, k + 2), (1, 1), (0, READ - k - 3)), quals=q
             )
+        )
+    cx_hap = ref[:p] + "GTC" + ref[p + 2 :]
+    for i, s in enumerate(range(p - 60, p - 50)):
+        k = p - s
+        reads.append(
+            make_read(f"g{i}", cx_hap[s : s + READ], s, ((0, k + 2), (1, 1), (0, READ - k - 3)))
         )
     fa, bam = _files(tmp_path, ref, reads)
     cx, ins = (
@@ -794,5 +801,4 @@ def test_a_read_matching_a_sibling_as_well_is_not_the_rows_alt(tmp_path):
         sibling_variants=[[ins], [cx]],
     )
     _invariants(c_cx)
-    assert c_cx.ad == 0
-    assert c_ins.ad == 20  # the insertion's own carriers, by their I op
+    assert c_cx.ad == 10

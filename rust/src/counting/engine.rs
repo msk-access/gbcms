@@ -2812,7 +2812,10 @@ fn sibling_claims_alt(
         return true;
     }
 
-    // Test 3: a sibling that explains the read strictly better claims it.
+    // Test 3: a sibling that explains the read strictly better claims it. One
+    // that explains it exactly, as this row's ALT does (the two alleles differ
+    // only at bases the read has masked), leaves it ambiguous: it is either
+    // allele, so it is neither row's AD.
     for sib in sibling_variants {
         let sib_ctx_end = sib.ref_context_start
             + sib.ref_context.as_ref().map_or(0, |c| c.len() as i64);
@@ -2839,7 +2842,7 @@ fn sibling_claims_alt(
         };
         let own_c = levenshtein(&recon_s, &own_hap_s);
         let sib_c = levenshtein(&recon_s, &sib_hap_s);
-        if sib_c < own_c {
+        if sib_c < own_c || (equal_but_masked(&recon_s, &own_hap_s) && equal_but_masked(&recon_s, &sib_hap_s)) {
             trace!(
                 "AD-claiming guard: ALT for {}>{} at {}:{} (cost {}) claimed by \
                  sibling {}>{} at {}:{} (cost {}) — partial_alt, not ad",
@@ -2852,6 +2855,12 @@ fn sibling_claims_alt(
         }
     }
     false
+}
+
+/// Whether a reconstructed read equals a haplotype base for base, its masked
+/// bases (0, from `mask_low_qual`) matching anything.
+fn equal_but_masked(read: &[u8], hap: &[u8]) -> bool {
+    read.len() == hap.len() && read.iter().zip(hap).all(|(&r, &h)| r == 0 || r.eq_ignore_ascii_case(&h))
 }
 
 /// Minimum soft-clip length for an insertion clip candidate: shorter clips
