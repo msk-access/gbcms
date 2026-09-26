@@ -3421,6 +3421,31 @@ can still be adopted, and the rescued <abbr title="Variant Allele Frequency - Fr
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#cli-dna-__codelineno-3-5"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--rescue-mnp<span class="w"> </span>--rescue-mnp-threshold<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span>--variants<span class="w"> </span>input.maf<span class="w"> </span>--bam<span class="w"> </span>sample:sample.bam<span class="w"> </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>-o<span class="w"> </span>out/
 </code></pre></div>
 </div>
+<h2 id="cli-dna-homopolymer-twin-option">Homopolymer Twin Option<a class="headerlink" href="#cli-dna-homopolymer-twin-option" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Option</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--rescue-homopolymer</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Dual-count the <a href="#reference-variant-normalization-step-5-homopolymer-decomposition-detection">homopolymer twin</a>. For a delins whose REF is a run of one base and whose ALT is the base after the run (<code>CCCCCC&gt;T</code>), also count the run with its last base replaced (<code>CCCCCT</code>), and report whichever form has more ALT reads, flagged <code>WARN_HOMOPOLYMER_DECOMP</code>.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">Off by default: the row counts the given allele</p>
+<p>Both forms accept near-matches, so the winner can report another allele's reads under
+the row's label. By default gbcms counts the allele it is given, and when the reads carry
+a different one, <code>gbcms_diagnostic</code> names it: <code>OBSERVED_ALLELE</code> when no read carries the
+given allele, <code>COEXISTING_ALLELE</code> when it is present beside a more frequent one (see
+<a href="#reference-output-formats">output formats</a>).</p>
+</div>
 <h2 id="cli-dna-debugging-options">Debugging Options<a class="headerlink" href="#cli-dna-debugging-options" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -3712,7 +3737,7 @@ Use mouse to pan and zoom
 <h2 id="cli-rna-required-arguments">Required Arguments<a class="headerlink" href="#cli-rna-required-arguments" title="Permanent link">¶</a></h2>
 <div class="admonition info">
 <p class="admonition-title">Shared Arguments</p>
-<p>RNA mode shares all <a href="#cli-dna-required-arguments">required arguments</a>, <a href="#cli-dna-output-options">output options</a>, <a href="#cli-dna-filtering-options">filtering options</a>, <a href="#cli-dna-baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> options</a>, <a href="#cli-dna-umi-options"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> options</a>, <a href="#cli-dna-mnp-rescue-options"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue options</a>, and <a href="#cli-dna-debugging-options">debugging options</a> with DNA mode. See the <a href="#cli-dna"><code>gbcms dna</code> reference</a> for full descriptions.</p>
+<p>RNA mode shares all <a href="#cli-dna-required-arguments">required arguments</a>, <a href="#cli-dna-output-options">output options</a>, <a href="#cli-dna-filtering-options">filtering options</a>, <a href="#cli-dna-baq-options"><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> options</a>, <a href="#cli-dna-umi-options"><abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> options</a>, <a href="#cli-dna-mnp-rescue-options"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue options</a>, the <a href="#cli-dna-homopolymer-twin-option">homopolymer twin option</a>, and <a href="#cli-dna-debugging-options">debugging options</a> with DNA mode. See the <a href="#cli-dna"><code>gbcms dna</code> reference</a> for full descriptions.</p>
 </div>
 <div class="admonition tip">
 <p class="admonition-title">Provenance &amp; CRAM Support (v5.3.0+)</p>
@@ -5484,6 +5509,11 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <td style="text-align: left;"><code>--rescue_mnp</code></td>
 <td style="text-align: left;"><code>false</code></td>
 <td style="text-align: left;">Enable <a href="#reference-architecture-mnp-rescue-pass-rescue-mnp-v430"><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue pass</a> — for MNPs whose partial evidence dominates (<code>partial_alt &gt; alt_count</code>), reports the best-supported component SNV's counts</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rescue_homopolymer</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Dual-count the <a href="#reference-variant-normalization-step-5-homopolymer-decomposition-detection">homopolymer twin</a> and report the form with more ALT reads (<code>WARN_HOMOPOLYMER_DECOMP</code>). Off: the row counts the given allele, and <code>OBSERVED_ALLELE</code> names the allele the reads carry.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--rescue_mnp_threshold</code></td>
@@ -7946,7 +7976,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>gbcms_diagnostic</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT</code>, <code>MNP_DISC_RATIO(n/m)</code>, <code>MNP_RESCUE_ELIGIBLE</code>, <code>HIGH_N_FRACTION(f)</code>, <code>CLIP_CANDIDATES(n)</code> — an insertion locus with no confirmed ALT where n (≥ 2) reads carry a soft clip ≥ 8bp whose boundary lies within the insert's duplication reach (anchor ± insert length + 10): carriers the aligner may have represented as clips rather than insertions (inspect in IGV) — <code>SW_FALLBACK(n)</code> — under the default <code>pairhmm</code> backend, n depth-contributing reads could not be evaluated by the pangenomic haplotype matrix because the variant's reference context is missing (prep's fetch failed) or does not contain it; they were scored by the Smith-Waterman fallback where <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> can run, otherwise left NEITHER (one WARN per variant names the reason and outcome), so the row's counts came partly from a different scorer or are missing reads — <code>SPLICE_SKIP_DOMINANT(n)</code> — a deletion-type locus where more reads asserted splicing over the deleted span (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>N</code>, excluded from <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> as no-observation) than confirmed ALT; RNA aligners write large deletions as splices (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>: ≥ <code>alignIntronMin</code>, default 21bp), so <code>alt_count</code>=0 here may mean the carriers exist as junction reads — and <code>NON_DISCRIMINATING_LOCUS</code> — the last (<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed <code>ref_count</code>/<code>alt_count</code> at a covered locus rather than leaving it silent. With <code>--rescue-mnp</code>, a rescued row also carries <code>RESCUED_COMPONENT(chrom:pos:REF&gt;ALT)</code>: its counts are that component SNV's, not the annotated <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s. Examples: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE</code>.</td>
+<td style="text-align: left;">Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT</code>, <code>MNP_DISC_RATIO(n/m)</code>, <code>MNP_RESCUE_ELIGIBLE</code>, <code>HIGH_N_FRACTION(f)</code>, <code>CLIP_CANDIDATES(n)</code> — an insertion locus with no confirmed ALT where n (≥ 2) reads carry a soft clip ≥ 8bp whose boundary lies within the insert's duplication reach (anchor ± insert length + 10): carriers the aligner may have represented as clips rather than insertions (inspect in IGV) — <code>`OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code> — no read carries the given allele exactly, and n reads carry this allele (canonical <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> form, 1-based POS): the input is likely mis-described — <code>COEXISTING_ALLELE(chrom:pos:REF&gt;ALT:n/m)</code> — the given allele is present (m reads carry it exactly), but more reads (n) carry a different allele in the same stretch, e.g. a germline indel or stutter in a repeat: a caveat for reading the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. Both need n ≥ 3, n &gt; m, n ≥ 5% of the scanned reads, and an allele not already an input row; the counts stay the given allele's — SW_FALLBACK(n)<code>— under the default</code>pairhmm<code>backend, n depth-contributing reads could not be evaluated by the pangenomic haplotype matrix because the variant's reference context is missing (prep's fetch failed) or does not contain it; they were scored by the Smith-Waterman fallback where SW can run, otherwise left NEITHER (one WARN per variant names the reason and outcome), so the row's counts came partly from a different scorer or are missing reads —</code>SPLICE_SKIP_DOMINANT(n)<code>— a deletion-type locus where more reads asserted splicing over the deleted span (CIGAR</code>N<code>, excluded from DP as no-observation) than confirmed ALT; RNA aligners write large deletions as splices (STAR: ≥</code>alignIntronMin<code>, default 21bp), so</code>alt_count<code>=0 here may mean the carriers exist as junction reads — and</code>NON_DISCRIMINATING_LOCUS<code>— the last (PairHMM backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed</code>ref_count<code>/</code>alt_count<code>at a covered locus rather than leaving it silent. With</code>--rescue-mnp<code>, a rescued row also carries</code>RESCUED_COMPONENT(chrom:pos:REF&gt;ALT)<code>: its counts are that component SNV's, not the annotated MNP's. Examples:</code>ZERO_ALT<code>,</code>PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_rescue</code></td>
@@ -9134,7 +9164,12 @@ Use mouse to pan and zoom
 </div>
 <hr>
 <h2 id="reference-variant-normalization-step-5-homopolymer-decomposition-detection">Step 5: Homopolymer Decomposition Detection<a class="headerlink" href="#reference-variant-normalization-step-5-homopolymer-decomposition-detection" title="Permanent link">¶</a></h2>
-<p>Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. <code>CCCCCC→T</code> where the reads show a smaller change at the run's end. For such calls gbcms also counts a <strong>corrected allele</strong> and reports whichever of the two more reads support.</p>
+<p>Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. <code>CCCCCC→T</code> where the reads show a smaller change at the run's end. With <code>--rescue-homopolymer</code>, gbcms also counts a <strong>corrected allele</strong> for such calls and reports whichever of the two more reads support.</p>
+<div class="admonition info">
+<p class="admonition-title">Off by default: the row counts the given allele</p>
+<p>gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, <code>gbcms_diagnostic</code> names it: <code>OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code> when no read carries the given allele, <code>COEXISTING_ALLELE(...:n/m)</code> when the given allele is present beside a more frequent one. Prep still builds the corrected allele; it is counted only with <code>--rescue-homopolymer</code>.</p>
+<p>The twin became opt-in because its arbitration is not an exact haplotype match. At the case it was built for (SOX2, below), the reads carry <code>CCCCT</code>, a 1bp deletion plus C→T, not the twin <code>CCCCCT</code>. The twin wins there by tolerance. At other real twin loci it claims most of the called allele's own exact carriers. <code>OBSERVED_ALLELE</code> names <code>CCCCT</code> exactly.</p>
+</div>
 <h3 id="reference-variant-normalization-detection-criteria">Detection Criteria<a class="headerlink" href="#reference-variant-normalization-detection-criteria" title="Permanent link">¶</a></h3>
 <p>All four conditions must be met:</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
@@ -9243,9 +9278,9 @@ Use mouse to pan and zoom
 </div>
 <div class="admonition example">
 <p class="admonition-title">Real-World: SOX2</p>
-<p><strong>SOX2</strong> at chr3:181430901: <code>CCCCCC→T</code> (6bp→1bp, net −5bp).
-Original count: <strong>alt=3</strong>. Corrected <code>CCCCCC→CCCCCT</code> count: <strong>alt=79</strong>.
-Corrected wins → <code>gbcms_status = PASS</code>, <code>gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP</code>.</p>
+<p><strong>SOX2</strong> at chr3:181430901: <code>CCCCCC→T</code> (6bp→1bp, net −5bp). The reads carry <code>CCCCT</code>.
+- <strong>Default:</strong> the row reports <code>CCCCCC→T</code> (alt=3), and <code>gbcms_diagnostic</code> names <code>CCCCT</code>.
+- <strong>With <code>--rescue-homopolymer</code>:</strong> the corrected <code>CCCCCC→CCCCCT</code> (alt=79) wins, and the row reports <code>gbcms_status = PASS</code>, <code>gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP</code>.</p>
 </div>
 <hr>
 <h2 id="reference-variant-normalization-validation-status-reference">Validation Status Reference<a class="headerlink" href="#reference-variant-normalization-validation-status-reference" title="Permanent link">¶</a></h2>
@@ -9279,7 +9314,7 @@ string is byte-identical in the <abbr title="Mutation Annotation Format - Standa
 <tr>
 <td style="text-align: left;"><code>PASS</code></td>
 <td style="text-align: left;"><code>WARN_HOMOPOLYMER_DECOMP</code></td>
-<td style="text-align: left;">Passed, but the corrected/decomposed allele was used</td>
+<td style="text-align: left;">Passed, but the corrected allele was used (<code>--rescue-homopolymer</code> only)</td>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
@@ -14432,7 +14467,7 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
 <tr>
 <td style="text-align: left;"><strong>PASS</strong></td>
 <td style="text-align: left;"><strong>WARN_HOMOPOLYMER_DECOMP</strong></td>
-<td style="text-align: left;">Variant spans a homopolymer; dual-counted with corrected allele (corrected won)</td>
+<td style="text-align: left;">With <code>--rescue-homopolymer</code>: variant spans a homopolymer; dual-counted with a corrected allele, and the corrected allele won</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>PASS</strong></td>
@@ -16086,6 +16121,39 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-a-row-counts-the-given-allele-the-homopolymer-twin-is-opt-in-163">Changed — a row counts the given allele; the homopolymer twin is opt-in (#163)<a class="headerlink" href="#development-changelog-changed-a-row-counts-the-given-allele-the-homopolymer-twin-is-opt-in-163" title="Permanent link">¶</a></h3>
+<ul>
+<li>The homopolymer twin is no longer dual-counted by default. It was the corrected
+  allele gbcms counted for a delins like <code>CCCCCC&gt;T</code> (<code>CCCCCT</code>), reporting whichever
+  form had more ALT reads. The row now counts the allele it is given.
+  <code>--rescue-homopolymer</code> (Nextflow <code>--rescue_homopolymer</code>) restores the dual count,
+  flagged <code>WARN_HOMOPOLYMER_DECOMP</code> as before.</li>
+<li>Why: both forms accept near-matches, so the winner could report another
+    allele's reads under the row's label. At the case the twin was built for
+    (SOX2), the reads carry <code>CCCCT</code>, not the twin. The twin won by tolerance.</li>
+<li>It won at 2 of 11 real twin loci, and on 0 of the 6.5.0 RC rows, so counts
+    change only where it used to win.</li>
+<li><code>observe_molecules()</code> takes <code>rescue_homopolymer</code> and threads the twin the same
+  way.</li>
+</ul>
+<h3 id="development-changelog-added">Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
+<ul>
+<li>Two <code>gbcms_diagnostic</code> flags name the allele the reads carry when it is not the
+  given one (canonical <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> form; n reads carry it exactly, m the given allele):</li>
+<li><code>OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code>: no read carries the given allele
+    exactly, so the input is likely mis-described.</li>
+<li><code>COEXISTING_ALLELE(chrom:pos:REF&gt;ALT:n/m)</code>: the given allele is present, but a
+    different allele in the same stretch is more frequent (e.g. a germline indel
+    or stutter in a repeat). A caveat for reading the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>.</li>
+<li>Both need n ≥ 3, n &gt; m, at least 5% of the scanned reads, and an allele that
+    is not already an input row.</li>
+<li>The scan covers every variant type: each spanning read is compared over the
+    event plus one base each side, so a germline <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr> beside the event does not
+    count.</li>
+<li>Counts are unchanged; the flag says what the reads show so the input can be
+    checked.</li>
+<li>Prep stores the event's reference bases on <code>Variant.event_ref</code>.</li>
+</ul>
 <h3 id="development-changelog-fixed">Fixed<a class="headerlink" href="#development-changelog-fixed" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Indel REF counts use only reads that can tell the alleles apart</strong> (#157).
@@ -16613,7 +16681,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   silenced the warning after the first sample).</li>
 <li>Per-read <code>debug!</code> diagnostics demoted to <code>trace!</code> (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr> router, marginalized <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr>).</li>
 </ul>
-<h3 id="development-changelog-added">✨ Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
 <ul>
 <li>Wrong-length contract battery (<code>tests/test_wrong_length_contract.py</code>, 20 tests through
   the binned↔legacy parity oracle) and an end-to-end <code>PARTIAL_DOMINANT</code> reporting-chain
@@ -16640,7 +16708,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   <code>process.resourceLimits</code> casts <code>max_cpus</code>/<code>max_memory</code>/<code>max_time</code>. Verified end-to-end
   on 25.10 and 26.04: identical generated commands both ways for all six filters.</li>
 </ul>
-<h3 id="development-changelog-added_1">✨ Added<a class="headerlink" href="#development-changelog-added_1" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Contract tests pinning filter and phasing behavior</strong> (no production code changes):</li>
 <li><code>test_qc_failed_filter_contract</code> — three-way qc-failed filter proof at read and
@@ -16653,7 +16721,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
     no read support reports all three as 0.</li>
 </ul>
 <h2 id="development-changelog-630-2026-08-07">[6.3.0] - 2026-08-07<a class="headerlink" href="#development-changelog-630-2026-08-07" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_2">✨ Added<a class="headerlink" href="#development-changelog-added_2" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>observe_molecules()</code> takes the settings it actually uses.</strong> New keyword arguments
   <code>filters</code>, <code>quality</code>, <code>alignment</code>, <code>umi_tag</code>, <code>threads</code>, <code>apply_baq</code> and <code>library_type</code>
@@ -16697,7 +16765,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   <code>dpf</code> while leaving <code>dp</code> unchanged, so the two stop moving together. The observation
   export reconciles with <code>dpf</code>, and that invariant is verified under both settings.</p>
 <h2 id="development-changelog-620-2026-08-06">[6.2.0] - 2026-08-06<a class="headerlink" href="#development-changelog-620-2026-08-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_3">✨ Added<a class="headerlink" href="#development-changelog-added_3" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>min_mapq</code> on <code>Observation</code></strong> and in the observations Parquet schema — the worst <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>
   among the reads backing each molecule. Minimum rather than best, deliberately: a molecule
@@ -16746,7 +16814,7 @@ spliced RNA positions — the minor version bump this release delivers.</p>
   to mislead.</li>
 </ul>
 <h2 id="development-changelog-610-2026-08-06">[6.1.0] - 2026-08-06<a class="headerlink" href="#development-changelog-610-2026-08-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_4">✨ Added<a class="headerlink" href="#development-changelog-added_4" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--observations-parquet</code> <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</strong> on <code>gbcms dna</code> and <code>gbcms rna</code>, writing
   <code>&lt;sample&gt;.observations.parquet</code> alongside the normal counts output. Follows the
@@ -16956,7 +17024,7 @@ This major release changes several output behaviours:
   normal parse, never affecting correctness.</p>
 </li>
 </ul>
-<h3 id="development-changelog-added_5">✨ Added<a class="headerlink" href="#development-changelog-added_5" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
 <ul>
 <li>
 <p><strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> now emits the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> sub-/mono-nucleosomal fields (ME-1).</strong> <code>MFSD_SUB_NUC_REF_FRAC</code>,
@@ -17028,7 +17096,7 @@ This major release changes several output behaviours:
   into a misclassification.</li>
 </ul>
 <h2 id="development-changelog-530-2026-05-16">[5.3.0] - 2026-05-16<a class="headerlink" href="#development-changelog-530-2026-05-16" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_6">✨ Added<a class="headerlink" href="#development-changelog-added_6" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>CRAM Support</strong>: Full CRAM file support across all commands (<code>dna</code> and <code>rna</code>). The <code>--bam</code> argument now transparently accepts CRAM files.</li>
 <li><strong>CRAM Index Auto-Discovery</strong>: The Nextflow pipeline automatically discovers <code>.crai</code> or <code>.cram.crai</code> indexes in the same directory as the CRAM files.</li>
@@ -17055,7 +17123,7 @@ This major release changes several output behaviours:
 <li>Added test validation for merge engine skipping <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> provenance comment lines safely.</li>
 </ul>
 <h2 id="development-changelog-520-2026-05-15">[5.2.0] - 2026-05-15<a class="headerlink" href="#development-changelog-520-2026-05-15" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_7">✨ Added<a class="headerlink" href="#development-changelog-added_7" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms merge</code> command</strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> command for merging per-<abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-type genotyped
   MAFs (e.g., duplex + simplex) into a single output with type-prefixed count
@@ -17183,7 +17251,7 @@ This major release changes several output behaviours:
   <code>ad</code>) because R1/R2 fragment consensus is bypassed. This is expected behavior,
   not a bug.</li>
 </ul>
-<h3 id="development-changelog-added_8">✨ Added<a class="headerlink" href="#development-changelog-added_8" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>GTF-based transcript annotation</strong> (<code>--gtf</code>): RNA mode can now load an
   Ensembl/GENCODE GTF file to enable:<ul>
@@ -17280,7 +17348,7 @@ This major release changes several output behaviours:
   (<code>PASS_WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS_MULTI_ALLELIC</code>) replaced with
   semicolon-separated (<code>PASS;WARN_HOMOPOLYMER_DECOMP</code>, <code>PASS;MULTI_ALLELIC</code>).</li>
 </ul>
-<h3 id="development-changelog-added_9">✨ Added<a class="headerlink" href="#development-changelog-added_9" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>gbcms_diagnostic</code> column (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) + <code>GD</code> INFO key (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>)</strong>: Post-counting
   diagnostic flags computed automatically. Flags include:<ul>
@@ -17368,7 +17436,7 @@ This major release changes several output behaviours:
   <code>alignment_backend</code> changed from <code>'hmm'</code> to <code>'pairhmm'</code>. Pipelines relying
   on the old Nextflow defaults may see behavior changes.</li>
 </ul>
-<h3 id="development-changelog-added_10">✨ Added<a class="headerlink" href="#development-changelog-added_10" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Physical fragment sizing</strong>: Rust-native fragment size calculation using
   aligned read positions instead of TLEN, improving accuracy for supplementary
@@ -17469,7 +17537,7 @@ This major release changes several output behaviours:
 <li>Ruff UP015 fix: removed unnecessary <code>"r"</code> mode argument from <code>open()</code>.</li>
 </ul>
 <h3 id="development-changelog-n-base-diagnostic-integration-phases-03">🧬 N-Base Diagnostic Integration (Phases 0–3)<a class="headerlink" href="#development-changelog-n-base-diagnostic-integration-phases-03" title="Permanent link">¶</a></h3>
-<h4 id="development-changelog-added_11">✨ Added<a class="headerlink" href="#development-changelog-added_11" title="Permanent link">¶</a></h4>
+<h4 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Diagnostic output columns</strong>: <code>any_alt</code>, <code>partial_alt</code>, <code>n_count</code> appended to
   all <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (24 gbcms DNA columns total, up from 21).</li>
@@ -17562,7 +17630,7 @@ This major release changes several output behaviours:
   logic, and statistics extracted from <code>counting/</code> into <code>shared/</code>. Any Rust
   consumer crate linking against gbcms internals must update import paths.</li>
 </ul>
-<h3 id="development-changelog-added_12">✨ Added<a class="headerlink" href="#development-changelog-added_12" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 3 <abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> unification</strong> (<code>feat: unify check_complex Phase 3</code>):
   Complex indel classification now routes through a unified pangenomic pipeline
@@ -17654,7 +17722,7 @@ This major release changes several output behaviours:
   A final <code>py-gbcms==3.0.0</code> deprecation stub on PyPI re-exports <code>gbcms</code> and
   issues a <code>DeprecationWarning</code> for smooth migration.</li>
 </ul>
-<h3 id="development-changelog-added_13">✨ Added<a class="headerlink" href="#development-changelog-added_13" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_14">✨ Added<a class="headerlink" href="#development-changelog-added_14" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> native integration</strong>: <code>--mfsd</code> and <code>--mfsd-parquet</code> flags output a
   Parquet file with 31 <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns + 7 <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> INFO fields via the Rust native
@@ -17682,7 +17750,7 @@ This major release changes several output behaviours:
 <li>Added <code>mkdocs-print-site-plugin</code> to <abbr title="Continuous Integration - Automated build and test system">CI</abbr> docs install step and <code>pyproject.toml</code>.</li>
 </ul>
 <h2 id="development-changelog-280-2026-02-23">[2.8.0] - 2026-02-23<a class="headerlink" href="#development-changelog-280-2026-02-23" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_14">✨ Added<a class="headerlink" href="#development-changelog-added_14" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_15">✨ Added<a class="headerlink" href="#development-changelog-added_15" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> alignment backend</strong>: Alternative Phase 3 alignment via <code>--alignment-backend hmm</code> with probabilistic scoring using base quality probabilities. Configurable <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> threshold (default 2.3 ≈ ln(10)) and gap probabilities for repeat/non-repeat regions. 6 new <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> options. Exposed as first-class Nextflow params in <code>nextflow.config</code></li>
 <li><strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> min-BQ-across-block quality strategy</strong>: <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> quality now assessed using min(BQ) across the entire block, matching C++ <abbr title="Get Base Count Multi Sample - Multi-BAM variant counting tool">GBCMS</abbr> <code>baseCountDNP</code>. Low-quality <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads now fall through to <code>check_complex</code> for masked comparison instead of being silently skipped</li>
@@ -17722,7 +17790,7 @@ This major release changes several output behaviours:
 <li>Multi-allelic isolation, <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/neither, fragment consensus, normalization tests</li>
 </ul>
 <h2 id="development-changelog-270-2026-02-19">[2.7.0] - 2026-02-19<a class="headerlink" href="#development-changelog-270-2026-02-19" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_15">✨ Added<a class="headerlink" href="#development-changelog-added_15" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_16">✨ Added<a class="headerlink" href="#development-changelog-added_16" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Phase 2.5 edit distance fallback</strong>: When read reconstruction length matches neither REF nor ALT (e.g., incomplete <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> definition), Levenshtein distance discriminates the closest allele with &gt;1 edit margin safety guard</li>
 <li><strong>Phase 3 local <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> fallback</strong>: Complex variants where semiglobal alignment produces confident-but-wrong calls (e.g., EPHA7 <code>TCC→CT</code>) are now rescued via local Smith-Waterman that soft-clips mismatched flanks. Dual-trigger requires both score reversal and ≥2-point margin</li>
@@ -17749,7 +17817,7 @@ This major release changes several output behaviours:
 <ul>
 <li><strong>Per-haplotype trimming</strong>: Fixed <code>slice index starts at 7 but ends at 6</code> panic in <code>counting.rs</code> on asymmetric indels. Replaced shared symmetric trim with independent per-haplotype <code>trim_haplotype()</code> function that calculates bounds safely for each allele</li>
 </ul>
-<h3 id="development-changelog-added_16">✨ Added<a class="headerlink" href="#development-changelog-added_16" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_17">✨ Added<a class="headerlink" href="#development-changelog-added_17" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Tolerant REF validation</strong>: Variants with ≥90% REF match against the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> are now counted (status <code>PASS_WARN_REF_CORRECTED</code>) instead of being silently rejected. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> REF is used for haplotype construction. Variants with &lt;90% match are still rejected as <code>REF_MISMATCH</code></li>
 </ul>
@@ -17764,7 +17832,7 @@ This major release changes several output behaviours:
 <li><strong><code>deploy-docs.yml</code></strong>: Added <code>mkdocs-pdf</code> to docs <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pip install dependencies</li>
 </ul>
 <h2 id="development-changelog-260-2026-02-18">[2.6.0] - 2026-02-18<a class="headerlink" href="#development-changelog-260-2026-02-18" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_17">✨ Added<a class="headerlink" href="#development-changelog-added_17" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_18">✨ Added<a class="headerlink" href="#development-changelog-added_18" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Adaptive context padding</strong>: Dynamically increases <code>ref_context</code> flanking in tandem repeat regions (homopolymer through hexanucleotide). Formula: <code>max(default, repeat_span/2 + 3)</code>, capped at 50bp. Enabled by default (<code>--adaptive-context/--no-adaptive-context</code>)</li>
 <li><strong><code>gbcms normalize</code> command</strong>: Standalone variant normalization (left-align + REF validate) without counting, outputs <abbr title="Tab-Separated Values - Plain text tabular data format">TSV</abbr> with original and normalized coordinates</li>
@@ -17788,7 +17856,7 @@ This major release changes several output behaviours:
 <li><strong>Nextflow pipeline diagram</strong> added to docs index</li>
 </ul>
 <h2 id="development-changelog-250-2026-02-12">[2.5.0] - 2026-02-12<a class="headerlink" href="#development-changelog-250-2026-02-12" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_18">✨ Added<a class="headerlink" href="#development-changelog-added_18" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_19">✨ Added<a class="headerlink" href="#development-changelog-added_19" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong><code>--preserve-barcode</code> flag</strong>: Keeps original <code>Tumor_Sample_Barcode</code> from input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> instead of overriding with <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> sample name (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>→<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> workflows)</li>
 <li><strong><code>--column-prefix</code> parameter</strong>: Controls prefix for gbcms count columns in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output (default: none; use <code>--column-prefix t_</code> for legacy compatibility) ⚠️</li>
@@ -17815,7 +17883,7 @@ This major release changes several output behaviours:
 <li><strong>Nextflow config</strong>: Added <code>column_prefix</code>, <code>preserve_barcode</code>, <code>filter_by_sample</code> parameters</li>
 </ul>
 <h2 id="development-changelog-240-2026-02-10">[2.4.0] - 2026-02-10<a class="headerlink" href="#development-changelog-240-2026-02-10" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_19">✨ Added<a class="headerlink" href="#development-changelog-added_19" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_20">✨ Added<a class="headerlink" href="#development-changelog-added_20" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Fragment Consensus Engine</strong>: <code>FragmentEvidence</code> struct with u64 QNAME hashing and quality-weighted R1/R2 consensus; ambiguous fragments are discarded (not assigned to REF)</li>
 <li><strong><code>--fragment-qual-threshold</code></strong>: New <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> option (default 10) controlling consensus quality difference for fragment conflict resolution</li>
@@ -17849,7 +17917,7 @@ This major release changes several output behaviours:
 <li><code>.antigravity</code> project files updated with current Rust LOC (~1270) and test counts (47)</li>
 </ul>
 <h2 id="development-changelog-230-2026-02-06">[2.3.0] - 2026-02-06<a class="headerlink" href="#development-changelog-230-2026-02-06" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_20">✨ Added<a class="headerlink" href="#development-changelog-added_20" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_21">✨ Added<a class="headerlink" href="#development-changelog-added_21" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Nextflow <abbr title="BAM Index - Index file for rapid BAM access">BAI</abbr> Auto-Discovery</strong>: Checks <code>.bam.bai</code> and <code>.bai</code> extensions automatically</li>
 <li><strong>Documentation Modernization</strong>: Hierarchical navigation, glightbox, panzoom, abbreviations</li>
@@ -17871,7 +17939,7 @@ This major release changes several output behaviours:
 <li><strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> Build</strong>: Resolved <code>curl-sys</code> OpenSSL version conflict by switching to manylinux_2_34</li>
 </ul>
 <h2 id="development-changelog-220-2026-02-04">[2.2.0] - 2026-02-04<a class="headerlink" href="#development-changelog-220-2026-02-04" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_21">✨ Added<a class="headerlink" href="#development-changelog-added_21" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_22">✨ Added<a class="headerlink" href="#development-changelog-added_22" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Multi-platform Wheel Publishing</strong>: Maturin-based <abbr title="Continuous Integration - Automated build and test system">CI</abbr> builds for Linux (x86_64, aarch64), macOS (Intel, Apple Silicon), and Windows</li>
 <li><strong>Structured Logging</strong>: New <code>utils/logging.py</code> module with Rich console output, timing utilities, and log file support</li>
@@ -17910,7 +17978,7 @@ This major release changes several output behaviours:
 <li><strong>Documentation</strong>: Added Changelog to documentation navigation</li>
 </ul>
 <h2 id="development-changelog-210-2025-11-25">[2.1.0] - 2025-11-25<a class="headerlink" href="#development-changelog-210-2025-11-25" title="Permanent link">¶</a></h2>
-<h3 id="development-changelog-added_22">✨ Added<a class="headerlink" href="#development-changelog-added_22" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_23">✨ Added<a class="headerlink" href="#development-changelog-added_23" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-nextflow-workflow">Nextflow Workflow<a class="headerlink" href="#development-changelog-nextflow-workflow" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Production-ready Nextflow workflow</strong> for processing multiple samples in parallel</li>
@@ -17949,7 +18017,7 @@ This major release changes several output behaviours:
 <h2 id="development-changelog-200-2025-11-21">[2.0.0] - 2025-11-21<a class="headerlink" href="#development-changelog-200-2025-11-21" title="Permanent link">¶</a></h2>
 <h3 id="development-changelog-major-rewrite">🚀 Major Rewrite<a class="headerlink" href="#development-changelog-major-rewrite" title="Permanent link">¶</a></h3>
 <p>Version 2.0.0 represents a complete rewrite of py-gbcms with a focus on performance, correctness, and modern architecture.</p>
-<h3 id="development-changelog-added_23">✨ Added<a class="headerlink" href="#development-changelog-added_23" title="Permanent link">¶</a></h3>
+<h3 id="development-changelog-added_24">✨ Added<a class="headerlink" href="#development-changelog-added_24" title="Permanent link">¶</a></h3>
 <h4 id="development-changelog-core-features">Core Features<a class="headerlink" href="#development-changelog-core-features" title="Permanent link">¶</a></h4>
 <ul>
 <li><strong>Rust-based Counting Engine</strong>: Hybrid Python/Rust architecture for 20x+ performance improvement</li>
@@ -18508,10 +18576,12 @@ with 26/27 bases correct and 1 trailing base that's a <abbr title="Mutation Anno
 </details>
 <details class="question">
 <summary><code>WARN_HOMOPOLYMER_DECOMP</code> reason (verdict <code>PASS</code>) — what changed?</summary>
-<p>The variant is a homopolymer run called as a larger deletion (e.g. <code>CCCCCC→T</code>). In this
-sample, the corrected allele (the run with its last base replaced, <code>CCCCCC→CCCCCT</code>) got
-more ALT support, so its counts were used. <code>used_decomposed = True</code> in the output, and the
-flag is set per sample.</p>
+<p>The run used <code>--rescue-homopolymer</code>, and the variant is a homopolymer run called as a
+larger deletion (e.g. <code>CCCCCC→T</code>). In this sample, the corrected allele (the run with its
+last base replaced, <code>CCCCCC→CCCCCT</code>) got more ALT support, so its counts were used.
+<code>used_decomposed = True</code> in the output, and the flag is set per sample. Without the flag,
+the row counts the given allele, and <code>OBSERVED_ALLELE</code> in <code>gbcms_diagnostic</code> names the
+allele the reads carry.</p>
 <p>It suggests the caller collapsed a smaller change at the run's end into one complex variant.
 The comparison is a heuristic: both alleles can claim reads carrying other forms of the run.
 Inspect the reads at the locus before relying on either allele's counts (see
