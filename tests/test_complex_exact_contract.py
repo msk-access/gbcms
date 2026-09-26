@@ -325,3 +325,183 @@ def test_a_deletion_with_a_substituted_anchor_counts_exact_carriers(tmp_path):
     _invariants(c)
     assert (c.rd, c.ad) == (10, 10)
     assert c.partial_alt == 8
+
+
+# ── windows are read at their own position (review of the first version) ──
+
+
+def _flanked(local, seed, left_len=300, right_len=300):
+    rng = random.Random(seed)
+    left = "".join(rng.choice("ACGT") for _ in range(left_len))
+    right = "".join(rng.choice("ACGT") for _ in range(right_len))
+    return left, left + local + right
+
+
+def _ref_only(ref, p):
+    return [
+        make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),))
+        for i, s in enumerate(range(p - READ + 1, p + 1))
+    ]
+
+
+def test_a_nearby_copy_of_the_window_does_not_turn_ref_reads_alt(tmp_path):
+    """TG>C where the padded ALT window also occurs 9bp upstream: REF reads are REF
+    (or uninformative when they end inside the event), never ALT."""
+    local = "TGTGAATCACTATATGCATGTATCGCGCGCCACACTACG"
+    left, ref = _flanked(local, 11, left_len=282)
+    p = len(left) + 18
+    assert ref[p : p + 2] == "TG"
+    fa, bam = _files(tmp_path, ref, _ref_only(ref, p))
+    c = count_both(bam, [_prepared(fa, "TG", "C", pos=p)])[0]
+    _invariants(c)
+    assert (c.ad, c.partial_alt) == (0, 0)
+    assert c.rd >= 85
+
+
+def test_runs_either_side_of_the_event_do_not_hide_it(tmp_path):
+    """CAC>A inside CCCC A CCCC is a C deleted from each run. ALT reads aligned
+    with the deletions at the inner or the outer ends of the runs are ALT alike."""
+    local = "ATTAACGCGCTCCTAAGCCCCACCCCTTCTCATGTACAAAATA"
+    left, ref = _flanked(local, 12)
+    p = len(left) + local.index("CCCCACCCC") + 3
+    assert ref[p : p + 3] == "CAC"
+    hap = ref[:p] + "A" + ref[p + 3 :]
+    reads = [
+        make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),))
+        for i, s in enumerate(range(p - 80, p - 60))
+    ]
+    for i, s in enumerate(range(p - 80, p - 60)):  # inner: M to the A, then D2
+        m = p + 1 - s
+        reads.append(make_read(f"a{i}", hap[s : s + READ], s, ((0, m), (2, 2), (0, READ - m))))
+    for i, s in enumerate(range(p - 80, p - 60)):  # outer: D1 at each run's far end
+        m = p - 3 - s
+        reads.append(
+            make_read(
+                f"o{i}", hap[s : s + READ], s, ((0, m), (2, 1), (0, 7), (2, 1), (0, READ - m - 7))
+            )
+        )
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, "CAC", "A", pos=p)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 40)
+
+
+def _repeat_edge(tmp_path, with_ref, with_alt):
+    local = "GTTTGTTTG" + "TATG" * 6 + "TAATAAATAAATAA"
+    left, ref = _flanked(local, 13)
+    p = len(left) + local.index("TATG")
+    hap = ref[:p] + "C" + ref[p + 4 :]
+    reads = _ref_only(ref, p) if with_ref else []
+    if with_alt:
+        for i, s in enumerate(range(p - 99, p + 1)):
+            m = p - s
+            if m == 0:  # starts on the C: clip it, align after the deletion
+                reads.append(make_read(f"a{i}", hap[s : s + READ], p + 4, ((4, 1), (0, READ - 1))))
+            else:
+                reads.append(
+                    make_read(
+                        f"a{i}", hap[s : s + READ], s, ((0, m), (1, 1), (2, 4), (0, READ - m - 1))
+                    )
+                )
+    fa, bam = _files(tmp_path, ref, reads)
+    return count_both(bam, [_prepared(fa, "TATG", "C", pos=p)])[0]
+
+
+def test_an_event_at_a_repeat_edge_counts_its_carriers(tmp_path):
+    """TATG>C at the start of (TATG)x6: the REF window must not be read from the
+    repeat copies an ALT read still carries."""
+    (tmp_path / "alt").mkdir()
+    alt_only = _repeat_edge(tmp_path / "alt", False, True)
+    assert alt_only.rd == 0
+    assert alt_only.ad >= 60
+    (tmp_path / "mix").mkdir()
+    mix = _repeat_edge(tmp_path / "mix", True, True)
+    _invariants(mix)
+    assert abs(mix.ad / (mix.rd + mix.ad) - 0.5) <= 0.06, (mix.rd, mix.ad)
+
+
+LONG_LOCAL = (
+    "CACATAAGCGGGCTAGATATAATTTAATCTTAATCCATAAAACACTAGCTCAGCAGTTGAAAAAATGGCTAGGTTCCAG"
+    "CTTTTGGGGAGACGTCTTTCTGAGG"
+)
+LONG_REF = "ATATAATTTAATCTTAATCCATAAAACACTAGCTCAGCAGTTGAAAAAATGGCTAGGTTCCAGCTTTTGGGG"
+
+
+def test_a_long_event_is_judged_at_its_own_junctions(tmp_path):
+    """A 72bp delins to CA: REF reads count REF by their junction (never ALT), and
+    ALT reads ALT (never REF); neither is lost to a copy of a junction window
+    elsewhere in the read."""
+    left, ref = _flanked(LONG_LOCAL, 14, left_len=400, right_len=400)
+    p = len(left) + LONG_LOCAL.index(LONG_REF)
+    hap = ref[:p] + "CA" + ref[p + len(LONG_REF) :]
+    (tmp_path / "r").mkdir()
+    fa, bam = _files(tmp_path / "r", ref, _ref_only(ref, p))
+    c = count_both(bam, [_prepared(fa, LONG_REF, "CA", pos=p)])[0]
+    _invariants(c)
+    assert c.ad == 0 and c.rd >= 90
+    alt = [
+        make_read(
+            f"a{i}",
+            hap[s : s + READ],
+            s,
+            ((0, p - s), (1, 2), (2, len(LONG_REF)), (0, READ - (p - s) - 2)),
+        )
+        for i, s in enumerate(range(p - READ + 3, p - 2))
+    ]
+    (tmp_path / "a").mkdir()
+    fa, bam = _files(tmp_path / "a", ref, alt)
+    c = count_both(bam, [_prepared(fa, LONG_REF, "CA", pos=p)])[0]
+    _invariants(c)
+    assert c.rd == 0 and c.ad >= 85
+
+
+def test_masked_bases_at_a_read_end_do_not_make_an_allele(tmp_path):
+    """REF reads ending just past the event with their last 8 bases below min BQ:
+    they cannot show the ALT, so they are never ALT."""
+    ref = _ref()
+    alt = _distinct_alt(ref, 3)
+    reads = []
+    for i, s in enumerate(range(POS - READ + 4, POS - READ + 8)):
+        q = [30] * READ
+        q[-8:] = [2] * 8
+        reads.append(make_read(f"q{i}", ref[s : s + READ], s, ((0, READ),), quals=q))
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    assert c.ad == 0
+
+
+def test_an_n_away_from_the_event_is_not_an_n_at_it(tmp_path):
+    """Reads carrying a different allele at the event and an N 12 bases upstream:
+    the N is outside every window, so it is not an N at the event (n_count 0)."""
+    ref = _ref()
+    alt = _distinct_alt(ref, 3)
+    off = alt[0] + ("A" if alt[1] != "A" else "C") + alt[2]
+    off_hap = ref[:POS] + off + ref[POS + 2 :]
+    reads = []
+    for i, s in enumerate(range(250, 258)):
+        r = _alt_read(f"n{i}", off_hap, s, 2, 3)
+        seq = list(r.query_sequence)
+        seq[POS - 12 - s] = "N"
+        reads.append(make_read(f"n{i}", "".join(seq), s, r.cigartuples))
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    assert c.n_count == 0
+
+
+def test_reads_that_cannot_cover_the_window_stay_out_of_mfsd_classes(tmp_path):
+    """Molecules whose reads end inside the event carry no readable allele: in
+    fragment depth, but in no mFSD class (not NonREF)."""
+    ref = _ref()
+    alt = _distinct_alt(ref, 3)
+    hap, reads = _delins_case(ref, alt)
+    for i, s in enumerate(range(POS - READ + 1, POS - READ + 5)):
+        reads.append(make_read(f"rp{i}", ref[s : s + READ], s, ((0, READ),)))
+        reads.append(make_read(f"ap{i}", hap[s : s + READ], s, ((0, READ),)))
+    for r in reads:
+        r.template_length = 200
+    fa, bam = _files(tmp_path, ref, reads)
+    v = _prepared(fa, ref[POS : POS + 2], alt)
+    (c,) = gbcms_rs.count_bam_binned(
+        bam, [v], [None], 20, 20, True, True, True, False, False, False, 1, mfsd=True
+    )
+    assert (c.mfsd_ref_count, c.mfsd_alt_count, c.mfsd_nonref_count) == (10, 10, 0)
