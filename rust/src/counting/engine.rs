@@ -3110,15 +3110,13 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
-    if carrier::can_judge(variant) {
-        carrier::check_complex_exact(record, variant, quals, min_baseq)
-    } else {
+    carrier::classify(record, variant, quals, min_baseq).unwrap_or_else(|| {
         trace!(
             "{}:{} {}>{}: no reference holds the event, previous complex classifier",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         );
         check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
-    }
+    })
 }
 
 
