@@ -68,12 +68,12 @@ def _invariants(c):
     assert c.ad == c.ad_fwd + c.ad_rev
 
 
-def _alt_read(name, hap, s, ref_len, alt_len, quals=None):
+def _alt_read(name, hap, s, ref_len, alt_len, quals=None, pos=POS):
     """An ALT read starting at or before the event, aligned as matches up to it,
     then an I or D for the length change, then matches (mismatches where the ALT
     differs). A read that ends before the event, or inside an insert, is
     aligned as far as it goes."""
-    left = POS - s
+    left = pos - s
     d = alt_len - ref_len
     if left >= READ:
         cig = ((0, READ),)
@@ -650,6 +650,7 @@ def test_an_mnp_carrier_aligned_with_indels_beside_the_block_counts(tmp_path):
     c = count_both(bam, [_prepared(fa, ref[p : p + 5], alt, pos=p)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (0, 20)
+    assert c.mnp_confirmed_alt == 20  # every changed base read: the haplotype is shown
 
 
 def test_a_record_without_bases_is_not_read(tmp_path):
@@ -665,3 +666,73 @@ def test_a_record_without_bases_is_not_read(tmp_path):
     c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 10)
+
+
+@pytest.mark.parametrize("shape", [(3, 50), (55, 3)])
+def test_a_long_event_grown_through_a_run_is_unbiased(tmp_path, shape):
+    """A long event whose REF starts with the base of a 20-base run before it: the
+    event grows left through the run, and neither allele gains the reads that
+    start inside it."""
+    ref_len, alt_len = shape
+    rng = random.Random(ref_len * 7 + alt_len)
+    ref_allele = "A" + "".join(rng.choice("CGT") for _ in range(ref_len - 1))
+    left, ref = _flanked("GCGTCAGTCG" + "A" * 20 + ref_allele + "CGTGGTCAGCTTGACCA", 11)
+    p = len(left) + 30
+    alt = ""
+    while not alt or alt[0] == "A" or alt[-1] == ref_allele[-1]:
+        alt = "".join(rng.choice("ACGT") for _ in range(alt_len))
+    hap = ref[:p] + alt + ref[p + ref_len :]
+    reads = []
+    for i, s in enumerate(range(p - 140, p + 1)):
+        reads.append(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)))
+        reads.append(_alt_read(f"a{i}", hap, s, ref_len, alt_len, pos=p))
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
+    _invariants(c)
+    assert c.rd + c.ad >= 40, "too few informative reads to judge"
+    assert abs(c.ad / (c.rd + c.ad) - 0.5) <= 0.03, (c.rd, c.ad)
+
+
+@pytest.mark.parametrize("on", ["REF", "ALT"])
+def test_an_mnp_read_with_a_germline_deletion_near_the_block_keeps_its_call(tmp_path, on):
+    """GC>TA with a 1bp deletion two bases before the block on one haplotype: IGV
+    shows REF or ALT bases at the block, so the reads keep their call."""
+    left, ref = _flanked("ACGTCAGT" + "GC" + "TGCAGGTC", 7)
+    p = len(left) + 8
+    hap = ref[:p] + "TA" + ref[p + 2 :]
+
+    def reads(h, tag, deleted):
+        out = []
+        for i, s in enumerate(range(p - 70, p - 30)):
+            if deleted:
+                g = p - 2
+                out.append(
+                    make_read(
+                        f"{tag}{i}",
+                        h[s:g] + h[g + 1 : s + READ + 1],
+                        s,
+                        ((0, g - s), (2, 1), (0, READ - (g - s))),
+                    )
+                )
+            else:
+                out.append(make_read(f"{tag}{i}", h[s : s + READ], s, ((0, READ),)))
+        return out
+
+    fa, bam = _files(tmp_path, ref, reads(ref, "r", on == "REF") + reads(hap, "a", on == "ALT"))
+    c = count_both(bam, [_prepared(fa, "GC", "TA", pos=p)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad) == (40, 40)
+
+
+def test_prep_holds_an_event_in_a_run_near_the_contig_end(tmp_path):
+    """ACT>GG before a 100-base T run ending 10 bases from the contig end: prep's
+    reference grows to the contig end instead of failing past it."""
+    rng = random.Random(3)
+    ref = "".join(rng.choice("ACGT") for _ in range(400)) + "GAC" + "T" * 100 + "GCATTGCAGG"
+    fa, _ = _files(tmp_path, ref, [])
+    (pv,) = gbcms_rs.prepare_variants(
+        [gbcms_rs.Variant("1", 401, "ACT", "GG", "COMPLEX")], fa, 5, False, 1, True
+    )
+    assert pv.variant.event_ref is not None
+    start, seq = pv.variant.event_ref
+    assert start + len(seq) == len(ref)
