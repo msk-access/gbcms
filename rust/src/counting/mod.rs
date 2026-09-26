@@ -28,7 +28,7 @@ pub(crate) mod wfa_router;
 mod variant_checks;
 pub(crate) mod window;
 mod observed;
-mod carrier;
+pub(crate) mod carrier;
 mod utils;
 pub(crate) mod mfsd;
 pub(crate) mod rna;

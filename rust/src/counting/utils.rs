@@ -106,10 +106,11 @@ pub struct ClassifyResult {
     /// REF, the structural ALT wins unconditionally — the quality comparison
     /// is meaningless because both measure anchor BQ, not INDEL confidence.
     pub is_structural: bool,
-    /// Whether the read observes the locus at all. `false` only from the
-    /// splice-skip triage: a CIGAR `N` (RefSkip) asserts spliced-out
-    /// reference over the variant's discriminating span, so the read has no
-    /// aligned bases there and cannot distinguish REF from ALT. The engine
+    /// Whether the read observes the locus at all. `false` from the
+    /// splice-skip triage (and for a record without bases): a CIGAR `N`
+    /// (RefSkip) asserts spliced-out reference over the variant's
+    /// discriminating span, so the read has no aligned bases there and
+    /// cannot distinguish REF from ALT. The engine
     /// excludes such reads from DP and fragment depth entirely (they are not
     /// "neither at the locus"; they are not at the locus). At skipped
     /// positions this matches samtools pileup's zero coverage exactly; at an
@@ -233,8 +234,9 @@ impl ClassifyResult {
     /// variant's discriminating positions with no aligned base and no D op
     /// there. The aligner asserts splicing — no evidence for REF or ALT —
     /// and the engine excludes the read from DP/DPF entirely, matching
-    /// samtools pileup's zero coverage at skipped positions. Only the
-    /// splice-skip triage returns this.
+    /// samtools pileup's zero coverage at skipped positions. Returned by the
+    /// splice-skip triage, and by the exact-carrier rule for a record stored
+    /// without its bases (SEQ `*`).
     #[inline]
     pub fn no_coverage(phase: ClassifyPhase) -> Self {
         Self { covers_locus: false, ..Self::neither(phase) }

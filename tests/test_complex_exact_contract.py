@@ -611,13 +611,13 @@ def test_an_event_ending_a_long_run_is_judged_exactly(tmp_path):
 
 
 def test_reads_ending_inside_the_event_are_not_partial(tmp_path):
-    """ALT reads ending inside a 45bp insertion, clipped there as aligners do, show
+    """ALT reads ending inside a 40bp insertion, clipped there as aligners do, show
     only part of it: depth only, never partial_alt."""
     ref = _ref()
     rng = random.Random(3)
     alt = ""
     while not alt or alt[0] == ref[POS] or alt[-1] == ref[POS + 1]:
-        alt = "".join(rng.choice("ACGT") for _ in range(45))
+        alt = "".join(rng.choice("ACGT") for _ in range(40))
     hap = ref[:POS] + alt + ref[POS + 2 :]
     reads = [
         make_read(f"a{i}", hap[s : s + READ], s, ((0, POS - s + 2), (4, READ - (POS - s) - 2)))

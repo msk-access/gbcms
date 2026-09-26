@@ -2990,6 +2990,11 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     if ref_len == 1 && alt_len == 1 {
         // SNP: single base substitution — no Phase 3 needed
         check_snp(record, variant, quals, min_baseq)
+    } else if ref_len == alt_len && carrier::indel_in_window(record, variant) {
+        // An MNP read with an indel in or beside the block (an aligner may write a
+        // shifted block as an insertion before it and a deletion after): it counts
+        // only if its own bases carry the whole allele (exact-carrier rule).
+        classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     } else if ref_len == alt_len {
         // MNP: selective discriminating-position quality gate with no Phase 3 fallback.
         match check_mnp(record, variant, quals, min_baseq) {

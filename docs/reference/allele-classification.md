@@ -634,9 +634,9 @@ Variants where REF and ALT differ in both sequence **and** length. It also cover
 A read is REF or ALT for a complex variant only when **its own bases carry that allele across the whole event**. Nothing is inferred: gbcms counts the allele it is given.
 
 - **The window** is the event plus two reference bases of flank on each side.
-  - The event is every base where REF and ALT can differ over all equivalent placements: the union of the minimal difference trimmed from the left first and from the right first, grown through any tandem repeat (unit 1–6 bases) touching either end. An aligner may place an indel anywhere in such a repeat, so a delins in or beside one is judged over its whole ambiguity.
+  - The event is every base where REF and ALT can differ over all equivalent placements: the union of the minimal difference trimmed from the left first and from the right first, grown through any tandem repeat touching either end on either allele (unit 1–6 bases, or the length change). An aligner may place an indel anywhere in such a repeat, including a run the ALT's own bases continue: for `TA>ACC` after `AAA`, the inserted A can sit anywhere in the run. So a delins in or beside a repeat is judged over its whole ambiguity.
   - The shorter allele's window is padded with reference flank until both are the same length. That way neither allele is favoured by where reads start.
-- **The window is read where it sits.** It is compared with the read's bases starting at the read position aligned to the window's first reference base, or ending at the one aligned to its last. The flank bases are outside the event, so they align the same way on either allele; inside the event the read's bases are taken as one stretch, so where the aligner put an indel or a soft clip does not matter. A copy of the window elsewhere in the read is never a match.
+- **The window is read where it sits.** It is read from the read position aligned to the window's first reference base, and back from the one aligned to its last; the closer reading counts. The flank bases are outside the event, so they align the same way on either allele. Inside the event the read's bases are taken as one stretch, so where the aligner put an indel or a soft clip does not matter, and an indel it placed past one flank leaves the other in place. A copy of the window elsewhere in the read is never a match.
 - **Masked bases.** Bases below `--min-baseq` (and N) match anything. This is the only tolerance, and it is the same quality rule every backend applies. `n_count` counts a read only when an N sits among the compared bases.
 - **Outcome.** A read decides only when it holds both the REF and the ALT window.
 
@@ -647,12 +647,13 @@ A read is REF or ALT for a complex variant only when **its own bases carry that 
   | matches both (only through masked bases) | neither |
   | matches neither, and is closer to ALT | neither, counted as `partial_alt` |
   | matches neither, and is not closer to ALT | neither |
-  | cannot hold both windows (it ends in or next to the event) | depth only: no allele, no mFSD class |
+  | cannot hold both windows (it ends in or next to the event) | depth only: no allele, no `partial_alt`, no mFSD class |
 
   A read one confident base off the given ALT carries a different allele. A read that ends inside the event cannot show either, like a pure-indel read ending inside its tract.
-- **Long events.** When the windows exceed 50 bases, no read can hold them whole. Both alleles are then judged by equal-length junction windows at each end: a flank through one base past the first base where the alleles differ, read inward from the flank. A read covering both ends must agree at both.
+- **Long events.** When the windows exceed 50 bases, no read can hold them whole. Both alleles are then judged by equal-length junction windows at each end, read inward from the flank: through one base past the first base where the alleles differ, and through the whole shorter allele when it fits in 50 bases, so a short ALT is read base by base. A read must match the same allele at every junction it holds; a mismatch at one rules it out.
+- **MNP reads with an indel.** An MNP read with an insertion or deletion in or beside the block, or a clip in it, is judged by this rule; an aligner may write a block shifted by one base as an insertion before it and a deletion after. Other MNP reads are compared base by base.
 - **Same on both backends.** The rule uses no alignment scoring, so `pairhmm` and `sw` give identical counts for complex variants.
-- **When the rule cannot run.** A variant with no reference that holds the event (one built without `prepare_variants`, or whose reference fetch failed) keeps the previous classifier below. Its `SW_FALLBACK` flag keeps that case visible. Every variant of a normal run is prepared.
+- **When the rule cannot run.** `prepare_variants` fetches reference until it holds the event, grown through any repeat, with its flank and padding. A variant without that reference (one built without `prepare_variants`, or an event within its flank of a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ `*`) is not read.
 
 !!! info "Why not a tolerant score"
     Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's `--alleles` mode do the same. gbcms reports the given allele's exact support and names a different allele the reads carry in `gbcms_diagnostic` (`OBSERVED_ALLELE` / `COEXISTING_ALLELE`).
