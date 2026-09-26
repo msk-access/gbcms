@@ -336,6 +336,7 @@ class Pipeline:
             "  umi_tag=%s\n"
             "  show_normalization=%s\n"
             "  rescue_mnp=%s\n"
+            "  rescue_homopolymer=%s\n"
             "  mfsd=%s",
             self.config.mode,
             self.config.reference_fasta,
@@ -355,6 +356,7 @@ class Pipeline:
             self.config.umi_tag or "none",
             self.config.show_normalization,
             self.config.rescue_mnp,
+            self.config.rescue_homopolymer,
             self.config.output.mfsd,
         )
         if self.config.rescue_mnp:
@@ -567,7 +569,12 @@ class Pipeline:
         try:
             # Run Rust Engine (only on valid variants)
             # Build decomposed variants list for dual-counting
-            decomposed = [prepared[i].decomposed_variant for i in valid_indices]
+            # The homopolymer twin is dual-counted only on request
+            # (--rescue-homopolymer); by default the row counts the given allele.
+            decomposed = [
+                prepared[i].decomposed_variant if self.config.rescue_homopolymer else None
+                for i in valid_indices
+            ]
 
             # Build sibling Variant objects for multi-allelic exclusion (Gap 1A)
             # For each variant in a multi-allelic group, collect the full Variant
@@ -783,6 +790,15 @@ class Pipeline:
                 (>= 2) reads carry a soft clip >= 8bp whose boundary lies within
                 the insert's duplication reach — carriers the aligner may have
                 represented as clips rather than I ops (inspect in IGV).
+            OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0): no read carries the given allele
+                exactly, and n reads carry this one (canonical VCF form, 1-based
+                POS): the input is likely mis-described.
+            COEXISTING_ALLELE(chrom:pos:REF>ALT:n/m): the given allele is present
+                (m reads carry it exactly), but n reads carry a different allele in
+                the same stretch: a caveat for reading the VAF.
+                Both are named when n >= 3, n > m, n is at least 5% of the scanned
+                reads, and the allele is not already an input row. Counts stay the
+                given allele's (count the given allele).
             SW_FALLBACK(n): under the PairHMM backend, n depth reads could not
                 be evaluated by the pangenomic haplotype matrix (reference context
                 missing — e.g. an indel near a contig end — or not containing the
@@ -848,6 +864,20 @@ class Pipeline:
         sw_fallback = getattr(counts, "sw_fallback_reads", 0)
         if sw_fallback > 0:
             flags.append(f"SW_FALLBACK({sw_fallback})")
+
+        # The reads carry a different allele than the input, more often than the
+        # given one. The counts stay the given allele's; the flag names what the
+        # reads show. No read carrying the given allele exactly (m = 0) points at
+        # a mis-described input (OBSERVED_ALLELE); a present given allele beside a
+        # more frequent one is a coexisting allele (COEXISTING_ALLELE).
+        observed = getattr(counts, "observed_reads", 0)
+        if observed > 0:
+            given = counts.observed_given_reads
+            name = "OBSERVED_ALLELE" if given == 0 else "COEXISTING_ALLELE"
+            flags.append(
+                f"{name}({variant.chrom}:{counts.observed_pos}:"
+                f"{counts.observed_ref}>{counts.observed_alt}:{observed}/{given})"
+            )
 
         return flags
 

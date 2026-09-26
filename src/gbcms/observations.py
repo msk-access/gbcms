@@ -117,6 +117,7 @@ def observe_molecules(
     apply_baq: bool | None = None,
     library_type: str | None = None,
     observations_path: str | Path | None = None,
+    rescue_homopolymer: bool | None = None,
 ) -> ObservationResult:
     """Observe the per-molecule allele at each variant.
 
@@ -125,10 +126,9 @@ def observe_molecules(
         variants: Variants to observe. ``Observation.variant_index`` indexes into this list,
             positionally — the list is never filtered or reordered, so the join key stays
             meaningful even when a variant fails validation.
-        reference_fasta: Reference for normalization (left-alignment, ``ref_context``, and
-            indel decomposition). **Strongly recommended for indels**: without it, a
-            deletion that the aligner shifted, or one whose decomposed form carries the
-            ALT support, is scored REF and its ALT molecules are exported as ``OTHER``.
+        reference_fasta: Reference for normalization (left-alignment and ``ref_context``).
+            **Strongly recommended for indels**: without it, a deletion that the aligner
+            shifted is scored REF and its ALT molecules are exported as ``OTHER``.
         is_maf: Set when the variants came from a MAF, whose ``-`` alleles need anchor
             resolution during normalization. Ignored without ``reference_fasta``.
         config: A full :class:`GbcmsDnaConfig` to take settings from. Convenient when you
@@ -159,6 +159,8 @@ def observe_molecules(
             ``observations`` list is then empty and ``path``/``n_rows`` describe the file,
             whose columns are ``variant_index, chrom, pos, ref, alt, molecule_hash, allele,
             best_qual, min_mapq`` (self-describing, so it stands alone once written).
+        rescue_homopolymer: Dual-count the homopolymer twin, as ``--rescue-homopolymer``
+            does (off by default: each variant counts the given allele).
 
     Returns:
         An :class:`ObservationResult`. Check ``variant_status`` before trusting rows for a
@@ -209,15 +211,15 @@ def observe_molecules(
     apply_baq = cast(bool, _pick(apply_baq, "apply_baq", False))
     umi_tag = cast("str | None", _pick(umi_tag, "umi_tag", None, unset=_UNSET))
     library_type = cast(str, _pick(library_type, "library_type", "capture"))
+    rescue_homopolymer = cast(bool, _pick(rescue_homopolymer, "rescue_homopolymer", False))
 
     rs_variants = [_RsVariant(v.chrom, v.pos, v.ref, v.alt, v.variant_type.value) for v in variants]
     decomposed: list[_RsVariant | None] = [None] * len(rs_variants)
     status: list[str] | None = None
 
-    # Normalize when a reference is available. Beyond left-alignment and ref_context, this
-    # produces the *decomposed* form of complex indels — the form that often carries the ALT
-    # support. Dropping it (as an earlier revision did) silently exported those molecules as
-    # OTHER with zero ALT rows, so it is threaded through exactly as Pipeline does.
+    # Normalize when a reference is available (left-alignment, ref_context). The homopolymer
+    # twin is threaded exactly as Pipeline does: only with rescue_homopolymer, since by
+    # default a row counts the given allele.
     # Variants are NOT filtered to PASS: `variant_index` is the caller's join key and must
     # stay positional. Failures are reported via `variant_status` instead.
     if reference_fasta is not None:
@@ -230,7 +232,7 @@ def observe_molecules(
             quality.adaptive_context,
         )
         rs_variants = [p.variant for p in prepared]
-        decomposed = [p.decomposed_variant for p in prepared]
+        decomposed = [p.decomposed_variant if rescue_homopolymer else None for p in prepared]
         status = [p.gbcms_status for p in prepared]
 
     _counts, observations = count_bam_binned_observations(

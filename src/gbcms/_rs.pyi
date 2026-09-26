@@ -14,6 +14,7 @@ class Variant:
     repeat_span: int
     gene_strand: str | None
     shift_region: tuple[int, int] | None
+    event_ref: tuple[int, str] | None
     def __init__(
         self,
         chrom: str,
@@ -26,6 +27,7 @@ class Variant:
         repeat_span: int = 0,
         gene_strand: str | None = None,
         shift_region: tuple[int, int] | None = None,
+        event_ref: tuple[int, str] | None = None,
     ) -> None: ...
 
 class BaseCounts:
@@ -126,6 +128,14 @@ class BaseCounts:
     # Insertion loci: reads with a >= 8bp soft clip whose boundary lies within
     # the insert's duplication reach. Diagnostic only (CLIP_CANDIDATES flag).
     clip_candidates: int
+    # The allele the reads carry when it is not the given one (1-based VCF-style
+    # POS/REF/ALT; observed_reads 0 when none is named) and the reads carrying the
+    # given ALT exactly. Diagnostic only (OBSERVED_ALLELE flag).
+    observed_pos: int
+    observed_ref: str
+    observed_alt: str
+    observed_reads: int
+    observed_given_reads: int
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
     # P4b: Per-transcript counts (empty string when no GTF or no overlap)

@@ -73,6 +73,15 @@ _RESCUE_MNP_HELP = (
     "adopted — check gbcms_rescue before trusting a rescued VAF."
 )
 
+_RESCUE_HOMOPOLYMER_HELP = (
+    "Dual-count the homopolymer twin: for a delins whose REF is a run of one base and "
+    "whose ALT is the base after the run (CCCCCC>T), also count CCCCCT and report "
+    "whichever has more ALT reads, flagged WARN_HOMOPOLYMER_DECOMP. Both counts accept "
+    "near-matches, so the winner can report another allele's reads under the row's "
+    "label. Off by default: the row counts the given allele, and OBSERVED_ALLELE in "
+    "gbcms_diagnostic names the allele the reads carry."
+)
+
 app = typer.Typer(help="gbcms: Get Base Counts Multi-Sample")
 
 
@@ -329,6 +338,11 @@ def dna(
         "--rescue-mnp",
         help=_RESCUE_MNP_HELP,
     ),
+    rescue_homopolymer: bool = typer.Option(
+        False,
+        "--rescue-homopolymer",
+        help=_RESCUE_HOMOPOLYMER_HELP,
+    ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
         "--rescue-mnp-threshold",
@@ -540,6 +554,7 @@ def dna(
             umi_tag=umi_tag,
             rescue_mnp=rescue_mnp,
             rescue_mnp_threshold=rescue_mnp_threshold,
+            rescue_homopolymer=rescue_homopolymer,
         )
 
         result = Pipeline(config).run()
@@ -712,6 +727,11 @@ def rna(
         False,
         "--rescue-mnp",
         help=_RESCUE_MNP_HELP,
+    ),
+    rescue_homopolymer: bool = typer.Option(
+        False,
+        "--rescue-homopolymer",
+        help=_RESCUE_HOMOPOLYMER_HELP,
     ),
     rescue_mnp_threshold: float = typer.Option(
         1.0,
@@ -924,6 +944,7 @@ def rna(
             library_type=library_type,
             rescue_mnp=rescue_mnp,
             rescue_mnp_threshold=rescue_mnp_threshold,
+            rescue_homopolymer=rescue_homopolymer,
         )
 
         result = Pipeline(config).run()

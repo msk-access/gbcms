@@ -175,7 +175,12 @@ Adaptive padding=13: GCTTAAAAA... + REF/ALT + ...AAAAATTGAC  (anchored)
 
 ## Step 5: Homopolymer Decomposition Detection
 
-Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. `CCCCCC→T` where the reads show a smaller change at the run's end. For such calls gbcms also counts a **corrected allele** and reports whichever of the two more reads support.
+Some variant callers merge nearby events in a homopolymer run into one complex variant with an inflated deletion, e.g. `CCCCCC→T` where the reads show a smaller change at the run's end. With `--rescue-homopolymer`, gbcms also counts a **corrected allele** for such calls and reports whichever of the two more reads support.
+
+!!! info "Off by default: the row counts the given allele"
+    gbcms takes the input allele as correct. By default the row reports the given allele's counts. When the reads carry a different allele, `gbcms_diagnostic` names it: `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)` when no read carries the given allele, `COEXISTING_ALLELE(...:n/m)` when the given allele is present beside a more frequent one. Prep still builds the corrected allele; it is counted only with `--rescue-homopolymer`.
+
+    The twin became opt-in because its arbitration is not an exact haplotype match. At the case it was built for (SOX2, below), the reads carry `CCCCT`, a 1bp deletion plus C→T, not the twin `CCCCCT`. The twin wins there by tolerance. At other real twin loci it claims most of the called allele's own exact carriers. `OBSERVED_ALLELE` names `CCCCT` exactly.
 
 ### Detection Criteria
 
@@ -246,9 +251,9 @@ The corrected allele is scored as unique sequence (`repeat_span` 0). In RNA with
     The flag appears only when the corrected allele got more ALT support than the called one. If the original gets more, it is used as-is with a normal `PASS` status. The comparison is not an exact haplotype match, though. Reads at real loci carry several forms: the called delins, the corrected allele, a 1bp deletion plus the change, or other alleles of the run. Both classifiers can claim reads of forms neither describes exactly. Inspect the reads at flagged loci; a redesign is tracked in the project plan.
 
 !!! example "Real-World: SOX2"
-    **SOX2** at chr3:181430901: `CCCCCC→T` (6bp→1bp, net −5bp).
-    Original count: **alt=3**. Corrected `CCCCCC→CCCCCT` count: **alt=79**.
-    Corrected wins → `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
+    **SOX2** at chr3:181430901: `CCCCCC→T` (6bp→1bp, net −5bp). The reads carry `CCCCT`.
+    - **Default:** the row reports `CCCCCC→T` (alt=3), and `gbcms_diagnostic` names `CCCCT`.
+    - **With `--rescue-homopolymer`:** the corrected `CCCCCC→CCCCCT` (alt=79) wins, and the row reports `gbcms_status = PASS`, `gbcms_status_reason = WARN_HOMOPOLYMER_DECOMP`.
 
 ---
 
@@ -264,7 +269,7 @@ string is byte-identical in the MAF and the VCF.
 |:-------|:--------|:--------|:--------:|
 | `PASS` | *(empty)* | REF matches FASTA exactly | ✅ |
 | `PASS` | `WARN_REF_CORRECTED` | REF ≥90% match; corrected to FASTA REF | ✅ |
-| `PASS` | `WARN_HOMOPOLYMER_DECOMP` | Passed, but the corrected/decomposed allele was used | ✅ |
+| `PASS` | `WARN_HOMOPOLYMER_DECOMP` | Passed, but the corrected allele was used (`--rescue-homopolymer` only) | ✅ |
 | `PASS` | `MULTI_ALLELIC` | Passed; overlaps a sibling variant at the same locus (sibling-ALT exclusion active) | ✅ |
 | `PASS` | `TRACT_CLUSTER` | Passed; shares a repeat-tract scan window with a co-annotated length-changing variant (exclusive AD assignment active) | ✅ |
 | `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |

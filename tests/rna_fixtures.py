@@ -91,7 +91,7 @@ def write_maf(tmp_path, rows):
     return maf
 
 
-def run_rna(tmp_path, variants, bam, fasta, gtf, outname="out"):
+def run_rna(tmp_path, variants, bam, fasta, gtf, outname="out", extra=()):
     outdir = tmp_path / outname
     outdir.mkdir(exist_ok=True)
     result = runner.invoke(
@@ -110,6 +110,7 @@ def run_rna(tmp_path, variants, bam, fasta, gtf, outname="out"):
             "maf",
             "--gtf",
             str(gtf),
+            *extra,
         ],
     )
     assert result.exit_code == 0, result.output

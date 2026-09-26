@@ -41,12 +41,19 @@ pub struct Variant {
     /// `ref_context`.
     #[pyo3(get, set)]
     pub shift_region: Option<(i64, i64)>,
+
+    /// Reference bases around the event (its change interval plus 60 bases on
+    /// each side), with their 0-based start. Prep fetches them for every
+    /// variant, SNVs and MNPs included (those carry no `ref_context`); only the
+    /// observed-allele diagnostic reads them.
+    #[pyo3(get, set)]
+    pub event_ref: Option<(i64, String)>,
 }
 
 #[pymethods]
 impl Variant {
     #[new]
-    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0, gene_strand=None, shift_region=None))]
+    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0, gene_strand=None, shift_region=None, event_ref=None))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         chrom: String,
@@ -59,6 +66,7 @@ impl Variant {
         repeat_span: usize,
         gene_strand: Option<char>,
         shift_region: Option<(i64, i64)>,
+        event_ref: Option<(i64, String)>,
     ) -> Self {
         Variant {
             chrom,
@@ -71,6 +79,7 @@ impl Variant {
             repeat_span,
             gene_strand,
             shift_region,
+            event_ref,
         }
     }
 }
@@ -385,6 +394,22 @@ pub struct BaseCounts {
     /// no ALT is confirmed); not an output column; 0 for other variant types.
     #[pyo3(get)]
     pub clip_candidates: u32,
+    /// The allele the reads carry when it is not the given one
+    /// (`counting::observed`): 1-based VCF-style POS, REF and ALT, and how many
+    /// reads carry it exactly (0 when none is named). Diagnostic only (feeds
+    /// OBSERVED_ALLELE); no count changes.
+    #[pyo3(get)]
+    pub observed_pos: i64,
+    #[pyo3(get)]
+    pub observed_ref: String,
+    #[pyo3(get)]
+    pub observed_alt: String,
+    #[pyo3(get)]
+    pub observed_reads: u32,
+    /// Reads that carry the given ALT exactly over the same stretch (the m in
+    /// OBSERVED_ALLELE's n/m).
+    #[pyo3(get)]
+    pub observed_given_reads: u32,
     /// Reads processed with the requested `--umi-tag` present. Internal only
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.

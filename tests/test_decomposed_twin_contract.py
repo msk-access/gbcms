@@ -14,6 +14,8 @@ reports whichever form has more ALT support, flagging ``WARN_HOMOPOLYMER_DECOMP`
   later sample's row.
 - Guard: the legacy parity oracle and the binned engine count the same twin.
 
+The twin is opt-in (``--rescue-homopolymer``); these tests exercise it there.
+
 Committed red (xfail-strict) before the implementation; flipped green with it.
 """
 
@@ -135,6 +137,7 @@ def test_decomp_flag_is_per_sample(tmp_path):
             str(out),
             "--format",
             "maf",
+            "--rescue-homopolymer",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -173,6 +176,7 @@ def test_twin_respects_strandedness(tmp_path):
         write_bam(tmp_path, ref, sense + anti + refs),
         write_fasta(tmp_path, ref),
         write_gtf(tmp_path),
+        extra=("--rescue-homopolymer",),
     )
     assert "WARN_HOMOPOLYMER_DECOMP" in row["gbcms_status_reason"], "twin must win"
     assert int(row["alt_count"]) == 8
