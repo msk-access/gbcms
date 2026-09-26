@@ -76,8 +76,8 @@ per-type classification):
 - Phase 3 never scores across a splice: `extract_raw_read_window`
   refuses windows that an `N` overlaps (a contiguous slice would stitch
   the exon arms into a junction-chimeric sequence in which the missing
-  intron reads as deletion evidence), and `check_complex`'s
-  reconstruction classifies such reads neither instead of
+  intron reads as deletion evidence), and a complex variant's
+  exact-carrier windows classify such reads neither instead of
   string-comparing them.
 
 Reads without `N` ops never enter this triage — DNA-mode classification

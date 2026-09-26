@@ -39,9 +39,9 @@ flowchart LR
     Dispatch uses `ref_allele.len()` and `alt_allele.len()` as the primary selector. For `N×1` variants (deletion format), it additionally checks whether the anchor base substitutes (`alt_allele[0] ≠ ref_allele[0]`):
 
     - **Pure deletion** (`alt[0] == ref[0]`) → `check_deletion` — e.g., `AC→A` where anchor A is preserved
-    - **Complex Del+SNV** (`alt[0] ≠ ref[0]`) → `check_complex` — e.g., `GC→T` where anchor G also substitutes to T
+    - **Complex Del+SNV** (`alt[0] ≠ ref[0]`) → the [exact-carrier rule](#the-exact-carrier-rule) — e.g., `GC→T` where anchor G also substitutes to T
 
-    This distinction is critical: `check_deletion`'s CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. `check_complex` handles these via Phase 3 haplotype alignment (WFA+PairHMM under the default backend).
+    This distinction is critical: `check_deletion`'s CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. The exact-carrier rule reads the substituted anchor as part of the allele.
 
     `check_deletion` also falls back to `check_complex` for large deletions (≥5bp) where S3 sequence validation fails due to BWA left-alignment shifting the anchor position (see [Deletion — Windowed Safeguards](#windowed-scan-safeguards-1)).
 
@@ -627,7 +627,40 @@ The contiguity check is performed **first** (before quality or sequence comparis
 
 ## Complex (Indel + Substitution)
 
-Variants where REF and ALT differ in both sequence **and** length. Also used for **complex Del+SNV** variants dispatched from the `N×1` path when the anchor base substitutes. Uses a sophisticated **three-phase** algorithm with quality-aware matching and Smith-Waterman fallback.
+Variants where REF and ALT differ in both sequence **and** length. It also covers **complex Del+SNV** variants (`N×1` with a substituted anchor) and MNP reads that carry an indel inside the block.
+
+### The exact-carrier rule
+
+A read is REF or ALT for a complex variant only when **its own bases carry that allele across the whole event**. Nothing is inferred: gbcms counts the allele it is given.
+
+- **The window** is the event plus two reference bases of flank on each side.
+  - The event is every base where REF and ALT can differ over all equivalent placements: the union of the minimal difference trimmed from the left first and from the right first, grown through any tandem repeat touching either end on either allele (unit 1–6 bases, or the length change). An aligner may place an indel anywhere in such a repeat, including a run the ALT's own bases continue: for `TA>ACC` after `AAA`, the inserted A can sit anywhere in the run. So a delins in or beside a repeat is judged over its whole ambiguity.
+  - The shorter allele's window is padded with reference flank until both are the same length. That way neither allele is favoured by where reads start.
+- **The window is read where it sits.** It is read from the read position aligned to the window's first reference base, and back from the one aligned to its last; the closer reading counts. The flank bases are outside the event, so they align the same way on either allele. Inside the event the read's bases are taken as one stretch, so where the aligner put an indel or a soft clip does not matter, and an indel it placed past one flank leaves the other in place. A copy of the window elsewhere in the read is never a match.
+- **Masked bases.** Bases below `--min-baseq` (and N) match anything. This is the only tolerance, and it is the same quality rule every backend applies. `n_count` counts a read only when an N sits among the compared bases.
+- **Outcome.** A read decides only when it holds both the REF and the ALT window.
+
+  | The read | Result |
+  |:---------|:-------|
+  | matches the ALT window only | ALT |
+  | matches the REF window only | REF |
+  | matches both (only through masked bases) | neither |
+  | matches neither, and is closer to ALT | neither, counted as `partial_alt` |
+  | matches neither, and is not closer to ALT | neither |
+  | cannot hold both windows (it ends in or next to the event) | depth only: no allele, no `partial_alt`, no mFSD class |
+
+  A read one confident base off the given ALT carries a different allele. A read that ends inside the event cannot show either, like a pure-indel read ending inside its tract.
+- **Long events.** When the windows exceed 50 bases, no read can hold them whole. Both alleles are then judged by equal-length junction windows at each end, read inward from the flank: through one base past the first base where the alleles differ, and through the shorter allele when it fits in 50 bases, so a short ALT is read base by base. The left junction reads it from the left flank; the right one from just before its first difference, so repeat growth on the left does not favour the longer allele's reads. A read must match the same allele at every junction it holds; a mismatch at one rules it out.
+- **MNP reads with an indel.** An MNP read with an insertion or deletion in the block or right beside it, or a clip in it, is judged by this rule; an aligner may write a block shifted by one base as an insertion before it and a deletion after. Its ALT calls with every window base read count toward `mnp_confirmed_alt`. Other MNP reads, including those with an indel further off (a germline one nearby), are compared base by base.
+- **Same on both backends.** The rule uses no alignment scoring, so `pairhmm` and `sw` give identical counts for complex variants.
+- **When the rule cannot run.** `prepare_variants` fetches reference until it holds the event, grown through any repeat, with its flank and padding (up to 16,384 bases each side, and never past a contig end). A variant without that reference (one built without `prepare_variants`, or an event within its flank of a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ `*`) is not read.
+
+!!! info "Why not a tolerant score"
+    Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's `--alleles` mode do the same. gbcms reports the given allele's exact support and names a different allele the reads carry in `gbcms_diagnostic` (`OBSERVED_ALLELE` / `COEXISTING_ALLELE`).
+
+### Previous classifier (variants without a reference; pure-indel Phase 3)
+
+The phases below still classify complex variants the exact-carrier rule cannot judge (see above). They are also the Phase-3 fallback that `check_insertion` and `check_deletion` use for pure indels. They are a **three-phase** algorithm with quality-aware matching and Smith-Waterman fallback.
 
 | Property | Value |
 |:---------|:------|
@@ -938,7 +971,7 @@ When multiple variants have overlapping REF spans at the same locus, reads carry
 
 ### Phase 1: Annotation
 
-During normalization, `assign_multi_allelic_groups()` groups co-annotated variants with a fixed-point sweep over sorted `(chrom, pos)` coordinates, under two criteria: variants whose REF spans intersect (any types — tagged `MULTI_ALLELIC`), and length-changing variants whose scan windows (`max(5, repeat_span+2)` each side) overlap (tagged `TRACT_CLUSTER` when window-only). Groups close transitively and may be non-contiguous in position order; members share a `multi_allelic_group` ID and the tag is appended to `gbcms_status_reason` (the verdict stays `PASS`). Within a group the engine assigns AD exclusively: a read's ALT call is demoted to `partial_alt` when a sibling explains it at least as well by span-explanation cost, and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact CIGAR evidence is never contested.
+During normalization, `assign_multi_allelic_groups()` groups co-annotated variants with a fixed-point sweep over sorted `(chrom, pos)` coordinates, under two criteria: variants whose REF spans intersect (any types — tagged `MULTI_ALLELIC`), and length-changing variants whose scan windows (`max(5, repeat_span+2)` each side) overlap (tagged `TRACT_CLUSTER` when window-only). Groups close transitively and may be non-contiguous in position order; members share a `multi_allelic_group` ID and the tag is appended to `gbcms_status_reason` (the verdict stays `PASS`). Within a group the engine assigns AD exclusively: a read's ALT call is demoted to `partial_alt` when a sibling explains it strictly better by span-explanation cost, or exactly as well as the row's ALT does (the two alleles differ only at bases the read has masked, so the read is either), and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact CIGAR evidence is never contested.
 
 ### Phase 2: Sibling ALT Exclusion
 

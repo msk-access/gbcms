@@ -34,6 +34,8 @@ gbcms/
 │       ├── counting/
 │       │   ├── engine.rs        # Main counting loop, genomic binning, Rayon par_iter()
 │       │   ├── variant_checks.rs # check_snp/mnp/ins/del/complex, windowed scan
+│       │   ├── carrier.rs       # Exact-carrier rule for complex variants (delins, Del+SNV, structural MNP)
+│       │   ├── observed.rs      # OBSERVED_ALLELE / COEXISTING_ALLELE: the allele the reads carry
 │       │   ├── alignment.rs     # Smith-Waterman
 │       │   ├── pairhmm.rs       # PairHMM backend, LLR scoring
 │       │   ├── pangenome.rs     # Haplotype matrix for complex phase

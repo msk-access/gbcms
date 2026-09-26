@@ -14,8 +14,8 @@ use crate::types::Variant;
 use super::types::PreparedVariant;
 use super::decomp::check_homopolymer_decomp;
 use super::left_align::left_align_variant;
-use super::fasta::{fetch_region, resolve_maf_anchor, validate_ref};
-use crate::counting::window;
+use super::fasta::{contig_len, fetch_region, resolve_maf_anchor, validate_ref};
+use crate::counting::{carrier, window};
 use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_offset};
 
 /// Prepare variants for counting in a single pass over the reference FASTA.
@@ -425,18 +425,48 @@ fn indel_shift_region(
 
 /// Reference bases around the event: its change interval (the shift region for
 /// a pure indel), widened to the alleles' own span, plus [`EVENT_REF_MARGIN`]
-/// bases on each side (room to left-align the alleles reads carry there). For
-/// the observed-allele diagnostic; None when the fetch fails.
+/// bases on each side (room to left-align the alleles reads carry there), and
+/// more where a complex variant's exact-carrier windows need it: an event grown
+/// through a long repeat, with its flank and padding. For the observed-allele
+/// diagnostic and the exact-carrier rule; None when the fetch fails.
 fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Option<(i64, String)> {
     let (c_lo, c_hi) = window::change_interval(v);
-    let lo = (c_lo.min(v.pos) - EVENT_REF_MARGIN).max(0);
-    let hi = c_hi.max(v.pos + v.ref_allele.len() as i64) + EVENT_REF_MARGIN;
-    let seq = fetch_region(reader, &v.chrom, lo as u64, hi as u64).ok()?;
-    (!seq.is_empty()).then(|| (lo, String::from_utf8_lossy(&seq).to_ascii_uppercase()))
+    let (from, to) = (c_lo.min(v.pos), c_hi.max(v.pos + v.ref_allele.len() as i64));
+    let (mut left, mut right) = (EVENT_REF_MARGIN, EVENT_REF_MARGIN);
+    // The contig's end, looked up once the fetch has to grow right.
+    let mut contig_end: Option<i64> = None;
+    loop {
+        let lo = (from - left).max(0);
+        let hi = contig_end.map_or(to + right, |end| (to + right).min(end));
+        let seq = fetch_region(reader, &v.chrom, lo as u64, hi as u64).ok()?;
+        if seq.is_empty() {
+            return None;
+        }
+        let seq = String::from_utf8_lossy(&seq).to_ascii_uppercase();
+        // Fetch more on a short side, up to the cap or a contig end.
+        let (short_left, short_right) = carrier::reference_short(lo, &seq, v).unwrap_or((false, false));
+        let more_left = short_left && lo > 0 && left < EVENT_REF_MAX_MARGIN;
+        let mut more_right = short_right && right < EVENT_REF_MAX_MARGIN;
+        if more_right && contig_end.is_none() {
+            contig_end = contig_len(reader, &v.chrom).map(|n| n as i64);
+        }
+        more_right &= contig_end.is_some_and(|end| hi < end);
+        if !(more_left || more_right) {
+            return Some((lo, seq));
+        }
+        if more_left {
+            left = (left * 2).min(EVENT_REF_MAX_MARGIN);
+        }
+        if more_right {
+            right = (right * 2).min(EVENT_REF_MAX_MARGIN);
+        }
+    }
 }
 
 /// Reference margin kept around each event for the observed-allele diagnostic.
 const EVENT_REF_MARGIN: i64 = 60;
+/// Widest margin fetched for an event grown through a repeat.
+const EVENT_REF_MAX_MARGIN: i64 = 16_384;
 
 fn prepare_single_variant(
     reader_result: &mut Result<fasta::IndexedReader<File>, anyhow::Error>,

@@ -673,7 +673,9 @@ def test_phase3_matrix_mode_equivalence_near_junction(tmp_path):
     ref = "".join(rng.choice("ACGT") for _ in range(500))
     pos = 300  # delins REF span [300, 303)
     alt = "".join("A" if b != "A" else "G" for b in ref[pos : pos + 2])  # 3bp -> 2bp
-    intron = (304, 364)  # junction 1bp past the REF span, inside the context
+    # Junction 4bp past the REF span, inside the context and clear of the flank
+    # the exact-carrier rule reads (so the spliced reads are informative REF).
+    intron = (307, 367)
     rl = 100
     reads = []
     for i in range(4):  # delins carriers as an aligner writes them: mismatched

@@ -220,8 +220,7 @@ def _component_reads_with_whole_mnp_read():
 
 def _indel_disrupted_reads():
     """20 REF + 10 reads carrying a 1bp insertion inside the block and REF
-    bases otherwise: no component of the MNP, but the complex path counts them
-    REF with nearby-indel evidence, so partial_alt dominates ad."""
+    bases otherwise: no component of the MNP, and not the reference either."""
     reads = [_read(f"ref_{i}", REF_BLOCK, i) for i in range(N_REF)]
     reads += [
         _read(f"ins_{i}", "GAGTGG", i, block_cigar=((0, 3), (1, 1), (0, 2))) for i in range(10)
@@ -367,18 +366,19 @@ def test_grouped_mnp_is_skipped_and_keeps_exclusive_assignment(tmp_path):
     assert {c: snv[c] for c in count_cols} == {c: plain[1][c] for c in count_cols}
 
 
-def test_indel_partial_evidence_is_declined_not_rescued(tmp_path):
+def test_indel_bearing_reads_are_not_rescued(tmp_path):
+    """Reads with an insertion inside the block carry a third allele: neither the
+    MNP, its components, nor the reference, and not ALT-like. They count in depth
+    only, so the row is not a rescue candidate and rescue leaves it untouched."""
     plain = _run(tmp_path, {"S": _indel_disrupted_reads()}, [MNP_ROW], rescue=False)["S"][0]
     (row,) = _run(tmp_path, {"S": _indel_disrupted_reads()}, [MNP_ROW])["S"]
 
-    assert int(row["partial_alt"]) > int(row["alt_count"])  # a candidate
+    assert (int(row["alt_count"]), int(row["partial_alt"])) == (0, 0)
+    assert int(row["ref_count"]) == N_REF  # the insertion reads are not REF
     count_cols = ("ref_count", "alt_count", "partial_alt", "alt_count_fragment", "total_count")
     assert {c: row[c] for c in count_cols} == {c: plain[c] for c in count_cols}
     assert row["gbcms_diagnostic"] == plain["gbcms_diagnostic"]
-    audit = _audit(row)
-    assert audit["outcome"] == "no_improvement"
-    assert "adopted" not in audit
-    assert re.fullmatch(r"(chr)?1:201\(G>A\):0\+(chr)?1:205\(G>A\):0", audit["positions"])
+    assert row["gbcms_rescue"] == ""
     _assert_counting_invariants(row)
 
 
