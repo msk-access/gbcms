@@ -744,3 +744,55 @@ def test_prep_holds_an_event_in_a_run_near_the_contig_end(tmp_path):
     assert pv.variant.event_ref is not None
     start, seq = pv.variant.event_ref
     assert start + len(seq) == len(ref)
+
+
+def test_a_read_matching_a_sibling_as_well_is_not_the_rows_alt(tmp_path):
+    """TT>GTC beside a co-annotated C inserted after the second T: the two ALTs
+    differ only at the first base. Reads carrying TTC with that base below min BQ
+    match both exactly, so they are ambiguous: not the delins's ALT."""
+    left, ref = _flanked("GCAGTCAGGA" + "TT" + "AGCGTCAGGT", 5)
+    p = len(left) + 10
+    ins_hap = ref[: p + 2] + "C" + ref[p + 2 :]
+    reads = []
+    for i, s in enumerate(range(p - 60, p - 40)):
+        k = p - s
+        q = [30] * READ
+        q[k] = 5  # the first T, where the delins has G
+        reads.append(
+            make_read(
+                f"i{i}", ins_hap[s : s + READ], s, ((0, k + 2), (1, 1), (0, READ - k - 3)), quals=q
+            )
+        )
+    fa, bam = _files(tmp_path, ref, reads)
+    cx, ins = (
+        pv.variant
+        for pv in gbcms_rs.prepare_variants(
+            [
+                gbcms_rs.Variant("1", p, "TT", "GTC", "COMPLEX"),
+                gbcms_rs.Variant("1", p + 1, "T", "TC", "INSERTION"),
+            ],
+            fa,
+            5,
+            False,
+            1,
+            True,
+        )
+    )
+    c_cx, c_ins = gbcms_rs.count_bam_binned(
+        bam,
+        [cx, ins],
+        [None, None],
+        20,
+        20,
+        True,
+        True,
+        True,
+        False,
+        False,
+        False,
+        1,
+        sibling_variants=[[ins], [cx]],
+    )
+    _invariants(c_cx)
+    assert c_cx.ad == 0
+    assert c_ins.ad == 20  # the insertion's own carriers, by their I op
