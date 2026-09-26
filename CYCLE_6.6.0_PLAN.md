@@ -29,7 +29,7 @@ before implementation.
 
 | ID | Ticket | Pri | Flags | Issue |
 |:--|:--|:-:|:--|:--|
-| C1 | Partial-ALT evidence in the SW local fallback | L | [counts] [decide] | #141 (#92) |
+| C1 | Complex variants count exact carriers (was: partial-ALT in the SW local fallback) | L | [counts] [done] | #141 (#92) |
 | C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [decided] | #119 |
 | C3 | Homopolymer decomposition arbitration redesign | M | [counts] | #111, #145 (#112) |
 | C4 | Reference windows near contig ends | M | [counts] | #142 (#92) |
@@ -69,7 +69,7 @@ before implementation.
 
 ## Counting correctness
 
-### C1 — Partial-ALT evidence in the Smith-Waterman local fallback (#141, under #92) · L [counts] [decide]
+### C1 — Partial-ALT evidence in the Smith-Waterman local fallback (#141, under #92) · L [counts] [done]
 **What the code does.** Under the Smith-Waterman backend (`--alignment-backend
 sw`, or its fallback when the default method fails), a read at a *complex*
 variant (both alleles longer than one base, unequal lengths) is classified in
@@ -252,23 +252,56 @@ backends.**
     repeat: 4 of 5 "mis-described" complex variants were such artifacts. So the
     90%-of-ALT-kept figure above is probably conservative.
 
-**Effects map (B/C).**
-- **Changes:** `partial_alt`, `any_alt`, `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`.
-  C also changes `alt_count`/`ref_count`, the fragment counts, and the
-  REF/ALT-based consumers (observations export, ASJD partitions, mFSD fragment
-  classes). All of it is SW backend only, and identical in the production and
-  legacy paths (shared `classify_by_alignment`).
-- **Unchanged:** the default `pairhmm` path; SNVs and MNPs; MNP rescue (MNPs
-  only); tract-cluster claiming (complex rows exempt).
+**Implemented (2026-09-26, `feature/c1-exact-carrier`).** The exact-carrier rule
+(`rust/src/counting/carrier.rs`) for delins, Del+SNV and MNP reads with an indel
+in or right beside the block, on both backends:
+- **Windows.** The event (union of the left- and right-first trims, grown through
+  tandem repeats touching it on either allele, unit 1–6 or the length change)
+  plus 2 flank bases, read at the event's own position from both anchors. The
+  shorter window is padded to equal length. Over 50 bases, equal junction
+  windows at each end read the shorter allele where it fits; a mismatch at any
+  junction rules the read out.
+- **Outcomes.** A read decides only if it holds both windows; one that cannot is
+  depth only (no `partial_alt`, no mFSD class). The previous classifier remains
+  only for unprepared variants and events at a contig end; prep widens
+  `event_ref` as needed (≤16,384 per side, never past a contig end).
+- **Multi-allelic guard.** A read matching the row's ALT and a sibling's exactly
+  (they differ only at bases the read has masked) is neither row's AD.
+- **Review.** Two independent adversarial rounds on synthetic data found 11
+  defects: position-free matching, run-edge placement, long-event gaps and bias,
+  partial from truncated reads, the MNP gate's reach, prep at contig ends, and
+  records without bases. Each was fixed red-first (`test_complex_exact_contract.py`,
+  35 tests). Fuzz: 700 random delins under left and right gap placement and
+  ~400 MNPs, all clean. VAF 0.495–0.505 on every shape with uniform read starts.
 
-**Acceptance.** The default backend is byte-identical on the RC set. Under
-SW, version-against-version on the D5 panel's complex variants, with a sample
-of changed reads adjudicated in IGV.
+**Effects map.**
+- **Changes:** `ref_count`, `alt_count`, `partial_alt`, `any_alt`, the fragment
+  counts, mFSD classes, the observations export, ASJD for RNA complex rows,
+  `PARTIAL_DOMINANT`, VCF `PAD`/`AAD`, `mnp_confirmed_alt` (MNP rescue keeps a
+  haplotype its carriers show whole), and `event_ref` (the observed-allele scan
+  can see a wider reference). The guard's exact-tie rule covers all grouped rows.
+- **Unchanged:** SNVs, pure indels outside such ties, and MNP reads without an
+  indel at the block.
 
-**Priority: L** (was H). The originally planned fix doesn't improve accuracy,
-doing it right needs the verification round, and it affects only a
-non-default backend. C10 and C2 affect every repeat indel and every clustered
-row on the default path, so they go first.
+**Acceptance (local data; aggregates only).**
+- **Backends:** `sw` equals `pairhmm` on 25 of 25 traced complex variants.
+- **Read by read** (25 signed-out IMPACT complex variants; truth = equal-length
+  padded windows, reads holding both): exact REF reads are called REF 7,457 of
+  7,468 times (11 neither); exact ALT reads ALT 2,018 of 2,020 (2 partial). No
+  REF↔ALT flip. ALT calls are 98.8% exact-ALT reads (develop 89.8%); REF calls
+  98.5% exact-REF (develop 85.8%). Reads not holding the windows: REF 2.9%, ALT
+  2.8%.
+- **RC set:** 8 of 1,154 rows change, all complex or in a complex row's group.
+  Movers against a BAM census: 30>14, 24>3, 2>17 and 4>3 match within 0.007 VAF;
+  3>5 in a repeat matches an edit-distance census (0.546 vs 0.523); 2>3 beside a
+  sibling insertion found the multi-allelic tie (fixed: 1 ALT, census 0–3).
+  Its two grouped deletion rows lose 1 and 3 `partial_alt` reads to the sibling.
+- **Open (operator):** read inclusion, not the rule. Aligners clip ALT reads
+  that end or start within ~10 bases of an event, and clipped reads are outside
+  depth, so a 50% sample reads 0.45–0.46 VAF at small events (0.37–0.44 at 20
+  bases). Counting soft-clip carriers in depth would remove that bias.
+
+**Priority: done in 6.6.0** (was L; the decision widened C1 to both backends).
 
 ### C2 — REF fragments at grouped rows (#119) · M [counts] [decided]
 **Finding.** At rows in a multi-allelic or tract-cluster group, the main counts
