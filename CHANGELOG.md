@@ -39,8 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A read that cannot hold both windows is depth only (no allele, no
     `partial_alt`, no mFSD class). A read that holds them, matches neither and is
     closer to ALT counts in `partial_alt`.
-  - An MNP read with an indel in or beside the block is judged the same way (an
-    aligner may write a shifted block as an insertion and a deletion).
+  - An MNP read with an indel in or right beside the block is judged the same way
+    (an aligner may write a shifted block as an insertion and a deletion); an
+    indel further off leaves the base-by-base comparison in place.
   - Prep fetches enough reference to hold an event grown through a long repeat.
 - `--alignment-backend pairhmm` and `sw` now give identical counts for these
   variants: the rule uses no alignment scoring.

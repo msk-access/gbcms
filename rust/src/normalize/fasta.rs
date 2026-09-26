@@ -15,6 +15,23 @@ pub(crate) fn fetch_region(
     start: u64,
     end: u64,
 ) -> anyhow::Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    for name in &contig_names(chrom) {
+        if reader.fetch(name, start, end).is_ok() {
+            buf.clear();
+            reader.read(&mut buf)?;
+            if !buf.is_empty() {
+                return Ok(buf);
+            }
+        }
+    }
+
+    anyhow::bail!("FASTA fetch failed for {}:{}-{}", chrom, start, end)
+}
+
+/// The names a contig may go by in the FASTA: as given, with or without a `chr`
+/// prefix, and each mitochondrial spelling.
+fn contig_names(chrom: &str) -> Vec<String> {
     let mut names = vec![chrom.to_string(), format!("chr{}", chrom)];
     if let Some(stripped) = chrom.strip_prefix("chr") {
         names.push(stripped.to_string());
@@ -28,19 +45,13 @@ pub(crate) fn fetch_region(
                 .collect::<Vec<_>>(),
         );
     }
+    names
+}
 
-    let mut buf = Vec::new();
-    for name in &names {
-        if reader.fetch(name, start, end).is_ok() {
-            buf.clear();
-            reader.read(&mut buf)?;
-            if !buf.is_empty() {
-                return Ok(buf);
-            }
-        }
-    }
-
-    anyhow::bail!("FASTA fetch failed for {}:{}-{}", chrom, start, end)
+/// The contig's length from the FASTA index, under any name it goes by.
+pub(crate) fn contig_len(reader: &fasta::IndexedReader<File>, chrom: &str) -> Option<u64> {
+    let names = contig_names(chrom);
+    reader.index.sequences().into_iter().find(|s| names.contains(&s.name)).map(|s| s.len)
 }
 
 /// Fetch a single base from the reference, delegating to `fetch_region`.

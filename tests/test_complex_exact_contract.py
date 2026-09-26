@@ -672,7 +672,9 @@ def test_a_record_without_bases_is_not_read(tmp_path):
 def test_a_long_event_grown_through_a_run_is_unbiased(tmp_path, shape):
     """A long event whose REF starts with the base of a 20-base run before it: the
     event grows left through the run, and neither allele gains the reads that
-    start inside it."""
+    start inside it. ALT reads ending inside the insertion are aligned over the
+    REF span and clipped after it, so both alleles' reads are at the locus and
+    only the classifier is measured."""
     ref_len, alt_len = shape
     rng = random.Random(ref_len * 7 + alt_len)
     ref_allele = "A" + "".join(rng.choice("CGT") for _ in range(ref_len - 1))
@@ -685,7 +687,13 @@ def test_a_long_event_grown_through_a_run_is_unbiased(tmp_path, shape):
     reads = []
     for i, s in enumerate(range(p - 140, p + 1)):
         reads.append(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)))
-        reads.append(_alt_read(f"a{i}", hap, s, ref_len, alt_len, pos=p))
+        rest = READ - (p - s)
+        if alt_len > ref_len and rest <= alt_len:
+            m = min(rest, ref_len)
+            cig = ((0, p - s + m), (4, rest - m)) if rest > m else ((0, READ),)
+            reads.append(make_read(f"a{i}", hap[s : s + READ], s, cig))
+        else:
+            reads.append(_alt_read(f"a{i}", hap, s, ref_len, alt_len, pos=p))
     fa, bam = _files(tmp_path, ref, reads)
     c = count_both(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
     _invariants(c)

@@ -79,10 +79,11 @@ impl Windows {
     }
 }
 
-/// A window read from the read: mismatching bases (masked bases match anything),
-/// whether an N sat among them, and the query span read.
+/// A window read from the read: mismatching bases, masked bases (below min BQ,
+/// or N; they match anything), whether an N sat among them, and the query span.
 struct Reading {
     mismatches: usize,
+    masked: usize,
     had_n: bool,
     span: (usize, usize),
 }
@@ -106,7 +107,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
 
     // Per pair the read holds: (matches REF, matches ALT).
     let mut held: Vec<(bool, bool)> = Vec::with_capacity(win.pairs.len());
-    let (mut mm_ref, mut mm_alt, mut had_n) = (0usize, 0usize, false);
+    let (mut mm_ref, mut mm_alt, mut alt_masked, mut had_n) = (0usize, 0usize, 0usize, false);
     let mut qual_bases: Vec<u8> = Vec::new();
     for (rw, aw) in &win.pairs {
         let (Some(r), Some(a)) = (read_window(record, &seq, quals, min_baseq, rw), read_window(record, &seq, quals, min_baseq, aw))
@@ -115,6 +116,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         };
         mm_ref += r.mismatches;
         mm_alt += a.mismatches;
+        alt_masked += a.masked;
         had_n |= r.had_n || a.had_n;
         for (lo, hi) in [r.span, a.span] {
             qual_bases.extend_from_slice(&quals[lo..hi]);
@@ -137,31 +139,31 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     // read that ends inside its tract), and no mFSD class.
     result.ref_uninformative = held.is_empty();
     result.has_n_base = had_n;
+    // An MNP ALT read with every window base read unmasked shows the whole
+    // haplotype, as a fully read block does on the base-by-base path.
+    result.mnp_confirmed =
+        result.is_alt && alt_masked == 0 && variant.ref_allele.len() == variant.alt_allele.len();
     Some(result)
 }
 
-/// Whether the read has an insertion or deletion inside the variant's windows.
-/// An aligner may write an MNP with indels beside its block (a block shifted by
-/// one base as an insertion before it and a deletion after), so such a read is
-/// judged by its own bases, like any MNP read with an indel in the block.
-pub(crate) fn indel_in_window(record: &Record, variant: &Variant) -> bool {
-    let cigar = record.cigar();
-    if !cigar.iter().any(|op| matches!(op, Cigar::Ins(_) | Cigar::Del(_))) {
-        return false;
-    }
-    let Some(win) = windows(variant) else { return false };
-    let (lo, hi) = win.span();
+/// Whether the read has an insertion or deletion in the variant's block or right
+/// beside it. An aligner may write an MNP that way (a block shifted by one base
+/// as an insertion before it and a deletion after), so such a read is judged by
+/// its own bases, like any MNP read with an indel in the block. An indel further
+/// off (a germline one nearby) leaves the block's bases where IGV shows them.
+pub(crate) fn indel_at_block(record: &Record, variant: &Variant) -> bool {
+    let (start, end) = (variant.pos, variant.pos + variant.ref_allele.len() as i64);
     let mut pos = record.pos();
-    for op in cigar.iter() {
+    for op in record.cigar().iter() {
         match op {
             // An insertion sits between reference bases pos-1 and pos.
-            Cigar::Ins(_) if pos > lo && pos < hi => return true,
+            Cigar::Ins(_) if pos >= start && pos <= end => return true,
             Cigar::Del(len) => {
-                let end = pos + *len as i64;
-                if pos < hi && end > lo {
+                let d_end = pos + *len as i64;
+                if pos <= end && d_end >= start {
                     return true;
                 }
-                pos = end;
+                pos = d_end;
             }
             Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) | Cigar::RefSkip(len) => pos += *len as i64,
             _ => {}
@@ -270,12 +272,17 @@ fn windows(v: &Variant) -> Option<Windows> {
 
     if ev.long() {
         // Equal-length junction windows, reading inward from each end: through one
-        // base past the first difference, and through the whole shorter allele
-        // when it fits, so a short ALT is read base by base.
+        // base past the first difference, and through the shorter allele when it
+        // fits, so a short ALT is read base by base. The left reads it from the
+        // left flank; the right from one base before its first difference, not
+        // back through growth on the left, which the shorter allele's reads
+        // starting inside it could not hold while the longer allele's could.
         let short = ref_win.len().min(alt_win.len());
-        let whole = if short <= LONG_EVENT { short } else { 0 };
-        let reach = |to_diff: usize| (to_diff + 2).max(FLANK + 2).max(whole).min(short);
-        let (j_left, j_right) = (reach(ev.first - lo), reach(hi - ev.last));
+        let fits = short <= LONG_EVENT;
+        let short_end = (hi as i64 + d.min(0)) as usize;
+        let reach = |to_diff: usize, whole: usize| (to_diff + 2).max(FLANK + 2).max(whole).min(short);
+        let j_left = reach(ev.first - lo, if fits { short } else { 0 });
+        let j_right = reach(hi - ev.last, if fits { short_end + 1 - ev.first } else { 0 });
         let left = |seq: &[u8]| Window { seq: seq[..j_left].to_vec(), left: Some(g(lo)), right: None };
         let right = |seq: &[u8]| Window { seq: seq[seq.len() - j_right..].to_vec(), left: None, right: Some(g(hi)) };
         return Some(Windows { pairs: vec![(left(ref_win), left(alt_win)), (right(ref_win), right(alt_win))] });
@@ -397,22 +404,23 @@ fn read_window(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: &Win
         .into_iter()
         .flatten()
         .map(|(a, b)| score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b)))
-        .min_by_key(|r| r.mismatches)
+        .min_by_key(|r| (r.mismatches, r.masked))
 }
 
 /// Mismatches of read bases against haplotype bases position by position, masked
 /// bases (below `min_baseq`, or N) matching anything.
 fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, usize)) -> Reading {
-    let mut had_n = false;
-    let mut mismatches = 0;
+    let (mut mismatches, mut masked, mut had_n) = (0, 0, false);
     for ((&b, &q), &h) in bases.iter().zip(quals).zip(hap) {
         let b = b.to_ascii_uppercase();
         had_n |= b == WILD;
-        if b != WILD && q >= min_baseq && b != h {
+        if b == WILD || q < min_baseq {
+            masked += 1;
+        } else if b != h {
             mismatches += 1;
         }
     }
-    Reading { mismatches, had_n, span }
+    Reading { mismatches, masked, had_n, span }
 }
 
 /// Whether a splice N of the read overlaps `[lo, hi)`.
@@ -506,19 +514,22 @@ mod tests {
     }
 
     #[test]
-    fn long_events_read_the_short_allele_whole_at_both_junctions() {
+    fn long_events_read_the_short_allele_at_both_junctions() {
         let mut ctx = String::from("ACGTTGCA");
         let body: String = (0..70).map(|i| b"ACGGTTCA"[i % 8] as char).collect();
         ctx.push_str(&body);
         ctx.push_str("TGCATTGC");
         let w = windows(&var(&ctx, 7, &ctx[7..76], "TG")).unwrap();
         assert_eq!(w.pairs.len(), 2);
-        let alt_whole = &w.pairs[0].1.seq;
+        let alt_whole = &w.pairs[0].1.seq; // the left pair holds the whole ALT window
         for (r, a) in &w.pairs {
             assert_eq!(r.seq.len(), a.seq.len());
-            assert_eq!(&a.seq, alt_whole); // the whole ALT window from either end
             assert_ne!(r.seq, a.seq);
         }
+        // The right pair reads the ALT from one base before its first difference.
+        let right_alt = &w.pairs[1].1.seq;
+        assert!(alt_whole.ends_with(right_alt));
+        assert!(right_alt.windows(2).any(|x| x == b"TG"));
     }
 
     #[test]

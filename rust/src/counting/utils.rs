@@ -120,9 +120,10 @@ pub struct ClassifyResult {
     /// event, and keeping it in DP would deflate VAF with unobservant reads.
     pub covers_locus: bool,
     /// Whether an MNP ALT call read every discriminating base (none masked
-    /// for base quality, none N). Set only by the MNP dispatch; false for
-    /// every other variant type and for MNP reads classified by the complex
-    /// path. Accumulated into `BaseCounts::mnp_confirmed_alt`.
+    /// for base quality, none N). Set by the MNP dispatch, and by the
+    /// exact-carrier rule for MNP reads it judges (every window base read);
+    /// false for every other variant type and for MNP reads the previous
+    /// complex classifier judges. Accumulated into `BaseCounts::mnp_confirmed_alt`.
     pub mnp_confirmed: bool,
     /// Whether the PairHMM backend's pangenomic haplotype matrix could not
     /// evaluate this read (reference context missing, or not containing the
