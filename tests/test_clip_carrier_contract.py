@@ -203,3 +203,19 @@ def test_vaf_is_unbiased_when_aligners_clip_alt_near_read_ends(tmp_path):
     _invariants(c)
     assert c.rd + c.ad >= 80
     assert abs(c.ad / (c.rd + c.ad) - 0.5) <= 0.03, (c.rd, c.ad)
+
+
+def test_unclipped_reads_starting_inside_a_long_deletion_stay_out(tmp_path):
+    """REF reads starting inside a 60bp deletion hold its right junction with
+    aligned bases only: nothing of theirs is clipped, and no ALT read can start
+    there, so they stay outside depth as before (admission is for clipped bases)."""
+    ref, alt, _ = _case(60, 10)
+    reads = _overlapping_ref(ref)
+    reads += [
+        _paired(make_read(f"i{i}", ref[s : s + READ], s, ((0, READ),)))
+        for i, s in enumerate(range(POS + 10, POS + 30))
+    ]
+    fa, bam = _files(tmp_path, ref, reads)
+    c = count_both(bam, [_prepared(fa, ref[POS : POS + 60], alt)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad, c.dp) == (10, 0, 10)
