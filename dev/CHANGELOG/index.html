@@ -719,6 +719,15 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#changed-complex-variants-count-exact-carriers-only-141">
+<span class="md-ellipsis">
+      
+        Changed — complex variants count exact carriers only (#141)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#added">
 <span class="md-ellipsis">
       
@@ -2418,6 +2427,36 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
     change only where it used to win.</li>
 <li><code>observe_molecules()</code> takes <code>rescue_homopolymer</code> and threads the twin the same
   way.</li>
+</ul>
+<h3 id="changed-complex-variants-count-exact-carriers-only-141">Changed — complex variants count exact carriers only (#141)<a class="headerlink" href="#changed-complex-variants-count-exact-carriers-only-141" title="Permanent link">¶</a></h3>
+<ul>
+<li>A delins, a deletion whose anchor also changes (Del+SNV), or an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read with
+  an indel now counts a read as REF or ALT only when the read's own bases carry
+  that allele across the whole event, with two reference flank bases each side.
+  Soft clips count; bases below <code>--min-baseq</code> match anything, the only tolerance.</li>
+<li>Why: local alignment, likelihoods and the edit-distance margin credited
+    near-matches, so reads carrying another allele, or ending inside the event,
+    were counted for the given one.</li>
+<li>The windows are read at the event's own position, grown through repeats
+    touching the event on either allele, and padded to equal length so neither
+    allele is favoured by where reads start. Events over 50 bases are judged at
+    both junctions, reading a short ALT whole; a mismatch at either rules a read
+    out.</li>
+<li>A read that cannot hold both windows is depth only (no allele, no
+    <code>partial_alt</code>, no <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> class). A read that holds them, matches neither and is
+    closer to ALT counts in <code>partial_alt</code>.</li>
+<li>An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read with an indel in or right beside the block is judged the same way
+    (an aligner may write a shifted block as an insertion and a deletion); an
+    indel further off leaves the base-by-base comparison in place.</li>
+<li>Prep fetches enough reference to hold an event grown through a long repeat.</li>
+<li>RNA: a spliced read's windows end at its own junction, so a delins at an
+    exon's first or last bases counts spliced reads; a read spliced through
+    the event counts toward depth only.</li>
+<li>In a multi-allelic group, a read that matches this row's ALT and a sibling's
+  ALT exactly (the two differ only at bases the read has masked) is neither
+  row's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>: it counts in <code>partial_alt</code>.</li>
+<li><code>--alignment-backend pairhmm</code> and <code>sw</code> now give identical counts for these
+  variants: the rule uses no alignment scoring.</li>
 </ul>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">¶</a></h3>
 <ul>

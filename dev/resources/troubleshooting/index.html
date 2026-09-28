@@ -2065,12 +2065,15 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
    <code>ALT_EQUALS_REF</code>, <code>ALT_CONTAINS_N</code>). See <a href="#normalization-issues">Normalization Issues</a>.</p>
 </li>
 <li>
-<p><strong>Complex Del+SNV routing</strong> — if your variant has deletion format (<code>REF</code> longer than <code>ALT</code>,
-   <code>ALT</code> is a single base) but the anchor base also changes (e.g., <code>GC→T</code>, <code>AG→T</code>), it is a
-   <strong>complex Del+SNV</strong> routed to <code>check_complex</code>, not <code>check_deletion</code>.
-   Use <code>--trace</code> logging to confirm:
+<p><strong>Complex variants count exact carriers only</strong> — a delins, or a deletion whose anchor
+   also changes (e.g., <code>GC→T</code>, <code>AG→T</code>), counts a read as ALT only when its bases carry the
+   whole given allele with two flank bases each side
+   (<a href="../../reference/allele-classification/#the-exact-carrier-rule">exact-carrier rule</a>).
+   Reads carrying a different allele there are neither (<code>partial_alt</code> when closer to ALT),
+   and <code>gbcms_diagnostic</code> names the allele they carry (<code>OBSERVED_ALLELE</code> /
+   <code>COEXISTING_ALLELE</code>). Use <code>--trace</code> to see each read's call:
    </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"check_complex\|check_deletion"</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"read call"</span>
 </code></pre></div>
    See <a href="../../reference/complex-indels/">Complex Indels</a> for detailed case studies.
 </li>
@@ -2097,14 +2100,16 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
 </details>
 <details class="question">
 <summary><code>ref_count = 0</code> for a large deletion</summary>
-<p>For large deletions (~100bp+), REF reads have clean M-only CIGARs. gbcms's
-<code>is_worth_realignment()</code> skips Phase 3 for clean CIGARs, and the <strong>M-block REF fallback</strong>
-in <code>check_complex</code> classifies these as REF.</p>
+<p>A pure large deletion counts a clean read spanning its anchor as REF (<code>check_deletion</code>).
+A large delins (a deletion with a replacement) is judged by the
+<a href="../../reference/allele-classification/#the-exact-carrier-rule">exact-carrier rule</a>: no read
+holds a ~100bp window whole, so each end is judged by a junction window, and a REF read
+counts when it carries the reference across either junction.</p>
 <p>If <code>ref = 0</code>, check:
-- The variant was normalized correctly (M-block REF fallback only applies in <code>check_complex</code>)
-- The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the anchor position (<code>samtools depth -a sample.bam -r chr22:30038094-30038095</code>)
-- Reads actually <strong>span the anchor</strong>: reads mapping entirely inside a large deleted span
-  carry no information about the variant and count as neither, not REF</p>
+- The variant was normalized correctly (<code>gbcms_status</code> is <code>PASS</code>)
+- The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the event's ends (<code>samtools depth -a sample.bam -r chr22:30038094-30038095</code>)
+- Reads actually <strong>reach a junction</strong>: reads mapping entirely inside a large deleted span,
+  or ending inside the event, carry no information about the variant and count as depth only</p>
 <p>See <a href="../../reference/complex-indels/#case-2-nf2-large-deletion-ref-reads-invisible">NF2 Case Study</a>.</p>
 </details>
 <details class="question">
@@ -2395,7 +2400,7 @@ genuinely has nothing to count.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 21:12:29 UTC"><span class="timeago" datetime="2026-09-25T21:12:29+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 21:12:29 UTC">2026-09-25</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 26, 2026 02:17:06 UTC"><span class="timeago" datetime="2026-09-26T02:17:06+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 26, 2026 02:17:06 UTC">2026-09-26</span>
   </span>
 
     

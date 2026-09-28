@@ -9888,9 +9888,15 @@ per-type classification):</p>
 <li>Phase 3 never scores across a splice: <code>extract_raw_read_window</code>
   refuses windows that an <code>N</code> overlaps (a contiguous slice would stitch
   the exon arms into a junction-chimeric sequence in which the missing
-  intron reads as deletion evidence), and <code>check_complex</code>'s
-  reconstruction classifies such reads neither instead of
-  string-comparing them.</li>
+  intron reads as deletion evidence).</li>
+<li>A complex variant's exact-carrier windows are cut at a read's own
+  junction: a splice in the window's flank or padding ends the window at
+  the exon edge on that side, for both alleles, and the read is anchored at
+  the junction. So a delins at an exon's last or first bases counts spliced
+  reads (on FORTE probes 0–1 bp from an exon edge the uncut windows kept
+  1.7% of REF reads). A read spliced through the bases where the alleles
+  differ shows neither and counts toward depth only. Repeat growth never
+  reaches across a read's junction.</li>
 </ul>
 <p>Reads without <code>N</code> ops never enter this triage — DNA-mode classification
 is untouched. Per-variant exclusion counts are logged at debug level in
@@ -10585,9 +10591,9 @@ Use mouse to pan and zoom
 <p>Dispatch uses <code>ref_allele.len()</code> and <code>alt_allele.len()</code> as the primary selector. For <code>N×1</code> variants (deletion format), it additionally checks whether the anchor base substitutes (<code>alt_allele[0] ≠ ref_allele[0]</code>):</p>
 <ul>
 <li><strong>Pure deletion</strong> (<code>alt[0] == ref[0]</code>) → <code>check_deletion</code> — e.g., <code>AC→A</code> where anchor A is preserved</li>
-<li><strong>Complex Del+SNV</strong> (<code>alt[0] ≠ ref[0]</code>) → <code>check_complex</code> — e.g., <code>GC→T</code> where anchor G also substitutes to T</li>
+<li><strong>Complex Del+SNV</strong> (<code>alt[0] ≠ ref[0]</code>) → the <a href="#reference-allele-classification-the-exact-carrier-rule">exact-carrier rule</a> — e.g., <code>GC→T</code> where anchor G also substitutes to T</li>
 </ul>
-<p>This distinction is critical: <code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. <code>check_complex</code> handles these via Phase 3 haplotype alignment (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under the default backend).</p>
+<p>This distinction is critical: <code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. The exact-carrier rule reads the substituted anchor as part of the allele.</p>
 <p><code>check_deletion</code> also falls back to <code>check_complex</code> for large deletions (≥5bp) where S3 sequence validation fails due to <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifting the anchor position (see <a href="#reference-allele-classification-windowed-scan-safeguards-1">Deletion — Windowed Safeguards</a>).</p>
 </div>
 <hr>
@@ -11466,7 +11472,63 @@ confidence about positions the quality mask rejected.</p>
 </div>
 <hr>
 <h2 id="reference-allele-classification-complex-indel-substitution">Complex (Indel + Substitution)<a class="headerlink" href="#reference-allele-classification-complex-indel-substitution" title="Permanent link">¶</a></h2>
-<p>Variants where REF and ALT differ in both sequence <strong>and</strong> length. Also used for <strong>complex Del+SNV</strong> variants dispatched from the <code>N×1</code> path when the anchor base substitutes. Uses a sophisticated <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
+<p>Variants where REF and ALT differ in both sequence <strong>and</strong> length. It also covers <strong>complex Del+SNV</strong> variants (<code>N×1</code> with a substituted anchor) and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads that carry an indel inside the block.</p>
+<h3 id="reference-allele-classification-the-exact-carrier-rule">The exact-carrier rule<a class="headerlink" href="#reference-allele-classification-the-exact-carrier-rule" title="Permanent link">¶</a></h3>
+<p>A read is REF or ALT for a complex variant only when <strong>its own bases carry that allele across the whole event</strong>. Nothing is inferred: gbcms counts the allele it is given.</p>
+<ul>
+<li><strong>The window</strong> is the event plus two reference bases of flank on each side.</li>
+<li>The event is every base where REF and ALT can differ over all equivalent placements: the union of the minimal difference trimmed from the left first and from the right first, grown through any tandem repeat touching either end on either allele (unit 1–6 bases, or the length change). An aligner may place an indel anywhere in such a repeat, including a run the ALT's own bases continue: for <code>TA&gt;ACC</code> after <code>AAA</code>, the inserted A can sit anywhere in the run. So a delins in or beside a repeat is judged over its whole ambiguity.</li>
+<li>The shorter allele's window is padded with reference flank until both are the same length. That way neither allele is favoured by where reads start.</li>
+<li><strong>The window is read where it sits.</strong> It is read from the read position aligned to the window's first reference base, and back from the one aligned to its last; the closer reading counts. The flank bases are outside the event, so they align the same way on either allele. Inside the event the read's bases are taken as one stretch, so where the aligner put an indel or a soft clip does not matter, and an indel it placed past one flank leaves the other in place. A copy of the window elsewhere in the read is never a match.</li>
+<li><strong>Masked bases.</strong> Bases below <code>--min-baseq</code> (and N) match anything. This is the only tolerance, and it is the same quality rule every backend applies. <code>n_count</code> counts a read only when an N sits among the compared bases.</li>
+<li><strong>Outcome.</strong> A read decides only when it holds both the REF and the ALT window.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">The read</th>
+<th style="text-align: left;">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">matches the ALT window only</td>
+<td style="text-align: left;">ALT</td>
+</tr>
+<tr>
+<td style="text-align: left;">matches the REF window only</td>
+<td style="text-align: left;">REF</td>
+</tr>
+<tr>
+<td style="text-align: left;">matches both (only through masked bases)</td>
+<td style="text-align: left;">neither</td>
+</tr>
+<tr>
+<td style="text-align: left;">matches neither, and is closer to ALT</td>
+<td style="text-align: left;">neither, counted as <code>partial_alt</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">matches neither, and is not closer to ALT</td>
+<td style="text-align: left;">neither</td>
+</tr>
+<tr>
+<td style="text-align: left;">cannot hold both windows (it ends in or next to the event)</td>
+<td style="text-align: left;">depth only: no allele, no <code>partial_alt</code>, no <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> class</td>
+</tr>
+</tbody>
+</table>
+<p>A read one confident base off the given ALT carries a different allele. A read that ends inside the event cannot show either, like a pure-indel read ending inside its tract.
+- <strong>Long events.</strong> When the windows exceed 50 bases, no read can hold them whole. Both alleles are then judged by equal-length junction windows at each end, read inward from the flank: through one base past the first base where the alleles differ, and through the shorter allele when it fits in 50 bases, so a short ALT is read base by base. The left junction reads it from the left flank; the right one from just before its first difference, so repeat growth on the left does not favour the longer allele's reads. A read must match the same allele at every junction it holds; a mismatch at one rules it out.
+- <strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads with an indel.</strong> An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read with an insertion or deletion in the block or right beside it, or a clip in it, is judged by this rule; an aligner may write a block shifted by one base as an insertion before it and a deletion after. Its ALT calls with every window base read count toward <code>mnp_confirmed_alt</code>. Other <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads, including those with an indel further off (a germline one nearby), are compared base by base.
+- <strong>Spliced reads (RNA).</strong> A splice in a window's flank or padding ends the window at the exon edge, for both alleles, and the read is anchored at its junction: the read's next bases come from the next exon. A read spliced through the bases where the alleles differ counts toward depth only.
+- <strong>Same on both backends.</strong> The rule uses no alignment scoring, so <code>pairhmm</code> and <code>sw</code> give identical counts for complex variants.
+- <strong>When the rule cannot run.</strong> <code>prepare_variants</code> fetches reference until it holds the event, grown through any repeat, with its flank and padding (up to 16,384 bases each side, and never past a contig end). A variant without that reference (one built without <code>prepare_variants</code>, or an event within its flank of a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ <code>*</code>) is not read.</p>
+<div class="admonition info">
+<p class="admonition-title">Why not a tolerant score</p>
+<p>Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's <code>--alleles</code> mode do the same. gbcms reports the given allele's exact support and names a different allele the reads carry in <code>gbcms_diagnostic</code> (<code>OBSERVED_ALLELE</code> / <code>COEXISTING_ALLELE</code>).</p>
+</div>
+<h3 id="reference-allele-classification-previous-classifier-variants-without-a-reference-pure-indel-phase-3">Previous classifier (variants without a reference; pure-indel Phase 3)<a class="headerlink" href="#reference-allele-classification-previous-classifier-variants-without-a-reference-pure-indel-phase-3" title="Permanent link">¶</a></h3>
+<p>The phases below still classify complex variants the exact-carrier rule cannot judge (see above). They are also the Phase-3 fallback that <code>check_insertion</code> and <code>check_deletion</code> use for pure indels. They are a <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
 <table>
 <thead>
 <tr>
@@ -11979,7 +12041,7 @@ region, and their first base already discriminates.</p>
 <h2 id="reference-allele-classification-multi-allelic-behavior">Multi-Allelic Behavior<a class="headerlink" href="#reference-allele-classification-multi-allelic-behavior" title="Permanent link">¶</a></h2>
 <p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
 <h3 id="reference-allele-classification-phase-1-annotation">Phase 1: Annotation<a class="headerlink" href="#reference-allele-classification-phase-1-annotation" title="Permanent link">¶</a></h3>
-<p>During normalization, <code>assign_multi_allelic_groups()</code> groups co-annotated variants with a fixed-point sweep over sorted <code>(chrom, pos)</code> coordinates, under two criteria: variants whose REF spans intersect (any types — tagged <code>MULTI_ALLELIC</code>), and length-changing variants whose scan windows (<code>max(5, repeat_span+2)</code> each side) overlap (tagged <code>TRACT_CLUSTER</code> when window-only). Groups close transitively and may be non-contiguous in position order; members share a <code>multi_allelic_group</code> ID and the tag is appended to <code>gbcms_status_reason</code> (the verdict stays <code>PASS</code>). Within a group the engine assigns <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> exclusively: a read's ALT call is demoted to <code>partial_alt</code> when a sibling explains it at least as well by span-explanation cost, and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence is never contested.</p>
+<p>During normalization, <code>assign_multi_allelic_groups()</code> groups co-annotated variants with a fixed-point sweep over sorted <code>(chrom, pos)</code> coordinates, under two criteria: variants whose REF spans intersect (any types — tagged <code>MULTI_ALLELIC</code>), and length-changing variants whose scan windows (<code>max(5, repeat_span+2)</code> each side) overlap (tagged <code>TRACT_CLUSTER</code> when window-only). Groups close transitively and may be non-contiguous in position order; members share a <code>multi_allelic_group</code> ID and the tag is appended to <code>gbcms_status_reason</code> (the verdict stays <code>PASS</code>). Within a group the engine assigns <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> exclusively: a read's ALT call is demoted to <code>partial_alt</code> when a sibling explains it strictly better by span-explanation cost, or exactly as well as the row's ALT does (the two alleles differ only at bases the read has masked, so the read is either), and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence is never contested.</p>
 <h3 id="reference-allele-classification-phase-2-sibling-alt-exclusion">Phase 2: Sibling ALT Exclusion<a class="headerlink" href="#reference-allele-classification-phase-2-sibling-alt-exclusion" title="Permanent link">¶</a></h3>
 <p>During counting, a read classified as <strong>REF</strong> for a variant is checked against the
 <strong>siblings whose change lies inside the variant's discrimination window</strong>: its
@@ -13956,6 +14018,14 @@ are safe; simply do not turn it on for such data.</p>
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Cases 1 and 2 are now judged by the exact-carrier rule</p>
+<p>Del+SNV and delins variants no longer go through <code>check_complex</code>'s haplotype scoring or its
+M-block REF fallback. A read is REF or ALT only when its own bases carry that allele across
+the whole event, read at the event's own position; a large delins is judged at its two
+junctions. See <a href="#reference-allele-classification-the-exact-carrier-rule">the exact-carrier rule</a>.
+The case studies below record why the routing exists and what the earlier fixes found.</p>
+</div>
 <hr>
 <h2 id="reference-complex-indels-case-1-complex-delsnv-sox9">Case 1: Complex Del+SNV — SOX9 (<code>GC→T</code>)<a class="headerlink" href="#reference-complex-indels-case-1-complex-delsnv-sox9" title="Permanent link">¶</a></h2>
 <h3 id="reference-complex-indels-the-variant">The Variant<a class="headerlink" href="#reference-complex-indels-the-variant" title="Permanent link">¶</a></h3>
@@ -14568,7 +14638,7 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Complex Del+SNV</strong></td>
-<td style="text-align: left;">A deletion-format variant (<code>len(REF) &gt; len(ALT) == 1</code>) where the anchor base also substitutes (<code>alt[0] ≠ ref[0]</code>). Examples: <code>GC→T</code>, <code>AG→T</code>. Routed to <code>check_complex</code> instead of <code>check_deletion</code>.</td>
+<td style="text-align: left;">A deletion-format variant (<code>len(REF) &gt; len(ALT) == 1</code>) where the anchor base also substitutes (<code>alt[0] ≠ ref[0]</code>). Examples: <code>GC→T</code>, <code>AG→T</code>. Judged by the <a href="#reference-allele-classification-the-exact-carrier-rule">exact-carrier rule</a> instead of <code>check_deletion</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>has_shifted_same_length</strong></td>
@@ -14583,8 +14653,12 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
 <td style="text-align: left;"><abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> repositions an indel's anchor to the leftmost equivalent position. For partial-repeat regions, this places the anchor several bases left of where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> operation appears in reads.</td>
 </tr>
 <tr>
+<td style="text-align: left;"><strong>Exact carrier</strong></td>
+<td style="text-align: left;">A read whose own bases (soft clips included, bases below <code>--min-baseq</code> masked) carry the whole given allele of a complex variant with two reference flank bases each side, read at the event's own position. Only exact carriers count as REF or ALT for delins, Del+SNV and structural <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads. See <a href="#reference-allele-classification-the-exact-carrier-rule">the exact-carrier rule</a>.</td>
+</tr>
+<tr>
 <td style="text-align: left;"><strong>is_worth_realignment</strong></td>
-<td style="text-align: left;">Predicate in <code>check_complex</code> returning <code>true</code> when a read's <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> contains indel evidence in the variant window. If <code>false</code>, M-block anchor coverage check classifies clean REF reads for deletion-direction variants.</td>
+<td style="text-align: left;">Predicate in the previous complex classifier (<code>check_complex</code>, used only for a variant with no reference holding the event) returning <code>true</code> when a read's <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> contains indel evidence in the variant window. If <code>false</code>, M-block anchor coverage check classifies clean REF reads for deletion-direction variants.</td>
 </tr>
 </tbody>
 </table>
@@ -14911,12 +14985,12 @@ set <code>rescue_mnp=False</code> (or <code>True</code>) explicitly, or <code>_g
 <tr>
 <td style="text-align: left;">Del+SNV (complex)</td>
 <td style="text-align: left;">SOX9 <code>GC→T</code>, ABL1 <code>AG→T</code></td>
-<td style="text-align: left;">Routes to <code>check_complex</code>, not <code>check_deletion</code>; alt &gt; 0</td>
+<td style="text-align: left;">Exact-carrier rule, not <code>check_deletion</code>; alt &gt; 0</td>
 </tr>
 <tr>
-<td style="text-align: left;">Large deletion, REF=0</td>
-<td style="text-align: left;">NF2 ~100bp DEL</td>
-<td style="text-align: left;">M-block REF fallback in <code>check_complex</code>; ref &gt; 0</td>
+<td style="text-align: left;">Large delins, REF=0</td>
+<td style="text-align: left;">NF2 ~100bp delins</td>
+<td style="text-align: left;">Junction windows of the exact-carrier rule; ref &gt; 0</td>
 </tr>
 <tr>
 <td style="text-align: left;">Shifted large deletion</td>
@@ -16135,6 +16209,36 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
     change only where it used to win.</li>
 <li><code>observe_molecules()</code> takes <code>rescue_homopolymer</code> and threads the twin the same
   way.</li>
+</ul>
+<h3 id="development-changelog-changed-complex-variants-count-exact-carriers-only-141">Changed — complex variants count exact carriers only (#141)<a class="headerlink" href="#development-changelog-changed-complex-variants-count-exact-carriers-only-141" title="Permanent link">¶</a></h3>
+<ul>
+<li>A delins, a deletion whose anchor also changes (Del+SNV), or an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read with
+  an indel now counts a read as REF or ALT only when the read's own bases carry
+  that allele across the whole event, with two reference flank bases each side.
+  Soft clips count; bases below <code>--min-baseq</code> match anything, the only tolerance.</li>
+<li>Why: local alignment, likelihoods and the edit-distance margin credited
+    near-matches, so reads carrying another allele, or ending inside the event,
+    were counted for the given one.</li>
+<li>The windows are read at the event's own position, grown through repeats
+    touching the event on either allele, and padded to equal length so neither
+    allele is favoured by where reads start. Events over 50 bases are judged at
+    both junctions, reading a short ALT whole; a mismatch at either rules a read
+    out.</li>
+<li>A read that cannot hold both windows is depth only (no allele, no
+    <code>partial_alt</code>, no <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> class). A read that holds them, matches neither and is
+    closer to ALT counts in <code>partial_alt</code>.</li>
+<li>An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read with an indel in or right beside the block is judged the same way
+    (an aligner may write a shifted block as an insertion and a deletion); an
+    indel further off leaves the base-by-base comparison in place.</li>
+<li>Prep fetches enough reference to hold an event grown through a long repeat.</li>
+<li>RNA: a spliced read's windows end at its own junction, so a delins at an
+    exon's first or last bases counts spliced reads; a read spliced through
+    the event counts toward depth only.</li>
+<li>In a multi-allelic group, a read that matches this row's ALT and a sibling's
+  ALT exactly (the two differ only at bases the read has masked) is neither
+  row's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>: it counts in <code>partial_alt</code>.</li>
+<li><code>--alignment-backend pairhmm</code> and <code>sw</code> now give identical counts for these
+  variants: the rule uses no alignment scoring.</li>
 </ul>
 <h3 id="development-changelog-added">Added<a class="headerlink" href="#development-changelog-added" title="Permanent link">¶</a></h3>
 <ul>
@@ -18430,12 +18534,15 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
    <code>ALT_EQUALS_REF</code>, <code>ALT_CONTAINS_N</code>). See <a href="#resources-troubleshooting-normalization-issues">Normalization Issues</a>.</p>
 </li>
 <li>
-<p><strong>Complex Del+SNV routing</strong> — if your variant has deletion format (<code>REF</code> longer than <code>ALT</code>,
-   <code>ALT</code> is a single base) but the anchor base also changes (e.g., <code>GC→T</code>, <code>AG→T</code>), it is a
-   <strong>complex Del+SNV</strong> routed to <code>check_complex</code>, not <code>check_deletion</code>.
-   Use <code>--trace</code> logging to confirm:
+<p><strong>Complex variants count exact carriers only</strong> — a delins, or a deletion whose anchor
+   also changes (e.g., <code>GC→T</code>, <code>AG→T</code>), counts a read as ALT only when its bases carry the
+   whole given allele with two flank bases each side
+   (<a href="#reference-allele-classification-the-exact-carrier-rule">exact-carrier rule</a>).
+   Reads carrying a different allele there are neither (<code>partial_alt</code> when closer to ALT),
+   and <code>gbcms_diagnostic</code> names the allele they carry (<code>OBSERVED_ALLELE</code> /
+   <code>COEXISTING_ALLELE</code>). Use <code>--trace</code> to see each read's call:
    </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#resources-troubleshooting-__codelineno-7-1"></a>gbcms<span class="w"> </span>dna<span class="w"> </span>--trace<span class="w"> </span>--variants<span class="w"> </span>variants.maf<span class="w"> </span>--bam<span class="w"> </span>sample.bam<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#resources-troubleshooting-__codelineno-7-2"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"check_complex\|check_deletion"</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#resources-troubleshooting-__codelineno-7-2"></a><span class="w">    </span>--fasta<span class="w"> </span>ref.fa<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/debug/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"read call"</span>
 </code></pre></div>
    See <a href="#reference-complex-indels">Complex Indels</a> for detailed case studies.
 </li>
@@ -18462,14 +18569,16 @@ not a <abbr title="Binary Alignment Map - Compressed sequence alignment file for
 </details>
 <details class="question">
 <summary><code>ref_count = 0</code> for a large deletion</summary>
-<p>For large deletions (~100bp+), REF reads have clean M-only CIGARs. gbcms's
-<code>is_worth_realignment()</code> skips Phase 3 for clean CIGARs, and the <strong>M-block REF fallback</strong>
-in <code>check_complex</code> classifies these as REF.</p>
+<p>A pure large deletion counts a clean read spanning its anchor as REF (<code>check_deletion</code>).
+A large delins (a deletion with a replacement) is judged by the
+<a href="#reference-allele-classification-the-exact-carrier-rule">exact-carrier rule</a>: no read
+holds a ~100bp window whole, so each end is judged by a junction window, and a REF read
+counts when it carries the reference across either junction.</p>
 <p>If <code>ref = 0</code>, check:
-- The variant was normalized correctly (M-block REF fallback only applies in <code>check_complex</code>)
-- The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the anchor position (<code>samtools depth -a sample.bam -r chr22:30038094-30038095</code>)
-- Reads actually <strong>span the anchor</strong>: reads mapping entirely inside a large deleted span
-  carry no information about the variant and count as neither, not REF</p>
+- The variant was normalized correctly (<code>gbcms_status</code> is <code>PASS</code>)
+- The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> slice has coverage at the event's ends (<code>samtools depth -a sample.bam -r chr22:30038094-30038095</code>)
+- Reads actually <strong>reach a junction</strong>: reads mapping entirely inside a large deleted span,
+  or ending inside the event, carry no information about the variant and count as depth only</p>
 <p>See <a href="#reference-complex-indels-case-2-nf2-large-deletion-ref-reads-invisible">NF2 Case Study</a>.</p>
 </details>
 <details class="question">

@@ -778,6 +778,25 @@
 <nav aria-label="Complex (Indel + Substitution)" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#the-exact-carrier-rule">
+<span class="md-ellipsis">
+      
+        The exact-carrier rule
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#previous-classifier-variants-without-a-reference-pure-indel-phase-3">
+<span class="md-ellipsis">
+      
+        Previous classifier (variants without a reference; pure-indel Phase 3)
+      
+    </span>
+</a>
+<nav aria-label="Previous classifier (variants without a reference; pure-indel Phase 3)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
 <a class="md-nav__link" href="#phase-overview">
 <span class="md-ellipsis">
       
@@ -812,6 +831,9 @@
       
     </span>
 </a>
+</li>
+</ul>
+</nav>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#phase-1-haplotype-reconstruction">
@@ -1430,6 +1452,25 @@
 <nav aria-label="Complex (Indel + Substitution)" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#the-exact-carrier-rule">
+<span class="md-ellipsis">
+      
+        The exact-carrier rule
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#previous-classifier-variants-without-a-reference-pure-indel-phase-3">
+<span class="md-ellipsis">
+      
+        Previous classifier (variants without a reference; pure-indel Phase 3)
+      
+    </span>
+</a>
+<nav aria-label="Previous classifier (variants without a reference; pure-indel Phase 3)" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
 <a class="md-nav__link" href="#phase-overview">
 <span class="md-ellipsis">
       
@@ -1464,6 +1505,9 @@
       
     </span>
 </a>
+</li>
+</ul>
+</nav>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#phase-1-haplotype-reconstruction">
@@ -1679,9 +1723,9 @@ Use mouse to pan and zoom
 <p>Dispatch uses <code>ref_allele.len()</code> and <code>alt_allele.len()</code> as the primary selector. For <code>N×1</code> variants (deletion format), it additionally checks whether the anchor base substitutes (<code>alt_allele[0] ≠ ref_allele[0]</code>):</p>
 <ul>
 <li><strong>Pure deletion</strong> (<code>alt[0] == ref[0]</code>) → <code>check_deletion</code> — e.g., <code>AC→A</code> where anchor A is preserved</li>
-<li><strong>Complex Del+SNV</strong> (<code>alt[0] ≠ ref[0]</code>) → <code>check_complex</code> — e.g., <code>GC→T</code> where anchor G also substitutes to T</li>
+<li><strong>Complex Del+SNV</strong> (<code>alt[0] ≠ ref[0]</code>) → the <a href="#the-exact-carrier-rule">exact-carrier rule</a> — e.g., <code>GC→T</code> where anchor G also substitutes to T</li>
 </ul>
-<p>This distinction is critical: <code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. <code>check_complex</code> handles these via Phase 3 haplotype alignment (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under the default backend).</p>
+<p>This distinction is critical: <code>check_deletion</code>'s <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. The exact-carrier rule reads the substituted anchor as part of the allele.</p>
 <p><code>check_deletion</code> also falls back to <code>check_complex</code> for large deletions (≥5bp) where S3 sequence validation fails due to <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifting the anchor position (see <a href="#windowed-scan-safeguards-1">Deletion — Windowed Safeguards</a>).</p>
 </div>
 <hr>
@@ -2553,7 +2597,63 @@ confidence about positions the quality mask rejected.</p>
 </div>
 <hr>
 <h2 id="complex-indel-substitution">Complex (Indel + Substitution)<a class="headerlink" href="#complex-indel-substitution" title="Permanent link">¶</a></h2>
-<p>Variants where REF and ALT differ in both sequence <strong>and</strong> length. Also used for <strong>complex Del+SNV</strong> variants dispatched from the <code>N×1</code> path when the anchor base substitutes. Uses a sophisticated <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
+<p>Variants where REF and ALT differ in both sequence <strong>and</strong> length. It also covers <strong>complex Del+SNV</strong> variants (<code>N×1</code> with a substituted anchor) and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads that carry an indel inside the block.</p>
+<h3 id="the-exact-carrier-rule">The exact-carrier rule<a class="headerlink" href="#the-exact-carrier-rule" title="Permanent link">¶</a></h3>
+<p>A read is REF or ALT for a complex variant only when <strong>its own bases carry that allele across the whole event</strong>. Nothing is inferred: gbcms counts the allele it is given.</p>
+<ul>
+<li><strong>The window</strong> is the event plus two reference bases of flank on each side.</li>
+<li>The event is every base where REF and ALT can differ over all equivalent placements: the union of the minimal difference trimmed from the left first and from the right first, grown through any tandem repeat touching either end on either allele (unit 1–6 bases, or the length change). An aligner may place an indel anywhere in such a repeat, including a run the ALT's own bases continue: for <code>TA&gt;ACC</code> after <code>AAA</code>, the inserted A can sit anywhere in the run. So a delins in or beside a repeat is judged over its whole ambiguity.</li>
+<li>The shorter allele's window is padded with reference flank until both are the same length. That way neither allele is favoured by where reads start.</li>
+<li><strong>The window is read where it sits.</strong> It is read from the read position aligned to the window's first reference base, and back from the one aligned to its last; the closer reading counts. The flank bases are outside the event, so they align the same way on either allele. Inside the event the read's bases are taken as one stretch, so where the aligner put an indel or a soft clip does not matter, and an indel it placed past one flank leaves the other in place. A copy of the window elsewhere in the read is never a match.</li>
+<li><strong>Masked bases.</strong> Bases below <code>--min-baseq</code> (and N) match anything. This is the only tolerance, and it is the same quality rule every backend applies. <code>n_count</code> counts a read only when an N sits among the compared bases.</li>
+<li><strong>Outcome.</strong> A read decides only when it holds both the REF and the ALT window.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">The read</th>
+<th style="text-align: left;">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">matches the ALT window only</td>
+<td style="text-align: left;">ALT</td>
+</tr>
+<tr>
+<td style="text-align: left;">matches the REF window only</td>
+<td style="text-align: left;">REF</td>
+</tr>
+<tr>
+<td style="text-align: left;">matches both (only through masked bases)</td>
+<td style="text-align: left;">neither</td>
+</tr>
+<tr>
+<td style="text-align: left;">matches neither, and is closer to ALT</td>
+<td style="text-align: left;">neither, counted as <code>partial_alt</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">matches neither, and is not closer to ALT</td>
+<td style="text-align: left;">neither</td>
+</tr>
+<tr>
+<td style="text-align: left;">cannot hold both windows (it ends in or next to the event)</td>
+<td style="text-align: left;">depth only: no allele, no <code>partial_alt</code>, no <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> class</td>
+</tr>
+</tbody>
+</table>
+<p>A read one confident base off the given ALT carries a different allele. A read that ends inside the event cannot show either, like a pure-indel read ending inside its tract.
+- <strong>Long events.</strong> When the windows exceed 50 bases, no read can hold them whole. Both alleles are then judged by equal-length junction windows at each end, read inward from the flank: through one base past the first base where the alleles differ, and through the shorter allele when it fits in 50 bases, so a short ALT is read base by base. The left junction reads it from the left flank; the right one from just before its first difference, so repeat growth on the left does not favour the longer allele's reads. A read must match the same allele at every junction it holds; a mismatch at one rules it out.
+- <strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads with an indel.</strong> An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read with an insertion or deletion in the block or right beside it, or a clip in it, is judged by this rule; an aligner may write a block shifted by one base as an insertion before it and a deletion after. Its ALT calls with every window base read count toward <code>mnp_confirmed_alt</code>. Other <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads, including those with an indel further off (a germline one nearby), are compared base by base.
+- <strong>Spliced reads (RNA).</strong> A splice in a window's flank or padding ends the window at the exon edge, for both alleles, and the read is anchored at its junction: the read's next bases come from the next exon. A read spliced through the bases where the alleles differ counts toward depth only.
+- <strong>Same on both backends.</strong> The rule uses no alignment scoring, so <code>pairhmm</code> and <code>sw</code> give identical counts for complex variants.
+- <strong>When the rule cannot run.</strong> <code>prepare_variants</code> fetches reference until it holds the event, grown through any repeat, with its flank and padding (up to 16,384 bases each side, and never past a contig end). A variant without that reference (one built without <code>prepare_variants</code>, or an event within its flank of a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ <code>*</code>) is not read.</p>
+<div class="admonition info">
+<p class="admonition-title">Why not a tolerant score</p>
+<p>Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's <code>--alleles</code> mode do the same. gbcms reports the given allele's exact support and names a different allele the reads carry in <code>gbcms_diagnostic</code> (<code>OBSERVED_ALLELE</code> / <code>COEXISTING_ALLELE</code>).</p>
+</div>
+<h3 id="previous-classifier-variants-without-a-reference-pure-indel-phase-3">Previous classifier (variants without a reference; pure-indel Phase 3)<a class="headerlink" href="#previous-classifier-variants-without-a-reference-pure-indel-phase-3" title="Permanent link">¶</a></h3>
+<p>The phases below still classify complex variants the exact-carrier rule cannot judge (see above). They are also the Phase-3 fallback that <code>check_insertion</code> and <code>check_deletion</code> use for pure indels. They are a <strong>three-phase</strong> algorithm with quality-aware matching and Smith-Waterman fallback.</p>
 <table>
 <thead>
 <tr>
@@ -3062,7 +3162,7 @@ region, and their first base already discriminates.</p>
 <h2 id="multi-allelic-behavior">Multi-Allelic Behavior<a class="headerlink" href="#multi-allelic-behavior" title="Permanent link">¶</a></h2>
 <p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
 <h3 id="phase-1-annotation">Phase 1: Annotation<a class="headerlink" href="#phase-1-annotation" title="Permanent link">¶</a></h3>
-<p>During normalization, <code>assign_multi_allelic_groups()</code> groups co-annotated variants with a fixed-point sweep over sorted <code>(chrom, pos)</code> coordinates, under two criteria: variants whose REF spans intersect (any types — tagged <code>MULTI_ALLELIC</code>), and length-changing variants whose scan windows (<code>max(5, repeat_span+2)</code> each side) overlap (tagged <code>TRACT_CLUSTER</code> when window-only). Groups close transitively and may be non-contiguous in position order; members share a <code>multi_allelic_group</code> ID and the tag is appended to <code>gbcms_status_reason</code> (the verdict stays <code>PASS</code>). Within a group the engine assigns <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> exclusively: a read's ALT call is demoted to <code>partial_alt</code> when a sibling explains it at least as well by span-explanation cost, and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence is never contested.</p>
+<p>During normalization, <code>assign_multi_allelic_groups()</code> groups co-annotated variants with a fixed-point sweep over sorted <code>(chrom, pos)</code> coordinates, under two criteria: variants whose REF spans intersect (any types — tagged <code>MULTI_ALLELIC</code>), and length-changing variants whose scan windows (<code>max(5, repeat_span+2)</code> each side) overlap (tagged <code>TRACT_CLUSTER</code> when window-only). Groups close transitively and may be non-contiguous in position order; members share a <code>multi_allelic_group</code> ID and the tag is appended to <code>gbcms_status_reason</code> (the verdict stays <code>PASS</code>). Within a group the engine assigns <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> exclusively: a read's ALT call is demoted to <code>partial_alt</code> when a sibling explains it strictly better by span-explanation cost, or exactly as well as the row's ALT does (the two alleles differ only at bases the read has masked, so the read is either), and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence is never contested.</p>
 <h3 id="phase-2-sibling-alt-exclusion">Phase 2: Sibling ALT Exclusion<a class="headerlink" href="#phase-2-sibling-alt-exclusion" title="Permanent link">¶</a></h3>
 <p>During counting, a read classified as <strong>REF</strong> for a variant is checked against the
 <strong>siblings whose change lies inside the variant's discrimination window</strong>: its
@@ -3151,7 +3251,7 @@ constants and do not use it).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 17:26:03 UTC"><span class="timeago" datetime="2026-09-25T17:26:03+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 17:26:03 UTC">2026-09-25</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 28, 2026 16:17:34 UTC"><span class="timeago" datetime="2026-09-28T16:17:34+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 28, 2026 16:17:34 UTC">2026-09-28</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
