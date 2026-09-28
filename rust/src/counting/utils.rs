@@ -125,6 +125,12 @@ pub struct ClassifyResult {
     /// false for every other variant type and for MNP reads the previous
     /// complex classifier judges. Accumulated into `BaseCounts::mnp_confirmed_alt`.
     pub mnp_confirmed: bool,
+    /// The exact-carrier rule decided this read (REF or ALT) from its own bases,
+    /// soft-clipped ones included, every one inside the read's fragment (clipped
+    /// bases past the fragment end are adapter), and the fragment is well
+    /// defined. Such a read counts although its aligned span stops short of the
+    /// variant position; the engine admits it in DNA only.
+    pub clip_admissible: bool,
     /// Whether the PairHMM backend's pangenomic haplotype matrix could not
     /// evaluate this read (reference context missing, or not containing the
     /// variant), so it was scored by the Smith-Waterman fallback — or, where SW
@@ -162,6 +168,7 @@ impl ClassifyResult {
             is_structural: false,
             covers_locus: true,
             mnp_confirmed: false,
+            clip_admissible: false,
             sw_fallback: false,
             ref_uninformative: false,
         }
