@@ -198,11 +198,31 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     result.mnp_confirmed =
         result.is_alt && alt_masked == 0 && variant.ref_allele.len() == variant.alt_allele.len();
     // A read decided from its own bases may count although its aligned span stops
-    // short of the variant (its allele lies in soft-clipped bases), when every base
-    // read lies inside its fragment: past the fragment end a clip is adapter.
+    // short of the variant, when its allele lies in soft-clipped bases (a window it
+    // was decided on reads them) and every base read lies inside its fragment: past
+    // the fragment end a clip is adapter. An unclipped read that misses the variant
+    // position (one starting inside a long deletion) is not admitted: no ALT read
+    // can start there.
     result.clip_admissible = (result.is_ref || result.is_alt)
+        && aligned_query_range(record).is_some_and(|(first, after)| read_spans.iter().any(|&(a, b)| a < first || b > after))
         && fragment_query_span(record).is_some_and(|(lo, hi)| read_spans.iter().all(|&(a, b)| a >= lo && b <= hi));
     Some(result)
+}
+
+/// Query positions [first, after) of the read's aligned bases: its soft clips lie
+/// before `first` and from `after` on. None for a read with no aligned base.
+fn aligned_query_range(record: &Record) -> Option<(usize, usize)> {
+    let ops: Vec<Cigar> = record.cigar().iter().copied().filter(|op| !matches!(op, Cigar::HardClip(_))).collect();
+    let lead = match ops.first() {
+        Some(Cigar::SoftClip(n)) => *n as usize,
+        _ => 0,
+    };
+    let tail = match ops.last() {
+        Some(Cigar::SoftClip(n)) if ops.len() > 1 => *n as usize,
+        _ => 0,
+    };
+    let len = record.seq_len();
+    (lead + tail < len).then_some((lead, len - tail))
 }
 
 /// The read's query positions [lo, hi) that lie inside its fragment, when the
