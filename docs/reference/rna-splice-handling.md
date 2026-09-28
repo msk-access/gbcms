@@ -76,9 +76,15 @@ per-type classification):
 - Phase 3 never scores across a splice: `extract_raw_read_window`
   refuses windows that an `N` overlaps (a contiguous slice would stitch
   the exon arms into a junction-chimeric sequence in which the missing
-  intron reads as deletion evidence), and a complex variant's
-  exact-carrier windows classify such reads neither instead of
-  string-comparing them.
+  intron reads as deletion evidence).
+- A complex variant's exact-carrier windows are cut at a read's own
+  junction: a splice in the window's flank or padding ends the window at
+  the exon edge on that side, for both alleles, and the read is anchored at
+  the junction. So a delins at an exon's last or first bases counts spliced
+  reads (on FORTE probes 0–1 bp from an exon edge the uncut windows kept
+  1.7% of REF reads). A read spliced through the bases where the alleles
+  differ shows neither and counts toward depth only. Repeat growth never
+  reaches across a read's junction.
 
 Reads without `N` ops never enter this triage — DNA-mode classification
 is untouched. Per-variant exclusion counts are logged at debug level in

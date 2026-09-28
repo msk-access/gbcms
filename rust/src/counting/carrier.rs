@@ -38,6 +38,10 @@
 //!   depth only, like a pure-indel read ending inside its tract: no allele, no
 //!   partial evidence, no mFSD class. A read holding the windows and matching
 //!   neither carries another allele: partial evidence when closer to ALT.
+//! - **Spliced reads.** A read's splice in a window's flank or padding cuts both
+//!   alleles' windows at the exon edge (the read's next bases come from the next
+//!   exon), anchored at the junction. A splice through the bases where the
+//!   alleles differ leaves the read depth only.
 
 use rust_htslib::bam::record::{Cigar, Record};
 
@@ -61,15 +65,49 @@ struct Window {
     left: Option<i64>,
     /// Reference position one past the window's last base, when it can anchor there.
     right: Option<i64>,
+    /// Bases of the window before the event (growth, flank and padding) and
+    /// after it, counted from where the alleles differ.
+    before: usize,
+    after: usize,
 }
 
 /// The REF and ALT windows, paired: whole-event windows (one pair) or junction
 /// windows (a left pair and a right pair).
 struct Windows {
     pairs: Vec<(Window, Window)>,
+    /// Where the alleles differ, genomic [start, end): the trims' union, before
+    /// repeat growth. A spliced read never holds growth past its junction.
+    event: (i64, i64),
 }
 
 impl Windows {
+    /// The windows as a read spliced at `skips` sees them. A splice in a window's
+    /// flank or padding ends the window at the exon edge on that side: the read's
+    /// next bases come from the next exon, and it is anchored at the junction.
+    /// Both alleles' windows are cut alike.
+    fn cut_at(&self, skips: &[(i64, i64)]) -> Windows {
+        let (ev_lo, ev_hi) = self.event;
+        let exon_start = skips.iter().filter(|s| s.1 <= ev_lo).map(|s| s.1).max();
+        let exon_end = skips.iter().filter(|s| s.0 >= ev_hi).map(|s| s.0).min();
+        let cut = |w: &Window| -> Window {
+            let (mut seq, mut left, mut right, mut before, mut after) = (w.seq.clone(), w.left, w.right, w.before, w.after);
+            if let Some(n1) = exon_start.filter(|&n1| n1 > ev_lo - before as i64) {
+                let drop = (n1 - (ev_lo - before as i64)) as usize;
+                seq.drain(..drop);
+                before -= drop;
+                left = left.map(|_| n1);
+            }
+            if let Some(n0) = exon_end.filter(|&n0| n0 < ev_hi + after as i64) {
+                let drop = (ev_hi + after as i64 - n0) as usize;
+                seq.truncate(seq.len() - drop);
+                after -= drop;
+                right = right.map(|_| n0);
+            }
+            Window { seq, left, right, before, after }
+        };
+        Windows { pairs: self.pairs.iter().map(|(r, a)| (cut(r), cut(a))).collect(), event: self.event }
+    }
+
     /// The reference span the windows cover.
     fn span(&self) -> (i64, i64) {
         self.pairs.iter().fold((i64::MAX, i64::MIN), |(lo, hi), (r, a)| {
@@ -102,9 +140,22 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         // A record stored without its bases (SEQ '*') shows nothing here.
         return Some(ClassifyResult::no_coverage(ClassifyPhase::MaskedCompare));
     }
-    if splices_over(record, win.span()) {
-        return Some(ClassifyResult::neither(ClassifyPhase::CigarRecon));
+    let skips = ref_skips(record, win.span());
+    let (ev_lo, ev_hi) = win.event;
+    if skips.iter().any(|&(n0, n1)| n0 < ev_hi && n1 > ev_lo) {
+        // Spliced through the event: the read skips bases where the alleles
+        // differ, so it shows neither (depth only).
+        let mut r = ClassifyResult::neither(ClassifyPhase::CigarRecon);
+        r.ref_uninformative = true;
+        return Some(r);
     }
+    let cut;
+    let win = if skips.is_empty() {
+        &win
+    } else {
+        cut = win.cut_at(&skips);
+        &cut
+    };
 
     // Per pair the read holds: (matches REF, matches ALT).
     let mut held: Vec<(bool, bool)> = Vec::with_capacity(win.pairs.len());
@@ -202,6 +253,9 @@ struct Event {
     first: usize,
     /// One past the last base where they differ, reading from the right.
     last: usize,
+    /// Where the alleles can differ over every placement (the trims' union)...
+    core: (usize, usize),
+    /// ...and that grown through repeats touching it.
     lo: usize,
     hi: usize,
 }
@@ -249,7 +303,7 @@ fn event(start: i64, reference: &[u8], v: &Variant) -> Option<Event> {
     let lo = repeat_start(reference, b_lo, unit).min(repeat_start(&hap, b_lo, unit));
     let hap_hi = repeat_end(&hap, (b_hi as i64 + d) as usize, unit) as i64 - d;
     let hi = repeat_end(reference, b_hi, unit).max(hap_hi as usize);
-    Some(Event { hap, d, first: l_lo, last: r_hi, lo, hi })
+    Some(Event { hap, d, first: l_lo, last: r_hi, core: (b_lo, b_hi), lo, hi })
 }
 
 /// REF and ALT windows for the variant. None without a reference that holds the
@@ -284,9 +338,27 @@ fn windows(v: &Variant) -> Option<Windows> {
         let reach = |to_diff: usize, whole: usize| (to_diff + 2).max(FLANK + 2).max(whole).min(short);
         let j_left = reach(ev.first - lo, if fits { short } else { 0 });
         let j_right = reach(hi - ev.last, if fits { short_end + 1 - ev.first } else { 0 });
-        let left = |seq: &[u8]| Window { seq: seq[..j_left].to_vec(), left: Some(g(lo)), right: None };
-        let right = |seq: &[u8]| Window { seq: seq[seq.len() - j_right..].to_vec(), left: None, right: Some(g(hi)) };
-        return Some(Windows { pairs: vec![(left(ref_win), left(alt_win)), (right(ref_win), right(alt_win))] });
+        // `end` is the allele's event end in its own offsets (REF ev.hi, ALT ev.hi + d).
+        let (c_lo, c_hi) = ev.core;
+        let left = |seq: &[u8], end: usize| Window {
+            seq: seq[..j_left].to_vec(),
+            left: Some(g(lo)),
+            right: None,
+            before: c_lo - lo,
+            after: (lo + j_left).saturating_sub(end),
+        };
+        let right = |seq: &[u8]| Window {
+            seq: seq[seq.len() - j_right..].to_vec(),
+            left: None,
+            right: Some(g(hi)),
+            before: c_lo.saturating_sub(lo + seq.len() - j_right),
+            after: hi - c_hi,
+        };
+        let alt_end = (c_hi as i64 + d) as usize;
+        return Some(Windows {
+            pairs: vec![(left(ref_win, c_hi), left(alt_win, alt_end)), (right(ref_win), right(alt_win))],
+            event: (g(c_lo), g(c_hi)),
+        });
     }
 
     // Pad the shorter window with reference flank so both have equal length; at a
@@ -311,8 +383,15 @@ fn windows(v: &Variant) -> Option<Windows> {
         let alt_hi_ext = (alt_hi + pr).min(hap.len());
         (ref_win.to_vec(), hap[lo - pl..alt_hi_ext].to_vec(), [(lo, hi), (lo - pl, hi + pr)])
     };
-    let whole = |seq: Vec<u8>, (a, b): (usize, usize)| Window { seq, left: Some(g(a)), right: Some(g(b)) };
-    Some(Windows { pairs: vec![(whole(ref_w, span[0]), whole(alt_w, span[1]))] })
+    let (c_lo, c_hi) = ev.core;
+    let whole = |seq: Vec<u8>, (a, b): (usize, usize)| Window {
+        seq,
+        left: Some(g(a)),
+        right: Some(g(b)),
+        before: c_lo - a,
+        after: b - c_hi,
+    };
+    Some(Windows { pairs: vec![(whole(ref_w, span[0]), whole(alt_w, span[1]))], event: (g(c_lo), g(c_hi)) })
 }
 
 /// The minimal differing interval of `a` (REF offsets) against `b`, trimming the
@@ -424,15 +503,16 @@ fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, us
     Reading { mismatches, masked, had_n, span }
 }
 
-/// Whether a splice N of the read overlaps `[lo, hi)`.
-fn splices_over(record: &Record, (lo, hi): (i64, i64)) -> bool {
+/// The read's splices (CIGAR N, genomic [start, end)) that overlap `[lo, hi)`.
+fn ref_skips(record: &Record, (lo, hi): (i64, i64)) -> Vec<(i64, i64)> {
+    let mut skips = Vec::new();
     let mut pos = record.pos();
     for op in record.cigar().iter() {
         match op {
             Cigar::RefSkip(len) => {
                 let end = pos + *len as i64;
                 if *len > 0 && pos < hi && end > lo {
-                    return true;
+                    skips.push((pos, end));
                 }
                 pos = end;
             }
@@ -440,7 +520,7 @@ fn splices_over(record: &Record, (lo, hi): (i64, i64)) -> bool {
             _ => {}
         }
     }
-    false
+    skips
 }
 
 /// Median of the qualities at or above `min_baseq` (0 when none).
