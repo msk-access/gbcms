@@ -296,6 +296,15 @@ in or right beside the block, on both backends:
   3>5 in a repeat matches an edit-distance census (0.546 vs 0.523); 2>3 beside a
   sibling insertion found the multi-allelic tie (fixed: 1 ALT, census 0–3).
   Its two grouped deletion rows lose 1 and 3 `partial_alt` reads to the sibling.
+- **RNA (FORTE; ~7,150 synthetic delins probes in expressed genes, 2 samples;
+  REF share of depth, develop → C1):** genomic windows reached into the intron,
+  so spliced reads were neither: 0.987 → 0.017 at 0–1 bp from an exon edge,
+  0.982 → 0.484 at 2–4 bp. Windows now end at a read's own junction: 0.923 and
+  0.906, the same as mid-exon (0.909). The ~8% below develop everywhere is
+  reads ending inside the window (depth only by design). Pure indels (C10) show
+  no exon-edge effect (1–3%, flat). Default RNA BAQ removes indel and complex
+  ALT reads when a base's quality minus 20 falls below min BQ (#166); FORTE's
+  Q40 bins escape it.
 - **Open (operator):** read inclusion, not the rule. Aligners clip ALT reads
   that end or start within ~10 bases of an event, and clipped reads are outside
   depth, so a 50% sample reads 0.45–0.46 VAF at small events (0.37–0.44 at 20
@@ -809,6 +818,22 @@ samples, so it stays local); the operator runs it on HPC.
 **Acceptance.** A coverage table (every stratum at its target or at the most
 the data has), the comparison scripts, and the panel run on HPC as the 6.6.0
 release gate.
+
+**Arms beyond the IMPACT/ACCESS panels (added 2026-09-28).** The panel BAMs are
+ABRA2-realigned, deep and targeted, and the C1 work showed that each of those
+properties hides behaviour other data exposes. Add:
+- **RNA (FORTE):** matched IMPACT DNA and FORTE RNA for the same patients, plus
+  truth-free probes at exon-boundary distances in expressed genes (REF-side
+  read retention; the harness from the C1 splice check).
+- **WES/WGS (TEMPO):** normals at germline hets, where VAF should read 0.5.
+  TEMPO runs bwa mem without indel realignment and unbinned BQSR qualities, and
+  already fills out with the C++ GetBaseCountsMultiSample (`--maq 0`).
+- **Public, PHI-free:** GIAB HG002/3/4 WGS and WES BAMs (bwa, NovaSeq 4-bin
+  qualities; one Oslo WES set unbinned), genotyped at truth-set indels. The
+  truth sets decompose complex variants and MNPs, so complex events need
+  re-merged nearby records. Results can go straight into issues and PRs.
+- Report per arm: clip-covered reads outside depth, depth-only fraction in
+  repeat strata, and run time at WGS scale.
 
 ### D6 — One QC-flags reference page (#156) · M
 **Finding.** Every QC flag is documented in `output-formats.md`, but it is
