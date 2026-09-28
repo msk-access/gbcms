@@ -802,3 +802,101 @@ def test_a_read_matching_a_sibling_as_well_is_not_the_rows_alt(tmp_path):
     )
     _invariants(c_cx)
     assert c_cx.ad == 10
+
+
+# ── RNA: spliced reads at exon edges ─────────────────────────────────────
+
+EXON = 300
+INTRON = 200
+
+
+def _gene(seed=21):
+    """Exon, intron (GT...AG), exon: the genomic reference, and the mRNA."""
+    rng = random.Random(seed)
+    rand = lambda n: "".join(rng.choice("ACGT") for _ in range(n))  # noqa: E731
+    e1, e2 = rand(EXON), rand(EXON)
+    intron = "GT" + rand(INTRON - 4) + "AG"
+    return e1 + intron + e2, e1 + e2
+
+
+def _spliced_reads(tag, mrna, starts, p, ref_len, alt_len):
+    """Reads over the exon1-exon2 junction, from mRNA offsets: matches to the
+    exon end, the intron as N, matches after; an indel for the length change
+    when the read carries the ALT at mRNA offset p."""
+    d = alt_len - ref_len
+    out = []
+    for i, s in enumerate(starts):
+        seq = mrna[s : s + READ]
+        if s <= p < EXON and d:  # the event sits in exon 1 before the junction
+            indel = (1, d) if d > 0 else (2, -d)
+            cig = ((0, p - s), indel, (0, EXON - p + min(d, 0)))
+            used = sum(n for op, n in cig if op in (0, 1))
+            cig = cig + ((3, INTRON), (0, READ - used))
+        elif p >= EXON and d:  # the event sits in exon 2 after the junction
+            q = p - EXON
+            indel = (1, d) if d > 0 else (2, -d)
+            first = EXON - s
+            cig = ((0, first), (3, INTRON), (0, q), indel)
+            used = first + q + max(d, 0)
+            cig = cig + ((0, READ - used),)
+        else:
+            first = EXON - s
+            cig = ((0, first), (3, INTRON), (0, READ - first))
+        out.append(make_read(f"{tag}{i}", seq, s, cig))
+    return out
+
+
+@pytest.mark.parametrize("gap", [0, 1, 3])
+def test_a_delins_at_an_exon_end_counts_spliced_reads(tmp_path, gap):
+    """TA>GCC ending `gap` bases before the exon's last base: spliced reads show
+    the event and splice there, so they are REF or ALT, not neither."""
+    genomic, mrna = _gene()
+    p = EXON - 2 - gap
+    ref_allele = genomic[p : p + 2]
+    alt = next(
+        a for a in ("GCC", "TGG", "CAA") if a[0] != ref_allele[0] and a[-1] != ref_allele[-1]
+    )
+    hap = mrna[:p] + alt + mrna[p + 2 :]
+    starts = range(EXON - 60, EXON - 40)
+    reads = _spliced_reads("r", mrna, starts, p, 2, 2) + _spliced_reads("a", hap, starts, p, 2, 3)
+    fa, bam = _files(tmp_path, genomic, reads)
+    c = count_both(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 20)
+
+
+@pytest.mark.parametrize("gap", [0, 1])
+def test_a_delins_at_an_exon_start_counts_spliced_reads(tmp_path, gap):
+    """The same `gap` bases after the next exon's first base (acceptor side)."""
+    genomic, mrna = _gene()
+    p_g = EXON + INTRON + gap  # genomic
+    p_m = EXON + gap  # mRNA
+    ref_allele = genomic[p_g : p_g + 2]
+    alt = next(
+        a for a in ("GCC", "TGG", "CAA") if a[0] != ref_allele[0] and a[-1] != ref_allele[-1]
+    )
+    hap = mrna[:p_m] + alt + mrna[p_m + 2 :]
+    starts = range(EXON - 60, EXON - 40)
+    reads = _spliced_reads("r", mrna, starts, p_m, 2, 2) + _spliced_reads(
+        "a", hap, starts, p_m, 2, 3
+    )
+    fa, bam = _files(tmp_path, genomic, reads)
+    c = count_both(bam, [_prepared(fa, ref_allele, alt, pos=p_g)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad) == (20, 20)
+
+
+def test_a_read_spliced_through_the_event_is_depth_only(tmp_path):
+    """REF spanning the exon's last base and the intron's first: a spliced read
+    skips part of the event, so it cannot show either allele."""
+    genomic, mrna = _gene()
+    p = EXON - 1
+    ref_allele = genomic[p : p + 2]
+    alt = next(
+        a for a in ("GCC", "TGG", "CAA") if a[0] != ref_allele[0] and a[-1] != ref_allele[-1]
+    )
+    reads = _spliced_reads("r", mrna, range(EXON - 60, EXON - 40), p, 2, 2)
+    fa, bam = _files(tmp_path, genomic, reads)
+    c = count_both(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
+    _invariants(c)
+    assert (c.rd, c.ad, c.partial_alt) == (0, 0, 0)
