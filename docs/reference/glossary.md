@@ -93,11 +93,12 @@ Status is two fields: `gbcms_status` (verdict `PASS`/`FAIL`) and `gbcms_status_r
 | **UMI** | Unique Molecular Identifier — barcode for molecule-level deduplication |
 | **Genomic binning** | Variant grouping by chromosome for cache-efficient counting (`count_bam_binned`) |
 | **Parity test** | Test verifying `count_bam` and `count_bam_binned` produce identical results |
-| **Complex Del+SNV** | A deletion-format variant (`len(REF) > len(ALT) == 1`) where the anchor base also substitutes (`alt[0] ≠ ref[0]`). Examples: `GC→T`, `AG→T`. Routed to `check_complex` instead of `check_deletion`. |
+| **Complex Del+SNV** | A deletion-format variant (`len(REF) > len(ALT) == 1`) where the anchor base also substitutes (`alt[0] ≠ ref[0]`). Examples: `GC→T`, `AG→T`. Judged by the [exact-carrier rule](allele-classification.md#the-exact-carrier-rule) instead of `check_deletion`. |
 | **has_shifted_same_length** | Flag routing a same-length indel candidate to Phase-3 arbitration (partial evidence propagated on non-ALT). Deletions: a windowed same-length D (≥5bp) whose deleted bases fail the S3 check (BWA left-alignment shifts). Insertions: a windowed same-length I whose inserted bases fail the sequence comparison, or a strict-anchor same-length I whose bases are unverifiable (all below `min_baseq`, or the insert runs past the read end). |
 | **has_wrong_length_nearby** | Flag for a windowed WRONG-length op — a distinct-allele candidate. Set for deletions only when the op is ≥5bp (1–4bp windowed Ds are alignment noise → plain REF); insertions at any size. Resolved without Phase 3: repeat tract → neither + `partial_alt`; unique context → REF + `partial_alt`. |
 | **left-alignment shift** | BWA repositions an indel's anchor to the leftmost equivalent position. For partial-repeat regions, this places the anchor several bases left of where the CIGAR `D` operation appears in reads. |
-| **is_worth_realignment** | Predicate in `check_complex` returning `true` when a read's CIGAR contains indel evidence in the variant window. If `false`, M-block anchor coverage check classifies clean REF reads for deletion-direction variants. |
+| **Exact carrier** | A read whose own bases (soft clips included, bases below `--min-baseq` masked) carry the whole given allele of a complex variant with two reference flank bases each side, read at the event's own position. Only exact carriers count as REF or ALT for delins, Del+SNV and structural MNP reads. See [the exact-carrier rule](allele-classification.md#the-exact-carrier-rule). |
+| **is_worth_realignment** | Predicate in the previous complex classifier (`check_complex`, used only for a variant with no reference holding the event) returning `true` when a read's CIGAR contains indel evidence in the variant window. If `false`, M-block anchor coverage check classifies clean REF reads for deletion-direction variants. |
 
 ## Related
 

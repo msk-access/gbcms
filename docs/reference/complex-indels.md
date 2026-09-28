@@ -17,6 +17,13 @@ Complex indels fall into four categories that require special handling beyond th
 | [Left-alignment shift](#case-3-tp53-12bp-left-alignment-shifted-deletion) | TP53 12bp DEL | BWA anchor 3bp left of CIGAR `D` position → S3 validates wrong bases | `has_shifted_same_length` (del_len ≥ 5) → Phase 3 arbitration |
 | [Wrong-length pure indels](#case-4-wrong-length-pure-indels-distinct-alleles) | Homopolymer 1bp-vs-2bp DEL; repeat-ladder DELs | Every tract-touching indel counted as the annotated event → VAF inflated several-fold | Wrong length → `partial_alt`, never REF/ALT; placement-aware ≥50bp band keeps split representations |
 
+!!! note "Cases 1 and 2 are now judged by the exact-carrier rule"
+    Del+SNV and delins variants no longer go through `check_complex`'s haplotype scoring or its
+    M-block REF fallback. A read is REF or ALT only when its own bases carry that allele across
+    the whole event, read at the event's own position; a large delins is judged at its two
+    junctions. See [the exact-carrier rule](allele-classification.md#the-exact-carrier-rule).
+    The case studies below record why the routing exists and what the earlier fixes found.
+
 ---
 
 ## Case 1: Complex Del+SNV — SOX9 (`GC→T`) { #case-1-complex-delsnv-sox9 }

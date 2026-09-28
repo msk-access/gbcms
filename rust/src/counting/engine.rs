@@ -54,6 +54,7 @@ use super::mfsd;
 use super::rna;
 use super::window;
 use super::observed;
+use super::carrier;
 use crate::shared::baq::apply_heuristic_baq;
 
 
@@ -2811,7 +2812,10 @@ fn sibling_claims_alt(
         return true;
     }
 
-    // Test 3: a sibling that explains the read strictly better claims it.
+    // Test 3: a sibling that explains the read strictly better claims it. One
+    // that explains it exactly, as this row's ALT does (the two alleles differ
+    // only at bases the read has masked), leaves it ambiguous: it is either
+    // allele, so it is neither row's AD.
     for sib in sibling_variants {
         let sib_ctx_end = sib.ref_context_start
             + sib.ref_context.as_ref().map_or(0, |c| c.len() as i64);
@@ -2838,7 +2842,7 @@ fn sibling_claims_alt(
         };
         let own_c = levenshtein(&recon_s, &own_hap_s);
         let sib_c = levenshtein(&recon_s, &sib_hap_s);
-        if sib_c < own_c {
+        if sib_c < own_c || (equal_but_masked(&recon_s, &own_hap_s) && equal_but_masked(&recon_s, &sib_hap_s)) {
             trace!(
                 "AD-claiming guard: ALT for {}>{} at {}:{} (cost {}) claimed by \
                  sibling {}>{} at {}:{} (cost {}) — partial_alt, not ad",
@@ -2851,6 +2855,12 @@ fn sibling_claims_alt(
         }
     }
     false
+}
+
+/// Whether a reconstructed read equals a haplotype base for base, its masked
+/// bases (0, from `mask_low_qual`) matching anything.
+fn equal_but_masked(read: &[u8], hap: &[u8]) -> bool {
+    read.len() == hap.len() && read.iter().zip(hap).all(|(&r, &h)| r == 0 || r.eq_ignore_ascii_case(&h))
 }
 
 /// Minimum soft-clip length for an insertion clip candidate: shorter clips
@@ -2989,6 +2999,11 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     if ref_len == 1 && alt_len == 1 {
         // SNP: single base substitution — no Phase 3 needed
         check_snp(record, variant, quals, min_baseq)
+    } else if ref_len == alt_len && carrier::indel_at_block(record, variant) {
+        // An MNP read with an indel in or right beside the block (an aligner may
+        // write a shifted block as an insertion before it and a deletion after):
+        // it counts only if its own bases carry the whole allele (exact-carrier rule).
+        classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     } else if ref_len == alt_len {
         // MNP: selective discriminating-position quality gate with no Phase 3 fallback.
         match check_mnp(record, variant, quals, min_baseq) {
@@ -3032,8 +3047,9 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 ClassifyResult::neither_with_partial(ClassifyPhase::MaskedCompare, partial, had_n)
             }
             MnpResult::Structural => {
-                trace!("MNP structural issue, falling back to Phase 3");
-                check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+                // The read carries an indel or clip at the MNP: it counts only if
+                // its own bases carry the whole allele (exact-carrier rule).
+                classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
             }
         }
     } else if ref_len == 1 {
@@ -3078,18 +3094,43 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         } else {
             // Complex Del+SNV: anchor base also substituted — route to Phase 3
             trace!(
-                "Complex Del+SNV at {}:{} (ref[0]={} ≠ alt[0]={}): routing to check_complex",
+                "Complex Del+SNV at {}:{} (ref[0]={} ≠ alt[0]={}): exact-carrier classification",
                 variant.chrom,
                 variant.pos + 1,
                 variant.ref_allele.chars().next().unwrap_or('?'),
                 variant.alt_allele.chars().next().unwrap_or('?'),
             );
-            check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+            classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
         }
     } else {
-        // Complex: ref_len != alt_len, both > 1 (e.g., DelIns)
-        check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        // Complex: ref_len != alt_len, both > 1 (e.g., DelIns).
+        classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     }
+}
+
+/// A complex variant (delins, a deletion whose anchor also changes, or an MNP
+/// read carrying an indel) counts a read only when the read's own bases carry
+/// the whole allele: the exact-carrier rule (`carrier`). A variant the rule
+/// cannot judge (built without prep, or its reference fetch failed) goes to the
+/// previous classifier, whose SW_FALLBACK flag keeps that case visible.
+#[allow(clippy::too_many_arguments)]
+fn classify_complex<F: Fn(u8, u8) -> i32>(
+    record: &Record,
+    variant: &Variant,
+    siblings: &[Variant],
+    quals: &[u8],
+    min_baseq: u8,
+    alt_aligner: &mut Aligner<F>,
+    ref_aligner: &mut Aligner<F>,
+    backend: &AlignmentBackend,
+) -> ClassifyResult {
+    carrier::classify(record, variant, quals, min_baseq).unwrap_or_else(|| {
+        trace!(
+            "{}:{} {}>{}: no reference holds the event, previous complex classifier",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+        );
+        check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+    })
 }
 
 
