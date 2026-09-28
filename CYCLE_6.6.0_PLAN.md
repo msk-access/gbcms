@@ -584,6 +584,23 @@ same libraries recaptured on WES by TEMPO (bwa, no indel realignment):
 - *Regression:* RC set, only complex rows (and their grouped rows) move; FORTE
   unchanged (RNA off); run time within noise.
 
+**Implemented and accepted (2026-09-28, `feature/c12-clip-carriers`; aggregates).**
+- 40 paired loci (signed-out IMPACT complex variants; the same libraries on TEMPO
+  WES): WES − IMPACT VAF median −0.021 → −0.009, mean −0.043 → −0.018. Long
+  deletions return on WES (79>4: 0 → 139 ALT reads, VAF 0 → 0.174; 106>7: 0 → 12;
+  68>3: 0 → 3); IMPACT unchanged there.
+- Every admitted read is ALT (none REF on these loci). An independent anchored
+  check (the read's own bases from the aligned edge of the tract ±2 into its clip)
+  confirms 233 on IMPACT and 365 on WES; the rest are reads that cannot hold the
+  check's longer stretch, and one WES read differs one base beyond the 2-base flank.
+- A defect the first run exposed, fixed red-first: unclipped REF reads starting
+  inside a long deletion were admitted (IMPACT VAF fell 0.324 → 0.213 at 79>4).
+  Admission now requires a window that reads the read's clipped bases.
+- RC set (28 DNA runs): 11 of ~1,060 rows move, 10 MNP (clipped carriers at the
+  block, +1 to +10 ALT) and 1 complex; no SNV or indel row. An independent count of
+  exact clipped carriers is never below C12's change (C12 admits fewer where
+  windows run past the fragment end: adapter).
+
 **Decisions (2026-09-28, operator): as proposed.** (a) DP gains only decided
 clipped reads; (b) RNA off until measured on FORTE; (c) admitted reads are named in
 the trace log with a per-variant debug count, no new column or flag.
