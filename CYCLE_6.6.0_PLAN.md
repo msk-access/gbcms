@@ -40,7 +40,7 @@ before implementation.
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] | #157 |
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] | #159 |
-| C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [decide] | #167 |
+| C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [decided] | #167 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
@@ -520,7 +520,7 @@ flank, bounded by the matrix cap.
 ## RNA
 
 
-### C12 — Carriers whose allele lies in soft-clipped bases (complex variants) (#167) · H [counts] [decide]
+### C12 — Carriers whose allele lies in soft-clipped bases (complex variants) (#167) · H [counts] [decided]
 **Finding.** A read enters DP, RD and AD only if its *aligned* span covers VCF POS
 (the anchor-overlap gate, both counting loops in `engine.rs`). Aligners soft-clip
 ALT reads whose allele sits within a few bases of a read end; REF reads at the same
@@ -584,10 +584,9 @@ same libraries recaptured on WES by TEMPO (bwa, no indel realignment):
 - *Regression:* RC set, only complex rows (and their grouped rows) move; FORTE
   unchanged (RNA off); run time within noise.
 
-**Decisions for the operator.** (a) DP counts only decided clipped reads (proposed)
-or every read whose clip covers the event; (b) RNA off until measured (proposed);
-(c) a per-variant count of admitted clipped reads in the trace/debug log only
-(proposed) or as a `gbcms_diagnostic` flag.
+**Decisions (2026-09-28, operator): as proposed.** (a) DP gains only decided
+clipped reads; (b) RNA off until measured on FORTE; (c) admitted reads are named in
+the trace log with a per-variant debug count, no new column or flag.
 ### R1 — Span-aware exon-edge BAQ rule (#106, 6.5.0 § T9) · L [counts] [decided]
 **Finding.** The exon-edge BAQ exception keys on the variant's first base, so
 a multi-base variant reaching an exon's right edge keeps BAQ. MNP counts move
