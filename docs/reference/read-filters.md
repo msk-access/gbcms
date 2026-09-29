@@ -22,31 +22,35 @@ flowchart LR
         F2{"② Secondary?\n0x100"}:::on
         F3{"③ Supplementary?\n0x800"}:::on
         F4{"④ QC Failed?\n0x200"}:::on
-        F5{"⑤ MAPQ < threshold\n(20 DNA / 1 RNA)"}:::on
         F1 -->|No| F2
         F2 -->|No| F3
         F3 -->|No| F4
-        F4 -->|No| F5
     end
 
     subgraph Opt ["⚙️ Optional (off by default)"]
         direction LR
-        O1{"⑥ Improper pair?\n--filter-improper-pair"}:::off
-        O2{"⑦ Contains indel?\n--filter-indel"}:::off
+        O1{"⑤ Improper pair?\n--filter-improper-pair"}:::off
+        O2{"⑥ Contains indel?\n--filter-indel"}:::off
         O1 -->|No| O2
     end
 
+    S1{"⑦ No bases?\nSEQ '*' (always)"}:::on
+    F5{"⑧ MAPQ < threshold\n(20 DNA / 1 RNA)"}:::on
+
     Start --> F1
-    F5 -->|Pass| O1
-    O2 -->|Pass| Done(["✅ Allele Classifier"]):::pass
+    F4 -->|No| O1
+    O2 -->|No| S1
+    S1 -->|No| F5
+    F5 -->|Pass| Done(["✅ Allele Classifier"]):::pass
 
     F1 -->|Yes| Drop(["❌ Discard"]):::drop
     F2 -->|Yes| Drop
     F3 -->|Yes| Drop
     F4 -->|Yes| Drop
-    F5 -->|Below threshold| Drop
     O1 -->|"Yes (if enabled)"| Drop
     O2 -->|"Yes (if enabled)"| Drop
+    S1 -->|Yes| Drop
+    F5 -->|Below threshold| Drop
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef on fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -58,7 +62,7 @@ flowchart LR
 **Records without bases.** A record stored with no sequence (SEQ `*`) shows no
 allele. Aligners write some secondary alignments this way, and a stripped BAM
 can hold primaries like it. Such a record is always dropped right after the flag
-filters, in every mode and counting path (it is not in the chart). It is counted
+filters (step ⑦), in every mode and counting path. It is counted
 in neither depth, fragments nor `mq0_count`. Each counting pass logs one WARNING
 with the number of bin fetches that skipped one (bin windows overlap, so a record
 can count more than once).
