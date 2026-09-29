@@ -255,7 +255,7 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
 
     | Field | Type | Description |
     |:------|:-----|:------------|
-    | `EBD` | Integer | Distance to nearest annotated exon boundary (`.` when no GTF) |
+    | `EBD` | Integer | Distance from the REF span to the nearest annotated exon boundary, `0` when a boundary lies inside it (`.` when no GTF) |
     | `TXRC` | String | Per-transcript read counts. Format: `ENST:AD,RD,DP\|ENST:AD,RD,DP` |
     | `TXFC` | String | Per-transcript fragment counts. Format: `ENST:ADF,RDF,DPF\|ENST:ADF,RDF,DPF` |
     | `ASJD` | Flag | Allele-Specific Junction Divergence detected |
@@ -546,7 +546,7 @@ These columns are **always** appended regardless of input format.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `exon_boundary_dist` | Integer | Distance (bp) to the nearest annotated exon boundary, exonic and intronic alike (unsigned). `0` = exactly at an exon boundary. Empty when the variant's contig has no annotation in the GTF. |
+| `exon_boundary_dist` | Integer | Distance (bp) from the variant's REF span to the nearest annotated exon boundary, exonic and intronic alike (unsigned): the least distance from any REF base. `0` = a boundary lies inside the REF span. One-base REF (SNV, insertion): the distance from that base. Empty when the variant's contig has no annotation in the GTF. |
 
 #### Per-Transcript Counts
 

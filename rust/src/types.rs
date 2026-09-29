@@ -416,9 +416,10 @@ pub struct BaseCounts {
     pub umi_tagged_reads: u32,
 
     // ── GTF-informed annotation (None when no GTF provided) ──────────────
-    /// Distance (bp) to nearest annotated exon boundary (EBD in VCF).
-    /// None when no GTF is provided. 0 = at boundary. Used for BAQ suppression
-    /// at splice sites. Only populated in RNA mode with `--gtf`.
+    /// Distance (bp) from the variant's REF span to the nearest annotated exon
+    /// boundary (EBD in VCF); 0 when a boundary lies inside the span. None when
+    /// no GTF is provided. Used for BAQ suppression at splice sites. Only
+    /// populated in RNA mode with `--gtf`.
     #[pyo3(get)]
     pub exon_boundary_dist: Option<i32>,
 

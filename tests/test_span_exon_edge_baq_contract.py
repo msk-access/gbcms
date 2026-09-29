@@ -40,8 +40,6 @@ from rna_fixtures import (
 
 from gbcms import _rs as gbcms_rs
 
-RED = pytest.mark.xfail(strict=True, reason="#106: the exon-edge BAQ rule keys on the first base")
-
 DONOR = E1[1]  # E1's right edge (exclusive end): reads spliced here lose DONOR-5..DONOR-1
 MNP4 = DONOR - 7  # 4bp MNP over DONOR-7..DONOR-4: first base 7bp out, last base 4bp
 DNP = DONOR - 6  # 2bp MNP over DONOR-6..DONOR-5: first base 6bp out, last base 5bp
@@ -147,15 +145,7 @@ def _engine(tmp_path, pos, ref, alt, reads):
 
 
 # ── Spliced carriers of an MNP reaching a right exon edge show the haplotype ──
-@pytest.mark.parametrize(
-    "q",
-    [
-        pytest.param(30, marks=RED, id="Q30"),
-        pytest.param(37, marks=RED, id="Q37"),
-        # Q40 - 20 = 20 passes --min-baseq 20: never masked, the guard.
-        pytest.param(40, id="Q40"),
-    ],
-)
+@pytest.mark.parametrize("q", [30, 37, 40])  # Q40 - 20 passes min BQ 20: never masked
 def test_spliced_carriers_of_an_edge_mnp_show_the_whole_haplotype(tmp_path, q):
     ref, alt, change = _mnp(MNP4, 4)
     reads = spliced(_REF, DONOR, 500, 30, "ref") + spliced(
@@ -167,7 +157,6 @@ def test_spliced_carriers_of_an_edge_mnp_show_the_whole_haplotype(tmp_path, q):
 
 
 # ── A spliced read carrying only the edge-side change is not REF ──────────────
-@RED
 def test_spliced_reads_with_only_the_edge_change_are_not_counted_ref(tmp_path):
     """DNP at DONOR-6..DONOR-5; ten spliced reads carry only DONOR-5's change.
     With that base masked they voted REF on DONOR-6; read in full they are
@@ -183,7 +172,6 @@ def test_spliced_reads_with_only_the_edge_change_are_not_counted_ref(tmp_path):
 
 
 # ── --rescue-mnp: one rule for the MNP row and its component re-count ─────────
-@RED
 def test_rescue_keeps_an_edge_mnp_its_spliced_reads_show(tmp_path):
     """Six spliced reads carry the whole DNP; ten unspliced reads carry only
     DONOR-6's change. The BAM shows the annotated haplotype, so rescue keeps it
@@ -204,7 +192,6 @@ def test_rescue_keeps_an_edge_mnp_its_spliced_reads_show(tmp_path):
     assert (int(row["alt_count"]), int(row["partial_alt"])) == (6, 10)
 
 
-@RED
 def test_rescue_counts_an_edge_mnp_and_its_component_under_one_rule(tmp_path):
     """Only DONOR-5's change is carried, by ten spliced reads. The MNP row sees
     them as partial ALT (it counted them REF), so rescue re-counts the
@@ -222,7 +209,6 @@ def test_rescue_counts_an_edge_mnp_and_its_component_under_one_rule(tmp_path):
 
 
 # ── exon_boundary_dist is the span distance ──────────────────────────────────
-@RED
 @pytest.mark.parametrize(
     "shape,pos,ref_end,expected",
     [

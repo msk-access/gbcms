@@ -138,14 +138,16 @@ heuristic BAQ handles overhang misalignment.
 - This mimics GATK SplitNCigarReads' overhang clipping without
   removing bases — a softer approach that preserves information
 
-**Exon-boundary exception (with `--gtf`).** At a variant within 5bp of an
-annotated exon boundary (`exon_boundary_dist`), the penalty would land on
-exactly the reads that splice there, which are the evidence at an exon edge.
-BAQ is therefore skipped for that variant. The main counts, the per-transcript
-counts and ASJD all use this one rule, so at an exon edge a transcript's
-counts match the variant's counts, as they do elsewhere. Away from a boundary,
-BAQ applies in every view. A DEBUG line names each variant form where it is
-skipped.
+**Exon-boundary exception (with `--gtf`).** At a variant whose REF span comes
+within 5bp of an annotated exon boundary (`exon_boundary_dist`), the penalty
+would land on exactly the reads that splice there, which are the evidence at an
+exon edge. BAQ is therefore skipped for that variant. The distance is measured
+from the whole REF span, so an MNP or deletion reaching into an exon's last
+five bases is covered even when its first base is farther out. The main counts,
+the per-transcript counts, ASJD and each `--rescue-mnp` component re-count all
+use this one rule, so at an exon edge a transcript's counts match the variant's
+counts, as they do elsewhere. Away from a boundary, BAQ applies in every view.
+A DEBUG line names each variant form where it is skipped.
 
 **Default behavior:**
 

@@ -96,16 +96,22 @@ flowchart LR
 
 ## Feature 1: Exon Boundary Distance
 
-For each variant, gbcms computes the distance (bp) to the **nearest annotated exon
-boundary** on its contig, across all transcripts. The distance is unsigned: exonic and
-intronic positions both count up from the edge. The contig is matched in any naming
-(`chr1` ~ `1`, `chrM` ~ `MT`).
+For each variant, gbcms computes the distance (bp) from its REF span to the **nearest
+annotated exon boundary** on its contig, across all transcripts: the least distance from
+any REF base, and 0 when a boundary lies inside the span (Ensembl VEP's overlap view).
+For an SNV or an insertion (a one-base REF) it is the distance from that base; for other
+indels the span includes the VCF anchor base. The distance is unsigned: exonic and
+intronic positions both count up from the edge. A boundary is an exon's first base or
+the first intron base after it, so an exon's last base is at distance 1. The contig is
+matched in any naming (`chr1` ~ `1`, `chrM` ~ `MT`).
 
 | Value | Meaning |
 |:------|:--------|
-| N > 0 | Variant is N bases from the nearest exon edge (exonic or intronic side) |
-| 0 | Variant is exactly at an exon boundary |
+| N > 0 | The nearest REF base is N bases from the nearest exon edge (exonic or intronic side) |
+| 0 | A REF base is exactly at an exon boundary, or the REF span crosses one |
 | empty | The variant's contig has no annotation in the GTF |
+
+Before 6.6.0 the distance was measured from the variant's first base only (#106).
 
 **Output column**: `exon_boundary_dist` (MAF)
 

@@ -193,8 +193,12 @@ impl AnnotationIndex {
 
     // ─── Splice Mask ─────────────────────────────────────────────────────────
 
-    /// Distance (bp, unsigned) from `pos` to the nearest known exon boundary
-    /// on `chrom`, exonic and intronic alike.
+    /// Distance (bp, unsigned) from the span `[first, last]` to the nearest
+    /// known exon boundary on `chrom`, exonic and intronic alike: the least
+    /// distance from any base of the span, 0 when a boundary lies inside it
+    /// (Ensembl VEP's overlap view). A one-base span is the distance from that
+    /// base. A boundary is an exon's first base or its exclusive end (the first
+    /// intron base), so an exon's last base is 1bp from its right edge.
     ///
     /// None when the contig has no annotation (not in the GTF, filtered out by
     /// variant-guided streaming, or no exon boundaries after dedup) — never a
@@ -206,8 +210,8 @@ impl AnnotationIndex {
     ///
     /// - `chrom`: contig name in any naming; normalized here like every other
     ///   annotation lookup (`chr1` ~ `1`, `chrM` ~ `M` ~ `MT`).
-    /// - `pos`: 0-based variant position.
-    pub fn nearest_splice_distance(&self, chrom: &str, pos: i64) -> Option<i32> {
+    /// - `first`, `last`: 0-based, inclusive (a variant's REF bases).
+    pub fn nearest_splice_distance(&self, chrom: &str, first: i64, last: i64) -> Option<i32> {
         let key = crate::shared::contig::normalize_contig(chrom);
         let chrom_id = match self.chrom_map.get(&key) {
             Some(id) => *id,
@@ -225,27 +229,14 @@ impl AnnotationIndex {
             _ => return None,
         };
 
-        let pos_i32 = pos as i32;
-
-        // Binary search for the insertion point
-        Some(match sites.binary_search(&pos_i32) {
-            Ok(_) => 0, // Exact match — variant is AT an exon boundary
-            Err(idx) => {
-                // Check distance to neighbors on both sides
-                let dist_left = if idx > 0 {
-                    (pos_i32 - sites[idx - 1]).abs()
-                } else {
-                    i32::MAX
-                };
-                let dist_right = if idx < sites.len() {
-                    (pos_i32 - sites[idx]).abs()
-                } else {
-                    i32::MAX
-                };
-                // `sites` is non-empty, so at least one neighbor exists.
-                dist_left.min(dist_right)
-            }
-        })
+        let first = first as i32;
+        let last = (last as i32).max(first);
+        let idx = sites.partition_point(|&s| s < first);
+        // The first boundary at or after `first` (0 when inside the span), and
+        // the last one before it. `sites` is non-empty, so one of them exists.
+        let right = sites.get(idx).map(|&s| (s - last).max(0));
+        let left = idx.checked_sub(1).map(|j| first - sites[j]);
+        right.into_iter().chain(left).min()
     }
 
     /// Whether an annotated intron boundary (a true donor/acceptor site —
@@ -551,31 +542,45 @@ mod tests {
     #[test]
     fn test_at_exon_boundary() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("1", 100), Some(0));
-        assert_eq!(idx.nearest_splice_distance("1", 200), Some(0));
-        assert_eq!(idx.nearest_splice_distance("1", 300), Some(0));
-        assert_eq!(idx.nearest_splice_distance("1", 400), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 100, 100), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 200, 200), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 300, 300), Some(0));
+        assert_eq!(idx.nearest_splice_distance("1", 400, 400), Some(0));
     }
 
     #[test]
     fn test_near_boundary() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("1", 197), Some(3));
-        assert_eq!(idx.nearest_splice_distance("1", 203), Some(3));
-        assert_eq!(idx.nearest_splice_distance("1", 298), Some(2));
+        assert_eq!(idx.nearest_splice_distance("1", 197, 197), Some(3));
+        assert_eq!(idx.nearest_splice_distance("1", 203, 203), Some(3));
+        assert_eq!(idx.nearest_splice_distance("1", 298, 298), Some(2));
     }
 
     #[test]
     fn test_mid_exon() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("1", 150), Some(50));
-        assert_eq!(idx.nearest_splice_distance("1", 350), Some(50));
+        assert_eq!(idx.nearest_splice_distance("1", 150, 150), Some(50));
+        assert_eq!(idx.nearest_splice_distance("1", 350, 350), Some(50));
+    }
+
+    #[test]
+    fn test_span_distance() {
+        // Sites 100, 200, 300, 400: a span is as far as its nearest base, and 0
+        // with a boundary inside it.
+        let idx = build_test_index();
+        assert_eq!(idx.nearest_splice_distance("1", 193, 196), Some(4), "ends 4bp short of a right edge");
+        assert_eq!(idx.nearest_splice_distance("1", 190, 205), Some(0), "crosses a right edge");
+        assert_eq!(idx.nearest_splice_distance("1", 290, 300), Some(0), "ends on a left edge");
+        assert_eq!(idx.nearest_splice_distance("1", 304, 305), Some(4), "starts 4bp into an exon");
+        assert_eq!(idx.nearest_splice_distance("1", 230, 260), Some(30), "mid-intron: the nearer end");
+        assert_eq!(idx.nearest_splice_distance("1", 20, 30), Some(70), "before the first site");
+        assert_eq!(idx.nearest_splice_distance("1", 450, 460), Some(50), "after the last site");
     }
 
     #[test]
     fn test_unknown_chrom() {
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("X", 100), None, "no sentinel distance");
+        assert_eq!(idx.nearest_splice_distance("X", 100, 100), None, "no sentinel distance");
     }
 
     #[test]
@@ -584,14 +589,14 @@ mod tests {
         // normalize_contig); callers pass the input's contig, so a chr-named or
         // chrM-named variant must still find its annotation.
         let idx = build_test_index();
-        assert_eq!(idx.nearest_splice_distance("chr1", 298), Some(2));
+        assert_eq!(idx.nearest_splice_distance("chr1", 298, 298), Some(2));
         let mut chrom_map = HashMap::new();
         chrom_map.insert("MT".to_string(), 0u32);
         let mut splice_sites = HashMap::new();
         splice_sites.insert(0u32, vec![100i32, 200]);
         let mt = AnnotationIndex::new(HashMap::new(), vec![], splice_sites, HashMap::new(), chrom_map);
         for name in ["chrM", "M", "MT", "chrMT"] {
-            assert_eq!(mt.nearest_splice_distance(name, 198), Some(2), "{name}");
+            assert_eq!(mt.nearest_splice_distance(name, 198, 198), Some(2), "{name}");
         }
     }
 
