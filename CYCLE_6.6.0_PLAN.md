@@ -630,6 +630,45 @@ designed; affected sign-out rows adjudicated read by read.
 
 **Decision (2026-09-25, operator).** Span-based distance (option A), VEP-style: 0 when a boundary lies inside the REF span. `exon_boundary_dist` takes the same definition, and the change is documented as a column change. Evidence on #106: 41% of signed-out indels change distance, and 1 of the 94 RNA truth rows crosses the 5bp window.
 
+**As built (2026-09-29).**
+- `nearest_splice_distance(chrom, first, last)` returns the least distance from
+  any base of the span, 0 when a boundary lies inside it. The engine measures the
+  prepared variant's REF, which is left-aligned, and a pure deletion's REF starts
+  at its anchor base. BAQ and `exon_boundary_dist` both use this value.
+- The adversarial review found that a `--rescue-mnp` component re-count resolved
+  the rule on its own base. A far component therefore kept BAQ while the row
+  skipped it, and a rescued row reported the component's distance. Now each
+  component is counted over its MNP's span (`Variant.boundary_span`).
+- Left edges need no guard: the span distance covers a span that starts in the
+  intron and reaches an exon's first bases.
+
+**Measured (2026-09-29).** All runs were local, one BAM at a time, develop vs the
+branch. Only aggregates are recorded here.
+- **FORTE truth cohort** (33 samples, 94 rows): all 68 SNV rows are
+  byte-identical. The column changes on 8 multi-base rows, and 1 row flips the
+  window with unchanged counts. No count changes.
+- **T9 exon-edge probes** (326 probes × 3 samples):
+  - 139 MNP rows move, all where the window flips (none elsewhere). No deletion
+    moves.
+  - Summed changes: RD +489, partial +6, AD −2; depth unchanged.
+  - Per read: in 135 of 139 rows, the change equals what the reads' own bases
+    predict, read at sequencer quality vs under emulated BAQ. In the other 4 the
+    census tally is off by one read. Every read gbcms re-called there was
+    inspected, and each new call is what its own bases say:
+    - mostly low quality → REF: under BAQ, the only readable base (a Q24 REF base
+      4bp from the junction) fell to Q4;
+    - one REF → neither: a Q24 third-allele base that BAQ had hidden.
+- **Column:** 978 of 978 probe rows equal an independent span distance of the
+  engine-normalized variant. 61 probe deletions are left-aligned by prep.
+- **`--rescue-mnp` on the probes:** 4 of 243 MNP rows change outcome.
+  - 1 goes from rescued to `haplotype_confirmed`: once the edge base is read, a
+    read shows the whole MNP.
+  - 3 are newly rescued on one-read components, which is rescue's existing
+    behaviour once the edge base is read.
+- **Final code:** byte-identical to the first fix on all 36 RNA inputs at
+  defaults.
+- **DNA** (28 runs, 1,060 rows): byte-identical.
+
 ### R2 — RNA strandedness gating observability (#114) · M [decided]
 **Finding.** At RNA defaults (strandedness enforced), antisense reads are
 filtered before the sense/antisense tally. So `rna_antisense_depth` is always
@@ -994,15 +1033,17 @@ hid the RNA exon-edge collapse.
 
 ## Suggested order
 
-Refreshed 2026-09-28; C1, C2, C10, C12 and O4 are done.
+Refreshed 2026-09-29; C1, C2, C10, C12 and O4 are done.
 1. **Done:** C13 (#166, PR #169).
-2. **This list and the validation standard** (CONTINUITY, plan).
+2. **Done:** this list, the validation standard and the BAM-caveats reference
+   (PR #175).
 3. **Counting correctness:** R1 (#106, next to C13), C14 (#172), R2 (#114), then C4
    (#142), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
-   decomposition cluster); C15 (#173); C5 (#120), C6 (#143, reconciled with "count
-   the given allele"), C7 (#144); C16 (#174).
+   decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C5 (#120), C6 (#143,
+   reconciled with "count the given allele"), C7 (#144); C16 (#174); R3 (#178).
 4. **Test architecture, decided holistically:** T1 (#170) with T2 (#171).
-5. **Hardening:** I1–I5, M1, M2, O1–O3, H1, H2.
+5. **Hardening:** I1–I5, M1, M2, O1–O3, H1, H2; O5 (#179) and O6 (#180), each
+   measured and surveyed first.
 6. **Performance and statistics:** P1–P3, S1, S2.
 7. **Validation and release:** D5 (#155) with its arms, D1, D2, D4, D6, then D3.
 

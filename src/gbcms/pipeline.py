@@ -1078,7 +1078,19 @@ class Pipeline:
             self.config.threads,
             self.config.quality.adaptive_context,
         )
-        valid = [sp for sp in snv_prepared if sp.gbcms_status == "PASS"]
+        # Each component is counted under its MNP row's exon-edge rule: the
+        # boundary distance is measured over the MNP's REF span, so an adopted
+        # component's counts and exon_boundary_dist are the row's.
+        spans: list[tuple[int, int]] = []
+        for i, positions in candidates:
+            mnp = prepared[i].variant
+            spans += [(mnp.pos, mnp.pos + len(mnp.ref_allele) - 1)] * len(positions)
+        valid = []
+        for sp, span in zip(snv_prepared, spans, strict=True):
+            if sp.gbcms_status == "PASS":
+                v = sp.variant  # a copy: set the span on it, then count it
+                v.boundary_span = span
+                valid.append(v)
         for sp in snv_prepared:
             if sp.gbcms_status != "PASS":
                 logger.warning(
@@ -1094,7 +1106,7 @@ class Pipeline:
         counted = iter(
             rs.count_bam_binned(
                 str(bam_path),
-                [sp.variant for sp in valid],
+                valid,
                 [None] * len(valid),
                 sibling_variants=[[] for _ in valid],
                 **self._engine_kwargs(),

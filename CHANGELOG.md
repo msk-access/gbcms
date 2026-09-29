@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the exon-edge BAQ rule and `exon_boundary_dist` measure from the REF span (#106)
+
+- `exon_boundary_dist` (VCF `EBD`) is now the distance from the nearest annotated
+  exon boundary to any base of the variant's REF span, and `0` when a boundary lies
+  inside the span (as in Ensembl VEP's overlap test). It was measured from the first
+  base only. The span is the normalized (left-aligned, VCF-style) REF: SNVs and
+  insertions (a one-base REF) are unchanged, and a pure deletion's span starts at
+  its anchor base (VEP drops the anchor, so its distance to a boundary on the left
+  is one more). This is a column change for multi-base variants: the distance is
+  smaller for about 4 in 10 signed-out multi-base variants and indels.
+- RNA mode with `--gtf`: the BAQ exception at exon edges uses the same distance, so
+  a multi-base variant reaching into an exon's last five bases skips BAQ, as an SNV
+  there does. The main counts, per-transcript counts, ASJD and each `--rescue-mnp`
+  component re-count resolve the rule the same way: a component is counted over
+  its MNP's span, and a rescued row reports the MNP's distance (it reported the
+  adopted component's).
+  - Why: heuristic BAQ lowers the five bases before every splice junction, below
+    `--min-baseq` at Q30 or Q37. An MNP starting more than 5bp from a right exon
+    edge but reaching into those bases lost its edge-side bases in every spliced
+    read. So no spliced carrier showed the whole MNP (`--rescue-mnp` then adopted a
+    component where the reads show the annotated haplotype), and a spliced read
+    carrying only the edge-side change voted REF on its other bases.
+  - Counts change only for multi-base variants that reach within 5bp of an edge
+    while their first base does not. DNA is unaffected (no GTF).
+
 ### Changed — a row counts the given allele; the homopolymer twin is opt-in (#163)
 
 - The homopolymer twin is no longer dual-counted by default. It was the corrected

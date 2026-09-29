@@ -48,12 +48,20 @@ pub struct Variant {
     /// observed-allele diagnostic reads them.
     #[pyo3(get, set)]
     pub event_ref: Option<(i64, String)>,
+
+    /// The 0-based inclusive reference span the exon-boundary distance (the
+    /// `exon_boundary_dist` column, and so the RNA BAQ rule) is measured over.
+    /// None: the variant's own REF span. MNP rescue sets it on each component it
+    /// re-counts to the MNP's span, so the component is counted under the MNP
+    /// row's rule and reports the row's distance.
+    #[pyo3(get, set)]
+    pub boundary_span: Option<(i64, i64)>,
 }
 
 #[pymethods]
 impl Variant {
     #[new]
-    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0, gene_strand=None, shift_region=None, event_ref=None))]
+    #[pyo3(signature = (chrom, pos, ref_allele, alt_allele, variant_type, ref_context=None, ref_context_start=0, repeat_span=0, gene_strand=None, shift_region=None, event_ref=None, boundary_span=None))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         chrom: String,
@@ -67,6 +75,7 @@ impl Variant {
         gene_strand: Option<char>,
         shift_region: Option<(i64, i64)>,
         event_ref: Option<(i64, String)>,
+        boundary_span: Option<(i64, i64)>,
     ) -> Self {
         Variant {
             chrom,
@@ -80,6 +89,7 @@ impl Variant {
             gene_strand,
             shift_region,
             event_ref,
+            boundary_span,
         }
     }
 }
@@ -416,9 +426,10 @@ pub struct BaseCounts {
     pub umi_tagged_reads: u32,
 
     // ── GTF-informed annotation (None when no GTF provided) ──────────────
-    /// Distance (bp) to nearest annotated exon boundary (EBD in VCF).
-    /// None when no GTF is provided. 0 = at boundary. Used for BAQ suppression
-    /// at splice sites. Only populated in RNA mode with `--gtf`.
+    /// Distance (bp) from the variant's REF span to the nearest annotated exon
+    /// boundary (EBD in VCF); 0 when a boundary lies inside the span. None when
+    /// no GTF is provided. Used for BAQ suppression at splice sites. Only
+    /// populated in RNA mode with `--gtf`.
     #[pyo3(get)]
     pub exon_boundary_dist: Option<i32>,
 

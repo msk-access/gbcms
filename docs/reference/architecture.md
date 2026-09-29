@@ -340,7 +340,9 @@ typically SNVs on different molecules (trans, separate subclones, or a merged-SN
 annotation). The MNP check correctly reports such a haplotype as absent: each carrier
 matches ALT at some discriminating positions and REF at others, so it lands in
 `partial_alt`. Rescue re-counts every discriminating position as an SNV and reports the
-best-supported component.
+best-supported component. In RNA mode with `--gtf`, each component is counted over its
+MNP's REF span for the exon-edge BAQ rule, so the components and the MNP row are counted
+under one rule and a rescued row reports the MNP's `exon_boundary_dist`.
 
 ### Why Python, Not Rust?
 

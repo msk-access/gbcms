@@ -1411,7 +1411,7 @@ fn count_bin_shared(
         // same read cache — no additional BAM I/O.
         if let Some(ref annot) = *annotation {
             // The main counts' BAQ rule on the main counts' own distance (a
-            // decomposed form keeps the variant's contig and position).
+            // decomposed form keeps the variant's contig, position and REF).
             let use_baq = baq_applies(apply_baq, final_counts.exon_boundary_dist);
             let (read_cts, frag_cts) = count_per_transcript(
                 &read_cache, variant, siblings, annot,
@@ -1574,10 +1574,16 @@ fn count_variant_from_cache(
     let mut counts = BaseCounts::default();
 
     // ── Compute exon boundary distance (GTF-informed) ──
-    // Set once per variant, not per read. Used for BAQ suppression
-    // and as an output column. None when no GTF is provided.
+    // Set once per variant, not per read: the least distance from any base of the
+    // variant's REF span (or the span it was given, `boundary_span`), 0 when a
+    // boundary lies inside it, so an MNP reaching into an exon's last bases is as
+    // close as its nearest base. Used for BAQ suppression and as an output column.
+    // None when no GTF is provided.
+    let (span_first, span_last) = variant.boundary_span.unwrap_or_else(|| {
+        (variant.pos, variant.pos + variant.ref_allele.len().max(1) as i64 - 1)
+    });
     let exon_boundary_dist: Option<i32> = annotation.as_ref().and_then(|annot| {
-        annot.nearest_splice_distance(&variant.chrom, variant.pos)
+        annot.nearest_splice_distance(&variant.chrom, span_first, span_last)
     });
     counts.exon_boundary_dist = exon_boundary_dist;
 
@@ -1595,8 +1601,9 @@ fn count_variant_from_cache(
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
     if apply_baq && !use_baq {
         debug!(
-            "BAQ skipped at {}:{}: {}bp from an annotated exon boundary",
-            variant.chrom, variant.pos + 1, exon_boundary_dist.unwrap_or_default(),
+            "BAQ skipped at {}:{} {}>{}: bases {}-{} are {}bp from an annotated exon boundary",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+            span_first + 1, span_last + 1, exon_boundary_dist.unwrap_or_default(),
         );
     }
 
@@ -3564,16 +3571,12 @@ impl JunctionTally {
 /// anchoring test so the two cannot disagree about what "annotated" means.
 const JUNCTION_TOLERANCE: i32 = 5;
 
-/// Heuristic BAQ is skipped at variants within this distance (bp) of an
-/// annotated exon boundary: its CIGAR-N penalty would land on exactly the
-/// reads that splice there, which are the evidence at an exon edge.
+/// Heuristic BAQ is skipped at variants whose REF span comes within this
+/// distance (bp) of an annotated exon boundary: its CIGAR-N penalty would land
+/// on exactly the reads that splice there, which are the evidence at an exon
+/// edge.
 const BAQ_BOUNDARY_SUPPRESS_BP: i32 = 5;
 
-/// Whether heuristic BAQ applies at a variant. The one rule every view that
-/// classifies alleles uses (main counts, per-transcript counts, ASJD), so a
-/// transcript's counts decompose the main counts: BAQ was requested, and the
-/// variant is not within `BAQ_BOUNDARY_SUPPRESS_BP` of an annotated exon
-/// boundary (`exon_boundary_dist`; None without a GTF).
 /// The span whose read indels BAQ spares for `v`: the variant's own event (grown
 /// through repeats, or its discrimination window without a reference) plus two
 /// flank bases. None for an SNV, whose reads' indels are never its evidence.
@@ -3585,6 +3588,11 @@ fn baq_own_span(v: &Variant) -> Option<(i64, i64)> {
     Some((lo - 2, hi + 2))
 }
 
+/// Whether heuristic BAQ applies at a variant. The one rule every view that
+/// classifies alleles uses (main counts, per-transcript counts, ASJD), so a
+/// transcript's counts decompose the main counts: BAQ was requested, and no base
+/// of the variant's REF span is within `BAQ_BOUNDARY_SUPPRESS_BP` of an annotated
+/// exon boundary (`exon_boundary_dist`; None without a GTF).
 fn baq_applies(apply_baq: bool, exon_boundary_dist: Option<i32>) -> bool {
     apply_baq && !matches!(exon_boundary_dist, Some(d) if d <= BAQ_BOUNDARY_SUPPRESS_BP)
 }
@@ -4243,6 +4251,7 @@ mod tests {
             gene_strand: None,
             shift_region: None,
             event_ref: None,
+            boundary_span: None,
         }
     }
 
@@ -4914,6 +4923,7 @@ mod tests {
             gene_strand: None,
             shift_region: None,
             event_ref: None,
+            boundary_span: None,
         }
     }
 

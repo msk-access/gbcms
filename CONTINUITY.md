@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-28_
+_Last updated: 2026-09-29_
 
 ## Now
 **6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
@@ -17,19 +17,37 @@ every item a sub-issue). Merged to develop so far:
   multi-allelic exact ties).
 - #168 C12: carriers whose allele lies in soft-clipped bases (complex/MNP, DNA).
 - #169 C13 (#166): BAQ spares the variant's own indel evidence.
+- #175 pending list, validation standard, the genotyper principle, and the
+  BAM-caveats reference (`docs/reference/bam-evidence-caveats.md`).
+
+**In review: R1 #106** on `feature/r1-span-aware-exon-edge-baq`. The exon-edge
+BAQ rule and `exon_boundary_dist` now measure from the REF span, and
+`--rescue-mnp` components are counted over their MNP's span. Red battery first,
+then the fix, then the review follow-up. Acceptance:
+- FORTE truth cohort: 0 count changes.
+- T9 probes: only MNPs on a window flip move, and each change is adjudicated per
+  read.
+- DNA and the final code: byte-identical.
+
+Numbers are in the plan's R1 entry. The harness is local:
+`~/test/gbcms/harness/r1/`.
 
 **Validation standard** (adopted 2026-09-28): gbcms is a genotyper, not a caller;
 every count-affecting change is accepted per read, against the reads' own bases, on
 a matrix of data types (synthetic, realigned panel DNA, DNA without realignment,
 RNA, public reference data), not one assay. See the plan's "Validation standard".
+Where the right behaviour is unknown, measure it on that matrix and survey
+community practice before deciding; record the decision in the issue.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. R1 #106 (span-aware exon-edge BAQ), C14 #172 (records without bases), R2 #114.
+1. R1 #106 (in review: PR to develop), C14 #172 (records without bases), R2 #114.
 2. C4 #142, C8 #121, C9 #122; C11 #159 (measure first); C3 + M3 + #145.
-3. C15 #173 (C12 in RNA; clipped pure deletions), C5 #120, C6 #143, C7 #144, C16 #174.
+3. C15 #173 (C12 in RNA; clipped pure deletions), C17 #176 (read-through mask),
+   C18 #177 (split reads), C5 #120, C6 #143, C7 #144, C16 #174, R3 #178 (RNA editing).
 4. T1 #170 + T2 #171: decide the legacy path holistically (retire or unify; a
    read-census oracle in tests).
-5. Hardening (I1–I5, M1, M2, O1–O3, H1, H2), then P/S items.
+5. Hardening (I1–I5, M1, M2, O1–O3, H1, H2; O5 #179, O6 #180 measured first),
+   then P/S items.
 6. D5 #155 with RNA, WES/WGS and GIAB arms; D1, D2, D4, D6; D3.
 
 

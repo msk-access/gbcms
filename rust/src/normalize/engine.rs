@@ -613,6 +613,7 @@ fn prepare_single_variant(
                 gene_strand: None,
                 shift_region: None,
                 event_ref: None,
+                boundary_span: None,
             },
             gbcms_status: verdict,
             gbcms_status_reason: reason,
@@ -650,6 +651,7 @@ fn prepare_single_variant(
                 gene_strand: None,
                 shift_region: None,
                 event_ref: None,
+                boundary_span: None,
             },
             gbcms_status: "FAIL".to_string(),
             gbcms_status_reason: "ALT_CONTAINS_N".to_string(),
@@ -855,6 +857,7 @@ fn prepare_single_variant(
                     gene_strand: None,
                     shift_region: None,
                     event_ref: None,
+                    boundary_span: None,
                 }
             })
         })
@@ -891,6 +894,7 @@ fn prepare_single_variant(
         gene_strand: None,
         shift_region,
         event_ref: None,
+        boundary_span: None,
     };
     prepared.event_ref = event_core_ref(reader, &prepared);
 
