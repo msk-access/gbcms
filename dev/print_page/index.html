@@ -9762,6 +9762,7 @@ Use mouse to pan and zoom
 </tbody>
 </table>
 <p>The effective aggressiveness of <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is controlled by <code>--min-baseq</code> (default 20): a base with BQ 30 near a splice junction becomes BQ 10 after <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>, which is below the default <code>--min-baseq</code> threshold and is therefore excluded from allele evidence.</p>
+<p><strong>The variant's own indel is spared.</strong> When the variant being counted is not an SNV, a read's insertion or deletion that touches the variant's own event (where its alleles can differ, grown through repeats, plus two flank bases) is that variant's evidence, not an alignment artifact beside it, so the bases around it are not penalized. Otherwise, at Q37 (NovaSeq 6000 bins, unbinned or recalibrated data) every ALT read of a small insertion or delins would fall below <code>--min-baseq</code> while REF reads, with no indel, kept full quality. Splice junctions, and indels elsewhere in the read (a germline indel beside an SNV), are penalized as before. At Q40 (Q40 − 20 = 20) the difference does not arise.</p>
 <h3 id="reference-read-filters-mode-defaults">Mode Defaults<a class="headerlink" href="#reference-read-filters-mode-defaults" title="Permanent link">¶</a></h3>
 <table>
 <thead>
@@ -16245,6 +16246,11 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   exact-carrier rule decides from its own bases, inside a well-defined fragment
   (past the fragment end a clip is adapter), now counts in <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> and REF/ALT;
   undecided clipped reads stay out. Not in RNA mode (#167).</li>
+<li><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> (the RNA default, and DNA with <code>--apply-baq</code>) no longer penalizes a read's
+  own insertion or deletion when that indel is the variant being counted. At Q37
+  the penalty put every ALT read of a small indel or delins below min BQ while
+  REF reads kept full quality; FORTE's Q40 bins hid it. Splice junctions and
+  indels elsewhere in the read are penalized as before (#166).</li>
 <li>In a multi-allelic group, a read that matches this row's ALT and a sibling's
   ALT exactly (the two differ only at bases the read has masked) is neither
   row's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>: it counts in <code>partial_alt</code>.</li>
