@@ -3,9 +3,37 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-25_
+_Last updated: 2026-09-28_
 
 ## Now
+**6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
+every item a sub-issue). Merged to develop so far:
+- #160 C10 + C2: REF only from informative reads; window-aware sibling REF guard.
+- #161 count-the-given-allele principle (AGENTS.md invariant 7) and the plan.
+- #162 named per-read trace lines (read-level validation).
+- #164 O4: `OBSERVED_ALLELE` / `COEXISTING_ALLELE`; homopolymer twin opt-in.
+- #165 C1: complex variants count exact carriers (anchored windows, repeat
+  growth, equal-length windows, junctions for long events, splice-aware windows,
+  multi-allelic exact ties).
+- #168 C12: carriers whose allele lies in soft-clipped bases (complex/MNP, DNA).
+- #169 C13 (#166): BAQ spares the variant's own indel evidence.
+
+**Validation standard** (adopted 2026-09-28): gbcms is a genotyper, not a caller;
+every count-affecting change is accepted per read, against the reads' own bases, on
+a matrix of data types (synthetic, realigned panel DNA, DNA without realignment,
+RNA, public reference data), not one assay. See the plan's "Validation standard".
+
+## Next (in order; the plan's "Suggested order" is canonical)
+1. R1 #106 (span-aware exon-edge BAQ), C14 #172 (records without bases), R2 #114.
+2. C4 #142, C8 #121, C9 #122; C11 #159 (measure first); C3 + M3 + #145.
+3. C15 #173 (C12 in RNA; clipped pure deletions), C5 #120, C6 #143, C7 #144, C16 #174.
+4. T1 #170 + T2 #171: decide the legacy path holistically (retire or unify; a
+   read-census oracle in tests).
+5. Hardening (I1–I5, M1, M2, O1–O3, H1, H2), then P/S items.
+6. D5 #155 with RNA, WES/WGS and GIAB arms; D1, D2, D4, D6; D3.
+
+
+### Previous: 6.5.0 release
 **6.5.0 is released** (2026-09-25): #118 merged to main, bare tag `6.5.0`, and
 main back-merged into develop. The release workflow publishes to PyPI, GHCR and
 the docs; the GitHub Release page is created by hand (release guide step 9).
