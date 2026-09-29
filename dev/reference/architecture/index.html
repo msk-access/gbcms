@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -1665,7 +1665,9 @@ typically SNVs on different molecules (trans, separate subclones, or a merged-SN
 annotation). The <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> check correctly reports such a haplotype as absent: each carrier
 matches ALT at some discriminating positions and REF at others, so it lands in
 <code>partial_alt</code>. Rescue re-counts every discriminating position as an SNV and reports the
-best-supported component.</p>
+best-supported component. In RNA mode with <code>--gtf</code>, each component is counted over its
+<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s REF span for the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, so the components and the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> row are counted
+under one rule and a rescued row reports the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s <code>exon_boundary_dist</code>.</p>
 <h3 id="why-python-not-rust">Why Python, Not Rust?<a class="headerlink" href="#why-python-not-rust" title="Permanent link">¶</a></h3>
 <p>The original design spec proposed implementing rescue in Rust. The final implementation
 uses <strong>Python orchestration calling the existing Rust counting engine</strong>. This was a
@@ -1988,7 +1990,7 @@ column and the <abbr title="Variant Call Format - Standard variant call file for
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 03:29:54 UTC"><span class="timeago" datetime="2026-09-25T03:29:54+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 03:29:54 UTC">2026-09-25</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 29, 2026 17:40:07 UTC"><span class="timeago" datetime="2026-09-29T17:40:07+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 29, 2026 17:40:07 UTC">2026-09-29</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

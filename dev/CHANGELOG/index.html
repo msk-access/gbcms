@@ -29,7 +29,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -721,6 +721,15 @@
 </a>
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106">
+<span class="md-ellipsis">
+      
+        Changed — the exon-edge BAQ rule and exon_boundary_dist measure from the REF span (#106)
+      
+    </span>
+</a>
+</li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="#changed-a-row-counts-the-given-allele-the-homopolymer-twin-is-opt-in-163">
 <span class="md-ellipsis">
@@ -2425,6 +2434,31 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106">Changed — the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule and <code>exon_boundary_dist</code> measure from the REF span (#106)<a class="headerlink" href="#changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>exon_boundary_dist</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>EBD</code>) is now the distance from the nearest annotated
+  exon boundary to any base of the variant's REF span, and <code>0</code> when a boundary lies
+  inside the span (as in Ensembl VEP's overlap test). It was measured from the first
+  base only. The span is the normalized (left-aligned, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style) REF: SNVs and
+  insertions (a one-base REF) are unchanged, and a pure deletion's span starts at
+  its anchor base (VEP drops the anchor, so its distance to a boundary on the left
+  is one more). This is a column change for multi-base variants: the distance is
+  smaller for about 4 in 10 signed-out multi-base variants and indels.</li>
+<li>RNA mode with <code>--gtf</code>: the <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> exception at exon edges uses the same distance, so
+  a multi-base variant reaching into an exon's last five bases skips <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>, as an SNV
+  there does. The main counts, per-transcript counts, ASJD and each <code>--rescue-mnp</code>
+  component re-count resolve the rule the same way: a component is counted over
+  its <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s span, and a rescued row reports the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s distance (it reported the
+  adopted component's).</li>
+<li>Why: heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> lowers the five bases before every splice junction, below
+    <code>--min-baseq</code> at Q30 or Q37. An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> starting more than 5bp from a right exon
+    edge but reaching into those bases lost its edge-side bases in every spliced
+    read. So no spliced carrier showed the whole <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (<code>--rescue-mnp</code> then adopted a
+    component where the reads show the annotated haplotype), and a spliced read
+    carrying only the edge-side change voted REF on its other bases.</li>
+<li>Counts change only for multi-base variants that reach within 5bp of an edge
+    while their first base does not. DNA is unaffected (no GTF).</li>
+</ul>
 <h3 id="changed-a-row-counts-the-given-allele-the-homopolymer-twin-is-opt-in-163">Changed — a row counts the given allele; the homopolymer twin is opt-in (#163)<a class="headerlink" href="#changed-a-row-counts-the-given-allele-the-homopolymer-twin-is-opt-in-163" title="Permanent link">¶</a></h3>
 <ul>
 <li>The homopolymer twin is no longer dual-counted by default. It was the corrected

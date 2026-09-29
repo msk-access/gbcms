@@ -3846,7 +3846,7 @@ transparently.  See <a href="#cli-dna-required-arguments">CRAM Support</a> for d
 <p class="admonition-title">What <code>--gtf</code> Enables</p>
 <p>When a GTF file is provided, gbcms builds a <code>COITree</code>-based annotation index and adds:</p>
 <ul>
-<li><strong><code>exon_boundary_dist</code></strong> — Distance (bp, unsigned) to the nearest annotated exon boundary; empty when the variant's contig has no annotation in the GTF</li>
+<li><strong><code>exon_boundary_dist</code></strong> — Distance (bp, unsigned) from the variant's REF span to the nearest annotated exon boundary, <code>0</code> when a boundary lies inside it; empty when the variant's contig has no annotation in the GTF</li>
 <li><strong>Per-transcript read/fragment counts</strong> — <code>|</code>-separated <code>GENE:TX:READ_COUNT</code> and <code>GENE:TX:FRAG_COUNT</code> strings</li>
 <li><strong>ASJD detection</strong> — 14 columns for Aberrant Splice Junction Detection, comparing read splice junctions against annotated transcript splice sites</li>
 </ul>
@@ -6478,7 +6478,9 @@ typically SNVs on different molecules (trans, separate subclones, or a merged-SN
 annotation). The <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> check correctly reports such a haplotype as absent: each carrier
 matches ALT at some discriminating positions and REF at others, so it lands in
 <code>partial_alt</code>. Rescue re-counts every discriminating position as an SNV and reports the
-best-supported component.</p>
+best-supported component. In RNA mode with <code>--gtf</code>, each component is counted over its
+<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s REF span for the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule, so the components and the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> row are counted
+under one rule and a rescued row reports the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s <code>exon_boundary_dist</code>.</p>
 <h3 id="reference-architecture-why-python-not-rust">Why Python, Not Rust?<a class="headerlink" href="#reference-architecture-why-python-not-rust" title="Permanent link">¶</a></h3>
 <p>The original design spec proposed implementing rescue in Rust. The final implementation
 uses <strong>Python orchestration calling the existing Rust counting engine</strong>. This was a
@@ -7515,7 +7517,7 @@ writes these records without counting.</p>
 <tr>
 <td style="text-align: left;"><code>EBD</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Distance to nearest annotated exon boundary (<code>.</code> when no GTF)</td>
+<td style="text-align: left;">Distance from the REF span to the nearest annotated exon boundary, <code>0</code> when a boundary lies inside it (<code>.</code> when no GTF)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>TXRC</code></td>
@@ -8258,7 +8260,7 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>exon_boundary_dist</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Distance (bp) to the nearest annotated exon boundary, exonic and intronic alike (unsigned). <code>0</code> = exactly at an exon boundary. Empty when the variant's contig has no annotation in the GTF.</td>
+<td style="text-align: left;">Distance (bp) from the variant's REF span to the nearest annotated exon boundary, exonic and intronic alike (unsigned): the least distance from any REF base. <code>0</code> = a boundary lies inside the REF span. The span is the normalized (left-aligned, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style) REF: one base for an SNV or insertion, and from the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> anchor base for a pure deletion. A rescued <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> row (<code>--rescue-mnp</code>) reports the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s distance. Empty when the variant's contig has no annotation in the GTF.</td>
 </tr>
 </tbody>
 </table>
@@ -9987,14 +9989,16 @@ junction-compatible extraction (tracked in issue #94).</p>
 <li>This mimics GATK SplitNCigarReads' overhang clipping without
   removing bases — a softer approach that preserves information</li>
 </ul>
-<p><strong>Exon-boundary exception (with <code>--gtf</code>).</strong> At a variant within 5bp of an
-annotated exon boundary (<code>exon_boundary_dist</code>), the penalty would land on
-exactly the reads that splice there, which are the evidence at an exon edge.
-<abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is therefore skipped for that variant. The main counts, the per-transcript
-counts and ASJD all use this one rule, so at an exon edge a transcript's
-counts match the variant's counts, as they do elsewhere. Away from a boundary,
-<abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> applies in every view. A DEBUG line names each variant form where it is
-skipped.</p>
+<p><strong>Exon-boundary exception (with <code>--gtf</code>).</strong> At a variant whose REF span comes
+within 5bp of an annotated exon boundary (<code>exon_boundary_dist</code>), the penalty
+would land on exactly the reads that splice there, which are the evidence at an
+exon edge. <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> is therefore skipped for that variant. The distance is measured
+from the whole REF span, so an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> or deletion reaching into an exon's last
+five bases is covered even when its first base is farther out. The main counts,
+the per-transcript counts, ASJD and each <code>--rescue-mnp</code> component re-count all
+use this one rule, so at an exon edge a transcript's counts match the variant's
+counts, as they do elsewhere. Away from a boundary, <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> applies in every view.
+A DEBUG line names each variant form where it is skipped.</p>
 <p><strong>Default behavior:</strong></p>
 <table>
 <thead>
@@ -10303,10 +10307,17 @@ Use mouse to pan and zoom
 </table>
 <hr>
 <h2 id="reference-rna-annotation-feature-1-exon-boundary-distance">Feature 1: Exon Boundary Distance<a class="headerlink" href="#reference-rna-annotation-feature-1-exon-boundary-distance" title="Permanent link">¶</a></h2>
-<p>For each variant, gbcms computes the distance (bp) to the <strong>nearest annotated exon
-boundary</strong> on its contig, across all transcripts. The distance is unsigned: exonic and
-intronic positions both count up from the edge. The contig is matched in any naming
-(<code>chr1</code> ~ <code>1</code>, <code>chrM</code> ~ <code>MT</code>).</p>
+<p>For each variant, gbcms computes the distance (bp) from its REF span to the <strong>nearest
+annotated exon boundary</strong> on its contig, across all transcripts: the least distance from
+any REF base, and 0 when a boundary lies inside the span (as in Ensembl VEP's overlap
+test). The span is the REF as gbcms normalizes it, left-aligned and trimmed as in a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>,
+so it can differ from the row's coordinates. For an SNV or an insertion (a one-base
+REF) it is the distance from that base. A pure deletion's span starts at its <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> anchor
+base, so its distance to a boundary on its left is one less than VEP's, which drops the
+anchor. The distance is unsigned: exonic and intronic positions both count up from the
+edge. A boundary is an exon's first base or
+the first intron base after it, so an exon's last base is at distance 1. The contig is
+matched in any naming (<code>chr1</code> ~ <code>1</code>, <code>chrM</code> ~ <code>MT</code>).</p>
 <table>
 <thead>
 <tr>
@@ -10317,11 +10328,11 @@ intronic positions both count up from the edge. The contig is matched in any nam
 <tbody>
 <tr>
 <td style="text-align: left;">N &gt; 0</td>
-<td style="text-align: left;">Variant is N bases from the nearest exon edge (exonic or intronic side)</td>
+<td style="text-align: left;">The nearest REF base is N bases from the nearest exon edge (exonic or intronic side)</td>
 </tr>
 <tr>
 <td style="text-align: left;">0</td>
-<td style="text-align: left;">Variant is exactly at an exon boundary</td>
+<td style="text-align: left;">A REF base is exactly at an exon boundary, or the REF span crosses one</td>
 </tr>
 <tr>
 <td style="text-align: left;">empty</td>
@@ -10329,6 +10340,7 @@ intronic positions both count up from the edge. The contig is matched in any nam
 </tr>
 </tbody>
 </table>
+<p>Before 6.6.0 the distance was measured from the variant's first base only (#106).</p>
 <p><strong>Output column</strong>: <code>exon_boundary_dist</code> (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>)</p>
 <div class="admonition info">
 <p class="admonition-title">Clinical Relevance</p>
@@ -16624,6 +16636,31 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106">Changed — the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule and <code>exon_boundary_dist</code> measure from the REF span (#106)<a class="headerlink" href="#development-changelog-changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>exon_boundary_dist</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>EBD</code>) is now the distance from the nearest annotated
+  exon boundary to any base of the variant's REF span, and <code>0</code> when a boundary lies
+  inside the span (as in Ensembl VEP's overlap test). It was measured from the first
+  base only. The span is the normalized (left-aligned, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style) REF: SNVs and
+  insertions (a one-base REF) are unchanged, and a pure deletion's span starts at
+  its anchor base (VEP drops the anchor, so its distance to a boundary on the left
+  is one more). This is a column change for multi-base variants: the distance is
+  smaller for about 4 in 10 signed-out multi-base variants and indels.</li>
+<li>RNA mode with <code>--gtf</code>: the <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> exception at exon edges uses the same distance, so
+  a multi-base variant reaching into an exon's last five bases skips <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>, as an SNV
+  there does. The main counts, per-transcript counts, ASJD and each <code>--rescue-mnp</code>
+  component re-count resolve the rule the same way: a component is counted over
+  its <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s span, and a rescued row reports the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s distance (it reported the
+  adopted component's).</li>
+<li>Why: heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> lowers the five bases before every splice junction, below
+    <code>--min-baseq</code> at Q30 or Q37. An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> starting more than 5bp from a right exon
+    edge but reaching into those bases lost its edge-side bases in every spliced
+    read. So no spliced carrier showed the whole <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> (<code>--rescue-mnp</code> then adopted a
+    component where the reads show the annotated haplotype), and a spliced read
+    carrying only the edge-side change voted REF on its other bases.</li>
+<li>Counts change only for multi-base variants that reach within 5bp of an edge
+    while their first base does not. DNA is unaffected (no GTF).</li>
+</ul>
 <h3 id="development-changelog-changed-a-row-counts-the-given-allele-the-homopolymer-twin-is-opt-in-163">Changed — a row counts the given allele; the homopolymer twin is opt-in (#163)<a class="headerlink" href="#development-changelog-changed-a-row-counts-the-given-allele-the-homopolymer-twin-is-opt-in-163" title="Permanent link">¶</a></h3>
 <ul>
 <li>The homopolymer twin is no longer dual-counted by default. It was the corrected
