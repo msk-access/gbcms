@@ -195,7 +195,7 @@ mod tests {
     fn var(ctx: &str, pos: i64, r: &str, a: &str) -> Variant {
         Variant::new(
             "1".into(), pos, r.into(), a.into(), "X".into(),
-            Some(ctx.into()), 0, 0, None, None, None,
+            Some(ctx.into()), 0, 0, None, None, None, None,
         )
     }
 
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn without_context_the_region_is_the_event_itself() {
-        let v = Variant::new("1".into(), 2, "CA".into(), "C".into(), "DELETION".into(), None, 0, 0, None, None, None);
+        let v = Variant::new("1".into(), 2, "CA".into(), "C".into(), "DELETION".into(), None, 0, 0, None, None, None, None);
         assert_eq!(change_interval(&v), (3, 4));
     }
 

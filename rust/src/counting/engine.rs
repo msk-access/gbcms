@@ -1574,13 +1574,16 @@ fn count_variant_from_cache(
     let mut counts = BaseCounts::default();
 
     // ── Compute exon boundary distance (GTF-informed) ──
-    // Set once per variant, not per read: from the variant's REF span, 0 when a
-    // boundary lies inside it, so a multi-base variant reaching an exon edge is
-    // at the edge. Used for BAQ suppression and as an output column. None when
-    // no GTF is provided.
+    // Set once per variant, not per read: the least distance from any base of the
+    // variant's REF span (or the span it was given, `boundary_span`), 0 when a
+    // boundary lies inside it, so an MNP reaching into an exon's last bases is as
+    // close as its nearest base. Used for BAQ suppression and as an output column.
+    // None when no GTF is provided.
+    let (span_first, span_last) = variant.boundary_span.unwrap_or_else(|| {
+        (variant.pos, variant.pos + variant.ref_allele.len().max(1) as i64 - 1)
+    });
     let exon_boundary_dist: Option<i32> = annotation.as_ref().and_then(|annot| {
-        let last = variant.pos + variant.ref_allele.len().max(1) as i64 - 1;
-        annot.nearest_splice_distance(&variant.chrom, variant.pos, last)
+        annot.nearest_splice_distance(&variant.chrom, span_first, span_last)
     });
     counts.exon_boundary_dist = exon_boundary_dist;
 
@@ -1598,8 +1601,9 @@ fn count_variant_from_cache(
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
     if apply_baq && !use_baq {
         debug!(
-            "BAQ skipped at {}:{}: {}bp from an annotated exon boundary",
-            variant.chrom, variant.pos + 1, exon_boundary_dist.unwrap_or_default(),
+            "BAQ skipped at {}:{} {}>{}: bases {}-{} are {}bp from an annotated exon boundary",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+            span_first + 1, span_last + 1, exon_boundary_dist.unwrap_or_default(),
         );
     }
 
@@ -4247,6 +4251,7 @@ mod tests {
             gene_strand: None,
             shift_region: None,
             event_ref: None,
+            boundary_span: None,
         }
     }
 
@@ -4918,6 +4923,7 @@ mod tests {
             gene_strand: None,
             shift_region: None,
             event_ref: None,
+            boundary_span: None,
         }
     }
 

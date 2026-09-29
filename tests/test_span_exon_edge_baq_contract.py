@@ -27,6 +27,7 @@ import pytest
 from helpers import make_read
 from rna_fixtures import (
     E1,
+    E2,
     READ_LEN,
     SENSE,
     mk_ref,
@@ -35,6 +36,7 @@ from rna_fixtures import (
     write_bam,
     write_fasta,
     write_gtf,
+    write_maf,
     write_vcf,
 )
 
@@ -208,12 +210,6 @@ def test_rescue_counts_an_edge_mnp_and_its_component_under_one_rule(tmp_path):
     assert (int(row["ref_count"]), int(row["alt_count"])) == (30, 10)
 
 
-RED_RESCUE = pytest.mark.xfail(
-    strict=True, reason="#106: a rescue component re-count resolves the rule on its own base"
-)
-
-
-@RED_RESCUE
 def test_rescue_counts_a_far_component_under_the_mnps_rule(tmp_path):
     """Ten reads splice at a cryptic donor 3bp before the annotated one and carry
     only DONOR-6's change. The MNP row (span distance 5: no BAQ) holds them as
@@ -231,7 +227,6 @@ def test_rescue_counts_a_far_component_under_the_mnps_rule(tmp_path):
     assert int(row["alt_count"]) == 10
 
 
-@RED_RESCUE
 def test_a_rescued_row_keeps_the_mnps_distance(tmp_path):
     """Unspliced reads carry only DONOR-6's change, and rescue adopts that
     component's counts. The row keeps the MNP's coordinates, so it reports the
@@ -245,21 +240,44 @@ def test_a_rescued_row_keeps_the_mnps_distance(tmp_path):
 
 
 # ── exon_boundary_dist is the span distance ──────────────────────────────────
-@pytest.mark.parametrize(
-    "shape,pos,ref_end,expected",
-    [
-        # 4bp MNP over DONOR-7..DONOR-4: its last base is 4bp from the edge.
-        ("mnp", MNP4, MNP4 + 4, DONOR - (MNP4 + 3)),
-        # A deletion from 10bp inside E1 to 5bp into the intron: a boundary
-        # lies inside its REF span.
-        ("deletion", DONOR - 10, DONOR + 6, 0),
-    ],
-)
-def test_the_distance_is_measured_from_the_ref_span(tmp_path, shape, pos, ref_end, expected):
-    ref = _REF[pos:ref_end]
-    alt = "".join(_other(b) for b in ref) if shape == "mnp" else ref[0]
-    (row,) = _run(tmp_path, [(pos, ref, alt)], spliced(_REF, DONOR, 500, 20, "ref"))
+# (label, first REF base, end of REF, expected distance). A deletion's REF
+# starts at its VCF anchor base; the rest are MNPs changing every base.
+SPANS = [
+    # A 4bp MNP over DONOR-7..DONOR-4: its last base is 4bp from the edge.
+    ("MNP into a right edge", MNP4, MNP4 + 4, DONOR - (MNP4 + 3)),
+    # A deletion from 10bp inside E1 to 5bp into the intron.
+    ("deletion across a right edge", DONOR - 10, DONOR + 6, 0),
+    # A deletion from 8bp inside intron 1 to 3bp into E2.
+    ("deletion across a left edge", E2[0] - 8, E2[0] + 3, 0),
+    # Guard: a span starting 6bp into an exon is 6bp from its left edge.
+    ("MNP inside a left edge", E2[0] + 6, E2[0] + 8, 6),
+]
+
+
+def _span_variant(label, pos, end):
+    ref = _REF[pos:end]
+    alt = ref[0] if label.startswith("deletion") else "".join(_other(b) for b in ref)
+    return pos, ref, alt
+
+
+@pytest.mark.parametrize("label,pos,end,expected", SPANS, ids=[s[0] for s in SPANS])
+def test_the_distance_is_measured_from_the_ref_span(tmp_path, label, pos, end, expected):
+    (row,) = _run(tmp_path, [_span_variant(label, pos, end)], spliced(_REF, DONOR, 500, 20, "ref"))
     assert row["exon_boundary_dist"] == str(expected)
+
+
+def test_maf_input_gives_the_vcf_distance(tmp_path):
+    """The same variants as MAF rows (a deletion's Start is its first deleted
+    base) are prepared to the same REF span, so they report the same distance."""
+    variants = [_span_variant(label, pos, end) for label, pos, end, _ in SPANS]
+    rows = [(p + 1, r, a) for p, r, a in variants]
+    reads = spliced(_REF, DONOR, 500, 20, "ref")
+    common = (write_bam(tmp_path, _REF, reads), write_fasta(tmp_path, _REF), write_gtf(tmp_path))
+    got = [
+        [r["exon_boundary_dist"] for r in run_rna(tmp_path, v, *common, outname=name)]
+        for name, v in (("vcf", write_vcf(tmp_path, rows)), ("maf", write_maf(tmp_path, rows)))
+    ]
+    assert got[0] == got[1] == [str(e) for *_, e in SPANS]
 
 
 def test_one_base_ref_variants_keep_the_first_base_distance(tmp_path):

@@ -15,6 +15,9 @@ class Variant:
     gene_strand: str | None
     shift_region: tuple[int, int] | None
     event_ref: tuple[int, str] | None
+    # 0-based inclusive span the exon-boundary distance is measured over (None:
+    # the variant's own REF span); MNP rescue sets it to the MNP's span.
+    boundary_span: tuple[int, int] | None
     def __init__(
         self,
         chrom: str,
@@ -28,6 +31,7 @@ class Variant:
         gene_strand: str | None = None,
         shift_region: tuple[int, int] | None = None,
         event_ref: tuple[int, str] | None = None,
+        boundary_span: tuple[int, int] | None = None,
     ) -> None: ...
 
 class BaseCounts:

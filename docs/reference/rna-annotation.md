@@ -98,10 +98,13 @@ flowchart LR
 
 For each variant, gbcms computes the distance (bp) from its REF span to the **nearest
 annotated exon boundary** on its contig, across all transcripts: the least distance from
-any REF base, and 0 when a boundary lies inside the span (Ensembl VEP's overlap view).
-For an SNV or an insertion (a one-base REF) it is the distance from that base; for other
-indels the span includes the VCF anchor base. The distance is unsigned: exonic and
-intronic positions both count up from the edge. A boundary is an exon's first base or
+any REF base, and 0 when a boundary lies inside the span (as in Ensembl VEP's overlap
+test). The span is the REF as gbcms normalizes it, left-aligned and trimmed as in a VCF,
+so it can differ from the row's coordinates. For an SNV or an insertion (a one-base
+REF) it is the distance from that base. A pure deletion's span starts at its VCF anchor
+base, so its distance to a boundary on its left is one less than VEP's, which drops the
+anchor. The distance is unsigned: exonic and intronic positions both count up from the
+edge. A boundary is an exon's first base or
 the first intron base after it, so an exon's last base is at distance 1. The contig is
 matched in any naming (`chr1` ~ `1`, `chrM` ~ `MT`).
 

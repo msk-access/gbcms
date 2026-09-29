@@ -546,7 +546,7 @@ These columns are **always** appended regardless of input format.
 
 | Column | Type | Description |
 |:-------|:-----|:------------|
-| `exon_boundary_dist` | Integer | Distance (bp) from the variant's REF span to the nearest annotated exon boundary, exonic and intronic alike (unsigned): the least distance from any REF base. `0` = a boundary lies inside the REF span. One-base REF (SNV, insertion): the distance from that base. Empty when the variant's contig has no annotation in the GTF. |
+| `exon_boundary_dist` | Integer | Distance (bp) from the variant's REF span to the nearest annotated exon boundary, exonic and intronic alike (unsigned): the least distance from any REF base. `0` = a boundary lies inside the REF span. The span is the normalized (left-aligned, VCF-style) REF: one base for an SNV or insertion, and from the VCF anchor base for a pure deletion. A rescued MNP row (`--rescue-mnp`) reports the MNP's distance. Empty when the variant's contig has no annotation in the GTF. |
 
 #### Per-Transcript Counts
 

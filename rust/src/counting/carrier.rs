@@ -639,7 +639,7 @@ mod tests {
     fn var(ctx: &str, pos: i64, r: &str, a: &str) -> Variant {
         Variant::new(
             "1".into(), pos, r.into(), a.into(), "COMPLEX".into(),
-            None, 0, 0, None, None, Some((0, ctx.into())),
+            None, 0, 0, None, None, Some((0, ctx.into())), None,
         )
     }
 
