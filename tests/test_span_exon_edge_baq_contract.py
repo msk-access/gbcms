@@ -208,6 +208,42 @@ def test_rescue_counts_an_edge_mnp_and_its_component_under_one_rule(tmp_path):
     assert (int(row["ref_count"]), int(row["alt_count"])) == (30, 10)
 
 
+RED_RESCUE = pytest.mark.xfail(
+    strict=True, reason="#106: a rescue component re-count resolves the rule on its own base"
+)
+
+
+@RED_RESCUE
+def test_rescue_counts_a_far_component_under_the_mnps_rule(tmp_path):
+    """Ten reads splice at a cryptic donor 3bp before the annotated one and carry
+    only DONOR-6's change. The MNP row (span distance 5: no BAQ) holds them as
+    partial ALT. The DONOR-6 component is re-counted under the MNP row's rule, so
+    it holds the same ten reads (on its own distance, 6, BAQ masked that base in
+    every one of them, and rescue found nothing to adopt)."""
+    ref, alt, change = _mnp(DNP, 2)
+    far_only = _mutate(_REF, {DNP: change[DNP]})
+    reads = spliced(_REF, DONOR, 500, 30, "ref") + spliced(far_only, DONOR - 3, 500, 10, "cryptic")
+    (row,) = _run(tmp_path, [(DNP, ref, alt)], reads, extra=("--rescue-mnp",))
+    audit = _audit(row)
+    assert audit.get("outcome") == "rescued", row["gbcms_rescue"]
+    assert audit["adopted"] == f"chr1:{DNP + 1}({ref[0]}>{alt[0]})"
+    assert audit["original_partial"] == "10"
+    assert int(row["alt_count"]) == 10
+
+
+@RED_RESCUE
+def test_a_rescued_row_keeps_the_mnps_distance(tmp_path):
+    """Unspliced reads carry only DONOR-6's change, and rescue adopts that
+    component's counts. The row keeps the MNP's coordinates, so it reports the
+    MNP's distance (5), not the component's own (6)."""
+    ref, alt, change = _mnp(DNP, 2)
+    far_only = _mutate(_REF, {DNP: change[DNP]})
+    reads = spliced(_REF, DONOR, 500, 30, "ref") + _unspliced(far_only, DNP, 10, "far")
+    (row,) = _run(tmp_path, [(DNP, ref, alt)], reads, extra=("--rescue-mnp",))
+    assert _audit(row).get("outcome") == "rescued", row["gbcms_rescue"]
+    assert row["exon_boundary_dist"] == "5"
+
+
 # ── exon_boundary_dist is the span distance ──────────────────────────────────
 @pytest.mark.parametrize(
     "shape,pos,ref_end,expected",
