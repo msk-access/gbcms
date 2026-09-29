@@ -55,6 +55,12 @@ flowchart LR
     classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 ```
 
+**Records without bases.** A record stored with no sequence (SEQ `*`) shows no
+allele. Aligners write some secondary alignments this way, and a stripped BAM
+can hold primaries like it. Such a record is always dropped after the flag
+filters, in every mode and counting path, and is not counted in depth. A
+WARNING gives the number skipped per BAM.
+
 ---
 
 ## Filter Options

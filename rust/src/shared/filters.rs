@@ -2,7 +2,7 @@
 //!
 //! Provides a `ReadFilter` struct that encapsulates all universal BAM flag
 //! checks (duplicates, secondary, supplementary, QC-failed, improper pair,
-//! indel CIGAR). Mode-specific filtering (RNA NH rescue, MAPQ=0 tracking)
+//! indel CIGAR) and drops records stored without bases. Mode-specific filtering (RNA NH rescue, MAPQ=0 tracking)
 //! remains in the respective module's engine.
 //!
 //! Used by:
@@ -38,13 +38,15 @@ pub struct FilterCounts {
     pub qc_failed: u64,
     pub improper_pair: u64,
     pub indel: u64,
+    /// Records stored without bases (SEQ `*`): always dropped.
+    pub no_bases: u64,
 }
 
 impl FilterCounts {
     /// Total number of reads rejected across all filter categories.
     pub fn total(&self) -> u64 {
         self.duplicates + self.secondary + self.supplementary
-            + self.qc_failed + self.improper_pair + self.indel
+            + self.qc_failed + self.improper_pair + self.indel + self.no_bases
     }
 }
 
@@ -92,6 +94,14 @@ impl ReadFilter {
                 trace!("ReadFilter: rejected read with CIGAR indel");
                 return false;
             }
+        }
+        // A record stored without its bases (SEQ `*`, as aligners write some
+        // secondary alignments) shows no allele, so it is no observation: every
+        // classifier, fragment evidence and BAQ read the sequence and qualities.
+        if record.seq_len() == 0 {
+            counts.no_bases += 1;
+            trace!("ReadFilter: rejected record without bases (SEQ '*')");
+            return false;
         }
         true
     }

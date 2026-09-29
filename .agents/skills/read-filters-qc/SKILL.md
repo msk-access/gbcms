@@ -8,8 +8,9 @@ description: Reference for gbcms read-level (genomic) QC — BAM flag filters (d
 ## Phase 0 universal filters (`shared/filters.rs`)
 
 `ReadFilter::passes()` checks, in order: duplicate → secondary → supplementary →
-qc-failed → improper-pair → indel(CIGAR I/D). Rejections are tallied in
-`FilterCounts` for debug logging.
+qc-failed → improper-pair → indel(CIGAR I/D) → no bases (SEQ `*`, always on).
+Rejections are tallied in `FilterCounts` for debug logging; no-bases records are
+also warned once per BAM.
 
 **Defaults** (CLI): `filter_duplicates`, `filter_secondary`, `filter_supplementary`,
 `filter_qc_failed` = **true**; `filter_improper_pair`, `filter_indel` = **false**.

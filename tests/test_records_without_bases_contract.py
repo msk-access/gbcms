@@ -11,6 +11,8 @@ counts equal those of the same BAM without it.
 Committed red (xfail-strict) before the implementation; flipped green with it.
 """
 
+import logging
+
 import pysam
 import pytest
 from helpers import count_both, make_read
@@ -18,7 +20,7 @@ from test_complex_exact_contract import POS, READ, _files, _prepared, _ref
 
 from gbcms import _rs as gbcms_rs
 
-RED = pytest.mark.xfail(strict=True, reason="#172: a record without bases reaches the classifiers")
+ENGINE_LOGGER = "_rs.counting.engine"
 
 _REF = _ref()
 
@@ -52,11 +54,6 @@ def _no_bases(flag=0, cigar=((0, READ),), name="noseq"):
     return x
 
 
-def _params(red):
-    """Every shape; those in `red` xfail-strict until the fix."""
-    return [pytest.param(k, marks=RED) if k in red else k for k in SHAPES]
-
-
 def _fields(c):
     return (c.dp, c.rd, c.ad, c.dpf, c.rdf, c.adf, c.partial_alt, c.mq0_count)
 
@@ -76,14 +73,14 @@ def _pair(tmp_path, shape, extra, **kw):
 
 
 # SNV: panicked. Insertion, deletion: counted REF and depth from the CIGAR alone.
-@pytest.mark.parametrize("shape", _params({"SNV", "insertion", "deletion"}))
+@pytest.mark.parametrize("shape", list(SHAPES))
 def test_a_primary_record_without_bases_is_not_counted(tmp_path, shape):
     without, with_ = _pair(tmp_path, shape, [_no_bases()])
     assert _fields(with_) == _fields(without)
     assert (with_.rd, with_.ad) == (10, 0)
 
 
-@pytest.mark.parametrize("shape", _params({"SNV"}))
+@pytest.mark.parametrize("shape", list(SHAPES))
 def test_a_secondary_record_without_bases_is_not_counted_when_secondaries_are_kept(tmp_path, shape):
     """With --no-filter-secondary a secondary alignment reaches fragment evidence;
     aligners store secondaries without SEQ."""
@@ -96,7 +93,7 @@ def test_a_secondary_record_without_bases_is_not_counted_when_secondaries_are_ke
     assert _fields(with_) == _fields(without)
 
 
-@pytest.mark.parametrize("shape", _params(set(SHAPES)))
+@pytest.mark.parametrize("shape", list(SHAPES))
 def test_rna_with_baq_skips_a_spliced_record_without_bases(tmp_path, shape):
     """RNA mode with heuristic BAQ (the binned path only): BAQ walks the record's
     qualities at its splice junction."""
@@ -126,3 +123,16 @@ def test_rna_with_baq_skips_a_spliced_record_without_bases(tmp_path, shape):
         )
         counts.append(c)
     assert _fields(counts[1]) == _fields(counts[0])
+
+
+def test_skipped_records_are_warned_once_per_bam(tmp_path, caplog):
+    """Dropping them is said once, above DEBUG: a BAM stripped of its sequences
+    would otherwise count nothing silently."""
+    ref, alt = SHAPES["delins"]
+    fa, bam = _files(tmp_path, _REF, _ref_reads() + [_no_bases(name="a"), _no_bases(name="b")])
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        gbcms_rs.count_bam_binned(
+            bam, [_prepared(fa, ref, alt)], [None], 20, 20, True, True, True, False, False, False, 1
+        )
+    warns = [r.message for r in caplog.records if "without bases" in r.message]
+    assert len(warns) == 1 and "skipped 2 fetched" in warns[0], warns
