@@ -208,6 +208,8 @@ These are not configurable via CLI — they are fixed values derived from Li (20
 
 The effective aggressiveness of BAQ is controlled by `--min-baseq` (default 20): a base with BQ 30 near a splice junction becomes BQ 10 after BAQ, which is below the default `--min-baseq` threshold and is therefore excluded from allele evidence.
 
+**The variant's own indel is spared.** When the variant being counted is not an SNV, a read's insertion or deletion that touches the variant's own event (where its alleles can differ, grown through repeats, plus two flank bases) is that variant's evidence, not an alignment artifact beside it, so the bases around it are not penalized. Otherwise, at Q37 (NovaSeq 6000 bins, unbinned or recalibrated data) every ALT read of a small insertion or delins would fall below `--min-baseq` while REF reads, with no indel, kept full quality. Splice junctions, and indels elsewhere in the read (a germline indel beside an SNV), are penalized as before. At Q40 (Q40 − 20 = 20) the difference does not arise.
+
 ### Mode Defaults
 
 | Mode | Default | CLI Override | Rationale |
