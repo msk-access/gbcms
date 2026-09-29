@@ -906,7 +906,7 @@ class VcfWriter(OutputWriter):
             headers.extend(
                 [
                     '##INFO=<ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand">',
-                    '##INFO=<ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand">',
+                    '##INFO=<ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count">',
                     '##INFO=<ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand">',
                     '##INFO=<ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site (A>G on + strand or T>C on - strand)">',
                     '##INFO=<ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)">',

@@ -136,7 +136,7 @@ self-describing.
     ##INFO=<ID=FSB_PVAL,...>
     ##INFO=<ID=FSB_OR,...>
     ##INFO=<ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand">
-    ##INFO=<ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand">
+    ##INFO=<ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count">
     ##INFO=<ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand">
     ##INFO=<ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site">
     ##INFO=<ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)">
@@ -227,7 +227,7 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `SEN` | Integer | Total reads on the transcript **sense** strand |
-    | `ANT` | Integer | Total reads on the **antisense** strand |
+    | `ANT` | Integer | REF and ALT reads on the **antisense** strand (tallied even when strandedness enforcement excludes them from counts) |
     | `ASEN` | Integer | ALT reads on the sense strand |
     | `SPL` | Integer | ALT reads spanning a splice junction (reads with `N` CIGAR op) |
     | `RED` | Flag | Present when the locus overlaps a known A-to-I RNA editing site (requires `--rna-editing-db`) |
@@ -529,7 +529,7 @@ These columns are **always** appended regardless of input format.
 | Column | Type | Description |
 |:-------|:-----|:------------|
 | `rna_sense_depth` | Integer | REF and ALT reads on the transcript sense strand at this position |
-| `rna_antisense_depth` | Integer | REF and ALT reads on the antisense strand |
+| `rna_antisense_depth` | Integer | REF and ALT reads on the antisense strand. Under `--enforce-strandedness` (the RNA default) these reads are kept out of REF, ALT, depth and every other count, but are still classified and tallied here, so the column is the same with `--no-strandedness`. |
 | `rna_alt_sense_count` | Integer | ALT reads on the sense strand |
 | `rna_editing_site` | Boolean | `True` if the locus overlaps a known A-to-I editing site (requires `--rna-editing-db`) |
 | `rna_splice_spanning` | Integer | ALT reads whose alignment spans a splice junction (`N` CIGAR operation) |
@@ -584,7 +584,7 @@ All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one
 | `LOW_REF_JUNC` | `asjd_n_ref_total < 10` | Insufficient REF baseline |
 | `NOVEL_ALT_JUNC` | ALT dominant junction differs from REF and is unannotated | ALT uses an unannotated junction |
 | `NON_CANONICAL_MOTIF` | ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
-| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. Disabled for `--strandedness unstranded` (no transcript strand). |
+| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. A `--no-strandedness` diagnostic: with strandedness enforced (the RNA default), antisense reads are filtered before the junction tally, so it does not fire. Disabled for `--strandedness unstranded` (no transcript strand). |
 | `MULTI_JUNCTION` | ALT fragments use > 2 distinct junctions | Complex splicing event |
 | `RETENTION_DOMINANT(n)` | Variant's REF span reaches within 2bp of an annotated intron boundary (a donor/acceptor site of a transcript on the variant's gene strand — transcript termini and antisense genes excluded); `n ≥ 10` fragments splice over the locus (CIGAR `N` spans it — excluded as no-observation) and outnumber the allele-classified fragments, which are mostly junction-free | The reads that genotype this locus are the intron-retaining minority: `vaf` is the VAF *within that population*, not allelic balance. An allele-specific retention shows a very high `vaf` here; a neutral splice-site variant shows roughly the allelic fraction of the unspliced reads. Explains `LOW_REF_JUNC;LOW_ALT_JUNC` at such loci — the junction evidence exists but is on the excluded reads. |
 | `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` | Same splice-site gate; the top unannotated junction on the spliced-over fragments is anchored (±5bp) to an annotated intron boundary on the gene strand, is not the deletion itself written as a splice (same length, at the locus), and is carried by `n ≥ 5` fragments — more than confirm ALT | The mutant allele's splicing outcome (an exon skip or alternative-site junction) is visible while `alt_count` is not — typically a splice-destroying variant whose carriers splice around the locus. `start-end` is a 0-based, half-open intron interval (the `asjd_*_junction` convention). |

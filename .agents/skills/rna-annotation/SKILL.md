@@ -39,6 +39,10 @@ Fisher tests see independent observations, not mates. `LOW_*_JUNC` gate on
 ### Gotchas (verify before trusting RNA outputs)
 - `gene_strand` must be populated from the GTF or `is_sense_strand` returns true
   for all reads → `antisense_depth` stays 0 and `enforce_strandedness` is a no-op.
+- Under enforcement an antisense read is classified, tallied in `antisense_depth`
+  (first-class REF/ALT over the anchor, as the sense tally), then dropped before any
+  count (`antisense_excluded` in the per-read trace). `STRAND_DISCORDANT` only fires
+  with `--no-strandedness`: enforced antisense reads never reach the junction tally.
 - Library strand protocol is selectable via `--strandedness` (`reverse` default /
   `forward` / `unstranded`); the read→transcript fold lives in
   `rna.rs::read_transcript_strand(record, Strandedness)`. `reverse` = dUTP/`-s 2`

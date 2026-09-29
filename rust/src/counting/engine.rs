@@ -1718,10 +1718,15 @@ fn count_variant_from_cache(
             counts.mq0_count += 1;
         }
 
-        // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
-        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness) {
-            continue;
-        }
+        // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs.
+        // An antisense read under enforcement counts nowhere, but it is classified
+        // below as a sense read would be and tallied in rna_antisense_depth when it
+        // is a first-class REF or ALT read over the anchor, then dropped (as
+        // mq0_count counts reads the MAPQ skip drops). The column then means the
+        // same with and without enforcement.
+        let antisense_excluded = mode == "rna"
+            && enforce_strandedness
+            && !rna::is_sense_strand(record, variant.gene_strand, strandedness);
 
         // ── MAPQ SKIP (Phase 1): MAPQ=0 reads were kept in the cache
         // specifically for MQ0 tracking above. Now skip them for
@@ -1765,13 +1770,13 @@ fn count_variant_from_cache(
         // gate below, which is span-based (read_ref_end includes N) and
         // would otherwise admit these reads.
         if !result.covers_locus {
-            counts.splice_skip_excluded += 1;
+            if !antisense_excluded {
+                counts.splice_skip_excluded += 1;
+            }
             continue;
         }
 
         let base_qual = result.qual;
-        phase_counts[result.phase as usize] += 1;
-        tally_clip_candidate(&mut counts, record, variant, first_class);
 
         // ── MULTI-ALLELIC AD-CLAIMING GUARD: an ALT match contested and won
         // by a co-annotated sibling is the sibling's molecule. Downgrade
@@ -1796,14 +1801,30 @@ fn count_variant_from_cache(
         // the reads behind it (read-level validation against the BAM).
         trace!(
             "read call {}:{} {}>{} read={} mate={} ref={} alt={} phase={:?} partial={} nearby={} \
-             sibling_claimed={} ref_sibling_claimed={} uninformative={}",
+             sibling_claimed={} ref_sibling_claimed={} uninformative={} antisense_excluded={}",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
             String::from_utf8_lossy(record.qname()),
             if record.is_first_in_template() { 1 } else { 2 },
             is_ref, is_alt, result.phase, result.partial_match_count,
             result.has_nearby_evidence, claimed_by_sibling, ref_claimed_by_sibling,
-            result.ref_uninformative,
+            result.ref_uninformative, antisense_excluded,
         );
+
+        // An antisense read excluded by strandedness: tallied as the sense reads
+        // are at the end of this loop (first-class REF or ALT over the anchor; RNA
+        // admits no read by its clip), then dropped before any count.
+        if antisense_excluded {
+            let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;
+            if first_class && overlaps_anchor && (is_ref || is_alt) {
+                counts.antisense_depth += 1;
+                if is_alt {
+                    counts.antisense_strand_alt_count += 1;
+                }
+            }
+            continue;
+        }
+        phase_counts[result.phase as usize] += 1;
+        tally_clip_candidate(&mut counts, record, variant, first_class);
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends

@@ -14,7 +14,6 @@ antisense read reaches the junction tally, so it cannot fire (documented).
 Committed red (xfail-strict) before the implementation; flipped green with it.
 """
 
-import pytest
 from helpers import make_read
 from rna_fixtures import (
     E1,
@@ -30,8 +29,6 @@ from rna_fixtures import (
     write_gtf,
     write_vcf,
 )
-
-RED = pytest.mark.xfail(strict=True, reason="#114: antisense reads are dropped before the tally")
 
 ANTISENSE = 0  # forward single-end: the opposite transcript strand under dUTP ('reverse')
 SNV = 200  # 0-based, mid-E1, ~100bp from any edge
@@ -84,14 +81,12 @@ _MIXED = (
 )
 
 
-@RED
 def test_antisense_reads_are_tallied_at_defaults_without_changing_counts(tmp_path):
     row = _run(tmp_path, _MIXED)
     assert _counts(row) == (20, 10, 30), "antisense reads stay out of REF, ALT and depth"
     assert _depths(row) == (30, 5, 10)
 
 
-@RED
 def test_the_column_means_the_same_with_and_without_enforcement(tmp_path):
     enforced = _run(tmp_path, _MIXED, name="enforced")
     free = _run(tmp_path, _MIXED, extra=("--no-strandedness",), name="free")
@@ -99,7 +94,6 @@ def test_the_column_means_the_same_with_and_without_enforcement(tmp_path):
     assert _depths(enforced)[:2] == _depths(free)[:2] == (30, 5)
 
 
-@RED
 def test_only_antisense_reads_a_sense_read_would_count_are_tallied(tmp_path):
     """Two antisense REF reads are tallied. Not tallied, as a sense read would
     not be counted: a third allele (neither), a multi-mapper (MAPQ 0, NH:i:3),
