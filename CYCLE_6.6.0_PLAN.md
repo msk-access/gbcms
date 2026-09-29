@@ -42,7 +42,7 @@ before implementation.
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] | #159 |
 | C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [done] | #167 |
 | C13 | BAQ spares the variant's own indel evidence | H | [counts] [done] | #166 |
-| C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] | #172 |
+| C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
 | C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] | #173 |
 | C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
 | T1 | Test architecture: retire or unify the legacy parity path | M | [decide] | #170 |
@@ -52,7 +52,7 @@ before implementation.
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] | #180 |
-| R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
+| R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
 | I2 | `End_Position` optional | L | | #124 |
@@ -527,6 +527,35 @@ ALT/partial calls with the context padded to cover `shift_region` against
 today's. Watch `MAX_HAP_LEN` (C5).
 **Direction** (if calls change): pad `ref_context` to the shift region plus
 flank, bounded by the matrix cap.
+
+### C14 — Records without bases (SEQ `*`) (#172) · M [counts]
+**Finding.** A BAM record with no sequence reached the classifiers.
+- The SNV check indexed the empty sequence and panicked.
+- Heuristic BAQ sliced its empty qualities and panicked (RNA, or DNA with
+  `--apply-baq`).
+- The insertion and deletion checks counted it REF and depth, or a fragment when
+  it was a kept secondary, from its CIGAR alone.
+- The MNP and complex checks already skipped it.
+
+**As built (2026-09-29).** Both counting paths send every fetched record through
+the shared `ReadFilter::passes`, which now drops a record without bases after the
+flag filters. The record counts in neither depth, fragments nor `mq0_count`. The
+per-bin tallies are summed across bins and warned once per counting pass. The
+`--rescue-mnp` re-count is a second pass and warns again; O1 (#130) tracks the
+same quirk for the UMI warning.
+
+**Measured (2026-09-29).** All runs were local, develop vs the branch.
+- At defaults, every RC input is byte-identical: 33 FORTE truth samples, the T9
+  probes (3 samples) and 28 DNA runs.
+- DNA with `--no-filter-secondary`: 28/28 byte-identical, and develop did not
+  panic.
+- No input held a record without bases. The fix is defensive in MSK data, like
+  the QC-fail filter.
+
+**Found by the review, not in scope.** Filed as a follow-up:
+- Absent QUAL (0xFF) overflows the u8 quality margin in fragment consensus. It
+  panics in debug builds and wraps in release.
+- Unmapped-flag (0x4) reads count in `mq0_count`.
 
 ## RNA
 
@@ -1034,10 +1063,10 @@ hid the RNA exon-edge collapse.
 ## Suggested order
 
 Refreshed 2026-09-29; C1, C2, C10, C12 and O4 are done.
-1. **Done:** C13 (#166, PR #169).
+1. **Done:** C13 (#166, PR #169); R1 (#106, PR #181); C14 (#172).
 2. **Done:** this list, the validation standard and the BAM-caveats reference
    (PR #175).
-3. **Counting correctness:** R1 (#106, next to C13), C14 (#172), R2 (#114), then C4
+3. **Counting correctness:** R2 (#114), then C4
    (#142), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
    decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C5 (#120), C6 (#143,
    reconciled with "count the given allele"), C7 (#144); C16 (#174); R3 (#178).
