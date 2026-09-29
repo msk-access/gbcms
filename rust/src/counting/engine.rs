@@ -1417,7 +1417,7 @@ fn count_bin_shared(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
                 backend, use_baq, umi_tag, enforce_strandedness, strandedness,
-                amplicon_mode,
+                amplicon_mode, mode != "rna",
             );
             final_counts.transcript_read_counts = read_cts;
             final_counts.transcript_fragment_counts = frag_cts;
@@ -1604,6 +1604,8 @@ fn count_variant_from_cache(
 
     // Distance-to-read-end tracking for QC metrics
     let mut alt_dists: Vec<u32> = Vec::with_capacity(500);
+    // Reads admitted by the soft-clipped bases that carry their allele.
+    let mut clip_admitted_reads: u32 = 0;
     let mut ref_dists: Vec<u32> = Vec::with_capacity(500);
 
     // Create SW aligners ONCE per variant (indelpost pattern).
@@ -1807,8 +1809,22 @@ fn count_variant_from_cache(
         // REF+ALT ≤ DP is guaranteed because RD and AD are strict subsets
         // of the anchor-overlap read set counted in DP here.
         let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;
-        if !overlaps_anchor {
+        // A read whose allele lies in its soft-clipped bases (an aligner clips an
+        // ALT read near its end where the REF reads beside it align in full): the
+        // exact-carrier rule decided it from its own bases inside its fragment,
+        // so it counts like a read aligned over the anchor. DNA only: an RNA
+        // read's clip may hold the next exon's bases.
+        let clip_admitted = !overlaps_anchor && mode != "rna" && result.clip_admissible;
+        if !overlaps_anchor && !clip_admitted {
             continue;
+        }
+        if clip_admitted {
+            clip_admitted_reads += 1;
+            trace!(
+                "read {} admitted at {}:{} {}>{} by its soft-clipped bases (ref={} alt={})",
+                String::from_utf8_lossy(record.qname()), variant.chrom, variant.pos + 1,
+                variant.ref_allele, variant.alt_allele, is_ref, is_alt,
+            );
         }
 
         // ── TOTAL DEPTH: all anchor-overlapping reads count toward DP,
@@ -2120,6 +2136,12 @@ fn count_variant_from_cache(
     }
 
     warn_sw_fallback(variant, counts.sw_fallback_reads);
+    if clip_admitted_reads > 0 {
+        debug!(
+            "{}:{} {}>{}: {} read(s) admitted by the soft-clipped bases that carry their allele",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, clip_admitted_reads,
+        );
+    }
 
     // Log per-phase classification breakdown + reads considered
     debug!(
@@ -2204,6 +2226,8 @@ fn count_single_variant(
     // Distance-to-read-end tracking for QC metrics.
     // Pre-allocated with conservative capacity to avoid resizing.
     let mut alt_dists: Vec<u32> = Vec::with_capacity(500);
+    // Reads admitted by the soft-clipped bases that carry their allele.
+    let mut clip_admitted_reads: u32 = 0;
     let mut ref_dists: Vec<u32> = Vec::with_capacity(500);
 
     // Create SW aligners ONCE per variant, not per read (indelpost pattern).
@@ -2367,8 +2391,13 @@ fn count_single_variant(
         let read_start = record.pos();
         let read_end = read_ref_end(&record);
         let overlaps_anchor = read_start <= variant.pos && read_end > variant.pos;
-        if !overlaps_anchor {
+        // Admission by soft-clipped bases, as in the binned loop.
+        let clip_admitted = !overlaps_anchor && mode != "rna" && result.clip_admissible;
+        if !overlaps_anchor && !clip_admitted {
             continue;
+        }
+        if clip_admitted {
+            clip_admitted_reads += 1;
         }
 
         // ── TOTAL DEPTH: all anchor-overlapping reads count toward DP,
@@ -2610,6 +2639,12 @@ fn count_single_variant(
     compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
 
     warn_sw_fallback(variant, counts.sw_fallback_reads);
+    if clip_admitted_reads > 0 {
+        debug!(
+            "{}:{} {}>{}: {} read(s) admitted by the soft-clipped bases that carry their allele",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, clip_admitted_reads,
+        );
+    }
 
     // Log per-phase classification breakdown
     debug!(
@@ -3184,6 +3219,7 @@ fn count_per_transcript(
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
     amplicon_mode: bool,
+    clip_admission: bool,
 ) -> (String, String) {
     // Step 1: Find overlapping transcripts
     let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
@@ -3287,9 +3323,11 @@ fn count_per_transcript(
                 continue;
             }
 
-            // ── Anchor overlap check (same as main counting)
+            // ── Anchor overlap check, with admission by soft-clipped bases
+            // (same as main counting; `clip_admission` is off in RNA mode)
             let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;
-            if !overlaps_anchor {
+            let clip_admitted = !overlaps_anchor && clip_admission && result.clip_admissible;
+            if !overlaps_anchor && !clip_admitted {
                 continue;
             }
 

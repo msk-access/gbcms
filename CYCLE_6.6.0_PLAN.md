@@ -40,6 +40,7 @@ before implementation.
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] | #157 |
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] | #159 |
+| C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [decided] | #167 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
@@ -518,6 +519,91 @@ flank, bounded by the matrix cap.
 
 ## RNA
 
+
+### C12 — Carriers whose allele lies in soft-clipped bases (complex variants) (#167) · H [counts] [decided]
+**Finding.** A read enters DP, RD and AD only if its *aligned* span covers VCF POS
+(the anchor-overlap gate, both counting loops in `engine.rs`). Aligners soft-clip
+ALT reads whose allele sits within a few bases of a read end; REF reads at the same
+positions align fully. So clipped ALT carriers drop out while the REF reads beside
+them count, and VAF reads low. The exact-carrier rule already reads clipped bases
+from an aligned anchor: at one repeat locus it called 9 clipped reads ALT, and the
+gate then dropped them.
+
+**Measured (local data; aggregates).** Signed-out IMPACT complex variants, and the
+same libraries recaptured on WES by TEMPO (bwa, no indel realignment):
+- Synthetic, 50% sample, ALT reads clipped when fewer than K bases lie past the
+  event: VAF 0.45–0.46 at K = 10, 0.37–0.44 at K = 20 (0.50 at K = 0).
+- IMPACT (ABRA2-realigned): 19 exact-ALT carriers outside depth over 40 variants
+  in one set; 270 over the 40 paired loci, 202 of them at one 18>8 delins.
+- WES, same 40 loci: 420 exact-ALT carriers outside depth against 2 REF; pooled VAF
+  0.174 → 0.204 if counted. WES − IMPACT VAF, median −0.021 → −0.007 with them.
+- Long deletions (25–106 bp): 0 ALT reads on WES at all five, against 5–291 on
+  IMPACT. Without realignment their carriers are clipped or split, and the
+  measurement above (whole windows in the clip) could not see them either.
+- C1 itself agrees with a position-aware read census on both platforms
+  (median |VAF difference| 0.002 IMPACT, 0.000 WES).
+
+**Proposal (for review).**
+1. *Admission.* For variants the exact-carrier rule judges (delins, Del+SNV, MNP
+   reads with an indel at the block), a read whose aligned span does not cover POS
+   is admitted when the rule **decides** it, REF or ALT, from its own bases with at
+   least one window anchor aligned. It then counts in DP, RD/AD and fragments like
+   any read. A clipped read the rule cannot decide stays out, as today, so DP gains
+   only informative reads. REF and ALT are admitted by the same test.
+2. *Long events.* Junction windows read on into the clip, so a split read's primary
+   alignment, whose clip holds the far side of the deletion, is judged at the
+   junction it shows. Supplementary alignments stay filtered: they are the same
+   molecule.
+3. *Guards.* Clipped bases past the fragment end (|TLEN| shorter than the read) are
+   adapter, not allele: masked. Reads without a defined fragment (unpaired, mate
+   unmapped, TLEN 0) are not admitted by their clips (as GATK does). Masked clipped
+   bases match both windows, so an all-low-quality clip cannot decide a read.
+4. *Anchor in the clip.* If an aligner clips before the flank, no anchor is aligned
+   and the read stays out. Extrapolating the alignment into the clip is a later
+   step, taken only if the acceptance shows those reads matter.
+5. *Scope.* DNA only at first: STAR clips short junction overhangs, whose bases come
+   from the next exon (measure on FORTE before enabling RNA). Pure insertions stay
+   with C7 (#144); pure deletions and SNVs are unchanged.
+6. *Both counting paths* (binned and the legacy parity oracle) and the
+   per-transcript path apply the same admission. No new column: a trace line per
+   admitted read and a debug count per variant.
+
+**Acceptance.** The truth is per BAM and per read, not cross-platform agreement.
+- *Per read:* every admitted clipped read carries exactly the allele it is counted
+  for, by a position-aware census that reads clipped bases and uses the rule's
+  repeat growth and equal-length windows; no REF↔ALT flip.
+- *Symmetry:* synthetic uniform-start samples with ALT reads clipped at K = 10 and
+  20 read 0.50 VAF; REF reads clipped the same way are admitted alike.
+- *Same library, secondary:* IMPACT and WES are expected to move toward each other,
+  not to match. They legitimately differ by bait design (a long deletion removes
+  target sequence, so capture efficiency differs by allele), depth and duplicate
+  rates (sampling noise), sequencing run and instrument (base-quality profiles),
+  aligner versions, ABRA2 and BQSR, and MAPQ distributions. Report each locus's
+  WES − IMPACT gap against its binomial interval from the two depths, and
+  adjudicate read by read only the loci outside it after the change.
+- *Regression:* RC set, only complex rows (and their grouped rows) move; FORTE
+  unchanged (RNA off); run time within noise.
+
+**Implemented and accepted (2026-09-28, `feature/c12-clip-carriers`; aggregates).**
+- 40 paired loci (signed-out IMPACT complex variants; the same libraries on TEMPO
+  WES): WES − IMPACT VAF median −0.021 → −0.009, mean −0.043 → −0.018. Long
+  deletions return on WES (79>4: 0 → 139 ALT reads, VAF 0 → 0.174; 106>7: 0 → 12;
+  68>3: 0 → 3); IMPACT unchanged there.
+- Every admitted read is ALT (none REF on these loci). An independent anchored
+  check (the read's own bases from the aligned edge of the tract ±2 into its clip)
+  confirms 233 on IMPACT and 365 on WES; the rest are reads that cannot hold the
+  check's longer stretch, and one WES read differs one base beyond the 2-base flank.
+- A defect the first run exposed, fixed red-first: unclipped REF reads starting
+  inside a long deletion were admitted (IMPACT VAF fell 0.324 → 0.213 at 79>4).
+  Admission now requires a window that reads the read's clipped bases.
+- RC set (28 DNA runs): 11 of ~1,060 rows move, 10 MNP (clipped carriers at the
+  block, +1 to +10 ALT) and 1 complex; no SNV or indel row. An independent count of
+  exact clipped carriers is never below C12's change (C12 admits fewer where
+  windows run past the fragment end: adapter).
+
+**Decisions (2026-09-28, operator): as proposed.** (a) DP gains only decided
+clipped reads; (b) RNA off until measured on FORTE; (c) admitted reads are named in
+the trace log with a per-variant debug count, no new column or flag.
 ### R1 — Span-aware exon-edge BAQ rule (#106, 6.5.0 § T9) · L [counts] [decided]
 **Finding.** The exon-edge BAQ exception keys on the variant's first base, so
 a multi-base variant reaching an exon's right edge keeps BAQ. MNP counts move

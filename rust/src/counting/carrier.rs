@@ -161,6 +161,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     let mut held: Vec<(bool, bool)> = Vec::with_capacity(win.pairs.len());
     let (mut mm_ref, mut mm_alt, mut alt_masked, mut had_n) = (0usize, 0usize, 0usize, false);
     let mut qual_bases: Vec<u8> = Vec::new();
+    let mut read_spans: Vec<(usize, usize)> = Vec::new();
     for (rw, aw) in &win.pairs {
         let (Some(r), Some(a)) = (read_window(record, &seq, quals, min_baseq, rw), read_window(record, &seq, quals, min_baseq, aw))
         else {
@@ -172,6 +173,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         had_n |= r.had_n || a.had_n;
         for (lo, hi) in [r.span, a.span] {
             qual_bases.extend_from_slice(&quals[lo..hi]);
+            read_spans.push((lo, hi));
         }
         held.push((r.mismatches == 0, a.mismatches == 0));
     }
@@ -195,7 +197,91 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     // haplotype, as a fully read block does on the base-by-base path.
     result.mnp_confirmed =
         result.is_alt && alt_masked == 0 && variant.ref_allele.len() == variant.alt_allele.len();
+    // A read decided from its own bases may count although its aligned span stops
+    // short of the variant, when its allele lies in soft-clipped bases (a window it
+    // was decided on reads them) and every base read lies inside its fragment: past
+    // the fragment end a clip is adapter. An unclipped read that misses the variant
+    // position (one starting inside a long deletion) is not admitted: no ALT read
+    // can start there.
+    result.clip_admissible = (result.is_ref || result.is_alt)
+        && aligned_query_range(record).is_some_and(|(first, after)| read_spans.iter().any(|&(a, b)| a < first || b > after))
+        && fragment_query_span(record).is_some_and(|(lo, hi)| read_spans.iter().all(|&(a, b)| a >= lo && b <= hi));
     Some(result)
+}
+
+/// Query positions [first, after) of the read's aligned bases: its soft clips lie
+/// before `first` and from `after` on. None for a read with no aligned base.
+fn aligned_query_range(record: &Record) -> Option<(usize, usize)> {
+    let ops: Vec<Cigar> = record.cigar().iter().copied().filter(|op| !matches!(op, Cigar::HardClip(_))).collect();
+    let lead = match ops.first() {
+        Some(Cigar::SoftClip(n)) => *n as usize,
+        _ => 0,
+    };
+    let tail = match ops.last() {
+        Some(Cigar::SoftClip(n)) if ops.len() > 1 => *n as usize,
+        _ => 0,
+    };
+    let len = record.seq_len();
+    (lead + tail < len).then_some((lead, len - tail))
+}
+
+/// The read's query positions [lo, hi) that lie inside its fragment, when the
+/// fragment is well defined: paired, mate mapped on the same contig in the
+/// opposite orientation, TLEN set. Past the mate's 5' end the read runs into
+/// adapter (read-through). None otherwise.
+fn fragment_query_span(record: &Record) -> Option<(usize, usize)> {
+    if !record.is_paired()
+        || record.is_mate_unmapped()
+        || record.insert_size() == 0
+        || record.tid() != record.mtid()
+        || record.is_reverse() == record.is_mate_reverse()
+    {
+        return None;
+    }
+    let len = record.seq_len() as i64;
+    let tlen = record.insert_size().abs();
+    let (mut ref_end, mut first_q, mut clip_tail) = (record.pos(), None, 0i64);
+    let mut q = 0i64;
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::SoftClip(n) => {
+                if first_q.is_none() {
+                    q += *n as i64;
+                } else {
+                    clip_tail += *n as i64;
+                }
+            }
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
+                first_q.get_or_insert(q);
+                q += *n as i64;
+                ref_end += *n as i64;
+            }
+            Cigar::Ins(n) => q += *n as i64,
+            Cigar::Del(n) | Cigar::RefSkip(n) => ref_end += *n as i64,
+            _ => {}
+        }
+    }
+    let first_q = first_q?;
+    let after_q = len - clip_tail; // one past the last aligned base
+    if !record.is_reverse() {
+        // Forward: the fragment starts with the read and runs TLEN bases.
+        let frag_end = record.pos() + tlen;
+        let hi = if frag_end >= ref_end {
+            after_q + (frag_end - ref_end)
+        } else {
+            qpos(record, frag_end - 1).map_or(after_q, |q| q as i64 + 1)
+        };
+        Some((0, hi.clamp(0, len) as usize))
+    } else {
+        // Reverse: the fragment ends with the read and starts TLEN bases earlier.
+        let frag_start = ref_end - tlen;
+        let lo = if frag_start <= record.pos() {
+            first_q - (record.pos() - frag_start)
+        } else {
+            qpos(record, frag_start).map_or(first_q, |q| q as i64)
+        };
+        Some((lo.clamp(0, len) as usize, len as usize))
+    }
 }
 
 /// Whether the read has an insertion or deletion in the variant's block or right

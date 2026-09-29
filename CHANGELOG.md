@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - RNA: a spliced read's windows end at its own junction, so a delins at an
     exon's first or last bases counts spliced reads; a read spliced through
     the event counts toward depth only.
+- Complex variants (DNA) count reads whose allele lies in soft-clipped bases. An
+  aligner clips an ALT read near its end while the REF reads beside it align in
+  full, so those carriers used to fall outside depth and VAF read low. A read the
+  exact-carrier rule decides from its own bases, inside a well-defined fragment
+  (past the fragment end a clip is adapter), now counts in DP and REF/ALT;
+  undecided clipped reads stay out. Not in RNA mode (#167).
 - In a multi-allelic group, a read that matches this row's ALT and a sibling's
   ALT exactly (the two differ only at bases the read has masked) is neither
   row's AD: it counts in `partial_alt`.

@@ -162,9 +162,10 @@ def test_a_soft_clipped_carrier_counts(tmp_path):
 
 
 def test_a_carrier_clipped_before_the_event_is_outside_depth(tmp_path):
-    """Aligned bases stop just before the event and the whole ALT is clipped: the
-    read does not overlap the variant position, so it is outside DP (depth at the
-    position, as in a pileup) and cannot count as REF or ALT either."""
+    """Aligned bases stop just before the event and the whole ALT is clipped, on an
+    unpaired read: with no defined fragment end its clip cannot admit it (a clip
+    may be adapter), so it stays outside DP and counts as neither REF nor ALT.
+    Paired carriers are admitted by their clipped bases (test_clip_carrier_contract)."""
     ref = _ref()
     alt = _distinct_alt(ref, 3)
     hap, reads = _delins_case(ref, alt)
