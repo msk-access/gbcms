@@ -771,6 +771,12 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>RNA: a spliced read's windows end at its own junction, so a delins at an
     exon's first or last bases counts spliced reads; a read spliced through
     the event counts toward depth only.</li>
+<li>Complex variants (DNA) count reads whose allele lies in soft-clipped bases. An
+  aligner clips an ALT read near its end while the REF reads beside it align in
+  full, so those carriers used to fall outside depth and <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> read low. A read the
+  exact-carrier rule decides from its own bases, inside a well-defined fragment
+  (past the fragment end a clip is adapter), now counts in <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr> and REF/ALT;
+  undecided clipped reads stay out. Not in RNA mode (#167).</li>
 <li>In a multi-allelic group, a read that matches this row's ALT and a sibling's
   ALT exactly (the two differ only at bases the read has masked) is neither
   row's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>: it counts in <code>partial_alt</code>.</li>
