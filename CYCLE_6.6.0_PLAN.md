@@ -49,9 +49,11 @@ before implementation.
 | T2 | Read census as the classification oracle in tests | M | | #171 |
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] | #177 |
+| C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] | #180 |
+| O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | | #183 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
@@ -62,7 +64,7 @@ before implementation.
 | M1 | Merge rows whose flavors report different alleles | M | | #128 |
 | M2 | Merge inputs from different gbcms versions | M | | #129 |
 | M3 | Decomposed-allele hardening (observations, list length) | M | | #146, #147 (#112) |
-| O1 | UMI warning repeated by the rescue recount | L | | #130 |
+| O1 | UMI and no-bases warnings repeated by the rescue recount | L | | #130 |
 | O2 | Run-start summary of enabled options | L | | #131 |
 | O3 | Rescue in fillouts without the MNP | L | | #132 |
 | H1 | Writers closed when a write fails | L | | #148 (#133) |
@@ -552,10 +554,13 @@ same quirk for the UMI warning.
 - No input held a record without bases. The fix is defensive in MSK data, like
   the QC-fail filter.
 
-**Found by the review, not in scope.** Filed as a follow-up:
-- Absent QUAL (0xFF) overflows the u8 quality margin in fragment consensus. It
-  panics in debug builds and wraps in release.
-- Unmapped-flag (0x4) reads count in `mq0_count`.
+**Found by the review, not in scope.** Both were reproduced and filed:
+- C19 (#182): absent QUAL (0xFF) overflows the u8 quality margin in fragment
+  consensus. It panics in debug builds and wraps in release.
+- O7 (#183): unmapped-flag (0x4) mates placed at a variant count in
+  `mq0_count`.
+- O1 (#130) now also covers the no-bases warning repeating in the rescue
+  re-count.
 
 ## RNA
 
@@ -793,10 +798,12 @@ the winning allele in the observations output (no new MAF columns).
 
 ## Observability
 
-### O1 — UMI warning repeated by the rescue recount (#130) · L
+### O1 — UMI and no-bases warnings repeated by the rescue recount (#130) · L
 With `--rescue-mnp`, the component recount calls the counting pass again with
 the same `--umi-tag`, so the "tag never seen" WARN can repeat for one BAM.
-Suppress it in the recount.
+C14 (#172) added a second per-pass warning (records stored without bases), which
+repeats the same way with a smaller number. Suppress both in the recount; the
+main pass's warnings stand for the BAM.
 
 ### O2 — Run-start summary of enabled options (#131) · L
 One INFO block at run start naming the enabled options and what they imply
@@ -1068,11 +1075,12 @@ Refreshed 2026-09-29; C1, C2, C10, C12 and O4 are done.
    (PR #175).
 3. **Counting correctness:** R2 (#114), then C4
    (#142), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
-   decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C5 (#120), C6 (#143,
+   decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C19 (#182, the
+   absent-quality policy decided first); C5 (#120), C6 (#143,
    reconciled with "count the given allele"), C7 (#144); C16 (#174); R3 (#178).
 4. **Test architecture, decided holistically:** T1 (#170) with T2 (#171).
-5. **Hardening:** I1–I5, M1, M2, O1–O3, H1, H2; O5 (#179) and O6 (#180), each
-   measured and surveyed first.
+5. **Hardening:** I1–I5, M1, M2, O1–O3, O7 (#183), H1, H2; O5 (#179) and O6
+   (#180), each measured and surveyed first.
 6. **Performance and statistics:** P1–P3, S1, S2.
 7. **Validation and release:** D5 (#155) with its arms, D1, D2, D4, D6, then D3.
 
