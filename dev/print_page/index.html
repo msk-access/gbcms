@@ -9475,31 +9475,35 @@ counting but still <strong>written to the output</strong> with their <code>FAIL<
         F2{"② Secondary?\n0x100"}:::on
         F3{"③ Supplementary?\n0x800"}:::on
         F4{"④ QC Failed?\n0x200"}:::on
-        F5{"⑤ MAPQ &lt; threshold\n(20 DNA / 1 RNA)"}:::on
         F1 --&gt;|No| F2
         F2 --&gt;|No| F3
         F3 --&gt;|No| F4
-        F4 --&gt;|No| F5
     end
 
     subgraph Opt ["⚙️ Optional (off by default)"]
         direction LR
-        O1{"⑥ Improper pair?\n--filter-improper-pair"}:::off
-        O2{"⑦ Contains indel?\n--filter-indel"}:::off
+        O1{"⑤ Improper pair?\n--filter-improper-pair"}:::off
+        O2{"⑥ Contains indel?\n--filter-indel"}:::off
         O1 --&gt;|No| O2
     end
 
+    S1{"⑦ No bases?\nSEQ '*' (always)"}:::on
+    F5{"⑧ MAPQ &lt; threshold\n(20 DNA / 1 RNA)"}:::on
+
     Start --&gt; F1
-    F5 --&gt;|Pass| O1
-    O2 --&gt;|Pass| Done(["✅ Allele Classifier"]):::pass
+    F4 --&gt;|No| O1
+    O2 --&gt;|No| S1
+    S1 --&gt;|No| F5
+    F5 --&gt;|Pass| Done(["✅ Allele Classifier"]):::pass
 
     F1 --&gt;|Yes| Drop(["❌ Discard"]):::drop
     F2 --&gt;|Yes| Drop
     F3 --&gt;|Yes| Drop
     F4 --&gt;|Yes| Drop
-    F5 --&gt;|Below threshold| Drop
     O1 --&gt;|"Yes (if enabled)"| Drop
     O2 --&gt;|"Yes (if enabled)"| Drop
+    S1 --&gt;|Yes| Drop
+    F5 --&gt;|Below threshold| Drop
 
     classDef start fill:#9b59b6,color:#fff,stroke:#7d3c98,stroke-width:2px;
     classDef on fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
@@ -9511,6 +9515,13 @@ counting but still <strong>written to the output</strong> with their <code>FAIL<
 Use mouse to pan and zoom
 </div>
 </div>
+<p><strong>Records without bases.</strong> A record stored with no sequence (SEQ <code>*</code>) shows no
+allele. Aligners write some secondary alignments this way, and a stripped <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>
+can hold primaries like it. Such a record is always dropped right after the flag
+filters (step ⑦), in every mode and counting path. It is counted
+in neither depth, fragments nor <code>mq0_count</code>. Each counting pass logs one WARNING
+with the number of bin fetches that skipped one (bin windows overlap, so a record
+can count more than once).</p>
 <hr>
 <h2 id="reference-read-filters-filter-options">Filter Options<a class="headerlink" href="#reference-read-filters-filter-options" title="Permanent link">¶</a></h2>
 <table>
@@ -16636,6 +16647,18 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-records-stored-without-bases-seq-are-not-counted-172">Fixed — records stored without bases (SEQ <code>*</code>) are not counted (#172)<a class="headerlink" href="#development-changelog-fixed-records-stored-without-bases-seq-are-not-counted-172" title="Permanent link">¶</a></h3>
+<ul>
+<li>A <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> record with no sequence, such as a secondary alignment kept with
+  <code>--no-filter-secondary</code> or a primary in a stripped <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, is now dropped where
+  every read enters counting. It counts in neither depth, fragments nor
+  <code>mq0_count</code>. Each counting pass logs one WARNING when any were skipped.</li>
+<li>Before: the SNV check panicked on such a record, and so did heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> (RNA,
+    or DNA with <code>--apply-baq</code>). The insertion and deletion checks counted it as REF
+    and depth (or as a fragment) from its <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> alone.</li>
+<li>Counts change only where such records reach counting. With the default
+    filters, that means primary records without bases.</li>
+</ul>
 <h3 id="development-changelog-changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106">Changed — the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule and <code>exon_boundary_dist</code> measure from the REF span (#106)<a class="headerlink" href="#development-changelog-changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>exon_boundary_dist</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>EBD</code>) is now the distance from the nearest annotated

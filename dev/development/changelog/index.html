@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -744,6 +744,18 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed-records-stored-without-bases-seq-are-not-counted-172">Fixed — records stored without bases (SEQ <code>*</code>) are not counted (#172)<a class="headerlink" href="#fixed-records-stored-without-bases-seq-are-not-counted-172" title="Permanent link">¶</a></h3>
+<ul>
+<li>A <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> record with no sequence, such as a secondary alignment kept with
+  <code>--no-filter-secondary</code> or a primary in a stripped <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, is now dropped where
+  every read enters counting. It counts in neither depth, fragments nor
+  <code>mq0_count</code>. Each counting pass logs one WARNING when any were skipped.</li>
+<li>Before: the SNV check panicked on such a record, and so did heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> (RNA,
+    or DNA with <code>--apply-baq</code>). The insertion and deletion checks counted it as REF
+    and depth (or as a fragment) from its <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> alone.</li>
+<li>Counts change only where such records reach counting. With the default
+    filters, that means primary records without bases.</li>
+</ul>
 <h3 id="changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106">Changed — the exon-edge <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> rule and <code>exon_boundary_dist</code> measure from the REF span (#106)<a class="headerlink" href="#changed-the-exon-edge-baq-rule-and-exon_boundary_dist-measure-from-the-ref-span-106" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>exon_boundary_dist</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>EBD</code>) is now the distance from the nearest annotated
