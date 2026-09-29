@@ -23,6 +23,9 @@ every item a sub-issue). Merged to develop so far:
   the REF span; `--rescue-mnp` components are counted over their MNP's span.
   FORTE truth cohort 0 count changes; probes adjudicated per read (plan R1 entry;
   harness `~/test/gbcms/harness/r1/`, local).
+- #184 C14 (#172): records without bases (SEQ `*`) are dropped in the shared read
+  filter (they panicked, or counted REF from the CIGAR); none in MSK data.
+  Follow-ups C19 #182 and O7 #183.
 
 **Validation standard** (adopted 2026-09-28): gbcms is a genotyper, not a caller;
 every count-affecting change is accepted per read, against the reads' own bases, on
@@ -32,13 +35,16 @@ Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. C14 #172 (in review: PR to develop), R2 #114.
+1. R2 #114 (in review: PR to develop).
 2. C4 #142, C8 #121, C9 #122; C11 #159 (measure first); C3 + M3 + #145.
 3. C15 #173 (C12 in RNA; clipped pure deletions), C17 #176 (read-through mask),
-   C18 #177 (split reads), C5 #120, C6 #143, C7 #144, C16 #174, R3 #178 (RNA editing).
+   C18 #177 (split reads), C19 #182 (absent qualities; decide first), C5 #120,
+   C6 #143, C7 #144, C16 #174, R3 #178 (RNA editing), R4 #185 (intronic gene
+   strand; measure and decide first).
 4. T1 #170 + T2 #171: decide the legacy path holistically (retire or unify; a
    read-census oracle in tests).
-5. Hardening (I1–I5, M1, M2, O1–O3, H1, H2; O5 #179, O6 #180 measured first),
+5. Hardening (I1–I5, M1, M2, O1–O3, O7 #183, O8 #186, H1, H2; O5 #179, O6 #180
+   measured first),
    then P/S items.
 6. D5 #155 with RNA, WES/WGS and GIAB arms; D1, D2, D4, D6; D3.
 
