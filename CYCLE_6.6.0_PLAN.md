@@ -994,15 +994,17 @@ hid the RNA exon-edge collapse.
 
 ## Suggested order
 
-Refreshed 2026-09-28; C1, C2, C10, C12 and O4 are done.
+Refreshed 2026-09-29; C1, C2, C10, C12 and O4 are done.
 1. **Done:** C13 (#166, PR #169).
-2. **This list and the validation standard** (CONTINUITY, plan).
+2. **Done:** this list, the validation standard and the BAM-caveats reference
+   (PR #175).
 3. **Counting correctness:** R1 (#106, next to C13), C14 (#172), R2 (#114), then C4
    (#142), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
-   decomposition cluster); C15 (#173); C5 (#120), C6 (#143, reconciled with "count
-   the given allele"), C7 (#144); C16 (#174).
+   decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C5 (#120), C6 (#143,
+   reconciled with "count the given allele"), C7 (#144); C16 (#174); R3 (#178).
 4. **Test architecture, decided holistically:** T1 (#170) with T2 (#171).
-5. **Hardening:** I1–I5, M1, M2, O1–O3, H1, H2.
+5. **Hardening:** I1–I5, M1, M2, O1–O3, H1, H2; O5 (#179) and O6 (#180), each
+   measured and surveyed first.
 6. **Performance and statistics:** P1–P3, S1, S2.
 7. **Validation and release:** D5 (#155) with its arms, D1, D2, D4, D6, then D3.
 
