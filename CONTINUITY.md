@@ -19,18 +19,10 @@ every item a sub-issue). Merged to develop so far:
 - #169 C13 (#166): BAQ spares the variant's own indel evidence.
 - #175 pending list, validation standard, the genotyper principle, and the
   BAM-caveats reference (`docs/reference/bam-evidence-caveats.md`).
-
-**In review: R1 #106** on `feature/r1-span-aware-exon-edge-baq`. The exon-edge
-BAQ rule and `exon_boundary_dist` now measure from the REF span, and
-`--rescue-mnp` components are counted over their MNP's span. Red battery first,
-then the fix, then the review follow-up. Acceptance:
-- FORTE truth cohort: 0 count changes.
-- T9 probes: only MNPs on a window flip move, and each change is adjudicated per
-  read.
-- DNA and the final code: byte-identical.
-
-Numbers are in the plan's R1 entry. The harness is local:
-`~/test/gbcms/harness/r1/`.
+- #181 R1 (#106): the exon-edge BAQ rule and `exon_boundary_dist` measure from
+  the REF span; `--rescue-mnp` components are counted over their MNP's span.
+  FORTE truth cohort 0 count changes; probes adjudicated per read (plan R1 entry;
+  harness `~/test/gbcms/harness/r1/`, local).
 
 **Validation standard** (adopted 2026-09-28): gbcms is a genotyper, not a caller;
 every count-affecting change is accepted per read, against the reads' own bases, on
@@ -40,7 +32,7 @@ Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. R1 #106 (in review: PR to develop), C14 #172 (records without bases), R2 #114.
+1. C14 #172 (in review: PR to develop), R2 #114.
 2. C4 #142, C8 #121, C9 #122; C11 #159 (measure first); C3 + M3 + #145.
 3. C15 #173 (C12 in RNA; clipped pure deletions), C17 #176 (read-through mask),
    C18 #177 (split reads), C5 #120, C6 #143, C7 #144, C16 #174, R3 #178 (RNA editing).

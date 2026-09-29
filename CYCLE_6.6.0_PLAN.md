@@ -42,17 +42,19 @@ before implementation.
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] | #159 |
 | C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [done] | #167 |
 | C13 | BAQ spares the variant's own indel evidence | H | [counts] [done] | #166 |
-| C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] | #172 |
+| C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
 | C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] | #173 |
 | C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
 | T1 | Test architecture: retire or unify the legacy parity path | M | [decide] | #170 |
 | T2 | Read census as the classification oracle in tests | M | | #171 |
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] | #177 |
+| C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] | #180 |
-| R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
+| O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | | #183 |
+| R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
 | I2 | `End_Position` optional | L | | #124 |
@@ -62,7 +64,7 @@ before implementation.
 | M1 | Merge rows whose flavors report different alleles | M | | #128 |
 | M2 | Merge inputs from different gbcms versions | M | | #129 |
 | M3 | Decomposed-allele hardening (observations, list length) | M | | #146, #147 (#112) |
-| O1 | UMI warning repeated by the rescue recount | L | | #130 |
+| O1 | UMI and no-bases warnings repeated by the rescue recount | L | | #130 |
 | O2 | Run-start summary of enabled options | L | | #131 |
 | O3 | Rescue in fillouts without the MNP | L | | #132 |
 | H1 | Writers closed when a write fails | L | | #148 (#133) |
@@ -528,6 +530,38 @@ today's. Watch `MAX_HAP_LEN` (C5).
 **Direction** (if calls change): pad `ref_context` to the shift region plus
 flank, bounded by the matrix cap.
 
+### C14 — Records without bases (SEQ `*`) (#172) · M [counts]
+**Finding.** A BAM record with no sequence reached the classifiers.
+- The SNV check indexed the empty sequence and panicked.
+- Heuristic BAQ sliced its empty qualities and panicked (RNA, or DNA with
+  `--apply-baq`).
+- The insertion and deletion checks counted it REF and depth, or a fragment when
+  it was a kept secondary, from its CIGAR alone.
+- The MNP and complex checks already skipped it.
+
+**As built (2026-09-29).** Both counting paths send every fetched record through
+the shared `ReadFilter::passes`, which now drops a record without bases after the
+flag filters. The record counts in neither depth, fragments nor `mq0_count`. The
+per-bin tallies are summed across bins and warned once per counting pass. The
+`--rescue-mnp` re-count is a second pass and warns again; O1 (#130) tracks the
+same quirk for the UMI warning.
+
+**Measured (2026-09-29).** All runs were local, develop vs the branch.
+- At defaults, every RC input is byte-identical: 33 FORTE truth samples, the T9
+  probes (3 samples) and 28 DNA runs.
+- DNA with `--no-filter-secondary`: 28/28 byte-identical, and develop did not
+  panic.
+- No input held a record without bases. The fix is defensive in MSK data, like
+  the QC-fail filter.
+
+**Found by the review, not in scope.** Both were reproduced and filed:
+- C19 (#182): absent QUAL (0xFF) overflows the u8 quality margin in fragment
+  consensus. It panics in debug builds and wraps in release.
+- O7 (#183): unmapped-flag (0x4) mates placed at a variant count in
+  `mq0_count`.
+- O1 (#130) now also covers the no-bases warning repeating in the rescue
+  re-count.
+
 ## RNA
 
 
@@ -764,10 +798,12 @@ the winning allele in the observations output (no new MAF columns).
 
 ## Observability
 
-### O1 — UMI warning repeated by the rescue recount (#130) · L
+### O1 — UMI and no-bases warnings repeated by the rescue recount (#130) · L
 With `--rescue-mnp`, the component recount calls the counting pass again with
 the same `--umi-tag`, so the "tag never seen" WARN can repeat for one BAM.
-Suppress it in the recount.
+C14 (#172) added a second per-pass warning (records stored without bases), which
+repeats the same way with a smaller number. Suppress both in the recount; the
+main pass's warnings stand for the BAM.
 
 ### O2 — Run-start summary of enabled options (#131) · L
 One INFO block at run start naming the enabled options and what they imply
@@ -1034,16 +1070,17 @@ hid the RNA exon-edge collapse.
 ## Suggested order
 
 Refreshed 2026-09-29; C1, C2, C10, C12 and O4 are done.
-1. **Done:** C13 (#166, PR #169).
+1. **Done:** C13 (#166, PR #169); R1 (#106, PR #181); C14 (#172).
 2. **Done:** this list, the validation standard and the BAM-caveats reference
    (PR #175).
-3. **Counting correctness:** R1 (#106, next to C13), C14 (#172), R2 (#114), then C4
+3. **Counting correctness:** R2 (#114), then C4
    (#142), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
-   decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C5 (#120), C6 (#143,
+   decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C19 (#182, the
+   absent-quality policy decided first); C5 (#120), C6 (#143,
    reconciled with "count the given allele"), C7 (#144); C16 (#174); R3 (#178).
 4. **Test architecture, decided holistically:** T1 (#170) with T2 (#171).
-5. **Hardening:** I1–I5, M1, M2, O1–O3, H1, H2; O5 (#179) and O6 (#180), each
-   measured and surveyed first.
+5. **Hardening:** I1–I5, M1, M2, O1–O3, O7 (#183), H1, H2; O5 (#179) and O6
+   (#180), each measured and surveyed first.
 6. **Performance and statistics:** P1–P3, S1, S2.
 7. **Validation and release:** D5 (#155) with its arms, D1, D2, D4, D6, then D3.
 

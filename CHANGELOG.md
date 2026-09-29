@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — records stored without bases (SEQ `*`) are not counted (#172)
+
+- A BAM record with no sequence, such as a secondary alignment kept with
+  `--no-filter-secondary` or a primary in a stripped BAM, is now dropped where
+  every read enters counting. It counts in neither depth, fragments nor
+  `mq0_count`. Each counting pass logs one WARNING when any were skipped.
+  - Before: the SNV check panicked on such a record, and so did heuristic BAQ (RNA,
+    or DNA with `--apply-baq`). The insertion and deletion checks counted it as REF
+    and depth (or as a fragment) from its CIGAR alone.
+  - Counts change only where such records reach counting. With the default
+    filters, that means primary records without bases.
+
 ### Changed — the exon-edge BAQ rule and `exon_boundary_dist` measure from the REF span (#106)
 
 - `exon_boundary_dist` (VCF `EBD`) is now the distance from the nearest annotated

@@ -37,9 +37,10 @@ use crate::types::{
 
 use rayon::prelude::*;
 
-/// What one genomic bin produces: `(vi, counts)` pairs plus the per-molecule rows for
-/// those variants (empty unless observations were requested).
-type BinOutput = (Vec<(usize, BaseCounts)>, Vec<Observation>);
+/// What one genomic bin produces: `(vi, counts)` pairs, the per-molecule rows for
+/// those variants (empty unless observations were requested), and how many fetched
+/// records the read filter dropped for having no bases (warned once per BAM).
+type BinOutput = (Vec<(usize, BaseCounts)>, Vec<Observation>, u64);
 
 use anyhow::{Context, Result};
 use log::{debug, info, trace, warn};
@@ -917,10 +918,11 @@ fn count_bam_binned_core(
                 // sort below fixes comes from `HashMap` iteration *within* a variant, not
                 // from here.)
                 .try_reduce(
-                    || (Vec::new(), Vec::new()),
+                    || (Vec::new(), Vec::new(), 0),
                     |mut acc: BinOutput, batch| {
                         acc.0.extend(batch.0);
                         acc.1.extend(batch.1);
+                        acc.2 += batch.2;
                         Ok(acc)
                     },
                 )
@@ -929,9 +931,22 @@ fn count_bam_binned_core(
 
     // Scatter results back to variant-order array
     match bin_results {
-        Ok((pairs, mut observations)) => {
+        Ok((pairs, mut observations, no_bases)) => {
             for (vi, counts) in pairs {
                 all_counts[vi] = counts;
+            }
+
+            // Records stored without bases (SEQ '*') show no allele, so the read
+            // filter drops them. Say so once per counting pass: a BAM stripped of its
+            // sequences would otherwise count nothing with no word above DEBUG. The
+            // tally is per bin fetch, and bin windows overlap, so it is an upper bound.
+            if no_bases > 0 {
+                warn!(
+                    "{}: skipped records stored without bases (SEQ '*') in {} bin fetch(es) \
+                     (a record in overlapping bins counts in each); they show no allele and \
+                     are not counted",
+                    bam_label, no_bases,
+                );
             }
 
             // A requested UMI tag that no processed read carries means fragment
@@ -1315,12 +1330,12 @@ fn count_bin_shared(
     }
 
     debug!(
-        "Bin tid={} {}-{}: {} reads cached ({} filtered: dup={} sec={} supp={} qc={} pair={} indel={} mapq={})",
+        "Bin tid={} {}-{}: {} reads cached ({} filtered: dup={} sec={} supp={} qc={} pair={} indel={} no_bases={} mapq={})",
         bin.tid, bin.start, bin.end, read_cache.len(),
         filter_counts.total() + mapq_filtered,
         filter_counts.duplicates, filter_counts.secondary, filter_counts.supplementary,
         filter_counts.qc_failed, filter_counts.improper_pair, filter_counts.indel,
-        mapq_filtered,
+        filter_counts.no_bases, mapq_filtered,
     );
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1450,7 +1465,7 @@ fn count_bin_shared(
         results.push((vi, final_counts));
     }
 
-    Ok((results, bin_observations))
+    Ok((results, bin_observations, filter_counts.no_bases))
 }
 
 
