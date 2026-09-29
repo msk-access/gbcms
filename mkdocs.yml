@@ -105,6 +105,7 @@ nav:
     - mFSD Report: reference/mfsd-report.md
     - Per-Molecule Observations: reference/molecule-observations.md
     - Complex Indels: reference/complex-indels.md
+    - BAM Evidence Caveats: reference/bam-evidence-caveats.md
     - Glossary: reference/glossary.md
   
   - Development:

@@ -32,7 +32,7 @@ description: Procedure for adding a feature to gbcms following its Git Flow and 
 
    **Real-data acceptance** for count-changing work: run every assay the change reaches
    (IMPACT tumour with its matched normal; ACCESS duplex + simplex through `gbcms merge`),
-   one BAM at a time, and score against the reads — the BAM is truth, sign-out a comparison.
+   one BAM at a time, and score against the reads — reads' own bases are the evidence (not the aligner's placement, not sign-out): gbcms genotypes, it does not call.
 
 7. **PR to develop**:
    ```bash

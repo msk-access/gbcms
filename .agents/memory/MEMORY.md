@@ -7,7 +7,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [No ticket labels in code](no-ticket-labels-in-code.md) — comments/logs explain what/why/how, never CR-/HI-/ME-/P4c labels.
 - [Identity band = annotation tolerance](identity-band-annotation-tolerance.md) — the ≥90% insert band exists for imperfect ALT representations; BQ masking can't replace it — test both policies. No new columns/flags: new signal goes to logs/diagnostics/validation tooling.
 - [Commit before review workflows](commit-before-review-workflows.md) — same-checkout review agents may `git stash`; concurrent sessions write .agents/memory — commit first, stage explicit paths only.
-- [BAM is truth](bam-is-truth.md) — reads are the truth; sign-out is a comparison. Validate read-by-read across every assay (IMPACT+normal, ACCESS duplex+simplex).
+- [Genotyper, not caller](genotyper-not-caller.md) — gbcms counts reads whose own bases carry the given allele; alignments can be wrong, so judge bases not placement; validate per read across data types.
 - [Count the given allele](count-the-given-allele.md) — input is taken as correct; never deconvolute a wrong input into counts; explain via status-reason/diagnostic columns; only opt-in rescues differ.
 - [Use GitHub sub-issues](github-sub-issues.md) — group related work as parent + sub-issues (cycle tracker, umbrella items), not combined issues or checklists.
 - [Holistic effects map](holistic-effects-map.md) — before any fix/decision, map every place it lands (both counting paths, per-transcript/ASJD/mFSD/observations, rescue/clusters/merge, writers/flags, docs/tests/Nextflow).

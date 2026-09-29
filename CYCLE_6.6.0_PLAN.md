@@ -30,7 +30,7 @@ before implementation.
 | ID | Ticket | Pri | Flags | Issue |
 |:--|:--|:-:|:--|:--|
 | C1 | Complex variants count exact carriers (was: partial-ALT in the SW local fallback) | L | [counts] [done] | #141 (#92) |
-| C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [decided] | #119 |
+| C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [done] | #119 |
 | C3 | Homopolymer decomposition arbitration redesign | M | [counts] | #111, #145 (#112) |
 | C4 | Reference windows near contig ends | M | [counts] | #142 (#92) |
 | C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] | #120 |
@@ -38,9 +38,20 @@ before implementation.
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] | #144 (#92) |
 | C8 | One-base-REF delins without a shared anchor | L | [counts] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
-| C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] | #157 |
+| C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] [done] | #157 |
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] | #159 |
-| C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [decided] | #167 |
+| C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [done] | #167 |
+| C13 | BAQ spares the variant's own indel evidence | H | [counts] [done] | #166 |
+| C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] | #172 |
+| C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] | #173 |
+| C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
+| T1 | Test architecture: retire or unify the legacy parity path | M | [decide] | #170 |
+| T2 | Read census as the classification oracle in tests | M | | #171 |
+| C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
+| C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] | #177 |
+| R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 |
+| O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 |
+| O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] | #180 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
@@ -949,21 +960,51 @@ string the code emits appears on the page, so the page stays complete.
 - Docs examples show old version strings (`gbcms v5.3.0`); the release guide
   does not bump docs at release.
 
+## Validation standard (every count-affecting change, before merge)
+
+Adopted 2026-09-28. gbcms is a genotyper, not a caller: it counts reads whose own
+bases carry the given allele. Alignments can be wrong (indels placed elsewhere in a
+repeat, alleles clipped at read ends, long events split), so the evidence is each
+read's bases, judged independently of the aligner's placement. The operator: "always
+try to do things as generalized as possible; use different datasets to make the
+architecture general." Each gap this cycle hid a defect only another data type
+showed: realignment hid clipped carriers, Q40 bins hid the RNA BAQ loss, DNA panels
+hid the RNA exon-edge collapse.
+
+| Axis | What it exposes |
+|:--|:--|
+| Synthetic contracts: red-first tests; fuzz (random delins/MNP, left/right gap placement); uniform-start VAF; Q37/Q40/binned/unbinned qualities | rule logic, symmetry, quality encodings |
+| Panel DNA, indel-realigned: tumour, normal, duplex, simplex | the production default |
+| DNA without indel realignment: WES (the same libraries recaptured, paired with the panel), WGS | clipping, split reads, lower depth |
+| RNA: spliced alignments, BAQ on; truth-free exon-edge probes | splicing, BAQ, aligner clips |
+| Public reference data (GIAB WGS/WES) | shareable numbers; germline hets at 0.5 |
+| Scale: WGS-sized variant lists | run time, memory |
+
+- Truth is per read: an independent, position-aware census of each read's own
+  bases across the event's repeat tract (clipped bases included, equal-length
+  windows, masked low-quality bases). Cross-platform agreement is secondary:
+  platforms differ by capture, depth, run, aligner and realignment.
+- When the right behaviour is not known, measure it on this matrix and survey
+  community practice (callers and genotypers, with sources) before deciding;
+  record the decision in the tracking issue. The caveats this addresses are listed
+  in `docs/reference/bam-evidence-caveats.md`.
+- PRs, issues and plans carry aggregates and allele shapes only.
+- Not yet covered: WGS, public reference data, other aligners and quality bins
+  (D5 arms).
+
 ## Suggested order
 
-1. **Decisions: done** (2026-09-25; recorded under each ticket and on its
-   issue). All the recommendations were accepted.
-2. **Count-affecting, measured first:** C10 and C2 first (they share the
-   discrimination window: one branch), then R2, R1, and C1 once its B-vs-C
-   check is in — one branch each otherwise. C1 moved down on 2026-09-25: its
-   originally planned fix did not improve accuracy on real reads, and it
-   affects only the non-default SW backend.
-3. **The decomposition redesign:** C3 with M1's decomposition check and M3.
-4. **Hardening:** I1, I2, I3, C9, M1 (rescue conflicts), M2, O1, H1, H2.
-5. **Investigations and enhancements:** C5, C6, C7, C8, P1, then P2, O2, O3,
-   I4, I5, S1, S2.
-6. **Infrastructure and docs:** D1, D2, D4, D5 and D6 (before the 6.6.0 cut),
-   D3, P3. D4 goes early if a dependency release breaks users first.
+Refreshed 2026-09-28; C1, C2, C10, C12 and O4 are done.
+1. **Done:** C13 (#166, PR #169).
+2. **This list and the validation standard** (CONTINUITY, plan).
+3. **Counting correctness:** R1 (#106, next to C13), C14 (#172), R2 (#114), then C4
+   (#142), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
+   decomposition cluster); C15 (#173); C5 (#120), C6 (#143, reconciled with "count
+   the given allele"), C7 (#144); C16 (#174).
+4. **Test architecture, decided holistically:** T1 (#170) with T2 (#171).
+5. **Hardening:** I1–I5, M1, M2, O1–O3, H1, H2.
+6. **Performance and statistics:** P1–P3, S1, S2.
+7. **Validation and release:** D5 (#155) with its arms, D1, D2, D4, D6, then D3.
 
 The 6.6.0 cut is gated on steps 2–4 plus D1, D2, D4 and D6, and the release
 comparison is the D5 panel run on HPC, with the same release-

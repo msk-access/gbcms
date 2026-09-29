@@ -17,7 +17,7 @@ The only exceptions are opt-in rescues the user asks for, like `--rescue-mnp`,
 which are flagged and audited per row.
 
 A recurrent unannotated haplotype is a finding for validation work (see
-[[bam-is-truth]]), never ALT evidence for the row.
+[[genotyper-not-caller]]), never ALT evidence for the row.
 
 **Why:** stated by the operator 2026-09-25 ("go for the right and accurate
 results … explain with all caveats using the failure reason and diagnostic

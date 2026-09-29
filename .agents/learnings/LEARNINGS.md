@@ -17,6 +17,23 @@ regenerating a section.
 
 ---
 
+## [LRN-20260928-001] rule-body | gbcms is a genotyper, not a caller; the BAM is not the truth
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** the standing principle was written as "the BAM is truth", and I
+  repeated it in the validation standard. The operator corrected it: alignments
+  can be wrong, and the point is that gbcms is a genotyper, not a caller. The
+  evidence is each read's own bases, judged independently of the aligner's
+  placement (this is what the exact-carrier windows, repeat growth, clip reading
+  and splice handling already do); gbcms counts the given allele and never decides
+  existence or rewrites an allele.
+- **Promotion target:** `AGENTS.md` invariant 7 — `DONE:` "Count the given allele — a
+  genotyper, not a caller … its own bases carry that ALT (alignments can be wrong;
+  judge bases, not placement)". Memory `bam-is-truth` renamed and rewritten as
+  `genotyper-not-caller`; the plan's "Validation standard" and the add-feature skill
+  reworded. Dataset specifics moved to local-only memories (operator: keep them local).
+- **Related:** [[genotyper-not-caller]], [[count-the-given-allele]].
+
 ## [LRN-20260925-001] rule-body | a census finding is not ALT evidence
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body
