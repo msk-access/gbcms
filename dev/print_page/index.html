@@ -863,6 +863,8 @@
       
         
       
+        
+      
     
     
     
@@ -1233,6 +1235,34 @@
     
   
     Complex Indels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/bam-evidence-caveats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BAM Evidence Caveats
   
 
     
@@ -1984,6 +2014,17 @@
     <span class="md-ellipsis">
       
         Complex Indels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reference-bam-evidence-caveats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BAM Evidence Caveats
       
     </span>
   </a>
@@ -14348,7 +14389,389 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-glossary" heading-number="5.13"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-bam-evidence-caveats" heading-number="5.13"><html><head>
+        <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function () {
+            remove_material_navigation();remove_mkdocs_theme_navigation();
+        })
+        </script>
+        </head><body><div><h1 id="reading-allele-evidence-from-a-bam-caveats">Reading allele evidence from a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>: caveats<a class="headerlink" href="#reference-bam-evidence-caveats-reading-allele-evidence-from-a-bam-caveats" title="Permanent link">¶</a></h1>
+<p>gbcms is a <strong>genotyper, not a caller</strong>. Given an allele, it counts the reads whose
+own bases carry it (and REF, and what else is there, as diagnostics). It does not
+decide whether a variant exists, and it never rewrites a given allele.</p>
+<p>The <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is not the truth either. Counting from it rests on two assumptions:</p>
+<ol>
+<li><strong>A read is placed where it came from.</strong></li>
+<li><strong>Its bases are the molecule's sequence.</strong></li>
+</ol>
+<p>Both fail in known ways. This page lists each way: how it shows in a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, what
+gbcms does today, and what it should do. Each "should do" is one of:</p>
+<ul>
+<li><strong>decided</strong>, when the genotyper principle settles it;</li>
+<li><strong>proposed</strong>, when there is a design;</li>
+<li><strong>to measure</strong>, when we don't know yet.</li>
+</ul>
+<p>Each caveat also records what the community's tools do, and how to see the
+caveat in gbcms's output.</p>
+<div class="admonition info">
+<p class="admonition-title">How we decide what gbcms should do</p>
+<ol>
+<li><strong>Principle first.</strong> Judge a read by its own bases, not by the aligner's
+   placement (<a href="#reference-allele-classification-the-exact-carrier-rule">counting the given allele</a>).
+   Expose what cannot be judged through diagnostics, never by filtering.</li>
+<li><strong>If the right behaviour isn't clear, measure it.</strong> Use the validation matrix:
+   synthetic data, realigned panel DNA, DNA without realignment, RNA, and
+   public reference data.</li>
+<li><strong>Survey the community.</strong> Record what callers and genotypers do (GATK,
+   Strelka2, VarDict, bcftools, freebayes and others), with sources.</li>
+<li><strong>Record the decision</strong> in the tracking issue before implementing.</li>
+</ol>
+</div>
+<h2 id="reference-bam-evidence-caveats-summary">Summary<a class="headerlink" href="#reference-bam-evidence-caveats-summary" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Caveat</th>
+<th style="text-align: left;">gbcms now</th>
+<th style="text-align: left;">Should do</th>
+<th style="text-align: left;">Tracking</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Indel placed differently in a repeat, or one event written as several indels</td>
+<td style="text-align: left;">Judged by bases (anchored windows, repeat growth)</td>
+<td style="text-align: left;">Decided (done); test oracle</td>
+<td style="text-align: left;">#171, C11 #159</td>
+</tr>
+<tr>
+<td style="text-align: left;">Allele soft-clipped at a read end</td>
+<td style="text-align: left;">Counted for complex/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> in DNA</td>
+<td style="text-align: left;">Decided (extend)</td>
+<td style="text-align: left;">#173, C7 #144</td>
+</tr>
+<tr>
+<td style="text-align: left;">Long event split across alignments</td>
+<td style="text-align: left;">The primary's clip is read at the junction</td>
+<td style="text-align: left;">Proposed</td>
+<td style="text-align: left;">C18 #177</td>
+</tr>
+<tr>
+<td style="text-align: left;">Indel realignment (ABRA2) fixes or forces placements</td>
+<td style="text-align: left;">Invariant by design (bases, not placement)</td>
+<td style="text-align: left;">Decided; verify</td>
+<td style="text-align: left;">D5 #155</td>
+</tr>
+<tr>
+<td style="text-align: left;">Aligner settings change clipping; hard clips drop bases</td>
+<td style="text-align: left;">Clips read; hard-clipped bases lost</td>
+<td style="text-align: left;">Decided; warn on hard clips</td>
+<td style="text-align: left;">O2 #131, D5 #155</td>
+</tr>
+<tr>
+<td style="text-align: left;">Reads from paralogs or segmental duplications</td>
+<td style="text-align: left;"><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> ≥ 20; <code>mq0_count</code></td>
+<td style="text-align: left;">To measure</td>
+<td style="text-align: left;">O5 #179</td>
+</tr>
+<tr>
+<td style="text-align: left;">Reference bias: ALT reads map worse, clip, or go unmapped</td>
+<td style="text-align: left;">Counts what maps</td>
+<td style="text-align: left;">Proposed (diagnostic)</td>
+<td style="text-align: left;">O5 #179</td>
+</tr>
+<tr>
+<td style="text-align: left;">Alt contigs and decoys split coverage</td>
+<td style="text-align: left;">Contig naming handled</td>
+<td style="text-align: left;">Proposed (warn)</td>
+<td style="text-align: left;">O2 #131</td>
+</tr>
+<tr>
+<td style="text-align: left;">Base-quality calibration: binned, <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>, <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr></td>
+<td style="text-align: left;">One masking rule; <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> spares the variant's own indel</td>
+<td style="text-align: left;">Decided (done); warn on bins</td>
+<td style="text-align: left;">O2 #131</td>
+</tr>
+<tr>
+<td style="text-align: left;">Adapter read-through</td>
+<td style="text-align: left;">Masked only for clipped-carrier admission</td>
+<td style="text-align: left;">Proposed (every read)</td>
+<td style="text-align: left;">C17 #176</td>
+</tr>
+<tr>
+<td style="text-align: left;">Stutter in repeats</td>
+<td style="text-align: left;">Counted exactly; named by a diagnostic</td>
+<td style="text-align: left;">Decided (done)</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;">OxoG / FFPE orientation artifacts</td>
+<td style="text-align: left;">Strand counts only</td>
+<td style="text-align: left;">To measure (decide)</td>
+<td style="text-align: left;">O6 #180</td>
+</tr>
+<tr>
+<td style="text-align: left;">Unmarked duplicates; <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> consensus N's</td>
+<td style="text-align: left;">Duplicate flag honoured; N masked</td>
+<td style="text-align: left;">Proposed (warn)</td>
+<td style="text-align: left;">O2 #131</td>
+</tr>
+<tr>
+<td style="text-align: left;">Overlapping mates</td>
+<td style="text-align: left;">Fragment counts</td>
+<td style="text-align: left;">Decided (done)</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;">RNA: splicing at exon edges</td>
+<td style="text-align: left;">Splice-aware windows; ASJD</td>
+<td style="text-align: left;">Decided (done)</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;">RNA: <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips hold next-exon bases</td>
+<td style="text-align: left;">Clipped-carrier admission off in RNA</td>
+<td style="text-align: left;">To measure</td>
+<td style="text-align: left;">#173</td>
+</tr>
+<tr>
+<td style="text-align: left;">RNA: editing (A-to-I) inside a window</td>
+<td style="text-align: left;">Flag only</td>
+<td style="text-align: left;">Proposed</td>
+<td style="text-align: left;">R3 #178</td>
+</tr>
+<tr>
+<td style="text-align: left;">RNA: allele-specific expression and NMD</td>
+<td style="text-align: left;">RNA <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> reported as is</td>
+<td style="text-align: left;">Decided (interpretation)</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;">RNA: strandedness</td>
+<td style="text-align: left;">Gating exists; observability open</td>
+<td style="text-align: left;">Decided</td>
+<td style="text-align: left;">R2 #114</td>
+</tr>
+<tr>
+<td style="text-align: left;">Reads ending inside the event; low depth</td>
+<td style="text-align: left;">Depth only</td>
+<td style="text-align: left;">Decided (done)</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;">Purity, clonality, contamination, CH</td>
+<td style="text-align: left;">Counts, not calls</td>
+<td style="text-align: left;">Decided (interpretation)</td>
+<td style="text-align: left;">—</td>
+</tr>
+</tbody>
+</table>
+<h2 id="reference-bam-evidence-caveats-1-where-the-aligner-put-things-not-what-the-molecule-is">1. Where the aligner put things, not what the molecule is<a class="headerlink" href="#reference-bam-evidence-caveats-1-where-the-aligner-put-things-not-what-the-molecule-is" title="Permanent link">¶</a></h2>
+<h3 id="reference-bam-evidence-caveats-indel-placement-in-repeats-one-event-written-as-several-indels">Indel placement in repeats; one event written as several indels<a class="headerlink" href="#reference-bam-evidence-caveats-indel-placement-in-repeats-one-event-written-as-several-indels" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> the same haplotype aligned with its indel anywhere along a
+  repeat, or a delins written as an insertion plus a deletion.</li>
+<li><strong>gbcms now:</strong><ul>
+<li>windows are anchored on flank bases outside the event;</li>
+<li>the event grows through repeats on either allele, and each window is read
+  from both anchors;</li>
+<li>pure indels use their shift region (C10).</li>
+</ul>
+</li>
+</ul>
+<p>The placement does not change the call.
+- <strong>Should do:</strong> decided and done. Make an independent, position-aware read census
+  the test oracle (#171). Tandem duplications longer than the repeat finder's
+  motifs remain open (#159).
+- <strong>Community:</strong> GATK HaplotypeCaller and Mutect2 reassemble haplotypes and
+  realign reads to them; Strelka2 realigns to candidate indels.
+- <strong>See it:</strong> <code>--trace</code> read calls; <code>partial_alt</code>; <code>COEXISTING_ALLELE</code>.</p>
+<h3 id="reference-bam-evidence-caveats-alleles-soft-clipped-at-read-ends">Alleles soft-clipped at read ends<a class="headerlink" href="#reference-bam-evidence-caveats-alleles-soft-clipped-at-read-ends" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> an ALT read whose allele sits near its end is clipped from there,
+  while the REF reads beside it align in full. Excluding clipped reads biases <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>
+  down.</li>
+<li><strong>gbcms now:</strong> complex variants and MNPs in DNA count a read whose clipped bases
+  carry the exact allele, inside a well-defined fragment
+  (<a href="#reference-counting-metrics">carriers in soft-clipped bases</a>).</li>
+<li><strong>Should do:</strong> decided. Extend to pure deletions and to clip-borne ITD
+  insertions (#173, #144). In RNA, clipped bases may come from the next exon, so
+  measure before enabling there.</li>
+<li><strong>Community</strong> (verified in source):<ul>
+<li>GATK HaplotypeCaller and Mutect2 revert clips and realign reads, but only
+  with a well-defined fragment;</li>
+<li>Strelka2 unrolls edge clips;</li>
+<li>VarDict rescues clip consensus;</li>
+<li>samtools/bcftools mpileup, bam-readcount and freebayes ignore clipped bases;</li>
+<li>bcftools annotates soft-clip bias (<code>SCBZ</code>).</li>
+</ul>
+</li>
+<li><strong>See it:</strong> trace <code>admitted … by its soft-clipped bases</code>; <code>CLIP_CANDIDATES</code> for
+  insertions.</li>
+</ul>
+<h3 id="reference-bam-evidence-caveats-long-events-split-across-alignments">Long events split across alignments<a class="headerlink" href="#reference-bam-evidence-caveats-long-events-split-across-alignments" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> without realignment, a long-deletion carrier becomes a primary
+  alignment (often clipped) plus a supplementary on the far side (<code>SA</code> tag).</li>
+<li><strong>gbcms now:</strong> the primary's clip is read at the junction. Supplementary
+  alignments are filtered, since they are the same molecule. Carriers whose far
+  side is hard-clipped or too short stay invisible.</li>
+<li><strong>Should do:</strong> proposed. Count a molecule as ALT when its alignments jump exactly
+  across the given breakpoints (primary + <code>SA</code>, counted once) (C18 #177).</li>
+<li><strong>Community:</strong> structural-variant callers (Manta, Delly) use split reads and
+  discordant pairs; small-variant callers rely on assembly or realignment. To
+  survey in detail.</li>
+<li><strong>See it:</strong> <code>ZERO_ALT</code> at a long deletion with depth.</li>
+</ul>
+<h3 id="reference-bam-evidence-caveats-indel-realignment-abra2-and-aligner-settings">Indel realignment (ABRA2) and aligner settings<a class="headerlink" href="#reference-bam-evidence-caveats-indel-realignment-abra2-and-aligner-settings" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong><ul>
+<li>a realigner converts clips into indels, and can force a placement;</li>
+<li>aligner settings change clipping (a lower mismatch penalty, <code>-Y</code> soft-clipped
+  supplementaries);</li>
+<li>hard clips drop bases entirely.</li>
+</ul>
+</li>
+<li><strong>gbcms now:</strong> judgements rest on bases, not placement, so they are invariant by
+  design. Hard-clipped bases cannot be read.</li>
+<li><strong>Should do:</strong> decided. Verify invariance on realigned and non-realigned pairs of
+  the same libraries, and on other aligners (D5 #155). Warn when primaries are
+  hard-clipped (O2 #131).</li>
+<li><strong>Community:</strong> GATK4 replaced indel realignment with local assembly.</li>
+<li><strong>See it:</strong> compare runs across pipelines; <code>ZERO_ALT</code> at loci the other
+  pipeline counts.</li>
+</ul>
+<h2 id="reference-bam-evidence-caveats-2-real-bases-but-from-somewhere-else">2. Real bases, but from somewhere else<a class="headerlink" href="#reference-bam-evidence-caveats-2-real-bases-but-from-somewhere-else" title="Permanent link">¶</a></h2>
+<h3 id="reference-bam-evidence-caveats-paralogs-pseudogenes-and-segmental-duplications">Paralogs, pseudogenes and segmental duplications<a class="headerlink" href="#reference-bam-evidence-caveats-paralogs-pseudogenes-and-segmental-duplications" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> reads from a homologous region carry its differences as if they
+  were variants.</li>
+<li><strong>gbcms now:</strong> minimum <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20; <code>mq0_count</code> is reported. There is no paralog
+  awareness: gbcms reports what is at the locus.</li>
+<li><strong>Should do:</strong> to measure. Find how often low-mappability loci carry
+  paralog-derived ALT reads, then decide on a diagnostic (O5 #179).</li>
+<li><strong>Community:</strong><ul>
+<li>GIAB stratifies benchmarks by low mappability and segmental duplications;</li>
+<li>callers annotate mapping-quality rank-sum statistics (GATK <code>MQRankSum</code>, to
+  verify) or bias Z-scores (bcftools, to verify).</li>
+</ul>
+</li>
+<li><strong>See it:</strong> <code>mq0_count</code>; per-allele <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> once O5 lands.</li>
+</ul>
+<h3 id="reference-bam-evidence-caveats-reference-bias">Reference bias<a class="headerlink" href="#reference-bam-evidence-caveats-reference-bias" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> reads carrying a long indel or a cluster of changes map with
+  lower <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>, get clipped, or go unmapped. Baits designed on the reference can also
+  capture REF molecules better.</li>
+<li><strong>gbcms now:</strong> counts every read that maps; clipped-carrier admission recovers
+  part of the loss.</li>
+<li><strong>Should do:</strong> proposed. A diagnostic when ALT reads map or clip clearly worse
+  than REF reads; no filtering (O5 #179).</li>
+<li><strong>Community:</strong> clip- and <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-bias annotations, as above; graph and
+  alt-aware references reduce the bias upstream. To survey.</li>
+<li><strong>See it:</strong> <code>alt_dist_end_median</code> against <code>ref_dist_end_median</code>; per-allele
+  <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> and clip rate once O5 lands.</li>
+</ul>
+<h3 id="reference-bam-evidence-caveats-alt-contigs-and-decoys">Alt contigs and decoys<a class="headerlink" href="#reference-bam-evidence-caveats-alt-contigs-and-decoys" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> alt-aware GRCh38 alignment can move reads onto alt haplotype
+  contigs, and decoys absorb reads, so coverage at the primary locus drops.</li>
+<li><strong>gbcms now:</strong> contig naming is reconciled; nothing else.</li>
+<li><strong>Should do:</strong> proposed. Warn at run start when the reference has alt contigs
+  (O2 #131).</li>
+<li><strong>Community:</strong> alt-aware aligners (bwa's <code>.alt</code> handling) and GATK's GRCh38
+  guidance. To survey.</li>
+</ul>
+<h2 id="reference-bam-evidence-caveats-3-bases-that-arent-the-molecules-sequence">3. Bases that aren't the molecule's sequence<a class="headerlink" href="#reference-bam-evidence-caveats-3-bases-that-arent-the-molecules-sequence" title="Permanent link">¶</a></h2>
+<h3 id="reference-bam-evidence-caveats-base-quality-calibration">Base-quality calibration<a class="headerlink" href="#reference-bam-evidence-caveats-base-quality-calibration" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> Illumina binning (for example 2/12/23/37 or 2/12/24/40), <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>
+  recalibration, and heuristic <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> all change which bases pass <code>--min-baseq</code>.</li>
+<li><strong>gbcms now:</strong><ul>
+<li>one masking rule: bases below min BQ, and N, match anything;</li>
+<li><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> spares the variant's own indel (#166).</li>
+</ul>
+</li>
+<li><strong>Should do:</strong> decided and done. Warn when qualities look binned and
+  <code>--min-baseq</code> falls between bins (O2 #131).</li>
+<li><strong>Community:</strong> GATK <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>; bcftools and samtools <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> (<code>-B</code>/<code>-E</code>).</li>
+<li><strong>See it:</strong> <code>n_count</code>; the per-read trace.</li>
+</ul>
+<h3 id="reference-bam-evidence-caveats-adapter-read-through">Adapter read-through<a class="headerlink" href="#reference-bam-evidence-caveats-adapter-read-through" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> when the fragment is shorter than the read, bases past the mate's
+  5' end are adapter.</li>
+<li><strong>gbcms now:</strong> those bases are masked only when admitting a clipped carrier.</li>
+<li><strong>Should do:</strong> proposed. Mask them in every read (C17 #176).</li>
+<li><strong>Community:</strong> GATK checks for a well-defined fragment before trusting clipped
+  bases. Adapter trimming upstream (fastp, cutadapt) is common but not universal.</li>
+</ul>
+<h3 id="reference-bam-evidence-caveats-stutter-and-polymerase-slippage-in-repeats">Stutter and polymerase slippage in repeats<a class="headerlink" href="#reference-bam-evidence-caveats-stutter-and-polymerase-slippage-in-repeats" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> reads with one repeat unit more or fewer than the molecule.</li>
+<li><strong>gbcms now:</strong> counted exactly. They are not the given allele, so they become
+  <code>partial_alt</code>, and <code>COEXISTING_ALLELE</code> names a frequent one.</li>
+<li><strong>Should do:</strong> decided and done (report, don't correct).</li>
+<li><strong>Community:</strong> callers model stutter (for example HipSTR, GATK's STR models);
+  a genotyper reports it.</li>
+</ul>
+<h3 id="reference-bam-evidence-caveats-orientation-artifacts-oxog-gt-ffpe-ct">Orientation artifacts (oxoG G&gt;T, FFPE C&gt;T)<a class="headerlink" href="#reference-bam-evidence-caveats-orientation-artifacts-oxog-gt-ffpe-ct" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> artifacts concentrated in one read orientation (F1R2 or F2R1),
+  which strand counts do not separate.</li>
+<li><strong>gbcms now:</strong> forward and reverse counts per allele.</li>
+<li><strong>Should do:</strong> to measure. Decide between optional F1R2/F2R1 counts and an
+  orientation-imbalance diagnostic (O6 #180).</li>
+<li><strong>Community:</strong> Mutect2's read-orientation model uses F1R2 counts (to verify).</li>
+</ul>
+<h3 id="reference-bam-evidence-caveats-duplicates-and-umi-consensus">Duplicates and <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> consensus<a class="headerlink" href="#reference-bam-evidence-caveats-duplicates-and-umi-consensus" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> PCR duplicates are marked or not; <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> consensus masks
+  disagreeing bases as N.</li>
+<li><strong>gbcms now:</strong> the duplicate flag is honoured; N matches anything; <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> families
+  are supported.</li>
+<li><strong>Should do:</strong> proposed. Warn when duplicates appear unmarked (O2 #131).</li>
+<li><strong>Community:</strong> Picard MarkDuplicates; fgbio consensus calling.</li>
+</ul>
+<h3 id="reference-bam-evidence-caveats-overlapping-mates">Overlapping mates<a class="headerlink" href="#reference-bam-evidence-caveats-overlapping-mates" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> both mates of a short fragment cover the variant.</li>
+<li><strong>gbcms now:</strong> read counts count both; fragment counts count the molecule once.</li>
+<li><strong>Should do:</strong> decided and done.</li>
+</ul>
+<h2 id="reference-bam-evidence-caveats-4-rna">4. RNA<a class="headerlink" href="#reference-bam-evidence-caveats-4-rna" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>Splicing and exon edges:</strong><ul>
+<li>windows end at the read's own junction;</li>
+<li>a read spliced through the event counts toward depth only;</li>
+<li>ASJD reports junction usage for events at splice sites.</li>
+</ul>
+</li>
+</ul>
+<p>See <a href="#reference-rna-splice-handling">RNA splice handling</a>. Decided and done.
+- <strong><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips:</strong> a short overhang into the next exon is clipped, so its bases
+  come from that exon, not the intron. Clipped-carrier admission is off in RNA.
+  To measure, including a junction-aware reading (#173).
+- <strong>RNA editing (A-to-I):</strong> a catalogued editing site inside a window makes an ALT
+  carrier look like partial evidence. Proposed: treat the edited base as matching
+  inside windows (R3 #178). Today <code>rna_editing_site</code> flags only variants that are
+  themselves editing sites.
+- <strong>Allele-specific expression and NMD:</strong> RNA <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is expression-weighted and is
+  not a DNA <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. It is reported as is: an interpretation caveat.
+- <strong>Strandedness:</strong> antisense reads are gated when enforced; observability is open
+  (R2 #114). See <code>rna_antisense_depth</code>.</p>
+<h2 id="reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts">5. Not the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, but easy to misread from counts<a class="headerlink" href="#reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>Reads ending inside the event, and low depth:</strong> such reads count toward depth
+  only, since they cannot show either allele. At low depth, informative reads are
+  few, so compare <code>alt_count + ref_count</code> with depth.</li>
+<li><strong>Purity, clonality, contamination, clonal haematopoiesis, germline vs
+  somatic:</strong> counts are evidence, not calls. A matched normal and, for <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>,
+  <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr></a> help interpret them.</li>
+</ul>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-glossary" heading-number="5.14"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -19030,9 +19453,14 @@ genuinely has nothing to count.</p>
                 .print-site-enumerate-headings #reference-complex-indels h2:before { content: '5.12.' counter(counter-reference-complex-indels-2) ' ' }
                 .print-site-enumerate-headings #reference-complex-indels h2 {  counter-increment: counter-reference-complex-indels-2 }
             
-.print-site-enumerate-headings #reference-glossary > h1:before { content: '5.13 ' }
+.print-site-enumerate-headings #reference-bam-evidence-caveats > h1:before { content: '5.13 ' }
 
-                .print-site-enumerate-headings #reference-glossary h2:before { content: '5.13.' counter(counter-reference-glossary-2) ' ' }
+                .print-site-enumerate-headings #reference-bam-evidence-caveats h2:before { content: '5.13.' counter(counter-reference-bam-evidence-caveats-2) ' ' }
+                .print-site-enumerate-headings #reference-bam-evidence-caveats h2 {  counter-increment: counter-reference-bam-evidence-caveats-2 }
+            
+.print-site-enumerate-headings #reference-glossary > h1:before { content: '5.14 ' }
+
+                .print-site-enumerate-headings #reference-glossary h2:before { content: '5.14.' counter(counter-reference-glossary-2) ' ' }
                 .print-site-enumerate-headings #reference-glossary h2 {  counter-increment: counter-reference-glossary-2 }
             
 .print-site-enumerate-headings #section-6 > h1:before { content: '6 ' }
