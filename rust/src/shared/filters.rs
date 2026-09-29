@@ -2,7 +2,8 @@
 //!
 //! Provides a `ReadFilter` struct that encapsulates all universal BAM flag
 //! checks (duplicates, secondary, supplementary, QC-failed, improper pair,
-//! indel CIGAR) and drops records stored without bases. Mode-specific filtering (RNA NH rescue, MAPQ=0 tracking)
+//! indel CIGAR) and drops records stored without bases.
+//! Mode-specific filtering (RNA NH rescue, MAPQ=0 tracking)
 //! remains in the respective module's engine.
 //!
 //! Used by:
@@ -52,7 +53,8 @@ impl FilterCounts {
 
 impl ReadFilter {
 
-    /// Check if a BAM record passes all enabled universal filters.
+    /// Check if a BAM record passes all enabled universal filters, and has bases
+    /// (a record stored without them, SEQ `*`, always fails: it shows no allele).
     ///
     /// Returns `true` if the record passes, `false` if it should be filtered out.
     /// When a record is filtered, the corresponding `FilterCounts` counter is

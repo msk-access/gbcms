@@ -57,9 +57,11 @@ flowchart LR
 
 **Records without bases.** A record stored with no sequence (SEQ `*`) shows no
 allele. Aligners write some secondary alignments this way, and a stripped BAM
-can hold primaries like it. Such a record is always dropped after the flag
-filters, in every mode and counting path, and is not counted in depth. A
-WARNING gives the number skipped per BAM.
+can hold primaries like it. Such a record is always dropped right after the flag
+filters, in every mode and counting path (it is not in the chart). It is counted
+in neither depth, fragments nor `mq0_count`. Each counting pass logs one WARNING
+with the number of bin fetches that skipped one (bin windows overlap, so a record
+can count more than once).
 
 ---
 

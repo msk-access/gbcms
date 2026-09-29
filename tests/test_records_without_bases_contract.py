@@ -55,6 +55,10 @@ def _no_bases(flag=0, cigar=((0, READ),), name="noseq"):
 
 
 def _fields(c):
+    assert c.dp >= c.rd + c.ad
+    assert c.dpf >= c.rdf + c.adf
+    assert c.rd == c.rd_fwd + c.rd_rev
+    assert c.ad == c.ad_fwd + c.ad_rev
     return (c.dp, c.rd, c.ad, c.dpf, c.rdf, c.adf, c.partial_alt, c.mq0_count)
 
 
@@ -83,13 +87,10 @@ def test_a_primary_record_without_bases_is_not_counted(tmp_path, shape):
 @pytest.mark.parametrize("shape", list(SHAPES))
 def test_a_secondary_record_without_bases_is_not_counted_when_secondaries_are_kept(tmp_path, shape):
     """With --no-filter-secondary a secondary alignment reaches fragment evidence;
-    aligners store secondaries without SEQ."""
-    without, with_ = _pair(
-        tmp_path,
-        shape,
-        [_no_bases(flag=0x100, name="r0")],  # shares a primary's QNAME
-        filter_secondary=False,
-    )
+    aligners store secondaries without SEQ. Its primary maps elsewhere (a QNAME
+    no read here shares), so a call on it would be a fragment of its own. (The
+    insertion and deletion checks counted it a REF fragment from its CIGAR.)"""
+    without, with_ = _pair(tmp_path, shape, [_no_bases(flag=0x100)], filter_secondary=False)
     assert _fields(with_) == _fields(without)
 
 
@@ -125,7 +126,7 @@ def test_rna_with_baq_skips_a_spliced_record_without_bases(tmp_path, shape):
     assert _fields(counts[1]) == _fields(counts[0])
 
 
-def test_skipped_records_are_warned_once_per_bam(tmp_path, caplog):
+def test_skipped_records_are_warned_once_per_counting_pass(tmp_path, caplog):
     """Dropping them is said once, above DEBUG: a BAM stripped of its sequences
     would otherwise count nothing silently."""
     ref, alt = SHAPES["delins"]
@@ -135,4 +136,4 @@ def test_skipped_records_are_warned_once_per_bam(tmp_path, caplog):
             bam, [_prepared(fa, ref, alt)], [None], 20, 20, True, True, True, False, False, False, 1
         )
     warns = [r.message for r in caplog.records if "without bases" in r.message]
-    assert len(warns) == 1 and "skipped 2 fetched" in warns[0], warns
+    assert len(warns) == 1 and "in 2 bin fetch" in warns[0], warns

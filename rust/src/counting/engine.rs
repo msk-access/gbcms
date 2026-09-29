@@ -937,12 +937,14 @@ fn count_bam_binned_core(
             }
 
             // Records stored without bases (SEQ '*') show no allele, so the read
-            // filter drops them. Say so once: a BAM stripped of its sequences would
-            // otherwise count nothing with no word above DEBUG.
+            // filter drops them. Say so once per counting pass: a BAM stripped of its
+            // sequences would otherwise count nothing with no word above DEBUG. The
+            // tally is per bin fetch, and bin windows overlap, so it is an upper bound.
             if no_bases > 0 {
                 warn!(
-                    "{}: skipped {} fetched record(s) stored without bases (SEQ '*'); \
-                     they show no allele and are not counted",
+                    "{}: skipped records stored without bases (SEQ '*') in {} bin fetch(es) \
+                     (a record in overlapping bins counts in each); they show no allele and \
+                     are not counted",
                     bam_label, no_bases,
                 );
             }
