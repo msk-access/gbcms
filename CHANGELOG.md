@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exact-carrier rule decides from its own bases, inside a well-defined fragment
   (past the fragment end a clip is adapter), now counts in DP and REF/ALT;
   undecided clipped reads stay out. Not in RNA mode (#167).
+- BAQ (the RNA default, and DNA with `--apply-baq`) no longer penalizes a read's
+  own insertion or deletion when that indel is the variant being counted. At Q37
+  the penalty put every ALT read of a small indel or delins below min BQ while
+  REF reads kept full quality; FORTE's Q40 bins hid it. Splice junctions and
+  indels elsewhere in the read are penalized as before (#166).
 - In a multi-allelic group, a read that matches this row's ALT and a sibling's
   ALT exactly (the two differ only at bases the read has masked) is neither
   row's AD: it counts in `partial_alt`.

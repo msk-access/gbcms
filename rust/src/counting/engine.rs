@@ -1591,6 +1591,8 @@ fn count_variant_from_cache(
         counts.observed_given_reads = o.given_carriers;
     }
     let use_baq = baq_applies(apply_baq, exon_boundary_dist);
+    // The variant's own indel span that BAQ leaves alone, once per variant.
+    let baq_spare = if use_baq { baq_own_span(variant) } else { None };
     if apply_baq && !use_baq {
         debug!(
             "BAQ skipped at {}:{}: {}bp from an annotated exon boundary",
@@ -1716,7 +1718,7 @@ fn count_variant_from_cache(
         // on for RNA (no upstream BQ recalibration). Skipped at exon edges:
         // `use_baq` is `baq_applies`, resolved once per variant above.
         let baq_adjusted = if use_baq {
-            apply_heuristic_baq(record)
+            apply_heuristic_baq(record, baq_spare)
         } else {
             None
         };
@@ -2261,6 +2263,7 @@ fn count_single_variant(
     };
     let mut filter_counts = crate::shared::filters::FilterCounts::default();
 
+    let baq_spare = if apply_baq { baq_own_span(variant) } else { None };
     for result in bam.records() {
         let record = result.context("Error reading BAM record")?;
 
@@ -2313,7 +2316,7 @@ fn count_single_variant(
         // reads without indels or splice junctions (zero allocation for
         // the common case).
         let baq_adjusted = if apply_baq {
-            apply_heuristic_baq(&record)
+            apply_heuristic_baq(&record, baq_spare)
         } else {
             None
         };
@@ -3221,6 +3224,7 @@ fn count_per_transcript(
     amplicon_mode: bool,
     clip_admission: bool,
 ) -> (String, String) {
+    let baq_spare = if use_baq { baq_own_span(variant) } else { None };
     // Step 1: Find overlapping transcripts
     let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
     let transcript_ids = annotation.overlapping_transcripts(&chrom, variant.pos);
@@ -3301,7 +3305,7 @@ fn count_per_transcript(
             // ── BAQ under the main counts' rule (`use_baq`), so the spliced
             // reads at an exon edge count here as they do in the main counts.
             let baq_adjusted = if use_baq {
-                apply_heuristic_baq(record)
+                apply_heuristic_baq(record, baq_spare)
             } else {
                 None
             };
@@ -3570,6 +3574,17 @@ const BAQ_BOUNDARY_SUPPRESS_BP: i32 = 5;
 /// transcript's counts decompose the main counts: BAQ was requested, and the
 /// variant is not within `BAQ_BOUNDARY_SUPPRESS_BP` of an annotated exon
 /// boundary (`exon_boundary_dist`; None without a GTF).
+/// The span whose read indels BAQ spares for `v`: the variant's own event (grown
+/// through repeats, or its discrimination window without a reference) plus two
+/// flank bases. None for an SNV, whose reads' indels are never its evidence.
+fn baq_own_span(v: &Variant) -> Option<(i64, i64)> {
+    if v.ref_allele.len() == 1 && v.alt_allele.len() == 1 {
+        return None;
+    }
+    let (lo, hi) = carrier::grown_event(v).unwrap_or_else(|| window::discrimination_window(v));
+    Some((lo - 2, hi + 2))
+}
+
 fn baq_applies(apply_baq: bool, exon_boundary_dist: Option<i32>) -> bool {
     apply_baq && !matches!(exon_boundary_dist, Some(d) if d <= BAQ_BOUNDARY_SUPPRESS_BP)
 }
@@ -3853,6 +3868,7 @@ fn detect_asjd(
     strandedness: rna::Strandedness,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
 ) -> AsjdResult {
+    let baq_spare = if use_baq { baq_own_span(variant) } else { None };
     // Bind the normalized key, then borrow it as &str so the junction/motif lookups
     // below are unchanged.
     let chrom_key = crate::shared::contig::normalize_contig(&variant.chrom);
@@ -3907,7 +3923,7 @@ fn detect_asjd(
         // BAQ under the main counts' rule (`use_baq`): at an exon edge the
         // spliced reads are exactly ASJD's evidence.
         let baq_adjusted = if use_baq {
-            apply_heuristic_baq(record)
+            apply_heuristic_baq(record, baq_spare)
         } else {
             None
         };

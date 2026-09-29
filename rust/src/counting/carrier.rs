@@ -326,6 +326,19 @@ pub(crate) fn reference_short(start: i64, reference: &str, v: &Variant) -> Optio
     (short.0 || short.1).then_some(short)
 }
 
+/// The variant's event grown through repeats touching it on either allele,
+/// genomic [start, end): every base an aligner may place its change on. None
+/// without a reference that holds it, or with an empty allele.
+pub(crate) fn grown_event(v: &Variant) -> Option<(i64, i64)> {
+    let (start, reference) = match (&v.event_ref, &v.ref_context) {
+        (Some((s, seq)), _) => (*s, upper(seq)),
+        (None, Some(ctx)) => (v.ref_context_start, upper(ctx)),
+        (None, None) => return None,
+    };
+    let ev = event(start, &reference, v)?;
+    Some((start + ev.lo as i64, start + ev.hi as i64))
+}
+
 fn upper(s: &str) -> Vec<u8> {
     s.bytes().map(|b| b.to_ascii_uppercase()).collect()
 }
