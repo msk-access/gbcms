@@ -193,12 +193,18 @@ flowchart TD
 
 For dUTP-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense REF and ALT reads are **counted** (they contribute to `rna_sense_depth` and `rna_antisense_depth` respectively), but only sense-strand reads contribute to the primary DP/RD/AD counts when `--enforce-strandedness` is enabled.
 
-| Read Orientation | Gene Strand | Classification |
-|:-----------------|:------------|:---------------|
-| Forward (R1) | + | Sense |
-| Reverse (R1) | + | Antisense |
-| Forward (R1) | − | Antisense |
-| Reverse (R1) | − | Sense |
+With the default `--strandedness reverse` (dUTP, featureCounts `-s 2`), R1 and
+single-end reads come from the opposite strand of the transcript, and R2 from the
+same strand (`forward` swaps them):
+
+| Read | Orientation | Gene Strand | Classification |
+|:-----|:------------|:------------|:---------------|
+| R1 / single-end | Reverse | + | Sense |
+| R1 / single-end | Forward | + | Antisense |
+| R1 / single-end | Forward | − | Sense |
+| R1 / single-end | Reverse | − | Antisense |
+| R2 | Forward | + | Sense |
+| R2 | Reverse | + | Antisense |
 
 !!! tip
     Disable strandedness filtering with `--no-strandedness` for unstranded RNA-seq libraries.

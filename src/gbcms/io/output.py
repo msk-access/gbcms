@@ -959,7 +959,7 @@ class VcfWriter(OutputWriter):
             headers.extend(
                 [
                     '##FORMAT=<ID=SEN,Number=1,Type=Integer,Description="Sense strand depth">',
-                    '##FORMAT=<ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth">',
+                    '##FORMAT=<ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count">',
                     '##FORMAT=<ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count">',
                     '##FORMAT=<ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count">',
                 ]

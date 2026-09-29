@@ -16,7 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   REF, ALT, depth and every other count are unchanged. The column means the same
   with `--no-strandedness`.
 - `STRAND_DISCORDANT` is documented as a `--no-strandedness` diagnostic: under
-  enforcement antisense reads never reach the junction tally.
+  enforcement, antisense reads never reach the junction tally wherever the gene
+  strand is resolved.
+- Docs: the read-filters strand table is corrected for the default `reverse`
+  protocol, and the gene strand is documented as coming from the `--gtf` exons (not
+  the MAF).
 - The per-read trace line names each excluded antisense read
   (`antisense_excluded=true`).
 

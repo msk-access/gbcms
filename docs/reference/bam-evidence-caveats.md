@@ -227,8 +227,9 @@ caveat in gbcms's output.
   themselves editing sites.
 - **Allele-specific expression and NMD:** RNA VAF is expression-weighted and is
   not a DNA VAF. It is reported as is: an interpretation caveat.
-- **Strandedness:** antisense reads are gated when enforced; observability is open
-  (R2 #114). See `rna_antisense_depth`.
+- **Strandedness:** antisense reads are gated when enforced, and `rna_antisense_depth`
+  still tallies them (R2 #114). Loci without a resolved gene strand (intronic,
+  opposite-strand overlaps) are not gated yet (R4 #185).
 
 ## 5. Not the BAM, but easy to misread from counts
 

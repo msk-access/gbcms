@@ -9,11 +9,13 @@ fragments and every other count are unchanged. The column means the same thing
 with `--no-strandedness`, where those reads are also counted.
 
 `STRAND_DISCORDANT` stays a `--no-strandedness` diagnostic: under enforcement no
-antisense read reaches the junction tally, so it cannot fire (documented).
+antisense read reaches the junction tally, so it cannot fire where the gene
+strand is resolved (documented).
 
 Committed red (xfail-strict) before the implementation; flipped green with it.
 """
 
+import pytest
 from helpers import make_read
 from rna_fixtures import (
     E1,
@@ -96,22 +98,116 @@ def test_the_column_means_the_same_with_and_without_enforcement(tmp_path):
 
 def test_only_antisense_reads_a_sense_read_would_count_are_tallied(tmp_path):
     """Two antisense REF reads are tallied. Not tallied, as a sense read would
-    not be counted: a third allele (neither), a multi-mapper (MAPQ 0, NH:i:3),
-    and a read that ends before the SNV (no anchor overlap)."""
+    not be counted: a third allele (neither) and a multi-mapper (MAPQ 0, NH:i:3)."""
     reads = (
         _through(_REF[SNV], 20, "sref", SENSE)
         + _through(_REF[SNV], 2, "aref", ANTISENSE)
         + _through(_THIRD, 1, "athird", ANTISENSE)
         + _through(_REF[SNV], 1, "amulti", ANTISENSE, mapq=0, tags=(("NH", 3),))
-        + [
-            make_read(
-                "aearly", _REF[SNV - 120 : SNV - 20], SNV - 120, ((0, READ_LEN),), flag=ANTISENSE
-            )
-        ]
     )
     row = _run(tmp_path, reads)
     assert _counts(row) == (20, 0, 20)
     assert _depths(row)[:2] == (20, 2)
+
+
+# ── Oracle: an antisense read changes nothing but its column ─────────────────
+# (REF, ALT) at SNV; the deletion and insertion keep their VCF anchor.
+SHAPES = {
+    "SNV": (_REF[SNV], _ALT),
+    "MNP": (_REF[SNV : SNV + 2], _ALT + ("A" if _REF[SNV + 1] != "A" else "C")),
+    "deletion": (_REF[SNV : SNV + 4], _REF[SNV]),
+    "insertion": (_REF[SNV], _REF[SNV] + "GT"),
+}
+PAIR_R1, PAIR_R2 = 0x1 | 0x40, 0x1 | 0x80 | 0x10  # an FR pair on the antisense strand
+
+
+def _carriers(shape, n, prefix, flag, quals=None):
+    """Reads carrying the shape's ALT, aligned as an aligner would (M, D or I)."""
+    ref, alt = SHAPES[shape]
+    hap = _REF[:SNV] + alt + _REF[SNV + len(ref) :]
+    out = []
+    for i in range(n):
+        s = SNV - 50 + (i % 5)
+        seq = hap[s : s + READ_LEN]
+        left = SNV + 1 - s
+        if len(ref) == len(alt):
+            cig = ((0, READ_LEN),)
+        elif len(alt) < len(ref):
+            cig = ((0, left), (2, len(ref) - 1), (0, READ_LEN - left))
+        else:
+            ins = len(alt) - 1
+            cig = ((0, left), (1, ins), (0, READ_LEN - left - ins))
+        out.append(make_read(f"{prefix}{i}", seq, s, cig, flag=flag, quals=quals))
+    return out
+
+
+def _refs(n, prefix, flag, quals=None):
+    return [
+        make_read(
+            f"{prefix}{i}",
+            _REF[s : s + READ_LEN],
+            s,
+            ((0, READ_LEN),),
+            flag=flag,
+            quals=quals,
+        )
+        for i, s in enumerate(range(SNV - 50, SNV - 50 + n))
+    ]
+
+
+def _antisense_mix(shape):
+    """Every kind of antisense read at the locus: REF and ALT carriers, an FR
+    pair, low base quality, a third allele (SNV), reads whose splice spans the
+    locus (they feed SPLICE_SKIP_DOMINANT), and reads clipped at an insertion
+    (they feed CLIP_CANDIDATES)."""
+    reads = _refs(4, "aref", ANTISENSE) + _carriers(shape, 3, "aalt", ANTISENSE)
+    reads += _refs(1, "apair", PAIR_R1) + _refs(1, "apair", PAIR_R2)
+    reads += _carriers(shape, 2, "alowq", ANTISENSE, quals=[5] * READ_LEN)
+    if shape == "SNV":
+        reads += _through(_THIRD, 2, "athird", ANTISENSE)
+    for i in range(12):  # N over [SNV - 20, SNV + 40)
+        s = SNV - 60 + (i % 3)
+        left = SNV - 20 - s
+        seq = _REF[s : SNV - 20] + _REF[SNV + 40 : SNV + 40 + READ_LEN - left]
+        cig = ((0, left), (3, 60), (0, READ_LEN - left))
+        reads.append(make_read(f"askip{i}", seq, s, cig, flag=ANTISENSE))
+    if shape == "insertion":
+        for i in range(3):  # clipped 1bp after the anchor
+            s = SNV - 70 + i
+            left = SNV + 1 - s
+            seq = _REF[s : SNV + 1] + "GTGTGTGTGT"
+            reads.append(make_read(f"aclip{i}", seq, s, ((0, left), (4, 10)), flag=ANTISENSE))
+    return reads
+
+
+@pytest.mark.parametrize("shape", list(SHAPES))
+def test_antisense_reads_change_nothing_but_their_column(tmp_path, shape):
+    """Enforced, with the antisense reads vs without them: every column equal but
+    rna_antisense_depth. And that column equals its value with --no-strandedness."""
+    ref, alt = SHAPES[shape]
+    sense = _refs(20, "sref", SENSE) + _carriers(
+        shape, 2 if shape != "insertion" else 0, "salt", SENSE
+    )
+
+    def run(reads, name, extra=()):
+        (row,) = run_rna(
+            tmp_path,
+            write_vcf(tmp_path, [(SNV + 1, ref, alt)]),
+            write_bam(tmp_path, _REF, reads, name=f"{name}.bam"),
+            write_fasta(tmp_path, _REF),
+            write_gtf(tmp_path),
+            outname=name,
+            extra=extra,
+        )
+        return row
+
+    mixed = sense + _antisense_mix(shape)
+    with_, without = run(mixed, "with"), run(sense, "without")
+    free = run(mixed, "free", ("--no-strandedness",))
+    changed = [c for c in with_ if c != "rna_antisense_depth" and with_[c] != without[c]]
+    assert changed == [], {c: (without[c], with_[c]) for c in changed}
+    assert int(with_["rna_antisense_depth"]) > 0
+    assert with_["rna_antisense_depth"] == free["rna_antisense_depth"]
 
 
 # ── STRAND_DISCORDANT is a --no-strandedness diagnostic ──────────────────────

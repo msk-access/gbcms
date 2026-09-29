@@ -1727,6 +1727,11 @@ fn count_variant_from_cache(
         let antisense_excluded = mode == "rna"
             && enforce_strandedness
             && !rna::is_sense_strand(record, variant.gene_strand, strandedness);
+        // Only a first-class read over the anchor can be tallied (RNA admits no read
+        // by its soft clip), so any other excluded read stops here, unclassified.
+        if antisense_excluded && !(first_class && r_start <= variant.pos && r_end > variant.pos) {
+            continue;
+        }
 
         // ── MAPQ SKIP (Phase 1): MAPQ=0 reads were kept in the cache
         // specifically for MQ0 tracking above. Now skip them for
@@ -1810,12 +1815,11 @@ fn count_variant_from_cache(
             result.ref_uninformative, antisense_excluded,
         );
 
-        // An antisense read excluded by strandedness: tallied as the sense reads
-        // are at the end of this loop (first-class REF or ALT over the anchor; RNA
-        // admits no read by its clip), then dropped before any count.
+        // An antisense read excluded by strandedness (first-class, over the anchor:
+        // checked above): tallied as the sense reads are at the end of this loop,
+        // when REF or ALT, then dropped before any count.
         if antisense_excluded {
-            let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;
-            if first_class && overlaps_anchor && (is_ref || is_alt) {
+            if is_ref || is_alt {
                 counts.antisense_depth += 1;
                 if is_alt {
                     counts.antisense_strand_alt_count += 1;
@@ -2211,12 +2215,13 @@ fn count_variant_from_cache(
 // Do NOT remove until count_bam itself is removed (D8b cleanup).
 //
 // NOTE: ref_context is always genomic in BOTH paths — consensus splicing of
-// the context was removed (see the note in count_variant_from_cache). Two
-// RNA behavioral divergences remain, both binned-only because they need
-// inputs this legacy path never receives (RNA features are exempt from the
-// parity oracle per AGENTS.md invariant #1): exon-boundary BAQ suppression
-// (`baq_applies`; needs the GTF annotation) and
-// rna_editing_site_overlap (needs the REDIportal editing-sites set).
+// the context was removed (see the note in count_variant_from_cache). Three
+// RNA behavioral divergences remain, all binned-only (RNA features are exempt
+// from the parity oracle per AGENTS.md invariant #1): exon-boundary BAQ
+// suppression (`baq_applies`; needs the GTF annotation),
+// rna_editing_site_overlap (needs the REDIportal editing-sites set), and the
+// antisense tally under strandedness enforcement (this path drops antisense
+// reads before the tally, so its antisense_depth stays 0 there).
 #[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 fn count_single_variant(

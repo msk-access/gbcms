@@ -42,7 +42,9 @@ Fisher tests see independent observations, not mates. `LOW_*_JUNC` gate on
 - Under enforcement an antisense read is classified, tallied in `antisense_depth`
   (first-class REF/ALT over the anchor, as the sense tally), then dropped before any
   count (`antisense_excluded` in the per-read trace). `STRAND_DISCORDANT` only fires
-  with `--no-strandedness`: enforced antisense reads never reach the junction tally.
+  with `--no-strandedness` where the gene strand is resolved. `strand_at` uses exons
+  only, so intronic loci (splice sites) and opposite-strand overlaps have no strand:
+  enforcement is a no-op there (R4 #185).
 - Library strand protocol is selectable via `--strandedness` (`reverse` default /
   `forward` / `unstranded`); the read→transcript fold lives in
   `rna.rs::read_transcript_strand(record, Strandedness)`. `reverse` = dUTP/`-s 2`
