@@ -1,36 +1,41 @@
 ---
-name: bam-is-truth
-description: "Operator principle — the BAM (reads) is the truth; sign-out/t_alt is one more result to compare against, never the target. Score validations read-by-read."
+name: genotyper-not-caller
+description: "Operator principle — gbcms is a genotyper, not a caller: it counts reads whose own bases carry the given allele; the alignment can be wrong, so judge bases, not placement; sign-out is a comparison. Validate per read across data types."
 metadata:
-  node_type: memory
   type: feedback
-  originSessionId: 890ffab2-2fbd-474b-915c-62b9807e66d3
-  modified: 2026-09-24T01:57:54.544Z
 ---
 
-When gbcms disagrees with sign-out, the question is "what do the reads show",
-not "how do we match sign-out". Matching sign-out is evidence only when the
-reads agree (e.g. TERT C250T: 93 reads carry the change, sign-out 93); where
-they don't (a signed-out MNP no read carries), gbcms reporting the annotation as
-absent is correct and sign-out's annotation is the thing that is wrong.
+gbcms is a **genotyper, not a caller**. Given an allele, it reports how many reads
+carry it (and REF, and what else is there as diagnostics); it does not decide
+whether a variant exists, discover alleles for a row, or rewrite a wrong input
+([[count-the-given-allele]]).
 
-Sign-out alleles themselves can be wrong: curators sometimes move or edit
-variants by hand and make mistakes (seen locally as garbage alleles like `LU`,
-`SV`, `?N[]{}`, REF mismatches against the reference, and shifted
-representations). The truth standard is what IGV shows for the reads. So a
-read census must discover the haplotypes the reads carry, not only match the
-annotated ones, and a recurrent unannotated haplotype is a finding (a missed
-or mis-described allele), not noise — a finding for validation and
-diagnostics, never ALT evidence for the row ([[count-the-given-allele]]).
+The BAM is **not** the truth either: alignments can be wrong (an indel placed
+elsewhere in a repeat, an allele soft-clipped at a read end, a long event split
+across alignments, a misaligned read). The evidence is each read's **own bases**,
+judged independently of how the aligner represented them. That is why the counting
+rules anchor windows on flank bases, grow events through repeats, read clipped
+bases and treat junctions and splices explicitly, rather than trusting the CIGAR.
 
-**Why:** stated by the operator 2026-09-23 while reviewing the MNP rescue work
-(T7), after rescue matched sign-out by adopting a germline SNP on ACCESS data.
+Sign-out alleles are one more result to compare against, and they can be wrong
+(manual edits, shifted or garbage alleles). A recurrent unannotated haplotype is a
+finding for validation and diagnostics, never ALT evidence for the row.
 
-The operator added (2026-09-25) that sign-out alleles are sometimes wrong from
-manual edits, and that people use IGV as the truth.
+**Why:** operator, 2026-09-23 (reads, not sign-out, are what we score against),
+2026-09-25 (sign-out alleles can be wrong; people use IGV), and 2026-09-28: "BAM is
+not necessarily the truth, it can have alignment errors, but the point is we are
+not a caller but a genotyper"; and "always try to do things as generalized as
+possible; use different datasets to make the architecture general."
 
-**How to apply:** validate count-changing work against pysam/trace read counts
-and matched normals, across every assay the change reaches (IMPACT tumour+normal,
-ACCESS duplex+simplex via `gbcms merge`); treat any feature that reports a
-different allele under a row's label (e.g. `--rescue-mnp`) as opt-in, flagged
-and audited. See [[pysam-validation-oracle]].
+**How to apply:** validate count-changing work per read against an independent,
+position-aware census of the reads' own bases (clipped bases included,
+equal-length windows, masked low-quality bases), across data types before merge:
+synthetic contracts and fuzz with varied base-quality encodings; realigned panel
+DNA (tumour, normal, duplex, simplex); DNA without indel realignment (WES/WGS);
+RNA (spliced, BAQ); public reference data when available. Cross-platform agreement
+is secondary. When the right behaviour is not known, measure it on that matrix and
+survey community practice (callers/genotypers, with sources) before deciding (operator,
+2026-09-28); the caveats are in `docs/reference/bam-evidence-caveats.md`. Treat any feature that reports a different allele under a row's
+label (e.g. `--rescue-mnp`) as opt-in, flagged and audited. The concrete local
+datasets are in a local-only memory. See [[pysam-validation-oracle]] and
+[[holistic-effects-map]].

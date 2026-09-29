@@ -47,6 +47,11 @@ before implementation.
 | C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
 | T1 | Test architecture: retire or unify the legacy parity path | M | [decide] | #170 |
 | T2 | Read census as the classification oracle in tests | M | | #171 |
+| C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
+| C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] | #177 |
+| R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 |
+| O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 |
+| O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] | #180 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
@@ -979,6 +984,10 @@ hid the RNA exon-edge collapse.
   bases across the event's repeat tract (clipped bases included, equal-length
   windows, masked low-quality bases). Cross-platform agreement is secondary:
   platforms differ by capture, depth, run, aligner and realignment.
+- When the right behaviour is not known, measure it on this matrix and survey
+  community practice (callers and genotypers, with sources) before deciding;
+  record the decision in the tracking issue. The caveats this addresses are listed
+  in `docs/reference/bam-evidence-caveats.md`.
 - PRs, issues and plans carry aggregates and allele shapes only.
 - Not yet covered: WGS, public reference data, other aligners and quality bins
   (D5 arms).
