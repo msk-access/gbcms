@@ -41,10 +41,14 @@ inserts to ALT. Same-event escapes that stay ALT:
   artifact-SIZE prior: artifacts are small, a ≥50bp op is a real deletion),
 - insertion **truncation containment** (≥4bp, ≥90% identity, both sequences
   non-low-complexity).
-Same-length S3-fail / unverifiable-bases candidates keep Phase-3 arbitration
-via `has_shifted_same_length` (partial propagated on non-ALT). Windowed
-wrong-length (dels ≥5bp only — 1–4bp windowed Ds are noise → plain REF; ins any
-size): repeat tract → neither+partial; unique context → REF+partial.
+Windowed S3 = same haplotype (`same_insertion_haplotype`: X+S == S+Y;
+`same_deletion_haplotype`: the stretch between placements has period len), so a
+carrier written anywhere in the repeat (or rotated) is ALT (#189). A same-length
+insertion of the variant's bases at a non-equivalent spot is a distinct allele
+(`has_distinct_allele_nearby`); other bases keep Phase-3 arbitration via
+`has_shifted_same_length` (partial propagated on non-ALT). Windowed wrong-length
+(dels ≥5bp only — 1–4bp windowed Ds are noise → plain REF; ins any size):
+repeat tract → neither+partial; unique context → REF+partial.
 Delins stay `check_complex` (Phase-3 realignment is CORRECT for them).
 Contract battery: `tests/test_wrong_length_contract.py` (parity-oracle).
 

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — carriers of an indel written elsewhere in its repeat count ALT, not REF (#189)
+
+- An indel in a repeat can be written at any junction of its repeat with the same
+  haplotype. The input is left-aligned, but aligners may not be: STAR places most
+  repeat insertions away from the left-aligned position. The windowed checks
+  accepted a shifted placement only by a proxy:
+  - an insertion when the reference base before it equalled the anchor base, never
+    true inside the repeat, so carriers written elsewhere counted **REF**. In a
+    synthetic `G AAAAA T` locus, REF 10 / ALT 0 instead of 5 / 5;
+  - a deletion when the bases it removes equalled the given ones, so a rotated
+    STR placement (removing `AC` for `CA`) under 5bp counted REF.
+- A placement is now accepted when it gives the variant's haplotype (the same
+  bases, or a rotation, elsewhere in the repeat): the read's own bases carry the
+  allele. The variant's bases placed where they give another haplotype are a
+  distinct allele: partial evidence, not REF or ALT.
+- This also changes grouped rows (#99): a tract-mate deleting the same bases at
+  another position is another haplotype, not this row's allele, so where its
+  change lies outside this row's window its carriers are REF here instead of being
+  matched and then demoted to partial.
+
 ### Fixed — indels near a contig end are left-aligned and get their reference windows (#142)
 
 - Prep pads its reference windows on both sides but clamped them only at the

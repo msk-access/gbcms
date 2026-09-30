@@ -1461,73 +1461,48 @@ fn scan_windowed_insertion_candidate(
     window_end: i64,
     best_windowed_match: &mut Option<u64>,
     has_shifted_same_length: &mut bool,
-    has_wrong_length_nearby: &mut bool,
+    has_distinct_allele_nearby: &mut bool,
 ) {
     let anchor_pos = variant.pos;
     if ins_ref_pos < window_start || ins_ref_pos > window_end || ins_ref_pos == anchor_pos + 1 {
         return;
     }
     let expected_ins_len = variant.alt_allele.len() - 1;
-    let expected_ins_seq = &variant.alt_allele.as_bytes()[1..];
-    let original_anchor_base = variant.ref_allele.as_bytes()[0].to_ascii_uppercase();
 
     // Safeguard 1: length must match
     if ins_len_usize == expected_ins_len {
         if ins_start + ins_len_usize <= record.seq().len() {
             let ins_seq = &record.seq().as_bytes()[ins_start..ins_start + ins_len_usize];
-            // Quality-aware fuzzy match for inserted bases
             let ins_quals = &quals[ins_start..ins_start + ins_len_usize];
-            let (mismatches, reliable) =
-                masked_single_compare(ins_seq, ins_quals, expected_ins_seq, min_baseq);
-            if reliable > 0 && mismatches == 0 {
-                // Safeguard 3: verify anchor base at shifted position
-                let shifted_anchor_pos = ins_ref_pos - 1;
-                let anchor_ok = match &variant.ref_context {
-                    Some(ctx) => {
-                        let ctx_offset =
-                            (shifted_anchor_pos - variant.ref_context_start) as usize;
-                        if ctx_offset < ctx.len() {
-                            ctx.as_bytes()[ctx_offset].to_ascii_uppercase()
-                                == original_anchor_base
-                        } else {
-                            trace!(
-                                "ref_context offset {} out of bounds (len={}), rejecting",
-                                ctx_offset, ctx.len()
-                            );
-                            false
-                        }
-                    }
-                    None => {
-                        warn!(
-                            "ref_context is None for variant at {}:{} — S3 cannot validate shifted insertion",
-                            variant.chrom, variant.pos + 1
-                        );
-                        false
-                    }
-                };
-
-                if anchor_ok {
-                    // Safeguard 2: track closest match
-                    let distance = (ins_ref_pos - (anchor_pos + 1)).unsigned_abs();
-                    if best_windowed_match.is_none_or(|prev| distance < prev) {
-                        *best_windowed_match = Some(distance);
-                    }
-                } else {
-                    trace!(
-                        "check_insertion: S3 reject at shifted pos {} (anchor base mismatch)",
-                        shifted_anchor_pos
-                    );
+            // Safeguard 3: the placement gives the variant's haplotype (its own
+            // bases, or a rotation of them, elsewhere in the repeat).
+            if same_insertion_haplotype(variant, ins_ref_pos, ins_seq, ins_quals, min_baseq) {
+                // Safeguard 2: track closest match
+                let distance = (ins_ref_pos - (anchor_pos + 1)).unsigned_abs();
+                if best_windowed_match.is_none_or(|prev| distance < prev) {
+                    *best_windowed_match = Some(distance);
                 }
+            } else if matches!(
+                masked_single_compare(ins_seq, ins_quals, &variant.alt_allele.as_bytes()[1..], min_baseq),
+                (0, reliable) if reliable > 0
+            ) {
+                // The variant's bases written where they give another haplotype: a
+                // distinct allele, as a wrong-length insertion is (never REF or ALT
+                // in a repeat; Phase 3 must not arbitrate it).
+                *has_distinct_allele_nearby = true;
+                trace!(
+                    "check_insertion: windowed I({}) at pos {} carries the variant's \
+                     bases but not its haplotype → distinct-allele candidate",
+                    ins_len_usize, ins_ref_pos
+                );
             } else {
-                // Length matches but sequence differs — the caller and
-                // aligner may represent the same event differently (e.g.,
-                // shifted insertion in a repeat). Track this so Phase 3 can
-                // arbitrate.
+                // Same length, other bases: the caller and the aligner may write
+                // one event differently; Phase 3 arbitrates.
                 *has_shifted_same_length = true;
                 trace!(
-                    "check_insertion: windowed I({}) at pos {} seq mismatch \
-                     (mismatches={}, reliable={}), flagging for Phase 3 fallback",
-                    ins_len_usize, ins_ref_pos, mismatches, reliable
+                    "check_insertion: windowed I({}) at pos {} seq mismatch, \
+                     flagging for Phase 3 fallback",
+                    ins_len_usize, ins_ref_pos
                 );
             }
         }
@@ -1539,7 +1514,7 @@ fn scan_windowed_insertion_candidate(
         // ref_pos): the same insertion is at block_end of the previous M
         // block, which the windowed scan processes on the prior loop
         // iteration.
-        *has_wrong_length_nearby = true;
+        *has_distinct_allele_nearby = true;
         trace!(
             "check_insertion: windowed I({}) at pos {} (expected I({})), \
              wrong length → distinct-allele candidate",
@@ -1630,7 +1605,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     // resolved after the walk. Flagged at ANY length — unlike the deletion
     // side's ≥5bp noise gate — because wrong-length insertions must never be
     // silently absorbed into REF (the engine-level windowed-I contract).
-    let mut has_wrong_length_nearby = false;
+    let mut has_distinct_allele_nearby = false;
 
     for (i, op) in cigar_view.iter().enumerate() {
         match op {
@@ -1714,7 +1689,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         quals, min_baseq, window_start, window_end,
                         &mut best_windowed_match,
                         &mut has_shifted_same_length,
-                        &mut has_wrong_length_nearby,
+                        &mut has_distinct_allele_nearby,
                     );
                 }
 
@@ -1771,7 +1746,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                             quals, min_baseq, window_start, window_end,
                             &mut best_windowed_match,
                             &mut has_shifted_same_length,
-                            &mut has_wrong_length_nearby,
+                            &mut has_distinct_allele_nearby,
                         );
                     }
                 }
@@ -1826,7 +1801,9 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
         return result;
     }
 
-    // Wrong-length insertion in the window (no same-length candidate). Note:
+    // A distinct allele in the window: a wrong-length insertion, or the variant's
+    // bases written where they give another haplotype (no same-length candidate
+    // of other bases). Note:
     // NOT the strict-path resolution — the truncation-containment check does
     // not run here (a windowed I's bases are not extracted during the scan);
     // shifted truncations of a long insert therefore land in partial, not ALT.
@@ -1836,17 +1813,17 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     // anchor-covering M is definitive REF and the stray I is alignment
     // noise — keep rd, but carry the partial evidence so the read is not
     // silently absorbed (matches the pre-rule Phase-3 outcome).
-    if has_wrong_length_nearby && found_ref_coverage {
+    if has_distinct_allele_nearby && found_ref_coverage {
         if variant.repeat_span >= 2 {
             trace!(
-                "check_insertion: lone wrong-length I in repeat tract at pos {} → \
+                "check_insertion: lone distinct-allele I in repeat tract at pos {} → \
                  neither + partial evidence",
                 anchor_pos
             );
             return ClassifyResult::neither_with_nearby(anchor_qual, ClassifyPhase::Structural);
         }
         trace!(
-            "check_insertion: lone wrong-length I in window at pos {} (unique \
+            "check_insertion: lone distinct-allele I in window at pos {} (unique \
              context) → REF at anchor + partial evidence",
             anchor_pos
         );
@@ -1920,6 +1897,69 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
 /// so the comparison can only fail on a missing/short ref_context. Returns
 /// `true` only on a reliable, zero-mismatch concordance; a `None` ref_context
 /// or out-of-bounds offset returns `false`.
+/// Reference bases `[lo, hi)`, upper-case, from the variant's prepared reference:
+/// its event reference, else its `ref_context`. None when neither holds them.
+fn reference_span(v: &Variant, lo: i64, hi: i64) -> Option<Vec<u8>> {
+    let slice = |start: i64, seq: &str| {
+        let (a, b) = (lo - start, hi - start);
+        (a >= 0 && a <= b && b as usize <= seq.len())
+            .then(|| seq.as_bytes()[a as usize..b as usize].to_ascii_uppercase())
+    };
+    v.event_ref
+        .as_ref()
+        .and_then(|(start, seq)| slice(*start, seq))
+        .or_else(|| v.ref_context.as_ref().and_then(|ctx| slice(v.ref_context_start, ctx)))
+}
+
+/// Whether inserting `ins` before reference position `at` gives the variant's own
+/// haplotype (its ALT's inserted bases X before `pos + 1`): the same sequence
+/// written elsewhere in a repeat, as X itself or a rotation of it. With S the
+/// reference between the two junctions, the placements agree when `X + S == S + Y`
+/// (Y right of X) or `S + X == Y + S` (Y left of X). A read base below `min_baseq`,
+/// or N, matches anything; at least one must be read.
+fn same_insertion_haplotype(v: &Variant, at: i64, ins: &[u8], ins_quals: &[u8], min_baseq: u8) -> bool {
+    let x = v.alt_allele.as_bytes()[1..].to_ascii_uppercase();
+    let j0 = v.pos + 1;
+    if ins.len() != x.len() {
+        return false;
+    }
+    let Some(s) = reference_span(v, j0.min(at), j0.max(at)) else {
+        return false;
+    };
+    let (expected, y_at): (Vec<u8>, usize) = if at >= j0 {
+        ([x.as_slice(), &s].concat(), s.len())
+    } else {
+        ([s.as_slice(), &x].concat(), 0)
+    };
+    let read: Vec<u8> = if at >= j0 { [s.as_slice(), ins].concat() } else { [ins, s.as_slice()].concat() };
+    let mut reliable = 0usize;
+    for (i, (e, r)) in expected.iter().zip(&read).enumerate() {
+        let r = r.to_ascii_uppercase();
+        let in_y = i >= y_at && i < y_at + ins.len();
+        if in_y && (r == b'N' || ins_quals[i - y_at] < min_baseq) {
+            continue;
+        }
+        if r != *e {
+            return false;
+        }
+        reliable += usize::from(in_y);
+    }
+    reliable > 0
+}
+
+/// Whether deleting the `len` reference bases from `at` gives the variant's own
+/// haplotype (its deleted bases from `pos + 1`): the same deletion written elsewhere
+/// in a repeat, as its bases or a rotation of them. Removing either stretch leaves
+/// the same sequence when the reference between them repeats with period `len`.
+fn same_deletion_haplotype(v: &Variant, at: i64, len: usize) -> bool {
+    let j0 = v.pos + 1;
+    let (lo, hi) = (j0.min(at), j0.max(at));
+    let Some(seq) = reference_span(v, lo, hi + len as i64) else {
+        return false;
+    };
+    (0..(hi - lo) as usize).all(|i| seq[i] == seq[i + len])
+}
+
 fn verify_deleted_bases(
     variant: &Variant,
     del_ref_pos: i64,
@@ -2241,8 +2281,14 @@ fn scan_windowed_deletion_candidate(
         // different bases is not accepted as ALT. A genuinely
         // shifted/different deletion fails here and is routed to the
         // Phase 3 fallback after the walk.
-        let compare_len = del_len_usize.min(expected_del_len);
-        let del_ok = verify_deleted_bases(variant, del_ref_pos, expected_del_seq, compare_len);
+        // An exact-length deletion placed elsewhere is the variant when it gives
+        // the same haplotype, which a rotation of the bases in a repeat does.
+        let del_ok = if del_len_usize == expected_del_len {
+            same_deletion_haplotype(variant, del_ref_pos, del_len_usize)
+        } else {
+            let compare_len = del_len_usize.min(expected_del_len);
+            verify_deleted_bases(variant, del_ref_pos, expected_del_seq, compare_len)
+        };
 
         if del_ok {
             // Safeguard 2: track closest match

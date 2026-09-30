@@ -200,23 +200,26 @@ def test_cluster_sum_bounded_by_distinct_molecules(tmp_path):
 
 def test_tract_mate_carriers_surface_as_partial(tmp_path):
     """A tract-mate's carriers are structural indel evidence of a DIFFERENT
-    allele: they must surface in partial_alt (not vanish, not count REF).
+    allele: inside the row's window they surface in partial_alt (not vanish, not
+    count REF); outside it they show the row's reference.
 
     Row A's discrimination window is 299-303. B's deletion (302-304) lies in
-    it; C's same-sequence deletion (304-305) is claimed for A by the AD guard
-    and demoted. D's deletion (308-309) lies outside: its carriers show the
-    reference across A's window, so they are REF for A (as IGV shows them).
+    it. C's deletion of the same bases (304-305) and D's (308-309) lie outside:
+    their carriers show the reference across A's window, so they are REF for A
+    (as IGV shows them). C's is another haplotype than A's, not A written
+    elsewhere (#189: the old same-bases test matched it to A, and the sibling
+    guard then demoted it to partial).
     """
     ref, rows, reads = _cluster_setup(tmp_path)
     res = _run(tmp_path, _vcf(tmp_path, rows), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
     r_a = res[D_A + 1]
-    # carriers of B and C (6+4) are distinct-allele evidence for row A
+    # B's 6 carriers are distinct-allele evidence for row A
     assert (
-        int(r_a["partial_alt"]) == 10
+        int(r_a["partial_alt"]) == 6
     ), f"tract-mate carriers must appear as partial for row A, got {r_a['partial_alt']}"
-    # 10 WT reads plus D's 3 carriers; reads and fragments agree
-    assert int(r_a["ref_count"]) == 13, f"WT + D carriers count REF, got {r_a['ref_count']}"
-    assert int(r_a["ref_count_fragment"]) == 13
+    # 10 WT reads plus C's 4 and D's 3 carriers; reads and fragments agree
+    assert int(r_a["ref_count"]) == 17, f"WT + C + D carriers count REF, got {r_a['ref_count']}"
+    assert int(r_a["ref_count_fragment"]) == 17
 
 
 def test_distant_same_alleles_unaffected(tmp_path):
@@ -381,10 +384,12 @@ def _complex_vcf(tmp_path, ref):
 
 
 def test_complex_sibling_claims_windowed_carrier(tmp_path):
-    """The key cross-type case: a delins tract-mate's carriers S3-match the
-    pure-del row's windowed scan pre-fix. Post-fix the delins sibling claims
-    them (full-ALT for the complex row beats a windowed match), and the
-    pure-del row records them as partial evidence."""
+    """The key cross-type case: a delins tract-mate's carriers delete the pure
+    deletion's bases (AG) 4bp further on. That is another haplotype, not the
+    pure deletion written elsewhere, and their change starts past the pure
+    deletion's window, so they show its reference there: REF for the pure-del
+    row, ALT for the delins row (#189: the old same-bases test matched them to
+    the pure deletion, and the delins sibling then claimed them back)."""
     ref, reads = _complex_setup(tmp_path)
     res = _run(
         tmp_path, _complex_vcf(tmp_path, ref), _bam(tmp_path, ref, reads), _fasta(tmp_path, ref)
@@ -398,8 +403,8 @@ def test_complex_sibling_claims_windowed_carrier(tmp_path):
         int(r_del["alt_count"]) == 6
     ), f"pure-del row must not absorb delins carriers, got ad={r_del['alt_count']}"
     assert (
-        int(r_del["partial_alt"]) >= 5
-    ), f"claimed delins carriers must surface as partial, got {r_del['partial_alt']}"
+        int(r_del["ref_count"]) == 13
+    ), f"8 WT reads and the 5 delins carriers are REF here, got {r_del['ref_count']}"
 
 
 def _cluster_maf(tmp_path, ref, rows):

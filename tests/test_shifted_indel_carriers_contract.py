@@ -27,7 +27,6 @@ from helpers import count_both, make_read
 
 from gbcms import _rs as gbcms_rs
 
-RED = pytest.mark.xfail(strict=True, reason="#189: a shifted equivalent placement is counted REF")
 READ, L, A = 100, 800, 400  # read length, contig length, the repeat's anchor (0-based)
 
 
@@ -85,24 +84,23 @@ def _count(tmp_path, ref, ref_allele, alt_allele, junction, op, bases):
     return c.rd, c.ad, c.partial_alt
 
 
-def _j(n, red=()):
-    """Junction offsets 1..n after the anchor; those in `red` xfail until the fix."""
-    return [pytest.param(k, marks=RED) if k in red else k for k in range(1, n + 1)]
+def _j(n):
+    """Junction offsets 1..n after the anchor."""
+    return list(range(1, n + 1))
 
 
 # ── Insertions ────────────────────────────────────────────────────────────────
-@pytest.mark.parametrize("junction", _j(6, red={2, 3, 4, 5, 6}))
+@pytest.mark.parametrize("junction", _j(6))
 def test_homopolymer_insertion_carriers_at_every_junction(tmp_path, junction):
     """G>GA in G AAAAA T: an A inserted anywhere in the run is the same allele."""
     assert _count(tmp_path, HOMOPOLYMER, "G", "GA", A + junction, "I", "A") == (5, 5, 0)
 
 
-@RED
 def test_a_two_base_homopolymer_insertion_placed_mid_run(tmp_path):
     assert _count(tmp_path, HOMOPOLYMER, "G", "GAA", A + 3, "I", "AA") == (5, 5, 0)
 
 
-@pytest.mark.parametrize("junction", _j(9, red={3, 5, 7, 9}))
+@pytest.mark.parametrize("junction", _j(9))
 def test_str_insertion_carriers_at_every_phase(tmp_path, junction):
     """G>GCA in G (CA)x4 T: placed at an odd offset the read inserts CA (the input's
     bases), at an even one AC (a rotation); both are the same allele."""
@@ -123,7 +121,7 @@ def test_homopolymer_deletion_carriers_in_the_run(tmp_path, junction):
     assert _count(tmp_path, HOMOPOLYMER, "GA", "G", A + junction, "D", 1) == (5, 5, 0)
 
 
-@pytest.mark.parametrize("junction", [1, pytest.param(2, marks=RED), 3, pytest.param(4, marks=RED)])
+@pytest.mark.parametrize("junction", [1, 2, 3, 4])
 def test_str_deletion_carriers_at_every_phase(tmp_path, junction):
     """GCA>G in G (CA)x4 T: removing AC at an even offset is the same allele as
     removing CA."""

@@ -5,10 +5,13 @@ Verifies that insertions and deletions shifted by the aligner within ±5bp of th
 expected anchor position are still correctly detected, using three safeguards:
   S1: Inserted/deleted sequence must match expected bases exactly
   S2: Closest match wins when multiple candidates exist
-  S3: Reference context at shifted position must be biologically valid
+  S3: The shifted placement gives the variant's haplotype (the same sequence
+      elsewhere in a repeat; #189)
 
 Reference genome: chr1, 500 bases of 'A' (all A's for homopolymer tests).
-  - Insertion tests: pos 100, REF=A, ALT=AT (insert T after anchor A)
+  - Insertion tests: pos 100, REF=A, ALT=AA (an A inserted into the A run: any
+    placement is the same haplotype) and ALT=AT (a T: each placement is its own
+    haplotype)
   - Deletion tests:  pos 200, REF=AT, ALT=A (delete T after anchor A)
 """
 
@@ -44,6 +47,18 @@ INS_VARIANT = Variant(
 )
 
 
+# The same run, an A inserted: every placement in the run gives this haplotype.
+INS_A_VARIANT = Variant(
+    chrom="chr1",
+    pos=100,
+    ref_allele="A",
+    alt_allele="AA",
+    variant_type="INSERTION",
+    ref_context="AAAAAAAAAAAAAAA",  # [95, 110)
+    ref_context_start=95,
+)
+
+
 class TestInsertionStrict:
     """Insertion at the exact expected position (strict fast path)."""
 
@@ -69,26 +84,32 @@ class TestInsertionWindowed:
     """Insertion shifted within ±5bp of the expected anchor position."""
 
     def test_shifted_right_2bp(self, tmp_path):
-        """INS 2bp to the right of anchor → ALT (windowed).
-        Anchor is at pos 100. Insertion placed at pos 103 (after M block ending at 102).
-        Read starts at 96, 7M 1I 2M. Block end at 103, ins after base at 102.
-        Shifted anchor at 102 is 'A' → passes S3.
-        """
-        reads = [_make_read("r1", "AAAAAAATAA", 96, ((0, 7), (1, 1), (0, 2)))]
+        """An A inserted 2bp to the right of the anchor → ALT (windowed): in the A
+        run it is the same haplotype. Read starts at 96, 7M 1I 2M: the insertion
+        sits before 103."""
+        reads = [_make_read("r1", "AAAAAAAAAA", 96, ((0, 7), (1, 1), (0, 2)))]
         bam = _build_bam(tmp_path, reads)
-        counts = _count_one(bam, INS_VARIANT)
+        counts = _count_one(bam, INS_A_VARIANT)
         assert counts.ad == 1, f"Expected ad=1 (windowed ALT), got {counts.ad}"
 
     def test_shifted_left_3bp(self, tmp_path):
-        """INS 3bp to the left of anchor → ALT (windowed).
-        Anchor at 100. Insertion placed at pos 98 (after M block).
-        Read starts at 96, 2M 1I 7M. Block end at 98.
-        Shifted anchor at 97 is 'A' → passes S3.
-        """
-        reads = [_make_read("r1", "AATAAAAAAA", 96, ((0, 2), (1, 1), (0, 7)))]
+        """An A inserted 3bp to the left of the anchor → ALT (windowed). Read
+        starts at 96, 2M 1I 7M: the insertion sits before 98."""
+        reads = [_make_read("r1", "AAAAAAAAAA", 96, ((0, 2), (1, 1), (0, 7)))]
+        bam = _build_bam(tmp_path, reads)
+        counts = _count_one(bam, INS_A_VARIANT)
+        assert counts.ad == 1, f"Expected ad=1 (windowed ALT, shifted left), got {counts.ad}"
+
+    def test_shifted_other_haplotype_is_not_alt(self, tmp_path):
+        """A T inserted 2bp right of where the variant puts its T: in the A run
+        that is another haplotype (a T elsewhere), a distinct allele: never ALT,
+        and surfaced as partial evidence (#189: the anchor-base test used to
+        accept it)."""
+        reads = [_make_read("r1", "AAAAAAATAA", 96, ((0, 7), (1, 1), (0, 2)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, INS_VARIANT)
-        assert counts.ad == 1, f"Expected ad=1 (windowed ALT, shifted left), got {counts.ad}"
+        assert counts.ad == 0, f"Expected ad=0 (another haplotype), got {counts.ad}"
+        assert counts.partial_alt == 1
 
     def test_wrong_inserted_sequence(self, tmp_path):
         """Same-length insertion AT the anchor with a confidently wrong base
@@ -159,13 +180,11 @@ class TestInsertionHomopolymer:
     """Insertions in homopolymer runs — the primary use case for windowed detection."""
 
     def test_homopolymer_shifted(self, tmp_path):
-        """INS in AAAA run shifted by aligner → ALT.
-        In an all-A reference, any T insertion within ±5bp should be detected.
-        """
-        # Insertion shifted +4bp from anchor
-        reads = [_make_read("r1", "AAAAAAAAATAA", 96, ((0, 9), (1, 1), (0, 2)))]
+        """An A inserted into the A run, shifted +4bp by the aligner → ALT: the
+        same haplotype wherever it sits in the run."""
+        reads = [_make_read("r1", "AAAAAAAAAAAA", 96, ((0, 9), (1, 1), (0, 2)))]
         bam = _build_bam(tmp_path, reads)
-        counts = _count_one(bam, INS_VARIANT)
+        counts = _count_one(bam, INS_A_VARIANT)
         assert counts.ad == 1, f"Expected ad=1 (homopolymer shift), got {counts.ad}"
 
 
@@ -368,9 +387,9 @@ class TestBinnedParity:
         assert counts.rd == 0
 
     def test_insertion_windowed_binned(self, tmp_path):
-        reads = [_make_read("r1", "AAAAAAATAA", 96, ((0, 7), (1, 1), (0, 2)))]
+        reads = [_make_read("r1", "AAAAAAAAAA", 96, ((0, 7), (1, 1), (0, 2)))]
         bam = _build_bam(tmp_path, reads)
-        counts = _count_one_both(bam, INS_VARIANT)
+        counts = _count_one_both(bam, INS_A_VARIANT)
         assert counts.ad == 1
 
     def test_deletion_strict_binned(self, tmp_path):
