@@ -29,6 +29,15 @@ every item a sub-issue). Merged to develop so far:
 - #187 R2 (#114): rna_antisense_depth counts antisense reads under strandedness
   enforcement (classified, tallied, dropped; REF/ALT unchanged); STRAND_DISCORDANT
   documented as a --no-strandedness diagnostic. Follow-ups R4 #185, O8 #186.
+- #190 C4 (#142): reference windows clamp only when they pass a contig end (by
+  the record read); RC set byte-identical. Follow-up C20 #188.
+
+**In review: C21 (#189)** on `feature/c21-shifted-insertion-carriers`: the
+windowed indel checks accept a placement by its haplotype (read aligned between
+the placements), the scan covers the shift region, and the backward-boundary
+check requires the same haplotype. Acceptance adjudicated per read (plan C21
+entry; harness `~/test/gbcms/harness/c21/`, local: accept.py, adjudicate.py,
+rna_probes.py). Follow-ups C22 #191; C20 #188 gains the windowed paths.
 
 **Validation standard** (adopted 2026-09-28): gbcms is a genotyper, not a caller;
 every count-affecting change is accepted per read, against the reads' own bases, on
@@ -38,9 +47,10 @@ Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. C4 #142 (in review: PR to develop; carries the harness-cleanup routine).
-2. C21 #189 (insertion carriers placed elsewhere in the run counted REF; measure
-   first), C20 #188 (C10's ALT side; measure and decide first), C8 #121, C9 #122; C11 #159 (measure first); C3 + M3 + #145.
+1. C21 #189 (in review).
+2. C20 #188 (C10's ALT side, now with the windowed paths; measure and decide
+   first), C22 #191 (non-equivalent ≥5bp deletions to Phase 3; measure and decide
+   first), C8 #121, C9 #122; C11 #159 (measure first); C3 + M3 + #145.
 3. C15 #173 (C12 in RNA; clipped pure deletions), C17 #176 (read-through mask),
    C18 #177 (split reads), C19 #182 (absent qualities; decide first), C5 #120,
    C6 #143, C7 #144, C16 #174, R3 #178 (RNA editing), R4 #185 (intronic gene

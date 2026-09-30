@@ -217,3 +217,11 @@ def test_a_long_duplication_deletion_placed_on_its_second_copy(tmp_path):
     """G+ACGTTGCA>G over two copies of it: deleting the second copy is the same
     allele, past the scan's repeat-span reach."""
     assert _count(tmp_path, DUPLICATION, "G" + DUP, "G", A + 9, "D", 8) == (5, 5, 0)
+
+
+def test_another_deletion_inside_a_long_deletions_span_is_surfaced(tmp_path):
+    """G+ACGTTGCA>G over two copies of it, but the carriers delete 5 bases 11 into
+    the region the deletion slides over, past the scan's repeat-span reach: another
+    allele inside the discrimination window. In unique sequence the anchor stays REF
+    and the read is surfaced as partial evidence (it was plain REF, unscanned)."""
+    assert _count(tmp_path, DUPLICATION, "G" + DUP, "G", A + 11, "D", 5) == (10, 0, 5)
