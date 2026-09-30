@@ -51,11 +51,13 @@ before implementation.
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] | #177 |
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 |
+| R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] | #180 |
 | O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | | #183 |
+| O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | | #186 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
-| R2 | RNA strandedness gating observability | M | [decided] | #114 |
+| R2 | RNA strandedness gating observability | M | [decided] [done] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
 | I2 | `End_Position` optional | L | | #124 |
 | I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] | #125 |
@@ -723,6 +725,45 @@ note in output-formats; counts unchanged.
 
 Evidence on #114: 143 antisense reads (0.5%) at 18% of truth loci are reported as 0 today; antisense junction reads are 0.1%.
 
+**As built (2026-09-29).**
+- Under enforcement the strand filter marks an antisense read instead of skipping
+  it. A read that is not first-class, or not over the anchor, stops there. Any other
+  is classified as a sense read would be (MAPQ rule, BAQ, classification, sibling
+  guards). When it is REF or ALT it is tallied in `rna_antisense_depth`, the sense
+  tally's definition. It is then dropped before any count, fragment, mFSD, distance
+  or observation.
+- The column therefore means the same with `--no-strandedness`. It counts REF/ALT
+  reads, not every read at the locus, so it reports fewer than #114's 143 raw
+  antisense reads.
+- Binned path only: strandedness is parity-exempt, and the legacy comment is
+  updated.
+- `STRAND_DISCORDANT` is documented as a `--no-strandedness` diagnostic where the
+  gene strand is resolved.
+- The adversarial review found no counting defect; its oracle probe matched every
+  column. It led to:
+  - an oracle test per variant type;
+  - doc precision: the column's exceptions, ANT descriptions, the strand table
+    inverted for `reverse`, and "gene strand from the MAF" corrected to the GTF;
+  - two filed follow-ups: R4 #185 (no gene strand at intronic loci and
+    opposite-strand overlaps, so enforcement is a no-op there; reproduced) and
+    O8 #186 (the observed-allele diagnostic reads antisense reads and skips the
+    NH rescue).
+
+**Measured (2026-09-29).** All runs were local, one BAM at a time, develop vs the
+branch.
+- **FORTE truth cohort** (33 samples, 94 rows):
+  - no column changes except `rna_antisense_depth`;
+  - the column goes from 0 to 203 reads, on 15 rows;
+  - it equals its `--no-strandedness` value on 94/94 rows.
+- **Independent per-read census** of the 68 truth SNV rows (the reads' own bases,
+  strand and MAPQ rules, BAQ emulated): 68/68 rows exact, 181 = 181 reads.
+- **T9 probes** (978 rows): no other column changes. The column goes from 0 to
+  3,678 reads (0.12% of sense depth, on 393 rows) and equals `--no-strandedness`
+  on 978/978.
+- **DNA** (28 runs): byte-identical.
+- **Final head** (with the review's early skip) vs the tested build: byte-identical
+  on every input, both modes and DNA.
+
 ## Input and representation
 
 ### I1 — MAF allele base check (#123) · M [decided]
@@ -1070,17 +1111,18 @@ hid the RNA exon-edge collapse.
 ## Suggested order
 
 Refreshed 2026-09-29; C1, C2, C10, C12 and O4 are done.
-1. **Done:** C13 (#166, PR #169); R1 (#106, PR #181); C14 (#172).
+1. **Done:** C13 (#166, PR #169); R1 (#106, PR #181); C14 (#172, PR #184); R2 (#114).
 2. **Done:** this list, the validation standard and the BAM-caveats reference
    (PR #175).
-3. **Counting correctness:** R2 (#114), then C4
+3. **Counting correctness:** C4
    (#142), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
    decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C19 (#182, the
    absent-quality policy decided first); C5 (#120), C6 (#143,
-   reconciled with "count the given allele"), C7 (#144); C16 (#174); R3 (#178).
+   reconciled with "count the given allele"), C7 (#144); C16 (#174); R3 (#178); R4 (#185,
+   measured and decided first).
 4. **Test architecture, decided holistically:** T1 (#170) with T2 (#171).
-5. **Hardening:** I1–I5, M1, M2, O1–O3, O7 (#183), H1, H2; O5 (#179) and O6
-   (#180), each measured and surveyed first.
+5. **Hardening:** I1–I5, M1, M2, O1–O3, O7 (#183), O8 (#186), H1, H2; O5 (#179)
+   and O6 (#180), each measured and surveyed first.
 6. **Performance and statistics:** P1–P3, S1, S2.
 7. **Validation and release:** D5 (#155) with its arms, D1, D2, D4, D6, then D3.
 

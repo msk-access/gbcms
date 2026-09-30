@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `rna_antisense_depth` counts antisense reads at RNA defaults (#114)
+
+- With strandedness enforced (the RNA default), antisense reads were dropped
+  before the sense/antisense tally, so `rna_antisense_depth` (VCF `ANT`) was
+  always 0. Such a read is now classified as a sense read would be, and tallied
+  when it is a first-class REF or ALT read over the anchor. It is then dropped, so
+  REF, ALT, depth and every other count are unchanged. The column means the same
+  with `--no-strandedness`.
+- `STRAND_DISCORDANT` is documented as a `--no-strandedness` diagnostic: under
+  enforcement, antisense reads never reach the junction tally wherever the gene
+  strand is resolved.
+- Docs: the read-filters strand table is corrected for the default `reverse`
+  protocol, and the gene strand is documented as coming from the `--gtf` exons (not
+  the MAF).
+- The per-read trace line names each excluded antisense read
+  (`antisense_excluded=true`).
+
 ### Fixed — records stored without bases (SEQ `*`) are not counted (#172)
 
 - A BAM record with no sequence, such as a secondary alignment kept with

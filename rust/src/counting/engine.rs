@@ -1718,8 +1718,18 @@ fn count_variant_from_cache(
             counts.mq0_count += 1;
         }
 
-        // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs
-        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness) {
+        // ── RNA STRANDEDNESS FILTER: per-variant because gene_strand differs.
+        // An antisense read under enforcement counts nowhere, but it is classified
+        // below as a sense read would be and tallied in rna_antisense_depth when it
+        // is a first-class REF or ALT read over the anchor, then dropped (as
+        // mq0_count counts reads the MAPQ skip drops). The column then means the
+        // same with and without enforcement.
+        let antisense_excluded = mode == "rna"
+            && enforce_strandedness
+            && !rna::is_sense_strand(record, variant.gene_strand, strandedness);
+        // Only a first-class read over the anchor can be tallied (RNA admits no read
+        // by its soft clip), so any other excluded read stops here, unclassified.
+        if antisense_excluded && !(first_class && r_start <= variant.pos && r_end > variant.pos) {
             continue;
         }
 
@@ -1765,13 +1775,13 @@ fn count_variant_from_cache(
         // gate below, which is span-based (read_ref_end includes N) and
         // would otherwise admit these reads.
         if !result.covers_locus {
-            counts.splice_skip_excluded += 1;
+            if !antisense_excluded {
+                counts.splice_skip_excluded += 1;
+            }
             continue;
         }
 
         let base_qual = result.qual;
-        phase_counts[result.phase as usize] += 1;
-        tally_clip_candidate(&mut counts, record, variant, first_class);
 
         // ── MULTI-ALLELIC AD-CLAIMING GUARD: an ALT match contested and won
         // by a co-annotated sibling is the sibling's molecule. Downgrade
@@ -1796,14 +1806,29 @@ fn count_variant_from_cache(
         // the reads behind it (read-level validation against the BAM).
         trace!(
             "read call {}:{} {}>{} read={} mate={} ref={} alt={} phase={:?} partial={} nearby={} \
-             sibling_claimed={} ref_sibling_claimed={} uninformative={}",
+             sibling_claimed={} ref_sibling_claimed={} uninformative={} antisense_excluded={}",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
             String::from_utf8_lossy(record.qname()),
             if record.is_first_in_template() { 1 } else { 2 },
             is_ref, is_alt, result.phase, result.partial_match_count,
             result.has_nearby_evidence, claimed_by_sibling, ref_claimed_by_sibling,
-            result.ref_uninformative,
+            result.ref_uninformative, antisense_excluded,
         );
+
+        // An antisense read excluded by strandedness (first-class, over the anchor:
+        // checked above): tallied as the sense reads are at the end of this loop,
+        // when REF or ALT, then dropped before any count.
+        if antisense_excluded {
+            if is_ref || is_alt {
+                counts.antisense_depth += 1;
+                if is_alt {
+                    counts.antisense_strand_alt_count += 1;
+                }
+            }
+            continue;
+        }
+        phase_counts[result.phase as usize] += 1;
+        tally_clip_candidate(&mut counts, record, variant, first_class);
 
         // ── DISTANCE TO READ END: Track how close the variant-supporting
         // base is to the nearest end of the read. Bases near read ends
@@ -2190,12 +2215,13 @@ fn count_variant_from_cache(
 // Do NOT remove until count_bam itself is removed (D8b cleanup).
 //
 // NOTE: ref_context is always genomic in BOTH paths — consensus splicing of
-// the context was removed (see the note in count_variant_from_cache). Two
-// RNA behavioral divergences remain, both binned-only because they need
-// inputs this legacy path never receives (RNA features are exempt from the
-// parity oracle per AGENTS.md invariant #1): exon-boundary BAQ suppression
-// (`baq_applies`; needs the GTF annotation) and
-// rna_editing_site_overlap (needs the REDIportal editing-sites set).
+// the context was removed (see the note in count_variant_from_cache). Three
+// RNA behavioral divergences remain, all binned-only (RNA features are exempt
+// from the parity oracle per AGENTS.md invariant #1): exon-boundary BAQ
+// suppression (`baq_applies`; needs the GTF annotation),
+// rna_editing_site_overlap (needs the REDIportal editing-sites set), and the
+// antisense tally under strandedness enforcement (this path drops antisense
+// reads before the tally, so its antisense_depth stays 0 there).
 #[cfg(feature = "legacy-parity")]
 #[allow(clippy::too_many_arguments)]
 fn count_single_variant(

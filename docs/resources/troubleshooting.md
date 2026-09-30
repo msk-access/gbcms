@@ -290,14 +290,19 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
        samtools view sample.bam | head -1 | tr '\t' '\n' | grep "NH"
        ```
 
-??? question "`rna_sense_depth` and `rna_antisense_depth` are both 0"
+??? question "`rna_antisense_depth` is 0 and every read counts as sense"
 
-    The `gene_strand` column is missing from the MAF or all variants have `gene_strand = NA`.
-    gbcms cannot assign sense/antisense without strand annotation.
+    The variant has no gene strand. gbcms resolves it from the `--gtf` exons at the
+    variant's position. Without one, every read passes as sense, strandedness is not
+    enforced, and a run-level WARNING gives the number of such variants. Causes:
+
+    - no `--gtf`, or a GTF that does not annotate the variant's contig;
+    - an intronic position (for example a splice-site variant) or a position where
+      exons of both strands overlap: the strand is left unresolved there (R4 #185).
 
     Solutions:
-    - Add strand annotation to the MAF (from gene model GFF/GTF)
-    - Use `--no-strandedness` to count all reads regardless of strand
+    - Pass `--gtf` with the annotation the BAM was aligned against.
+    - For an unstranded library, use `--strandedness unstranded`.
 
 ??? question "RNA editing flag (`rna_editing_site`) is always False"
 

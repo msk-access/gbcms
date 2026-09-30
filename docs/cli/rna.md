@@ -177,7 +177,7 @@ strand-discordance detection.
 | `--enforce-strandedness/--no-strandedness` | `true` | Filter reads by dUTP strand orientation relative to gene strand |
 
 !!! info "Biological Context: dUTP Stranded Libraries"
-    In dUTP-stranded RNA-seq, the second strand (synthesized with dUTP) is degraded, so sequenced reads reflect the **antisense** strand of the original mRNA. The strandedness filter uses the variant's `gene_strand` annotation (from the input MAF) to determine whether each read's orientation is consistent with the expected transcript direction.
+    In dUTP-stranded RNA-seq, the second strand (synthesized with dUTP) is degraded, so sequenced reads reflect the **antisense** strand of the original mRNA. The strandedness filter uses the variant's gene strand, resolved from the `--gtf` exons at its position, to determine whether each read's orientation is consistent with the expected transcript direction.
 
     **Disable** with `--no-strandedness` for unstranded RNA-seq libraries where read orientation is random.
 
@@ -333,8 +333,8 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
 
     | Column | Type | Description |
     |:-------|:-----|:------------|
-    | `rna_sense_depth` | u32 | Reads aligning to the gene **sense** strand |
-    | `rna_antisense_depth` | u32 | Reads aligning to the gene **antisense** strand |
+    | `rna_sense_depth` | u32 | REF and ALT reads on the gene **sense** strand |
+    | `rna_antisense_depth` | u32 | REF and ALT reads on the gene **antisense** strand, tallied even when `--enforce-strandedness` keeps them out of every count |
     | `rna_alt_sense_count` | u32 | ALT-classified reads on the sense strand |
     | `rna_editing_site` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
     | `rna_splice_spanning` | u32 | ALT-classified reads containing splice junctions (CIGAR `N` operations) spanning the variant |
@@ -344,7 +344,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `SEN` | Integer | Sense strand depth |
-    | `ANT` | Integer | Antisense strand depth |
+    | `ANT` | Integer | REF and ALT reads on the antisense strand (tallied under enforcement too) |
     | `ASEN` | Integer | ALT sense strand count |
     | `RED` | Flag | Known A→I RNA editing site overlap (flag; present if true) |
     | `SPL` | Integer | Splice-spanning ALT read count |
@@ -356,7 +356,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     | Field | Type | Description |
     |:------|:-----|:------------|
     | `SEN` | Integer | Per-sample sense depth |
-    | `ANT` | Integer | Per-sample antisense depth |
+    | `ANT` | Integer | Per-sample REF and ALT reads on the antisense strand |
     | `ASEN` | Integer | Per-sample ALT sense count |
     | `SPL` | Integer | Per-sample splice-spanning count |
 
