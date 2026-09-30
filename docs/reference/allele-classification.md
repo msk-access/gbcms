@@ -191,8 +191,10 @@ flowchart TD
     WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Ins within window?\n(±max(5, repeat_span+2),\nor in the shift region)"}
     CheckWin -->|No| Continue["Continue CIGAR walk"]
     CheckWin -->|Yes| SameLen{"Same length?"}
-    SameLen -->|Yes| S3{"S3: Same haplotype?\n(X+S = S+Y, read aligned\nbetween; quality-masked)"}
-    S3 -->|Yes| S2["S2: Track closest match"]
+    SameLen -->|Yes| S3{"S3: Same haplotype?\n(X+S = S+Y; quality-masked)"}
+    S3 -->|Yes| Only{"The read's only change\nacross the window?"}
+    Only -->|Yes| S2["S2: Track closest match"]
+    Only -->|No| FlagWL
     S2 --> Continue
     S3 -->|No| S1{"The variant's\nbases?"}
     S1 -->|Yes| InDW{"Inside the discrimination\nwindow? (anchor kept)"}
@@ -234,7 +236,7 @@ Three layers of validation prevent false-positive windowed matches:
 |:----------|:------|:--------|
 | **S1** | Inserted length matches the expected insert | Wrong-length insertions are distinct alleles |
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
-| **S3** | The placement gives the variant's haplotype: with X the expected insert, Y the read's and S the reference between the two junctions, `X + S = S + Y` (Y right of X) or `S + X = Y + S` (left), and the read aligns S base for base next to its insertion (a deletion or splice there is another haplotype); read bases below `--min-baseq`, or N, match anything, at least one read. An ALT that also substitutes its anchor base (`A>CCC`) has no equivalent placement | The read's own bases carry the allele wherever the aligner put it in a repeat: the same bases in a homopolymer, a rotation (`AC` for `CA`) in an STR. Before 6.6.0 S3 compared the reference base before the insertion with the anchor base, never equal inside a repeat, so carriers written elsewhere in the repeat counted **REF** (#189) |
+| **S3** | The placement gives the variant's haplotype: with X the expected insert, Y the read's and S the reference between the two junctions, `X + S = S + Y` (Y right of X) or `S + X = Y + S` (left), and the placement is the read's only change across the discrimination window (another gap, insertion or splice there is another haplotype); read bases below `--min-baseq`, or N, match anything, at least one read. An ALT that also substitutes its anchor base (`A>CCC`) has no equivalent placement | The read's own bases carry the allele wherever the aligner put it in a repeat: the same bases in a homopolymer, a rotation (`AC` for `CA`) in an STR. Before 6.6.0 S3 compared the reference base before the insertion with the anchor base, never equal inside a repeat, so carriers written elsewhere in the repeat counted **REF** (#189) |
 
 !!! note "Two Windowed Flags with Different Outcomes"
     - **`has_shifted_same_length`** — the windowed scan found an insertion of the **right
@@ -253,11 +255,21 @@ Three layers of validation prevent false-positive windowed matches:
     reference and counts **REF**, as it did before 6.6.0. The same holds for an ALT that also
     substitutes its anchor base, which no placement elsewhere gives.
 
-!!! note "The scan reaches the whole shift region"
+!!! note "The scan reaches every placement of the variant"
     The windowed scan covers `max(5, repeat_span + 2)` bases each side of the anchor and every
-    junction of the variant's shift region. `repeat_span` counts only motifs of up to 6 bases,
-    so a longer duplication (an 8bp insertion over two copies of itself) slides further than
-    it; before 6.6.0 its carriers written past that reach counted REF.
+    placement of the variant in its shift region: every junction of an insertion, every start
+    of a deletion up to the last one that gives its haplotype (a start further inside the
+    deleted span is another deletion). `repeat_span` counts only motifs of up to 6 bases, so a
+    longer duplication (an 8bp insertion over two copies of itself) slides further than it;
+    before 6.6.0 its carriers written past that reach counted REF. Tract-cluster grouping
+    reaches as far, so co-annotated rows the scan can see are grouped.
+
+!!! note "The placement must be the read's only change across the window"
+    A shifted placement counts ALT only when it is the read's one change across the variant's
+    discrimination window: another deletion, insertion or splice there gives another haplotype
+    (a +AA read for a +A row, a deletion cancelled by an insertion, a split −4 read for a −2
+    row). Such a read is a distinct allele: neither + `partial_alt` in a repeat. Window bases
+    past the read's end are not required here, as at the variant's own position.
 
 ### Visual Example
 
@@ -368,13 +380,15 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Del within window?\n(±max(5, repeat_span+2),\nor in the shift region)"}
+    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Del within window?\n(±max(5, repeat_span+2),\nor a placement in the shift region)"}
     CheckWin -->|No| Continue["Continue walk"]
     CheckWin -->|Yes| S1{"S1: Length check"}
     S1 -->|"Exact match, or\n≥50bp with |Δlen| ≤ 3"| S3{"S3: Same haplotype?\n(in-band: bases over the overlap)"}
-    S1 -->|"Wrong length, ≥5bp"| FlagWL["Flag has_wrong_length_nearby"]:::partialflag
+    S1 -->|"Wrong length, ≥5bp"| FlagWL["Flag has_distinct_allele_nearby"]:::partialflag
     S1 -->|"Wrong length, <5bp"| Continue
-    S3 -->|Yes| S2["S2: Track closest"]
+    S3 -->|Yes| Only{"The read's only change\nacross the window?"}
+    Only -->|Yes| S2["S2: Track closest"]
+    Only -->|No| FlagWL
     S3 -->|"No, del_len ≥ 5"| FlagSL["Flag has_shifted_same_length"]:::fallback
     S3 -->|"No, del_len < 5"| Continue
     S2 --> Continue
@@ -402,7 +416,7 @@ flowchart TD
     AnchorSpan -->|No| Neither(["⧯ Neither\n(no variant information)"]):::neither
     Spans -->|Yes| SLCheck{"has_shifted_same_length?"}
     SLCheck -->|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
-    SLCheck -->|No| WLCheck{"has_wrong_length_nearby?"}
+    SLCheck -->|No| WLCheck{"has_distinct_allele_nearby?"}
     WLCheck -->|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
     WLCheck -->|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
     WLCheck -->|No| Ref(["✅ REF"]):::ref
@@ -421,9 +435,9 @@ Three layers of validation prevent false-positive windowed matches:
 
 | Safeguard | Check | Purpose |
 |:----------|:------|:--------|
-| **S1** | Deleted length matches expected `ref_len − 1` exactly, or is within the ≥50bp ±3bp band | Wrong-length deletions never match; ≥5bp ones flag `has_wrong_length_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
+| **S1** | Deleted length matches expected `ref_len − 1` exactly, or is within the ≥50bp ±3bp band | Wrong-length deletions never match; ≥5bp ones flag `has_distinct_allele_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
-| **S3** | An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period `len` (the same bases in a homopolymer, a rotation such as `AC` for `CA` in an STR). An in-band (≥50bp) length compares the deleted bases over the overlapping span | Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189) |
+| **S3** | An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period `len` (the same bases in a homopolymer, a rotation such as `AC` for `CA` in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele). An in-band (≥50bp) length compares the deleted bases over the overlapping span | Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189) |
 | **del_len ≥ 5 guard** | Only flag `has_shifted_same_length` for Dels ≥5bp that fail S3 | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A longer one that gives another haplotype may be the same event written differently by the caller and the aligner |
 
 !!! note "has_shifted_same_length Phase 3 Fallback"

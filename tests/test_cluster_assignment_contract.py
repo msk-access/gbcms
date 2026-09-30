@@ -414,11 +414,11 @@ STR_ANCHOR = 600
 STR_PLANT = "GCACACACAT"
 
 
-def test_sibling_claims_a_split_carrier_of_its_longer_deletion(tmp_path):
+def test_a_split_carrier_of_the_longer_deletion_is_partial_for_the_shorter(tmp_path):
     """Guard: a 4bp deletion written as two 2bp deletions in (CA)x4. Each D(2) is
-    the 2bp row's deletion written elsewhere in the tract, so its windowed scan
-    matches, but the read's bases carry the 4bp row's haplotype: the 4bp sibling
-    claims it, and it is partial evidence for the 2bp row, not its ALT."""
+    the 2bp row's deletion written elsewhere in the tract, but not the read's only
+    change across the window: the read carries the 4bp row's haplotype, so it is
+    partial evidence for the 2bp row, not its ALT."""
     a = STR_ANCHOR
     ref = _mk_ref(plants=((a, STR_PLANT),))
     reads = _del_reads(ref, a + 1, 2, 6, "ca") + _ref_reads(ref, a + 4, 8)

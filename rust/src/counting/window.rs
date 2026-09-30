@@ -113,6 +113,21 @@ pub(crate) fn discrimination_window(v: &Variant) -> (i64, i64) {
     }
 }
 
+/// The windowed indel scan's reference range `[start, end]` (inclusive): `window`
+/// bases each side of the anchor, widened to reach every placement of the variant
+/// in its shift region `[lo, hi)`: every junction `lo..=hi` of an insertion, every
+/// start `lo..=hi - len` of a deletion of `len` bases (a start inside the deleted
+/// span past that is another deletion, not this one written elsewhere).
+pub(crate) fn scan_window(variant: &Variant, window: i64) -> (i64, i64) {
+    let (mut start, mut end) = (variant.pos - window, variant.pos + window);
+    if let Some((lo, hi)) = variant.shift_region {
+        let del_len = (variant.ref_allele.len() as i64 - variant.alt_allele.len() as i64).max(0);
+        start = start.min(lo);
+        end = end.max(hi - del_len);
+    }
+    (start.max(0), end)
+}
+
 /// The two reference intervals `[lo, hi)`, one per side, of which a read must
 /// span at least one to tell a length-changing variant's alleles apart.
 ///
@@ -304,6 +319,22 @@ mod tests {
     fn substitution_bearing_events_have_no_informative_windows() {
         assert_eq!(informative_windows(&var(HOMO, 2, "C", "GA")), None);
         assert_eq!(informative_windows(&var(HOMO, 5, "A", "G")), None);
+    }
+
+    #[test]
+    fn the_scan_reaches_every_placement_and_no_further() {
+        // A 2bp insertion over a 20-junction region: every junction to 30.
+        let mut ins = var(HOMO, 9, "G", "GAC");
+        ins.shift_region = Some((10, 30));
+        assert_eq!(scan_window(&ins, 5), (4, 30));
+        // A 4bp deletion sliding over [10, 30): starts up to 26, not into its
+        // own deleted span past that.
+        let mut del = var(HOMO, 9, "GACGT", "G");
+        del.shift_region = Some((10, 30));
+        assert_eq!(scan_window(&del, 5), (4, 26));
+        // Inside the repeat-span reach, the region changes nothing.
+        del.shift_region = Some((10, 16));
+        assert_eq!(scan_window(&del, 5), (4, 14));
     }
 
     #[test]

@@ -41,11 +41,13 @@ inserts to ALT. Same-event escapes that stay ALT:
   artifact-SIZE prior: artifacts are small, a ≥50bp op is a real deletion),
 - insertion **truncation containment** (≥4bp, ≥90% identity, both sequences
   non-low-complexity).
-Windowed S3 = same haplotype (`same_insertion_haplotype`: X+S == S+Y with the
-read aligned base for base between the placements, never for an anchor-substituting
-ALT; `same_deletion_haplotype`: the stretch between placements has period len), so
-a carrier written anywhere in the repeat (or rotated) is ALT (#189); the scan
-window reaches the whole `shift_region`. The variant's bases at a non-equivalent
+Windowed S3 = same haplotype (`same_insertion_haplotype`: X+S == S+Y, never for
+an anchor-substituting ALT; `same_deletion_haplotype`: the stretch between
+placements has period len) and the read's only change across the discrimination
+window (`only_change_in_window`; else distinct allele), so a carrier written
+anywhere in the repeat (or rotated) is ALT (#189); `window::scan_window` reaches
+every placement in `shift_region` (deletions: starts up to hi − len), and
+tract-cluster grouping's `window_pad` reaches as far. The variant's bases at a non-equivalent
 spot are a distinct allele (`has_distinct_allele_nearby`) inside the
 discrimination window, a separate event (REF) outside it; other bases keep
 Phase-3 arbitration via `has_shifted_same_length` (partial propagated on non-ALT). Windowed wrong-length

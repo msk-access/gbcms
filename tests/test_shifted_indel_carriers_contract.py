@@ -30,8 +30,6 @@ from helpers import count_both, make_read
 
 from gbcms import _rs as gbcms_rs
 
-RED = pytest.mark.xfail(strict=True, reason="read-side and deletion-reach gaps found in review")
-
 READ, L, A = 100, 800, 400  # read length, contig length, the repeat's anchor (0-based)
 
 
@@ -252,7 +250,6 @@ def test_a_long_duplication_deletion_placed_on_its_second_copy(tmp_path):
 # A placement is the variant written elsewhere only when it is the read's one
 # change across the window: another gap, insertion or splice there makes another
 # haplotype (or none the read shows).
-@RED
 def test_an_insertion_with_a_deletion_in_the_window_is_not_alt(tmp_path):
     """G>GA, but the carriers insert an A at A+2 and delete one at A+4: their bases
     are the reference run."""
@@ -261,7 +258,6 @@ def test_an_insertion_with_a_deletion_in_the_window_is_not_alt(tmp_path):
     assert ad == 0
 
 
-@RED
 def test_two_insertions_in_the_run_are_another_allele(tmp_path):
     """G>GA, but the carriers insert an A at A+2 and another at A+4: a +AA allele,
     partial evidence for the +A row, never its ALT."""
@@ -269,7 +265,6 @@ def test_two_insertions_in_the_run_are_another_allele(tmp_path):
     assert _count_reads(tmp_path, HOMOPOLYMER, "G", "GA", _ops(HOMOPOLYMER, events)) == (5, 0, 5)
 
 
-@RED
 def test_an_insertion_followed_by_a_splice_in_the_run_is_not_alt(tmp_path):
     """G>GA, but the carriers insert an A at A+3 and are spliced right after it:
     they do not show the rest of the run."""
@@ -278,7 +273,6 @@ def test_an_insertion_followed_by_a_splice_in_the_run_is_not_alt(tmp_path):
     assert ad == 0
 
 
-@RED
 def test_two_deletions_in_the_run_are_another_allele(tmp_path):
     """GA>G, but the carriers delete one A at A+2 and another at A+4: a -AA
     allele, partial evidence for the -A row, never its ALT."""
@@ -286,7 +280,6 @@ def test_two_deletions_in_the_run_are_another_allele(tmp_path):
     assert _count_reads(tmp_path, HOMOPOLYMER, "GA", "G", _ops(HOMOPOLYMER, events)) == (5, 0, 5)
 
 
-@RED
 def test_two_str_deletions_are_another_allele(tmp_path):
     """GCA>G in (CA)x4, but the carriers delete AC at A+2 and again at A+6: a -4
     allele (no -4 row annotated), partial evidence, never the -2 row's ALT."""
@@ -294,7 +287,6 @@ def test_two_str_deletions_are_another_allele(tmp_path):
     assert _count_reads(tmp_path, STR, "GCA", "G", _ops(STR, events)) == (5, 0, 5)
 
 
-@RED
 def test_a_deletion_cancelled_by_an_insertion_is_not_alt(tmp_path):
     """GCA>G in (CA)x4, but the carriers delete AC at A+2 and insert AC at A+6:
     their bases are the reference repeat."""
@@ -303,7 +295,6 @@ def test_a_deletion_cancelled_by_an_insertion_is_not_alt(tmp_path):
     assert ad == 0
 
 
-@RED
 @pytest.mark.parametrize(
     "ref, alt_len, events",
     [
@@ -324,7 +315,6 @@ def test_a_deletion_after_a_splice_over_the_anchor_is_not_alt(tmp_path, ref, alt
 
 
 # ── The scan reaches the variant's placements, not its whole deleted span ─────
-@RED
 @pytest.mark.parametrize(
     "ref, n, start", [(UNIQUE10, 10, 8), (UNIQUE60, 60, 20)], ids=["10bp", "60bp"]
 )
