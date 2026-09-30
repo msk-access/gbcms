@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-29_
+_Last updated: 2026-09-30_
 
 ## Now
 **6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
@@ -26,6 +26,9 @@ every item a sub-issue). Merged to develop so far:
 - #184 C14 (#172): records without bases (SEQ `*`) are dropped in the shared read
   filter (they panicked, or counted REF from the CIGAR); none in MSK data.
   Follow-ups C19 #182 and O7 #183.
+- #187 R2 (#114): rna_antisense_depth counts antisense reads under strandedness
+  enforcement (classified, tallied, dropped; REF/ALT unchanged); STRAND_DISCORDANT
+  documented as a --no-strandedness diagnostic. Follow-ups R4 #185, O8 #186.
 
 **Validation standard** (adopted 2026-09-28): gbcms is a genotyper, not a caller;
 every count-affecting change is accepted per read, against the reads' own bases, on
@@ -35,8 +38,9 @@ Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. R2 #114 (in review: PR to develop).
-2. C4 #142, C8 #121, C9 #122; C11 #159 (measure first); C3 + M3 + #145.
+1. C4 #142 (in review: PR to develop; carries the harness-cleanup routine).
+2. C21 #189 (insertion carriers placed elsewhere in the run counted REF; measure
+   first), C20 #188 (C10's ALT side; measure and decide first), C8 #121, C9 #122; C11 #159 (measure first); C3 + M3 + #145.
 3. C15 #173 (C12 in RNA; clipped pure deletions), C17 #176 (read-through mask),
    C18 #177 (split reads), C19 #182 (absent qualities; decide first), C5 #120,
    C6 #143, C7 #144, C16 #174, R3 #178 (RNA editing), R4 #185 (intronic gene

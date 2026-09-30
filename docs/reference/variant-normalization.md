@@ -90,6 +90,15 @@ For indels and complex variants, gbcms applies **bcftools-style left-alignment**
 | `max_norm_window` | 2500bp | Safety cap for centromeric/telomeric regions |
 | Trigger | `ref_len ≠ alt_len` or both >1bp | SNPs are never left-aligned |
 
+Every reference window prep fetches (the left-align window, `ref_context`, the
+adaptive repeat scan, an indel's shift region and the event reference) is clamped
+to the contig: near a contig end it holds the bases that exist. The FASTA reader
+rejects a window that passes the end. So before 6.6.0, each window failed within
+its own reach of a contig end: left-alignment within about 100bp, `ref_context`
+within its padding, the shift region within 256bp and the event reference within
+60bp. Exact fetches (REF validation, a MAF anchor) are not clamped: a REF running
+past the end fails validation.
+
 !!! tip "Dynamic Window Expansion"
     If a variant shifts all the way to the window edge during left-alignment, it may not have fully converged. The engine automatically **doubles the window** (100 → 200 → 400 → ... → 2500bp) and retries. This ensures correct normalization even for variants in massive tandem repeats (e.g., centromeric regions) without penalizing the common case.
 

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — indels near a contig end are left-aligned and get their reference windows (#142)
+
+- Prep pads its reference windows on both sides but clamped them only at the
+  contig start. The FASTA reader rejects a window that passes the contig end, so
+  near a contig end each window failed within its own reach:
+  - left-alignment within about 100bp (a WARN; the variant kept its input
+    position, so reads aligned at the left-aligned position could fall out of
+    depth);
+  - `ref_context` within its padding (5–50bp), so there were no Phase-3
+    haplotypes;
+  - the shift region within 256bp (up to 16kb in long repeats), and the event
+    reference within 60bp, for every variant type;
+  - a complex variant fell back to the tolerant classifier that the exact-carrier
+    rule (#141) replaced, so the same reads were judged differently near a contig
+    end. In a synthetic case the same bases and reads gave REF 0 / ALT 0
+    mid-contig but REF 5 / ALT 7 at the contig end, two reads carrying another
+    allele among the ALT.
+- Every window (left-align, `ref_context`, the adaptive repeat scan, the shift
+  region, the event reference) now holds the part of the contig it covers. SNVs and
+  MNPs near a contig end therefore also get their event reference, used by the
+  observed-allele diagnostic. The contig is resolved by the same name the fetch
+  reads, so a FASTA holding a contig under two names cannot mix their lengths.
+  Exact fetches (REF validation, a MAF anchor) stay exact, so a REF running past
+  the end still fails validation instead of being "corrected" to a shorter one.
+
 ### Changed — `rna_antisense_depth` counts antisense reads at RNA defaults (#114)
 
 - With strandedness enforced (the RNA default), antisense reads were dropped

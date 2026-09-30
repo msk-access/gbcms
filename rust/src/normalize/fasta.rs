@@ -29,6 +29,46 @@ pub(crate) fn fetch_region(
     anyhow::bail!("FASTA fetch failed for {}:{}-{}", chrom, start, end)
 }
 
+/// Fetch a window of reference around a locus: the part of `[start, end)` that
+/// lies on the contig. The FASTA reader rejects a window that passes the contig
+/// end, and prep pads its windows on both sides, so an indel near the end lost
+/// every window. Callers index from `start`, so only the end is clamped: a
+/// shorter result means the window reached the contig end. Exact fetches (a REF
+/// allele, a MAF anchor) use [`fetch_region`] and fail instead.
+pub(crate) fn fetch_window(
+    reader: &mut fasta::IndexedReader<File>,
+    chrom: &str,
+    start: u64,
+    end: u64,
+) -> anyhow::Result<Vec<u8>> {
+    // Inside the contig, as nearly every window is: the plain fetch, at no extra cost.
+    if let Ok(seq) = fetch_region(reader, chrom, start, end) {
+        return Ok(seq);
+    }
+    // Past the contig end: clamp to the length of the record fetch_region reads
+    // (the first of the contig's names the index holds), and read that record,
+    // so a FASTA holding two of its names cannot mix their lengths.
+    let (name, len) = resolve_contig(reader, chrom)
+        .ok_or_else(|| anyhow::anyhow!("FASTA has no contig {}", chrom))?;
+    let end = end.min(len);
+    if start >= end {
+        anyhow::bail!("FASTA window {}:{}-{} lies past the contig end ({})", chrom, start, end, len);
+    }
+    let mut buf = Vec::new();
+    reader.fetch(&name, start, end)?;
+    reader.read(&mut buf)?;
+    Ok(buf)
+}
+
+/// The FASTA record a contig is read from, with its length: the first of its
+/// names, in the order [`fetch_region`] tries them, that the index holds.
+fn resolve_contig(reader: &fasta::IndexedReader<File>, chrom: &str) -> Option<(String, u64)> {
+    let records = reader.index.sequences();
+    contig_names(chrom)
+        .into_iter()
+        .find_map(|n| records.iter().find(|r| r.name == n).map(|r| (n, r.len)))
+}
+
 /// The names a contig may go by in the FASTA: as given, with or without a `chr`
 /// prefix, and each mitochondrial spelling.
 fn contig_names(chrom: &str) -> Vec<String> {
@@ -46,12 +86,6 @@ fn contig_names(chrom: &str) -> Vec<String> {
         );
     }
     names
-}
-
-/// The contig's length from the FASTA index, under any name it goes by.
-pub(crate) fn contig_len(reader: &fasta::IndexedReader<File>, chrom: &str) -> Option<u64> {
-    let names = contig_names(chrom);
-    reader.index.sequences().into_iter().find(|s| names.contains(&s.name)).map(|s| s.len)
 }
 
 /// Fetch a single base from the reference, delegating to `fetch_region`.
@@ -189,6 +223,38 @@ mod tests {
         let mut reader = fasta::IndexedReader::from_file(&fa).unwrap();
         assert!(fetch_single_base(&mut reader, "1", -1).is_err());
         assert_eq!(fetch_single_base(&mut reader, "1", 0).unwrap(), b'A');
+        let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
+        let _ = std::fs::remove_file(&fa);
+    }
+
+    #[test]
+    fn test_a_window_is_clamped_to_the_contig_and_an_exact_fetch_is_not() {
+        // chr-named FASTA, looked up as "1": the clamp finds the contig under
+        // any name, as the fetch does.
+        let dir = std::env::temp_dir();
+        let fa = dir.join(format!("gbcms-fetch-window-{}.fa", std::process::id()));
+        std::fs::write(&fa, ">chr1\nACGTACGTAC\n").unwrap();
+        std::fs::write(fa.with_extension("fa.fai"), "chr1\t10\t6\t10\t11\n").unwrap();
+        let mut reader = fasta::IndexedReader::from_file(&fa).unwrap();
+        assert_eq!(fetch_window(&mut reader, "1", 6, 50).unwrap(), b"GTAC");
+        assert_eq!(fetch_window(&mut reader, "1", 2, 6).unwrap(), b"GTAC");
+        assert!(fetch_region(&mut reader, "1", 6, 50).is_err(), "an exact fetch stays exact");
+        assert!(fetch_window(&mut reader, "1", 10, 20).is_err(), "nothing on the contig");
+        let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
+        let _ = std::fs::remove_file(&fa);
+    }
+
+    #[test]
+    fn test_a_window_is_clamped_to_the_record_it_reads() {
+        // Two names of one contig at different lengths, the shorter listed first:
+        // a window on "1" reads and clamps to "1", never to "chr1".
+        let dir = std::env::temp_dir();
+        let fa = dir.join(format!("gbcms-fetch-alias-{}.fa", std::process::id()));
+        std::fs::write(&fa, ">chr1\nAAAA\n>1\nCCGGTTACGT\n").unwrap();
+        std::fs::write(fa.with_extension("fa.fai"), "chr1\t4\t6\t4\t5\n1\t10\t14\t10\t11\n").unwrap();
+        let mut reader = fasta::IndexedReader::from_file(&fa).unwrap();
+        assert_eq!(fetch_window(&mut reader, "1", 6, 50).unwrap(), b"ACGT");
+        assert_eq!(fetch_window(&mut reader, "chr1", 1, 50).unwrap(), b"AAA");
         let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
         let _ = std::fs::remove_file(&fa);
     }

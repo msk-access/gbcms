@@ -14,7 +14,7 @@ use crate::types::Variant;
 use super::types::PreparedVariant;
 use super::decomp::check_homopolymer_decomp;
 use super::left_align::left_align_variant;
-use super::fasta::{contig_len, fetch_region, resolve_maf_anchor, validate_ref};
+use super::fasta::{fetch_region, fetch_window, resolve_maf_anchor, validate_ref};
 use crate::counting::{carrier, window};
 use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_offset};
 
@@ -408,13 +408,13 @@ fn indel_shift_region(
     loop {
         let lo = (pos - pad).max(0);
         let hi = pos + ref_al.len() as i64 + pad;
-        let seq = fetch_region(reader, chrom, lo as u64, hi as u64).ok()?;
+        let seq = fetch_window(reader, chrom, lo as u64, hi as u64).ok()?;
         let end = lo + seq.len() as i64;
         let (a, b) = window::shift_region_over(pos, ref_al, alt_al, |g| {
             (g >= lo && g < end).then(|| seq[(g - lo) as usize].to_ascii_uppercase())
         });
         // A slide stopped by the fetch's edge is the region's true end only at
-        // a contig start (lo = 0) or a contig end (the fetch came back short).
+        // a contig start (lo = 0) or a contig end (the window came back short).
         let cut = (a <= lo && lo > 0) || (b >= end && end == hi);
         if !cut || pad >= 16_384 {
             return Some((a, b));
@@ -433,24 +433,23 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Optio
     let (c_lo, c_hi) = window::change_interval(v);
     let (from, to) = (c_lo.min(v.pos), c_hi.max(v.pos + v.ref_allele.len() as i64));
     let (mut left, mut right) = (EVENT_REF_MARGIN, EVENT_REF_MARGIN);
-    // The contig's end, looked up once the fetch has to grow right.
-    let mut contig_end: Option<i64> = None;
     loop {
         let lo = (from - left).max(0);
-        let hi = contig_end.map_or(to + right, |end| (to + right).min(end));
-        let seq = fetch_region(reader, &v.chrom, lo as u64, hi as u64).ok()?;
+        let hi = to + right;
+        let seq = fetch_window(reader, &v.chrom, lo as u64, hi as u64).ok()?;
         if seq.is_empty() {
             return None;
         }
+        // A window that came back short reached the contig end.
+        let at_contig_end = lo + (seq.len() as i64) < hi;
         let seq = String::from_utf8_lossy(&seq).to_ascii_uppercase();
-        // Fetch more on a short side, up to the cap or a contig end.
+        // Fetch more on a short side, up to the cap or a contig end. (Padding the
+        // exact-carrier windows move away from a contig end always fits in the
+        // other side's margin: an event grown far enough to exhaust it is past
+        // LONG_EVENT, whose junction windows are not padded.)
         let (short_left, short_right) = carrier::reference_short(lo, &seq, v).unwrap_or((false, false));
         let more_left = short_left && lo > 0 && left < EVENT_REF_MAX_MARGIN;
-        let mut more_right = short_right && right < EVENT_REF_MAX_MARGIN;
-        if more_right && contig_end.is_none() {
-            contig_end = contig_len(reader, &v.chrom).map(|n| n as i64);
-        }
-        more_right &= contig_end.is_some_and(|end| hi < end);
+        let more_right = short_right && !at_contig_end && right < EVENT_REF_MAX_MARGIN;
         if !(more_left || more_right) {
             return Some((lo, seq));
         }
@@ -687,12 +686,21 @@ fn prepare_single_variant(
             let wide_start = (pos - pad).max(0);
             let wide_end = pos + ref_al.len() as i64 + pad;
 
-            match fetch_region(
+            match fetch_window(
                 reader,
                 &variant.chrom,
                 wide_start as u64,
                 wide_end as u64,
             ) {
+                // Left-alignment reads the bases before the variant as contiguous
+                // with its alleles; a window that stops short of them cannot be used.
+                Ok(wide_ref) if wide_start + (wide_ref.len() as i64) < pos + ref_al.len() as i64 => {
+                    warn!(
+                        "Left-align window {}:{}-{} does not hold the variant — NOT \
+                         left-aligned; counting proceeds at the input coordinates",
+                        variant.chrom, wide_start, wide_start + wide_ref.len() as i64,
+                    );
+                }
                 Ok(wide_ref) => {
                     let pos_before_align = pos;
                     let (new_pos, new_ref, new_alt, modified) = left_align_variant(
@@ -766,9 +774,9 @@ fn prepare_single_variant(
                 Err(e) => {
                     // A missed left-alignment shifts the counting anchor for every
                     // downstream consumer (repeat scan, windowed matching, Phase-3
-                    // haplotypes), so this must be loud. Reachable for real inputs:
-                    // the FASTA reader errors when the window end passes the contig
-                    // end, so indels within ~100bp of a contig boundary land here.
+                    // haplotypes), so this must be loud. The window is clamped to
+                    // its contig, and a variant reaching here passed REF validation
+                    // on that contig, so this is a safety net.
                     warn!(
                         "Wide ref fetch failed for {}:{}-{} ({e}) — variant NOT \
                          left-aligned; counting proceeds at the input coordinates",
@@ -806,7 +814,7 @@ fn prepare_single_variant(
         let ctx_start = (pos - effective_padding).max(0);
         let ctx_end = pos + ref_al.len() as i64 + effective_padding;
 
-        match fetch_region(
+        match fetch_window(
             reader,
             &variant.chrom,
             ctx_start as u64,
