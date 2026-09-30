@@ -1397,7 +1397,7 @@ without a length.</p>
 <a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
 <a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>##INFO=&lt;ID=FSB_OR,...&gt;
 <a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
-<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand"&gt;
+<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
 <a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
 <a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
 <a href="#__codelineno-1-22" id="__codelineno-1-22" name="__codelineno-1-22"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
@@ -1415,7 +1415,7 @@ without a length.</p>
 <a href="#__codelineno-1-34" id="__codelineno-1-34" name="__codelineno-1-34"></a>##FORMAT=&lt;ID=PAD,...&gt;
 <a href="#__codelineno-1-35" id="__codelineno-1-35" name="__codelineno-1-35"></a>##FORMAT=&lt;ID=NAD,...&gt;
 <a href="#__codelineno-1-36" id="__codelineno-1-36" name="__codelineno-1-36"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
-<a href="#__codelineno-1-37" id="__codelineno-1-37" name="__codelineno-1-37"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth"&gt;
+<a href="#__codelineno-1-37" id="__codelineno-1-37" name="__codelineno-1-37"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
 <a href="#__codelineno-1-38" id="__codelineno-1-38" name="__codelineno-1-38"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
 <a href="#__codelineno-1-39" id="__codelineno-1-39" name="__codelineno-1-39"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
 <a href="#__codelineno-1-40" id="__codelineno-1-40" name="__codelineno-1-40"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
@@ -1610,7 +1610,7 @@ writes these records without counting.</p>
 <tr>
 <td style="text-align: left;"><code>ANT</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Total reads on the <strong>antisense</strong> strand</td>
+<td style="text-align: left;">REF and ALT reads on the <strong>antisense</strong> strand (tallied even when strandedness enforcement excludes them from counts)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ASEN</code></td>
@@ -1925,7 +1925,7 @@ writes these records without counting.</p>
 <tr>
 <td style="text-align: left;"><code>ANT</code></td>
 <td style="text-align: left;">integer</td>
-<td style="text-align: left;">Antisense-strand read depth</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand (tallied under strandedness enforcement too)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ASEN</code></td>
@@ -2421,7 +2421,7 @@ appear at all in DNA mode output.</p>
 <tr>
 <td style="text-align: left;"><code>rna_antisense_depth</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">REF and ALT reads on the antisense strand</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: the <code>OBSERVED_ALLELE</code>/<code>COEXISTING_ALLELE</code> diagnostic still reads them (O8 #186); <code>--rescue-homopolymer</code> and <code>--rescue-mnp</code> choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a resolved gene strand report 0 (R4 #185).</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_alt_sense_count</code></td>
@@ -2602,7 +2602,7 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
 <td style="text-align: left;">ALT junction differs from REF, <code>asjd_n_alt_junc ≥ 5</code>, and minority transcript-strand fraction ≥ 0.30</td>
-<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. Disabled for <code>--strandedness unstranded</code> (no transcript strand).</td>
+<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. A <code>--no-strandedness</code> diagnostic: with strandedness enforced (the RNA default), antisense reads are filtered before the junction tally, so it does not fire where the gene strand is resolved (it can at intronic loci and opposite-strand exon overlaps, which have none: R4 #185). Disabled for <code>--strandedness unstranded</code> (no transcript strand).</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
@@ -3071,7 +3071,7 @@ or <code>0.0</code> (incorrect p-value due to floating-point underflow).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 29, 2026 17:40:07 UTC"><span class="timeago" datetime="2026-09-29T17:40:07+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 29, 2026 17:40:07 UTC">2026-09-29</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 29, 2026 19:58:07 UTC"><span class="timeago" datetime="2026-09-29T19:58:07+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 29, 2026 19:58:07 UTC">2026-09-29</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

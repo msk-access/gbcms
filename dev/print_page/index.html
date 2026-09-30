@@ -3966,7 +3966,7 @@ defaulting.</p>
 </table>
 <div class="admonition info">
 <p class="admonition-title">Biological Context: <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr> Stranded Libraries</p>
-<p>In <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq, the second strand (synthesized with <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>) is degraded, so sequenced reads reflect the <strong>antisense</strong> strand of the original mRNA. The strandedness filter uses the variant's <code>gene_strand</code> annotation (from the input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>) to determine whether each read's orientation is consistent with the expected transcript direction.</p>
+<p>In <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq, the second strand (synthesized with <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>) is degraded, so sequenced reads reflect the <strong>antisense</strong> strand of the original mRNA. The strandedness filter uses the variant's gene strand, resolved from the <code>--gtf</code> exons at its position, to determine whether each read's orientation is consistent with the expected transcript direction.</p>
 <p><strong>Disable</strong> with <code>--no-strandedness</code> for unstranded RNA-seq libraries where read orientation is random.</p>
 </div>
 <div class="admonition warning">
@@ -4252,12 +4252,12 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <tr>
 <td style="text-align: left;"><code>rna_sense_depth</code></td>
 <td style="text-align: left;">u32</td>
-<td style="text-align: left;">Reads aligning to the gene <strong>sense</strong> strand</td>
+<td style="text-align: left;">REF and ALT reads on the gene <strong>sense</strong> strand</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_antisense_depth</code></td>
 <td style="text-align: left;">u32</td>
-<td style="text-align: left;">Reads aligning to the gene <strong>antisense</strong> strand</td>
+<td style="text-align: left;">REF and ALT reads on the gene <strong>antisense</strong> strand, tallied even when <code>--enforce-strandedness</code> keeps them out of every count</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_alt_sense_count</code></td>
@@ -4294,7 +4294,7 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <tr>
 <td style="text-align: left;"><code>ANT</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Antisense strand depth</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand (tallied under enforcement too)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ASEN</code></td>
@@ -4332,7 +4332,7 @@ asserting splicing over the span outnumber confirmed ALT are flagged
 <tr>
 <td style="text-align: left;"><code>ANT</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Per-sample antisense depth</td>
+<td style="text-align: left;">Per-sample REF and ALT reads on the antisense strand</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ASEN</code></td>
@@ -7197,7 +7197,7 @@ without a length.</p>
 <a id="__codelineno-1-16" name="__codelineno-1-16" href="#reference-output-formats-__codelineno-1-16"></a>##INFO=&lt;ID=FSB_PVAL,...&gt;
 <a id="__codelineno-1-17" name="__codelineno-1-17" href="#reference-output-formats-__codelineno-1-17"></a>##INFO=&lt;ID=FSB_OR,...&gt;
 <a id="__codelineno-1-18" name="__codelineno-1-18" href="#reference-output-formats-__codelineno-1-18"></a>##INFO=&lt;ID=SEN,Number=1,Type=Integer,Description="Reads on the transcript sense strand"&gt;
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="Reads on the antisense strand"&gt;
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#reference-output-formats-__codelineno-1-19"></a>##INFO=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
 <a id="__codelineno-1-20" name="__codelineno-1-20" href="#reference-output-formats-__codelineno-1-20"></a>##INFO=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT reads on the transcript sense strand"&gt;
 <a id="__codelineno-1-21" name="__codelineno-1-21" href="#reference-output-formats-__codelineno-1-21"></a>##INFO=&lt;ID=RED,Number=0,Type=Flag,Description="Locus is a candidate A-to-I RNA editing site"&gt;
 <a id="__codelineno-1-22" name="__codelineno-1-22" href="#reference-output-formats-__codelineno-1-22"></a>##INFO=&lt;ID=SPL,Number=1,Type=Integer,Description="ALT reads spanning a splice junction (CIGAR N)"&gt;
@@ -7215,7 +7215,7 @@ without a length.</p>
 <a id="__codelineno-1-34" name="__codelineno-1-34" href="#reference-output-formats-__codelineno-1-34"></a>##FORMAT=&lt;ID=PAD,...&gt;
 <a id="__codelineno-1-35" name="__codelineno-1-35" href="#reference-output-formats-__codelineno-1-35"></a>##FORMAT=&lt;ID=NAD,...&gt;
 <a id="__codelineno-1-36" name="__codelineno-1-36" href="#reference-output-formats-__codelineno-1-36"></a>##FORMAT=&lt;ID=SEN,Number=1,Type=Integer,Description="Sense strand depth"&gt;
-<a id="__codelineno-1-37" name="__codelineno-1-37" href="#reference-output-formats-__codelineno-1-37"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="Antisense strand depth"&gt;
+<a id="__codelineno-1-37" name="__codelineno-1-37" href="#reference-output-formats-__codelineno-1-37"></a>##FORMAT=&lt;ID=ANT,Number=1,Type=Integer,Description="REF and ALT reads on the antisense strand, tallied even where strandedness enforcement keeps them out of every count"&gt;
 <a id="__codelineno-1-38" name="__codelineno-1-38" href="#reference-output-formats-__codelineno-1-38"></a>##FORMAT=&lt;ID=ASEN,Number=1,Type=Integer,Description="ALT sense strand count"&gt;
 <a id="__codelineno-1-39" name="__codelineno-1-39" href="#reference-output-formats-__codelineno-1-39"></a>##FORMAT=&lt;ID=SPL,Number=1,Type=Integer,Description="Splice-spanning ALT count"&gt;
 <a id="__codelineno-1-40" name="__codelineno-1-40" href="#reference-output-formats-__codelineno-1-40"></a>#CHROM  POS  ID  REF  ALT  QUAL  FILTER  INFO  FORMAT  &lt;sample_name&gt;
@@ -7410,7 +7410,7 @@ writes these records without counting.</p>
 <tr>
 <td style="text-align: left;"><code>ANT</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">Total reads on the <strong>antisense</strong> strand</td>
+<td style="text-align: left;">REF and ALT reads on the <strong>antisense</strong> strand (tallied even when strandedness enforcement excludes them from counts)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ASEN</code></td>
@@ -7725,7 +7725,7 @@ writes these records without counting.</p>
 <tr>
 <td style="text-align: left;"><code>ANT</code></td>
 <td style="text-align: left;">integer</td>
-<td style="text-align: left;">Antisense-strand read depth</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand (tallied under strandedness enforcement too)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ASEN</code></td>
@@ -8221,7 +8221,7 @@ appear at all in DNA mode output.</p>
 <tr>
 <td style="text-align: left;"><code>rna_antisense_depth</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">REF and ALT reads on the antisense strand</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: the <code>OBSERVED_ALLELE</code>/<code>COEXISTING_ALLELE</code> diagnostic still reads them (O8 #186); <code>--rescue-homopolymer</code> and <code>--rescue-mnp</code> choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a resolved gene strand report 0 (R4 #185).</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_alt_sense_count</code></td>
@@ -8402,7 +8402,7 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
 <td style="text-align: left;">ALT junction differs from REF, <code>asjd_n_alt_junc ≥ 5</code>, and minority transcript-strand fraction ≥ 0.30</td>
-<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. Disabled for <code>--strandedness unstranded</code> (no transcript strand).</td>
+<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. A <code>--no-strandedness</code> diagnostic: with strandedness enforced (the RNA default), antisense reads are filtered before the junction tally, so it does not fire where the gene strand is resolved (it can at intronic loci and opposite-strand exon overlaps, which have none: R4 #185). Disabled for <code>--strandedness unstranded</code> (no transcript strand).</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
@@ -9754,34 +9754,54 @@ Use mouse to pan and zoom
 </div>
 <h3 id="reference-read-filters-strandedness-filter">Strandedness Filter<a class="headerlink" href="#reference-read-filters-strandedness-filter" title="Permanent link">¶</a></h3>
 <p>For <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense REF and ALT reads are <strong>counted</strong> (they contribute to <code>rna_sense_depth</code> and <code>rna_antisense_depth</code> respectively), but only sense-strand reads contribute to the primary <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>/<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> counts when <code>--enforce-strandedness</code> is enabled.</p>
+<p>With the default <code>--strandedness reverse</code> (<abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>, featureCounts <code>-s 2</code>), R1 and
+single-end reads come from the opposite strand of the transcript, and R2 from the
+same strand (<code>forward</code> swaps them):</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">Read Orientation</th>
+<th style="text-align: left;">Read</th>
+<th style="text-align: left;">Orientation</th>
 <th style="text-align: left;">Gene Strand</th>
 <th style="text-align: left;">Classification</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">Forward (R1)</td>
+<td style="text-align: left;">R1 / single-end</td>
+<td style="text-align: left;">Reverse</td>
 <td style="text-align: left;">+</td>
 <td style="text-align: left;">Sense</td>
 </tr>
 <tr>
-<td style="text-align: left;">Reverse (R1)</td>
+<td style="text-align: left;">R1 / single-end</td>
+<td style="text-align: left;">Forward</td>
 <td style="text-align: left;">+</td>
 <td style="text-align: left;">Antisense</td>
 </tr>
 <tr>
-<td style="text-align: left;">Forward (R1)</td>
+<td style="text-align: left;">R1 / single-end</td>
+<td style="text-align: left;">Forward</td>
+<td style="text-align: left;">−</td>
+<td style="text-align: left;">Sense</td>
+</tr>
+<tr>
+<td style="text-align: left;">R1 / single-end</td>
+<td style="text-align: left;">Reverse</td>
 <td style="text-align: left;">−</td>
 <td style="text-align: left;">Antisense</td>
 </tr>
 <tr>
-<td style="text-align: left;">Reverse (R1)</td>
-<td style="text-align: left;">−</td>
+<td style="text-align: left;">R2</td>
+<td style="text-align: left;">Forward</td>
+<td style="text-align: left;">+</td>
 <td style="text-align: left;">Sense</td>
+</tr>
+<tr>
+<td style="text-align: left;">R2</td>
+<td style="text-align: left;">Reverse</td>
+<td style="text-align: left;">+</td>
+<td style="text-align: left;">Antisense</td>
 </tr>
 </tbody>
 </table>
@@ -10508,7 +10528,7 @@ counts are <strong>per fragment</strong> (a molecule's R1 and R2 are deduped to 
 <tr>
 <td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
 <td style="text-align: left;">ALT junction differs from REF, <code>asjd_n_alt_junc ≥ 5</code>, and minority transcript-strand fraction ≥ 0.30</td>
-<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. Disabled for <code>--strandedness unstranded</code>.</td>
+<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. A <code>--no-strandedness</code> diagnostic: under enforcement (the default) antisense reads never reach the junction tally, wherever the gene strand is resolved (not yet at intronic loci or opposite-strand overlaps: R4 #185). Disabled for <code>--strandedness unstranded</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
@@ -14781,8 +14801,9 @@ caveat in gbcms's output.</p>
   themselves editing sites.
 - <strong>Allele-specific expression and NMD:</strong> RNA <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> is expression-weighted and is
   not a DNA <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. It is reported as is: an interpretation caveat.
-- <strong>Strandedness:</strong> antisense reads are gated when enforced; observability is open
-  (R2 #114). See <code>rna_antisense_depth</code>.</p>
+- <strong>Strandedness:</strong> antisense reads are gated when enforced, and <code>rna_antisense_depth</code>
+  still tallies them (R2 #114). Loci without a resolved gene strand (intronic,
+  opposite-strand overlaps) are not gated yet (R4 #185).</p>
 <h2 id="reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts">5. Not the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, but easy to misread from counts<a class="headerlink" href="#reference-bam-evidence-caveats-5-not-the-bam-but-easy-to-misread-from-counts" title="Permanent link">¶</a></h2>
 <ul>
 <li><strong>Reads ending inside the event, and low depth:</strong> such reads count toward depth
@@ -16647,6 +16668,23 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-rna_antisense_depth-counts-antisense-reads-at-rna-defaults-114">Changed — <code>rna_antisense_depth</code> counts antisense reads at RNA defaults (#114)<a class="headerlink" href="#development-changelog-changed-rna_antisense_depth-counts-antisense-reads-at-rna-defaults-114" title="Permanent link">¶</a></h3>
+<ul>
+<li>With strandedness enforced (the RNA default), antisense reads were dropped
+  before the sense/antisense tally, so <code>rna_antisense_depth</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>ANT</code>) was
+  always 0. Such a read is now classified as a sense read would be, and tallied
+  when it is a first-class REF or ALT read over the anchor. It is then dropped, so
+  REF, ALT, depth and every other count are unchanged. The column means the same
+  with <code>--no-strandedness</code>.</li>
+<li><code>STRAND_DISCORDANT</code> is documented as a <code>--no-strandedness</code> diagnostic: under
+  enforcement, antisense reads never reach the junction tally wherever the gene
+  strand is resolved.</li>
+<li>Docs: the read-filters strand table is corrected for the default <code>reverse</code>
+  protocol, and the gene strand is documented as coming from the <code>--gtf</code> exons (not
+  the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>).</li>
+<li>The per-read trace line names each excluded antisense read
+  (<code>antisense_excluded=true</code>).</li>
+</ul>
 <h3 id="development-changelog-fixed-records-stored-without-bases-seq-are-not-counted-172">Fixed — records stored without bases (SEQ <code>*</code>) are not counted (#172)<a class="headerlink" href="#development-changelog-fixed-records-stored-without-bases-seq-are-not-counted-172" title="Permanent link">¶</a></h3>
 <ul>
 <li>A <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> record with no sequence, such as a secondary alignment kept with
@@ -19236,12 +19274,18 @@ by reason. They get no output row. See <a href="#reference-input-formats-alt-all
 </ol>
 </details>
 <details class="question">
-<summary><code>rna_sense_depth</code> and <code>rna_antisense_depth</code> are both 0</summary>
-<p>The <code>gene_strand</code> column is missing from the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> or all variants have <code>gene_strand = NA</code>.
-gbcms cannot assign sense/antisense without strand annotation.</p>
+<summary><code>rna_antisense_depth</code> is 0 and every read counts as sense</summary>
+<p>The variant has no gene strand. gbcms resolves it from the <code>--gtf</code> exons at the
+variant's position. Without one, every read passes as sense, strandedness is not
+enforced, and a run-level WARNING gives the number of such variants. Causes:</p>
+<ul>
+<li>no <code>--gtf</code>, or a GTF that does not annotate the variant's contig;</li>
+<li>an intronic position (for example a splice-site variant) or a position where
+  exons of both strands overlap: the strand is left unresolved there (R4 #185).</li>
+</ul>
 <p>Solutions:
-- Add strand annotation to the <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> (from gene model GFF/GTF)
-- Use <code>--no-strandedness</code> to count all reads regardless of strand</p>
+- Pass <code>--gtf</code> with the annotation the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> was aligned against.
+- For an unstranded library, use <code>--strandedness unstranded</code>.</p>
 </details>
 <details class="question">
 <summary>RNA editing flag (<code>rna_editing_site</code>) is always False</summary>
