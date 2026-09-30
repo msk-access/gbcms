@@ -3,8 +3,10 @@
 The rule these tests pin: when several same-type indels are annotated within
 one repeat-tract / scan-window neighborhood, a molecule belongs to exactly
 ONE of them — the row whose canonical (left-aligned position + bases) form
-its CIGAR op matches. For every other co-annotated row the molecule is a
-DISTINCT allele (neither + partial evidence), never full ALT and never REF.
+its CIGAR op matches. For every other co-annotated row the molecule is never
+full ALT: where its change lies inside that row's discrimination window it is a
+DISTINCT allele (neither + partial evidence), never REF; outside it the molecule
+shows that row's reference and is REF.
 The windowed S3 shift-tolerance exists for aligner-vs-annotation
 representation shifts of the SAME allele; it must not let a molecule hop
 between distinct annotated alleles.
@@ -432,6 +434,35 @@ def test_sibling_claims_a_split_carrier_of_its_longer_deletion(tmp_path):
     row = next(r for r in read_maf_output(maf) if r["Reference_Allele"] == "CA")
     got = (int(row["alt_count"]), int(row["partial_alt"]), int(row["ref_count"]))
     assert got == (6, 5, 8), f"2bp row (ad, partial, rd): {got}"
+
+
+def test_an_unreadable_insert_is_neither_rows_alt_at_a_multi_allelic_site(tmp_path):
+    """Guard: G>GAA and G>GTT annotated at one anchor. A carrier whose two inserted
+    bases are all below --min-baseq is sent to Phase 3, which can call it ALT for
+    both rows, but its read window cannot favour either ALT over the reference (its
+    inserted bases are masked): partial evidence for both rows, neither's ALT. Each
+    row keeps its own 5 carriers; the other row's 5 are a third allele there."""
+    a = 600
+    ref = _mk_ref(plants=((a - 3, "CGTGCAT"),))  # anchor G at 600 in unique sequence
+    reads = _ref_reads(ref, a, 8)
+
+    def carrier(name, s, ins, q):
+        left = a + 1 - s
+        right = READ_LEN - left - len(ins)
+        seq = ref[s : a + 1] + ins + ref[a + 1 : a + 1 + right]
+        quals = [30] * left + [q] * len(ins) + [30] * right
+        return make_read(name, seq, s, ((0, left), (1, len(ins)), (0, right)), quals=quals)
+
+    for i in range(5):
+        reads.append(carrier(f"aa{i}", a - 40 - i, "AA", 30))
+        reads.append(carrier(f"tt{i}", a - 40 - i, "TT", 30))
+        reads.append(carrier(f"lq{i}", a - 40 - i, "AA", 5))
+    g = ref[a]
+    vcf = _vcf(tmp_path, [(a + 1, g, g + "AA"), (a + 1, g, g + "TT")])
+    _run(tmp_path, vcf, _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
+    for row in read_maf_output(glob.glob(str(tmp_path / "out" / "*.maf"))[0]):
+        got = (int(row["ref_count"]), int(row["alt_count"]), int(row["partial_alt"]))
+        assert got == (8, 5, 10), f"+{row['Tumor_Seq_Allele2']} (rd, ad, partial): {got}"
 
 
 def _cluster_maf(tmp_path, ref, rows):

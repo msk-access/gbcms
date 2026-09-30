@@ -3,7 +3,7 @@ Tests for windowed indel detection (Phase 2a).
 
 Verifies that insertions and deletions shifted by the aligner within ±5bp of the
 expected anchor position are still correctly detected, using three safeguards:
-  S1: Inserted/deleted sequence must match expected bases exactly
+  S1: Inserted/deleted length must match the expected event
   S2: Closest match wins when multiple candidates exist
   S3: The shifted placement gives the variant's haplotype (the same sequence
       elsewhere in a repeat; #189)
@@ -138,14 +138,12 @@ class TestInsertionWindowed:
         assert counts.rd == 1, f"Expected rd=1 (outside window → REF), got {counts.rd}"
         assert counts.ad == 0
 
-    def test_anchor_base_mismatch_s3(self, tmp_path):
-        """INS within window but reference base at shifted anchor differs → reject (S3).
-        Use a ref_context where the base at the shifted position is NOT 'A'.
+    def test_shifted_placement_giving_another_haplotype_s3(self, tmp_path):
+        """INS within the window whose placement gives another haplotype → not ALT
+        (S3). The variant's prepared reference [93, 104) is AAAAACGAAAA (it differs
+        from the BAM's all-A reference on purpose): the variant puts its T before 99
+        (C T G), the read before 100 (C G T).
         """
-        # Custom variant with non-homopolymer ref_context
-        # ref_context: "AAAAACGAAAA" covering [95, 106)
-        # Pos 100 = 'C' (offset 5), Pos 101 = 'G' (offset 6)
-        # Anchor base is 'A' (from REF allele). Shifted anchor at pos 100 would be 'C' → S3 reject.
         variant = Variant(
             chrom="chr1",
             pos=98,
@@ -155,23 +153,11 @@ class TestInsertionWindowed:
             ref_context="AAAAACGAAAA",  # [93, 104)
             ref_context_start=93,
         )
-        # Read has insertion at pos 101 (shifted +2 from anchor at 98).
-        # Shifted anchor at pos 100 → ref_context[100-93]=ref_context[7]='A' → actually passes.
-        # Need to set up so the shifted anchor is 'C' at offset 5 (pos 98).
-        # Let's make the insertion at pos 99 instead, then shifted anchor is at 98 which is 'C' at offset 5.
-        # No wait — let me think more carefully.
-        # Variant anchor at pos 98. ref_context starts at 93: "AAAAACGAAAA"
-        # ref_context[0..11] = A(93) A(94) A(95) A(96) A(97) C(98) G(99) A(100) A(101) A(102) A(103)
-        # Original anchor base from REF: 'A'
-        # For an insertion shifted to pos 101 (block_end=101), shifted_anchor = 100 → 'A' → passes
-        # For an insertion shifted to pos 100 (block_end=100), shifted_anchor = 99 → 'G' → FAILS S3!
-        # Read starts at 93, 7M 1I 3M. Block end = 100. Ins at 100. Shifted anchor = 99 → 'G' ≠ 'A'
+        # Read starts at 93, 7M 1I 3M: its T sits before 100, one junction right of
+        # the variant's (before 99). With S = ref[99] = G: X + S = TG, S + Y = GT.
         reads = [_make_read("r1", "AAAAAAATAAA", 93, ((0, 7), (1, 1), (0, 3)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, variant)
-        # S3 rejects because reference at pos 99 is 'G', not 'A' (the anchor base).
-        # The read's CIGAR shows an insertion near the variant → ambiguous classification
-        # routes to "neither" (DP only), preserving unbiased VAF.
         assert counts.ad == 0, f"Expected ad=0 (S3 reject), got {counts.ad}"
         assert counts.dp >= 1, f"Expected dp>=1 (read covers locus), got {counts.dp}"
 
