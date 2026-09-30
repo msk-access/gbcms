@@ -32,7 +32,7 @@ before implementation.
 | C1 | Complex variants count exact carriers (was: partial-ALT in the SW local fallback) | L | [counts] [done] | #141 (#92) |
 | C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [done] | #119 |
 | C3 | Homopolymer decomposition arbitration redesign | M | [counts] | #111, #145 (#112) |
-| C4 | Reference windows near contig ends | M | [counts] | #142 (#92) |
+| C4 | Reference windows near contig ends | M | [counts] [done] | #142 (#92) |
 | C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] | #120 |
 | C6 | Error-tolerant exact-length insertion matching | L | [counts] | #143 (#92) |
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] | #144 (#92) |
@@ -52,6 +52,8 @@ before implementation.
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
 | C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [decide] | #188 |
 | C21 | Homopolymer insertion carriers placed elsewhere in the run counted REF (S3 anchor-base test) | H | [counts] | #189 |
+| C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [decide] | #191 |
+| C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [decide] | #192 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 |
 | R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 |
@@ -489,6 +491,11 @@ the 17-shape battery counts correctly.
 **Direction.** Verify first: widen the battery (repeat flanks, reads with
 errors, both backends). If any case miscounts, route these variants to
 `check_complex`, as N×1 deletions with a substituted anchor already are.
+**Found by C21's review (2026-09-30): a miscount.** `A>CCC` (in `A CC T`):
+reads that keep the anchor A and insert CC at the junction count ALT (5 of 5 on
+develop and the C21 branch), because the strict path compares only the inserted
+bases. C21 already stops such an ALT matching a placement elsewhere; the strict
+path needs the routing above.
 
 ### C9 — Count a MAF deletion at Start 1 (#122) · L [counts]
 **Finding.** Preparation cannot anchor a MAF deletion at Start 1 (there is no
@@ -607,6 +614,98 @@ same quirk for the UMI warning.
   `mq0_count`.
 - O1 (#130) now also covers the no-bases warning repeating in the rescue
   re-count.
+
+### C21 — Indel carriers written elsewhere in their repeat (#189) · H [counts]
+**Finding.** The windowed checks accepted a shifted indel placement by a proxy,
+not by its haplotype:
+- an insertion when the reference base before it equalled the anchor base: never
+  true inside the repeat, so carriers written elsewhere counted REF (synthetic
+  `G AAAAA T`: REF 10 / ALT 0 instead of 5 / 5), and true by chance for some
+  placements of another haplotype, which counted ALT;
+- a deletion when its removed bases equalled the given ones: a rotated STR
+  placement under 5bp counted REF, the same bases deleted outside the repeat ALT.
+
+**Measured first (2026-09-30).** Placement of repeat indels, near the RC set's
+indel rows:
+- DNA panels (realigned): 37 of 15,047 insertions and 1 of 12,244 deletions not
+  left-aligned; 2 of 82 insertion rows have shifted equivalent carriers (87 reads,
+  against 13,355 left-placed).
+- FORTE RNA (STAR): 162 of 170 insertions not left-aligned, but the truth set has
+  3 insertion rows and none has carriers; the RNA probes (under Measured) test
+  STAR's placements directly.
+- WES without realignment (BWA-MEM): 0 of 620 insertions, 0 of 1,367 deletions.
+
+**As built (2026-09-30).**
+- S3 is now the haplotype: `same_insertion_haplotype` (`X + S = S + Y`, or
+  `S + X = Y + S` left of the junction; never for an anchor-substituting ALT) and
+  `same_deletion_haplotype` (the stretch between the placements repeats with
+  period `len`), read from the event reference (`event_ref`), else `ref_context`.
+- The placement must be the read's only change across the discrimination window
+  (`only_change_in_window`, both sides): another gap, insertion or splice there
+  makes a distinct allele. Window bases past the read's end are not required,
+  as on the strict path (C20 owns that rule).
+- `window::scan_window` reaches every placement: every junction of an insertion,
+  a deletion's starts up to `hi - len`, besides `max(5, repeat_span + 2)`
+  (`repeat_span` counts motifs of up to 6 bases, so a longer duplication slid past
+  it). The splice triage and the tract-cluster grouping pad use the same reach.
+- The variant's inserted bases at a non-equivalent junction: a distinct allele
+  inside the discrimination window, REF (a separate event) outside it, as before.
+- The backward-boundary check (an insertion right before the anchor base) now
+  requires the same haplotype; it credited the variant's bases there as ALT.
+- The deletion flag `has_wrong_length_nearby` is now `has_distinct_allele_nearby`.
+
+**Two adversarial reviews.** The first (on the first fix) found no check that the
+read aligns the stretch between the placements, anchor-substituting ALTs matched
+as pure insertions, REF withdrawn from reads whose same-bases insertion lies
+outside the window, the backward-boundary and window gaps, and lost coverage of
+the AD-claiming guard (a guard now covers its Test 1, an unreadable insert at a
+multi-allelic site). The second (on the follow-up) found the deletion scan
+reaching into its own deleted span (a different same-length deletion there went to
+Phase 3 and came back ALT), and a read-side check too narrow on insertions and
+absent on deletions (a +AA read, a cancelled deletion, a split −4 read and a
+deletion after a splice over the anchor counted ALT). All fixed red-first. Two
+RNA splice contract tests pinned ALT for reads spliced over the anchor with a D
+written after the junction (their bases are those of a reference read spliced two
+bases later); they now count toward depth only.
+
+**Measured (2026-09-30).** All runs were local, develop vs the final branch
+head, every changed read adjudicated by its own bases (read where they sit between
+the aligned flank bases, bases below Q20 matching anything).
+- DNA (28 runs, 1,060 rows): 13 rows change; ALT +46, partial −62, REF +13,
+  depth unchanged.
+  - Two insertion rows gain 44 and 10 ALT: carriers written 1–6 junctions right of
+    the left-aligned position, each holding the ALT haplotype. Their last inserted
+    base is an N (Q5), which failed develop's base check; 38 of them lay past the
+    old window. One read with a 6bp insertion in the 7bp row's region becomes
+    partial.
+  - A BRCA2 cluster (2bp, 14bp and 33bp deletion rows, two samples): the 2bp rows
+    move 6 and 18 reads partial → REF. They delete the same two bases 6bp before
+    the anchor, another haplotype outside the window, which develop matched by
+    its bases and the sibling guard then demoted. The 33bp rows regain the same
+    reads as REF, which develop's false match had claimed for the 2bp sibling.
+  - Seven 1bp indel rows lose 8 ALT reads (to REF or neither) that delete or insert
+    the same base outside the run; one ends before the anchor.
+  - Every read that gained ALT holds the ALT haplotype; none that lost ALT does.
+- FORTE RNA: the 33 truth samples and the T9 probes are byte-identical.
+- RNA probes of STAR's repeat insertions near the truth loci (23 probes): ALT 11 →
+  183, REF 22,102 → 21,929. An independent census counts 176 shifted equivalent
+  sense carriers; all are ALT on the branch (4 were ALT on develop too, where the
+  anchor-base proxy happened to hold).
+- The first follow-up build, which scanned the whole deleted span, moved 52 and 123
+  reads at the 33bp rows from REF to partial (other deletions inside the span);
+  the final reach removes that.
+
+**Found by the reviews, not in scope:**
+- C22 (#191): a same-length deletion ≥5bp that gives another haplotype still goes
+  to Phase 3, which calls it ALT (70/160 at 5bp, 150/160 at 8bp, synthetic).
+- C23 (#192): "in a repeat" for a distinct allele is `repeat_span >= 2`, so events
+  in repeats with motifs over 6bp keep REF + partial.
+- C20 (#188) gains the windowed paths (a shifted carrier ending inside the run is
+  credited ALT from its gap) and the strict path's lack of an only-change check (a
+  read with the indel at the junction plus another change in the window counts
+  ALT, develop too).
+- C8 (#121): the strict path credits an anchor-substituting insertion (`A>CCC`)
+  from its inserted bases alone.
 
 ## RNA
 
@@ -1155,16 +1254,18 @@ hid the RNA exon-edge collapse.
 ## Suggested order
 
 Refreshed 2026-09-30; C1, C2, C10, C12 and O4 are done.
-1. **Done:** C13 (#166, PR #169); R1 (#106, PR #181); C14 (#172, PR #184); R2 (#114, PR #187).
+1. **Done:** C13 (#166, PR #169); R1 (#106, PR #181); C14 (#172, PR #184); R2 (#114, PR #187);
+   C4 (#142, PR #190).
 2. **Done:** this list, the validation standard and the BAM-caveats reference
    (PR #175).
-3. **Counting correctness:** C4 (#142, in review), C21 (#189, measured first:
-   insertion carriers counted REF), C20 (#188, measured and decided first; C10's ALT
-   side), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
-   decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C19 (#182, the
-   absent-quality policy decided first); C5 (#120), C6 (#143,
-   reconciled with "count the given allele"), C7 (#144); C16 (#174); R3 (#178); R4 (#185,
-   measured and decided first).
+3. **Counting correctness:** C21 (#189, in review), C20 (#188, measured and decided
+   first; C10's ALT side), C22 (#191, measured and decided first), C23 (#192,
+   measured and decided first), C8 (#121), C9
+   (#122); C11 (#159) measured first; C3 with M3 and #145 (the decomposition
+   cluster); C15 (#173), C17 (#176), C18 (#177); C19 (#182, the absent-quality
+   policy decided first); C5 (#120), C6 (#143, reconciled with "count the given
+   allele"), C7 (#144); C16 (#174); R3 (#178); R4 (#185, measured and decided
+   first).
 4. **Test architecture, decided holistically:** T1 (#170) with T2 (#171).
 5. **Hardening:** I1–I5, M1, M2, O1–O3, O7 (#183), O8 (#186), H1, H2; O5 (#179)
    and O6 (#180), each measured and surveyed first.

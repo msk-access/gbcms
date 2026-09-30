@@ -412,11 +412,15 @@ def test_spliced_over_insertion_carries_no_information(tmp_path):
 
 
 def test_windowed_deletion_after_junction_in_repeat(tmp_path):
-    """Shifted representation across a junction: the aligner extends the N
-    over the annotated span and writes the D two bases downstream inside the
-    same AT tract — the same event, shifted. The triage must NOT exclude the
-    read (it carries an indel op inside the scan window) and the post-N
-    windowed scan verifies the deleted bases at the shifted position."""
+    """A deletion written right after a junction inside the tract: the aligner
+    extends the N over the annotated span and into the AT tract, then writes a
+    D(2). The read's bases (exon 1, then the tract from 346) are what a
+    reference read spliced two bases later shows: the D is where the N ended,
+    not a deletion its bases carry, and the read does not show the tract's
+    start. The triage keeps it (an indel op sits in the scan window), and the
+    windowed scan does not credit it (the deletion is not its only change
+    across the window): depth, neither allele. It counted ALT from its CIGAR
+    before #189."""
     # ref[339]='C' pins the anchor (no left-shift), tract AT×5 at [340, 350),
     # ref[350]='G' ends the tract.
     ref = _mk_ref(plants=((339, "CATATATATATG"),))
@@ -438,23 +442,18 @@ def test_windowed_deletion_after_junction_in_repeat(tmp_path):
     vcf = _vcf(tmp_path, rows_v)
     bam = _bam(tmp_path, ref, carriers + refs)
     fasta = _fasta(tmp_path, ref)
-    # DNA mode isolates the splice-evidence machinery with no BAQ in play: the triage defers, the post-N windowed scan verifies the
-    # deleted bases at the shifted position, carriers count ALT.
+    # DNA mode isolates the splice-evidence machinery with no BAQ in play.
     r = _run(tmp_path, vcf, bam, fasta, mode="dna")[0]
     assert (
-        int(r["alt_count"]) == 4
-    ), f"shifted post-N carriers must count ALT, got ad={r['alt_count']}"
+        int(r["alt_count"]) == 0
+    ), f"placement-only post-N reads must not count ALT, got ad={r['alt_count']}"
     assert int(r["ref_count"]) == 5
     assert int(r["total_count"]) == 9
 
 
 def test_windowed_deletion_after_junction_in_repeat_rna(tmp_path):
-    """RNA-mode twin of the DNA-mode case above. Committed red (xfail-strict)
-    while consensus splicing still drained introns from ref_context in place:
-    the S3 sequence check then read the spliced context at genomic
-    coordinates and rejected the shifted candidate. With ref_context always
-    genomic, RNA matches DNA — the carriers windowed-match through the
-    post-N scan."""
+    """RNA-mode twin of the DNA-mode case above: RNA matches DNA (ref_context
+    is always genomic, so consensus splicing cannot drain introns from it)."""
     ref = _mk_ref(plants=((339, "CATATATATATG"),))
     anchor = 339
     rows_v = [(anchor + 1, ref[anchor : anchor + 3], ref[anchor])]
@@ -477,8 +476,8 @@ def test_windowed_deletion_after_junction_in_repeat_rna(tmp_path):
     )
     r = rows[0]
     assert (
-        int(r["alt_count"]) == 4
-    ), f"shifted post-N carriers must count ALT, got ad={r['alt_count']}"
+        int(r["alt_count"]) == 0
+    ), f"placement-only post-N reads must not count ALT, got ad={r['alt_count']}"
     assert int(r["ref_count"]) == 5
     assert int(r["total_count"]) == 9
 

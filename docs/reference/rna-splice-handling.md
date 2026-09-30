@@ -61,7 +61,13 @@ per-type classification):
   an event at an exon boundary reached through the junction) gets the
   same anchor/windowed inspection as an op after an `M` block. The
   anchor base itself may be spliced out; the evidence is attributed to
-  the nearest aligned or inserted base.
+  the nearest aligned or inserted base. A windowed candidate (not at the
+  anchor) counts ALT only when it is the read's one change across the
+  variant's discrimination window: a `D` written just after an `N` that
+  covers part of that window is where the aligner ended the `N` (the read's
+  bases are those of a reference read spliced a few bases later), so such a
+  read counts toward depth only (it counted ALT from its CIGAR before
+  6.6.0).
 - **Span-aligned REF testimony**: at a pure-deletion locus whose anchor
   base is spliced out, a junction read whose aligned bases cover the
   **entire deleted span** demonstrates the deletion is absent — it counts

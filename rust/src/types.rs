@@ -44,8 +44,9 @@ pub struct Variant {
 
     /// Reference bases around the event (its change interval plus 60 bases on
     /// each side), with their 0-based start. Prep fetches them for every
-    /// variant, SNVs and MNPs included (those carry no `ref_context`); only the
-    /// observed-allele diagnostic reads them.
+    /// variant, SNVs and MNPs included (those carry no `ref_context`); the
+    /// observed-allele diagnostic and the windowed indel checks' placement
+    /// equivalence read them.
     #[pyo3(get, set)]
     pub event_ref: Option<(i64, String)>,
 

@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — carriers of an indel written elsewhere in its repeat count ALT, not REF (#189)
+
+- An indel in a repeat can be written at any junction of its shift region with the
+  same haplotype. The input is left-aligned, but aligners may not be: near the
+  FORTE truth set's indel rows STAR placed 162 of 170 repeat insertions away from
+  the left-aligned position (the DNA panels, realigned: 37 of 15,047; WES without
+  realignment: 0 of 620). The windowed checks accepted
+  a shifted placement only by a proxy:
+  - an insertion when the reference base before it equalled the anchor base. That
+    is never true inside the repeat, so carriers written elsewhere counted **REF**
+    (in a synthetic `G AAAAA T` locus, REF 10 / ALT 0 instead of 5 / 5), and it was
+    true by chance for some placements that give another haplotype, which counted
+    ALT;
+  - a deletion when the bases it removes equalled the given ones, so a rotated STR
+    placement (removing `AC` for `CA`) under 5bp counted REF and the same bases
+    deleted outside the repeat counted ALT;
+  - the scan reached `max(5, repeat_span + 2)` bases from the anchor, and
+    `repeat_span` counts motifs of up to 6 bases only, so a longer duplication's
+    carriers written past that reach counted REF.
+- A placement is now accepted when it gives the variant's haplotype (the same
+  bases, or a rotation, elsewhere in the shift region) and is the read's only
+  change across the variant's discrimination window. The scan reaches every
+  placement: every junction of an insertion, a deletion's starts up to its last
+  placement. Other placements:
+  - the variant written elsewhere with another gap, insertion or splice across the
+    window (a +AA read for a +A row, a split −4 read for a −2 row, a deletion
+    cancelled by an insertion): a distinct allele (neither + partial in a
+    repeat). A read spliced over the anchor with a deletion written just after
+    the junction shows only where the aligner ended the splice: depth only (it
+    counted ALT);
+  - the variant's inserted bases where they give another haplotype, inside the
+    variant's discrimination window: a distinct allele, as a wrong-length
+    insertion is (neither + partial in a repeat, REF + partial in unique
+    sequence). Outside the window the read shows the window as reference: REF, as
+    before;
+  - the variant's bases inserted before its anchor base were counted ALT by the
+    backward-boundary check; they are now another haplotype (REF). An
+    anchor-substituting ALT (`A>CCC`) is never matched by a placement elsewhere
+    (C8, #121, covers the strict path);
+  - a same-length deletion that gives another haplotype: REF under 5bp, as before;
+    at 5bp or more it still goes to Phase 3 (C22, #191, revisits that route).
+- Measured on the RC set, develop vs branch, every changed read adjudicated by its
+  own bases:
+  - DNA: 13 of 1,060 rows change (ALT +46, partial −62, REF +13, depth
+    unchanged). Two insertion rows gain 44 and 10 ALT from carriers written up to
+    6 junctions right, each holding the ALT haplotype (their last inserted base is
+    an N). Two 2bp deletion rows move 6 and 18 reads from partial to REF: the
+    reads delete the same two bases 6bp before the anchor, another haplotype
+    outside the window. Their co-annotated 33bp rows regain the same reads as REF,
+    which develop had claimed for the 2bp row. Seven 1bp indel rows lose 8 ALT
+    reads that delete or insert the same base outside the run (one ends before
+    the anchor).
+  - FORTE RNA: the 33 truth samples and the T9 probes are unchanged (the truth
+    set's 3 insertion rows have no carriers). At 23 probes built from STAR's
+    repeat insertions near the truth loci, ALT goes from 11 to 183; an independent
+    census counts 176 shifted equivalent carriers, all ALT on the branch.
+- This also changes grouped rows (#99): a tract-mate deleting the same bases at
+  another position is another haplotype, not this row's allele, so where its
+  change lies outside this row's window its carriers are REF here instead of being
+  matched and then demoted to partial. Tract-cluster grouping now reaches as far
+  as the scan.
+
 ### Fixed — indels near a contig end are left-aligned and get their reference windows (#142)
 
 - Prep pads its reference windows on both sides but clamped them only at the
