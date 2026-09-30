@@ -119,25 +119,80 @@ def test_carriers_are_counted_by_the_haplotype_matrix(tmp_path, site):
 
 
 def test_ref_validation_stays_exact_at_the_contig_end(tmp_path):
-    """Guard: a REF that runs past the contig end fails validation; it is not
-    matched against the clamped part (which could 'correct' it to a shorter
-    REF)."""
+    """Guard: a REF running one base past the contig end fails its fetch. It is
+    not compared with the clamped part (19 of 20 bases would match, above the
+    90% that 'corrects' a REF to the FASTA's, here a shorter one)."""
     ref = _contig(340)
     fa, _ = _files(tmp_path, ref, [])
-    tail = ref[L - 20 :] + "ACGT"  # 20 real bases, then 4 past the end
+    tail = ref[L - 19 :] + "A"  # 19 real bases, then one past the end
     (pv,) = gbcms_rs.prepare_variants(
-        [gbcms_rs.Variant("1", L - 20, tail, tail[0], "DELETION")], fa, 5, False, 1, True
+        [gbcms_rs.Variant("1", L - 19, tail, tail[0], "DELETION")], fa, 5, False, 1, True
     )
-    assert pv.gbcms_status == "FAIL", (pv.gbcms_status, pv.gbcms_status_reason)
+    assert (pv.gbcms_status, pv.gbcms_status_reason) == ("FAIL", "FETCH_FAILED")
 
 
-def test_a_complex_variant_is_judged_near_the_contig_end_as_mid_contig(tmp_path):
+@pytest.mark.xfail(strict=True, reason="review: the clamp read the other record's length")
+def test_a_contig_named_twice_is_read_and_clamped_as_one_record(tmp_path):
+    """Guard: a FASTA holding two names of one contig at different lengths (a
+    short 'chr1' listed before '1'). A variant on '1' is left-aligned on '1',
+    never against the other record's length."""
+    anchor = 240
+    one = _contig(anchor)[:300]
+    fa = tmp_path / "ref.fa"
+    fa.write_text(f">chr1\n{_contig(340)[:200]}\n>1\n{one}\n")
+    pysam.faidx(str(fa))
+    p = anchor + len(RUN) - 1
+    (pv,) = gbcms_rs.prepare_variants(
+        [gbcms_rs.Variant("1", p, one[p : p + 2], one[p], "DELETION")], str(fa), 5, False, 1, True
+    )
+    v = pv.variant
+    assert (v.pos, v.ref_allele, v.alt_allele) == (anchor, "GA", "G")
+
+
+def _clipped_carriers(ref, anchor):
+    """Five REF reads and five carriers soft-clipped from the deletion on (their
+    aligned part ends on the G)."""
+    last = min(L - READ - 1, anchor - 10)
+    hap = ref[: anchor + 1] + ref[anchor + 2 :]
+    reads = []
+    for i, s in enumerate(range(last - 4, last + 1)):
+        reads.append(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)))
+        left = anchor + 1 - s
+        reads.append(make_read(f"c{i}", hap[s : s + READ], s, ((0, left), (4, READ - left))))
+    return reads
+
+
+@pytest.mark.parametrize("site", ["10bp from the contig end", "50bp from the contig end"])
+def test_depth_near_the_contig_end_counts_as_mid_contig(tmp_path, site):
+    """Unaligned near the end, the deletion kept its right-shifted anchor, which the
+    clipped carriers (aligned up to the G) do not reach: they fell out of depth
+    (DP 5 at the end, 10 mid-contig)."""
+    counts = {}
+    for label in (site, "mid-contig (guard)"):
+        anchor = SITES[label]
+        ref = _contig(anchor)
+        d = tmp_path / label.split(" ")[0]
+        d.mkdir()
+        fa, bam = _files(d, ref, _clipped_carriers(ref, anchor))
+        (pv,) = gbcms_rs.prepare_variants([_right_shifted(ref, anchor)], fa, 5, False, 1, True)
+        (c,) = count_both(bam, [pv.variant])
+        counts[label] = (c.dp, c.rd, c.ad)
+    assert counts[site] == counts["mid-contig (guard)"] == (10, 5, 0), counts
+
+
+# Reads relative to the delins: ending inside the event grown through the repeat
+# (none informative), or spanning it with flank (inside the contig at its end).
+READS_ENDING = {"inside the grown event": range(90, 95), "past it": (88, 88, 89, 89, 88)}
+
+
+@pytest.mark.parametrize("geometry", list(READS_ENDING))
+def test_a_complex_variant_is_judged_near_the_contig_end_as_mid_contig(tmp_path, geometry):
     """The same 40 bases (a delins GG>TCC in a GGTT repeat) mid-contig and at the
     contig end, with the same reads relative to it: five REF reads, five exact
-    carriers and three reads carrying TCG (another allele). The reads end inside
-    the event grown through the repeat, so the exact-carrier rule finds none
-    informative. At the contig end the rule had no reference and the tolerant
-    classifier ran instead: REF 5, ALT 7 (two TCG reads among them)."""
+    carriers and three reads carrying TCG (another allele). At the contig end the
+    exact-carrier rule had no reference and the tolerant classifier ran instead:
+    REF 5 / ALT 7 where no read is informative, REF 5 / ALT 8 where all are (the
+    TCG reads counted ALT)."""
     base = _contig(L - 32)
     tail = base[L - 40 :]  # the delins sits at offset 28
     mid = 300
@@ -145,7 +200,7 @@ def test_a_complex_variant_is_judged_near_the_contig_end_as_mid_contig(tmp_path)
     counts = {}
     for label, p in (("mid-contig", mid + 28), ("contig end", L - 12)):
         reads = []
-        for i, k in enumerate(range(90, 95)):  # each read ends 5-9 bases past p
+        for i, k in enumerate(READS_ENDING[geometry]):  # read i starts k bases before p
             s = p - k
             reads.append(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)))
             for tag, alt in (("a", "TCC"), ("n", "TCG"))[: 2 if i < 3 else 1]:
@@ -161,3 +216,4 @@ def test_a_complex_variant_is_judged_near_the_contig_end_as_mid_contig(tmp_path)
         (c,) = count_both(bam, [pv.variant])
         counts[label] = (c.rd, c.ad, c.partial_alt, c.dp)
     assert counts["contig end"] == counts["mid-contig"], counts
+    assert counts["contig end"][1] <= 5, "a read carrying another allele is never ALT"
