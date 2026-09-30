@@ -102,14 +102,14 @@ class TestInsertionWindowed:
 
     def test_shifted_other_haplotype_is_not_alt(self, tmp_path):
         """A T inserted 2bp right of where the variant puts its T: in the A run
-        that is another haplotype (a T elsewhere), a distinct allele: never ALT,
-        and surfaced as partial evidence (#189: the anchor-base test used to
-        accept it)."""
+        that is another haplotype (a T elsewhere), never ALT (#189: the anchor-base
+        test used to accept it). It lies outside the variant's discrimination
+        window [100, 102), which the read shows as reference: REF."""
         reads = [_make_read("r1", "AAAAAAATAA", 96, ((0, 7), (1, 1), (0, 2)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, INS_VARIANT)
         assert counts.ad == 0, f"Expected ad=0 (another haplotype), got {counts.ad}"
-        assert counts.partial_alt == 1
+        assert (counts.rd, counts.partial_alt) == (1, 0)
 
     def test_wrong_inserted_sequence(self, tmp_path):
         """Same-length insertion AT the anchor with a confidently wrong base

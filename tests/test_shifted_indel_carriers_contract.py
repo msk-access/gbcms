@@ -30,8 +30,6 @@ from helpers import count_both, make_read
 
 from gbcms import _rs as gbcms_rs
 
-RED = pytest.mark.xfail(strict=True, reason="placement equivalence gaps found in review")
-
 READ, L, A = 100, 800, 400  # read length, contig length, the repeat's anchor (0-based)
 
 
@@ -125,27 +123,31 @@ def test_str_insertion_carriers_at_every_phase(tmp_path, junction):
     assert _count(tmp_path, STR, "G", "GCA", A + junction, "I", bases) == (5, 5, 0)
 
 
+def test_str_insertion_of_its_bases_out_of_phase_is_another_allele(tmp_path):
+    """Guard: G>GCA, but the carriers insert CA at an even offset (GC CA ACACAT,
+    not GCACACACAT). Inside the repeat that is another allele: partial evidence,
+    never ALT."""
+    assert _count(tmp_path, STR, "G", "GCA", A + 2, "I", "CA") == (5, 0, 5)
+
+
 def test_an_insertion_of_other_bases_in_the_run_is_not_alt(tmp_path):
     """Guard: a G inserted mid-run is another allele: partial evidence, never ALT."""
     rd, ad, partial = _count(tmp_path, HOMOPOLYMER, "G", "GA", A + 3, "I", "G")
     assert (ad, partial) == (0, 5)
 
 
-@RED
 def test_the_bases_inserted_just_past_the_run_are_another_event(tmp_path):
     """G>GA, but the carriers insert an A after the T past the run: they show the
     run and both its flanks as reference, so they are REF."""
     assert _count(tmp_path, HOMOPOLYMER, "G", "GA", A + 7, "I", "A") == (10, 0, 0)
 
 
-@RED
 def test_the_bases_inserted_before_the_anchor_are_another_event(tmp_path):
     """G>GA, but the carriers insert the A before the G (AGAAAAAT, not GAAAAAAT):
     they show the run as reference, so they are REF."""
     assert _count(tmp_path, HOMOPOLYMER, "G", "GA", A, "I", "A") == (10, 0, 0)
 
 
-@RED
 def test_a_read_with_a_deletion_between_the_placements_is_not_alt(tmp_path):
     """G>GA, but the carriers delete the run's first A and insert an A three bases
     on: their bases are the reference run, not the variant written elsewhere."""
@@ -161,7 +163,6 @@ def test_a_read_with_a_deletion_between_the_placements_is_not_alt(tmp_path):
     assert ad == 0
 
 
-@RED
 def test_a_read_spliced_over_the_run_start_is_not_alt(tmp_path):
     """G>GA, but the carriers are spliced from before the anchor to mid-run and
     insert an A there: they do not show the run's start, so their insertion is not
@@ -176,14 +177,12 @@ def test_a_read_spliced_over_the_run_start_is_not_alt(tmp_path):
     assert ad == 0
 
 
-@RED
 def test_an_anchor_substituting_insertion_is_not_matched_elsewhere(tmp_path):
     """A>CCC in A CC T: the carriers keep the anchor A and insert CC after the two
     C's (ACCCCT, not CCCCCT). No placement elsewhere substitutes the anchor: REF."""
     assert _count(tmp_path, ANCHOR_SUB, "A", "CCC", A + 3, "I", "CC") == (10, 0, 0)
 
 
-@RED
 @pytest.mark.parametrize("junction", [9, 13, 17])
 def test_a_long_duplication_insertion_at_every_junction(tmp_path, junction):
     """G>G+ACGTTGCA over two copies of it: the insertion slides over 16 junctions,
@@ -214,7 +213,6 @@ def test_a_deletion_just_past_the_run_is_not_alt(tmp_path):
     assert ad == 0
 
 
-@RED
 def test_a_long_duplication_deletion_placed_on_its_second_copy(tmp_path):
     """G+ACGTTGCA>G over two copies of it: deleting the second copy is the same
     allele, past the scan's repeat-span reach."""
