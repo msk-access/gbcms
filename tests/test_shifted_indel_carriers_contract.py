@@ -30,6 +30,8 @@ from helpers import count_both, make_read
 
 from gbcms import _rs as gbcms_rs
 
+RED = pytest.mark.xfail(strict=True, reason="read-side and deletion-reach gaps found in review")
+
 READ, L, A = 100, 800, 400  # read length, contig length, the repeat's anchor (0-based)
 
 
@@ -45,6 +47,10 @@ STR = _contig("GCACACACAT")  # G, (CA) x4 at A+1..A+8, T
 ANCHOR_SUB = _contig("ACCT")  # A at A, C C at A+1..A+2, T
 DUP = "ACGTTGCA"  # no motif of 6 or fewer bases repeats in it
 DUPLICATION = _contig("G" + DUP + DUP + "T")  # G, two copies at A+1..A+16, T
+SPAN10 = "ATCGGATCTA"  # a unique 10bp stretch (slides neither way between G and C)
+SPAN60 = "A" + "".join(random.Random(60).choice("ACGT") for _ in range(58)) + "A"
+UNIQUE10 = _contig("G" + SPAN10 + "C")
+UNIQUE60 = _contig("G" + SPAN60 + "C")
 
 
 def _files(tmp_path, ref, reads):
@@ -97,6 +103,29 @@ def _count(tmp_path, ref, ref_allele, alt_allele, junction, op, bases):
         return seq, ((0, left), (2, bases), (0, READ - left))
 
     return _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier)
+
+
+def _ops(ref, events):
+    """A carrier from ordered events, each placed before its reference position:
+    (pos, "I", bases), (pos, "D", n) or (pos, "N", n)."""
+
+    def carrier(s):
+        seq, cigar, p = "", [], s
+        for pos, op, x in events:
+            if pos > p:
+                seq += ref[p:pos]
+                cigar.append((0, pos - p))
+                p = pos
+            if op == "I":
+                seq += x
+                cigar.append((1, len(x)))
+            else:
+                cigar.append((2 if op == "D" else 3, x))
+                p += x
+        rest = READ - len(seq)
+        return seq + ref[p : p + rest], (*cigar, (0, rest))
+
+    return carrier
 
 
 def _j(n):
@@ -219,9 +248,88 @@ def test_a_long_duplication_deletion_placed_on_its_second_copy(tmp_path):
     assert _count(tmp_path, DUPLICATION, "G" + DUP, "G", A + 9, "D", 8) == (5, 5, 0)
 
 
-def test_another_deletion_inside_a_long_deletions_span_is_surfaced(tmp_path):
-    """G+ACGTTGCA>G over two copies of it, but the carriers delete 5 bases 11 into
-    the region the deletion slides over, past the scan's repeat-span reach: another
-    allele inside the discrimination window. In unique sequence the anchor stays REF
-    and the read is surfaced as partial evidence (it was plain REF, unscanned)."""
-    assert _count(tmp_path, DUPLICATION, "G" + DUP, "G", A + 11, "D", 5) == (10, 0, 5)
+# ── The read's own haplotype across the discrimination window ────────────────
+# A placement is the variant written elsewhere only when it is the read's one
+# change across the window: another gap, insertion or splice there makes another
+# haplotype (or none the read shows).
+@RED
+def test_an_insertion_with_a_deletion_in_the_window_is_not_alt(tmp_path):
+    """G>GA, but the carriers insert an A at A+2 and delete one at A+4: their bases
+    are the reference run."""
+    events = [(A + 2, "I", "A"), (A + 4, "D", 1)]
+    rd, ad, partial = _count_reads(tmp_path, HOMOPOLYMER, "G", "GA", _ops(HOMOPOLYMER, events))
+    assert ad == 0
+
+
+@RED
+def test_two_insertions_in_the_run_are_another_allele(tmp_path):
+    """G>GA, but the carriers insert an A at A+2 and another at A+4: a +AA allele,
+    partial evidence for the +A row, never its ALT."""
+    events = [(A + 2, "I", "A"), (A + 4, "I", "A")]
+    assert _count_reads(tmp_path, HOMOPOLYMER, "G", "GA", _ops(HOMOPOLYMER, events)) == (5, 0, 5)
+
+
+@RED
+def test_an_insertion_followed_by_a_splice_in_the_run_is_not_alt(tmp_path):
+    """G>GA, but the carriers insert an A at A+3 and are spliced right after it:
+    they do not show the rest of the run."""
+    events = [(A + 3, "I", "A"), (A + 3, "N", 57)]
+    rd, ad, partial = _count_reads(tmp_path, HOMOPOLYMER, "G", "GA", _ops(HOMOPOLYMER, events))
+    assert ad == 0
+
+
+@RED
+def test_two_deletions_in_the_run_are_another_allele(tmp_path):
+    """GA>G, but the carriers delete one A at A+2 and another at A+4: a -AA
+    allele, partial evidence for the -A row, never its ALT."""
+    events = [(A + 2, "D", 1), (A + 4, "D", 1)]
+    assert _count_reads(tmp_path, HOMOPOLYMER, "GA", "G", _ops(HOMOPOLYMER, events)) == (5, 0, 5)
+
+
+@RED
+def test_two_str_deletions_are_another_allele(tmp_path):
+    """GCA>G in (CA)x4, but the carriers delete AC at A+2 and again at A+6: a -4
+    allele (no -4 row annotated), partial evidence, never the -2 row's ALT."""
+    events = [(A + 2, "D", 2), (A + 6, "D", 2)]
+    assert _count_reads(tmp_path, STR, "GCA", "G", _ops(STR, events)) == (5, 0, 5)
+
+
+@RED
+def test_a_deletion_cancelled_by_an_insertion_is_not_alt(tmp_path):
+    """GCA>G in (CA)x4, but the carriers delete AC at A+2 and insert AC at A+6:
+    their bases are the reference repeat."""
+    events = [(A + 2, "D", 2), (A + 6, "I", "AC")]
+    rd, ad, partial = _count_reads(tmp_path, STR, "GCA", "G", _ops(STR, events))
+    assert ad == 0
+
+
+@RED
+@pytest.mark.parametrize(
+    "ref, alt_len, events",
+    [
+        (HOMOPOLYMER, 1, [(A - 10, "N", 12), (A + 2, "D", 1)]),
+        (STR, 2, [(A - 10, "N", 12), (A + 2, "D", 2)]),
+        (DUPLICATION, 8, [(A - 10, "N", 15), (A + 5, "D", 8)]),
+    ],
+    ids=["homopolymer", "str", "duplication"],
+)
+def test_a_deletion_after_a_splice_over_the_anchor_is_not_alt(tmp_path, ref, alt_len, events):
+    """The carriers are spliced from before the anchor into the repeat and delete
+    there: they do not show the repeat's start, so their deletion is not the
+    variant written elsewhere."""
+    rd, ad, partial = _count_reads(
+        tmp_path, ref, ref[A : A + alt_len + 1], ref[A], _ops(ref, events)
+    )
+    assert ad == 0
+
+
+# ── The scan reaches the variant's placements, not its whole deleted span ─────
+@RED
+@pytest.mark.parametrize(
+    "ref, n, start", [(UNIQUE10, 10, 8), (UNIQUE60, 60, 20)], ids=["10bp", "60bp"]
+)
+def test_another_deletion_inside_a_deletions_span_is_not_alt(tmp_path, ref, n, start):
+    """A unique deletion, but the carriers delete a different stretch of its length
+    starting inside it: another haplotype, never ALT (a deletion slides over its
+    shift region only up to its last placement)."""
+    assert _count(tmp_path, ref, ref[A : A + n + 1], ref[A], A + start, "D", n) == (10, 0, 0)
