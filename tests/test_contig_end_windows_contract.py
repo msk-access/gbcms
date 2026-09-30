@@ -7,7 +7,9 @@ indel within a few hundred bases of a contig end lost every window:
 - the left-align window (about 100bp): the indel was not left-aligned (a WARN);
 - `ref_context`: no haplotypes, so reads needing Phase 3 went to the SW fallback;
 - the shift region (256bp) and the event reference (60bp): a read aligning the
-  indel elsewhere in its repeat could not be matched to it.
+  indel elsewhere in its repeat could not be matched to it, and a complex
+  variant fell back to the tolerant classifier the exact-carrier rule replaced,
+  so the same reads were judged differently near a contig end than elsewhere.
 
 Each window now keeps the part of the contig it covers. Exact fetches (REF
 validation, a MAF anchor) stay exact.
@@ -77,10 +79,11 @@ def _right_shifted(ref, anchor):
 
 
 def _reads(ref, anchor):
-    """Ten REF reads and ten carriers, the deletion aligned left (after the G),
-    all inside the contig."""
-    first = min(max(0, anchor - 60), L - READ - 11)
-    starts = range(first, first + 10)
+    """Five REF reads and five carriers, the deletion aligned left (after the
+    G), all inside the contig and spanning the run with flank on both sides, so
+    every read is informative (one ending inside the run is neither)."""
+    last = min(L - READ - 1, anchor - 10)
+    starts = range(last - 4, last + 1)
     hap = ref[: anchor + 1] + ref[anchor + 2 :]
     reads = [make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)) for i, s in enumerate(starts)]
     for i, s in enumerate(starts):
@@ -106,12 +109,11 @@ def test_prep_left_aligns_and_fetches_every_window(tmp_path, site):
     assert v.event_ref is not None
 
 
-# 10bp: REF 6, ALT 9 on develop. 50bp: counted right despite the unaligned input.
-@pytest.mark.parametrize("site", _params({"10bp from the contig end"}))
+@pytest.mark.parametrize("site", list(SITES))
 def test_carriers_are_counted_by_the_haplotype_matrix(tmp_path, site):
-    """The carriers align the deletion left of where the input puts it; they
-    count as ALT with every window in place, and no read goes to the SW
-    fallback."""
+    """Guard: the carriers align the deletion left of where the input puts it;
+    they count as ALT, the REF reads as REF, and no read goes to the SW
+    fallback (informative reads were counted right before too)."""
     anchor = SITES[site]
     ref = _contig(anchor)
     fa, bam = _files(tmp_path, ref, _reads(ref, anchor))
@@ -121,7 +123,7 @@ def test_carriers_are_counted_by_the_haplotype_matrix(tmp_path, site):
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
     assert c.ad == c.ad_fwd + c.ad_rev
-    assert (c.rd, c.ad) == (10, 10)
+    assert (c.rd, c.ad) == (5, 5)
     assert c.sw_fallback_reads == 0
 
 
@@ -136,3 +138,36 @@ def test_ref_validation_stays_exact_at_the_contig_end(tmp_path):
         [gbcms_rs.Variant("1", L - 20, tail, tail[0], "DELETION")], fa, 5, False, 1, True
     )
     assert pv.gbcms_status == "FAIL", (pv.gbcms_status, pv.gbcms_status_reason)
+
+
+@RED
+def test_a_complex_variant_is_judged_near_the_contig_end_as_mid_contig(tmp_path):
+    """The same 40 bases (a delins GG>TCC in a GGTT repeat) mid-contig and at the
+    contig end, with the same reads relative to it: five REF reads, five exact
+    carriers and three reads carrying TCG (another allele). The reads end inside
+    the event grown through the repeat, so the exact-carrier rule finds none
+    informative. At the contig end the rule had no reference and the tolerant
+    classifier ran instead: REF 5, ALT 7 (two TCG reads among them)."""
+    base = _contig(L - 32)
+    tail = base[L - 40 :]  # the delins sits at offset 28
+    mid = 300
+    ref = base[:mid] + tail + base[mid + 40 :]
+    counts = {}
+    for label, p in (("mid-contig", mid + 28), ("contig end", L - 12)):
+        reads = []
+        for i, k in enumerate(range(90, 95)):  # each read ends 5-9 bases past p
+            s = p - k
+            reads.append(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)))
+            for tag, alt in (("a", "TCC"), ("n", "TCG"))[: 2 if i < 3 else 1]:
+                hap = ref[:p] + alt + ref[p + 2 :]
+                cig = ((0, k), (1, 1), (0, READ - k - 1))
+                reads.append(make_read(f"{tag}{i}", hap[s : s + READ], s, cig))
+        d = tmp_path / label.replace(" ", "_")
+        d.mkdir()
+        fa, bam = _files(d, ref, reads)
+        (pv,) = gbcms_rs.prepare_variants(
+            [gbcms_rs.Variant("1", p, ref[p : p + 2], "TCC", "COMPLEX")], fa, 5, False, 1, True
+        )
+        (c,) = count_both(bam, [pv.variant])
+        counts[label] = (c.rd, c.ad, c.partial_alt, c.dp)
+    assert counts["contig end"] == counts["mid-contig"], counts
