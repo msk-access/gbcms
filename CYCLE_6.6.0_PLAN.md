@@ -50,6 +50,8 @@ before implementation.
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] | #177 |
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
+| C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [decide] | #188 |
+| C21 | Homopolymer insertion carriers placed elsewhere in the run counted REF (S3 anchor-base test) | H | [counts] | #189 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 |
 | R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 |
@@ -404,6 +406,48 @@ the `.fai` (left-align and `ref_context`).
 context, and are scored by the pangenomic matrix, not SW.
 **Acceptance.** No change away from contig ends (the RC set is
 byte-identical).
+
+**As built (2026-09-30).**
+- `fetch_window` returns the part of `[start, end)` on the contig. Callers index
+  from `start`, so only the end moves, and a short window means the contig end.
+- It serves the five window fetches: left-align, `ref_context`, the adaptive
+  repeat scan, the shift region and the event reference.
+- Exact fetches keep `fetch_region` and still fail past the end: REF validation (a
+  clamped REF could be "corrected" to a shorter one), the MAF anchor, the
+  homopolymer next base and the splice motifs.
+- **Found while testing: position dependence.** A complex variant near a contig end
+  had no event reference, so the tolerant classifier that C1 replaced judged it.
+  The same bases and reads gave 0/0/0 mid-contig and REF 5 / ALT 7 at the end, two
+  reads carrying another allele among the ALT.
+- The first count test had used reads ending inside the tract. Those reads showed
+  C10's ALT side: a carrier ending inside the tract is credited from its CIGAR gap.
+  Filed as C20 #188.
+- **The adversarial review found two defects in the first clamp:**
+  - Cost: prep ran 63× slower on GRCh38 with alt/decoy contigs, because every
+    window looked the contig length up and the index lookup clones every record
+    name. Now only a window that fails is clamped: 12.2 µs per indel on 3,366
+    contigs, develop 12.1.
+  - Aliases: a FASTA holding a contig under two names at different lengths
+    clamped to the other record's length and moved an indel 59bp. The contig is
+    now resolved by the name the fetch reads.
+- The review also led to more test cases: an exact REF-validation guard, an alias
+  FASTA, clipped carriers dropping out of depth (DP 5 vs 10 on develop), and
+  informative reads in the position-independence test.
+- Checked and left as is: the exact-carrier windows' padding at a contig end
+  always fits the other margin (an event exhausting it is past LONG_EVENT).
+- The review also found C21 #189: homopolymer insertion carriers placed elsewhere
+  in the run are counted REF. It predates C4 and is reproduced mid-contig.
+
+**Measured (2026-09-30).** All runs were local, develop vs the final branch head.
+- **Prevalence:** among about 516,000 unique signed-out events, none lies within
+  16kb of a contig end. The three that appear to are malformed rows whose
+  `End_Position` exceeds the contig length. So for panel data the fix is
+  defensive; it matters for WGS, chrM's control region and GRCh38 alt/decoy
+  contigs.
+- **RC set:** byte-identical, 33 FORTE truth samples, the T9 probes (3 samples)
+  and 28 DNA runs (2,132 rows). Develop logged no window-fetch warning on any of
+  them.
+- **Cost:** prep on a 3,366-contig FASTA takes 12.2 µs per indel (develop 12.1).
 
 ### C5 — Long insertions exceed the pangenomic matrix cap (#120) · L [counts]
 **Finding.** `MAX_HAP_LEN = 400` (`pangenome.rs`). ALT haplotypes longer than
@@ -1110,12 +1154,13 @@ hid the RNA exon-edge collapse.
 
 ## Suggested order
 
-Refreshed 2026-09-29; C1, C2, C10, C12 and O4 are done.
-1. **Done:** C13 (#166, PR #169); R1 (#106, PR #181); C14 (#172, PR #184); R2 (#114).
+Refreshed 2026-09-30; C1, C2, C10, C12 and O4 are done.
+1. **Done:** C13 (#166, PR #169); R1 (#106, PR #181); C14 (#172, PR #184); R2 (#114, PR #187).
 2. **Done:** this list, the validation standard and the BAM-caveats reference
    (PR #175).
-3. **Counting correctness:** C4
-   (#142), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
+3. **Counting correctness:** C4 (#142, in review), C21 (#189, measured first:
+   insertion carriers counted REF), C20 (#188, measured and decided first; C10's ALT
+   side), C8 (#121), C9 (#122); C11 (#159) measured first; C3 with M3 and #145 (the
    decomposition cluster); C15 (#173), C17 (#176), C18 (#177); C19 (#182, the
    absent-quality policy decided first); C5 (#120), C6 (#143,
    reconciled with "count the given allele"), C7 (#144); C16 (#174); R3 (#178); R4 (#185,
