@@ -5,7 +5,7 @@ use std::fs::File;
 use bio::io::fasta;
 use log::debug;
 
-use super::fasta::fetch_region;
+use super::fasta::fetch_window;
 
 /// Detect the longest tandem repeat (motif 1–6bp) touching a given position.
 ///
@@ -119,7 +119,7 @@ pub(crate) fn compute_adaptive_padding(
     let scan_start = (pos - scan_radius).max(0);
     let scan_end = pos + ref_len as i64 + scan_radius;
 
-    let scan_seq = match fetch_region(reader, chrom, scan_start as u64, scan_end as u64) {
+    let scan_seq = match fetch_window(reader, chrom, scan_start as u64, scan_end as u64) {
         Ok(s) => s,
         Err(_) => {
             // warn (not debug): a silent fallback here narrows the Phase-3

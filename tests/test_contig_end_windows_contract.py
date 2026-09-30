@@ -25,8 +25,6 @@ from helpers import count_both, make_read
 
 from gbcms import _rs as gbcms_rs
 
-RED = pytest.mark.xfail(strict=True, reason="#142: windows past the contig end fail")
-
 L = 700  # contig length
 READ = 100
 RUN = "AAAAA"
@@ -47,13 +45,6 @@ SITES = {
     "40bp from the contig start (guard)": 40,
     "mid-contig (guard)": 340,
 }
-
-
-def _params(red):
-    return [pytest.param(k, marks=RED) if k in red else k for k in SITES]
-
-
-NEAR_END = {"10bp from the contig end", "50bp from the contig end"}
 
 
 def _files(tmp_path, ref, reads):
@@ -94,7 +85,7 @@ def _reads(ref, anchor):
     return reads
 
 
-@pytest.mark.parametrize("site", _params(NEAR_END))
+@pytest.mark.parametrize("site", list(SITES))
 def test_prep_left_aligns_and_fetches_every_window(tmp_path, site):
     anchor = SITES[site]
     ref = _contig(anchor)
@@ -140,7 +131,6 @@ def test_ref_validation_stays_exact_at_the_contig_end(tmp_path):
     assert pv.gbcms_status == "FAIL", (pv.gbcms_status, pv.gbcms_status_reason)
 
 
-@RED
 def test_a_complex_variant_is_judged_near_the_contig_end_as_mid_contig(tmp_path):
     """The same 40 bases (a delins GG>TCC in a GGTT repeat) mid-contig and at the
     contig end, with the same reads relative to it: five REF reads, five exact

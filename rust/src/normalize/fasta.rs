@@ -29,6 +29,22 @@ pub(crate) fn fetch_region(
     anyhow::bail!("FASTA fetch failed for {}:{}-{}", chrom, start, end)
 }
 
+/// Fetch a window of reference around a locus: the part of `[start, end)` that
+/// lies on the contig. The FASTA reader rejects a window that passes the contig
+/// end, and prep pads its windows on both sides, so an indel near the end lost
+/// every window. Callers index from `start`, so only the end is clamped: a
+/// shorter result means the window reached the contig end. Exact fetches (a REF
+/// allele, a MAF anchor) use [`fetch_region`] and fail instead.
+pub(crate) fn fetch_window(
+    reader: &mut fasta::IndexedReader<File>,
+    chrom: &str,
+    start: u64,
+    end: u64,
+) -> anyhow::Result<Vec<u8>> {
+    let end = contig_len(reader, chrom).map_or(end, |len| end.min(len));
+    fetch_region(reader, chrom, start, end)
+}
+
 /// The names a contig may go by in the FASTA: as given, with or without a `chr`
 /// prefix, and each mitochondrial spelling.
 fn contig_names(chrom: &str) -> Vec<String> {
@@ -49,7 +65,7 @@ fn contig_names(chrom: &str) -> Vec<String> {
 }
 
 /// The contig's length from the FASTA index, under any name it goes by.
-pub(crate) fn contig_len(reader: &fasta::IndexedReader<File>, chrom: &str) -> Option<u64> {
+fn contig_len(reader: &fasta::IndexedReader<File>, chrom: &str) -> Option<u64> {
     let names = contig_names(chrom);
     reader.index.sequences().into_iter().find(|s| names.contains(&s.name)).map(|s| s.len)
 }
@@ -189,6 +205,23 @@ mod tests {
         let mut reader = fasta::IndexedReader::from_file(&fa).unwrap();
         assert!(fetch_single_base(&mut reader, "1", -1).is_err());
         assert_eq!(fetch_single_base(&mut reader, "1", 0).unwrap(), b'A');
+        let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
+        let _ = std::fs::remove_file(&fa);
+    }
+
+    #[test]
+    fn test_a_window_is_clamped_to_the_contig_and_an_exact_fetch_is_not() {
+        // chr-named FASTA, looked up as "1": the clamp finds the contig under
+        // any name, as the fetch does.
+        let dir = std::env::temp_dir();
+        let fa = dir.join(format!("gbcms-fetch-window-{}.fa", std::process::id()));
+        std::fs::write(&fa, ">chr1\nACGTACGTAC\n").unwrap();
+        std::fs::write(fa.with_extension("fa.fai"), "chr1\t10\t6\t10\t11\n").unwrap();
+        let mut reader = fasta::IndexedReader::from_file(&fa).unwrap();
+        assert_eq!(fetch_window(&mut reader, "1", 6, 50).unwrap(), b"GTAC");
+        assert_eq!(fetch_window(&mut reader, "1", 2, 6).unwrap(), b"GTAC");
+        assert!(fetch_region(&mut reader, "1", 6, 50).is_err(), "an exact fetch stays exact");
+        assert!(fetch_window(&mut reader, "1", 10, 20).is_err(), "nothing on the contig");
         let _ = std::fs::remove_file(fa.with_extension("fa.fai"));
         let _ = std::fs::remove_file(&fa);
     }
