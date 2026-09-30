@@ -1890,7 +1890,7 @@ Use mouse to pan and zoom
     Walk --&gt; MatchBlk{"Match block contains anchor?"}
     MatchBlk --&gt;|No| WinCheck(["→ Windowed Scan"]):::next
     MatchBlk --&gt;|Yes| Bwd{"Anchor at block start\nAND prev op = Ins?"}
-    Bwd --&gt;|Yes| BwdMatch{"Length + seq match?\n(quality-masked)"}
+    Bwd --&gt;|Yes| BwdMatch{"Same haplotype?\n(quality-masked)"}
     BwdMatch --&gt;|Yes| BWAlt(["🔴 ALT — backward"]):::alt
     BwdMatch --&gt;|No| Fwd
     Bwd --&gt;|No| Fwd{"Anchor at block end?"}
@@ -1966,16 +1966,20 @@ its validation.</p>
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within window?\n(±max(5, repeat_span+2))"}
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within window?\n(±max(5, repeat_span+2),\nor in the shift region)"}
     CheckWin --&gt;|No| Continue["Continue CIGAR walk"]
     CheckWin --&gt;|Yes| SameLen{"Same length?"}
-    SameLen --&gt;|Yes| S1{"S1: Seq matches?\n(quality-masked)"}
-    S1 --&gt;|Yes| S3{"S3: Anchor base\nmatches ref?"}
-    S3 --&gt;|No| Continue
-    S3 --&gt;|Yes| S2["S2: Track closest match"]
+    SameLen --&gt;|Yes| S3{"S3: Same haplotype?\n(X+S = S+Y; quality-masked)"}
+    S3 --&gt;|Yes| Only{"The read's only change\nacross the window?"}
+    Only --&gt;|Yes| S2["S2: Track closest match"]
+    Only --&gt;|No| FlagWL
     S2 --&gt; Continue
+    S3 --&gt;|No| S1{"The variant's\nbases?"}
+    S1 --&gt;|Yes| InDW{"Inside the discrimination\nwindow? (anchor kept)"}
+    InDW --&gt;|Yes| FlagWL
+    InDW --&gt;|"No: separate event"| Continue
     S1 --&gt;|No| FlagSL["Flag has_shifted_same_length"]:::fallback
-    SameLen --&gt;|No| FlagWL["Flag has_wrong_length_nearby\n(any size)"]:::partialflag
+    SameLen --&gt;|No| FlagWL["Flag has_distinct_allele_nearby\n(any size)"]:::partialflag
     FlagSL --&gt; Continue
     FlagWL --&gt; Continue
     Continue --&gt; MoreOps{"More CIGAR ops?"}
@@ -1984,8 +1988,8 @@ its validation.</p>
     Eval --&gt;|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Eval --&gt;|No| SLCheck{"has_shifted_same_length\nAND ref coverage?"}
     SLCheck --&gt;|Yes| CPX(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
-    SLCheck --&gt;|No| WLCheck{"has_wrong_length_nearby\nAND ref coverage?"}
-    WLCheck --&gt;|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
+    SLCheck --&gt;|No| WLCheck{"has_distinct_allele_nearby\nAND ref coverage?"}
+    WLCheck --&gt;|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
     WLCheck --&gt;|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
     WLCheck --&gt;|No| HasRef{"Anchor covered by M?"}
     HasRef --&gt;|Yes| Ref(["✅ REF"]):::ref
@@ -2018,8 +2022,8 @@ Use mouse to pan and zoom
 <tbody>
 <tr>
 <td style="text-align: left;"><strong>S1</strong></td>
-<td style="text-align: left;">Inserted sequence matches expected ALT bases (quality-masked)</td>
-<td style="text-align: left;">Prevents matching unrelated insertions</td>
+<td style="text-align: left;">Inserted length matches the expected insert</td>
+<td style="text-align: left;">Wrong-length insertions are distinct alleles</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>S2</strong></td>
@@ -2028,8 +2032,8 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><strong>S3</strong></td>
-<td style="text-align: left;">Reference base at shifted anchor matches original anchor base</td>
-<td style="text-align: left;">Ensures the shifted position is biologically equivalent</td>
+<td style="text-align: left;">The placement gives the variant's haplotype: with X the expected insert, Y the read's and S the reference between the two junctions, <code>X + S = S + Y</code> (Y right of X) or <code>S + X = Y + S</code> (left), and the placement is the read's only change across the discrimination window (another gap, insertion or splice there is another haplotype); read bases below <code>--min-baseq</code>, or N, match anything, at least one read. An ALT that also substitutes its anchor base (<code>A&gt;CCC</code>) has no equivalent placement</td>
+<td style="text-align: left;">The read's own bases carry the allele wherever the aligner put it in a repeat: the same bases in a homopolymer, a rotation (<code>AC</code> for <code>CA</code>) in an STR. Before 6.6.0 S3 compared the reference base before the insertion with the anchor base, never equal inside a repeat, so carriers written elsewhere in the repeat counted <strong>REF</strong> (#189)</td>
 </tr>
 </tbody>
 </table>
@@ -2037,16 +2041,38 @@ Use mouse to pan and zoom
 <p class="admonition-title">Two Windowed Flags with Different Outcomes</p>
 <ul>
 <li><strong><code>has_shifted_same_length</code></strong> — the windowed scan found an insertion of the <strong>right
-  length</strong> whose bases failed the sequence check (an aligner may represent the same event
-  with shifted bases in a repeat). Resolved by <strong>Phase-3 arbitration</strong> (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under
-  the default backend); <code>partial_alt</code> evidence is propagated when Phase 3 does not confirm
-  ALT.</li>
-<li><strong><code>has_wrong_length_nearby</code></strong> — the windowed scan found an insertion of the <strong>wrong
-  length</strong> (flagged at any size, so REF can never silently absorb it). Resolved without
-  Phase 3: inside a repeat tract (<code>repeat_span ≥ 2</code>) it is a distinct slippage allele →
-  neither + <code>partial_alt</code>; in unique context the anchor-covering M is definitive REF and
-  the stray insertion is surfaced as <code>partial_alt</code> alongside <code>rd</code>.</li>
+  length</strong> carrying <strong>other bases</strong> (a caller and an aligner may write one event
+  differently). Resolved by <strong>Phase-3 arbitration</strong> (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under the default
+  backend); <code>partial_alt</code> evidence is propagated when Phase 3 does not confirm ALT.</li>
+<li><strong><code>has_distinct_allele_nearby</code></strong> — the windowed scan found an insertion of the
+  <strong>wrong length</strong> (flagged at any size, so REF can never silently absorb it), or the
+  variant's bases placed where they give <strong>another haplotype</strong> inside its discrimination
+  window. Resolved without Phase 3: inside a repeat tract (<code>repeat_span ≥ 2</code>) it is a
+  distinct allele → neither + <code>partial_alt</code>; in unique context the anchor-covering M is
+  definitive REF and the stray insertion is surfaced as <code>partial_alt</code> alongside <code>rd</code>.</li>
 </ul>
+<p>The variant's bases inserted <strong>outside</strong> its discrimination window (after the base past
+a run, or before the anchor) are a separate event: the read shows the window as
+reference and counts <strong>REF</strong>, as it did before 6.6.0. The same holds for an ALT that also
+substitutes its anchor base, which no placement elsewhere gives.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">The scan reaches every placement of the variant</p>
+<p>The windowed scan covers <code>max(5, repeat_span + 2)</code> bases each side of the anchor and every
+placement of the variant in its shift region: every junction of an insertion, every start
+of a deletion up to the last one that gives its haplotype (a start further inside the
+deleted span is another deletion). <code>repeat_span</code> counts only motifs of up to 6 bases, so a
+longer duplication (an 8bp insertion over two copies of itself) slides further than it;
+before 6.6.0 its carriers written past that reach counted REF. Tract-cluster grouping
+reaches as far, so co-annotated rows the scan can see are grouped.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">The placement must be the read's only change across the window</p>
+<p>A shifted placement counts ALT only when it is the read's one change across the variant's
+discrimination window: another deletion, insertion or splice there gives another haplotype
+(a +AA read for a +A row, a deletion cancelled by an insertion, a split −4 read for a −2
+row). Such a read is a distinct allele: neither + <code>partial_alt</code> in a repeat. Window bases
+past the read's end are not required here, as at the variant's own position.</p>
 </div>
 <h3 id="visual-example_1">Visual Example<a class="headerlink" href="#visual-example_1" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>Variant: chr1:100 G→GTG (insertion of TG after anchor G, inside a TG repeat)
@@ -2064,13 +2090,14 @@ Use mouse to pan and zoom
 <a href="#__codelineno-1-13" id="__codelineno-1-13" name="__codelineno-1-13"></a>Read 2 (ALT, windowed): CIGAR = 7M 2I 3M
 <a href="#__codelineno-1-14" id="__codelineno-1-14" name="__codelineno-1-14"></a>               5'─ ...A  T  G  T  G [T  G] T  G  C... ─3'
 <a href="#__codelineno-1-15" id="__codelineno-1-15" name="__codelineno-1-15"></a>                                         └──┘
-<a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>                    insertion shifted +2bp (one repeat unit): S1 seq matches,
-<a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>                    S3 shifted anchor (pos 102 = G) matches original anchor G → ALT ✅ (windowed)
-<a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>
-<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>Read 3 (REF):  CIGAR = 10M
-<a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>               5'─ ...A  T  G  T  G  T  G  C... ─3'
-<a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>                              ↑
-<a href="#__codelineno-1-22" id="__codelineno-1-22" name="__codelineno-1-22"></a>                          no insertion after anchor → REF ✅
+<a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>                    insertion shifted +2bp (one repeat unit): the same haplotype
+<a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>                    (TG + TG = TG + TG) → ALT ✅ (windowed); at +1bp it reads GT, a
+<a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>                    rotation, and is the same haplotype too
+<a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>
+<a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>Read 3 (REF):  CIGAR = 10M
+<a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>               5'─ ...A  T  G  T  G  T  G  C... ─3'
+<a href="#__codelineno-1-22" id="__codelineno-1-22" name="__codelineno-1-22"></a>                              ↑
+<a href="#__codelineno-1-23" id="__codelineno-1-23" name="__codelineno-1-23"></a>                          no insertion after anchor → REF ✅
 </code></pre></div>
 <hr>
 <h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">¶</a></h2>
@@ -2210,13 +2237,15 @@ Use mouse to pan and zoom
 </button>
 </nav>
 <pre class="mermaid"><code>flowchart TD
-    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Del within window?\n(±max(5, repeat_span+2))"}
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Del within window?\n(±max(5, repeat_span+2),\nor a placement in the shift region)"}
     CheckWin --&gt;|No| Continue["Continue walk"]
     CheckWin --&gt;|Yes| S1{"S1: Length check"}
-    S1 --&gt;|"Exact match, or\n≥50bp with |Δlen| ≤ 3"| S3{"S3: Ref bases match?\n(overlapping span)"}
-    S1 --&gt;|"Wrong length, ≥5bp"| FlagWL["Flag has_wrong_length_nearby"]:::partialflag
+    S1 --&gt;|"Exact match, or\n≥50bp with |Δlen| ≤ 3"| S3{"S3: Same haplotype?\n(in-band: bases over the overlap)"}
+    S1 --&gt;|"Wrong length, ≥5bp"| FlagWL["Flag has_distinct_allele_nearby"]:::partialflag
     S1 --&gt;|"Wrong length, &lt;5bp"| Continue
-    S3 --&gt;|Yes| S2["S2: Track closest"]
+    S3 --&gt;|Yes| Only{"The read's only change\nacross the window?"}
+    Only --&gt;|Yes| S2["S2: Track closest"]
+    Only --&gt;|No| FlagWL
     S3 --&gt;|"No, del_len ≥ 5"| FlagSL["Flag has_shifted_same_length"]:::fallback
     S3 --&gt;|"No, del_len &lt; 5"| Continue
     S2 --&gt; Continue
@@ -2265,7 +2294,7 @@ Use mouse to pan and zoom
     AnchorSpan --&gt;|No| Neither(["⧯ Neither\n(no variant information)"]):::neither
     Spans --&gt;|Yes| SLCheck{"has_shifted_same_length?"}
     SLCheck --&gt;|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
-    SLCheck --&gt;|No| WLCheck{"has_wrong_length_nearby?"}
+    SLCheck --&gt;|No| WLCheck{"has_distinct_allele_nearby?"}
     WLCheck --&gt;|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
     WLCheck --&gt;|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
     WLCheck --&gt;|No| Ref(["✅ REF"]):::ref
@@ -2295,7 +2324,7 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;"><strong>S1</strong></td>
 <td style="text-align: left;">Deleted length matches expected <code>ref_len − 1</code> exactly, or is within the ≥50bp ±3bp band</td>
-<td style="text-align: left;">Wrong-length deletions never match; ≥5bp ones flag <code>has_wrong_length_nearby</code> (distinct-allele candidates), &lt;5bp ones are alignment noise (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive)</td>
+<td style="text-align: left;">Wrong-length deletions never match; ≥5bp ones flag <code>has_distinct_allele_nearby</code> (distinct-allele candidates), &lt;5bp ones are alignment noise (<abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>S2</strong></td>
@@ -2304,21 +2333,21 @@ Use mouse to pan and zoom
 </tr>
 <tr>
 <td style="text-align: left;"><strong>S3</strong></td>
-<td style="text-align: left;">Reference bases at the shifted deletion position match expected deleted sequence (overlapping span for in-band lengths)</td>
-<td style="text-align: left;">Verifies the shifted Del is biologically the same event</td>
+<td style="text-align: left;">An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period <code>len</code> (the same bases in a homopolymer, a rotation such as <code>AC</code> for <code>CA</code> in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele). An in-band (≥50bp) length compares the deleted bases over the overlapping span</td>
+<td style="text-align: left;">Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>del_len ≥ 5 guard</strong></td>
 <td style="text-align: left;">Only flag <code>has_shifted_same_length</code> for Dels ≥5bp that fail S3</td>
-<td style="text-align: left;">Short (1–4bp) Dels failing S3 are almost certainly spurious noise — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> remains definitive. Longer Dels can fail S3 due to <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifting the anchor away from the actual <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> position</td>
+<td style="text-align: left;">Short (1–4bp) Dels failing S3 are almost certainly spurious noise — <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> remains definitive. A longer one that gives another haplotype may be the same event written differently by the caller and the aligner</td>
 </tr>
 </tbody>
 </table>
 <div class="admonition note">
 <p class="admonition-title">has_shifted_same_length Phase 3 Fallback</p>
-<p>When the windowed scan finds a deletion that matches in <strong>length</strong> (≥5bp) but S3 sequence validation fails (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> left-alignment shifted the anchor further left than where the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> <code>D</code> appears), the engine flags <code>has_shifted_same_length</code> and routes to Phase-3 haplotype arbitration (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under the default backend), propagating <code>partial_alt</code> evidence when Phase 3 does not confirm ALT.</p>
-<p>Example: <strong>TP53 <code>GACCGTGCAAGT→-</code> (12bp)</strong> — left-alignment moves the anchor 3bp left of the actual <code>D(12)</code> position in reads. S3 compares the wrong reference slice and fails. Phase 3 correctly classifies these as ALT.</p>
-<p>Short deletions (1–4bp) failing S3 use <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF: a 1bp Del in the wrong reference context is almost certainly an unrelated noise deletion, not a left-alignment artifact.</p>
+<p>When the windowed scan finds a deletion that matches in <strong>length</strong> (≥5bp) but gives another haplotype (S3 fails), the engine flags <code>has_shifted_same_length</code> and routes to Phase-3 haplotype arbitration (<abbr title="Wavefront Alignment - Edit-distance alignment algorithm used as Phase 3 fast-path triage (wfa2lib-rs); resolves ~70-80% of reads before PairHMM escalation">WFA</abbr>+<abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> under the default backend), propagating <code>partial_alt</code> evidence when Phase 3 does not confirm ALT. A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' <code>D</code>) gives the same haplotype and passes S3 directly.</p>
+<p>Example: <strong>TP53 <code>GACCGTGCAAGT→-</code> (12bp)</strong> — left-alignment moves the anchor 3bp left of the actual <code>D(12)</code> position in reads. That placement gives the same haplotype, so S3 (same haplotype) accepts it; before 6.6.0 S3 compared the deleted bases, failed, and Phase 3 classified these reads as ALT.</p>
+<p>Short deletions (1–4bp) failing S3 use <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>-definitive REF: a 1bp Del that gives another haplotype is almost certainly an unrelated noise deletion, not a left-alignment artifact.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">No Interior REF for Large Deletions</p>
@@ -3264,7 +3293,7 @@ constants and do not use it).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 30, 2026 13:18:53 UTC"><span class="timeago" datetime="2026-09-30T13:18:53+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 30, 2026 13:18:53 UTC">2026-09-30</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 30, 2026 17:42:01 UTC"><span class="timeago" datetime="2026-09-30T17:42:01+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 30, 2026 17:42:01 UTC">2026-09-30</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
