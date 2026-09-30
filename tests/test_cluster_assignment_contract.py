@@ -407,6 +407,33 @@ def test_complex_sibling_claims_windowed_carrier(tmp_path):
     ), f"8 WT reads and the 5 delins carriers are REF here, got {r_del['ref_count']}"
 
 
+# A (CA)x4 tract at 0-based 601-608, after a G anchor at 600.
+STR_ANCHOR = 600
+STR_PLANT = "GCACACACAT"
+
+
+def test_sibling_claims_a_split_carrier_of_its_longer_deletion(tmp_path):
+    """Guard: a 4bp deletion written as two 2bp deletions in (CA)x4. Each D(2) is
+    the 2bp row's deletion written elsewhere in the tract, so its windowed scan
+    matches, but the read's bases carry the 4bp row's haplotype: the 4bp sibling
+    claims it, and it is partial evidence for the 2bp row, not its ALT."""
+    a = STR_ANCHOR
+    ref = _mk_ref(plants=((a, STR_PLANT),))
+    reads = _del_reads(ref, a + 1, 2, 6, "ca") + _ref_reads(ref, a + 4, 8)
+    for i in range(5):  # M, D(2) at a+3, M(2), D(2) at a+7, M
+        s = a - 35 - (i % 5)
+        left = a + 3 - s
+        seq = ref[s : a + 3] + ref[a + 5 : a + 7] + ref[a + 9 : a + 9 + READ_LEN - left - 2]
+        cigar = ((0, left), (2, 2), (0, 2), (2, 2), (0, READ_LEN - left - 2))
+        reads.append(make_read(f"sp{i}", seq, s, cigar))
+    vcf = _vcf(tmp_path, [(a + 1, ref[a : a + 3], ref[a]), (a + 1, ref[a : a + 5], ref[a])])
+    _run(tmp_path, vcf, _bam(tmp_path, ref, reads), _fasta(tmp_path, ref))
+    maf = glob.glob(str(tmp_path / "out" / "*.maf"))[0]
+    row = next(r for r in read_maf_output(maf) if r["Reference_Allele"] == "CA")
+    got = (int(row["alt_count"]), int(row["partial_alt"]), int(row["ref_count"]))
+    assert got == (6, 5, 8), f"2bp row (ad, partial, rd): {got}"
+
+
 def _cluster_maf(tmp_path, ref, rows):
     """MAF twin of _vcf for deletion rows: Start = first deleted base
     (1-based), REF = deleted bases, ALT = '-'."""
