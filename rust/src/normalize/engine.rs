@@ -443,7 +443,10 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Optio
         // A window that came back short reached the contig end.
         let at_contig_end = lo + (seq.len() as i64) < hi;
         let seq = String::from_utf8_lossy(&seq).to_ascii_uppercase();
-        // Fetch more on a short side, up to the cap or a contig end.
+        // Fetch more on a short side, up to the cap or a contig end. (Padding the
+        // exact-carrier windows move away from a contig end always fits in the
+        // other side's margin: an event grown far enough to exhaust it is past
+        // LONG_EVENT, whose junction windows are not padded.)
         let (short_left, short_right) = carrier::reference_short(lo, &seq, v).unwrap_or((false, false));
         let more_left = short_left && lo > 0 && left < EVENT_REF_MAX_MARGIN;
         let more_right = short_right && !at_contig_end && right < EVENT_REF_MAX_MARGIN;
@@ -689,6 +692,15 @@ fn prepare_single_variant(
                 wide_start as u64,
                 wide_end as u64,
             ) {
+                // Left-alignment reads the bases before the variant as contiguous
+                // with its alleles; a window that stops short of them cannot be used.
+                Ok(wide_ref) if wide_start + (wide_ref.len() as i64) < pos + ref_al.len() as i64 => {
+                    warn!(
+                        "Left-align window {}:{}-{} does not hold the variant — NOT \
+                         left-aligned; counting proceeds at the input coordinates",
+                        variant.chrom, wide_start, wide_start + wide_ref.len() as i64,
+                    );
+                }
                 Ok(wide_ref) => {
                     let pos_before_align = pos;
                     let (new_pos, new_ref, new_alt, modified) = left_align_variant(
@@ -763,7 +775,8 @@ fn prepare_single_variant(
                     // A missed left-alignment shifts the counting anchor for every
                     // downstream consumer (repeat scan, windowed matching, Phase-3
                     // haplotypes), so this must be loud. The window is clamped to
-                    // the contig, so this needs a contig the FASTA does not hold.
+                    // its contig, and a variant reaching here passed REF validation
+                    // on that contig, so this is a safety net.
                     warn!(
                         "Wide ref fetch failed for {}:{}-{} ({e}) — variant NOT \
                          left-aligned; counting proceeds at the input coordinates",

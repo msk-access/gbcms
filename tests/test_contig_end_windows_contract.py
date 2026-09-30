@@ -131,7 +131,6 @@ def test_ref_validation_stays_exact_at_the_contig_end(tmp_path):
     assert (pv.gbcms_status, pv.gbcms_status_reason) == ("FAIL", "FETCH_FAILED")
 
 
-@pytest.mark.xfail(strict=True, reason="review: the clamp read the other record's length")
 def test_a_contig_named_twice_is_read_and_clamped_as_one_record(tmp_path):
     """Guard: a FASTA holding two names of one contig at different lengths (a
     short 'chr1' listed before '1'). A variant on '1' is left-aligned on '1',
