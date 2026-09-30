@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -744,6 +744,31 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="fixed-indels-near-a-contig-end-are-left-aligned-and-get-their-reference-windows-142">Fixed — indels near a contig end are left-aligned and get their reference windows (#142)<a class="headerlink" href="#fixed-indels-near-a-contig-end-are-left-aligned-and-get-their-reference-windows-142" title="Permanent link">¶</a></h3>
+<ul>
+<li>Prep pads its reference windows on both sides but clamped them only at the
+  contig start. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> reader rejects a window that passes the contig end, so
+  near a contig end each window failed within its own reach:</li>
+<li>left-alignment within about 100bp (a WARN; the variant kept its input
+    position, so reads aligned at the left-aligned position could fall out of
+    depth);</li>
+<li><code>ref_context</code> within its padding (5–50bp), so there were no Phase-3
+    haplotypes;</li>
+<li>the shift region within 256bp (up to 16kb in long repeats), and the event
+    reference within 60bp, for every variant type;</li>
+<li>a complex variant fell back to the tolerant classifier that the exact-carrier
+    rule (#141) replaced, so the same reads were judged differently near a contig
+    end. In a synthetic case the same bases and reads gave REF 0 / ALT 0
+    mid-contig but REF 5 / ALT 7 at the contig end, two reads carrying another
+    allele among the ALT.</li>
+<li>Every window (left-align, <code>ref_context</code>, the adaptive repeat scan, the shift
+  region, the event reference) now holds the part of the contig it covers. SNVs and
+  MNPs near a contig end therefore also get their event reference, used by the
+  observed-allele diagnostic. The contig is resolved by the same name the fetch
+  reads, so a <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> holding a contig under two names cannot mix their lengths.
+  Exact fetches (REF validation, a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> anchor) stay exact, so a REF running past
+  the end still fails validation instead of being "corrected" to a shorter one.</li>
+</ul>
 <h3 id="changed-rna_antisense_depth-counts-antisense-reads-at-rna-defaults-114">Changed — <code>rna_antisense_depth</code> counts antisense reads at RNA defaults (#114)<a class="headerlink" href="#changed-rna_antisense_depth-counts-antisense-reads-at-rna-defaults-114" title="Permanent link">¶</a></h3>
 <ul>
 <li>With strandedness enforced (the RNA default), antisense reads were dropped

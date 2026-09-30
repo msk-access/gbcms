@@ -9042,6 +9042,14 @@ Use mouse to pan and zoom
 </tr>
 </tbody>
 </table>
+<p>Every reference window prep fetches (the left-align window, <code>ref_context</code>, the
+adaptive repeat scan, an indel's shift region and the event reference) is clamped
+to the contig: near a contig end it holds the bases that exist. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> reader
+rejects a window that passes the end. So before 6.6.0, each window failed within
+its own reach of a contig end: left-alignment within about 100bp, <code>ref_context</code>
+within its padding, the shift region within 256bp and the event reference within
+60bp. Exact fetches (REF validation, a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> anchor) are not clamped: a REF running
+past the end fails validation.</p>
 <div class="admonition tip">
 <p class="admonition-title">Dynamic Window Expansion</p>
 <p>If a variant shifts all the way to the window edge during left-alignment, it may not have fully converged. The engine automatically <strong>doubles the window</strong> (100 → 200 → 400 → ... → 2500bp) and retries. This ensures correct normalization even for variants in massive tandem repeats (e.g., centromeric regions) without penalizing the common case.</p>
@@ -11608,7 +11616,7 @@ confidence about positions the quality mask rejected.</p>
 - <strong>Carriers in soft-clipped bases (DNA).</strong> A read the rule decides from its own bases, with a window that reads its soft-clipped bases, counts even when its aligned span stops short of the variant position, provided every base read lies inside a well-defined fragment (past the fragment end a clip is adapter). Undecided clipped reads stay out of depth. See <a href="#reference-counting-metrics">counting metrics</a>.
 - <strong>Spliced reads (RNA).</strong> A splice in a window's flank or padding ends the window at the exon edge, for both alleles, and the read is anchored at its junction: the read's next bases come from the next exon. A read spliced through the bases where the alleles differ counts toward depth only.
 - <strong>Same on both backends.</strong> The rule uses no alignment scoring, so <code>pairhmm</code> and <code>sw</code> give identical counts for complex variants.
-- <strong>When the rule cannot run.</strong> <code>prepare_variants</code> fetches reference until it holds the event, grown through any repeat, with its flank and padding (up to 16,384 bases each side, and never past a contig end). A variant without that reference (one built without <code>prepare_variants</code>, or an event within its flank of a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ <code>*</code>) is not read.</p>
+- <strong>When the rule cannot run.</strong> <code>prepare_variants</code> fetches reference until it holds the event, grown through any repeat, with its flank and padding (up to 16,384 bases each side, clamped at a contig end: the window holds the bases that exist). A variant without that reference (one built without <code>prepare_variants</code>, or an event whose two flank bases would pass a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ <code>*</code>) is not read.</p>
 <div class="admonition info">
 <p class="admonition-title">Why not a tolerant score</p>
 <p>Local alignment, likelihoods and an edit-distance margin all credit near-matches to the given allele. On real complex variants, those scores credited reads carrying other alleles, and reads that end inside the event. VarDict's rescue and Mutect2's <code>--alleles</code> mode do the same. gbcms reports the given allele's exact support and names a different allele the reads carry in <code>gbcms_diagnostic</code> (<code>OBSERVED_ALLELE</code> / <code>COEXISTING_ALLELE</code>).</p>
@@ -16668,6 +16676,31 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-fixed-indels-near-a-contig-end-are-left-aligned-and-get-their-reference-windows-142">Fixed — indels near a contig end are left-aligned and get their reference windows (#142)<a class="headerlink" href="#development-changelog-fixed-indels-near-a-contig-end-are-left-aligned-and-get-their-reference-windows-142" title="Permanent link">¶</a></h3>
+<ul>
+<li>Prep pads its reference windows on both sides but clamped them only at the
+  contig start. The <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> reader rejects a window that passes the contig end, so
+  near a contig end each window failed within its own reach:</li>
+<li>left-alignment within about 100bp (a WARN; the variant kept its input
+    position, so reads aligned at the left-aligned position could fall out of
+    depth);</li>
+<li><code>ref_context</code> within its padding (5–50bp), so there were no Phase-3
+    haplotypes;</li>
+<li>the shift region within 256bp (up to 16kb in long repeats), and the event
+    reference within 60bp, for every variant type;</li>
+<li>a complex variant fell back to the tolerant classifier that the exact-carrier
+    rule (#141) replaced, so the same reads were judged differently near a contig
+    end. In a synthetic case the same bases and reads gave REF 0 / ALT 0
+    mid-contig but REF 5 / ALT 7 at the contig end, two reads carrying another
+    allele among the ALT.</li>
+<li>Every window (left-align, <code>ref_context</code>, the adaptive repeat scan, the shift
+  region, the event reference) now holds the part of the contig it covers. SNVs and
+  MNPs near a contig end therefore also get their event reference, used by the
+  observed-allele diagnostic. The contig is resolved by the same name the fetch
+  reads, so a <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> holding a contig under two names cannot mix their lengths.
+  Exact fetches (REF validation, a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> anchor) stay exact, so a REF running past
+  the end still fails validation instead of being "corrected" to a shorter one.</li>
+</ul>
 <h3 id="development-changelog-changed-rna_antisense_depth-counts-antisense-reads-at-rna-defaults-114">Changed — <code>rna_antisense_depth</code> counts antisense reads at RNA defaults (#114)<a class="headerlink" href="#development-changelog-changed-rna_antisense_depth-counts-antisense-reads-at-rna-defaults-114" title="Permanent link">¶</a></h3>
 <ul>
 <li>With strandedness enforced (the RNA default), antisense reads were dropped
