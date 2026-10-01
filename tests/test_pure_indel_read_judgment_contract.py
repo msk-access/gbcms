@@ -36,6 +36,8 @@ from test_shifted_indel_carriers_contract import (
     _ops,
 )
 
+RED = pytest.mark.xfail(strict=True, reason="cluster 1: no margin on the ALT side")
+
 SPAN8 = "ATCGGATA"  # a unique 8bp stretch between G and C
 UNIQUE8 = _contig("G" + SPAN8 + "C")
 INSERT10 = "ACGTTGCATC"  # not low-complexity; differs from the flank at once
@@ -59,6 +61,25 @@ def test_a_carrier_ending_inside_the_run_is_uninformative(tmp_path):
     c = _count_reads(tmp_path, HOMOPOLYMER, "GA", "G", carrier, full=True)
     assert (c.rd, c.ad, c.partial_alt) == (5, 0, 0)
     assert c.dp == 10, "uninformative carriers still count toward depth"
+
+
+@RED
+def test_a_carrier_ending_on_the_discriminating_base_stays_alt(tmp_path):
+    """G>GA in G AAAAA T: the carriers insert an A at the junction and end on the
+    last A of the run, where REF has the T. They read the deciding base (an A, not
+    the T) unmasked, and their CIGAR already says ALT: ALT. (C10's extra margin
+    base protects CIGAR-only REF calls from a hidden terminal mismatch; here the
+    base itself is read.)"""
+
+    def carrier(s):
+        left = A + 1 - s
+        return HOMOPOLYMER[s : A + 1] + "A" + HOMOPOLYMER[A + 1 : A + 6], (
+            (0, left),
+            (1, 1),
+            (0, 5),
+        )
+
+    assert _count_reads(tmp_path, HOMOPOLYMER, "G", "GA", carrier) == (5, 5, 0)
 
 
 def test_a_carrier_whose_inserted_bases_discriminate_stays_alt(tmp_path):
