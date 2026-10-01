@@ -51,6 +51,9 @@ while UNIT30[0] == "G" or UNIT30[-1] == "G":
     UNIT30 = "".join(_RNG30.choice("ACGT") for _ in range(30))
 TANDEM30 = _contig("G" + UNIT30 * 5 + "T")  # G, five copies of a 30bp unit, T
 GCCCT = _contig("GCCCT")  # G at A, C C C T after it
+_RNG60 = random.Random(60)
+INSERT60 = INSERT10 + "".join(_RNG60.choice("ACGT") for _ in range(49)) + "C"  # not G: stays put
+UNIQUE_GT = _contig("GT")  # a unique G anchor, then T
 _CG7 = _contig("C" + "G" * 7 + "C")
 CCG7 = _CG7[: A - 1] + "C" + _CG7[A:]  # C C GGGGGGG C, the second C (the anchor) at A
 
@@ -346,3 +349,48 @@ def test_a_base_past_the_reference_stretch_decides_nothing(tmp_path):
 
     c = _count_reads(tmp_path, GCCCT, "G", "G" + INSERT10, carrier, full=True)
     assert (c.ad, c.dp) == (0, 10)
+
+
+# ── Third review findings ─────────────────────────────────────────────────────
+_XFAIL = pytest.mark.xfail(strict=True, reason="third cluster-1 review: red until fixed")
+
+
+@_XFAIL
+def test_a_deletion_then_a_same_length_insertion_of_other_bases_is_not_alt(tmp_path):
+    """G>G+ACGTA, the carriers delete the base after the anchor and insert ACGTC
+    (M D(1) I(5) M): the read changes length by 4, never the ALT's 5. Another
+    allele, as M I(5) D(1) is."""
+    events = [(A + 1, "D", 1), (A + 2, "I", "ACGTC")]
+    ref = UNIQUE_GT
+    assert _count_reads(tmp_path, ref, "G", "GACGTA", _ops(ref, events)) == (5, 0, 5)
+
+
+@_XFAIL
+def test_a_long_insertion_carrier_masked_past_the_first_difference_stays_alt(tmp_path):
+    """G>G+INSERT60 in unique sequence, carriers ending ten bases into the insert
+    with the first three masked: the next seven discriminate, as they do for a short
+    insertion. The REF stretch must reach as far as the ALT's for a 60bp insert."""
+
+    def carrier(s):
+        left = A + 1 - s
+        quals = [30] * left + [5, 5, 5] + [30] * 7
+        return UNIQUE_GT[s : A + 1] + INSERT60[:10], ((0, left), (1, 10)), quals
+
+    assert _count_reads(tmp_path, UNIQUE_GT, "G", "G" + INSERT60, carrier) == (5, 5, 0)
+
+
+@_XFAIL
+def test_a_deleted_anchor_reinserted_with_the_insert_is_alt(tmp_path):
+    """G>G+ACGTTGCATC, the carriers delete the anchor G and insert G+ACGTTGCATC
+    after it (M D(1) I(11) M): their bases are exactly the ALT, so ALT."""
+    events = [(A, "D", 1), (A + 1, "I", "G" + INSERT10)]
+    ref = UNIQUE_GT
+    assert _count_reads(tmp_path, ref, "G", "G" + INSERT10, _ops(ref, events)) == (5, 5, 0)
+
+
+def test_a_deleted_anchor_replaced_before_the_insert_is_not_alt(tmp_path):
+    """Guard: the carriers delete the anchor G and insert T+ACGTTGCATC (an anchor
+    substitution with the insert): not the given allele."""
+    events = [(A, "D", 1), (A + 1, "I", "T" + INSERT10)]
+    ref = UNIQUE_GT
+    assert _count_reads(tmp_path, ref, "G", "G" + INSERT10, _ops(ref, events))[1] == 0
