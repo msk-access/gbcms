@@ -239,22 +239,36 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     // from: the REF stretch reaches as far, where the prepared reference holds it;
     // past the REF stretch (a contig end) a base decides nothing.
     let nn = if ins.is_empty() { 0 } else { n };
+    let right = reference_from(v, dlo, dhi + ext + nn);
+    let left = reference_to(v, dlo - ext - nn, dhi);
+    let seq = record.seq().as_bytes();
+    // A flank base read where the read starts (or ends) on it: unmasked and the
+    // reference's. Masked, it would fit anything, and for a deletion sliding
+    // through a repeat the flank is what tells the read from REF placed further
+    // along the run.
+    let flank_read = |q: usize, flank: Option<&u8>| -> bool {
+        let b = seq[q].to_ascii_uppercase();
+        b != b'N' && quals.get(q).is_some_and(|&x| x >= min_baseq) && flank == Some(&b)
+    };
     // Where reading starts: rightwards from the read's aligned base just left of the
-    // window, or from the flank base itself when the read starts on it (the windows
-    // start at the flank too; the flank is a base both alleles share). Leftwards
-    // likewise, from one past the read's last base to read.
-    let ql = find_read_pos(record, dlo - 1).map(|q| q + 1).or_else(|| find_read_pos(record, dlo));
-    let qr = find_read_pos(record, dhi).or_else(|| find_read_pos(record, dhi - 1).map(|q| q + 1));
+    // window, or from the flank base itself when the read starts on it and reads it
+    // (the windows start at the flank too; the flank is a base both alleles share).
+    // Leftwards likewise, from one past the read's last base to read.
+    let ql = find_read_pos(record, dlo - 1).map(|q| q + 1).or_else(|| {
+        find_read_pos(record, dlo).filter(|&q| flank_read(q, right.as_ref().and_then(|r| r.first())))
+    });
+    let qr = find_read_pos(record, dhi).or_else(|| {
+        find_read_pos(record, dhi - 1)
+            .filter(|&q| flank_read(q, left.as_ref().and_then(|(_, l)| l.last())))
+            .map(|q| q + 1)
+    });
     if ql.is_none() && qr.is_none() {
         return Some(false);
     }
-    let right = reference_from(v, dlo, dhi + ext + nn);
-    let left = reference_to(v, dlo - ext - nn, dhi);
     // A stretch cut short by the prepared reference's end (a contig edge): a read
     // still undecided where it ends has its deciding base past the edge.
     let right_cut = right.as_ref().is_some_and(|r| (r.len() as i64) < dhi + ext + nn - dlo);
     let left_cut = left.as_ref().is_some_and(|(_, l)| (l.len() as i64) < dhi - (dlo - ext - nn));
-    let seq = record.seq().as_bytes();
     let cig: Vec<Cigar> = record.cigar().iter().copied().collect();
     // Soft clips at either end (behind any hard clip) are not read.
     let clip = |ops: &mut dyn Iterator<Item = &Cigar>| -> usize {
@@ -467,14 +481,30 @@ pub(crate) fn read_is_informative(record: &Record, v: &Variant) -> bool {
 /// not less). A deletion's carrier's extent counts its own gap, so spanning the
 /// REF windows it may hold up to `L - 1` fewer bases than it needs to show where
 /// the alleles differ: read on the ALT haplotype, a deletion's windows are an
-/// insertion's. Always true for other variants.
-pub(crate) fn alt_read_is_informative(record: &Record, v: &Variant) -> bool {
+/// insertion's. A window that starts or ends on the read's own end base also
+/// needs that flank base read (unmasked, the reference's). Always true for other
+/// variants.
+pub(crate) fn alt_read_is_informative(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
     if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
         return true;
     }
     let (lo, hi) = change_interval(v);
     let (start, end) = (record.pos(), ref_end(record));
-    [(lo - 1, hi + 2), (lo - 2, hi + 1)].iter().any(|&(a, b)| start <= a && end >= b)
+    // A window that starts (or ends) on the read's own first (or last) base needs
+    // that flank base read: for a deletion sliding through a repeat, it is all that
+    // tells the read from REF placed one base along the run. Unverifiable without a
+    // prepared reference, where the extent stands as before.
+    let flank_read = |pos: i64| -> bool {
+        let Some(q) = find_read_pos(record, pos) else { return false };
+        let Some(r) = reference_span(v, pos, pos + 1) else { return true };
+        let b = record.seq()[q].to_ascii_uppercase();
+        b != b'N' && quals.get(q).is_some_and(|&x| x >= min_baseq) && b == r[0]
+    };
+    // [lo - 1, hi + 2): from the left flank; [lo - 2, hi + 1): to the right flank
+    // (`end` is exclusive, so a read whose last base is the flank ends at hi + 1).
+    let from_left = start < lo && end >= hi + 2 && (start < lo - 1 || flank_read(lo - 1));
+    let to_right = start < lo - 1 && end > hi && (end > hi + 1 || flank_read(hi));
+    from_left || to_right
 }
 
 /// End (exclusive) of the read's aligned reference extent: M/=/X/D/N; clips

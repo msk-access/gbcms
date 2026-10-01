@@ -73,6 +73,7 @@ class Window:
     left: int
     right: int
     indel: bool
+    contig: str = field(repr=False)
     ref: str
     alt: str
     ref_right: str
@@ -149,6 +150,7 @@ def window_for(variant, contig: str) -> Window:
         left,
         right,
         is_pure_indel(ref, alt),
+        contig,
         contig[left + 1 : right],
         hap[left + 1 : right + delta],
         contig[left + 1 : hi_ext],
@@ -168,12 +170,36 @@ def _first_difference(a: str, b: str) -> int | None:
     return next((i for i, (x, y) in enumerate(zip(a, b, strict=False)) if x != y), None)
 
 
+def _alt_reading(stretch: str, ref: str, alt: str) -> bool | None:
+    """The ALT side's reading from one anchor: True once a base where the alleles
+    differ is read unmasked and fits the ALT, every unmasked base before it fitting
+    the ALT too (bases after it are not read); False at the first unmasked base
+    that does not fit the ALT; None when the stretch ends undecided."""
+    for i, b in enumerate(stretch):
+        if i >= min(len(ref), len(alt)):
+            return None
+        if b == "N":
+            continue
+        if b != alt[i]:
+            return False
+        if ref[i] != alt[i]:
+            return True
+    return None
+
+
 def _one_side(stretch: str, ref: str, alt: str, margin: bool) -> tuple[bool, bool]:
     """(fits ALT, fits REF) for a stretch read from one anchor, against the same
-    length of each haplotype read from that anchor. For a pure indel REF needs one
+    length of each haplotype read from that anchor. For a pure indel, ALT is settled
+    at its first deciding base (the bases after it are not read), and REF needs one
     base past the first difference."""
     k = len(stretch)
     fits_alt, fits_ref = _fits(stretch, alt[:k]), _fits(stretch, ref[:k])
+    if margin:
+        reading = _alt_reading(stretch, ref, alt)
+        if reading is not None:
+            fits_alt = reading
+            if reading:
+                return True, False
     if margin and fits_ref and not fits_alt:
         d = _first_difference(ref[:k], alt[:k])
         if d is not None and k < d + 2:
@@ -232,8 +258,18 @@ def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
     splices = _splices(read)
     stops = [q for q, _, _ in splices]
     ql, qr = pairs.get(window.left), pairs.get(window.right)
-    if window.left < 0:  # the window starts at the contig start: the read's first base anchors
-        ql = -1 if read.reference_start == 0 else None
+    if window.indel:
+        # A read that starts (or ends) on a flank anchors on it only when it reads that
+        # base: masked it fits anything, and for a deletion sliding through a repeat the
+        # flank is what tells the read from REF placed further along the run.
+
+        def reads_flank(q: int, pos: int) -> bool:
+            return bases[q] != "N" and pos < len(window.contig) and bases[q] == window.contig[pos]
+
+        if ql is not None and window.left - 1 not in pairs and not reads_flank(ql, window.left):
+            ql = None
+        if qr is not None and window.right + 1 not in pairs and not reads_flank(qr, window.right):
+            qr = None
     n = max(len(window.ref), len(window.alt))
     # A pure indel's rules do not read soft-clipped bases (an aligner's clip of a
     # pure indel's carrier is the clip-borne-carrier work, not this rule's).

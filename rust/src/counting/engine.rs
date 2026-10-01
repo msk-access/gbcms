@@ -2317,7 +2317,7 @@ fn warn_unjudged(variant: &Variant, alt_unjudged: u32, carrier_fallback: u32) {
             "{}:{} {}>{}: {} ALT read(s) span neither informative window and could not be judged \
              by their bases: no prepared reference holds the event (the variant was not \
              prepared against a FASTA, or failed prep), or the base that would decide lies \
-             past the contig end — counted as depth only",
+             past a contig edge — counted as depth only",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, alt_unjudged,
         );
     }
@@ -2389,7 +2389,7 @@ fn alt_needs_the_window(
     min_baseq: u8,
     mut result: ClassifyResult,
 ) -> ClassifyResult {
-    if !result.is_alt || window::alt_read_is_informative(record, variant) {
+    if !result.is_alt || window::alt_read_is_informative(record, variant, quals, min_baseq) {
         return result;
     }
     let judged = window::alt_bases_discriminate(record, variant, quals, min_baseq);

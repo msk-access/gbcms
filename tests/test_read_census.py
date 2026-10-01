@@ -290,8 +290,19 @@ def test_c27_the_alt_split_across_ops(tmp_path):
 
 
 @pytest.mark.xfail(strict=True, reason="C28 #202: a read deleting the anchor falls back to Phase 3")
-def test_c28_a_read_deleting_the_anchor(tmp_path):
-    _open_case(tmp_path, "hp-AA", [(A, "D", 3)], "c28")
+@pytest.mark.parametrize(
+    "events",
+    [
+        [(A, "D", 3), (A + 5, "I", "T")],  # holds neither allele; the closer is the ALT
+        [(A, "D", 3)],  # holds neither allele; the closer is the REF
+    ],
+    ids=["credited-alt", "credited-ref"],
+)
+def test_c28_a_read_deleting_the_anchor(tmp_path, events):
+    """Phase 3 credits whichever haplotype is closer to a read that deletes the
+    anchor, so reads holding neither allele count ALT or REF. (A read deleting the
+    anchor whose bases spell the ALT one base along is ALT, and is: judge bases.)"""
+    _open_case(tmp_path, "u-8", events, "c28")
 
 
 def test_a_pure_indels_clipped_bases_decide_nothing(tmp_path):
@@ -319,3 +330,55 @@ def test_a_substitution_needs_no_margin(tmp_path):
     s = A - 50
     read = make_read("s", contig[s : A + 2], s, ((0, A + 2 - s),))  # ends on the C
     assert judge(read, window_for(pv.variant, contig)) == Verdict.REF
+
+
+@pytest.mark.parametrize("row", sorted(ROWS))
+def test_reads_starting_on_the_flank_equal_the_census(tmp_path, row):
+    """Reads whose first base is the tract's left flank (the anchor): REF reads and
+    carriers ending anywhere, and carriers whose flank base is masked or wrong. The
+    read-by-bases rule reads from a flank only when the read reads it (unmasked, the
+    reference's), so the engine and the census agree on each kind."""
+    motif, ref, alt = ROWS[row]
+    contig = _contig(motif)
+    lo, hi = tract(A, ref, alt, contig)
+    s = lo - 1
+    rng = random.Random(f"flank-{row}")
+    placements = _placements(contig, ref, alt)
+    n = abs(len(alt) - len(ref))
+    ins = len(alt) > len(ref)
+    kinds = {}
+    for kind in ("ref", "alt", "masked", "wrong"):
+        reads = []
+        for i in range(12):
+            length = rng.randint(2, 100)
+            if kind == "ref":
+                events = []
+            else:
+                j = rng.choice(placements)
+                if ins:
+                    hap = contig[: A + 1] + alt[1:] + contig[A + 1 :]
+                    events = [(j, "I", hap[j : j + n])]
+                else:
+                    events = [(j, "D", n)]
+            built = _read(contig, s, length, events)
+            if built is None:
+                continue
+            seq, cigar = built
+            quals = [30] * len(seq)
+            if kind == "masked":
+                quals[0] = 2
+            elif kind == "wrong":
+                seq = ("T" if seq[0] != "T" else "C") + seq[1:]
+            reads.append(make_read(f"{kind}{i}", seq, s, cigar, quals=quals))
+        fa, bam = write_contig(tmp_path, contig, reads, f"{row}_{kind}")
+        (pv,) = gbcms_rs.prepare_variants(
+            [gbcms_rs.Variant("1", A, ref, alt, "X")], fa, 5, False, 1, True
+        )
+        (counts,) = gbcms_rs.count_bam_binned(bam, [pv.variant], [None], **ARGS)
+        result = census(bam, contig, pv.variant)
+        assert_matches(counts, result, f"{row} flank {kind}")
+        kinds[kind] = result
+    if not ins:
+        # A deletion's flank is all that tells such a read from REF one base along
+        # (an insertion's longer run decides it before the flank).
+        assert kinds["masked"].ad == 0 and kinds["wrong"].ad == 0

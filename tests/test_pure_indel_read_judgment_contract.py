@@ -433,19 +433,21 @@ def test_a_flank_start_whose_bases_fit_both_stays_uninformative(tmp_path):
     assert (c.ad, c.dp) == (0, 5)
 
 
-def _run40_flank_reads(tmp_path, name, mask):
+def _run40_flank_reads(tmp_path, name, mask, past=0):
     """GA>G in G A*40 T: five carriers that start on the G and end on the T (one A
-    fewer than REF), with base `mask` (0 the G, -1 the T, None neither) at BQ 2."""
+    fewer than REF), or `past` bases beyond it, with base `mask` (0 the G, -1 the
+    last, None neither) at BQ 2."""
     from helpers import make_read, write_contig
 
     from gbcms import _rs as gbcms_rs
 
     ref = HOMOPOLYMER[:A] + "G" + "A" * 40 + "T" + HOMOPOLYMER[A + 42 :]
-    seq = "G" + "A" * 39 + "T"
+    seq = "G" + "A" * 39 + "T" + HOMOPOLYMER[A + 42 : A + 42 + past]
     quals = [30] * len(seq)
     if mask is not None:
         quals[mask] = 2
-    reads = [make_read(f"m{i}", seq, A, ((0, 20), (2, 1), (0, 21)), quals=quals) for i in range(5)]
+    cigar = ((0, 20), (2, 1), (0, 21 + past))
+    reads = [make_read(f"m{i}", seq, A, cigar, quals=quals) for i in range(5)]
     fa, bam = write_contig(tmp_path, ref, reads, name)
     (pv,) = gbcms_rs.prepare_variants(
         [gbcms_rs.Variant("1", A, "GA", "G", "X")], fa, 5, False, 1, True
@@ -464,10 +466,17 @@ def test_a_flank_to_flank_deletion_carrier_reading_both_flanks_is_alt(tmp_path):
     assert _run40_flank_reads(tmp_path, "clean", None).ad == 5
 
 
-@pytest.mark.xfail(strict=True, reason="H3 review 2: red until fixed")
 @pytest.mark.parametrize("mask", [0, -1], ids=["first-flank", "last-flank"])
 def test_a_flank_start_deletion_carrier_with_a_masked_flank_is_not_alt(tmp_path, mask):
     """The same carriers with the G (or the T) below BQ 20: the masked flank fits
     anything, so the unmasked bases are also REF placed one base along the run.
     Reading from a flank the read starts (or ends) on needs that base read."""
     assert _run40_flank_reads(tmp_path, f"mask{mask}", mask).ad == 0
+
+
+def test_a_masked_flank_start_carrier_reading_past_the_run_is_not_alt(tmp_path):
+    """The masked-G carriers reading three bases past the T span the deletion's
+    left ALT window by extent, but that window starts on their masked G: still REF
+    placed one base along, so not ALT. Unmasked, they are ALT."""
+    assert _run40_flank_reads(tmp_path, "past", 0, past=3).ad == 0
+    assert _run40_flank_reads(tmp_path, "past_clean", None, past=3).ad == 5

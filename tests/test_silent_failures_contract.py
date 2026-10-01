@@ -323,5 +323,5 @@ def test_a_deciding_base_past_the_contig_end_is_depth_only_and_warned(tmp_path, 
         (c,) = count_bam_checked(bam, [_prepared(fa, "G", "GA")], [None], *ARGS)
     _invariants(c)
     assert (c.ad, c.dp) == (0, 5)
-    warns = [r.getMessage() for r in caplog.records if "past the contig end" in r.getMessage()]
+    warns = [r.getMessage() for r in caplog.records if "past a contig edge" in r.getMessage()]
     assert len(warns) == 2 and "5 ALT read(s)" in warns[0], warns
