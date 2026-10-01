@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-09-30_
+_Last updated: 2026-10-01_
 
 ## Now
 **6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
@@ -38,6 +38,18 @@ every item a sub-issue). Merged to develop so far:
   adversarial reviews; acceptance adjudicated per read (harness
   `~/test/gbcms/harness/c21/`, local).
 
+**In review — cluster 1 (C20 #188, C22 #191, C23 #192, C8 #121; C11 #159 closed
+with its measurement):** pure-indel reads count ALT only where their own bases hold
+the ALT; strict-path reads with another indel in the window, same-length deletions
+whose bases spell another allele, and anchor-keeping reads of `A>CCC` variants are
+another allele. Operator decisions (2026-10-01): no margin base on the ALT side;
+accept the exact-carrier rule's semantics for anchor-changing variants. Branch
+`feature/cluster1-pure-indel-read-judgment`; harness `~/test/gbcms/harness/c20/`
+(local). Follow-ups: R5 #198, C25 #199 and C27 #201 (6.7.0); C26 #200 (6.6.0,
+decide: which of a read's other indels decide its REF call, inside vs outside
+the window); C28 #202 (6.6.0,
+measure: anchor-deleting reads fall back to Phase 3's closer haplotype).
+
 **Triage (2026-09-30):** every open issue was gone through by cluster with the
 operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
 moved to a new 6.7.0 milestone (each with its reason on the issue); C5 and P2
@@ -54,11 +66,11 @@ Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. Cluster 1, one design and one PR: C20 #188, C22 #191, C23 #192, with C8 #121
-   and C11 #159 (measure together, decide one rule).
+1. Cluster 1 PR (in review): merge, close #188 #191 #192 #121, harness cleanup.
 2. T1 #170 (retire the legacy path; binning invariance) with T2 #171 (census
    oracle).
-3. C17 #176 (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
+3. C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
+   (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
 4. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
    mkdocs pin, P3); O1+O2; S1+S2; M2+M4.
 5. Release: D1, D2; D4 before the cut; D6 late; D5 last.

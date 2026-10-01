@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — pure-indel reads count ALT only where their own bases hold the ALT (#188, #191, #192, #121)
+
+- C10 (#160) takes REF only from reads whose bases settle the allele. ALT reads
+  had no such check, so a read the CIGAR calls ALT that ends inside a repeat,
+  where its bases fit both alleles, counted ALT. An ALT read now stands on its
+  CIGAR when it spans C10's windows as seen from the ALT haplotype. For a
+  deletion these are an insertion's windows, because a carrier's reference extent
+  counts its own gap: a −AA carrier in a run of six A's could span the REF
+  windows while holding only `G AAAA`. Otherwise the read keeps ALT only when it
+  reads, unmasked, a base where the alleles differ, with every unmasked base it
+  reads fitting the ALT. Failing both, it counts as depth only, as on the REF
+  side. The check reads bases, not reference coordinates: 2,738 RC carriers,
+  mostly of long insertions, span neither reference window, but their bases
+  discriminate, and they keep ALT. There is no margin base. C10's margin guards a
+  REF call made from the CIGAR alone, whereas this check reads the deciding base
+  itself.
+- An indel written at the junction counts ALT only when the read has no other
+  insertion or deletion across the variant's discrimination window. A read with
+  +A and −T for a +A row, or a split +AA, is another allele (neither + partial in
+  a repeat). At 50bp or more the large-deletion band's length tolerance applies,
+  and the band now counts changes across the whole window. Before, it stopped
+  short of the window for a deletion sliding through a long repeat. The order an
+  aligner writes an I/D pair in no longer matters. Before, a deletion written
+  right after an insertion (`M I D M`), or an insertion right after a deletion
+  (`M D I M`), was not inspected, and the read counted REF. A same-length
+  insertion of other bases beside another indel in the window is another allele.
+  Phase 3 called such reads ALT, although their length change is never the ALT's.
+  A deleted anchor followed by an insertion is judged by the read's bases.
+- A same-length deletion placed elsewhere that gives another haplotype now
+  counts ALT when its bases spell the ALT across the window. Compensating
+  mismatches can make the read the ALT allele even though its gap sits elsewhere.
+  The read is anchored on its nearest aligned bases outside the window. Wherever
+  the haplotype its own CIGAR proposes differs from the ALT, the read base must be
+  unmasked and match the ALT: an N where two deletion alleles differ does not
+  count. Otherwise, at 5bp or more, it is a distinct allele. These reads went to
+  Phase 3, which called them ALT; on the RC set every read Phase 3 reached was
+  another allele by its bases. Under 5bp the read stays REF as before. A deletion
+  of another length within the ≥50bp band keeps Phase-3 arbitration (#191).
+- A distinct allele counts neither + partial where the event slides (its shift
+  region is wider than the event) or where the read has an indel inside the
+  discrimination window. It counts REF + partial only in unique sequence with the
+  window clear. Before, only a repeat of a ≤6bp motif gave neither + partial, so
+  carriers of a long-period duplication with another allele counted REF (#192).
+- A one-base-REF variant whose ALT changes the anchor base (`A>CCC`) went to the
+  insertion check, which matched the inserted bases and ignored the substituted
+  anchor. A read keeping the REF anchor and carrying only the insertion counted
+  ALT. Such variants now go to the exact-carrier rule (#141): a carrier holds the
+  whole ALT, anchor included, across a window that grows through repeats and is
+  padded to the ALT's length. Reads that do not hold that window are depth only,
+  so a read's call does not depend on where it ends (#121).
+- The Phase-3 context for a slid indel is not changed (#159). Sizing it by the
+  shift region changed 0 ALT calls on the RC, WES and RNA arms, so it was closed
+  with the measurement.
+- Measured on the RC panels (realigned), WES without realignment (80 loci from
+  paired IMPACT/TEMPO libraries) and FORTE RNA; develop vs branch, every changed
+  read adjudicated by its own bases:
+  - DNA: 15 of 1,060 rows change (ALT −39, REF −107, partial −15, depth
+    unchanged).
+    - ALT: carriers that end inside the repeat or before the deciding base (7
+      at a 1bp deletion, 11 at a 66bp duplication ending with the insert, 5
+      at two 14bp deletions). Also reads carrying other deletions (24–54bp, or
+      a 33bp one 15 bases off) that Phase 3 had called ALT for a 33bp
+      deletion, and 6 reads at a 6bp deletion whose bases fit both alleles.
+    - REF: −118 at the two anchor-changing rows (#121), from reads that do not
+      carry the REF anchor or do not hold the exact-carrier window.
+    - At a +AAG insertion co-annotated with that 33bp deletion (two samples),
+      16 reads move from partial to REF. They carry a large deletion across the
+      anchor, or a D1 inside the window, and only the 33bp row's false ALT kept
+      them out of REF. The insertion row's own rules count them (#200, #202).
+    - At a 6bp deletion, 5 reads whose bases are REF across the window lose REF
+      to partial. They carry a same-length deletion of other bases outside the
+      window (#200).
+  - WES: 10 of 80 rows change, all anchor-changing (#121): ALT −12, REF −399,
+    partial +152, depth +62. At one locus 146 reads keep the REF anchor and
+    carry only the insertion, so they count partial, not ALT. At others, reads
+    that carry the whole ALT gain ALT.
+  - FORTE RNA: the truth set and the STAR repeat-insertion probes are unchanged.
+    One 4bp deletion probe loses 2 ALT reads (a 3bp deletion ending just after).
+- Three adversarial reviews; every changed read was adjudicated. Follow-ups:
+  C26 #200 (which of a read's other indels decide its REF call), C28 #202 (a
+  read deleting the anchor falls back to Phase 3's closer haplotype), C27 #201,
+  C25 #199 and R5 #198.
+
 ### Fixed — carriers of an indel written elsewhere in its repeat count ALT, not REF (#189)
 
 - An indel in a repeat can be written at any junction of its shift region with the

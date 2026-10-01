@@ -1812,7 +1812,7 @@ fn count_variant_from_cache(
             if record.is_first_in_template() { 1 } else { 2 },
             is_ref, is_alt, result.phase, result.partial_match_count,
             result.has_nearby_evidence, claimed_by_sibling, ref_claimed_by_sibling,
-            result.ref_uninformative, antisense_excluded,
+            result.uninformative, antisense_excluded,
         );
 
         // An antisense read excluded by strandedness (first-class, over the anchor:
@@ -1941,7 +1941,7 @@ fn count_variant_from_cache(
         // (base_qual==0 && !is_ref && !is_alt) which could mis-classify
         // true third-allele reads with qual=0 as N-class fragments.
         let tlen = mfsd::calc_physical_insert_size(record);
-        let informative = !result.ref_uninformative || ref_claimed_by_sibling;
+        let informative = !result.uninformative || ref_claimed_by_sibling;
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);
 
         // Secondary/supplementary records end here: they are fragment evidence
@@ -2506,7 +2506,7 @@ fn count_single_variant(
         // mis-classified true third-allele reads as N-class.
         let is_n_base = result.has_n_base;
 
-        let informative = !result.ref_uninformative || ref_claimed_by_sibling;
+        let informative = !result.uninformative || ref_claimed_by_sibling;
         evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq(), informative);
 
         // Secondary/supplementary records end here: fragment evidence only —
@@ -2811,7 +2811,7 @@ fn sibling_claims_ref<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> bool {
-    if !result.is_ref && !result.ref_uninformative {
+    if !result.is_ref && !result.uninformative {
         return false;
     }
     for sib in window_siblings {
@@ -3031,9 +3031,52 @@ fn ref_needs_the_window(record: &Record, variant: &Variant, mut result: Classify
         );
         result.is_ref = false;
         result.is_structural = false;
-        result.ref_uninformative = true;
+        result.uninformative = true;
     }
     result
+}
+
+/// An ALT call on an insertion or deletion from a read that spans neither of
+/// C10's windows read on the ALT haplotype (`window::alt_read_is_informative`)
+/// stands only when the read's own bases tell the alleles apart
+/// (`window::alt_bases_discriminate`). The CIGAR's gap alone is placement: a
+/// carrier ending inside the repeat holds only bases both alleles share, so it
+/// counts toward depth and fragment depth but is neither REF nor ALT (C10's rule
+/// for REF reads, on the ALT side). A read whose bases discriminate (a truncated
+/// long insertion's carrier, whose insert consumes the read's span) keeps its ALT.
+fn alt_needs_the_window(
+    record: &Record,
+    variant: &Variant,
+    quals: &[u8],
+    min_baseq: u8,
+    mut result: ClassifyResult,
+) -> ClassifyResult {
+    if result.is_alt
+        && !window::alt_read_is_informative(record, variant)
+        && !window::alt_bases_discriminate(record, variant, quals, min_baseq)
+    {
+        trace!(
+            "{}:{} {}>{}: read {}..{} spans neither ALT-side window around {:?} and its \
+             bases fit both alleles — uninformative, not ALT",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+            record.pos(), read_ref_end(record), window::change_interval(variant),
+        );
+        result.is_alt = false;
+        result.is_structural = false;
+        result.has_nearby_evidence = false;
+        result.partial_match_count = 0;
+        result.uninformative = true;
+    }
+    result
+}
+
+/// Whether the ALT keeps the REF's first (anchor) base, as a pure insertion or
+/// deletion does.
+fn anchor_preserved(variant: &Variant) -> bool {
+    match (variant.ref_allele.as_bytes().first(), variant.alt_allele.as_bytes().first()) {
+        (Some(r), Some(a)) => r.eq_ignore_ascii_case(a),
+        _ => false,
+    }
 }
 
 /// Check if a read supports the reference or alternate allele.
@@ -3138,10 +3181,23 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
             }
         }
-    } else if ref_len == 1 {
+    } else if ref_len == 1 && anchor_preserved(variant) {
         // Pure insertion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
         let result = check_insertion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
-        ref_needs_the_window(record, variant, result)
+        ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
+    } else if ref_len == 1 {
+        // A one-base REF whose ALT changes it (C>TA, A>CCC) is a delins, not an
+        // insertion of its tail: the insertion check compares only the inserted
+        // bases, so reads that keep the anchor counted ALT. Judged by its whole
+        // allele, as a Del+SNV is.
+        trace!(
+            "Complex Ins+SNV at {}:{} (ref[0]={} ≠ alt[0]={}): exact-carrier classification",
+            variant.chrom,
+            variant.pos + 1,
+            variant.ref_allele.chars().next().unwrap_or('?'),
+            variant.alt_allele.chars().next().unwrap_or('?'),
+        );
+        classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     } else if alt_len == 1 {
         // Distinguish pure deletion (anchor base preserved) from complex Del+SNV
         // (anchor base also substituted, e.g. GC→T where G is both the anchor
@@ -3162,21 +3218,10 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // Routing complex Del+SNV to check_complex lets Phase 3 (PairHMM/SW)
         // align the read against the full REF and ALT haplotype contexts where
         // both the deletion and the anchor substitution are captured correctly.
-        let anchor_preserved = variant
-            .alt_allele
-            .as_bytes()
-            .first()
-            .map(|b| b.to_ascii_uppercase())
-            == variant
-                .ref_allele
-                .as_bytes()
-                .first()
-                .map(|b| b.to_ascii_uppercase());
-
-        if anchor_preserved {
+        if anchor_preserved(variant) {
             // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
             let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
-            ref_needs_the_window(record, variant, result)
+            ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
         } else {
             // Complex Del+SNV: anchor base also substituted — route to Phase 3
             trace!(
@@ -3427,7 +3472,7 @@ fn count_per_transcript(
                 &mut alt_aligner, &mut ref_aligner, backend,
             );
             let is_ref = result.is_ref && !ref_claimed_by_sibling;
-            let informative = !result.ref_uninformative || ref_claimed_by_sibling;
+            let informative = !result.uninformative || ref_claimed_by_sibling;
 
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
             evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);

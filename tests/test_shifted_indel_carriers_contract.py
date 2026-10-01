@@ -66,15 +66,16 @@ def _files(tmp_path, ref, reads):
     return str(fa), str(bam)
 
 
-def _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier):
+def _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier, full=False):
     """Five REF reads and five carriers, `carrier(s)` giving each carrier's
-    (sequence, CIGAR) from its start `s`; counted in both paths (count_both asserts
-    parity)."""
+    (sequence, CIGAR[, base qualities]) from its start `s`; counted in both paths
+    (count_both asserts parity). `full` returns the counts object instead of
+    (rd, ad, partial)."""
     starts = range(A - 50, A - 45)
     reads = [make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)) for i, s in enumerate(starts)]
     for i, s in enumerate(starts):
-        seq, cigar = carrier(s)
-        reads.append(make_read(f"a{i}", seq, s, cigar))
+        seq, cigar, *quals = carrier(s)
+        reads.append(make_read(f"a{i}", seq, s, cigar, quals=quals[0] if quals else None))
     fa, bam = _files(tmp_path, ref, reads)
     (pv,) = gbcms_rs.prepare_variants(
         [gbcms_rs.Variant("1", A, ref_allele, alt_allele, "X")], fa, 5, False, 1, True
@@ -85,7 +86,7 @@ def _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier):
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
     assert c.ad == c.ad_fwd + c.ad_rev
-    return c.rd, c.ad, c.partial_alt
+    return c if full else (c.rd, c.ad, c.partial_alt)
 
 
 def _count(tmp_path, ref, ref_allele, alt_allele, junction, op, bases):
@@ -206,8 +207,10 @@ def test_a_read_spliced_over_the_run_start_is_not_alt(tmp_path):
 
 def test_an_anchor_substituting_insertion_is_not_matched_elsewhere(tmp_path):
     """A>CCC in A CC T: the carriers keep the anchor A and insert CC after the two
-    C's (ACCCCT, not CCCCCT). No placement elsewhere substitutes the anchor: REF."""
-    assert _count(tmp_path, ANCHOR_SUB, "A", "CCC", A + 3, "I", "CC") == (10, 0, 0)
+    C's (ACCCCT, not CCCCCT). No placement elsewhere substitutes the anchor. The
+    variant is a delins judged by its whole allele (#121): the read holds neither
+    window (an insertion inside the event's window), so it is partial evidence."""
+    assert _count(tmp_path, ANCHOR_SUB, "A", "CCC", A + 3, "I", "CC") == (5, 0, 5)
 
 
 @pytest.mark.parametrize("junction", [9, 13, 17])

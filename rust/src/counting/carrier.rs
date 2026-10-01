@@ -146,7 +146,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         // Spliced through the event: the read skips bases where the alleles
         // differ, so it shows neither (depth only).
         let mut r = ClassifyResult::neither(ClassifyPhase::CigarRecon);
-        r.ref_uninformative = true;
+        r.uninformative = true;
         return Some(r);
     }
     let cut;
@@ -191,7 +191,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     };
     // A read holding no pair cannot show the allele: depth only (as a pure-indel
     // read that ends inside its tract), and no mFSD class.
-    result.ref_uninformative = held.is_empty();
+    result.uninformative = held.is_empty();
     result.has_n_base = had_n;
     // An MNP ALT read with every window base read unmasked shows the whole
     // haplotype, as a fully read block does on the base-by-base path.

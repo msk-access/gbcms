@@ -437,7 +437,11 @@ fn indel_shift_region(
 fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Option<(i64, String)> {
     let (c_lo, c_hi) = window::change_interval(v);
     let (from, to) = (c_lo.min(v.pos), c_hi.max(v.pos + v.ref_allele.len() as i64));
-    let (mut left, mut right) = (EVENT_REF_MARGIN, EVENT_REF_MARGIN);
+    // An insertion's ALT reads its length further than the REF: the read-level ALT
+    // check compares the two stretches that far past the event on either side.
+    let ins_len = (v.alt_allele.len() as i64 - v.ref_allele.len() as i64).max(0);
+    let margin = EVENT_REF_MARGIN.max(ins_len + 3);
+    let (mut left, mut right) = (margin, margin);
     loop {
         let lo = (from - left).max(0);
         let hi = to + right;

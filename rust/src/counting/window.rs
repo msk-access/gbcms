@@ -8,11 +8,14 @@
 //! the read says nothing about the event. GATK's AD likewise counts only
 //! informative reads.
 //!
-//! Two uses:
+//! Three uses:
 //! - A REF call on a pure indel stands only when the read is informative:
 //!   it covers a flank of the region and runs one base past the first base
 //!   where REF and ALT differ reading inward from that flank
 //!   ([`read_is_informative`]). Otherwise the read counts toward depth only.
+//! - An ALT call stands when the read spans C10's windows read on the ALT
+//!   haplotype ([`alt_read_is_informative`]), or else when its own bases tell the
+//!   alleles apart ([`alt_bases_discriminate`]): its gap alone is placement.
 //! - A co-annotated sibling's carriers are excluded from a row's REF only when
 //!   the sibling's change lies inside that row's discrimination window (the
 //!   region plus one base on each side, [`discrimination_window`]). A carrier
@@ -22,6 +25,7 @@
 use rust_htslib::bam::record::{Cigar, Record};
 
 use crate::normalize::repeat::first_change_offset;
+use crate::shared::bam_utils::find_read_pos;
 use crate::types::Variant;
 
 /// Reference interval `[lo, hi)` (0-based, half-open) holding every base at
@@ -128,6 +132,231 @@ pub(crate) fn scan_window(variant: &Variant, window: i64) -> (i64, i64) {
     (start.max(0), end)
 }
 
+/// Reference bases `[lo, hi)`, upper-case, from the variant's prepared reference:
+/// its event reference, else its `ref_context`. None when neither holds them.
+pub(crate) fn reference_span(v: &Variant, lo: i64, hi: i64) -> Option<Vec<u8>> {
+    let slice = |start: i64, seq: &str| {
+        let (a, b) = (lo - start, hi - start);
+        (a >= 0 && a <= b && b as usize <= seq.len())
+            .then(|| seq.as_bytes()[a as usize..b as usize].to_ascii_uppercase())
+    };
+    v.event_ref
+        .as_ref()
+        .and_then(|(start, seq)| slice(*start, seq))
+        .or_else(|| v.ref_context.as_ref().and_then(|ctx| slice(v.ref_context_start, ctx)))
+}
+
+/// Whether a pure indel slides: its shift region is wider than the event (an
+/// insertion with more than one junction, a deletion whose region is longer than
+/// itself). This, not `repeat_span` (motifs of up to 6 bases only), says whether
+/// the event sits in a repeat: a long-period tandem duplication slides too.
+pub(crate) fn slides(v: &Variant) -> bool {
+    let (lo, hi) = change_interval(v);
+    let (r, a) = (v.ref_allele.len() as i64, v.alt_allele.len() as i64);
+    if a > r {
+        hi > lo
+    } else {
+        hi - lo > r - a
+    }
+}
+
+/// Whether a read's own bases tell a pure indel's ALT from its REF, read where
+/// they sit. Rightwards from the read's aligned base just left of the
+/// discrimination window, or leftwards from its aligned base just right of it,
+/// the read must read, unmasked, a base where the two alleles differ (the first
+/// such base, or a later one when that is masked), every base up to there fitting
+/// the ALT; a base below `min_baseq`, or N, fits anything. Unlike C10's REF rule
+/// there is no margin base past it: that margin guards CIGAR-only REF calls
+/// against a hidden terminal mismatch, while this reads the deciding base. Soft-clipped bases are
+/// not read. Used for an ALT read that spans neither ALT-side window: the CIGAR's
+/// gap alone is placement, and a carrier ending inside the repeat holds only
+/// bases the alleles share, while a truncated long insertion's carrier holds the
+/// inserted bases. True when the reference around the event is unavailable (the
+/// read cannot be judged, so the call stands).
+pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
+    if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
+        return true;
+    }
+    let (lo, hi) = change_interval(v);
+    let (dlo, dhi) = (lo - 1, hi + 1);
+    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
+    let n = (a.len() as i64 - r.len() as i64).abs();
+    let ins: Vec<u8> = if a.len() > r.len() { a[r.len()..].to_ascii_uppercase() } else { Vec::new() };
+    let j0 = v.pos + r.len().min(a.len()) as i64;
+    // Two bases past the window on the reading's far side are enough for either
+    // allele to show the first differing base and one more (the deletion's
+    // removed bases are taken from inside the window).
+    let ext = 2;
+    // The ALT haplotype of reference [from, to): the insert added, or the deleted
+    // bases removed, at j0.
+    let alt_of = |from: i64, seq: &[u8]| -> Vec<u8> {
+        let k = (j0 - from) as usize;
+        if ins.is_empty() {
+            [&seq[..k], &seq[k + n as usize..]].concat()
+        } else {
+            [&seq[..k], ins.as_slice(), &seq[k..]].concat()
+        }
+    };
+    // An insertion's ALT stretch is n bases longer than the reference it is built
+    // from: the REF stretch reaches as far where the prepared reference holds it
+    // (a long event's may not), and past the REF stretch a base decides nothing.
+    let nn = if ins.is_empty() { 0 } else { n };
+    let fetch = |lo: i64, hi: i64, far_lo: i64, far_hi: i64| {
+        reference_span(v, far_lo, far_hi)
+            .map(|s| (far_lo, s))
+            .or_else(|| reference_span(v, lo, hi).map(|s| (lo, s)))
+    };
+    let (Some((rfrom, right)), Some((lfrom, left))) =
+        (fetch(dlo, dhi + ext, dlo, dhi + ext + nn), fetch(dlo - ext, dhi, dlo - ext - nn, dhi))
+    else {
+        return true;
+    };
+    let seq = record.seq().as_bytes();
+    let cig: Vec<Cigar> = record.cigar().iter().copied().collect();
+    // Soft clips at either end (behind any hard clip) are not read.
+    let clip = |ops: &mut dyn Iterator<Item = &Cigar>| -> usize {
+        ops.take_while(|c| matches!(c, Cigar::SoftClip(_) | Cigar::HardClip(_)))
+            .map(|c| if let Cigar::SoftClip(k) = c { *k as usize } else { 0 })
+            .sum()
+    };
+    let lead = clip(&mut cig.iter());
+    let trail = seq.len() - clip(&mut cig.iter().rev());
+    // The read's bases at query offsets `idx`, judged against `refh` and `alth`:
+    // every unmasked base fits the ALT, up to a base at or past the first
+    // differing one where the alleles differ, read unmasked. No margin base past
+    // it: C10's margin protects a CIGAR-only REF call from a hidden terminal
+    // mismatch, while this reads the deciding base itself, on a read the CIGAR
+    // already calls ALT. Reading stops where either stretch ends.
+    let holds = |idx: &mut dyn Iterator<Item = usize>, refh: &[u8], alth: &[u8]| -> bool {
+        let Some(d) = refh.iter().zip(alth).position(|(x, y)| x != y) else {
+            return false;
+        };
+        for (i, q) in idx.enumerate() {
+            if i >= alth.len().min(refh.len()) {
+                return false;
+            }
+            let b = seq[q].to_ascii_uppercase();
+            let masked = b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq);
+            if masked {
+                continue;
+            }
+            if b != alth[i] {
+                return false;
+            }
+            if i >= d && refh[i] != alth[i] {
+                return true;
+            }
+        }
+        false
+    };
+    if let Some(q) = find_read_pos(record, dlo - 1) {
+        let alth = alt_of(rfrom, &right);
+        if holds(&mut ((q + 1)..trail), &right, &alth) {
+            return true;
+        }
+    }
+    if let Some(q) = find_read_pos(record, dhi) {
+        let alth = alt_of(lfrom, &left);
+        let refr: Vec<u8> = left.iter().rev().copied().collect();
+        let altr: Vec<u8> = alth.iter().rev().copied().collect();
+        if holds(&mut (lead..q).rev(), &refr, &altr) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether the read's bases between its nearest aligned base left of a pure indel's
+/// discrimination window and its nearest aligned base right of it (its own gap may
+/// cover a flank base) are exactly the ALT over that stretch (bases below
+/// `min_baseq`, or N, fit anything; at least one base read), and wherever the
+/// haplotype its own alignment proposes differs from the ALT the read shows the
+/// ALT's base unmasked (else it fits another allele as well). Judges a read whose
+/// CIGAR writes the event somewhere it gives another haplotype: compensating
+/// mismatches can make its bases the ALT nonetheless.
+pub(crate) fn read_spells_alt(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
+    if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
+        return false;
+    }
+    let (lo, hi) = change_interval(v);
+    let (dlo, dhi) = (lo - 1, hi + 1);
+    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
+    // The read's nearest aligned bases outside the window: its own (misplaced)
+    // gap may cover a flank base.
+    let reach = (r.len() as i64 - a.len() as i64).abs() + 5;
+    let Some(left) = (dlo - 1 - reach..dlo).rev().find(|&p| find_read_pos(record, p).is_some()) else {
+        return false;
+    };
+    let Some(right) = (dhi..dhi + reach).find(|&p| find_read_pos(record, p).is_some()) else {
+        return false;
+    };
+    let (Some(ql), Some(qr)) = (find_read_pos(record, left), find_read_pos(record, right)) else {
+        return false;
+    };
+    let Some(refw) = reference_span(v, left + 1, right) else {
+        return false;
+    };
+    let j = (v.pos + r.len().min(a.len()) as i64 - (left + 1)) as usize;
+    let altw: Vec<u8> = if a.len() > r.len() {
+        [&refw[..j], &a[r.len()..].to_ascii_uppercase(), &refw[j..]].concat()
+    } else {
+        [&refw[..j], &refw[j + r.len() - a.len()..]].concat()
+    };
+    if qr <= ql || qr - ql - 1 != altw.len() {
+        return false;
+    }
+    // The haplotype the read's own alignment proposes between the anchors: the
+    // reference where it aligns, its bases where it inserts.
+    let seq = record.seq().as_bytes();
+    let mut claimed: Vec<u8> = Vec::with_capacity(altw.len());
+    let (mut rp, mut qp) = (record.pos(), 0usize);
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
+                for k in 0..*n as usize {
+                    if qp + k > ql && qp + k < qr {
+                        claimed.push(refw[(rp + k as i64 - (left + 1)) as usize]);
+                    }
+                }
+                rp += *n as i64;
+                qp += *n as usize;
+            }
+            Cigar::Ins(n) | Cigar::SoftClip(n) => {
+                for k in 0..*n as usize {
+                    if qp + k > ql && qp + k < qr {
+                        claimed.push(seq[qp + k].to_ascii_uppercase());
+                    }
+                }
+                qp += *n as usize;
+            }
+            Cigar::Del(n) | Cigar::RefSkip(n) => rp += *n as i64,
+            _ => {}
+        }
+    }
+    if claimed.len() != altw.len() {
+        return false;
+    }
+    // Every unmasked base fits the ALT, and wherever the alignment's haplotype and
+    // the ALT disagree the read must say which, with an unmasked base: a masked one
+    // there fits both alleles (an N where "deleted a C" and "deleted a G" differ).
+    let mut read_any = false;
+    for (i, q) in (ql + 1..qr).enumerate() {
+        let b = seq[q].to_ascii_uppercase();
+        let masked = b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq);
+        if masked {
+            if claimed[i] != altw[i] {
+                return false;
+            }
+            continue;
+        }
+        if b != altw[i] {
+            return false;
+        }
+        read_any = true;
+    }
+    read_any
+}
+
 /// The two reference intervals `[lo, hi)`, one per side, of which a read must
 /// span at least one to tell a length-changing variant's alleles apart.
 ///
@@ -171,6 +400,23 @@ pub(crate) fn read_is_informative(record: &Record, v: &Variant) -> bool {
     };
     let (start, end) = (record.pos(), ref_end(record));
     windows.iter().any(|&(lo, hi)| start <= lo && end >= hi)
+}
+
+/// Whether an ALT read's CIGAR alone settles a pure indel: its aligned reference
+/// extent spans one of C10's windows as seen from the ALT haplotype,
+/// `[lo - 1, hi + 2)` or `[lo - 2, hi + 1)`. An insertion's are its REF windows (its
+/// carrier's extent leaves out the inserted bases, so spanning them it reads more,
+/// not less). A deletion's carrier's extent counts its own gap, so spanning the
+/// REF windows it may hold up to `L - 1` fewer bases than it needs to show where
+/// the alleles differ: read on the ALT haplotype, a deletion's windows are an
+/// insertion's. Always true for other variants.
+pub(crate) fn alt_read_is_informative(record: &Record, v: &Variant) -> bool {
+    if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
+        return true;
+    }
+    let (lo, hi) = change_interval(v);
+    let (start, end) = (record.pos(), ref_end(record));
+    [(lo - 1, hi + 2), (lo - 2, hi + 1)].iter().any(|&(a, b)| start <= a && end >= b)
 }
 
 /// End (exclusive) of the read's aligned reference extent: M/=/X/D/N; clips
@@ -319,6 +565,22 @@ mod tests {
     fn substitution_bearing_events_have_no_informative_windows() {
         assert_eq!(informative_windows(&var(HOMO, 2, "C", "GA")), None);
         assert_eq!(informative_windows(&var(HOMO, 5, "A", "G")), None);
+    }
+
+    #[test]
+    fn an_event_slides_when_its_region_is_wider_than_itself() {
+        // A homopolymer insertion slides over the run; a deletion of the whole
+        // run's worth of one base slides; a unique insertion does not.
+        assert!(slides(&var(HOMO, 2, "C", "CA")));
+        assert!(slides(&var(HOMO, 2, "CA", "C")));
+        assert!(!slides(&var("TGCTGACTGA", 2, "C", "CG")));
+        // A long-period duplication slides whatever repeat_span says.
+        let mut dup = var(HOMO, 9, "G", "GACGTTGCA");
+        dup.shift_region = Some((10, 26));
+        assert!(slides(&dup));
+        let mut unique_del = var(HOMO, 9, "GACGTTGCA", "G");
+        unique_del.shift_region = Some((10, 18));
+        assert!(!slides(&unique_del));
     }
 
     #[test]

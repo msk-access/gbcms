@@ -24,7 +24,8 @@
 Priority: **H** high, **M** medium, **L** low. **[counts]** marks a ticket that
 can change counts. **[decide]** marks a ticket that needs an operator decision (**[decided]**: the decision is recorded under the ticket)
 before implementation. **[6.7.0]** marks a ticket moved to the 6.7.0 milestone and
-**[closed]** one closed by the triage of 2026-09-30 (see "Triage" below).
+**[closed]** one closed by the triage of 2026-09-30 (see "Triage" below). **[in review]**
+marks a ticket with an open PR.
 
 ## Summary
 
@@ -37,10 +38,10 @@ before implementation. **[6.7.0]** marks a ticket moved to the 6.7.0 milestone a
 | C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] [closed] | #120 |
 | C6 | Error-tolerant exact-length insertion matching | L | [counts] [6.7.0] | #143 (#92) |
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] [6.7.0] | #144 (#92) |
-| C8 | One-base-REF delins without a shared anchor | L | [counts] | #121 |
+| C8 | One-base-REF delins without a shared anchor | L | [counts] [in review] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] [done] | #157 |
-| C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] | #159 |
+| C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] [closed] | #159 |
 | C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [done] | #167 |
 | C13 | BAQ spares the variant's own indel evidence | H | [counts] [done] | #166 |
 | C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
@@ -51,13 +52,18 @@ before implementation. **[6.7.0]** marks a ticket moved to the 6.7.0 milestone a
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
-| C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [decide] | #188 |
+| C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [decided] [in review] | #188 |
 | C21 | Homopolymer insertion carriers placed elsewhere in the run counted REF (S3 anchor-base test) | H | [counts] [done] | #189 |
-| C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [decide] | #191 |
-| C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [decide] | #192 |
+| C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [decided] [in review] | #191 |
+| C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [decided] [in review] | #192 |
 | C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
+| C25 | Exact-carrier long-event junction windows credit REF to anchor-keeping carriers of long anchor-changing insertions | L | [counts] [6.7.0] | #199 |
+| C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decide] | #200 |
+| C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [6.7.0] | #201 |
+| C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
 | R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
+| R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] [6.7.0] | #198 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | [6.7.0] | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] [6.7.0] | #180 |
 | O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | | #183 |
@@ -710,6 +716,126 @@ the aligned flank bases, bases below Q20 matching anything).
 - C8 (#121): the strict path credits an anchor-substituting insertion (`A>CCC`)
   from its inserted bases alone.
 
+### Cluster 1 — pure-indel read judgment: C20 (#188), C22 (#191), C23 (#192), C8 (#121); C11 (#159) closed · [counts] [in review]
+One rule, one PR: a carrier holds the ALT haplotype across the window, by its own
+bases.
+
+**Measured first (2026-09-30).** Develop, every read call traced and judged by its
+own bases, on the RC panels (295 pure-indel rows, 42,594 ALT reads), WES without
+realignment (80 loci from paired IMPACT/TEMPO libraries, sliced on the cluster)
+and FORTE RNA (18 pure-indel rows):
+- C20: 25 RC ALT reads credited without discriminating bases (13 fit both
+  alleles, 12 align neither flank), 0 WES, 0 RNA. C10's reference-coordinate
+  windows must not be mirrored onto ALT reads: 2,738 RC carriers (mostly long
+  insertions) span neither window yet their bases discriminate.
+- C20 (strict path, another indel in the window): 2 RC reads. C22: 6 RC reads,
+  all another allele by their bases. C23: 0 reads (21 RC, 17 WES, 4 RNA rows
+  qualify). C11: 0 ALT calls change (17 RC, 14 WES, 1 RNA rows) — closed with the
+  measurement.
+- C8: 769 anchor-changing one-base-REF rows in the 1.13M signed-out set; at 10
+  WES loci 156 of 463 ALT reads (34%) keep the REF anchor (another allele).
+
+**Decisions (operator).**
+- Scope (2026-09-30): C8 plus the small fixes in one PR; close C11.
+- No margin base on the ALT side (2026-10-01): a non-informative ALT read keeps
+  ALT when it reads, unmasked, a base where the alleles differ. C10's margin
+  guards CIGAR-only REF calls against a hidden terminal mismatch; this check reads
+  the deciding base itself, on a read the CIGAR already calls ALT.
+- C8 (2026-10-01): accept the exact-carrier rule's semantics for anchor-changing
+  variants. Investigated first: the reads that lose REF either do not carry the
+  REF anchor (another allele — 52 at one WES locus carry the anchor change without
+  the insertion) or do not hold the rule's window, which grows through repeats and
+  is padded to the ALT's length so neither allele is favoured by where reads end
+  (a sharp line: withdrawn reads hold ≤6 bases past an 8-base event, kept ones ≥7).
+
+**As built.**
+- `alt_needs_the_window` + `window::alt_bases_discriminate`: the ALT side of C10,
+  by bases (reference two bases past the window, soft clips not read, masked bases
+  skipped). `ClassifyResult::ref_uninformative` → `uninformative`.
+- Strict path: an indel at the junction is ALT only with no other I/D across the
+  window (below 50bp; at ≥50bp the large-deletion band's tolerance applies).
+- C22: a same-length deletion that fails the placement test counts ALT when its
+  bases spell the ALT across the window (`window::read_spells_alt`: anchored on the
+  read's nearest aligned bases outside, and readable wherever the haplotype its own
+  CIGAR proposes differs from the ALT); otherwise, at ≥5bp, a distinct allele.
+- A distinct allele is neither + partial where the event slides (`window::slides`)
+  or the read has an indel inside the discrimination window; REF + partial only in
+  unique sequence with the window clear (C23).
+- C8: one-base-REF ALTs that change the anchor go to the exact-carrier rule.
+
+**Reviews and the read-level check.** The first review found the C22 decision
+ignoring bases, the ALT rule skipping events ≥58bp, masked-base and clip handling,
+and the band asymmetry; all fixed red-first. Rendering real reads then showed the
+spell-the-ALT check accepting an N where two deletion alleles differ (a CG>C row
+whose reads deleted the C before the run) — fixed red-first. The second review
+(on the final three fixes) found, all fixed red-first:
+- deletion carriers ending inside the region counted ALT: a carrier's extent
+  counts its own gap, so it spans C10's reference windows with up to L−1 fewer
+  bases than it needs. The ALT side now uses the windows read on the ALT
+  haplotype (a deletion's are an insertion's), then the bases;
+- the walk saw an I/D only right after an aligned block, so `M I D M` for a
+  deletion row and `M D I M` for an insertion row counted REF while the same pair
+  written the other way was judged;
+- the ≥50bp band stopped short of the discrimination window for a deletion
+  sliding through a long repeat (a D(60) with an insertion 80 bases on counted
+  ALT);
+- a base past the REF stretch fetched for the ALT check counted as a difference;
+- two test fixtures built homopolymers instead of random sequence.
+It also found, pre-existing, that a read with a short indel inside the window
+counts REF, and that cluster 1's in-window rule flips such reads to neither when
+an unrelated op appears: a decision, filed as C26 #200. Not defects under the
+rule (noted): a truncated +AA read written `I(A)`+clip vs `I(AA)` is decided by
+placement between +A and +AA; a shifted exact-length ≥50bp deletion does not get
+the band's tolerance.
+
+A third review (on the second-review fixes) found three defects in them, all
+fixed red-first:
+- a deletion followed by a same-length insertion of other bases went to Phase 3,
+  which called it ALT; its length change is never the ALT's;
+- from 58bp an insertion's REF stretch stopped short, because prep's event
+  reference kept a 60bp margin, so carriers masked past the first difference
+  lost ALT. The margin now reaches the insert's length plus three;
+- a deleted anchor followed by an insertion became partial whatever it held; its
+  bases now decide.
+Its fuzz of 480 random I/D/X pairs near the anchor found no other new false ALT,
+and binned and legacy agreed on every probe. Pre-existing, filed:
+- reads spelling the ALT across several indel ops (`D1 D1` for −AA, shifted
+  pairs), as C27 #201 (6.7.0);
+- the ALT-side window counting a splice N, noted on R5 #198.
+
+The reviewer's fuzz, rerun on the final head over 2,400 reads (five seeds), moved
+only reads whose bases are another allele (to partial), with no new false ALT.
+Its 130 ALT calls on reads whose bases are not exactly the ALT are all ALT on
+develop too:
+- 42 carry the ALT plus mismatches, which is correct;
+- 88 delete the anchor base and fall back to Phase 3, whose PairHMM credits the
+  closer of two haplotypes. Filed as C28 #202 (measure first).
+
+**Acceptance (final head, every changed read adjudicated by its own bases;
+harness `~/test/gbcms/harness/c20/`, local).**
+- RC DNA: 15 of 1,060 rows change (ALT −39, REF −107, partial −15, depth 0).
+  - ALT withdrawn: carriers ending inside the repeat or before the deciding
+    base; reads carrying other deletions (24–54bp, or a 33bp one 15 bases off)
+    that Phase 3 had called ALT for a 33bp deletion; 6 reads at a 6bp deletion
+    whose bases fit both alleles.
+  - REF −118 at the two anchor-changing rows (C8).
+  - Two consequences that are not improvements, both from rules that predate
+    this PR:
+    - At a co-annotated +AAG insertion, 16 reads move from partial to REF. They
+      delete across the anchor (10) or carry a D1 in the window (6), and only the
+      33bp row's false ALT had kept them out of REF. Recorded on C28 #202 and
+      C26 #200.
+    - At a 6bp deletion, 5 reads whose bases are REF across the window lose REF
+      to partial. A same-length deletion of other bases lies outside the window,
+      and C22 flags it wherever it lies in the scan window. C26 #200 now asks the
+      question in both directions.
+- WES: 10 of 80 rows change, all C8 (ALT −12, REF −399, partial +152, depth +62).
+  At one locus 146 reads keep the REF anchor and carry only the insertion, so
+  they count partial.
+- FORTE RNA: the truth set and the STAR repeat-insertion probes are unchanged. One
+  T9 probe (a 4bp deletion) loses 2 ALT reads, which carry a 3bp deletion ending
+  just after it.
+
 ## RNA
 
 
@@ -1294,8 +1420,10 @@ and O4 are done.
    sized by the shift region, with C23). Classifier-only: no mirror cost.
 2. **Test architecture:** T1 #170 (retire the legacy path; binning invariance)
    with T2 #171 (read-census oracle), before the read-admission work.
-3. **Read admission and RNA:** C17 #176 (measured first); R4 #185 with O8 #186
-   (one PR); C16 #174 (traced first).
+3. **Read admission and RNA:** C26 #200 (the REF side of cluster 1's one-change
+   rule; measured first, then decided) and C28 #202 (the anchor-deleted Phase-3
+   fallback; measured first); C17 #176 (measured first); R4 #185 with
+   O8 #186 (one PR); C16 #174 (traced first).
 4. **Small batches, any order, parallelisable:** records (C19 #182, O7 #183);
    MAF input (I1 #123, I2 #124, C9 #122); allele columns (I3 #125, I4 #126's doc
    line); hygiene (H1 #148, H2 #149, #147, the `mkdocs-material<2` pin, P3 #152);
