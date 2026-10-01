@@ -32,15 +32,19 @@ every item a sub-issue). Merged to develop so far:
 - #190 C4 (#142): reference windows clamp only when they pass a contig end (by
   the record read); RC set byte-identical. Follow-up C20 #188.
 
-**In review: C21 (#189)** on `feature/c21-shifted-insertion-carriers`: the
-windowed indel checks accept a placement by its haplotype when it is the read's
-only change across the discrimination window; the scan (and tract-cluster
-grouping) reaches every placement in the shift region; the backward-boundary
-check requires the same haplotype. Two adversarial reviews, both fixed
-red-first. Acceptance adjudicated per read (plan C21 entry; harness
-`~/test/gbcms/harness/c21/`, local: accept.py, adjudicate.py, rna_probes.py,
-build `src_final2`). Follow-ups C22 #191, C23 #192; C20 #188 gains the windowed
-paths and the strict path's only-change gap; C8 #121 gains the A>CCC miscount.
+- #193 C21 (#189): the windowed indel checks accept a placement by its haplotype
+  when it is the read's only change across the discrimination window; the scan
+  and tract-cluster grouping reach every placement in the shift region. Two
+  adversarial reviews; acceptance adjudicated per read (harness
+  `~/test/gbcms/harness/c21/`, local).
+
+**Triage (2026-09-30):** every open issue was gone through by cluster with the
+operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
+moved to a new 6.7.0 milestone (each with its reason on the issue); C5 and P2
+closed; umbrellas #133–#135 closed. See the plan's "Triage" and "Suggested
+order". #92's checklist was verified: 10 items fixed by later PRs, #92 closed;
+M4 #194 (merge NA cells, 6.6.0) and C24 #195 (6.7.0) filed. Deferred issues sit
+under the 6.7.0 tracker #196.
 
 **Validation standard** (adopted 2026-09-28): gbcms is a genotyper, not a caller;
 every count-affecting change is accepted per read, against the reads' own bases, on
@@ -50,21 +54,14 @@ Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. C21 #189 (in review).
-2. C20 #188 (C10's ALT side, now with the windowed paths; measure and decide
-   first), C22 #191 (non-equivalent ≥5bp deletions to Phase 3; measure and decide
-   first), C23 #192 (repeat context by repeat_span; measure and decide first),
-   C8 #121, C9 #122; C11 #159 (measure first); C3 + M3 + #145.
-3. C15 #173 (C12 in RNA; clipped pure deletions), C17 #176 (read-through mask),
-   C18 #177 (split reads), C19 #182 (absent qualities; decide first), C5 #120,
-   C6 #143, C7 #144, C16 #174, R3 #178 (RNA editing), R4 #185 (intronic gene
-   strand; measure and decide first).
-4. T1 #170 + T2 #171: decide the legacy path holistically (retire or unify; a
-   read-census oracle in tests).
-5. Hardening (I1–I5, M1, M2, O1–O3, O7 #183, O8 #186, H1, H2; O5 #179, O6 #180
-   measured first),
-   then P/S items.
-6. D5 #155 with RNA, WES/WGS and GIAB arms; D1, D2, D4, D6; D3.
+1. Cluster 1, one design and one PR: C20 #188, C22 #191, C23 #192, with C8 #121
+   and C11 #159 (measure together, decide one rule).
+2. T1 #170 (retire the legacy path; binning invariance) with T2 #171 (census
+   oracle).
+3. C17 #176 (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
+4. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
+   mkdocs pin, P3); O1+O2; S1+S2; M2+M4.
+5. Release: D1, D2; D4 before the cut; D6 late; D5 last.
 
 
 ### Previous: 6.5.0 release

@@ -23,7 +23,8 @@
 
 Priority: **H** high, **M** medium, **L** low. **[counts]** marks a ticket that
 can change counts. **[decide]** marks a ticket that needs an operator decision (**[decided]**: the decision is recorded under the ticket)
-before implementation.
+before implementation. **[6.7.0]** marks a ticket moved to the 6.7.0 milestone and
+**[closed]** one closed by the triage of 2026-09-30 (see "Triage" below).
 
 ## Summary
 
@@ -31,11 +32,11 @@ before implementation.
 |:--|:--|:-:|:--|:--|
 | C1 | Complex variants count exact carriers (was: partial-ALT in the SW local fallback) | L | [counts] [done] | #141 (#92) |
 | C2 | REF fragments at grouped rows (main vs per-transcript) | M | [counts] [done] | #119 |
-| C3 | Homopolymer decomposition arbitration redesign | M | [counts] | #111, #145 (#112) |
+| C3 | Homopolymer decomposition arbitration redesign | M | [counts] [6.7.0] | #111, #145 (#112) |
 | C4 | Reference windows near contig ends | M | [counts] [done] | #142 (#92) |
-| C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] | #120 |
-| C6 | Error-tolerant exact-length insertion matching | L | [counts] | #143 (#92) |
-| C7 | Rescue for clip-borne ITD carriers | L | [counts] | #144 (#92) |
+| C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] [closed] | #120 |
+| C6 | Error-tolerant exact-length insertion matching | L | [counts] [6.7.0] | #143 (#92) |
+| C7 | Rescue for clip-borne ITD carriers | L | [counts] [6.7.0] | #144 (#92) |
 | C8 | One-base-REF delins without a shared anchor | L | [counts] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] [done] | #157 |
@@ -43,21 +44,22 @@ before implementation.
 | C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [done] | #167 |
 | C13 | BAQ spares the variant's own indel evidence | H | [counts] [done] | #166 |
 | C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
-| C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] | #173 |
+| C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] [6.7.0] | #173 |
 | C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
 | T1 | Test architecture: retire or unify the legacy parity path | M | [decide] | #170 |
 | T2 | Read census as the classification oracle in tests | M | | #171 |
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
-| C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] | #177 |
+| C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
 | C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [decide] | #188 |
-| C21 | Homopolymer insertion carriers placed elsewhere in the run counted REF (S3 anchor-base test) | H | [counts] | #189 |
+| C21 | Homopolymer insertion carriers placed elsewhere in the run counted REF (S3 anchor-base test) | H | [counts] [done] | #189 |
 | C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [decide] | #191 |
 | C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [decide] | #192 |
-| R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] | #178 |
+| C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
+| R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
 | R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
-| O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | | #179 |
-| O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] | #180 |
+| O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | [6.7.0] | #179 |
+| O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] [6.7.0] | #180 |
 | O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | | #183 |
 | O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | | #186 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
@@ -66,23 +68,24 @@ before implementation.
 | I2 | `End_Position` optional | L | | #124 |
 | I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] | #125 |
 | I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] | #126 |
-| I5 | Nextflow `convert` module | L | | #127 |
-| M1 | Merge rows whose flavors report different alleles | M | | #128 |
+| I5 | Nextflow `convert` module | L | [6.7.0] | #127 |
+| M1 | Merge rows whose flavors report different alleles | M | [6.7.0] | #128 |
 | M2 | Merge inputs from different gbcms versions | M | | #129 |
-| M3 | Decomposed-allele hardening (observations, list length) | M | | #146, #147 (#112) |
+| M3 | Decomposed-allele hardening (observations, list length) | M | | #147; #146 [6.7.0] (#112) |
+| M4 | Merge sums NA/nan count cells as 0 silently (the documented warning was never implemented) | M | [decided] | #194 |
 | O1 | UMI and no-bases warnings repeated by the rescue recount | L | | #130 |
 | O2 | Run-start summary of enabled options | L | | #131 |
-| O3 | Rescue in fillouts without the MNP | L | | #132 |
-| H1 | Writers closed when a write fails | L | | #148 (#133) |
-| H2 | `is_indel` in preparation | L | | #149 (#133) |
-| P1 | Deep-bin fetch reduction (M5b) | L | | #150 (#134) |
-| P2 | Bin cost-sort (PF-2) | L | | #151 (#134) |
-| P3 | Document the bin-span soft floor (LO-3) | L | | #152 (#134) |
-| S1 | Mean LLR per fragment (CR-5) | L | [decided] | #153 (#135) |
-| S2 | `MIN_FOR_KS` floor (ME-9) | L | [decided] | #154 (#135) |
+| O3 | Rescue in fillouts without the MNP | L | [6.7.0] | #132 |
+| H1 | Writers closed when a write fails | L | | #148 |
+| H2 | `is_indel` in preparation | L | | #149 |
+| P1 | Deep-bin fetch reduction (M5b) | L | [6.7.0] | #150 |
+| P2 | Bin cost-sort (PF-2) | L | [closed] | #151 |
+| P3 | Document the bin-span soft floor (LO-3) | L | | #152 |
+| S1 | Mean LLR per fragment (CR-5) | L | [decided] | #153 |
+| S2 | `MIN_FOR_KS` floor (ME-9) | L | [decided] | #154 |
 | D1 | CI version-consistency check | M | | #136 |
 | D2 | Release workflow creates the GitHub Release | M | | #137 |
-| D3 | mkdocs-material 2.0 | L | | #138 |
+| D3 | mkdocs-material 2.0 | L | [6.7.0] | #138 |
 | D4 | Dependency upgrade audit: does anything break on current releases? | M | | #139 |
 | D5 | Coverage-driven regression panel (replaces the 56-sample matrix) | M | | #155 |
 | D6 | One QC-flags reference page | M | | #156 |
@@ -1251,27 +1254,56 @@ hid the RNA exon-edge collapse.
 - Not yet covered: WGS, public reference data, other aligners and quality bins
   (D5 arms).
 
+## Triage (2026-09-30, operator)
+
+The reviews of each ticket kept adding genuine follow-ups (17 of 50 open items
+by C21). The operator went through every open issue by cluster (which items share
+code or a principle, and which must come first) and cut the scope:
+- **Kept in 6.6.0**, gating the cut, in the order below.
+- **Moved to 6.7.0**, each with its reason on the issue:
+  - evidence outside the aligned bases (C15 #173, C7 #144, C18 #177, O5 #179),
+    whose prerequisite C17 stays;
+  - the homopolymer twin, re-scoped as "fix or retire `--rescue-homopolymer`" now
+    that O4 made it opt-in (C3 #111, #145, #146, M1 #128, umbrella #112);
+  - C6 #143 (its policy follows cluster 1's quality rule), R3 #178, O3 #132, O6
+    #180, I5 #127, P1 #150 (gated on T1's binning-invariance tests), and D3
+    #138's migration (the pin stays).
+- **Closed:** C5 #120 (measured: 0 of 50,836 signed-out insertions are 250bp or
+  longer, and short reads cannot span the cap anyway; reopen for long reads); P2
+  #151 (no long-pole bins in cfDNA); the umbrellas #133, #134, #135 (their items
+  sit directly under #140); #92 (below).
+- **Decided:** T1 retires the legacy parity path for binning-invariance tests,
+  confirmed by a design note first; T2 brings the read census into the test
+  suite with it (#170, #171).
+- **#92's checklist** (13 silent-failure findings from an earlier audit, never
+  ticked) was verified against develop: 10 were fixed by later PRs (mostly PR
+  #95), so #92 is closed with each item's commit. Still live: M4 #194 (merge sums
+  NA count cells as 0; decided: a missing value makes the combined cell NA, with a
+  per-column warning), kept in 6.6.0; C24 #195 (stale scores in the
+  local-alignment fallback tail), moved to 6.7.0.
+- The deferred issues sit under a 6.7.0 tracker, #196.
+
 ## Suggested order
 
-Refreshed 2026-09-30; C1, C2, C10, C12 and O4 are done.
-1. **Done:** C13 (#166, PR #169); R1 (#106, PR #181); C14 (#172, PR #184); R2 (#114, PR #187);
-   C4 (#142, PR #190).
-2. **Done:** this list, the validation standard and the BAM-caveats reference
-   (PR #175).
-3. **Counting correctness:** C21 (#189, in review), C20 (#188, measured and decided
-   first; C10's ALT side), C22 (#191, measured and decided first), C23 (#192,
-   measured and decided first), C8 (#121), C9
-   (#122); C11 (#159) measured first; C3 with M3 and #145 (the decomposition
-   cluster); C15 (#173), C17 (#176), C18 (#177); C19 (#182, the absent-quality
-   policy decided first); C5 (#120), C6 (#143, reconciled with "count the given
-   allele"), C7 (#144); C16 (#174); R3 (#178); R4 (#185, measured and decided
-   first).
-4. **Test architecture, decided holistically:** T1 (#170) with T2 (#171).
-5. **Hardening:** I1–I5, M1, M2, O1–O3, O7 (#183), O8 (#186), H1, H2; O5 (#179)
-   and O6 (#180), each measured and surveyed first.
-6. **Performance and statistics:** P1–P3, S1, S2.
-7. **Validation and release:** D5 (#155) with its arms, D1, D2, D4, D6, then D3.
+Refreshed 2026-09-30 by the triage; C1, C2, C4, C10, C12, C13, C14, C21, R1, R2
+and O4 are done.
+1. **Cluster 1, pure-indel read judgment, one design and one PR:** C20 #188, C22
+   #191, C23 #192, measured together and decided as one rule (a carrier holds the
+   ALT haplotype across the discrimination window), with C8 #121 (anchor-changing
+   one-base-REF variants to the exact-carrier rule) and C11 #159 (Phase-3 context
+   sized by the shift region, with C23). Classifier-only: no mirror cost.
+2. **Test architecture:** T1 #170 (retire the legacy path; binning invariance)
+   with T2 #171 (read-census oracle), before the read-admission work.
+3. **Read admission and RNA:** C17 #176 (measured first); R4 #185 with O8 #186
+   (one PR); C16 #174 (traced first).
+4. **Small batches, any order, parallelisable:** records (C19 #182, O7 #183);
+   MAF input (I1 #123, I2 #124, C9 #122); allele columns (I3 #125, I4 #126's doc
+   line); hygiene (H1 #148, H2 #149, #147, the `mkdocs-material<2` pin, P3 #152);
+   rescue messages (O1 #130, O2 #131); mFSD reporting (S1 #153, S2 #154); merge
+   (M2 #129 with M4 #194).
+5. **Release:** D1 #136 and D2 #137 any time; D4 #139 before the cut; D6 #156
+   after the diagnostic changes settle; D5 #155 last, as the release comparison.
 
-The 6.6.0 cut is gated on steps 2–4 plus D1, D2, D4 and D6, and the release
-comparison is the D5 panel run on HPC, with the same release-
-candidate check as 6.5.0: every changed cell attributed to a ticket.
+The 6.6.0 cut is gated on steps 1–5. The release comparison is the D5 panel run
+on HPC, with the same release-candidate check as 6.5.0: every changed cell
+attributed to a ticket.
