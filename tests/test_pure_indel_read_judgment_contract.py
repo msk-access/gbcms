@@ -391,7 +391,6 @@ def test_a_deleted_anchor_replaced_before_the_insert_is_not_alt(tmp_path):
 
 
 # ── Reads that start on the flank base ─────────────────────────────────────────
-@pytest.mark.xfail(strict=True, reason="H3 decision 5: red until fixed")
 def test_a_carrier_starting_on_the_flank_whose_bases_discriminate_is_alt(tmp_path):
     """G>GA in G AAAAA T: carriers whose first base is the G (the run's left flank,
     here the anchor), then the inserted A and the run's five A's: six A's after the

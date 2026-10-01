@@ -298,3 +298,30 @@ def test_a_long_events_left_junction_alone_does_not_make_alt(
     (c,) = count_bam_checked(bam, [_prepared(fa, ref_allele, alt_allele)], [None], *ARGS)
     _invariants(c)
     assert c.ad == 0
+
+
+def test_a_deciding_base_past_the_contig_end_is_depth_only_and_warned(tmp_path, caplog):
+    """+A in a run of six A's that ends the contig: carriers show seven A's. REF has
+    no base past the end, but a circular contig's continues at its start, so the
+    reads stay depth only (operator decision, 2026-10-01) — counted and warned once
+    per variant, never silent."""
+    ref = _flank(15) + "GAAAAAA"
+    reads = []
+    for i in range(5):
+        s = A - 60 + i
+        reads.append(
+            make_read(
+                f"e{i}",
+                ref[s : A + 1] + "A" + ref[A + 1 : A + 7],
+                s,
+                ((0, A + 1 - s), (1, 1), (0, 6)),
+            )
+        )
+    fa, bam = write_contig(tmp_path, ref, reads, "edge")
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        (c,) = count_bam_checked(bam, [_prepared(fa, "G", "GA")], [None], *ARGS)
+    _invariants(c)
+    assert (c.ad, c.dp) == (0, 5)
+    warns = [r.getMessage() for r in caplog.records if "past the contig end" in r.getMessage()]
+    assert len(warns) == 2 and "5 ALT read(s)" in warns[0], warns

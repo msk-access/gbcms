@@ -198,14 +198,15 @@ def _placements(contig, ref, alt):
 
 
 def _settled_shapes(contig, ref, alt, rng):
-    """(class, [(start, length, events[, aligned])]) for the settled classes. Every
-    read starts at or before the margin base left of the tract's flank."""
+    """(class, [(start, length, events[, aligned])]) for the settled classes. Reads
+    start on the tract's left flank (the anchor) or anywhere before it."""
     lo, hi = tract(A, ref, alt, contig)
     ins = len(alt) > len(ref)
     n = abs(len(alt) - len(ref))
     shapes = {"ref": [], "alt": [], "wrong": [], "elsewhere": [], "clipped": []}
-    for _ in range(40):
-        s = lo - 2 - rng.randint(0, 59)  # every read overlaps the anchor
+    for k in range(40):
+        # Every read overlaps the anchor; the first three start on it (the flank).
+        s = lo - 1 if k < 3 else lo - 1 - rng.randint(1, 60)
         length = rng.randint(A + 1 - s, 100)  # and ends anywhere past it
         shapes["ref"].append((s, length, []))
         j = rng.choice(_placements(contig, ref, alt))

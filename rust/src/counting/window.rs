@@ -202,10 +202,13 @@ pub(crate) fn slides(v: &Variant) -> bool {
 /// not read. Used for an ALT read that spans neither ALT-side window: the CIGAR's
 /// gap alone is placement, and a carrier ending inside the repeat holds only
 /// bases the alleles share, while a truncated long insertion's carrier holds the
-/// inserted bases. Each reading uses the reference it can hold, stopping at a
-/// contig end. A read with no aligned base on either side of the window has
-/// nothing to read from: false. None when the read has a side to read from but no
-/// prepared reference holds it (an unprepared variant): it cannot be judged.
+/// inserted bases. A read starting (or ending) on a flank base reads from it.
+/// Each reading uses the reference it can hold, stopping at a contig end. A read
+/// with no aligned base on either side of the window has nothing to read from:
+/// false. None when the read has a side to read from but no prepared reference
+/// holds it (an unprepared variant), or its deciding base lies past a contig edge
+/// (REF has no base there, but a circular contig's continues at its start): it
+/// cannot be judged.
 pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> Option<bool> {
     if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
         return Some(true);
@@ -236,12 +239,21 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     // from: the REF stretch reaches as far, where the prepared reference holds it;
     // past the REF stretch (a contig end) a base decides nothing.
     let nn = if ins.is_empty() { 0 } else { n };
-    let (ql, qr) = (find_read_pos(record, dlo - 1), find_read_pos(record, dhi));
+    // Where reading starts: rightwards from the read's aligned base just left of the
+    // window, or from the flank base itself when the read starts on it (the windows
+    // start at the flank too; the flank is a base both alleles share). Leftwards
+    // likewise, from one past the read's last base to read.
+    let ql = find_read_pos(record, dlo - 1).map(|q| q + 1).or_else(|| find_read_pos(record, dlo));
+    let qr = find_read_pos(record, dhi).or_else(|| find_read_pos(record, dhi - 1).map(|q| q + 1));
     if ql.is_none() && qr.is_none() {
         return Some(false);
     }
     let right = reference_from(v, dlo, dhi + ext + nn);
     let left = reference_to(v, dlo - ext - nn, dhi);
+    // A stretch cut short by the prepared reference's end (a contig edge): a read
+    // still undecided where it ends has its deciding base past the edge.
+    let right_cut = right.as_ref().is_some_and(|r| (r.len() as i64) < dhi + ext + nn - dlo);
+    let left_cut = left.as_ref().is_some_and(|(_, l)| (l.len() as i64) < dhi - (dlo - ext - nn));
     let seq = record.seq().as_bytes();
     let cig: Vec<Cigar> = record.cigar().iter().copied().collect();
     // Soft clips at either end (behind any hard clip) are not read.
@@ -257,14 +269,16 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     // differing one where the alleles differ, read unmasked. No margin base past
     // it: C10's margin protects a CIGAR-only REF call from a hidden terminal
     // mismatch, while this reads the deciding base itself, on a read the CIGAR
-    // already calls ALT. Reading stops where either stretch ends.
-    let holds = |idx: &mut dyn Iterator<Item = usize>, refh: &[u8], alth: &[u8]| -> bool {
-        let Some(d) = refh.iter().zip(alth).position(|(x, y)| x != y) else {
-            return false;
-        };
+    // already calls ALT. Reading stops where either stretch ends: Some(true) ALT,
+    // Some(false) not, None when the read still had bases past the stretch's end.
+    let holds = |idx: &mut dyn Iterator<Item = usize>, refh: &[u8], alth: &[u8]| -> Option<bool> {
+        // The first base where the alleles differ: past the shorter stretch when
+        // they agree over it (a REF stretch cut at a contig edge).
+        let n = alth.len().min(refh.len());
+        let d = refh.iter().zip(alth).position(|(x, y)| x != y).unwrap_or(n);
         for (i, q) in idx.enumerate() {
-            if i >= alth.len().min(refh.len()) {
-                return false;
+            if i >= n {
+                return None;
             }
             let b = seq[q].to_ascii_uppercase();
             let masked = b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq);
@@ -272,20 +286,24 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
                 continue;
             }
             if b != alth[i] {
-                return false;
+                return Some(false);
             }
             if i >= d && refh[i] != alth[i] {
-                return true;
+                return Some(true);
             }
         }
-        false
+        Some(false)
     };
-    // A side the read can be read from but no reference holds leaves it unjudged.
+    // A side the read can be read from but no reference holds, or whose deciding
+    // base lies past a contig edge, leaves the read unjudged.
     let mut unjudged = false;
     if let Some(q) = ql {
         match right.as_deref().and_then(|r| alt_of(dlo, r).map(|a| (r, a))) {
-            Some((right, alth)) if holds(&mut ((q + 1)..trail), right, &alth) => return Some(true),
-            Some(_) => {}
+            Some((right, alth)) => match holds(&mut (q..trail), right, &alth) {
+                Some(true) => return Some(true),
+                None if right_cut => unjudged = true,
+                _ => {}
+            },
             None => unjudged = true,
         }
     }
@@ -294,8 +312,10 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
             Some((left, alth)) => {
                 let refr: Vec<u8> = left.iter().rev().copied().collect();
                 let altr: Vec<u8> = alth.iter().rev().copied().collect();
-                if holds(&mut (lead..q).rev(), &refr, &altr) {
-                    return Some(true);
+                match holds(&mut (lead..q).rev(), &refr, &altr) {
+                    Some(true) => return Some(true),
+                    None if left_cut => unjudged = true,
+                    _ => {}
                 }
             }
             None => unjudged = true,

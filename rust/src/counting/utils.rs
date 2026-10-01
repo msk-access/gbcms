@@ -148,9 +148,10 @@ pub struct ClassifyResult {
     /// reads are all like this is left out of the mFSD classes.
     pub uninformative: bool,
     /// An ALT call on a pure indel withdrawn because the read spans neither
-    /// ALT-side window and no prepared reference holds the event to read its
-    /// bases against (an unprepared variant). Counted per variant (DP reads) and
-    /// warned once, so the loss is never silent.
+    /// ALT-side window and its bases could not be judged: no prepared reference
+    /// holds the event (an unprepared variant), or the deciding base lies past a
+    /// contig edge. Counted per variant (DP reads) and warned once, so the loss
+    /// is never silent.
     pub alt_unjudged: bool,
     /// The exact-carrier rule could not judge this read (the prepared reference
     /// does not hold the event with its flank) and the previous complex

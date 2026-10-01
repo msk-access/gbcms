@@ -2316,7 +2316,8 @@ fn warn_unjudged(variant: &Variant, alt_unjudged: u32, carrier_fallback: u32) {
         warn!(
             "{}:{} {}>{}: {} ALT read(s) span neither informative window and could not be judged \
              by their bases: no prepared reference holds the event (the variant was not \
-             prepared against a FASTA, or failed prep) — counted as depth only",
+             prepared against a FASTA, or failed prep), or the base that would decide lies \
+             past the contig end — counted as depth only",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, alt_unjudged,
         );
     }

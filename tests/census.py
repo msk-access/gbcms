@@ -34,16 +34,11 @@ bases:
 
 Engine REF/ALT counts must equal the census REF/ALT counts. Every other verdict is
 neither, whether partial or uninformative. The census is exact for clean bases,
-with three limits:
+with two limits:
 - A pure indel's REF call stands on its CIGAR and extent, so a sequencing error or
   a masked base inside the window can make the two differ.
 - The census knows two haplotypes. A read carrying a third allele that ends before
   that allele differs from the ALT fits the ALT, while the engine reads its CIGAR.
-- A read that starts on the left flank base or inside the tract: the engine's
-  read-by-bases ALT rule needs an aligned base outside the window to read from,
-  and its REF window needs a margin base beyond a flank, which the census reading
-  from the flank does not ask for. The tests' reads start at or before that
-  margin base.
 """
 
 from __future__ import annotations
@@ -239,24 +234,37 @@ def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
     ql, qr = pairs.get(window.left), pairs.get(window.right)
     if window.left < 0:  # the window starts at the contig start: the read's first base anchors
         ql = -1 if read.reference_start == 0 else None
-    if ql is not None and qr is not None and not any(ql < q <= qr for q in stops):
-        stretch = bases[ql + 1 : qr]
-        return _verdict(_fits(stretch, window.alt), _fits(stretch, window.ref))
     n = max(len(window.ref), len(window.alt))
     # A pure indel's rules do not read soft-clipped bases (an aligner's clip of a
     # pure indel's carrier is the clip-borne-carrier work, not this rule's).
     lead, trail = _clips(read) if window.indel else (0, len(bases))
+
+    def from_left():
+        end = min([q for q in stops if q > ql] + [trail])
+        reach = len(window.ref_right) if window.indel else n  # through the far flank and on
+        stretch = bases[ql + 1 : min(ql + 1 + reach, end)]
+        return _one_side(stretch, window.ref_right, window.alt_right, window.indel)
+
+    def from_right():
+        start = max([q for q in stops if q <= qr] + [lead])
+        reach = len(window.ref_left) if window.indel else n
+        stretch = bases[max(qr - reach, start) : qr]
+        return _one_side(stretch[::-1], window.ref_left[::-1], window.alt_left[::-1], window.indel)
+
+    if ql is not None and qr is not None and not any(ql < q <= qr for q in stops):
+        stretch = bases[ql + 1 : qr]
+        fits_alt, fits_ref = _fits(stretch, window.alt), _fits(stretch, window.ref)
+        # REF needs one base past where the alleles first differ, read from either
+        # side: inside the tract for a deletion, beyond the far flank for an insertion.
+        if window.indel and fits_ref and not fits_alt:
+            if not any(r and not a for a, r in (from_left(), from_right())):
+                return Verdict.FITS_BOTH
+        return _verdict(fits_alt, fits_ref)
     sides = []
     if ql is not None:
-        end = min([q for q in stops if q > ql] + [trail])
-        stretch = bases[ql + 1 : min(ql + 1 + n, end)]
-        sides.append(_one_side(stretch, window.ref_right, window.alt_right, window.indel))
+        sides.append(from_left())
     if qr is not None:
-        start = max([q for q in stops if q <= qr] + [lead])
-        stretch = bases[max(qr - n, start) : qr]
-        sides.append(
-            _one_side(stretch[::-1], window.ref_left[::-1], window.alt_left[::-1], window.indel)
-        )
+        sides.append(from_right())
     if not sides:
         covered = any(a <= window.left + 1 and b >= window.right for _, a, b in splices)
         return Verdict.SPLICED if covered else Verdict.NOT_ANCHORED
