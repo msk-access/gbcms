@@ -309,12 +309,9 @@ pub enum AlignmentBackend {
 }
 
 impl AlignmentBackend {
-    /// Create PairHMM backend with default parameters.
-    ///
-    /// Convenience constructor for tests and downstream consumers.
-    /// In production, the Python CLI passes params directly to the
-    /// `PairHMM { ... }` variant via `count_bam_binned()`.
-    #[allow(dead_code)]
+    /// PairHMM backend with the CLI's default parameters, for tests. In
+    /// production the Python layer passes the parameters to `count_bam_binned()`.
+    #[cfg(test)]
     pub fn pairhmm_default() -> Self {
         AlignmentBackend::PairHMM {
             llr_threshold: 2.3,
@@ -1243,7 +1240,7 @@ fn count_bin_shared(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
                 backend, use_baq, umi_tag, enforce_strandedness, strandedness,
-                amplicon_mode, mode != "rna",
+                amplicon_mode,
             );
             final_counts.transcript_read_counts = read_cts;
             final_counts.transcript_fragment_counts = frag_cts;
@@ -2308,9 +2305,10 @@ fn has_clip_boundary_in(record: &Record, lo: i64, hi: i64) -> bool {
 /// or prepares every such row, so these come from callers passing unprepared
 /// variants to the engine directly.
 fn warn_degraded_variants(variants: &[Variant]) {
+    let empty = |v: &&Variant| v.ref_allele.is_empty() || v.alt_allele.is_empty();
     let unprepared = variants
         .iter()
-        .filter(|v| v.ref_allele.len() != v.alt_allele.len() && v.ref_context.is_none())
+        .filter(|v| !empty(v) && v.ref_allele.len() != v.alt_allele.len() && v.ref_context.is_none())
         .count();
     if unprepared > 0 {
         warn!(
@@ -2329,6 +2327,13 @@ fn warn_degraded_variants(variants: &[Variant]) {
             "{} MNP row(s) have REF equal to ALT: no read can show either allele, so they count \
              depth only",
             degenerate,
+        );
+    }
+    let empties = variants.iter().filter(empty).count();
+    if empties > 0 {
+        warn!(
+            "{} row(s) have an empty allele: no read can show it, so they count depth only",
+            empties,
         );
     }
 }
@@ -2496,6 +2501,12 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     // pays one CIGAR-flag scan and nothing else.
     if let Some(result) = splice_skip_triage(record, variant) {
         return result;
+    }
+
+    // A row with an empty allele shows no allele (prep rejects such rows; the
+    // counting pass warns once about any passed to it directly).
+    if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
+        return ClassifyResult::neither(ClassifyPhase::Structural);
     }
 
     // Dispatch based on allele lengths rather than the variant_type string.
@@ -2707,9 +2718,9 @@ fn count_per_transcript(
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
     amplicon_mode: bool,
-    clip_admission: bool,
 ) -> (String, String) {
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
+    let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
     // Step 1: Find overlapping transcripts
     let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
     let transcript_ids = annotation.overlapping_transcripts(&chrom, variant.pos);
@@ -2761,7 +2772,6 @@ fn count_per_transcript(
         // Fresh aligners per transcript to avoid cross-contamination
         let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
         let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
-        let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
 
         for record in read_cache {
             // ── Overlap check: does this read overlap the variant window?
@@ -2812,11 +2822,10 @@ fn count_per_transcript(
                 continue;
             }
 
-            // ── Anchor overlap check, with admission by soft-clipped bases
-            // (same as main counting; `clip_admission` is off in RNA mode)
-            let overlaps_anchor = r_start <= variant.pos && r_end > variant.pos;
-            let clip_admitted = !overlaps_anchor && clip_admission && result.clip_admissible;
-            if !overlaps_anchor && !clip_admitted {
+            // ── Anchor overlap check (as in the main counts, which admit reads
+            // by their soft-clipped bases only outside RNA mode; per-transcript
+            // counts run only in RNA mode)
+            if !(r_start <= variant.pos && r_end > variant.pos) {
                 continue;
             }
 
@@ -2859,15 +2868,16 @@ fn count_per_transcript(
                 record, variant, &result, sibling_variants, effective_quals, min_baseq,
             );
             let is_alt = result.is_alt && !claimed_by_sibling;
-            let ref_claimed_by_sibling = sibling_claims_ref(
-                record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
-                &mut alt_aligner, &mut ref_aligner, backend,
-            );
-            let is_ref = result.is_ref && !ref_claimed_by_sibling;
-            let informative = !result.uninformative || ref_claimed_by_sibling;
+            let is_ref = result.is_ref
+                && !sibling_claims_ref(
+                    record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
+                    &mut alt_aligner, &mut ref_aligner, backend,
+                );
 
+            // Only the resolved call reads this evidence (`resolve`), so whether the
+            // read was informative is not needed here.
             let evidence = tx_fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-            evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), informative);
+            evidence.observe(is_ref, is_alt, result.qual, is_read1, is_forward, tlen, result.has_n_base, result.is_structural, record.mapq(), !result.uninformative);
 
             if first_class {
                 if is_ref {

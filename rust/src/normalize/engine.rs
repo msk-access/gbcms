@@ -35,11 +35,14 @@ use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_o
 /// * `is_maf` — If true, perform MAF→VCF anchor resolution for indels
 /// * `threads` — Number of rayon worker threads
 /// * `adaptive_context` — If true, dynamically increase padding in repeat regions
+/// * `rescue_homopolymer` — If true, build each deletion's homopolymer twin
+///   (`decomposed_variant`) for dual-counting; off, no twin is built
 ///
 /// # Returns
 /// One `PreparedVariant` per input variant, in the same order.
 #[pyfunction]
-#[pyo3(signature = (variants, fasta_path, context_padding, is_maf, threads=1, adaptive_context=true))]
+#[pyo3(signature = (variants, fasta_path, context_padding, is_maf, threads=1, adaptive_context=true, rescue_homopolymer=false))]
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_variants(
     py: Python<'_>,
     variants: Vec<Variant>,
@@ -48,13 +51,16 @@ pub fn prepare_variants(
     is_maf: bool,
     threads: usize,
     adaptive_context: bool,
+    rescue_homopolymer: bool,
 ) -> PyResult<Vec<PreparedVariant>> {
     info!(
-        "prepare_variants: {} variants, is_maf={}, context_padding={}, adaptive={}, threads={}",
+        "prepare_variants: {} variants, is_maf={}, context_padding={}, adaptive={}, \
+         rescue_homopolymer={}, threads={}",
         variants.len(),
         is_maf,
         context_padding,
         adaptive_context,
+        rescue_homopolymer,
         threads,
     );
 
@@ -98,6 +104,7 @@ pub fn prepare_variants(
                                 context_padding,
                                 is_maf,
                                 adaptive_context,
+                                rescue_homopolymer,
                             )
                         },
                     )
@@ -481,6 +488,7 @@ fn prepare_single_variant(
     context_padding: i64,
     is_maf: bool,
     adaptive_context: bool,
+    rescue_homopolymer: bool,
 ) -> Result<PreparedVariant, anyhow::Error> {
     let reader = reader_result.as_mut().map_err(|e| {
         anyhow::anyhow!("FASTA reader not available: {}", e)
@@ -846,10 +854,10 @@ fn prepare_single_variant(
         (None, 0)
     };
 
-    // Step 5: Homopolymer decomposition detection
-    // Check if the variant looks like a miscollapsed D(n)+SNV in a homopolymer.
-    // If detected, build a corrected Variant for dual-counting.
-    let decomposed_variant = if ref_al.len() > alt_al.len() && ref_al.len() >= 3 {
+    // Step 5: Homopolymer decomposition detection, only when the twin will be
+    // dual-counted (`rescue_homopolymer`). Check if the variant looks like a
+    // miscollapsed D(n)+SNV in a homopolymer; if so, build a corrected Variant.
+    let decomposed_variant = if rescue_homopolymer && ref_al.len() > alt_al.len() && ref_al.len() >= 3 {
         // Fetch the next reference base after the ref span
         let next_pos = (pos + ref_al.len() as i64) as u64;
         let next_base = fetch_region(reader, &variant.chrom, next_pos, next_pos + 1)

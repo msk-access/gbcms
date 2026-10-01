@@ -39,15 +39,18 @@ pub struct Variant {
     /// sized to the event, so a long duplication or tract is not cut at the
     /// edge of `ref_context`. None otherwise; counting then slides over
     /// `ref_context`.
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub shift_region: Option<(i64, i64)>,
 
-    /// Reference bases around the event (its change interval plus 60 bases on
-    /// each side), with their 0-based start. Prep fetches them for every
-    /// variant, SNVs and MNPs included (those carry no `ref_context`); the
-    /// observed-allele diagnostic and the windowed indel checks' placement
-    /// equivalence read them.
-    #[pyo3(get, set)]
+    /// Reference bases around the event, with their 0-based start: its change
+    /// interval plus a margin each side (60 bases, or the insertion's length
+    /// plus 3 when longer), widened where the exact-carrier rule's windows need
+    /// more, up to 16,384 bases. Prep fetches them for every variant that
+    /// passes validation, SNVs and MNPs included (those carry no
+    /// `ref_context`), and for the decomposed twin. The exact-carrier rule, the
+    /// ALT-side read judgments, the observed-allele diagnostic and the windowed
+    /// indel checks' placement equivalence read them.
+    #[pyo3(get)]
     pub event_ref: Option<(i64, String)>,
 
     /// The 0-based inclusive reference span the exon-boundary distance (the
@@ -311,12 +314,6 @@ pub struct BaseCounts {
     /// Median distance of REF-supporting bases to read end.
     #[pyo3(get)]
     pub ref_dist_end_median: f64,
-    /// ALT reads from singleton UMI families (no mate confirmation).
-    #[pyo3(get)]
-    pub singleton_alt_count: u32,
-    /// ALT reads from duplex UMI families (both strands confirmed).
-    #[pyo3(get)]
-    pub duplex_alt_count: u32,
 
     // ── Decomposed ALT counting (diagnostic, all variant types) ──────────
     // Enables DMP-compatible "any evidence of ALT" counting alongside the

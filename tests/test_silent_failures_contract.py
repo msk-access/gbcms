@@ -263,7 +263,9 @@ def test_a_decomposed_twin_in_a_long_run_is_judged_by_the_exact_carrier_rule(tmp
         reads.append(make_read(f"d{i}", seq, s, ((0, end - 2 - s), (2, 2), (0, s + 102 - end))))
         reads.append(make_read(f"r{i}", ref[s : s + 100], s, ((0, 100),)))
     fa, bam = write_contig(tmp_path, ref, reads, "twin")
-    (pv,) = _rs.prepare_variants([_rs.Variant("1", pos, "AAA", "C", "X")], fa, 5, False, 1, True)
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", pos, "AAA", "C", "X")], fa, 5, False, 1, True, rescue_homopolymer=True
+    )
     assert pv.decomposed_variant is not None and pv.decomposed_variant.event_ref is not None
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
         _rs.reset_log_caching()
@@ -374,3 +376,22 @@ def test_why_an_alt_call_is_kept_is_traced(tmp_path, caplog):
     assert c.ad == 3
     kept = [m for m in logs if "ALT kept — its own bases tell the alleles apart" in m]
     assert kept and all(" read=k" in m for m in kept), kept
+
+
+def test_a_row_with_an_empty_allele_counts_no_allele_and_is_warned(tmp_path, caplog):
+    """Prep rejects empty alleles; a row passed to the engine directly with one shows
+    no allele (neither REF nor ALT, no panic), and the pass says so once."""
+    ref = _flank(41) + "C" + "A" * 10 + "G" + _flank(42)
+    reads = [
+        make_read(f"r{i}", ref[A - 40 + i : A + 60 + i], A - 40 + i, ((0, 100),)) for i in range(4)
+    ]
+    _, bam = write_contig(tmp_path, ref, reads, "empty")
+    rows = [_rs.Variant("1", A, "", "T", "X"), _rs.Variant("1", A, "", "", "X")]
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        counts = _rs.count_bam_binned(bam, rows, [None] * 2, *ARGS)
+    for c in counts:
+        _invariants(c)
+        assert (c.rd, c.ad, c.partial_alt) == (0, 0, 0)
+    empty = [r.getMessage() for r in caplog.records if "have an empty allele" in r.getMessage()]
+    assert len(empty) == 1 and empty[0].startswith("2 "), empty

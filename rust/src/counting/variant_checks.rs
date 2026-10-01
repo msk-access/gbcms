@@ -24,7 +24,7 @@ use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 use bio::alignment::distance::levenshtein;
 use bio::alignment::pairwise::Aligner;
-use log::{debug, trace};
+use log::trace;
 
 use crate::normalize::repeat::find_tandem_repeat;
 use crate::types::Variant;
@@ -298,7 +298,7 @@ pub fn splice_skip_triage(record: &Record, variant: &Variant) -> Option<Classify
     let ref_len = variant.ref_allele.len() as i64;
     let alt_len = variant.alt_allele.len() as i64;
     if ref_len == 0 || alt_len == 0 {
-        return None; // malformed alleles — the checkers' own guards handle these
+        return None; // malformed alleles: the dispatcher counts them as neither
     }
     let anchor_preserved = variant
         .ref_allele
@@ -1524,13 +1524,10 @@ fn scan_windowed_insertion_candidate(
                 // or ALT in a repeat; Phase 3 must not arbitrate it). Outside it the
                 // read shows the window as reference, unless it deletes or inserts
                 // there too (M D I M beside the window: the pair is another allele),
-                // and the insertion is a separate event, as it is for an ALT that
-                // also substitutes its anchor base.
+                // and the insertion is a separate event.
                 let (dw_lo, dw_hi) = dw;
-                let anchor_kept = variant.alt_allele.as_bytes()[0]
-                    .eq_ignore_ascii_case(&variant.ref_allele.as_bytes()[0]);
                 let in_window = dw_lo < ins_ref_pos && ins_ref_pos < dw_hi;
-                if anchor_kept && (in_window || other_indel_in_window(record, dw, ins_ref_pos, true)) {
+                if in_window || other_indel_in_window(record, dw, ins_ref_pos, true) {
                     *has_distinct_allele_nearby = true;
                     trace!(
                         "check_insertion: windowed I({}) at pos {} carries the variant's \
@@ -1631,23 +1628,8 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
-    // VCF/MAF left-anchored invariant — REF and ALT share a leading anchor
-    // base, so both are non-empty for a well-formed insertion. Defend it: an empty
-    // ALT/REF (malformed or non-left-anchored record) would underflow `len() - 1`
-    // and panic the `[1..]` / `[0]` slices below, surfacing as an opaque PyErr.
-    // debug! not warn!: this runs per-read, so a single malformed variant would
-    // otherwise log once per overlapping read. Loud once-per-variant surfacing
-    // belongs at prep time (tracked follow-up); here we just avoid the panic.
-    if variant.alt_allele.is_empty() || variant.ref_allele.is_empty() {
-        debug!(
-            "check_insertion: empty REF/ALT at {}:{} (ref={:?} alt={:?}) — classifying neither",
-            variant.chrom,
-            variant.pos + 1,
-            variant.ref_allele,
-            variant.alt_allele,
-        );
-        return ClassifyResult::neither(ClassifyPhase::Structural);
-    }
+    // VCF/MAF left-anchored invariant: REF and ALT share a leading anchor base, so
+    // both are non-empty (the dispatcher sends only such rows here).
     let anchor_pos = variant.pos;
     let expected_ins_len = variant.alt_allele.len() - 1; // VCF ALT includes anchor
 
@@ -2424,7 +2406,7 @@ fn scan_windowed_deletion_candidate(
     window_start: i64,
     window_end: i64,
     best_windowed_match: &mut Option<u64>,
-    has_shifted_same_length: &mut bool,
+    has_in_band_mismatch: &mut bool,
     has_distinct_allele_nearby: &mut bool,
 ) {
     let anchor_pos = variant.pos;
@@ -2534,7 +2516,7 @@ fn scan_windowed_deletion_candidate(
                     del_len_usize, del_ref_pos
                 );
             } else if del_len_usize >= 5 {
-                *has_shifted_same_length = true;
+                *has_in_band_mismatch = true;
                 trace!(
                     "check_deletion: in-band D({}) at shifted pos {} whose deleted bases \
                      differ or could not be verified, flagging for Phase 3",
@@ -2594,25 +2576,12 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     let mut ref_pos = record.pos();
     let mut read_pos: usize = 0;
 
-    // Left-anchored invariant (LO-8): `variant.pos` MUST be the retained
-    // reference anchor base immediately *before* the deletion — never a
-    // coordinate inside the deleted span. The candidate helpers take the
-    // deleted bases as `ref_allele[1..]` (VCF/MAF deletions carry the anchor as
-    // ref_allele[0]); prep-time left-alignment/normalization guarantees this
-    // shape. An empty REF/ALT (malformed or non-left-anchored record) would
-    // underflow their `len() - 1` and panic the `[1..]` slice. Defend it and
-    // classify as neither. debug! not warn!: runs per-read; loud
-    // once-per-variant surfacing belongs at prep (follow-up).
-    if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
-        debug!(
-            "check_deletion: empty REF/ALT at {}:{} (ref={:?} alt={:?}) — classifying neither",
-            variant.chrom,
-            variant.pos + 1,
-            variant.ref_allele,
-            variant.alt_allele,
-        );
-        return ClassifyResult::neither(ClassifyPhase::Structural);
-    }
+    // Left-anchored invariant: `variant.pos` is the retained reference anchor base
+    // immediately *before* the deletion, never a coordinate inside the deleted
+    // span. The candidate helpers take the deleted bases as `ref_allele[1..]`
+    // (VCF/MAF deletions carry the anchor as ref_allele[0]); prep's
+    // left-alignment guarantees this shape, and the dispatcher sends only rows
+    // with both alleles non-empty.
     let anchor_pos = variant.pos;
     // Deleted-span bounds for span-aligned REF testimony (0-based, half-open)
     let span_start = anchor_pos + 1;
@@ -2629,7 +2598,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     // Windowed in-band large Del (≥50bp, another length within 3bp) whose
     // deleted bases differ over the overlap: possibly the same event written
     // differently — Phase 3 haplotype comparison arbitrates after the walk.
-    let mut has_shifted_same_length = false;
+    let mut has_in_band_mismatch = false;
     // Windowed Del of 5bp or more with the WRONG length (outside the band) or
     // the right length and another haplotype, or the variant's deletion written
     // elsewhere with another change across its window: a distinct-allele
@@ -2700,7 +2669,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                         quals, min_baseq,
                         window_start, window_end,
                         &mut best_windowed_match,
-                        &mut has_shifted_same_length,
+                        &mut has_in_band_mismatch,
                         &mut has_distinct_allele_nearby,
                     );
                 }
@@ -2744,7 +2713,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                         quals, min_baseq,
                         window_start, window_end,
                         &mut best_windowed_match,
-                        &mut has_shifted_same_length,
+                        &mut has_in_band_mismatch,
                         &mut has_distinct_allele_nearby,
                     );
                 }
@@ -2772,7 +2741,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
                         quals, min_baseq,
                         window_start, window_end,
                         &mut best_windowed_match,
-                        &mut has_shifted_same_length,
+                        &mut has_in_band_mismatch,
                         &mut has_distinct_allele_nearby,
                     );
                 }
@@ -2827,7 +2796,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     // part of the span and stays neither).
     if !found_ref_coverage
         && anchor_in_refskip
-        && !has_shifted_same_length
+        && !has_in_band_mismatch
         && !has_distinct_allele_nearby
         && span_aligned == span_end - span_start
     {
@@ -2890,7 +2859,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     // length) whose deleted bases differ exists nearby — the caller and aligner
     // may write one event differently. Phase 3 rebuilds the haplotype and
     // arbitrates; propagate has_nearby_evidence if it doesn't confirm ALT.
-    if has_shifted_same_length && found_ref_coverage {
+    if has_in_band_mismatch && found_ref_coverage {
         trace!(
             "check_deletion: an in-band deletion of another length after {} whose deleted \
              bases differ or could not be verified → phase3_classify",

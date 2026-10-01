@@ -132,8 +132,6 @@ def _zero_counts():
         mq0_count=0,
         alt_dist_end_median=_nan,
         ref_dist_end_median=_nan,
-        singleton_alt_count=0,
-        duplex_alt_count=0,
         # Decomposed ALT counting (invariant: any_alt = ad + partial_alt)
         any_alt=0,
         partial_alt=0,
@@ -401,6 +399,7 @@ class Pipeline:
             is_maf,
             self.config.threads,
             self.config.quality.adaptive_context,
+            self.config.rescue_homopolymer,
         )
 
         # Split into valid (for counting) and all (for output)
@@ -569,13 +568,10 @@ class Pipeline:
 
         try:
             # Run Rust Engine (only on valid variants)
-            # Build decomposed variants list for dual-counting
-            # The homopolymer twin is dual-counted only on request
-            # (--rescue-homopolymer); by default the row counts the given allele.
-            decomposed = [
-                prepared[i].decomposed_variant if self.config.rescue_homopolymer else None
-                for i in valid_indices
-            ]
+            # The homopolymer twin, dual-counted only on request: prep builds it
+            # only with --rescue-homopolymer, so by default the row counts the
+            # given allele.
+            decomposed = [prepared[i].decomposed_variant for i in valid_indices]
 
             # Build sibling Variant objects for multi-allelic exclusion (Gap 1A)
             # For each variant in a multi-allelic group, collect the full Variant
