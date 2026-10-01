@@ -8,11 +8,14 @@
 //! the read says nothing about the event. GATK's AD likewise counts only
 //! informative reads.
 //!
-//! Two uses:
+//! Three uses:
 //! - A REF call on a pure indel stands only when the read is informative:
 //!   it covers a flank of the region and runs one base past the first base
 //!   where REF and ALT differ reading inward from that flank
 //!   ([`read_is_informative`]). Otherwise the read counts toward depth only.
+//! - An ALT call from a read that is not informative stands only when its own
+//!   bases tell the alleles apart ([`alt_bases_discriminate`]): its gap alone is
+//!   placement.
 //! - A co-annotated sibling's carriers are excluded from a row's REF only when
 //!   the sibling's change lies inside that row's discrimination window (the
 //!   region plus one base on each side, [`discrimination_window`]). A carrier
@@ -178,7 +181,10 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     let n = (a.len() as i64 - r.len() as i64).abs();
     let ins: Vec<u8> = if a.len() > r.len() { a[r.len()..].to_ascii_uppercase() } else { Vec::new() };
     let j0 = v.pos + r.len().min(a.len()) as i64;
-    let ext = n + 2;
+    // Two bases past the window on the reading's far side are enough for either
+    // allele to show the first differing base and one more (the deletion's
+    // removed bases are taken from inside the window).
+    let ext = 2;
     // The ALT haplotype of reference [from, to): the insert added, or the deleted
     // bases removed, at j0.
     let alt_of = |from: i64, seq: &[u8]| -> Vec<u8> {
@@ -194,36 +200,41 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     };
     let seq = record.seq().as_bytes();
     let cig: Vec<Cigar> = record.cigar().iter().copied().collect();
-    let lead = match cig.first() {
-        Some(Cigar::SoftClip(k)) => *k as usize,
-        _ => 0,
+    // Soft clips at either end (behind any hard clip) are not read.
+    let clip = |ops: &mut dyn Iterator<Item = &Cigar>| -> usize {
+        ops.take_while(|c| matches!(c, Cigar::SoftClip(_) | Cigar::HardClip(_)))
+            .map(|c| if let Cigar::SoftClip(k) = c { *k as usize } else { 0 })
+            .sum()
     };
-    let trail = seq.len()
-        - match cig.last() {
-            Some(Cigar::SoftClip(k)) => *k as usize,
-            _ => 0,
-        };
-    // The read's bases at query offsets `idx`, judged against `refh` and `alth`.
+    let lead = clip(&mut cig.iter());
+    let trail = seq.len() - clip(&mut cig.iter().rev());
+    // The read's bases at query offsets `idx`, judged against `refh` and `alth`:
+    // every unmasked base fits the ALT, and the read reads (unmasked) a base at or
+    // past the first differing one where the alleles differ, then one more
+    // unmasked base.
     let holds = |idx: &mut dyn Iterator<Item = usize>, refh: &[u8], alth: &[u8]| -> bool {
         let Some(d) = refh.iter().zip(alth).position(|(x, y)| x != y) else {
             return false;
         };
-        if d + 2 > alth.len() {
-            return false;
-        }
-        let mut i = 0;
-        for q in idx.take(d + 2) {
+        let mut found = false;
+        for (i, q) in idx.enumerate() {
+            if i >= alth.len() {
+                return false;
+            }
             let b = seq[q].to_ascii_uppercase();
             let masked = b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq);
-            if masked && i == d {
+            if masked {
+                continue;
+            }
+            if b != alth[i] {
                 return false;
             }
-            if !masked && b != alth[i] {
-                return false;
+            if found {
+                return true;
             }
-            i += 1;
+            found = i >= d && refh.get(i) != Some(&alth[i]);
         }
-        i == d + 2
+        false
     };
     if let Some(q) = find_read_pos(record, dlo - 1) {
         let alth = alt_of(dlo, &right);
@@ -240,6 +251,58 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
         }
     }
     false
+}
+
+/// Whether the read's bases between its nearest aligned base left of a pure indel's
+/// discrimination window and its nearest aligned base right of it (its own gap may
+/// cover a flank base) are exactly the ALT over that stretch (bases below
+/// `min_baseq`, or N, fit anything; at least one base read). Judges a read whose
+/// CIGAR writes the event somewhere it gives another haplotype: compensating
+/// mismatches can make its bases the ALT nonetheless.
+pub(crate) fn read_spells_alt(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
+    if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
+        return false;
+    }
+    let (lo, hi) = change_interval(v);
+    let (dlo, dhi) = (lo - 1, hi + 1);
+    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
+    // The read's nearest aligned bases outside the window: its own (misplaced)
+    // gap may cover a flank base.
+    let reach = (r.len() as i64 - a.len() as i64).abs() + 5;
+    let Some(left) = (dlo - 1 - reach..dlo).rev().find(|&p| find_read_pos(record, p).is_some()) else {
+        return false;
+    };
+    let Some(right) = (dhi..dhi + reach).find(|&p| find_read_pos(record, p).is_some()) else {
+        return false;
+    };
+    let (Some(ql), Some(qr)) = (find_read_pos(record, left), find_read_pos(record, right)) else {
+        return false;
+    };
+    let Some(refw) = reference_span(v, left + 1, right) else {
+        return false;
+    };
+    let j = (v.pos + r.len().min(a.len()) as i64 - (left + 1)) as usize;
+    let altw: Vec<u8> = if a.len() > r.len() {
+        [&refw[..j], &a[r.len()..].to_ascii_uppercase(), &refw[j..]].concat()
+    } else {
+        [&refw[..j], &refw[j + r.len() - a.len()..]].concat()
+    };
+    if qr <= ql || qr - ql - 1 != altw.len() {
+        return false;
+    }
+    let seq = record.seq().as_bytes();
+    let mut read_any = false;
+    for (i, q) in (ql + 1..qr).enumerate() {
+        let b = seq[q].to_ascii_uppercase();
+        if b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq) {
+            continue;
+        }
+        if b != altw[i] {
+            return false;
+        }
+        read_any = true;
+    }
+    read_any
 }
 
 /// The two reference intervals `[lo, hi)`, one per side, of which a read must

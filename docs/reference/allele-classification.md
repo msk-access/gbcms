@@ -250,8 +250,9 @@ Three layers of validation prevent false-positive windowed matches:
       variant's bases placed where they give **another haplotype** inside its discrimination
       window. Resolved without Phase 3: where the event slides (`repeat_span ≥ 2`, or a shift
       region wider than the event, as a long-period duplication's) it is a
-      distinct allele → neither + `partial_alt`; in unique context the anchor-covering M is
-      definitive REF and the stray insertion is surfaced as `partial_alt` alongside `rd`.
+      distinct allele → neither + `partial_alt`; in unique context, unless the read carries
+      an indel inside the discrimination window, the anchor-covering M is definitive REF and
+      the stray insertion is surfaced as `partial_alt` alongside `rd`.
 
     The variant's bases inserted **outside** its discrimination window (after the base past
     a run, or before the anchor) are a separate event: the read shows the window as
@@ -441,10 +442,10 @@ Three layers of validation prevent false-positive windowed matches:
 | **S1** | Deleted length matches expected `ref_len − 1` exactly, or is within the ≥50bp ±3bp band | Wrong-length deletions never match; ≥5bp ones flag `has_distinct_allele_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
 | **S3** | An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period `len` (the same bases in a homopolymer, a rotation such as `AC` for `CA` in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele). An in-band (≥50bp) length compares the deleted bases over the overlapping span | Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189) |
-| **del_len ≥ 5 guard** | A same-length Del ≥5bp that fails S3 is a distinct allele (`has_distinct_allele_nearby`); an in-band (≥50bp) one whose bases differ flags `has_shifted_same_length` | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191) |
+| **del_len ≥ 5 guard** | A same-length Del that fails S3 counts ALT when the read's bases across the window spell the ALT (the aligner misplaced the gap with compensating mismatches); otherwise, at ≥5bp, it is a distinct allele (`has_distinct_allele_nearby`). An in-band (≥50bp) one whose bases differ flags `has_shifted_same_length` | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191) |
 
 !!! note "has_shifted_same_length Phase 3 Fallback"
-    Only an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ over the overlap flags `has_shifted_same_length` and goes to Phase-3 haplotype arbitration (WFA+PairHMM under the default backend), propagating `partial_alt` evidence when Phase 3 does not confirm ALT. A same-length deletion (≥5bp) that gives another haplotype is a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
+    Only an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ over the overlap flags `has_shifted_same_length` and goes to Phase-3 haplotype arbitration (WFA+PairHMM under the default backend), propagating `partial_alt` evidence when Phase 3 does not confirm ALT. A same-length deletion that gives another haplotype is judged by the read's bases: ALT when they spell the ALT across the window (the aligner wrote the gap elsewhere with compensating mismatches), otherwise, at ≥5bp, a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
 
     Example: **TP53 `GACCGTGCAAGT→-` (12bp)** — left-alignment moves the anchor 3bp left of the actual `D(12)` position in reads. That placement gives the same haplotype, so S3 (same haplotype) accepts it; before 6.6.0 S3 compared the deleted bases, failed, and Phase 3 classified these reads as ALT.
 
@@ -501,8 +502,8 @@ as the annotated event inflated VAF several-fold at such loci.
 | Any other wrong-length pure indel at the anchor | **Neither + `partial_alt`** |
 | Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
 | Same-length candidate with unverifiable bases (all below `--min-baseq`) or a shifted same-length candidate failing S3 | **Phase-3 arbitration**, `partial_alt` propagated on non-ALT |
-| Windowed wrong-length op, repeat tract | **Neither + `partial_alt`** (deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
-| Windowed wrong-length op, unique context | **REF + `partial_alt`** (same size gate; anchor M is definitive REF, the stray op is surfaced) |
+| Windowed wrong-length op, where the event slides (`repeat_span ≥ 2` or a shift region wider than the event), or with an indel of the read inside the discrimination window | **Neither + `partial_alt`** (deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
+| Windowed wrong-length op, unique context, the window free of the read's indels | **REF + `partial_alt`** (same size gate; anchor M is definitive REF, the stray op is surfaced) |
 
 Phase 3 deliberately does **not** arbitrate the definitive wrong-length/wrong-sequence cases:
 its haplotype window is length-blind inside repeat tracts, and alignment scoring promotes a
@@ -1004,9 +1005,9 @@ alleles differ, unmasked, plus one more, every base fitting the ALT. A carrier
 that ends inside the repeat holds only shared bases, so its gap alone is
 placement: it counts toward depth only. The windows themselves are not mirrored
 onto ALT reads: a long insertion's carrier spends its span inside the insert and
-often cannot reach the far flank, yet its inserted bases discriminate (on the RC
-set 2,738 such carriers keep their ALT; 25 that fit both alleles or align neither
-flank do not).
+often cannot reach the far flank, yet its inserted bases discriminate. A masked
+base where the alleles first differ is skipped: a later unmasked one where they
+differ, and one more unmasked base, decide.
 
 **One change across the window (6.6.0, #188).** An indel at the variant's own
 junction counts ALT only when the read carries no other insertion or deletion

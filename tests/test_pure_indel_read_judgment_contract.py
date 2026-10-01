@@ -36,8 +36,6 @@ from test_shifted_indel_carriers_contract import (
     _ops,
 )
 
-RED = pytest.mark.xfail(strict=True, reason="cluster 1: review findings")
-
 SPAN8 = "ATCGGATA"  # a unique 8bp stretch between G and C
 UNIQUE8 = _contig("G" + SPAN8 + "C")
 INSERT10 = "ACGTTGCATC"  # not low-complexity; differs from the flank at once
@@ -98,7 +96,6 @@ def test_a_split_minus_two_read_is_another_allele_at_the_junction(tmp_path):
 
 
 # ── C22: a non-equivalent same-length deletion is a distinct allele ─────────────
-@RED
 def test_a_non_equivalent_same_length_deletion_is_a_distinct_allele(tmp_path):
     """G+ATCGGATA>G in unique sequence, the carriers delete 8 other bases starting
     2 in: another haplotype inside the discrimination window, so neither REF nor
@@ -106,7 +103,6 @@ def test_a_non_equivalent_same_length_deletion_is_a_distinct_allele(tmp_path):
     assert _count(tmp_path, UNIQUE8, "G" + SPAN8, "G", A + 3, "D", 8) == (5, 0, 5)
 
 
-@RED
 @pytest.mark.parametrize("shift", [1, 2, 3])
 def test_a_misplaced_deletion_whose_bases_are_the_alt_counts_alt(tmp_path, shift):
     """G+ATCGGATA>G, the carriers' bases are exactly the ALT haplotype but the
@@ -156,7 +152,6 @@ def test_true_anchor_changing_carriers_count_alt(tmp_path):
 
 
 # ── Review findings ──────────────────────────────────────────────────────────
-@RED
 def test_a_long_duplication_carrier_ending_with_the_insert_is_uninformative(tmp_path):
     """G>G+COPY66, a tandem duplication of the 66 bases after the G: the carriers
     write the whole insert at the junction and end there. Their bases (G then one
@@ -172,7 +167,6 @@ def test_a_long_duplication_carrier_ending_with_the_insert_is_uninformative(tmp_
     assert c.dp == 10
 
 
-@RED
 def test_a_masked_first_inserted_base_does_not_withdraw_a_carrier(tmp_path):
     """G>G+ACGTTGCATC in unique sequence, carriers ending inside the insert whose
     first inserted base is below --min-baseq: the next nine discriminate, so ALT."""
@@ -186,7 +180,6 @@ def test_a_masked_first_inserted_base_does_not_withdraw_a_carrier(tmp_path):
     assert _count_reads(tmp_path, ref, "G", "G" + INSERT10, carrier) == (5, 5, 0)
 
 
-@RED
 def test_a_large_deletion_with_a_small_insertion_at_its_far_junction_stays_alt(tmp_path):
     """A unique 57bp deletion, the carriers write D(57) then I(TT): within the
     large-deletion band's tolerance (≤3 changed bases), as D(56)+I(TT) already is."""
@@ -195,7 +188,6 @@ def test_a_large_deletion_with_a_small_insertion_at_its_far_junction_stays_alt(t
     assert _count_reads(tmp_path, ref, ref[A : A + 58], ref[A], _ops(ref, events)) == (5, 5, 0)
 
 
-@RED
 def test_soft_clipped_bases_behind_a_hard_clip_are_not_read(tmp_path):
     """GA>G in G AAAAA T, carriers ending two bases into the run, the rest of the
     read soft-clipped and then hard-clipped: the clipped bases are not read, so the
