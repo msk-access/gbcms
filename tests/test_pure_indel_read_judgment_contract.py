@@ -388,3 +388,47 @@ def test_a_deleted_anchor_replaced_before_the_insert_is_not_alt(tmp_path):
     events = [(A, "D", 1), (A + 1, "I", "T" + INSERT10)]
     ref = UNIQUE_GT
     assert _count_reads(tmp_path, ref, "G", "G" + INSERT10, _ops(ref, events))[1] == 0
+
+
+# ── Reads that start on the flank base ─────────────────────────────────────────
+@pytest.mark.xfail(strict=True, reason="H3 decision 5: red until fixed")
+def test_a_carrier_starting_on_the_flank_whose_bases_discriminate_is_alt(tmp_path):
+    """G>GA in G AAAAA T: carriers whose first base is the G (the run's left flank,
+    here the anchor), then the inserted A and the run's five A's: six A's after the
+    G where REF has five and then the T, so their bases carry the ALT. The ALT
+    side's windows already start at the flank; reading the bases starts there too
+    (on real data a 66bp duplication's carriers starting on the anchor, holding the
+    whole insert, were withdrawn)."""
+    from helpers import count_bam_checked, make_read, write_contig
+
+    from gbcms import _rs as gbcms_rs
+
+    seq = "G" + "A" + HOMOPOLYMER[A + 1 : A + 6]
+    reads = [make_read(f"a{i}", seq, A, ((0, 1), (1, 1), (0, 5))) for i in range(5)]
+    fa, bam = write_contig(tmp_path, HOMOPOLYMER, reads, "flank")
+    (pv,) = gbcms_rs.prepare_variants(
+        [gbcms_rs.Variant("1", A, "G", "GA", "X")], fa, 5, False, 1, True
+    )
+    (c,) = count_bam_checked(
+        bam, [pv.variant], [None], 20, 20, True, True, True, False, False, False, 1
+    )
+    assert (c.ad, c.dp) == (5, 5)
+
+
+def test_a_flank_start_whose_bases_fit_both_stays_uninformative(tmp_path):
+    """Guard: the same carriers ending one A earlier (five A's after the G) fit both
+    alleles: depth only."""
+    from helpers import count_bam_checked, make_read, write_contig
+
+    from gbcms import _rs as gbcms_rs
+
+    seq = "G" + "A" + HOMOPOLYMER[A + 1 : A + 5]
+    reads = [make_read(f"a{i}", seq, A, ((0, 1), (1, 1), (0, 4))) for i in range(5)]
+    fa, bam = write_contig(tmp_path, HOMOPOLYMER, reads, "flank2")
+    (pv,) = gbcms_rs.prepare_variants(
+        [gbcms_rs.Variant("1", A, "G", "GA", "X")], fa, 5, False, 1, True
+    )
+    (c,) = count_bam_checked(
+        bam, [pv.variant], [None], 20, 20, True, True, True, False, False, False, 1
+    )
+    assert (c.ad, c.dp) == (0, 5)
