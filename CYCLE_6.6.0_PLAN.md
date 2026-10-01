@@ -1395,6 +1395,18 @@ Pure refactors must leave the acceptance output byte-identical.
 Reviews:
 - The first review found a twin with no reference, warning texts, and C25's ALT
   side (filed and xfailed). All fixed.
+- The flank review found that a carrier starting (or ending) on a masked flank
+  was ALT, in both the fallbacks and the ALT windows: the flank base must now be
+  read (unmasked, the reference's). Also fixed:
+  - the census anchors on a flank the same way;
+  - C28's example spelled the ALT one base along, so it now holds neither
+    allele, with xfails in both directions;
+  - a reference that is not a file is refused, in the CLI config and in
+    `observe_molecules`.
+- Real data after the flank review: develop vs PR A, 140 of 144 files
+  byte-identical. The 66bp duplication still gains 11 ALT reads. Three
+  deletions lose 5 ALT reads (fragments unchanged); each read's flank base was at
+  BQ 9–15, and its bases fit both alleles.
 - Real data: develop vs PR A, 143 of 144 files byte-identical. One row changes:
   a 66bp duplication gains 11 carriers (start on the anchor, hold the whole
   insert), the flank-start decision.

@@ -74,11 +74,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Their bases fit both alleles, so they are depth only.
 - **Measured** on RC DNA, FORTE RNA and WES (develop vs branch, every MAF cell
   compared):
-  - 143 of 144 files are byte-identical; the other fixes target cases this data
+  - 140 of 144 files are byte-identical; the other fixes target cases this data
     does not hold;
-  - one row changes: a 66bp tandem duplication gains 11 ALT reads (8 fragments).
-    Each starts on the anchor and holds the whole 66bp insert past the first base
-    where the alleles differ, so they are carriers by their bases.
+  - four rows change, each adjudicated read by read:
+    - a 66bp tandem duplication gains 11 ALT reads (8 fragments). Each starts on
+      the anchor and holds the whole 66bp insert past the first base where the
+      alleles differ, so they are carriers by their bases;
+    - three deletions (14bp, and 1bp in two G runs) lose 5 ALT reads in all; no
+      fragment counts change. Each read starts or ends on a flank base read at
+      BQ 9–15, so its bases fit both alleles.
 
 ### Changed — binning invariance and a read census replace the legacy parity path (#170, #171)
 
