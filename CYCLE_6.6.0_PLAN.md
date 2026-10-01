@@ -1350,7 +1350,10 @@ the ranked work list is on #204. In brief:
 - **G. Comments:** stale ones, and ticket labels.
 - **H. Need a decision:** the allele-kind enum vs RNA triage; one fragment class
   shared by observations and mFSD; uppercasing `ref_context` (changes SW on
-  soft-masked FASTAs); `mfsd_ref_llr` ulp nondeterminism.
+  soft-masked FASTAs); `mfsd_ref_llr` ulp nondeterminism; for a read that starts
+  on a pure indel's left flank base, the windows start at the flank while the
+  read-by-bases ALT rule needs an aligned base outside the window (found writing
+  the census, T2).
 
 Pure refactors must leave the acceptance output byte-identical.
 
