@@ -152,14 +152,10 @@ jobs:
           mypy src/
 
       # Rust lint gate. Clippy is check-only (no final link), so it runs cleanly on
-      # Linux. Both feature configs are linted: default (dev/test, `legacy-parity` on)
-      # and the shipped-wheel config (`--no-default-features`). Warnings fail the build.
-      - name: Run clippy (default features)
+      # Linux. Warnings fail the build.
+      - name: Run clippy
         run: |
           cd rust && cargo clippy --all-targets -- -D warnings
-      - name: Run clippy (no-default-features — shipped-wheel config)
-        run: |
-          cd rust && cargo clippy --lib --no-default-features -- -D warnings
 
   rust-test:
     name: Rust unit tests (cargo test)
@@ -168,8 +164,9 @@ jobs:
     # resolve the Python symbols (no libpython host at link time), so the ~210 Rust
     # `#[cfg(test)]` unit tests run here. The ARM runner also exercises the Neon COITree
     # backend the GTF cache rebuilds. (Linux compilation is covered by the maturin builds
-    # in the `test`/`docker-test` jobs; the binned↔legacy *parity* assertions are
-    # Python-level — helpers.count_both — and already run under pytest in the `test` job.)
+    # in the `test`/`docker-test` jobs; the binning-invariance checks are Python-level —
+    # helpers.count_checked and tests/test_binning_invariance.py — and run under pytest in
+    # the `test` job, beside the bin-builder property test here.)
     runs-on: macos-latest
 
     steps:
@@ -189,18 +186,11 @@ jobs:
           workspaces: rust
 
       # The ~210 Rust unit tests (mFSD stats, GTF-cache roundtrip, thread-budget guard,
-      # alignment/CIGAR, WFA, contig normalization, …) — logic not reached through the
-      # Python FFI tests. Default features keep `legacy-parity` ON so the `count_bam`
-      # path also compiles under test. This is the gate that was missing.
-      - name: Cargo test (default features — Rust unit tests)
+      # alignment/CIGAR, WFA, contig normalization, bin geometry, …) — logic not reached
+      # through the Python FFI tests.
+      - name: Cargo test (Rust unit tests)
         run: |
           cd rust && cargo test
-
-      # The shipped wheel builds `--no-default-features` (no `count_bam`); confirm that
-      # configuration compiles and its tests pass too.
-      - name: Cargo test (no-default-features — shipped-wheel config)
-        run: |
-          cd rust && cargo test --lib --no-default-features
 
   docker-test:
     runs-on: ubuntu-latest

@@ -211,32 +211,6 @@ class PreparedVariant:
     decomposed_variant: Variant | None
     multi_allelic_group: int | None
 
-def count_bam(
-    bam_path: str,
-    variants: list[Variant],
-    decomposed: list[Variant | None],
-    min_mapq: int,
-    min_baseq: int,
-    filter_duplicates: bool,
-    filter_secondary: bool,
-    filter_supplementary: bool,
-    filter_qc_failed: bool,
-    filter_improper_pair: bool,
-    filter_indel: bool,
-    threads: int,
-    fragment_qual_threshold: int = 10,
-    sibling_variants: list[list[Variant]] | None = None,
-    alignment_backend: str = "pairhmm",
-    hmm_llr_threshold: float = 2.3,
-    hmm_gap_open: float = 1e-4,
-    hmm_gap_extend: float = 0.1,
-    hmm_gap_open_repeat: float = 1e-2,
-    hmm_gap_extend_repeat: float = 0.5,
-    mode: str = "dna",
-    enforce_strandedness: bool = False,
-    strandedness: str = "reverse",
-    reference_fasta: str | None = None,
-) -> list[BaseCounts]: ...
 def count_bam_binned(
     bam_path: str,
     variants: list[Variant],

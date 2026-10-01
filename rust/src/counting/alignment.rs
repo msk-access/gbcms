@@ -236,8 +236,8 @@ pub fn is_worth_realignment(record: &Record, win_start: i64, win_end: i64) -> bo
 /// of 2 works reliably because shared flanking bases contribute equally to
 /// both allele scores — trimming preserves this invariant.
 ///
-/// **Memory optimization**: Aligners are created once per variant in
-/// `count_single_variant()` and reused for all reads, avoiding repeated
+/// **Memory optimization**: Aligners are created once per variant in the
+/// read loop (`count_variant_from_cache`) and reused for all reads, avoiding repeated
 /// O(n×m) DP matrix allocation (indelpost pattern).
 ///
 /// Returns `(is_ref, is_alt, base_qual)` where `base_qual` is the median
