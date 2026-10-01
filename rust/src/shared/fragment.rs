@@ -311,6 +311,40 @@ impl FragmentEvidence {
             .or(self.read1_orientation)
             .or(self.read2_orientation)
     }
+
+    /// The molecule's class, from its resolved call (`resolve`). The observations
+    /// export and the mFSD size classes both read this one classifier and differ
+    /// only in what they do with `Unread`.
+    pub fn class(&self, frag_ref: bool, frag_alt: bool) -> MoleculeClass {
+        if frag_ref {
+            MoleculeClass::Ref
+        } else if frag_alt {
+            MoleculeClass::Alt
+        } else if self.has_n_base {
+            MoleculeClass::N
+        } else if self.has_informative_read {
+            MoleculeClass::Other
+        } else {
+            MoleculeClass::Unread
+        }
+    }
+}
+
+/// A molecule's allele class at one variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoleculeClass {
+    Ref,
+    Alt,
+    /// Neither, with an ambiguous base at the variant (in consensus BAMs, a
+    /// strand-discordant molecule).
+    N,
+    /// Neither, with an informative read: a third allele, or a REF/ALT tie the
+    /// consensus discarded.
+    Other,
+    /// No informative read: every read ended inside the indel's repeat tract, so
+    /// the molecule carries no readable allele. The observations export writes it
+    /// as OTHER (its rows reconcile with DPF); mFSD gives it no size class.
+    Unread,
 }
 
 /// Hash a QNAME to u64 for memory-efficient fragment tracking.
@@ -422,6 +456,20 @@ mod tests {
         let mut ev = FragmentEvidence::new();
         ev.observe(true, false, 30, true, true, 200, false, false, 0, true);
         assert_eq!(ev.min_mapq, 0);
+    }
+
+    #[test]
+    fn class_follows_the_call_then_the_ambiguous_base_then_informative_reads() {
+        let ev = FragmentEvidence::new();
+        assert_eq!(ev.class(true, false), MoleculeClass::Ref);
+        assert_eq!(ev.class(false, true), MoleculeClass::Alt);
+        assert_eq!(ev.class(false, false), MoleculeClass::Unread);
+        let mut read = FragmentEvidence::new();
+        read.has_informative_read = true;
+        assert_eq!(read.class(false, false), MoleculeClass::Other);
+        read.has_n_base = true;
+        assert_eq!(read.class(false, false), MoleculeClass::N);
+        assert_eq!(read.class(true, false), MoleculeClass::Ref);
     }
 
     // ── resolve() structural priority tests ───────────────────────────

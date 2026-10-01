@@ -46,7 +46,7 @@ use anyhow::{Context, Result};
 use log::{debug, info, trace, warn};
 use bio::alignment::pairwise::Aligner;
 
-use super::fragment::{FragmentEvidence, hash_qname, hash_molecule};
+use super::fragment::{FragmentEvidence, MoleculeClass, hash_qname, hash_molecule};
 use super::alignment::{SW_GAP_EXTEND, SW_GAP_OPEN};
 use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, reconstruct_span, MnpResult};
 use bio::alignment::distance::levenshtein;
@@ -1919,21 +1919,18 @@ fn count_variant_from_cache(
 
     for (molecule_hash, evidence) in fragments.iter() {
         let (frag_ref, frag_alt) = evidence.resolve(qual_diff_threshold);
+        // One class per molecule, from the same resolved call that feeds rdf/adf/dpf
+        // below, read by both the export and mFSD, so neither can diverge from the counts.
+        let class = evidence.class(frag_ref, frag_alt);
 
-        // Per-molecule export. Reuses the SAME resolved call that feeds rdf/adf/dpf
-        // below, so the export cannot diverge from the counts — it is the same value.
-        // REF is first-class; NEITHER splits into N (ambiguous base — a strand-discordant
-        // molecule in consensus BAMs) vs OTHER (third allele / no consensus). No counting
-        // logic is touched.
+        // Per-molecule export: every molecule is a row (the rows reconcile with DPF), so a
+        // molecule with no readable allele is OTHER here.
         if emit_obs {
-            let (allele, best_qual) = if frag_ref {
-                (OBS_ALLELE_REF, evidence.best_ref_qual)
-            } else if frag_alt {
-                (OBS_ALLELE_ALT, evidence.best_alt_qual)
-            } else if evidence.has_n_base {
-                (OBS_ALLELE_N, 0)
-            } else {
-                (OBS_ALLELE_OTHER, 0)
+            let (allele, best_qual) = match class {
+                MoleculeClass::Ref => (OBS_ALLELE_REF, evidence.best_ref_qual),
+                MoleculeClass::Alt => (OBS_ALLELE_ALT, evidence.best_alt_qual),
+                MoleculeClass::N => (OBS_ALLELE_N, 0),
+                MoleculeClass::Other | MoleculeClass::Unread => (OBS_ALLELE_OTHER, 0),
             };
             observations.push(Observation {
                 variant_index,
@@ -1969,17 +1966,14 @@ fn count_variant_from_cache(
         if let Some(sz) = evidence.insert_size {
             if mfsd && (50..=1000).contains(&sz) {
                 let sz_f = sz as f64;
-                if frag_ref {
-                    ref_sizes.push(sz_f);
-                } else if frag_alt {
-                    alt_sizes.push(sz_f);
-                } else if evidence.has_n_base {
-                    n_sizes.push(sz_f);
-                } else if evidence.has_informative_read {
-                    nonref_sizes.push(sz_f);
+                match class {
+                    MoleculeClass::Ref => ref_sizes.push(sz_f),
+                    MoleculeClass::Alt => alt_sizes.push(sz_f),
+                    MoleculeClass::N => n_sizes.push(sz_f),
+                    MoleculeClass::Other => nonref_sizes.push(sz_f),
+                    // No readable allele, so no size class.
+                    MoleculeClass::Unread => {}
                 }
-                // Otherwise every read ended inside the indel's repeat tract:
-                // the molecule carries no readable allele, so no class.
             }
         }
     }
