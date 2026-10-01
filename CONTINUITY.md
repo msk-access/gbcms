@@ -38,8 +38,8 @@ every item a sub-issue). Merged to develop so far:
   adversarial reviews; acceptance adjudicated per read (harness
   `~/test/gbcms/harness/c21/`, local).
 
-**In review — cluster 1 (C20 #188, C22 #191, C23 #192, C8 #121; C11 #159 closed
-with its measurement):** pure-indel reads count ALT only where their own bases hold
+**Merged — cluster 1, #203 (C20 #188, C22 #191, C23 #192, C8 #121; C11 #159
+closed with its measurement):** pure-indel reads count ALT only where their own bases hold
 the ALT; strict-path reads with another indel in the window, same-length deletions
 whose bases spell another allele, and anchor-keeping reads of `A>CCC` variants are
 another allele. Operator decisions (2026-10-01): no margin base on the ALT side;
@@ -66,14 +66,15 @@ Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. Cluster 1 PR (in review): merge, close #188 #191 #192 #121, harness cleanup.
-2. T1 #170 (retire the legacy path; binning invariance) with T2 #171 (census
-   oracle).
-3. C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
+1. T1 #170 (retire the legacy path; binning invariance) with T2 #171 (census
+   oracle): design note first. Then a code-quality sweep of the cycle's code
+   (duplication, unused code, silent failures, comments, logging, monitoring) as
+   its own PR (operator request, 2026-10-01).
+2. C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
    (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
-4. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
+3. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
    mkdocs pin, P3); O1+O2; S1+S2; M2+M4.
-5. Release: D1, D2; D4 before the cut; D6 late; D5 last.
+4. Release: D1, D2; D4 before the cut; D6 late; D5 last.
 
 
 ### Previous: 6.5.0 release

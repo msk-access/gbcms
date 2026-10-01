@@ -38,7 +38,7 @@ marks a ticket with an open PR.
 | C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] [closed] | #120 |
 | C6 | Error-tolerant exact-length insertion matching | L | [counts] [6.7.0] | #143 (#92) |
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] [6.7.0] | #144 (#92) |
-| C8 | One-base-REF delins without a shared anchor | L | [counts] [in review] | #121 |
+| C8 | One-base-REF delins without a shared anchor | L | [counts] [done] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] [done] | #157 |
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] [closed] | #159 |
@@ -52,10 +52,10 @@ marks a ticket with an open PR.
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
-| C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [decided] [in review] | #188 |
+| C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [done] | #188 |
 | C21 | Homopolymer insertion carriers placed elsewhere in the run counted REF (S3 anchor-base test) | H | [counts] [done] | #189 |
-| C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [decided] [in review] | #191 |
-| C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [decided] [in review] | #192 |
+| C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [done] | #191 |
+| C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [done] | #192 |
 | C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
 | C25 | Exact-carrier long-event junction windows credit REF to anchor-keeping carriers of long anchor-changing insertions | L | [counts] [6.7.0] | #199 |
 | C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decide] | #200 |
@@ -716,7 +716,7 @@ the aligned flank bases, bases below Q20 matching anything).
 - C8 (#121): the strict path credits an anchor-substituting insertion (`A>CCC`)
   from its inserted bases alone.
 
-### Cluster 1 — pure-indel read judgment: C20 (#188), C22 (#191), C23 (#192), C8 (#121); C11 (#159) closed · [counts] [in review]
+### Cluster 1 — pure-indel read judgment: C20 (#188), C22 (#191), C23 (#192), C8 (#121); C11 (#159) closed · [counts] [done]
 One rule, one PR: a carrier holds the ALT haplotype across the window, by its own
 bases.
 
@@ -1411,8 +1411,8 @@ code or a principle, and which must come first) and cut the scope:
 
 ## Suggested order
 
-Refreshed 2026-09-30 by the triage; C1, C2, C4, C10, C12, C13, C14, C21, R1, R2
-and O4 are done.
+Refreshed 2026-09-30 by the triage; C1, C2, C4, C8, C10, C12, C13, C14, C20, C21,
+C22, C23, R1, R2 and O4 are done (cluster 1 merged in #203).
 1. **Cluster 1, pure-indel read judgment, one design and one PR:** C20 #188, C22
    #191, C23 #192, measured together and decided as one rule (a carrier holds the
    ALT haplotype across the discrimination window), with C8 #121 (anchor-changing
