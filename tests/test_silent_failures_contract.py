@@ -174,3 +174,44 @@ def test_a_read_spliced_over_an_anchor_changing_insertions_anchor_is_out_of_dept
         bam, [v], [None], 0, 0, True, True, True, False, False, False, 1, mode="rna"
     )
     assert (c.dp, c.splice_skip_excluded) == (0, 5)
+
+
+@pytest.mark.xfail(strict=True, reason="H3 decision 3: red until fixed")
+@pytest.mark.parametrize("backend", ["sw", "pairhmm"])
+def test_a_soft_masked_reference_counts_the_same(tmp_path, backend):
+    """A FASTA soft-masked (lower case) over the locus is the same reference: the
+    reads, including those judged by alignment against the reference context (a
+    deletion that removes the anchor), count the same as against upper case."""
+    from helpers import assert_same_counts
+
+    rng = random.Random(5)
+    up = "".join(rng.choice("ACGT") for _ in range(900))
+    up = up[:A] + "GAAAAAAT" + up[A + 8 :]
+    low = up[:300] + up[300:520].lower() + up[520:]
+    reads = []
+    for i in range(6):
+        s = A - 50 + i
+        tail = 100 - (A - s)
+        reads.append(
+            make_read(
+                f"d{i}", up[s:A] + up[A + 3 : A + 3 + tail], s, ((0, A - s), (2, 3), (0, tail))
+            )
+        )
+        reads.append(
+            make_read(
+                f"c{i}",
+                up[s : A + 1] + up[A + 2 : A + 1 + tail],
+                s,
+                ((0, A + 1 - s), (2, 1), (0, tail - 1)),
+            )
+        )
+        reads.append(make_read(f"r{i}", up[s : s + 100], s, ((0, 100),)))
+    counts = []
+    for name, ref in (("upper", up), ("lower", low)):
+        fa, bam = write_contig(tmp_path, ref, reads, name)
+        counts.append(
+            count_bam_checked(
+                bam, [_prepared(fa, "GA", "G")], [None], *ARGS, alignment_backend=backend
+            )
+        )
+    assert_same_counts(counts[1], counts[0], f"soft-masked vs upper case, {backend}")
