@@ -156,7 +156,6 @@ def test_an_anchor_changing_insertion_counts_the_same_in_a_long_run(tmp_path):
     assert _ins_snv(tmp_path, 80, "run80") == short
 
 
-@pytest.mark.xfail(strict=True, reason="H3 decision 1: red until fixed")
 def test_a_read_spliced_over_an_anchor_changing_insertions_anchor_is_out_of_depth(tmp_path):
     """A>CCC changes its anchor base, so the anchor is what a read must show: an RNA
     read spliced over it, resuming at the next base, observes nothing of the allele

@@ -281,12 +281,13 @@ fn observe_read_span(record: &Record, start: i64, end: i64) -> SpanObservation {
 /// - pure deletion (anchor preserved): the deleted span
 ///   `[pos+1, pos+ref_len)` — the retained anchor base alone cannot
 ///   distinguish the alleles.
-/// - pure insertion (single-base REF): the two bases flanking the insertion
-///   junction, `[pos, pos+2)`. A read spliced over both flanks has nothing
-///   to say about bases inserted between them. A read whose M ends exactly
-///   at the junction keeps its aligned anchor and classifies normally.
-/// - SNV / MNP / delins / anchor-substituting Del+SNV: every REF position,
-///   `[pos, pos+ref_len)`.
+/// - pure insertion (single-base REF, anchor kept): the two bases flanking the
+///   insertion junction, `[pos, pos+2)`. A read spliced over both flanks has
+///   nothing to say about bases inserted between them. A read whose M ends
+///   exactly at the junction keeps its aligned anchor and classifies normally.
+/// - SNV / MNP / delins / anchor-substituting Del+SNV and Ins+SNV: every REF
+///   position, `[pos, pos+ref_len)`. An insertion that also changes its anchor
+///   (A>CCC) is judged as a delins, so the anchor is what a read must show.
 ///
 /// Reads without any N op return `None` immediately, so DNA-mode
 /// classification is untouched.
@@ -309,7 +310,7 @@ pub fn splice_skip_triage(record: &Record, variant: &Variant) -> Option<Classify
             .as_bytes()
             .first()
             .map(|b| b.to_ascii_uppercase());
-    let (span_start, span_end) = if ref_len == 1 && alt_len > 1 {
+    let (span_start, span_end) = if ref_len == 1 && alt_len > 1 && anchor_preserved {
         (variant.pos, variant.pos + 2)
     } else if ref_len > 1 && alt_len == 1 && anchor_preserved {
         (variant.pos + 1, variant.pos + ref_len)
