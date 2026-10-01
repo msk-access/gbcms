@@ -49,6 +49,7 @@ marks a ticket with an open PR.
 | C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
 | T1 | Test architecture: retire or unify the legacy parity path | M | [decide] | #170 |
 | T2 | Read census as the classification oracle in tests | M | | #171 |
+| H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | | #204 |
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
@@ -1419,7 +1420,8 @@ C22, C23, R1, R2 and O4 are done (cluster 1 merged in #203).
    one-base-REF variants to the exact-carrier rule) and C11 #159 (Phase-3 context
    sized by the shift region, with C23). Classifier-only: no mirror cost.
 2. **Test architecture:** T1 #170 (retire the legacy path; binning invariance)
-   with T2 #171 (read-census oracle), before the read-admission work.
+   with T2 #171 (read-census oracle), before the read-admission work; then H3
+   #204 (code-quality sweep of the cycle's code), its own PR.
 3. **Read admission and RNA:** C26 #200 (the REF side of cluster 1's one-change
    rule; measured first, then decided) and C28 #202 (the anchor-deleted Phase-3
    fallback; measured first); C17 #176 (measured first); R4 #185 with

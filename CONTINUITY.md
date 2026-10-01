@@ -69,7 +69,7 @@ community practice before deciding; record the decision in the issue.
 1. T1 #170 (retire the legacy path; binning invariance) with T2 #171 (census
    oracle): design note first. Then a code-quality sweep of the cycle's code
    (duplication, unused code, silent failures, comments, logging, monitoring) as
-   its own PR (operator request, 2026-10-01).
+   its own PR, H3 #204 (operator request, 2026-10-01).
 2. C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
    (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
 3. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
