@@ -1681,15 +1681,15 @@ fn count_variant_from_cache(
             }
             // Which rule decided the read (logs only).
             let d = &mut counts.decisions;
-            d.ref_withdrawn += u32::from(result.ref_withdrawn);
-            d.alt_withdrawn += u32::from(result.alt_withdrawn);
-            d.alt_unjudged += u32::from(result.alt_unjudged);
-            d.alt_by_bases += u32::from(result.alt_by_bases);
-            d.carrier_judged += u32::from(result.carrier_judged);
-            d.carrier_fallback += u32::from(result.carrier_fallback);
-            d.sibling_ref_excluded += u32::from(result.is_ref && ref_claimed_by_sibling);
-            d.sibling_alt_claimed += u32::from(result.is_alt && claimed_by_sibling);
-            d.clip_admitted += u32::from(clip_admitted);
+            d.ref_withdrawn += u64::from(result.ref_withdrawn);
+            d.alt_withdrawn += u64::from(result.alt_withdrawn);
+            d.alt_unjudged += u64::from(result.alt_unjudged);
+            d.alt_by_bases += u64::from(result.alt_by_bases);
+            d.carrier_judged += u64::from(result.carrier_judged);
+            d.carrier_fallback += u64::from(result.carrier_fallback);
+            d.sibling_ref_excluded += u64::from(result.is_ref && ref_claimed_by_sibling);
+            d.sibling_alt_claimed += u64::from(result.is_alt && claimed_by_sibling);
+            d.clip_admitted += u64::from(clip_admitted);
         }
 
         // ── FRAGMENT TRACKING: track ALL fragments for DPF.
@@ -2298,7 +2298,7 @@ fn warn_degraded_variants(variants: &[Variant]) {
 
 /// Once per variant: reads a rule could not judge for want of reference around
 /// the event, so their loss is never silent.
-fn warn_unjudged(variant: &Variant, alt_unjudged: u32, carrier_fallback: u32) {
+fn warn_unjudged(variant: &Variant, alt_unjudged: u64, carrier_fallback: u64) {
     if alt_unjudged > 0 {
         warn!(
             "{}:{} {}>{}: {} ALT read(s) span neither informative window and could not be judged \

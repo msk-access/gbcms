@@ -101,30 +101,31 @@ impl Variant {
     }
 }
 
-/// Per-variant counts of the rule that decided each depth read (DP reads only),
+/// Per-variant counts of the rule that decided each depth read (DP reads only;
+/// u64 so a pass's sum cannot overflow),
 /// for the Phase stats line and the counting pass's totals. They change no count
 /// and reach no output column.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DecisionTally {
     /// REF calls withdrawn: the read spans neither informative window.
-    pub ref_withdrawn: u32,
+    pub ref_withdrawn: u64,
     /// ALT calls withdrawn: neither ALT-side window, bases fit both alleles or
     /// could not be judged.
-    pub alt_withdrawn: u32,
+    pub alt_withdrawn: u64,
     /// Of those, the reads whose bases could not be judged (warned per variant).
-    pub alt_unjudged: u32,
+    pub alt_unjudged: u64,
     /// ALT calls kept by the read's own bases.
-    pub alt_by_bases: u32,
+    pub alt_by_bases: u64,
     /// Reads the exact-carrier rule judged.
-    pub carrier_judged: u32,
+    pub carrier_judged: u64,
     /// Reads it could not judge, left to the previous classifier (warned).
-    pub carrier_fallback: u32,
+    pub carrier_fallback: u64,
     /// REF reads excluded as a sibling's ALT (the multi-allelic REF guard).
-    pub sibling_ref_excluded: u32,
+    pub sibling_ref_excluded: u64,
     /// ALT reads claimed by a sibling (the AD-claiming guard).
-    pub sibling_alt_claimed: u32,
+    pub sibling_alt_claimed: u64,
     /// Reads admitted by the soft-clipped bases that carry their allele.
-    pub clip_admitted: u32,
+    pub clip_admitted: u64,
 }
 
 impl DecisionTally {
