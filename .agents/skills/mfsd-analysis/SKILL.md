@@ -23,7 +23,6 @@ mFSD (modified Fragment Size Distribution) analysis is **opt-in** via `--mfsd`.
 - ZSTD(1) compression: `parquet = { default-features = false, features = ["arrow", "zstd"] }`
 - `ref_sizes`/`alt_sizes` are Rust-internal — no `#[pyo3(get)]`
 - Called from `pipeline.py` after `count_bam_binned()`, not inside the counting engine
-  (`count_bam` is the feature-gated legacy parity oracle, not the production path)
 
 ## Statistics (watch-outs)
 

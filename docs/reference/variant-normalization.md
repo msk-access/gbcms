@@ -240,8 +240,8 @@ flowchart TD
     Input -->|"in parallel"| CountOrig
     Input -->|"in parallel"| CountDecomp
 
-    CountOrig["count_bam(original: CCCCCC→T)"]
-    CountDecomp["count_bam(corrected: CCCCCC→CCCCCT)"]
+    CountOrig["count (original: CCCCCC→T)"]
+    CountDecomp["count (corrected: CCCCCC→CCCCCT)"]
 
     CountOrig --> Compare
     CountDecomp --> Compare

@@ -49,4 +49,4 @@ and, with narrow context, promotes not-the-event reads — proven by
 adversarial review). Shifted same-length S3-fail candidates keep Phase-3;
 delins keep Phase-3. Preserve Fix 2/3/4 + PAX5 gains — see the
 must-not-regress list in #91. Related:
-[[siblings-break-binned-legacy-parity]], [[pysam-validation-oracle]].
+[[pysam-validation-oracle]].

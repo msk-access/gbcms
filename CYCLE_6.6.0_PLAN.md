@@ -12,8 +12,9 @@
 > **Discipline (unchanged from 6.5.0).**
 > - Every count-affecting ticket is measured first and red-first
 >   (xfail-strict battery committed before the fix).
-> - Changes to classification, filtering or fragment consensus are mirrored
->   in the legacy parity oracle.
+> - Counts must not depend on bin geometry (binning invariance), and
+>   classification is checked against the read census (T1/T2, 2026-10-01; until
+>   then, changes were mirrored in the legacy parity oracle).
 > - Each ticket gets an adversarial review before merge, then real-data
 >   acceptance on the local truth sets. Patient data stays local; issues and
 >   PRs stay PHI-free.
@@ -47,8 +48,8 @@ marks a ticket with an open PR.
 | C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
 | C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] [6.7.0] | #173 |
 | C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
-| T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [decided] [design for review] | #170 |
-| T2 | Read census as the classification oracle in tests | M | | #171 |
+| T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [in review] | #170 |
+| T2 | Read census as the classification oracle in tests | M | [in review] | #171 |
 | H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | | #204 |
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
@@ -839,7 +840,7 @@ harness `~/test/gbcms/harness/c20/`, local).**
 
 ## Test architecture
 
-### T1 (#170) + T2 (#171) — design note (2026-10-01) · [decided: retire] [design for review]
+### T1 (#170) + T2 (#171) — design note (2026-10-01) · [approved] [in review]
 **Facts.**
 - **The legacy path.** `count_bam` (200 lines) and `count_single_variant` (501)
   sit behind the `legacy-parity` feature: on by default, off in the shipped
@@ -966,6 +967,24 @@ harness `~/test/gbcms/harness/c20/`, local).**
 
 Production output must stay byte-identical: the engine does not change, and the
 RC/WES/FORTE acceptance must show 0 changed rows.
+
+**As built (2026-10-01; approved by the operator as written).**
+- Step 1: the hook, the Rust bin property test, and
+  `tests/test_binning_invariance.py`. Mutation-checked: re-introducing CR-1 fails
+  the property test and the clip-carrier fixture.
+- Step 2: the census (`tests/census.py`, `tests/test_read_census.py`).
+  Mutation-checked: disabling the ALT-side window, or equivalent insertion
+  placements, fails it. Writing it settled the census's conventions to match the
+  decided rules: the anchors are the tract's flank bases; a one-sided reading runs
+  on along each haplotype past the window; wrong-length reads run past where they
+  differ from the ALT, because a two-haplotype census cannot see a third allele in
+  a truncated read.
+- Step 3: `count_checked` everywhere. The 49 legacy-only tests now test
+  production, and all hold. Duplicate twins were removed.
+- Step 4: the legacy path deleted (841 lines out, 59 in), along with the feature,
+  the stub entry, the CI steps and `--no-default-features`.
+- Step 5: docs, rules, skills and memory. The two parity memories were deleted,
+  since the repo now records the rule.
 
 **Found on the way, for H3 #204:** `mfsd_ref_llr` varies in its last ulps
 between identical runs (float summation in HashMap order); output rounds it to
@@ -1339,8 +1358,8 @@ Pure refactors must leave the acceptance output byte-identical.
 
 ### P1 — Deep-bin fetch reduction (M5b) (#150, under #134) · L
 Deep cfDNA bins read 150k+ reads to count a few variants. Narrowing the fetch
-is the only remaining cfDNA lever. It is parity-sensitive, so scope it behind
-the binned↔legacy parity gate. Investigation first.
+is the only remaining cfDNA lever. It must keep binning invariance, so scope it
+behind the binning-invariance tests (T1). Investigation first.
 
 ### P2 — Bin cost-sort (PF-2) (#151, under #134) · L
 Niche: cfDNA has no long-pole bin. Cheap if a skewed workload appears.
@@ -1417,9 +1436,9 @@ Rust, `Cargo.toml` vs crates.io — mostly semver-major moves:
 3. **Rust:** `cargo update` (semver-compatible) first, then the gates. Then the
    majors one at a time: pyo3 → rust-htslib → bio → arrow/parquet →
    noodles-gtf → statrs → bincode. After each: clippy, `cargo test`, a maturin
-   build, pytest, and the parity suite. The API migrations are the real work.
+   build, pytest (with the binning-invariance tests). The API migrations are the real work.
 4. **Output identity:** on the fully upgraded build, the RC set (28 DNA + 33
-   RNA runs) must be byte-identical and the parity oracle green. Any count
+   RNA runs) must be byte-identical and the binning-invariance tests green. Any count
    change is explained (e.g. an htslib or bio behaviour change) before it is
    adopted.
 5. **Policy:** for each dependency decide upgrade, cap (why), or blocked

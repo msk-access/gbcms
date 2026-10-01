@@ -50,6 +50,15 @@ decide: which of a read's other indels decide its REF call, inside vs outside
 the window); C28 #202 (6.6.0,
 measure: anchor-deleting reads fall back to Phase 3's closer haplotype).
 
+**In review — T1 #170 + T2 #171 (test architecture):** the legacy per-variant
+`count_bam` path is retired. Binning invariance replaces parity: a Rust bin property
+test, `tests/test_binning_invariance.py`, and `count_checked` (production vs one
+variant per bin) in every counting test. A read census (`tests/census.py`) checks
+pure-indel classification; the open decisions C26/C27/C28 are strict xfails there.
+Branch `feature/t1-t2-test-architecture`; byte-identity harness
+`~/test/gbcms/harness/t1/` (local). Next: H3 #204, the code-quality sweep (audited;
+work list on the issue).
+
 **Triage (2026-09-30):** every open issue was gone through by cluster with the
 operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
 moved to a new 6.7.0 milestone (each with its reason on the issue); C5 and P2
