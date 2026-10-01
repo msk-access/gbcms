@@ -63,6 +63,8 @@ marks a ticket with an open PR.
 | C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decide] | #200 |
 | C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [6.7.0] | #201 |
 | C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
+| C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] | #207 |
+| C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] [6.7.0] | #208 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
 | R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
 | R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] [6.7.0] | #198 |
@@ -1442,9 +1444,10 @@ Reviews:
 - Left for later: the FASTA growth loops (their stop rules differ), and the
   per-variant carrier windows (a performance change).
 - Comments: stale ones fixed; ticket labels removed from code and log text.
-- Follow-ups found:
-  - `check_complex`'s inline query walk counts hard clips;
-  - the allele-kind predicates disagree on lowercase or unprepared input.
+- Follow-ups filed:
+  - C29 #207 (6.6.0): `check_complex`'s inline query walk counts hard clips;
+  - C30 #208 (6.7.0): two pure-indel tests disagree with the allele kind on
+    lowercase or unprepared input.
 
 ## Performance (M5 leftovers)
 

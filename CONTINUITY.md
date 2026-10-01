@@ -74,9 +74,10 @@ comments):**
 - an adversarial review plus a develop-vs-branch fuzz found no count change
   beyond the declared ones (see the plan's H3 "PR B as built").
 
-Follow-ups to file:
-- `check_complex`'s inline query walk counts hard clips;
-- the allele-kind predicates disagree on lowercase or unprepared input.
+Follow-ups filed:
+- C29 #207 (6.6.0): `check_complex`'s inline query walk counts hard clips;
+- C30 #208 (6.7.0): two pure-indel tests disagree with the allele kind on
+  lowercase or unprepared input.
 
 **Triage (2026-09-30):** every open issue was gone through by cluster with the
 operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
@@ -98,7 +99,7 @@ community practice before deciding; record the decision in the issue.
    oracle): design note first. Then a code-quality sweep of the cycle's code
    (duplication, unused code, silent failures, comments, logging, monitoring) as
    its own PR, H3 #204 (operator request, 2026-10-01).
-2. C25 #199 (moved into 6.6.0), C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
+2. C25 #199 (moved into 6.6.0), C26 #200 (measure first, decide) C28 #202 (measure first) and C29 #207 (measure first); C17 #176
    (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
 3. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
    mkdocs pin, P3); O1+O2; S1+S2; M2+M4.
