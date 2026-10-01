@@ -215,7 +215,7 @@ def observe_molecules(
     library_type = cast(str, _pick(library_type, "library_type", "capture"))
     rescue_homopolymer = cast(bool, _pick(rescue_homopolymer, "rescue_homopolymer", False))
     reference_fasta = cast("str | Path | None", _pick(reference_fasta, "reference_fasta", None))
-    if reference_fasta is None:
+    if not reference_fasta:
         raise ValueError(
             "observe_molecules needs reference_fasta (or a config that carries one): variants "
             "are normalized and judged against the reference, as in the CLI"

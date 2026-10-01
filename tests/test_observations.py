@@ -783,5 +783,6 @@ def test_observing_without_a_reference_is_refused(tmp_path):
     import gbcms
 
     bam = build_bam(tmp_path, [_read("a", ALT_BASE)], filename="noref.bam")
-    with pytest.raises(ValueError, match="reference_fasta"):
-        gbcms.observe_molecules(bam, [_py_variant()])
+    for missing in ({}, {"reference_fasta": None}, {"reference_fasta": ""}):
+        with pytest.raises(ValueError, match="reference_fasta"):
+            gbcms.observe_molecules(bam, [_py_variant()], **missing)

@@ -2309,20 +2309,14 @@ fn has_clip_boundary_in(record: &Record, lo: i64, hi: i64) -> bool {
         || (trailing && (lo..=hi).contains(&read_ref_end(record)))
 }
 
-/// One WARN per variant when depth reads could not be evaluated by the
-/// PairHMM backend's pangenomic haplotype matrix. The Smith-Waterman fallback
-/// is kept (operator decision) but must not be silent: it only fires when the
-/// variant's reference context is missing or does not contain it, i.e.
-/// upstream input was malformed. Without any context no scorer can run, so
-/// those reads end NEITHER — the message says which outcome applied.
 /// Once per variant: reads a rule could not judge for want of reference around
 /// the event, so their loss is never silent.
 fn warn_unjudged(variant: &Variant, alt_unjudged: u32, carrier_fallback: u32) {
     if alt_unjudged > 0 {
         warn!(
             "{}:{} {}>{}: {} ALT read(s) span neither informative window and could not be judged \
-             by their bases: no prepared reference reaches past the event to read them against \
-             (an unprepared variant, or a contig end) — counted as depth only",
+             by their bases: no prepared reference holds the event (the variant was not \
+             prepared against a FASTA, or failed prep) — counted as depth only",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, alt_unjudged,
         );
     }
@@ -2336,6 +2330,12 @@ fn warn_unjudged(variant: &Variant, alt_unjudged: u32, carrier_fallback: u32) {
     }
 }
 
+/// One WARN per variant when depth reads could not be evaluated by the
+/// PairHMM backend's pangenomic haplotype matrix. The Smith-Waterman fallback
+/// is kept (operator decision) but must not be silent: it only fires when the
+/// variant's reference context is missing or does not contain it, i.e.
+/// upstream input was malformed. Without any context no scorer can run, so
+/// those reads end NEITHER — the message says which outcome applied.
 fn warn_sw_fallback(variant: &Variant, n: u32) {
     if n > 0 {
         let outcome = if variant.ref_context.is_none() {

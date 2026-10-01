@@ -247,7 +247,6 @@ def test_identical_runs_give_identical_mfsd_bits(tmp_path):
     assert len(seen) == 1, f"{len(seen)} distinct results over 20 runs"
 
 
-@pytest.mark.xfail(strict=True, reason="H3 review: red until fixed")
 def test_a_decomposed_twin_in_a_long_run_is_judged_by_the_exact_carrier_rule(tmp_path, caplog):
     """Prep gives the homopolymer twin (AAA>C read as AAA>AAC) its own widened
     reference, so in a long run the exact-carrier rule judges the twin's reads too

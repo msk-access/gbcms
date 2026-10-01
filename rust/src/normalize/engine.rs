@@ -881,6 +881,14 @@ fn prepare_single_variant(
         None
     };
 
+    // The twin is judged by the exact-carrier rule like any substitution-bearing
+    // variant, so it gets the same widened reference (without one it always fell
+    // back in a long run).
+    let decomposed_variant = decomposed_variant.map(|mut twin| {
+        twin.event_ref = event_core_ref(reader, &twin);
+        twin
+    });
+
     // Compute repeat_span from ref_context (PairHMM gap blending, windowed-scan
     // width, tract-cluster grouping reach).
     // find_tandem_repeat detects tandem repeats around the variant position.
