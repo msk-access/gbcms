@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -744,6 +744,42 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-binning-invariance-and-a-read-census-replace-the-legacy-parity-path-170-171">Changed — binning invariance and a read census replace the legacy parity path (#170, #171)<a class="headerlink" href="#changed-binning-invariance-and-a-read-census-replace-the-legacy-parity-path-170-171" title="Permanent link">¶</a></h3>
+<ul>
+<li>The per-variant <code>count_bam</code> (with <code>count_single_variant</code>, about 700 lines that
+  duplicated the binned loop) is removed, along with the <code>legacy-parity</code> Cargo
+  feature. Production never called it, so output is unchanged: the RC, FORTE and
+  WES acceptance runs are byte-identical.</li>
+<li>It shared the classifier, so it could not see classification bugs. Every one
+    found this cycle came from judging reads by their bases.</li>
+<li>Its one bin bug, the anchor's fetch end, was found in review. Synthetic
+    fixtures fit in one bin, so parity could not have caught it.</li>
+<li>It cost every counting change a second edit.</li>
+<li><code>count_bam_binned</code> and <code>count_bam_binned_observations</code> take two optional test
+  arguments, <code>bin_window</code> and <code>bin_max_variants</code> (default: the production
+  constants; below 1: <code>ValueError</code>). Counts must not depend on them:</li>
+<li>A Rust property test checks that every variant lands in exactly one bin whose
+    fetch holds its read window.</li>
+<li><code>tests/test_binning_invariance.py</code> compares every field under the per-variant
+    fetch (window 1, cap 1), tiny windows, small caps, one call per row, shuffled
+    input on 4 threads, and decoy rows. Each geometry is asserted to split the bins.
+    Its fixtures are synthetic DNA (plain, and <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>+<abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>+<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>; siblings, a decomposed
+    twin, overlapping mates), clip carriers past a long anchor, an RNA locus with a
+    GTF and antisense reads, and the real test <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>.</li>
+<li>Every counting test now runs through <code>count_checked</code>, which also counts with
+    one variant per bin, so the 49 tests that ran only the legacy path test
+    production. Most of those calls hold one variant and so check the per-variant
+    fetch window; the binning suite covers multi-variant bins.</li>
+<li><code>tests/census.py</code> judges each read by its own bases across a pure indel's tract,
+  with the decided rules: REF needs one base past the first difference, ALT only
+  that base. The census finds each tract by its own slide, and a test checks that
+  prep agrees. <code>tests/test_read_census.py</code> checks the engine against it on reads
+  generated around ten pure indels (ending anywhere past the anchor, some
+  soft-clipped). The open decisions are strict xfails: #200, #201, #202.</li>
+<li>Both new suites were mutation-checked. Re-introducing the bin-end bug fails
+  the property test and the clip-carrier fixture. Disabling the ALT-side window,
+  or the equivalent-placement rule, fails the census test.</li>
+</ul>
 <h3 id="fixed-pure-indel-reads-count-alt-only-where-their-own-bases-hold-the-alt-188-191-192-121">Fixed — pure-indel reads count ALT only where their own bases hold the ALT (#188, #191, #192, #121)<a class="headerlink" href="#fixed-pure-indel-reads-count-alt-only-where-their-own-bases-hold-the-alt-188-191-192-121" title="Permanent link">¶</a></h3>
 <ul>
 <li>C10 (#160) takes REF only from reads whose bases settle the allele. ALT reads

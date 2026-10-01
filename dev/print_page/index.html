@@ -9305,8 +9305,8 @@ Use mouse to pan and zoom
     Input --&gt;|"in parallel"| CountOrig
     Input --&gt;|"in parallel"| CountDecomp
 
-    CountOrig["count_bam(original: CCCCCC→T)"]
-    CountDecomp["count_bam(corrected: CCCCCC→CCCCCT)"]
+    CountOrig["count (original: CCCCCC→T)"]
+    CountDecomp["count (corrected: CCCCCC→CCCCCT)"]
 
     CountOrig --&gt; Compare
     CountDecomp --&gt; Compare
@@ -12217,8 +12217,8 @@ variant and counted as <code>partial_alt</code>.</p>
 across every base that could tell this variant's alleles apart, so it stays REF,
 as IGV shows it and as GATK counts REF at a site unless an event overlaps it.</p>
 <p>The exclusion runs before fragment evidence is recorded, so <code>ref_count</code> and
-<code>ref_count_fragment</code> drop the same molecules. The production, legacy parity and
-per-transcript paths apply the same rule.</p>
+<code>ref_count_fragment</code> drop the same molecules. The main and per-transcript read loops
+apply the same rule.</p>
 <div class="admonition important">
 <p class="admonition-title">This prevents systematic REF inflation at multi-allelic loci, preserving unbiased <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> estimation.</p>
 </div>
@@ -15183,8 +15183,12 @@ caveat in gbcms's output.</p>
 <td style="text-align: left;">Variant grouping by chromosome for cache-efficient counting (<code>count_bam_binned</code>)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>Parity test</strong></td>
-<td style="text-align: left;">Test verifying <code>count_bam</code> and <code>count_bam_binned</code> produce identical results</td>
+<td style="text-align: left;"><strong>Binning invariance</strong></td>
+<td style="text-align: left;">The rule that counts never depend on how variants are grouped into bins (window, cap, one variant per bin or per call); checked by <code>tests/test_binning_invariance.py</code> and every <code>count_checked</code> call</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Read census</strong></td>
+<td style="text-align: left;">The tests' classification oracle (<code>tests/census.py</code>): each read judged by its own bases across the variant's tract</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Complex Del+SNV</strong></td>
@@ -15379,19 +15383,16 @@ Use mouse to pan and zoom
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#development-developer-guide-__codelineno-4-4"></a><span class="c1"># Release (optimized)</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#development-developer-guide-__codelineno-4-5"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#development-developer-guide-__codelineno-4-6"></a>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#development-developer-guide-__codelineno-4-7"></a><span class="c1"># Build wheel (dev/test — includes the legacy count_bam parity oracle)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#development-developer-guide-__codelineno-4-7"></a><span class="c1"># Build wheel</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#development-developer-guide-__codelineno-4-8"></a>maturin<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--out<span class="w"> </span>dist
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#development-developer-guide-__codelineno-4-9"></a>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#development-developer-guide-__codelineno-4-10"></a><span class="c1"># Build the SHIPPED wheel (drops the test-only count_bam parity oracle)</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#development-developer-guide-__codelineno-4-11"></a>maturin<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--no-default-features<span class="w"> </span>--out<span class="w"> </span>dist
 </code></pre></div>
 <div class="admonition note">
-<p class="admonition-title"><code>legacy-parity</code> feature</p>
-<p><code>maturin develop</code> and <code>cargo test</code> include the per-variant <code>count_bam</code> (the
-binned↔legacy parity oracle) via the default <code>legacy-parity</code> Cargo feature. Release
-wheels build <code>--no-default-features</code> to omit it — production only uses
-<code>count_bam_binned</code>. Changing the counting core means mirroring it in <em>both</em> paths;
-see <code>.agents/rules/architecture.md</code> §"Legacy count_bam parity oracle".</p>
+<p class="admonition-title">Binning invariance</p>
+<p>Counts must not depend on how variants are binned. <code>count_bam_binned</code> takes two test
+arguments, <code>bin_window</code> and <code>bin_max_variants</code>; the test helper <code>count_checked</code> runs
+production bins and one variant per bin and compares every field, and
+<code>tests/test_binning_invariance.py</code> varies the geometry further. See
+<code>.agents/rules/architecture.md</code> §"Binning invariance".</p>
 </div>
 <hr>
 <h2 id="development-developer-guide-regression-testing">Regression Testing<a class="headerlink" href="#development-developer-guide-regression-testing" title="Permanent link">¶</a></h2>
@@ -15980,30 +15981,31 @@ DEBUG (Python and Rust — Rust records are forwarded through <code>pyo3-log</co
 <h2 id="development-testing-guide-test-structure">Test Structure<a class="headerlink" href="#development-testing-guide-test-structure" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#development-testing-guide-__codelineno-2-1"></a>tests/
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#development-testing-guide-__codelineno-2-2"></a>├── conftest.py                  # Shared pytest fixtures (paths, RNA BAM, editing DB)
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#development-testing-guide-__codelineno-2-3"></a>├── helpers.py                   # Shared helpers (build_bam, make_read, count_one, count_both)
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#development-testing-guide-__codelineno-2-4"></a>├── test_accuracy.py             # Variant type accuracy + DP invariant
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#development-testing-guide-__codelineno-2-5"></a>├── test_alignment_backend.py    # PairHMM default, backend integration
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#development-testing-guide-__codelineno-2-6"></a>├── test_baq.py                  # BAQ quality downgrade
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#development-testing-guide-__codelineno-2-7"></a>├── test_cli_dna_rna.py          # dna/rna command existence, option isolation
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#development-testing-guide-__codelineno-2-8"></a>├── test_cli_sample_id.py        # CLI argument parsing
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#development-testing-guide-__codelineno-2-9"></a>├── test_config_isolation.py      # DNA vs RNA config isolation + validation
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#development-testing-guide-__codelineno-2-10"></a>├── test_dp_neither.py           # Gap 1D: DP includes third-allele reads
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#development-testing-guide-__codelineno-2-11"></a>├── test_filters.py              # Read filtering
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#development-testing-guide-__codelineno-2-12"></a>├── test_fragment_consensus.py   # Fragment-level quality consensus + DPF invariant
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#development-testing-guide-__codelineno-2-13"></a>├── test_indel_fragment_consensus.py  # INDEL structural ALT priority + Phase 3 dispatch
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#development-testing-guide-__codelineno-2-14"></a>├── test_fuzzy_complex.py        # Quality-aware masked complex matching + MSI penalties
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#development-testing-guide-__codelineno-2-15"></a>├── test_maf_preservation.py     # MAF column preservation
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#development-testing-guide-__codelineno-2-16"></a>├── test_maf_reader.py           # MAF input parsing
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#development-testing-guide-__codelineno-2-17"></a>├── test_mfsd_flag.py            # mFSD flag behavior
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#development-testing-guide-__codelineno-2-18"></a>├── test_multi_allelic.py        # Gap 1A: Sibling ALT exclusion
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#development-testing-guide-__codelineno-2-19"></a>├── test_normalization.py        # Left-alignment, REF validation, window expansion
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#development-testing-guide-__codelineno-2-20"></a>├── test_pipeline_v2.py          # End-to-end pipeline
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#development-testing-guide-__codelineno-2-21"></a>├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#development-testing-guide-__codelineno-2-22"></a>├── test_diagnostic_flags.py     # v4.2.0 gbcms_diagnostic flag computation
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#development-testing-guide-__codelineno-2-23"></a>├── test_rescue_mnp.py           # v4.3.0 --rescue-mnp MNP decomposition rescue
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#development-testing-guide-__codelineno-2-24"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#development-testing-guide-__codelineno-2-25"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#development-testing-guide-__codelineno-2-26"></a>└── test_strand_counts.py        # Strand-specific counts
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#development-testing-guide-__codelineno-2-3"></a>├── helpers.py                   # Shared helpers (build_bam, make_read, count_checked, count_one_checked)
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#development-testing-guide-__codelineno-2-4"></a>├── census.py                    # Read census: each read judged by its own bases (the classification oracle)
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#development-testing-guide-__codelineno-2-5"></a>├── test_accuracy.py             # Variant type accuracy + DP invariant
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#development-testing-guide-__codelineno-2-6"></a>├── test_alignment_backend.py    # PairHMM default, backend integration
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#development-testing-guide-__codelineno-2-7"></a>├── test_baq.py                  # BAQ quality downgrade
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#development-testing-guide-__codelineno-2-8"></a>├── test_cli_dna_rna.py          # dna/rna command existence, option isolation
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#development-testing-guide-__codelineno-2-9"></a>├── test_cli_sample_id.py        # CLI argument parsing
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#development-testing-guide-__codelineno-2-10"></a>├── test_config_isolation.py      # DNA vs RNA config isolation + validation
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#development-testing-guide-__codelineno-2-11"></a>├── test_dp_neither.py           # Gap 1D: DP includes third-allele reads
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#development-testing-guide-__codelineno-2-12"></a>├── test_filters.py              # Read filtering
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#development-testing-guide-__codelineno-2-13"></a>├── test_fragment_consensus.py   # Fragment-level quality consensus + DPF invariant
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#development-testing-guide-__codelineno-2-14"></a>├── test_indel_fragment_consensus.py  # INDEL structural ALT priority + Phase 3 dispatch
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#development-testing-guide-__codelineno-2-15"></a>├── test_fuzzy_complex.py        # Quality-aware masked complex matching + MSI penalties
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#development-testing-guide-__codelineno-2-16"></a>├── test_maf_preservation.py     # MAF column preservation
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#development-testing-guide-__codelineno-2-17"></a>├── test_maf_reader.py           # MAF input parsing
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#development-testing-guide-__codelineno-2-18"></a>├── test_mfsd_flag.py            # mFSD flag behavior
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#development-testing-guide-__codelineno-2-19"></a>├── test_multi_allelic.py        # Gap 1A: Sibling ALT exclusion
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#development-testing-guide-__codelineno-2-20"></a>├── test_normalization.py        # Left-alignment, REF validation, window expansion
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#development-testing-guide-__codelineno-2-21"></a>├── test_pipeline_v2.py          # End-to-end pipeline
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#development-testing-guide-__codelineno-2-22"></a>├── test_phase2_output.py        # Diagnostic columns (any_alt, partial_alt, n_count)
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#development-testing-guide-__codelineno-2-23"></a>├── test_diagnostic_flags.py     # v4.2.0 gbcms_diagnostic flag computation
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#development-testing-guide-__codelineno-2-24"></a>├── test_rescue_mnp.py           # v4.3.0 --rescue-mnp MNP decomposition rescue
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#development-testing-guide-__codelineno-2-25"></a>├── test_rna_output.py           # RNA MAF/VCF column presence/absence
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#development-testing-guide-__codelineno-2-26"></a>├── test_shifted_indels.py       # Windowed indel detection (±5bp)
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#development-testing-guide-__codelineno-2-27"></a>└── test_strand_counts.py        # Strand-specific counts
 </code></pre></div>
 <hr>
 <h2 id="development-testing-guide-writing-tests">Writing Tests<a class="headerlink" href="#development-testing-guide-writing-tests" title="Permanent link">¶</a></h2>
@@ -16030,8 +16032,8 @@ DEBUG (Python and Rust — Rust records are forwarded through <code>pyo3-log</co
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#development-testing-guide-__codelineno-4-3"></a>    <span class="c1"># Create variant</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#development-testing-guide-__codelineno-4-4"></a>    <span class="n">variant</span> <span class="o">=</span> <span class="n">Variant</span><span class="p">(</span><span class="s2">"chr1"</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">,</span> <span class="s2">"T"</span><span class="p">,</span> <span class="s2">"SNP"</span><span class="p">)</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#development-testing-guide-__codelineno-4-5"></a>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#development-testing-guide-__codelineno-4-6"></a>    <span class="c1"># Run counting</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#development-testing-guide-__codelineno-4-7"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">count_bam</span><span class="p">(</span><span class="n">bam_path</span><span class="p">,</span> <span class="p">[</span><span class="n">variant</span><span class="p">],</span> <span class="n">decomposed</span><span class="o">=</span><span class="p">[</span><span class="kc">None</span><span class="p">],</span> <span class="o">...</span><span class="p">)</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#development-testing-guide-__codelineno-4-6"></a>    <span class="c1"># Count (production bins, checked against one variant per bin)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#development-testing-guide-__codelineno-4-7"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">count_checked</span><span class="p">(</span><span class="n">bam_path</span><span class="p">,</span> <span class="p">[</span><span class="n">variant</span><span class="p">])</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#development-testing-guide-__codelineno-4-8"></a>
 <a id="__codelineno-4-9" name="__codelineno-4-9" href="#development-testing-guide-__codelineno-4-9"></a>    <span class="c1"># Validate allele counts</span>
 <a id="__codelineno-4-10" name="__codelineno-4-10" href="#development-testing-guide-__codelineno-4-10"></a>    <span class="k">assert</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">rd</span> <span class="o">==</span> <span class="mi">50</span>
@@ -16045,12 +16047,17 @@ DEBUG (Python and Rust — Rust records are forwarded through <code>pyo3-log</co
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#development-testing-guide-__codelineno-5-3"></a>    <span class="n">v1</span> <span class="o">=</span> <span class="n">Variant</span><span class="p">(</span><span class="s2">"chr1"</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">,</span> <span class="s2">"T"</span><span class="p">,</span> <span class="s2">"SNP"</span><span class="p">)</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#development-testing-guide-__codelineno-5-4"></a>    <span class="n">v2</span> <span class="o">=</span> <span class="n">Variant</span><span class="p">(</span><span class="s2">"chr1"</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">,</span> <span class="s2">"C"</span><span class="p">,</span> <span class="s2">"SNP"</span><span class="p">)</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#development-testing-guide-__codelineno-5-5"></a>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#development-testing-guide-__codelineno-5-6"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">count_bam</span><span class="p">(</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#development-testing-guide-__codelineno-5-7"></a>        <span class="n">bam_path</span><span class="p">,</span> <span class="p">[</span><span class="n">v1</span><span class="p">,</span> <span class="n">v2</span><span class="p">],</span> <span class="n">decomposed</span><span class="o">=</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#development-testing-guide-__codelineno-5-8"></a>        <span class="n">sibling_variants</span><span class="o">=</span><span class="p">[[</span><span class="n">v2</span><span class="p">],</span> <span class="p">[</span><span class="n">v1</span><span class="p">]],</span>  <span class="c1"># Gap 1A: sibling info</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#development-testing-guide-__codelineno-5-9"></a>        <span class="o">...</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#development-testing-guide-__codelineno-5-10"></a>    <span class="p">)</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#development-testing-guide-__codelineno-5-6"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">count_checked</span><span class="p">(</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#development-testing-guide-__codelineno-5-7"></a>        <span class="n">bam_path</span><span class="p">,</span> <span class="p">[</span><span class="n">v1</span><span class="p">,</span> <span class="n">v2</span><span class="p">],</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#development-testing-guide-__codelineno-5-8"></a>        <span class="n">sibling_variants</span><span class="o">=</span><span class="p">[[</span><span class="n">v2</span><span class="p">],</span> <span class="p">[</span><span class="n">v1</span><span class="p">]],</span>  <span class="c1"># co-annotated alleles at one site</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#development-testing-guide-__codelineno-5-9"></a>    <span class="p">)</span>
 </code></pre></div>
+<h3 id="development-testing-guide-binning-invariance-and-the-read-census">Binning invariance and the read census<a class="headerlink" href="#development-testing-guide-binning-invariance-and-the-read-census" title="Permanent link">¶</a></h3>
+<p><code>count_checked</code> (and <code>count_bam_checked</code>, which takes <code>count_bam_binned</code>'s arguments)
+counts with production bins and again with one variant per bin, and fails on any field
+that differs: bin geometry is performance only. <code>tests/test_binning_invariance.py</code>
+varies it further. For pure indels, <code>tests/census.py</code> judges each read by its own bases;
+<code>assert_matches(counts, census(...))</code> checks the engine's REF and ALT against it.</p>
 <h3 id="development-testing-guide-key-invariants-to-assert">Key Invariants to Assert<a class="headerlink" href="#development-testing-guide-key-invariants-to-assert" title="Permanent link">¶</a></h3>
 <p>All counting tests should verify:</p>
 <table>
@@ -16749,6 +16756,42 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-binning-invariance-and-a-read-census-replace-the-legacy-parity-path-170-171">Changed — binning invariance and a read census replace the legacy parity path (#170, #171)<a class="headerlink" href="#development-changelog-changed-binning-invariance-and-a-read-census-replace-the-legacy-parity-path-170-171" title="Permanent link">¶</a></h3>
+<ul>
+<li>The per-variant <code>count_bam</code> (with <code>count_single_variant</code>, about 700 lines that
+  duplicated the binned loop) is removed, along with the <code>legacy-parity</code> Cargo
+  feature. Production never called it, so output is unchanged: the RC, FORTE and
+  WES acceptance runs are byte-identical.</li>
+<li>It shared the classifier, so it could not see classification bugs. Every one
+    found this cycle came from judging reads by their bases.</li>
+<li>Its one bin bug, the anchor's fetch end, was found in review. Synthetic
+    fixtures fit in one bin, so parity could not have caught it.</li>
+<li>It cost every counting change a second edit.</li>
+<li><code>count_bam_binned</code> and <code>count_bam_binned_observations</code> take two optional test
+  arguments, <code>bin_window</code> and <code>bin_max_variants</code> (default: the production
+  constants; below 1: <code>ValueError</code>). Counts must not depend on them:</li>
+<li>A Rust property test checks that every variant lands in exactly one bin whose
+    fetch holds its read window.</li>
+<li><code>tests/test_binning_invariance.py</code> compares every field under the per-variant
+    fetch (window 1, cap 1), tiny windows, small caps, one call per row, shuffled
+    input on 4 threads, and decoy rows. Each geometry is asserted to split the bins.
+    Its fixtures are synthetic DNA (plain, and <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr>+<abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr>+<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>; siblings, a decomposed
+    twin, overlapping mates), clip carriers past a long anchor, an RNA locus with a
+    GTF and antisense reads, and the real test <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>.</li>
+<li>Every counting test now runs through <code>count_checked</code>, which also counts with
+    one variant per bin, so the 49 tests that ran only the legacy path test
+    production. Most of those calls hold one variant and so check the per-variant
+    fetch window; the binning suite covers multi-variant bins.</li>
+<li><code>tests/census.py</code> judges each read by its own bases across a pure indel's tract,
+  with the decided rules: REF needs one base past the first difference, ALT only
+  that base. The census finds each tract by its own slide, and a test checks that
+  prep agrees. <code>tests/test_read_census.py</code> checks the engine against it on reads
+  generated around ten pure indels (ending anywhere past the anchor, some
+  soft-clipped). The open decisions are strict xfails: #200, #201, #202.</li>
+<li>Both new suites were mutation-checked. Re-introducing the bin-end bug fails
+  the property test and the clip-carrier fixture. Disabling the ALT-side window,
+  or the equivalent-placement rule, fails the census test.</li>
+</ul>
 <h3 id="development-changelog-fixed-pure-indel-reads-count-alt-only-where-their-own-bases-hold-the-alt-188-191-192-121">Fixed — pure-indel reads count ALT only where their own bases hold the ALT (#188, #191, #192, #121)<a class="headerlink" href="#development-changelog-fixed-pure-indel-reads-count-alt-only-where-their-own-bases-hold-the-alt-188-191-192-121" title="Permanent link">¶</a></h3>
 <ul>
 <li>C10 (#160) takes REF only from reads whose bases settle the allele. ALT reads
@@ -19143,9 +19186,10 @@ should get a narrow public wrapper (see <code>src/gbcms/observations.py</code>) 
 <li><strong>Unit tests</strong>: <code>cargo test</code> must pass (all existing tests + new tests for the change)</li>
 <li><strong><abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-slice regression</strong>: Run the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>-slice regression suite and verify no unintended
   count shifts (see the developer guide for the current slice set)</li>
-<li><strong>Binned↔legacy parity</strong>: any change to read classification / filtering / fragment
-  consensus / fetch-window logic must be mirrored in the legacy <code>count_single_variant</code>,
-  or the parity tests fail (see <code>.agents/rules/architecture.md</code>)</li>
+<li><strong>Binning invariance</strong>: counts must not depend on bin geometry; the binning-invariance
+  tests and <code>count_checked</code> compare every field (see <code>.agents/rules/architecture.md</code>)</li>
+<li><strong>Read census</strong>: pure-indel counting is checked against <code>tests/census.py</code>; a change
+  that moves the census property test needs a decision, not a new expectation</li>
 <li><strong>Variant-type coverage</strong>: If modifying a specific variant type (<abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>/<abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>/Indel/Complex),
   ensure the regression <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> includes representative variants of that type</li>
 <li><strong>MnpResult paths</strong>: Any changes to <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> handling must test all 5 <code>MnpResult</code> variants:
@@ -19172,7 +19216,7 @@ should get a narrow public wrapper (see <code>src/gbcms/observations.py</code>) 
    </p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#development-contributing-__codelineno-7-1"></a>make<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>lint<span class="w">                                   </span><span class="c1"># Python: pytest + ruff/black/mypy</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#development-contributing-__codelineno-7-2"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
 </code></pre></div>
-   The load-bearing invariants (binned↔legacy parity, one base-quality gate across
+   The load-bearing invariants (binning invariance, one base-quality gate across
    alignment backends, the 4 counting-test invariants) are in <code>.agents/rules/architecture.md</code>
    (in the repo root) — read them before touching the engine.
 </li>
