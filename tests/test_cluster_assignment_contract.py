@@ -15,9 +15,8 @@ Adjudicated on real data (issue #92, 2026-09-22): canonical exclusive
 assignment reproduces sign-out exactly at a five-deletion cluster where
 per-row windowed counting over-attributed 2-5x.
 
-Runs through the production CLI (pipeline sibling assembly): sibling paths
-are exempt from the binned<->legacy parity oracle, so the oracle is NOT used
-here. Committed red (xfail-strict) before the fix.
+Runs through the production CLI (pipeline sibling assembly). Committed red
+(xfail-strict) before the fix.
 """
 
 import glob

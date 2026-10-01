@@ -7,11 +7,11 @@ both are non-empty for a well-formed record. A record with an empty ALT
 as an opaque ``PyErr`` that kills the whole sample. The entry guards classify
 such records as neither instead.
 
-``count_one_both`` exercises BOTH the legacy and binned APIs (and asserts their
-parity), so each test covers both code paths.
+``count_one_checked`` counts with production bins and with one variant per bin,
+so each test covers both geometries.
 """
 
-from helpers import build_bam, count_one_both, make_read
+from helpers import build_bam, count_one_checked, make_read
 
 from gbcms._rs import Variant
 
@@ -26,7 +26,7 @@ def test_empty_alt_insertion_does_not_panic(tmp_path):
     bam = _bam_with_one_read(tmp_path)
     # Empty ALT with INSERTION type — malformed (no inserted bases after anchor).
     variant = Variant("chr1", 110, "A", "", "INSERTION")
-    counts = count_one_both(bam, variant)  # both APIs; asserts parity; must not raise
+    counts = count_one_checked(bam, variant)  # must not raise
     assert counts.ad == 0, "malformed insertion must contribute no ALT"
     assert counts.adf == 0
 
@@ -35,6 +35,6 @@ def test_empty_ref_deletion_does_not_panic(tmp_path):
     bam = _bam_with_one_read(tmp_path)
     # Empty REF with DELETION type — malformed (no deleted bases after anchor).
     variant = Variant("chr1", 110, "", "A", "DELETION")
-    counts = count_one_both(bam, variant)
+    counts = count_one_checked(bam, variant)
     assert counts.ad == 0, "malformed deletion must contribute no ALT"
     assert counts.adf == 0

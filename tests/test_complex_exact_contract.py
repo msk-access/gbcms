@@ -16,7 +16,7 @@ import random
 
 import pysam
 import pytest
-from helpers import count_both, make_read
+from helpers import count_checked, make_read
 
 from gbcms import _rs as gbcms_rs
 
@@ -111,7 +111,7 @@ def test_reads_ending_inside_the_event_are_not_ref_or_alt(tmp_path):
         reads.append(make_read(f"rp{i}", ref[s : s + READ], s, ((0, READ),)))
         reads.append(make_read(f"ap{i}", hap[s : s + READ], s, ((0, READ),)))
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 10)
 
@@ -124,7 +124,7 @@ def test_a_read_one_confident_base_off_is_not_alt(tmp_path):
     near = [_alt_read(f"n{i}", off_hap, s, 2, 3) for i, s in enumerate(range(250, 258))]
     hap, reads = _delins_case(ref, alt, near)
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert c.ad == 10  # the 8 near-matches are not the given allele
     assert c.partial_alt >= 8  # but they are ALT-like evidence
@@ -142,7 +142,7 @@ def test_a_low_quality_differing_base_is_masked(tmp_path):
         near.append(_alt_read(f"n{i}", off_hap, s, 2, 3, quals=quals))
     hap, reads = _delins_case(ref, alt, near)
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     assert c.ad == 18
 
 
@@ -156,7 +156,7 @@ def test_a_soft_clipped_carrier_counts(tmp_path):
         left = POS - s + 1
         reads.append(make_read(f"c{i}", hap[s : s + READ], s, ((0, left), (4, READ - left))))
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert c.ad == 14
 
@@ -173,7 +173,7 @@ def test_a_carrier_clipped_before_the_event_is_outside_depth(tmp_path):
         left = POS - s
         reads.append(make_read(f"c{i}", hap[s : s + READ], s, ((0, left), (4, READ - left))))
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.ad, c.dp) == (10, 20)
 
@@ -193,7 +193,7 @@ def test_one_haplotype_aligned_two_ways_counts_the_same(tmp_path):
         for i, s in enumerate(range(240, 250))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     assert (c.rd, c.ad) == (10, 20)
 
 
@@ -223,7 +223,7 @@ def test_vaf_is_unbiased_by_read_placement(tmp_path, shape):
         reads.append(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)))
         reads.append(_alt_read(f"a{i}", hap, s, ref_len, alt_len))
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + ref_len], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + ref_len], alt)])[0]
     _invariants(c)
     assert c.rd + c.ad >= 40, "too few informative reads to judge"
     assert abs(c.ad / (c.rd + c.ad) - 0.5) <= 0.06, (c.rd, c.ad)
@@ -295,7 +295,7 @@ def test_an_mnp_read_with_an_indel_counts_only_as_an_exact_carrier(tmp_path):
             make_read(f"x{i}", other[s : s + READ], s, ((0, left), (1, 1), (0, READ - left - 1)))
         )
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, block, alt)])[0]
+    c = count_checked(bam, [_prepared(fa, block, alt)])[0]
     _invariants(c)
     assert c.ad == 16
     assert c.partial_alt == 8
@@ -322,7 +322,7 @@ def test_a_deletion_with_a_substituted_anchor_counts_exact_carriers(tmp_path):
                 make_read(f"{tag}{i}", hap[s : s + READ], s, ((0, left), (2, 2), (0, READ - left)))
             )
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref3, alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref3, alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 10)
     assert c.partial_alt == 8
@@ -353,7 +353,7 @@ def test_a_nearby_copy_of_the_window_does_not_turn_ref_reads_alt(tmp_path):
     p = len(left) + 18
     assert ref[p : p + 2] == "TG"
     fa, bam = _files(tmp_path, ref, _ref_only(ref, p))
-    c = count_both(bam, [_prepared(fa, "TG", "C", pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, "TG", "C", pos=p)])[0]
     _invariants(c)
     assert (c.ad, c.partial_alt) == (0, 0)
     assert c.rd >= 85
@@ -382,7 +382,7 @@ def test_runs_either_side_of_the_event_do_not_hide_it(tmp_path):
             )
         )
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, "CAC", "A", pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, "CAC", "A", pos=p)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (20, 40)
 
@@ -405,7 +405,7 @@ def _repeat_edge(tmp_path, with_ref, with_alt):
                     )
                 )
     fa, bam = _files(tmp_path, ref, reads)
-    return count_both(bam, [_prepared(fa, "TATG", "C", pos=p)])[0]
+    return count_checked(bam, [_prepared(fa, "TATG", "C", pos=p)])[0]
 
 
 def test_an_event_at_a_repeat_edge_counts_its_carriers(tmp_path):
@@ -437,7 +437,7 @@ def test_a_long_event_is_judged_at_its_own_junctions(tmp_path):
     hap = ref[:p] + "CA" + ref[p + len(LONG_REF) :]
     (tmp_path / "r").mkdir()
     fa, bam = _files(tmp_path / "r", ref, _ref_only(ref, p))
-    c = count_both(bam, [_prepared(fa, LONG_REF, "CA", pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, LONG_REF, "CA", pos=p)])[0]
     _invariants(c)
     assert c.ad == 0 and c.rd >= 90
     alt = [
@@ -451,7 +451,7 @@ def test_a_long_event_is_judged_at_its_own_junctions(tmp_path):
     ]
     (tmp_path / "a").mkdir()
     fa, bam = _files(tmp_path / "a", ref, alt)
-    c = count_both(bam, [_prepared(fa, LONG_REF, "CA", pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, LONG_REF, "CA", pos=p)])[0]
     _invariants(c)
     assert c.rd == 0 and c.ad >= 85
 
@@ -467,7 +467,7 @@ def test_masked_bases_at_a_read_end_do_not_make_an_allele(tmp_path):
         q[-8:] = [2] * 8
         reads.append(make_read(f"q{i}", ref[s : s + READ], s, ((0, READ),), quals=q))
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     assert c.ad == 0
 
 
@@ -485,7 +485,7 @@ def test_an_n_away_from_the_event_is_not_an_n_at_it(tmp_path):
         seq[POS - 12 - s] = "N"
         reads.append(make_read(f"n{i}", "".join(seq), s, r.cigartuples))
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     assert c.n_count == 0
 
 
@@ -532,7 +532,7 @@ def test_an_insertion_aligned_into_the_run_before_the_event_still_counts(tmp_pat
         for i, s in enumerate(range(p - 80, p - 60))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, "TA", "ACC", pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, "TA", "ACC", pos=p)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (0, 20)
 
@@ -546,7 +546,7 @@ def test_one_more_base_in_that_run_is_another_allele(tmp_path):
         for i, s in enumerate(range(p - 80, p - 60))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, "TA", "ACC", pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, "TA", "ACC", pos=p)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (0, 0)
 
@@ -569,7 +569,7 @@ def _long_delins(tmp_path, change):
             seq[k + off] = _other(seq[k + off])
         reads.append(make_read(f"a{i}", "".join(seq), s, ((0, k), (2, 50), (0, READ - k))))
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 60], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 60], alt)])[0]
     _invariants(c)
     return c
 
@@ -606,7 +606,7 @@ def test_an_event_ending_a_long_run_is_judged_exactly(tmp_path):
         ]
         (tmp_path / allele).mkdir()
         fa, bam = _files(tmp_path / allele, ref, reads)
-        c = count_both(bam, [_prepared(fa, "ATT", "GC", pos=p)])[0]
+        c = count_checked(bam, [_prepared(fa, "ATT", "GC", pos=p)])[0]
         _invariants(c)
         assert (c.rd, c.ad) == (0, carriers)
 
@@ -625,7 +625,7 @@ def test_reads_ending_inside_the_event_are_not_partial(tmp_path):
         for i, s in enumerate(range(POS - READ + 5, POS - READ + 35))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad, c.partial_alt) == (0, 0, 0)
     assert c.dp == 30
@@ -648,7 +648,7 @@ def test_an_mnp_carrier_aligned_with_indels_beside_the_block_counts(tmp_path):
         for i, s in enumerate(range(p - 60, p - 40))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[p : p + 5], alt, pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[p : p + 5], alt, pos=p)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (0, 20)
     assert c.mnp_confirmed_alt == 20  # every changed base read: the haplotype is shown
@@ -664,7 +664,7 @@ def test_a_record_without_bases_is_not_read(tmp_path):
     x.mapping_quality, x.cigartuples = 60, ((0, READ),)
     reads.append(x)
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 10)
 
@@ -696,7 +696,7 @@ def test_a_long_event_grown_through_a_run_is_unbiased(tmp_path, shape):
         else:
             reads.append(_alt_read(f"a{i}", hap, s, ref_len, alt_len, pos=p))
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
     _invariants(c)
     assert c.rd + c.ad >= 40, "too few informative reads to judge"
     assert abs(c.ad / (c.rd + c.ad) - 0.5) <= 0.03, (c.rd, c.ad)
@@ -728,7 +728,7 @@ def test_an_mnp_read_with_a_germline_deletion_near_the_block_keeps_its_call(tmp_
         return out
 
     fa, bam = _files(tmp_path, ref, reads(ref, "r", on == "REF") + reads(hap, "a", on == "ALT"))
-    c = count_both(bam, [_prepared(fa, "GC", "TA", pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, "GC", "TA", pos=p)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (40, 40)
 
@@ -861,7 +861,7 @@ def test_a_delins_at_an_exon_end_counts_spliced_reads(tmp_path, gap):
     starts = range(EXON - 60, EXON - 40)
     reads = _spliced_reads("r", mrna, starts, p, 2, 2) + _spliced_reads("a", hap, starts, p, 2, 3)
     fa, bam = _files(tmp_path, genomic, reads)
-    c = count_both(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (20, 20)
 
@@ -882,7 +882,7 @@ def test_a_delins_at_an_exon_start_counts_spliced_reads(tmp_path, gap):
         "a", hap, starts, p_m, 2, 3
     )
     fa, bam = _files(tmp_path, genomic, reads)
-    c = count_both(bam, [_prepared(fa, ref_allele, alt, pos=p_g)])[0]
+    c = count_checked(bam, [_prepared(fa, ref_allele, alt, pos=p_g)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (20, 20)
 
@@ -898,6 +898,6 @@ def test_a_read_spliced_through_the_event_is_depth_only(tmp_path):
     )
     reads = _spliced_reads("r", mrna, range(EXON - 60, EXON - 40), p, 2, 2)
     fa, bam = _files(tmp_path, genomic, reads)
-    c = count_both(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
+    c = count_checked(bam, [_prepared(fa, ref_allele, alt, pos=p)])[0]
     _invariants(c)
     assert (c.rd, c.ad, c.partial_alt) == (0, 0, 0)

@@ -128,19 +128,16 @@ maturin develop
 # Release (optimized)
 maturin develop --release
 
-# Build wheel (dev/test — includes the legacy count_bam parity oracle)
+# Build wheel
 maturin build --release --out dist
-
-# Build the SHIPPED wheel (drops the test-only count_bam parity oracle)
-maturin build --release --no-default-features --out dist
 ```
 
-!!! note "`legacy-parity` feature"
-    `maturin develop` and `cargo test` include the per-variant `count_bam` (the
-    binned↔legacy parity oracle) via the default `legacy-parity` Cargo feature. Release
-    wheels build `--no-default-features` to omit it — production only uses
-    `count_bam_binned`. Changing the counting core means mirroring it in *both* paths;
-    see `.agents/rules/architecture.md` §"Legacy count_bam parity oracle".
+!!! note "Binning invariance"
+    Counts must not depend on how variants are binned. `count_bam_binned` takes two test
+    arguments, `bin_window` and `bin_max_variants`; the test helper `count_checked` runs
+    production bins and one variant per bin and compares every field, and
+    `tests/test_binning_invariance.py` varies the geometry further. See
+    `.agents/rules/architecture.md` §"Binning invariance".
 
 ---
 

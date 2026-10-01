@@ -12,7 +12,7 @@ DNA only: an RNA read's clip may hold the next exon's bases.
 
 import random
 
-from helpers import count_both, make_read
+from helpers import count_checked, make_read
 from test_complex_exact_contract import (
     POS,
     READ,
@@ -68,7 +68,7 @@ def test_right_clipped_alt_carriers_count(tmp_path):
         _right_clipped(f"a{i}", hap, s) for i, s in enumerate(range(POS - 90, POS - 70))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad, c.dp) == (10, 20, 30)
 
@@ -78,7 +78,7 @@ def test_ref_reads_clipped_the_same_way_count_alike(tmp_path):
     ref, alt, _ = _case()
     reads = [_right_clipped(f"c{i}", ref, s) for i, s in enumerate(range(POS - 90, POS - 70))]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad, c.dp) == (20, 0, 20)
 
@@ -98,7 +98,7 @@ def test_left_clipped_alt_carriers_count(tmp_path):
             )
         )
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 20)
 
@@ -113,7 +113,7 @@ def test_clipped_bases_past_the_fragment_are_adapter(tmp_path):
         for i, s in enumerate(range(POS - 90, POS - 70))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad, c.dp) == (10, 0, 10)
 
@@ -126,7 +126,7 @@ def test_reads_without_a_fragment_are_not_admitted_by_clips(tmp_path):
         left = POS - s
         reads.append(make_read(f"u{i}", hap[s : s + READ], s, ((0, left), (4, READ - left))))
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad, c.dp) == (10, 0, 10)
 
@@ -145,7 +145,7 @@ def test_undecided_clipped_reads_stay_out_of_depth(tmp_path):
         _right_clipped(f"x{i}", third, s) for i, s in enumerate(range(POS - 90, POS - 70))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad, c.dp, c.partial_alt) == (10, 0, 10, 0)
 
@@ -173,7 +173,7 @@ def test_a_long_deletions_split_carriers_count(tmp_path):
         _right_clipped(f"a{i}", hap, s) for i, s in enumerate(range(POS - 80, POS - 60))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 60], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 60], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 20)
 
@@ -199,7 +199,7 @@ def test_vaf_is_unbiased_when_aligners_clip_alt_near_read_ends(tmp_path):
                 )
             )
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 2], alt)])[0]
     _invariants(c)
     assert c.rd + c.ad >= 80
     assert abs(c.ad / (c.rd + c.ad) - 0.5) <= 0.03, (c.rd, c.ad)
@@ -216,6 +216,6 @@ def test_unclipped_reads_starting_inside_a_long_deletion_stay_out(tmp_path):
         for i, s in enumerate(range(POS + 10, POS + 30))
     ]
     fa, bam = _files(tmp_path, ref, reads)
-    c = count_both(bam, [_prepared(fa, ref[POS : POS + 60], alt)])[0]
+    c = count_checked(bam, [_prepared(fa, ref[POS : POS + 60], alt)])[0]
     _invariants(c)
     assert (c.rd, c.ad, c.dp) == (10, 0, 10)

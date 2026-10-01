@@ -81,7 +81,7 @@ gbcms/
 1. **Rust for counting**: rust-htslib for BAM; Rayon for per-**bin** parallelism (`par_iter()` over ~10kb genomic bins).
    - **`--threads` is the TOTAL thread budget per process.** Multi-sample parallelism is Nextflow's job (gbcms runs as N concurrent processes, each pinned to `task.cpus`), so every parallel section must stay within `--threads` — all rayon pools are sized from `shared::resolve_thread_budget(threads)` (which also guards `num_threads(0)`=all-cores), and any future htslib decode threads must **subdivide** this budget, never add to it. No `par_iter` may run on rayon's global pool.
 2. **0-based internal coordinates**: 1-based in VCF/MAF externally; converted at boundary.
-3. **mFSD is opt-in** (`--mfsd`) — gated at *both* layers (output-aware engine, invariant #3). Writers gate 41 MAF cols / 13 VCF INFO fields behind `self.mfsd` (absent when off, not NA-filled); the **binned engine also gates the compute** — `mfsd` is plumbed `OutputConfig.mfsd → count_bam_binned → count_variant_from_cache`, and when off the per-fragment size arrays, the `compute_mfsd_stats` stats, and the post-counting mFSD BH-FDR pass are all skipped (no compute-then-discard, no held `ref_sizes`/`alt_sizes`). The legacy parity oracle always computes mFSD (mFSD ∉ `PARITY_FIELDS`, so this never breaks parity); both paths share `compute_mfsd_stats`.
+3. **mFSD is opt-in** (`--mfsd`) — gated at *both* layers (output-aware engine, invariant #3). Writers gate 41 MAF cols / 13 VCF INFO fields behind `self.mfsd` (absent when off, not NA-filled); the **binned engine also gates the compute** — `mfsd` is plumbed `OutputConfig.mfsd → count_bam_binned → count_variant_from_cache`, and when off the per-fragment size arrays, the `compute_mfsd_stats` stats, and the post-counting mFSD BH-FDR pass are all skipped (no compute-then-discard, no held `ref_sizes`/`alt_sizes`).
 4. **Rust-native Parquet** (`--mfsd-parquet`): `write_fsd_parquet()` via `arrow`/`parquet` crates with ZSTD(1). No `pyarrow`.
 5. **4-layer CLI validation**: Parse-time (Typer) → Pre-model (cli.py) → Model-time (Pydantic) → No silent skips.
 6. **Fragment counting always on**: Quality-weighted consensus; discards counted in DPF not RDF/ADF.
@@ -91,50 +91,44 @@ gbcms/
 10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The tree *layout* is arch-specific, so the **GTF disk cache (`--gtf-cache-dir`, M5a) never serializes the trees** — it persists only the parsed intermediate (`GtfIndexBundle`: exon records, splice sites, introns, chrom map; `bincode`, version-tagged) and rebuilds the trees via `build_exon_trees` on load. Caching is best-effort (missing/corrupt/stale/unwritable → log + plain parse); keyed on GTF identity + variant chroms. Concurrent cohorts must pre-warm via `gbcms build-gtf-cache` (else the first wave all cold-miss); the per-sample `count_bam_binned` runs then load in ~0.05s instead of re-parsing (~9s).
 11. **Diagnostic flags**: `gbcms_diagnostic` and `gbcms_rescue` are strongly-typed Rust fields, not dynamic attributes.
 
-## Legacy `count_bam` parity oracle (`legacy-parity` feature)
+## Binning invariance
 
-**What it is.** `count_bam` (in `engine.rs`, with its helper `count_single_variant`)
-is a *second, independent* implementation of the counting logic that fetches reads
-**per variant**. Production never calls it — the pipeline only uses `count_bam_binned`
-(one `bam.fetch()` per ~10kb bin). `count_bam` exists **solely as the parity oracle**:
-the tests cross-check that the optimized binned path produces identical counts to the
-straightforward per-variant path.
+**The rule.** The engine groups variants into bins, fetches each bin's reads once, and
+counts every member from that cache. Which variants share a bin, and how far it
+reaches, must never change a count: every field of every row is the same under any
+bin window or per-bin cap, one variant per bin (window 1, cap 1, the per-variant
+fetch through the production loop), one variant per call, shuffled input on several
+threads, or extra rows that move where bins start. The Benjamini-Hochberg q-values
+(`mfsd_qval_alt_ref`, `asjd_qval`) are computed over the rows of a call, so they are
+excepted when the set of rows changes. It follows that every bin's fetch must hold
+each member's read window `[pos − pad, pos + ref_len + pad)`, `pad = max(5,
+repeat_span + 2)`, the anchor's included.
 
-**Build matrix.** Gated behind the default `legacy-parity` Cargo feature
-(`rust/Cargo.toml`) — present in dev/test builds, absent from the shipped wheel:
+**How it is checked.**
+- `build_genomic_bins` property test (Rust): every variant in exactly one bin whose
+  fetch holds its window, over random clusters × window {1, 7, 100, 10k} × cap
+  {1, 2, 3, 200}.
+- `tests/test_binning_invariance.py`: the geometries above on synthetic DNA pairs
+  (plain; BAQ + UMI + mFSD; siblings, a decomposed twin, overlapping mates), clip
+  carriers aligned past a long anchor (the one read shape in which an under-fetched
+  anchor changes a count: every other counted read overlaps the event's first base),
+  an RNA locus with a GTF and antisense reads, and the real test BAM; observation rows
+  too. Each geometry is asserted to split the bins (the engine's bin log), and the
+  decoys to change them, so no check is vacuous. Not exercised: ASJD (the RNA fixture
+  has no junction-borne ALT) and the `--mfsd-parquet` size arrays (no getters).
+- `tests/helpers.py` `count_checked` / `count_bam_checked`: every counting test also
+  counts with one variant per bin and compares every field. Most such calls hold one
+  variant, so they check the per-variant fetch window only; multi-variant binning,
+  threads and bin starts are covered by `test_binning_invariance.py`.
+- `bin_window` / `bin_max_variants` are test arguments of `count_bam_binned` and
+  `count_bam_binned_observations`; the pipeline passes neither.
 
-| Build | Command | `count_bam` present? |
-|-------|---------|----------------------|
-| dev / local | `maturin develop` (default feature) | ✅ yes |
-| `cargo test` | default feature | ✅ yes |
-| CI test (`test.yml`) | `maturin build --release` (default) | ✅ yes |
-| **shipped wheel** (Dockerfile, `release.yml`) | `maturin build --release --no-default-features` | ❌ no |
-
-So the parity tests run against a build that has it; production ships without it. If
-you build `--no-default-features` locally, `gbcms._rs.count_bam` is missing and the
-parity tests fail — that's expected.
-
-**Maintenance contract — read before changing the counting core.** The binned↔legacy
-parity tests (`count_both` in `tests/helpers.py`; `test_filters.py`,
-`test_parity_large_deletion.py`, `test_multi_allelic.py`, …) assert the two paths
-return identical `PARITY_FIELDS`. Therefore:
-
-- **If you change read classification, filtering, fragment consensus, or fetch-window
-  logic in the binned path** (`count_bin_shared` / `count_variant_from_cache`), you
-  **must mirror the same change in `count_single_variant`**, or the parity tests fail.
-  The duplication is deliberate — two independent implementations are what make the
-  cross-check meaningful.
-- **Exempt:** RNA-only / mFSD / ASJD / strandedness features live only in the binned
-  path and are *not* in `PARITY_FIELDS`; do **not** add them to `count_single_variant`.
-- **Parity holds only without `sibling_variants`** — pangenomic sibling disambiguation
-  is binned-only and intentionally diverges from legacy. Never pass siblings to
-  `count_both`. (See the `siblings-break-binned-legacy-parity` memory.)
-
-**When to remove it.** `count_bam` + `count_single_variant` can be deleted once the
-binned path is trusted enough that the cross-check is no longer needed ("remove after
-parity sign-off"). Until then, keep it gated and in sync. If a change is genuinely
-impractical to mirror, remove `count_bam` and its parity tests *with maintainer
-sign-off* — never let the two paths silently diverge.
+**Classification** is checked against the read census (`tests/census.py`,
+`tests/test_read_census.py`): each read judged by its own bases across the event's
+tract, with the decided rules (REF needs one base past the first difference, ALT only
+that base). Open decisions are strict xfails there. A second engine sharing the
+classifier cannot see classification bugs, which is why the per-variant `count_bam`
+oracle was retired (#170).
 
 ## Type Stub Synchronization
 

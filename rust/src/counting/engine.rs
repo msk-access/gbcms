@@ -98,9 +98,24 @@ const BIN_WINDOW: i64 = 10_000;
 ///
 /// When exceeded, the bin is split to prevent O(V × R) blowup in the
 /// shared-read classification loop. Matches the original C++ GBCMS default.
-/// Not a CLI flag — this is an internal performance constant that does not
-/// affect output (validated by D1 parity tests).
+/// Not a CLI flag: an internal performance constant that does not affect output
+/// (the binning-invariance tests vary it, with the window, through the
+/// `bin_window` / `bin_max_variants` test arguments).
 const BIN_MAX_VARIANTS: usize = 200;
+
+/// The bin geometry for one call: the production constants unless a test passes
+/// its own. Bin geometry is performance only, so tests vary it to check that
+/// counts do not depend on it; a window or cap below 1 is rejected.
+fn bin_geometry(bin_window: Option<i64>, bin_max_variants: Option<i64>) -> PyResult<(i64, usize)> {
+    let window = bin_window.unwrap_or(BIN_WINDOW);
+    let cap = bin_max_variants.unwrap_or(BIN_MAX_VARIANTS as i64);
+    if window < 1 || cap < 1 {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "bin_window and bin_max_variants must be at least 1 (got {window}, {cap})"
+        )));
+    }
+    Ok((window, cap as usize))
+}
 
 /// A genomic region containing one or more co-located variants.
 ///
@@ -146,11 +161,13 @@ fn resolve_tid(bam_header: &bam::HeaderView, chrom: &str) -> Option<u32> {
 /// # Arguments
 /// * `variants` — Variants (need not be sorted; sorting is internal)
 /// * `bam_header` — BAM header for chromosome → tid lookup
-/// * `window` — Bin window size in bp (default: 10,000)
+/// * `window` — Bin window size in bp (production: `BIN_WINDOW`)
+/// * `max_variants` — Variants per bin before a split (production: `BIN_MAX_VARIANTS`)
 fn build_genomic_bins(
     variants: &[Variant],
     bam_header: &bam::HeaderView,
     window: i64,
+    max_variants: usize,
 ) -> Vec<GenomicBin> {
     if variants.is_empty() {
         return Vec::new();
@@ -169,10 +186,9 @@ fn build_genomic_bins(
     // variant in the bin, including the anchor; half a window of slack matches
     // the per-variant extension below. (Seeding the end at only
     // `bin_start + window` under-fetched a bin anchored by a deletion whose ref
-    // span exceeds the window, dropping its right-breakpoint reads and diverging
-    // from the legacy per-variant path.)
+    // span exceeds the window, dropping reads aligned past it.)
     let span_end = |idx: usize| -> i64 {
-        variants[idx].pos + variants[idx].ref_allele.len() as i64 + window / 2
+        (variants[idx].pos + variants[idx].ref_allele.len() as i64).saturating_add(window / 2)
     };
 
     let mut bins: Vec<GenomicBin> = Vec::new();
@@ -202,7 +218,7 @@ fn build_genomic_bins(
 
         let bin_start = variants[first_idx].pos;
         // Cover at least one window, but also the anchor variant's full ref span.
-        let mut bin_end = (bin_start + window).max(span_end(first_idx));
+        let mut bin_end = bin_start.saturating_add(window).max(span_end(first_idx));
         let mut indices = vec![first_idx];
         let mut max_repeat_span: i64 = variants[first_idx].repeat_span as i64;
 
@@ -217,10 +233,10 @@ fn build_genomic_bins(
                 break;
             }
             // Enforce max variants per bin — split if exceeded
-            if indices.len() >= BIN_MAX_VARIANTS {
+            if indices.len() >= max_variants {
                 debug!(
-                    "Bin split: {} variants reached BIN_MAX_VARIANTS={} at {}:{}",
-                    indices.len(), BIN_MAX_VARIANTS,
+                    "Bin split: {} variants reached the per-bin cap {} at {}:{}",
+                    indices.len(), max_variants,
                     chrom, variants[jdx].pos + 1,
                 );
                 break;
@@ -232,13 +248,13 @@ fn build_genomic_bins(
             j += 1;
         }
 
-        // Pad bin by max repeat_span + 5bp to capture shifted reads
-        // (same logic as count_single_variant's window_pad)
+        // Pad by the widest member's read window, max(5, repeat_span + 2), the
+        // filter each variant applies to the cached reads (`count_variant_from_cache`).
         let padding = std::cmp::max(5, max_repeat_span + 2);
         bins.push(GenomicBin {
             tid,
             start: (bin_start - padding).max(0),
-            end: bin_end + padding,
+            end: bin_end.saturating_add(padding),
             variant_indices: indices,
         });
 
@@ -297,7 +313,7 @@ impl AlignmentBackend {
     ///
     /// Convenience constructor for tests and downstream consumers.
     /// In production, the Python CLI passes params directly to the
-    /// `PairHMM { ... }` variant via `count_bam()`.
+    /// `PairHMM { ... }` variant via `count_bam_binned()`.
     #[allow(dead_code)]
     pub fn pairhmm_default() -> Self {
         AlignmentBackend::PairHMM {
@@ -343,208 +359,6 @@ fn parse_alignment_backend(
 }
 
 
-/// Count bases for a list of variants in a BAM file.
-///
-/// When `decomposed` is provided (same length as `variants`), variants with
-/// a `Some(decomposed_variant)` are counted twice — once with the original
-/// allele and once with the corrected allele. The result with the higher
-/// `ad` (alt_count) is returned, with `used_decomposed` set accordingly.
-///
-/// // INTENTIONAL: `count_bam` is the per-variant **parity oracle**, retained behind the
-/// // `legacy-parity` feature (default-on; the shipped wheel omits it). Production always
-/// // uses `count_bam_binned`; this path exists only so the parity suite can confirm both
-/// // produce identical BaseCounts on the same inputs. It covers **core counting only** —
-/// // RNA / mFSD / ASJD / GTF / strandedness are binned-only and intentionally absent here
-/// // (mFSD ∉ PARITY_FIELDS). Any change to read classification / filtering / fragment
-/// // consensus / fetch-window in the binned path must be mirrored here, or parity fails.
-#[cfg(feature = "legacy-parity")]
-#[allow(clippy::too_many_arguments)]
-#[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, mode="dna", enforce_strandedness=false, strandedness="reverse", reference_fasta=None))]
-pub fn count_bam(
-    py: Python<'_>,
-    bam_path: String,
-    variants: Vec<Variant>,
-    decomposed: Vec<Option<Variant>>,
-    min_mapq: u8,
-    min_baseq: u8,
-    filter_duplicates: bool,
-    filter_secondary: bool,
-    filter_supplementary: bool,
-    filter_qc_failed: bool,
-    filter_improper_pair: bool,
-    filter_indel: bool,
-    threads: usize,
-    fragment_qual_threshold: u8,
-    sibling_variants: Vec<Vec<Variant>>,
-    alignment_backend: &str,
-    hmm_llr_threshold: f64,
-    hmm_gap_open: f64,
-    hmm_gap_extend: f64,
-    hmm_gap_open_repeat: f64,
-    hmm_gap_extend_repeat: f64,
-    mode: &str,
-    enforce_strandedness: bool,
-    strandedness: &str,
-    reference_fasta: Option<&str>,
-) -> PyResult<Vec<BaseCounts>> {
-    let backend = parse_alignment_backend(
-        alignment_backend,
-        hmm_llr_threshold,
-        hmm_gap_open,
-        hmm_gap_extend,
-        hmm_gap_open_repeat,
-        hmm_gap_extend_repeat,
-    )?;
-
-    // Parse the RNA library strand protocol (loud error on an unknown token).
-    let strandedness = rna::Strandedness::from_protocol(strandedness)
-        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-
-    // Store FASTA path for CRAM reference decoding (safe no-op for BAM files)
-    let fasta_for_cram: Option<String> = reference_fasta.map(|p| p.to_string());
-
-    // We cannot share a single IndexedReader across threads because it's not Sync.
-    // Instead, we use rayon's map_init to initialize a reader for each thread.
-    // This is efficient because map_init reuses the thread-local state (the reader)
-    // for multiple items processed by that thread.
-
-    // Configure thread pool — honor the total `--threads` budget (see
-    // shared::resolve_thread_budget); guards the num_threads(0)=all-cores foot-gun.
-    let threads = crate::shared::resolve_thread_budget(threads);
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to build thread pool: {}", e)))?;
-
-    // Pad sibling_variants to match variants length (handles default empty case)
-    let mut sibling_variants = sibling_variants;
-    let n = variants.len();
-    sibling_variants.resize_with(n, Vec::new);
-
-    // Zip variants with their decomposed counterparts and sibling alts for parallel iteration
-    let paired: Vec<_> = variants.into_iter()
-        .zip(decomposed)
-        .zip(sibling_variants)
-        .map(|((v, d), s)| (v, d, s))
-        .collect();
-
-    // Release GIL for parallel execution
-    #[allow(deprecated)]
-    let results: Result<Vec<BaseCounts>, anyhow::Error> = py.allow_threads(move || {
-        pool.install(|| {
-            paired
-                .par_iter()
-                .map_init(
-                    || -> Result<bam::IndexedReader, anyhow::Error> {
-                        // Initialize thread-local BAM/CRAM reader
-                        let mut reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
-                            anyhow::anyhow!("Failed to open BAM/CRAM: {}", e)
-                        })?;
-                        // CRAM files require a reference FASTA for decoding.
-                        // set_reference() is a safe no-op for BAM files.
-                        if let Some(ref fasta) = fasta_for_cram {
-                            reader.set_reference(fasta).map_err(|e| {
-                                anyhow::anyhow!("Failed to set CRAM reference: {}", e)
-                            })?;
-                        }
-                        Ok(reader)
-                    },
-                    |bam_result, (variant, decomp_opt, siblings)| {
-                        // Get the reader or return error if initialization failed
-                        let bam = match bam_result {
-                            Ok(b) => b,
-                            Err(e) => return Err(anyhow::anyhow!("BAM init failed: {}", e)),
-                        };
-
-                        let counts_orig = count_single_variant(
-                            bam,
-                            variant,
-                            siblings,
-                            min_mapq,
-                            min_baseq,
-                            filter_duplicates,
-                            filter_secondary,
-                            filter_supplementary,
-                            filter_qc_failed,
-                            filter_improper_pair,
-                            filter_indel,
-                            fragment_qual_threshold,
-                            &backend,
-                            false,  // apply_baq: legacy codepath
-                            None,   // umi_tag: legacy codepath
-                            mode,
-                            enforce_strandedness,
-                            strandedness,
-                        )?;
-
-                        // Dual-count: if a decomposed variant exists, count it too
-                        // and return whichever has the higher alt_count.
-                        if let Some(decomp) = decomp_opt {
-                            let counts_decomp = count_single_variant(
-                                bam,
-                                decomp,
-                                siblings,
-                                min_mapq,
-                                min_baseq,
-                                filter_duplicates,
-                                filter_secondary,
-                                filter_supplementary,
-                                filter_qc_failed,
-                                filter_improper_pair,
-                                filter_indel,
-                                fragment_qual_threshold,
-                                &backend,
-                                false,  // apply_baq: legacy codepath
-                                None,   // umi_tag: legacy codepath
-                                mode,
-                                enforce_strandedness,
-                                strandedness,
-                            )?;
-
-                            if counts_decomp.ad > counts_orig.ad {
-                                // Sanity: both hypotheses count the same reads at the
-                                // same locus, so DP should be nearly identical. A large
-                                // divergence indicates a counting bug.
-                                if (counts_decomp.dp as i64 - counts_orig.dp as i64).abs() > 2 {
-                                    log::warn!(
-                                        "DP mismatch in dual-counting: decomp={} orig={} at {}:{} {}→{}",
-                                        counts_decomp.dp, counts_orig.dp,
-                                        variant.chrom, variant.pos + 1,
-                                        variant.ref_allele, decomp.alt_allele
-                                    );
-                                }
-                                debug!(
-                                    "Homopolymer decomp: corrected allele wins \
-                                     (ad={} vs orig ad={}, dp_decomp={}, dp_orig={}) \
-                                     for {}:{} {}→{}",
-                                    counts_decomp.ad, counts_orig.ad,
-                                    counts_decomp.dp, counts_orig.dp,
-                                    variant.chrom, variant.pos + 1,
-                                    variant.ref_allele, decomp.alt_allele,
-                                );
-                                return Ok(BaseCounts {
-                                    used_decomposed: true,
-                                    ..counts_decomp
-                                });
-                            }
-                        }
-
-                        Ok(counts_orig)
-                    },
-                )
-                .collect()
-        })
-    });
-
-    // Map anyhow::Error back to PyErr
-    match results {
-        Ok(r) => Ok(r),
-        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e))),
-    }
-}
-
-
 /// Pre-build the GTF annotation cache without counting — the Nextflow pre-warm step.
 ///
 /// Parses `gtf_path` for the chromosomes covered by `variants` and writes the
@@ -573,26 +387,16 @@ pub fn build_gtf_cache(
     Ok(annot.n_exons())
 }
 
-/// Bin-centric parallel BAM counting with BAQ and UMI support.
+/// Bin-centric parallel BAM counting: groups variants into ~10kb genomic bins,
+/// fetches reads once per bin, then classifies each read against every variant in
+/// the bin. Bin geometry is performance only; counts never depend on it (the
+/// binning-invariance tests vary it).
 ///
-/// Groups variants into ~10kb genomic bins, fetches reads once per bin,
-/// then classifies each read against all variants in the bin. This reduces
-/// I/O overhead vs per-variant `bam.fetch()` in `count_bam()`, especially
-/// for MAF files with clustered variants.
-///
-/// New features over `count_bam()`:
-/// - `apply_baq`: Heuristic BAQ quality downgrade near indels (both modes).
-/// - `umi_tag`: UMI-aware fragment grouping via `hash_molecule()`.
-///
-/// // INTENTIONAL: This is the new codepath. count_bam() is retained for
-/// // parity testing until the 22-BAM regression confirms identical counts.
 /// Shared implementation behind `count_bam_binned` (counts only) and
-/// `count_bam_binned_observations` (counts + per-molecule rows).
-///
-/// Both public entry points delegate here, so the counting path is literally the same
-/// code — the export cannot drift from the counts, and binned↔legacy parity is decided by
-/// one implementation rather than two. `emit_obs=false` allocates nothing and returns an
-/// empty observation Vec (invariant 3: output-aware, no compute-then-discard).
+/// `count_bam_binned_observations` (counts + per-molecule rows). Both public entry
+/// points delegate here, so the export cannot drift from the counts. `emit_obs=false`
+/// allocates nothing and returns an empty observation Vec (invariant 3: output-aware,
+/// no compute-then-discard).
 #[allow(clippy::too_many_arguments)]
 fn count_bam_binned_core(
     py: Python<'_>,
@@ -629,7 +433,10 @@ fn count_bam_binned_core(
     gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
+    bin_window: Option<i64>,
+    bin_max_variants: Option<i64>,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
+    let (window, max_variants) = bin_geometry(bin_window, bin_max_variants)?;
     let backend = parse_alignment_backend(
         alignment_backend,
         hmm_llr_threshold,
@@ -791,7 +598,7 @@ fn count_bam_binned_core(
             )
         })?;
     }
-    let bins = build_genomic_bins(&variants, header_reader.header(), BIN_WINDOW);
+    let bins = build_genomic_bins(&variants, header_reader.header(), window, max_variants);
 
     // Pre-pad sibling_variants
     let mut sibling_variants = sibling_variants;
@@ -967,7 +774,7 @@ fn count_bam_binned_core(
 
             // Deterministic observation order. `HashMap<u64, FragmentEvidence>` iteration
             // inside each variant is nondeterministic (RandomState), and it does not affect
-            // counts — those are order-invariant sums — so parity could never catch it.
+            // counts — those are order-invariant sums — so comparing counts never shows it.
             // Sorting by the join key makes the emitted rows reproducible run-to-run
             // (verified on real BAMs across 1/4/8 threads).
             if emit_obs {
@@ -1060,12 +867,13 @@ fn count_bam_binned_core(
 
 /// Bin-centric parallel BAM counting with BAQ and UMI support.
 ///
-/// Unchanged public entry point: same signature, same `list[BaseCounts]` return. Delegates
-/// to `count_bam_binned_core` with observations off, so nothing about this call path — or
-/// its callers — changes. For per-molecule rows use `count_bam_binned_observations`.
+/// Returns `list[BaseCounts]`, one per variant in input order. Delegates to
+/// `count_bam_binned_core` with observations off. For per-molecule rows use
+/// `count_bam_binned_observations`. `bin_window` / `bin_max_variants` are test
+/// arguments (production passes neither): counts must not depend on them.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -1099,6 +907,8 @@ pub fn count_bam_binned(
     gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
+    bin_window: Option<i64>,
+    bin_max_variants: Option<i64>,
 ) -> PyResult<Vec<BaseCounts>> {
     let (counts, _observations) = count_bam_binned_core(
         py, false, None, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -1107,6 +917,7 @@ pub fn count_bam_binned(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
+        bin_window, bin_max_variants,
     )?;
     Ok(counts)
 }
@@ -1123,7 +934,7 @@ pub fn count_bam_binned(
 /// Counts are byte-identical to `count_bam_binned` — same core, same classifier.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", observations_path=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", observations_path=None, bin_window=None, bin_max_variants=None))]
 pub fn count_bam_binned_observations(
     py: Python<'_>,
     bam_path: String,
@@ -1158,6 +969,8 @@ pub fn count_bam_binned_observations(
     reference_fasta: Option<&str>,
     library_type: &str,
     observations_path: Option<&str>,
+    bin_window: Option<i64>,
+    bin_max_variants: Option<i64>,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     count_bam_binned_core(
         py, true, observations_path, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -1166,18 +979,15 @@ pub fn count_bam_binned_observations(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
+        bin_window, bin_max_variants,
     )
 }
 
 /// Compute the reference-consumed end position of an aligned record.
 ///
-/// Walks the CIGAR string summing reference-consuming operations (M/=/X/D/N).
-/// This is equivalent to `record.cigar().end_pos()` but avoids the costly
-/// CigarString allocation that `end_pos()` performs internally.
-///
-/// Used in both `count_bin_shared` and `count_single_variant` to determine
-/// anchor overlap. Extracted as a helper to eliminate the duplicated inline
-/// CIGAR walk that previously existed in `count_single_variant`.
+/// Walks the CIGAR string summing reference-consuming operations (M/=/X/D/N),
+/// the same value as `record.cigar().end_pos()`. Used by the read loops to
+/// determine anchor overlap.
 #[inline]
 fn read_ref_end(record: &Record) -> i64 {
     let mut rend = record.pos();
@@ -1226,7 +1036,7 @@ fn read_ref_end(record: &Record) -> i64 {
 /// * `variants` — All variants (bin.variant_indices indexes into this)
 /// * `decomposed` — Parallel array of decomposed variants for dual-counting
 /// * `sibling_variants` — Per-variant sibling arrays for multi-allelic guard
-/// * All filter/config params — same as count_single_variant
+/// * All filter/config params — as passed to `count_bam_binned`
 ///
 /// # Returns
 ///
@@ -1342,9 +1152,9 @@ fn count_bin_shared(
     // PHASE 1: Per-variant classification from cached reads
     // ══════════════════════════════════════════════════════════════════════
     //
-    // For each variant (and its decomposed twin), iterate the read cache
-    // and perform the same classification logic as count_single_variant.
-    // Per-variant filters (strandedness, anchor overlap) are applied here.
+    // For each variant (and its decomposed twin), iterate the read cache and
+    // classify each read. Per-variant filters (strandedness, anchor overlap) are
+    // applied here.
 
     let mut results = Vec::with_capacity(bin.variant_indices.len());
     let mut bin_observations: Vec<Observation> = Vec::new();
@@ -1368,8 +1178,8 @@ fn count_bin_shared(
         //
         // Observations follow the SAME arbitration as the counts. A decomposed variant
         // runs the classifier twice, so keeping both sets would emit two contradictory
-        // allele calls per molecule (including the losing allele form) — and counts
-        // parity would stay green while the export was wrong. Only the winner's rows survive.
+        // allele calls per molecule (including the losing allele form) — and the counts
+        // would stay right while the export was wrong. Only the winner's rows survive.
         let (mut final_counts, final_obs) = if let Some(ref decomp) = decomposed[vi] {
             let (counts_decomp, obs_decomp) = count_variant_from_cache(
                 &read_cache, decomp, siblings,
@@ -1472,9 +1282,9 @@ fn count_bin_shared(
 /// Compute the mFSD fragment-size statistics for one variant and store them on
 /// `counts`: the four class counts, means, alt/ref LLR, the six pairwise KS triads
 /// (delta/D/p), the sub-/mono-nucleosomal fractions, and the raw size arrays for
-/// `--mfsd-parquet`. Consumes the size vectors. Shared by the binned and legacy paths;
-/// the binned path calls it only when mFSD output is requested (the engine is
-/// output-aware — see the `mfsd` gate in `count_variant_from_cache`).
+/// `--mfsd-parquet`. Consumes the size vectors. Called only when mFSD output is
+/// requested (the engine is output-aware — see the `mfsd` gate in
+/// `count_variant_from_cache`).
 fn compute_mfsd_stats(
     counts: &mut BaseCounts,
     ref_sizes: Vec<f64>,
@@ -1546,8 +1356,7 @@ fn compute_mfsd_stats(
 
 /// Classify and count reads from a pre-fetched cache for a single variant.
 ///
-/// This is the Phase 1 workhorse of D10. It performs the same logic as
-/// `count_single_variant` but operates on `&[Record]` instead of doing a
+/// Operates on the bin's `&[Record]` cache rather than a per-variant
 /// `bam.fetch()`. Universal filters (dup, secondary, supp, QC, MAPQ) have
 /// already been applied in Phase 0; only per-variant filters remain:
 /// - Strandedness (gene_strand varies per variant)
@@ -1648,8 +1457,8 @@ fn count_variant_from_cache(
     // Per-phase classification counters
     let mut phase_counts = [0u32; 5];
 
-    // Compute the variant fetch window — same logic as count_single_variant
-    // used for determining which cached reads overlap this variant
+    // The variant's read window: which cached reads overlap this variant (the bin's
+    // fetch holds it for every member; see `build_genomic_bins`)
     let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
     let v_start = (variant.pos - window_pad).max(0);
     let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
@@ -1708,8 +1517,7 @@ fn count_variant_from_cache(
 
         // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE any MAPQ-based skip
         // AND before the strandedness filter — an antisense MAPQ-0 read is
-        // still a physical read at the locus, and the legacy path counts it
-        // (the two paths previously diverged on this diagnostic in RNA mode).
+        // still a physical read at the locus.
         // Mirrors GATK's MappingQualityZero annotation — a high MQ0 count
         // is a locus-level red flag for regions with high homology or
         // pseudogenes, even when those reads are filtered for classification.
@@ -2105,7 +1913,7 @@ fn count_variant_from_cache(
         // below, so the export cannot diverge from the counts — it is the same value.
         // REF is first-class; NEITHER splits into N (ambiguous base — a strand-discordant
         // molecule in consensus BAMs) vs OTHER (third allele / no consensus). No counting
-        // logic is touched, so binned↔legacy parity is unaffected.
+        // logic is touched.
         if emit_obs {
             let (allele, best_qual) = if frag_ref {
                 (OBS_ALLELE_REF, evidence.best_ref_qual)
@@ -2206,510 +2014,6 @@ fn count_variant_from_cache(
     );
 
     Ok((counts, observations))
-}
-
-
-
-// INTENTIONAL: count_single_variant is retained for the legacy count_bam API.
-// count_bam_binned uses count_bin_shared/count_variant_from_cache instead.
-// Do NOT remove until count_bam itself is removed (D8b cleanup).
-//
-// NOTE: ref_context is always genomic in BOTH paths — consensus splicing of
-// the context was removed (see the note in count_variant_from_cache). Three
-// RNA behavioral divergences remain, all binned-only (RNA features are exempt
-// from the parity oracle per AGENTS.md invariant #1): exon-boundary BAQ
-// suppression (`baq_applies`; needs the GTF annotation),
-// rna_editing_site_overlap (needs the REDIportal editing-sites set), and the
-// antisense tally under strandedness enforcement (this path drops antisense
-// reads before the tally, so its antisense_depth stays 0 there).
-#[cfg(feature = "legacy-parity")]
-#[allow(clippy::too_many_arguments)]
-fn count_single_variant(
-    bam: &mut bam::IndexedReader,
-    variant: &Variant,
-    sibling_variants: &[Variant],
-    min_mapq: u8,
-    min_baseq: u8,
-    filter_duplicates: bool,
-    filter_secondary: bool,
-    filter_supplementary: bool,
-    filter_qc_failed: bool,
-    filter_improper_pair: bool,
-    filter_indel: bool,
-    fragment_qual_threshold: u8,
-    backend: &AlignmentBackend,
-    apply_baq: bool,
-    umi_tag: Option<[u8; 2]>,
-    mode: &str,
-    enforce_strandedness: bool,
-    strandedness: rna::Strandedness,
-) -> Result<BaseCounts> {
-    // Reconcile contig naming (chr1 vs 1, chrM vs MT) the same way the binned path does,
-    // so both codepaths resolve the same reads. The legacy oracle errors on a genuine
-    // miss (loud, and it is test-only).
-    let tid = resolve_tid(bam.header(), &variant.chrom).ok_or_else(|| {
-        anyhow::anyhow!("Chromosome not found in BAM: {}", variant.chrom)
-    })?;
-
-    // Fetch region around the variant. For windowed indel detection,
-    // we expand the window so that reads with shifted indels are also retrieved.
-    // The window scales with repeat_span to capture indels that aligners
-    // shift beyond 5bp in long homopolymers/microsatellites.
-    let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
-    let start = (variant.pos - window_pad).max(0);
-    let end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
-
-    bam.fetch((tid, start, end)).context("Failed to fetch region")?;
-
-    let mut counts = BaseCounts::default();
-
-    // Fragment tracking: QNAME hash -> FragmentEvidence
-    // Using u64 hash keys instead of String for memory efficiency.
-    let mut fragments: HashMap<u64, FragmentEvidence> = HashMap::new();
-
-    // Quality threshold for fragment consensus tiebreaking.
-    // When R1 and R2 disagree, the allele with higher quality wins
-    // only if the quality difference exceeds this threshold.
-    // Configurable via --fragment-qual-threshold (default: 10).
-    let qual_diff_threshold: u8 = fragment_qual_threshold;
-
-    // Distance-to-read-end tracking for QC metrics.
-    // Pre-allocated with conservative capacity to avoid resizing.
-    let mut alt_dists: Vec<u32> = Vec::with_capacity(500);
-    // Reads admitted by the soft-clipped bases that carry their allele.
-    let mut clip_admitted_reads: u32 = 0;
-    let mut ref_dists: Vec<u32> = Vec::with_capacity(500);
-
-    // Create SW aligners ONCE per variant, not per read (indelpost pattern).
-    // bio::alignment::pairwise::Aligner reuses internal DP buffers on
-    // subsequent calls, avoiding repeated O(n×m) heap allocation.
-    // Score function: N in read or haplotype → 0 (neutral, uninformative).
-    // Matches GATK approach: N contributes no evidence for match or mismatch.
-    // Handles N-in-read (duplex masking / sequencer failure) and N-in-haplotype (rare).
-    let score_fn = |a: u8, b: u8| -> i32 {
-        if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
-    };
-    // ALT + REF: Same affine gap penalties for fair comparison.
-    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
-    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
-    // Siblings whose change lies inside this row's discrimination window:
-    // the only ones whose carriers the REF guard excludes.
-    let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
-
-    // Per-phase classification counters
-    // Indices: 0=Structural, 1=CigarRecon, 2=MaskedCompare, 3=Levenshtein, 4=Alignment
-    let mut phase_counts = [0u32; 5];
-
-    // Construct ReadFilter from the boolean params.
-    let read_filter = crate::shared::filters::ReadFilter {
-        filter_duplicates,
-        filter_secondary,
-        filter_supplementary,
-        filter_qc_failed,
-        filter_improper_pair,
-        filter_indel,
-    };
-    let mut filter_counts = crate::shared::filters::FilterCounts::default();
-
-    let baq_spare = if apply_baq { baq_own_span(variant) } else { None };
-    for result in bam.records() {
-        let record = result.context("Error reading BAM record")?;
-
-        // Universal flag filters (delegated to shared::filters::ReadFilter).
-        if !read_filter.passes(&record, &mut filter_counts) {
-            continue;
-        }
-
-        // Supplementary/secondary share a QNAME with their primary, so they never count as
-        // first-class read-level observations (DP/RD/AD) regardless of the filter flags —
-        // mirroring count_variant_from_cache so binned and legacy stay in parity. They do
-        // reach fragment evidence when the caller opts out, where the QNAME hash collapses
-        // them into the primary's fragment and no double-count is possible.
-        let first_class = !(record.is_supplementary() || record.is_secondary());
-
-        // ── MQ0 TRACKING: Count MAPQ=0 reads BEFORE the MAPQ filter.
-        // Mirrors GATK's MappingQualityZero annotation — a high MQ0
-        // count is a locus-level red flag for regions with high homology
-        // or pseudogenes, even when those reads are filtered out.
-        if first_class && record.mapq() == 0 {
-            counts.mq0_count += 1;
-        }
-
-        // ── RNA MAPQ FILTER: In RNA mode, use NH:i:1 rescue logic.
-        // STAR assigns low MAPQ to reads at novel splice junctions despite
-        // unique mapping — NH:i:1 rescue recovers these informative reads.
-        // In DNA mode, use standard MAPQ filter.
-        if mode == "rna" {
-            if !rna::is_valid_rna_alignment(&record, min_mapq) {
-                continue;
-            }
-        } else if record.mapq() < min_mapq {
-            continue;
-        }
-
-        // ── RNA STRANDEDNESS FILTER: In RNA mode with strandedness enforced,
-        // reject reads on the wrong strand relative to the gene annotation.
-        // This prevents antisense artifacts from inflating variant counts.
-        if mode == "rna" && enforce_strandedness && !rna::is_sense_strand(&record, variant.gene_strand, strandedness) {
-            continue;
-        }
-
-        // ── HEURISTIC BAQ: When enabled, downgrade base qualities near
-        // alignment indels and splice junctions before allele classification.
-        // This affects which bases pass the min_baseq gate in
-        // check_snp/check_mnp and the quality used for fragment consensus
-        // tiebreaking.
-        //
-        // BAQ is applied lazily: apply_heuristic_baq() returns None for
-        // reads without indels or splice junctions (zero allocation for
-        // the common case).
-        let baq_adjusted = if apply_baq {
-            apply_heuristic_baq(&record, baq_spare)
-        } else {
-            None
-        };
-        let effective_quals: &[u8] = match &baq_adjusted {
-            Some(adj) => adj,
-            None => record.qual(),
-        };
-
-        // Determine allele status and base quality at variant position
-        let result = check_allele_with_qual(
-            &record, variant, sibling_variants, effective_quals, min_baseq, &mut alt_aligner, &mut ref_aligner, backend,
-        );
-        // ── SPLICE-SKIP EXCLUSION: covers_locus=false means the read's
-        // CIGAR N spans every discriminating position — no observation at
-        // this locus, so it contributes to neither DP nor fragment depth,
-        // and it is not a classification (kept out of phase_counts). At an
-        // anchor-preserved deletion this is deliberately stricter than
-        // pileup depth at POS (the anchor base may be aligned; the event is
-        // still unobserved). Mirrors count_variant_from_cache so binned and
-        // legacy stay in parity; must run before the span-based anchor gate
-        // below, which would otherwise admit these reads (read_ref_end
-        // includes N).
-        if !result.covers_locus {
-            counts.splice_skip_excluded += 1;
-            continue;
-        }
-
-        let base_qual = result.qual;
-        phase_counts[result.phase as usize] += 1;
-        tally_clip_candidate(&mut counts, &record, variant, first_class);
-
-        // ── MULTI-ALLELIC AD-CLAIMING GUARD: mirrors the binned path — an
-        // ALT match contested and won by a co-annotated sibling is
-        // downgraded before fragment evidence and read-level counting so AD
-        // and ADF exclude it consistently; it is recorded as
-        // partial_alt/any_alt below.
-        let claimed_by_sibling = sibling_claims_alt(
-            &record, variant, &result, sibling_variants, effective_quals, min_baseq,
-        );
-        let is_alt = result.is_alt && !claimed_by_sibling;
-        // ── MULTI-ALLELIC REF GUARD: mirrors the binned path.
-        let ref_claimed_by_sibling = sibling_claims_ref(
-            &record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
-            &mut alt_aligner, &mut ref_aligner, backend,
-        );
-        let is_ref = result.is_ref && !ref_claimed_by_sibling;
-
-        // ── DISTANCE TO READ END: Track how close the variant-supporting
-        // base is to the nearest end of the read. Bases near read ends
-        // have higher error rates and misalignment probability.
-        // Stored per-allele for median computation after the loop.
-        if is_ref || is_alt {
-            if let Some(read_idx) = find_read_pos(&record, variant.pos) {
-                let read_len = record.seq_len();
-                let dist = std::cmp::min(read_idx, read_len.saturating_sub(1 + read_idx)) as u32;
-                if is_alt { alt_dists.push(dist); }
-                if is_ref { ref_dists.push(dist); }
-            }
-        }
-
-        // ── ANCHOR OVERLAP CHECK (strict): DP, RD, and AD are all defined
-        // exclusively as depth at the variant anchor position (VCF POS).
-        // This matches samtools pileup, GATK FORMAT/DP, and VarDict conventions.
-        //
-        // Reads that are in the classification window (±window_pad) but do NOT
-        // overlap the anchor are used solely for haplotype evidence during
-        // allele classification above. They must NOT contribute to DP/RD/AD,
-        // because:
-        //   1. Their bases are not at the locus being reported.
-        //   2. Including them inflates DP above the true pileup depth.
-        //   3. It makes VAF (AD/DP) inconsistent with standard tools.
-        //
-        // REF+ALT ≤ DP is guaranteed because RD and AD are strict subsets
-        // of the anchor-overlap read set counted in DP here.
-        let read_start = record.pos();
-        let read_end = read_ref_end(&record);
-        let overlaps_anchor = read_start <= variant.pos && read_end > variant.pos;
-        // Admission by soft-clipped bases, as in the binned loop.
-        let clip_admitted = !overlaps_anchor && mode != "rna" && result.clip_admissible;
-        if !overlaps_anchor && !clip_admitted {
-            continue;
-        }
-        if clip_admitted {
-            clip_admitted_reads += 1;
-        }
-
-        // ── TOTAL DEPTH: all anchor-overlapping reads count toward DP,
-        // regardless of allele classification (REF, ALT, or other/ambiguous).
-        // This ensures DP reflects true physical coverage at the locus.
-        // First-class records only — a supplementary segment is the same physical read as
-        // its primary, so counting both would report depth 2 where one read exists.
-        let is_reverse = record.is_reverse();
-        if first_class {
-            counts.dp += 1;
-            if is_reverse {
-                counts.dp_rev += 1;
-            } else {
-                counts.dp_fwd += 1;
-            }
-            // Counted with DP, not at classification: SW_FALLBACK claims the
-            // row's counts came partly from a different scorer, which is only
-            // true for reads that contribute to those counts.
-            if result.sw_fallback {
-                counts.sw_fallback_reads += 1;
-            }
-        }
-
-        // ── FRAGMENT TRACKING: track ALL fragments for DPF.
-        // FragmentEvidence::observe() correctly handles (false, false) —
-        // it skips updating best_ref_qual/best_alt_qual but still tracks
-        // the fragment for DPF in the downstream resolution loop.
-        // UMI-aware fragment grouping: when umi_tag is set, reads with
-        // different UMIs are treated as distinct molecules. The UMI is
-        // extracted from the BAM aux tag (e.g., RX:Z:ACGT).
-        let mol_hash = if let Some(tag) = umi_tag {
-            let umi_bytes = record.aux(&tag)
-                .ok()
-                .and_then(|aux| match aux {
-                    rust_htslib::bam::record::Aux::String(s) => Some(s.as_bytes()),
-                    _ => None,
-                });
-            hash_molecule(record.qname(), umi_bytes)
-        } else {
-            hash_qname(record.qname())
-        };
-        let is_read1 = record.is_first_in_template();
-        let is_forward = !is_reverse;
-
-        let evidence = fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
-
-        // mFSD: compute physical fragment size from CIGAR, correcting TLEN for indels.
-        // Formula: physical = |TLEN| - D + I (validated on real MSK-ACCESS BAMs).
-        // observe() stores min(R1, R2) for defensive correctness.
-        // is_n_base: a fragment is in the N class when the base at the variant
-        // position was 'N' — proxied by base_qual==0 with no REF or ALT call.
-        let tlen = mfsd::calc_physical_insert_size(&record);
-        // Same explicit N flag as the binned path (set by the checkers when
-        // an N sits at a discriminating position); the old qual-0 heuristic
-        // mis-classified true third-allele reads as N-class.
-        let is_n_base = result.has_n_base;
-
-        let informative = !result.uninformative || ref_claimed_by_sibling;
-        evidence.observe(is_ref, is_alt, base_qual, is_read1, is_forward, tlen, is_n_base, result.is_structural, record.mapq(), informative);
-
-        // Secondary/supplementary records end here: fragment evidence only —
-        // read-level counters below are defined over the first-class read set
-        // (same as DP). Mirrors the identical gate in the binned path.
-        if !first_class {
-            continue;
-        }
-
-        // ── ALLELE-SPECIFIC COUNTS: only REF/ALT reads contribute to RD/AD.
-        // DP and DPF are already recorded above.
-        //
-        // Decomposed counting (any_alt / partial_alt):
-        // - Full ALT match: ad++, any_alt++ (invariant: any_alt = ad + partial_alt)
-        // - Partial ALT match (some discriminating positions match ALT): any_alt++, partial_alt++
-        // - Nearby evidence (right-length INDEL, close alignment score): any_alt++, partial_alt++
-        // - Neither/REF with no evidence: no any_alt/partial_alt change
-        if !is_ref && !is_alt {
-            // Check for partial ALT evidence before skipping. A sibling-claimed
-            // ALT or REF call is partial evidence for this row (see the
-            // binned path).
-            let sibling_claimed = claimed_by_sibling || ref_claimed_by_sibling;
-            if result.partial_match_count > 0 || result.has_nearby_evidence || sibling_claimed {
-                counts.any_alt += 1;
-                counts.partial_alt += 1;
-            }
-            continue;
-        }
-
-        // is_ref with nearby evidence: count as partial_alt (see single-variant path).
-        if is_ref && result.has_nearby_evidence {
-            counts.any_alt += 1;
-            counts.partial_alt += 1;
-        }
-
-        if is_ref {
-            counts.rd += 1;
-            if is_reverse {
-                counts.rd_rev += 1;
-            } else {
-                counts.rd_fwd += 1;
-            }
-        } else if is_alt {
-            counts.ad += 1;
-            counts.any_alt += 1; // Full ALT → counts toward any_alt
-            if result.mnp_confirmed {
-                counts.mnp_confirmed_alt += 1;
-            }
-            if is_reverse {
-                counts.ad_rev += 1;
-            } else {
-                counts.ad_fwd += 1;
-            }
-
-            // ── RNA-SPECIFIC ALT TRACKING ──
-            if mode == "rna" {
-                // Splice-spanning count: ALT reads that cross a splice junction
-                if rna::has_splice_junction(&record) {
-                    counts.splice_spanning_count += 1;
-                }
-            }
-        }
-
-        // ── RNA SENSE/ANTISENSE DEPTH: track strand-specific depth.
-        // Uses the same dUTP logic as is_sense_strand to classify reads.
-        if mode == "rna" {
-            if rna::is_sense_strand(&record, variant.gene_strand, strandedness) {
-                counts.sense_depth += 1;
-                if is_alt {
-                    counts.sense_strand_alt_count += 1;
-                }
-            } else {
-                counts.antisense_depth += 1;
-                if is_alt {
-                    counts.antisense_strand_alt_count += 1;
-                }
-            }
-        }
-    }
-
-    // ── QC MEDIAN COMPUTATION: compute median distance-to-end for REF/ALT.
-    counts.alt_dist_end_median = compute_median_u32(&mut alt_dists);
-    counts.ref_dist_end_median = compute_median_u32(&mut ref_dists);
-
-    // ── RNA EDITING SITE FLAG (legacy path) ──
-    // RNA editing DB-only flagging is only available via count_bam_binned.
-    // Legacy path does not receive the editing_sites HashSet, so
-    // rna_editing_site_overlap stays false (no pattern-matching guessing).
-
-    // Resolve fragment-level counts using quality-weighted consensus.
-    // Each fragment contributes exactly ONE allele call (REF xor ALT),
-    // preventing the double-counting bug where R1=REF + R2=ALT
-    // inflated both rdf and adf.
-    //
-    // Strand bias uses allele-specific orientation: the strand of the read
-    // that provided the best evidence for the winning allele, not just R1.
-    // Example: R1=Fwd/REF(Q10) + R2=Rev/ALT(Q30) → ALT wins, counted as
-    // adf_rev (not adf_fwd).
-    // ── mFSD size vectors: one per Krewlyzer fragment class ─────────────────
-    // Populated below during resolution. Only sizes in the cfDNA-valid range
-    // (50–1000 bp) with a known TLEN are added. GC correction is not applied —
-    // GC bias affects count depth, not fragment length, so these raw sizes are
-    // already unbiased samples of the true size distribution.
-    let mut ref_sizes:    Vec<f64> = Vec::with_capacity(fragments.len());
-    let mut alt_sizes:    Vec<f64> = Vec::with_capacity(fragments.len());
-    let mut nonref_sizes: Vec<f64> = Vec::with_capacity(fragments.len());
-    let mut n_sizes:      Vec<f64> = Vec::with_capacity(fragments.len());
-
-    for evidence in fragments.values() {
-        let (frag_ref, frag_alt) = evidence.resolve(qual_diff_threshold);
-
-        // Count every fragment in dpf regardless of consensus outcome.
-        // Discarded fragments (ambiguous R1-vs-R2 within quality threshold)
-        // are still real molecules — tracking them in dpf makes the gap
-        // dpf - (rdf + adf) a useful quality metric for the locus.
-        counts.dpf += 1;
-
-        if frag_ref {
-            counts.rdf += 1;
-            // Use REF-specific orientation (strand of best REF evidence)
-            if let Some(ori) = evidence.ref_orientation() {
-                if ori {
-                    counts.rdf_fwd += 1;
-                } else {
-                    counts.rdf_rev += 1;
-                }
-            }
-        } else if frag_alt {
-            counts.adf += 1;
-            // Use ALT-specific orientation (strand of best ALT evidence)
-            if let Some(ori) = evidence.alt_orientation() {
-                if ori {
-                    counts.adf_fwd += 1;
-                } else {
-                    counts.adf_rev += 1;
-                }
-            }
-        }
-
-        // mFSD: classify fragment into one of four size class vectors.
-        // Only fragments with a known, in-range insert size contribute.
-        if let Some(sz) = evidence.insert_size {
-            if (50..=1000).contains(&sz) {
-                let sz_f = sz as f64;
-                if frag_ref {
-                    ref_sizes.push(sz_f);
-                } else if frag_alt {
-                    alt_sizes.push(sz_f);
-                } else if evidence.has_n_base {
-                    // N class: ambiguous base at variant position
-                    n_sizes.push(sz_f);
-                } else if evidence.has_informative_read {
-                    // NonREF class: definite non-ref, non-alt, non-N base
-                    nonref_sizes.push(sz_f);
-                }
-                // Otherwise no read could tell the alleles apart: no class
-                // (mirrors the binned path).
-            }
-        }
-    }
-
-    // Calculate stats
-    let (sb_pval, sb_or) =
-        fisher_strand_bias(counts.rd_fwd, counts.rd_rev, counts.ad_fwd, counts.ad_rev);
-    counts.sb_pval = sb_pval;
-    counts.sb_or = sb_or;
-
-    let (fsb_pval, fsb_or) = fisher_strand_bias(
-        counts.rdf_fwd,
-        counts.rdf_rev,
-        counts.adf_fwd,
-        counts.adf_rev,
-    );
-    counts.fsb_pval = fsb_pval;
-    counts.fsb_or = fsb_or;
-
-    // ── mFSD Statistics ──────────────────────────────────────────────────────
-    // The legacy per-variant path is the parity oracle (test-only) and always computes
-    // mFSD; only the binned production path gates it on `mfsd`. Shares the same helper
-    // as the binned path so the two can never drift.
-    compute_mfsd_stats(&mut counts, ref_sizes, alt_sizes, nonref_sizes, n_sizes, variant);
-
-    warn_sw_fallback(variant, counts.sw_fallback_reads);
-    if clip_admitted_reads > 0 {
-        debug!(
-            "{}:{} {}>{}: {} read(s) admitted by the soft-clipped bases that carry their allele",
-            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, clip_admitted_reads,
-        );
-    }
-
-    // Log per-phase classification breakdown
-    debug!(
-        "Phase stats {}:{} {}→{}: P0(Structural)={} P1(CigarRecon)={} P2(Masked)={} P2.5(Lev)={} P3(Align)={} splice_skip_excluded={} sw_fallback={} clip_candidates={} ({} backend)",
-        variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
-        phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
-        counts.splice_skip_excluded, counts.sw_fallback_reads, counts.clip_candidates,
-        match backend {
-            AlignmentBackend::SmithWaterman => "SW",
-            AlignmentBackend::PairHMM { .. } => "HMM",
-        }
-    );
-
-    Ok(counts)
 }
 
 
@@ -2959,7 +2263,7 @@ const CLIP_CANDIDATE_MIN_LEN: u32 = 8;
 const CLIP_REACH_SLACK: i64 = 10;
 
 /// Insertion loci only: count a first-class read carrying a clip candidate.
-/// Shared by the binned and legacy loops and called right after
+/// Shared by the read loops and called right after
 /// classification — deliberately before the anchor-overlap gate, because a
 /// clip-represented tandem-duplication carrier can align entirely past the
 /// anchor (its clip covers the inserted copy) and still be the evidence the
@@ -3090,8 +2394,8 @@ fn anchor_preserved(variant: &Variant) -> bool {
 /// indels at the variant position.
 ///
 /// The `alt_aligner` and `ref_aligner` are reusable SW aligners created
-/// once per variant in `count_single_variant()` and threaded through to
-/// avoid per-read allocation (indelpost pattern).
+/// once per variant in the read loop and threaded through to avoid per-read
+/// allocation (indelpost pattern).
 #[allow(clippy::too_many_arguments)]
 fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     record: &Record,
@@ -4253,7 +3557,6 @@ fn detect_asjd(
 }
 
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4375,8 +3678,8 @@ mod tests {
     fn test_bin_covers_anchor_deletion_ref_span() {
         // A bin anchored by a deletion whose ref span exceeds the window must
         // still fetch the deletion's right breakpoint. Before the anchor-aware
-        // seed, bin.end stopped at bin_start + window and dropped those reads,
-        // undercounting AD/ADF and diverging from the legacy per-variant path.
+        // seed, bin.end stopped at bin_start + window and dropped reads aligned
+        // past it (clip-admitted carriers of a long event).
         let header = build_header_with_contig("1", 1_000_000);
         let window = 10_000_i64;
 
@@ -4387,7 +3690,7 @@ mod tests {
             build_variant(2_000, "C", "T"),
         ];
 
-        let bins = build_genomic_bins(&variants, &header, window);
+        let bins = build_genomic_bins(&variants, &header, window, BIN_MAX_VARIANTS);
         assert_eq!(bins.len(), 1, "both variants belong in one bin");
         let bin = &bins[0];
 
@@ -4409,6 +3712,54 @@ mod tests {
             "anchor deletion right breakpoint (13000) must be fetched, got bin.end={}",
             bin.end,
         );
+    }
+
+    #[test]
+    fn every_variant_lands_in_one_bin_whose_fetch_holds_its_window() {
+        // Bin geometry is performance only: under any window and cap, each variant
+        // belongs to exactly one bin, and that bin's fetch holds the variant's whole
+        // read window (its span padded by max(5, repeat_span + 2), the filter each
+        // variant applies to the bin's cached reads). Random clusters of SNVs and
+        // indels up to 300bp, with repeat spans, over a deterministic LCG.
+        let header = build_header_with_contig("1", 1_000_000);
+        let mut state: u64 = 0x5eed;
+        let mut next = |n: u64| -> u64 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 33) % n
+        };
+        for _trial in 0..200 {
+            let count = 1 + next(40) as usize;
+            let mut variants = Vec::with_capacity(count);
+            for _ in 0..count {
+                let pos = 1 + next(30_000) as i64;
+                let ref_len = if next(3) == 0 { 1 + next(300) as usize } else { 1 };
+                let mut v = build_variant(pos, &"A".repeat(ref_len), "A");
+                v.repeat_span = next(40) as usize;
+                variants.push(v);
+            }
+            for &window in &[1_i64, 7, 100, 10_000] {
+                for &cap in &[1_usize, 2, 3, 200] {
+                    let bins = build_genomic_bins(&variants, &header, window, cap);
+                    let mut seen = vec![0_usize; variants.len()];
+                    for bin in &bins {
+                        assert!(bin.variant_indices.len() <= cap);
+                        for &k in &bin.variant_indices {
+                            seen[k] += 1;
+                            let v = &variants[k];
+                            let pad = std::cmp::max(5, v.repeat_span as i64 + 2);
+                            assert!(
+                                bin.start <= (v.pos - pad).max(0)
+                                    && bin.end >= v.pos + v.ref_allele.len() as i64 + pad,
+                                "window {window} cap {cap}: bin [{}, {}) misses variant at {} \
+                                 (ref {}bp, pad {pad})",
+                                bin.start, bin.end, v.pos, v.ref_allele.len(),
+                            );
+                        }
+                    }
+                    assert!(seen.iter().all(|&n| n == 1), "window {window} cap {cap}: {seen:?}");
+                }
+            }
+        }
     }
 
     // ── ASJD per-fragment junction dedup ──

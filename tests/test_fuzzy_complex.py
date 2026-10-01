@@ -19,16 +19,13 @@ from helpers import (
     build_bam as _build_bam,
 )
 from helpers import (
-    count_one as _count_one,
-)
-from helpers import (
-    count_one_both as _count_one_both,
+    count_one_checked as _count_one,
 )
 from helpers import (
     make_read as _make_read,
 )
 
-from gbcms._rs import Variant, count_bam  # noqa: F401 — count_bam used in legacy comments
+from gbcms._rs import Variant
 
 # ==========================================================================
 # Case A: Equal-length REF and ALT (2bp substitution)
@@ -326,7 +323,7 @@ class TestGap3A_DynamicGapPenalties:
         the SW aligner to absorb the shift and correctly classify as ALT.
 
         Note: repeat_span is set during normalization (prepare_variants),
-        not directly on Variant objects. For direct count_bam calls,
+        not directly on Variant objects. For an unprepared Variant,
         repeat_span defaults to 0. This test verifies the SW pipeline
         still works with standard gap penalties.
         """
@@ -349,42 +346,6 @@ class TestGap3A_DynamicGapPenalties:
         # The deletion check should find this via windowed detection or SW fallback
         # dp must include this read regardless
         assert counts.dp >= 1, f"Expected dp >= 1, got {counts.dp}"
-
-
-# ── count_bam_binned parity tests ────────────────────────────────────────
-
-
-# _count_one_both imported from helpers.py above
-
-
-class TestBinnedParity:
-    """Verify count_bam_binned matches count_bam for complex variant scenarios."""
-
-    def test_equal_len_alt_binned(self, tmp_path):
-        reads = [_make_read("r1", "AAAACGAAAA", 96, ((0, 10),))]
-        bam = _build_bam(tmp_path, reads)
-        counts = _count_one_both(bam, EQUAL_LEN_VARIANT)
-        assert counts.ad == 1
-        assert counts.rd == 0
-
-    def test_equal_len_ref_binned(self, tmp_path):
-        reads = [_make_read("r1", "AAAAATAAAA", 96, ((0, 10),))]
-        bam = _build_bam(tmp_path, reads)
-        counts = _count_one_both(bam, EQUAL_LEN_VARIANT)
-        assert counts.rd == 1
-        assert counts.ad == 0
-
-    def test_delins_alt_binned(self, tmp_path):
-        reads = [_make_read("r1", "AAAACCAAAA", 96, ((0, 6), (2, 1), (0, 4)))]
-        bam = _build_bam(tmp_path, reads)
-        counts = _count_one_both(bam, DELINS_VARIANT)
-        assert counts.ad == 1
-
-    def test_ref_only_binned(self, tmp_path):
-        reads = [_make_read("r1", "AAAACCAAAA", 96, ((0, 10),))]
-        bam = _build_bam(tmp_path, reads)
-        counts = _count_one_both(bam, INSLIKE_VARIANT)
-        assert counts.rd == 1
 
 
 # COMPLEX variant whose ALT is the REF plus a trailing insertion at the exclusive

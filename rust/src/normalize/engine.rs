@@ -26,8 +26,7 @@ use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_o
 /// 3. **Left-alignment** — bcftools `realign_left()` for indels
 /// 4. **ref_context fetch** — flanking sequence for Smith-Waterman alignment
 ///
-/// Uses rayon `par_iter().map_init()` with thread-local FASTA readers,
-/// matching the established pattern in `count_bam()`.
+/// Uses rayon `par_iter().map_init()` with thread-local FASTA readers.
 ///
 /// # Arguments
 /// * `variants` — Input variants (raw MAF or VCF coords, 0-based)
@@ -59,7 +58,7 @@ pub fn prepare_variants(
         threads,
     );
 
-    // Build rayon thread pool (same pattern as count_bam). `--threads` is the total
+    // Build the rayon thread pool. `--threads` is the total
     // budget for this process (see shared::resolve_thread_budget).
     let threads = crate::shared::resolve_thread_budget(threads);
     let pool = rayon::ThreadPoolBuilder::new()

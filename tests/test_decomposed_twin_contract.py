@@ -12,7 +12,7 @@ reports whichever form has more ALT support, flagging ``WARN_HOMOPOLYMER_DECOMP`
 - ``WARN_HOMOPOLYMER_DECOMP`` is per sample. The prepared variants are shared
   by every sample of a run, and the flag set for one sample stayed on every
   later sample's row.
-- Guard: the legacy parity oracle and the binned engine count the same twin.
+- Guard: the twin's dual-count does not depend on bin geometry.
 
 The twin is opt-in (``--rescue-homopolymer``); these tests exercise it there.
 
@@ -23,7 +23,7 @@ import glob
 import random
 
 import pysam
-from helpers import count_both, make_read, read_maf_output
+from helpers import count_checked, make_read, read_maf_output
 from rna_fixtures import E1, SENSE, mk_ref, run_rna, write_bam, write_fasta, write_gtf, write_vcf
 from typer.testing import CliRunner
 
@@ -78,10 +78,10 @@ def _invariants(c):
     assert c.ad == c.ad_fwd + c.ad_rev
 
 
-# ── parity guard ──────────────────────────────────────────────────────────
-def test_twin_parity_between_engines(tmp_path):
-    """Guard: where the twin wins, the legacy oracle and the binned engine
-    report the same dual-count (count_both asserts field-by-field parity)."""
+# ── binning guard ─────────────────────────────────────────────────────────
+def test_twin_dual_count_does_not_depend_on_bin_geometry(tmp_path):
+    """Guard: where the twin wins, its dual-count is the same with one variant
+    per bin (count_checked compares every field)."""
     ref = _dna_ref()
     fa = _fasta(tmp_path, ref)
     variant = _rs.Variant("1", DNA_RUN, "C" * RUN_LEN, "T", "COMPLEX")
@@ -89,7 +89,7 @@ def test_twin_parity_between_engines(tmp_path):
     assert prepared.decomposed_variant.alt_allele == "C" * (RUN_LEN - 1) + "T"
     reads = [_twin_carrier(f"t{i}", ref, DNA_RUN, DNA_RUN - 60 + i) for i in range(8)]
     reads += [_ref_read(f"r{i}", ref, DNA_RUN - 50 + i) for i in range(6)]
-    (counts,) = count_both(
+    (counts,) = count_checked(
         _bam(tmp_path / "r.bam", ref, reads),
         [prepared.variant],
         decomposed=[prepared.decomposed_variant],

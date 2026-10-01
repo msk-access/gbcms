@@ -19,7 +19,7 @@ synthesized here (all reads below are constructed; no patient data):
 Engine invariant asserted throughout: any_alt == ad + partial_alt.
 """
 
-from helpers import build_bam, count_both, make_read
+from helpers import build_bam, count_checked, make_read
 
 from gbcms import _rs as gbcms_rs
 
@@ -37,7 +37,7 @@ DNP_PARTIAL = "AAGAAATTTT"  # GA — pos 1 mutated only
 
 
 def _count(bam_path, variant):
-    c = count_both(bam_path, [variant], min_mapq=0, min_baseq=0)[0]
+    c = count_checked(bam_path, [variant], min_mapq=0, min_baseq=0)[0]
     assert c.dp >= c.rd + c.ad
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev

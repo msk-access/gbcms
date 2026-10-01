@@ -1054,8 +1054,8 @@ across every base that could tell this variant's alleles apart, so it stays REF,
 as IGV shows it and as GATK counts REF at a site unless an event overlaps it.
 
 The exclusion runs before fragment evidence is recorded, so `ref_count` and
-`ref_count_fragment` drop the same molecules. The production, legacy parity and
-per-transcript paths apply the same rule.
+`ref_count_fragment` drop the same molecules. The main and per-transcript read loops
+apply the same rule.
 
 !!! important "This prevents systematic REF inflation at multi-allelic loci, preserving unbiased VAF estimation."
 

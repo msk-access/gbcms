@@ -17,7 +17,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Fragmentomics (Tsui et al., MSK)](fragmentomics-reference.md) — the prior for mFSD and CH-LIKE; cite for S1 #153 / S2 #154 thresholds.
 
 ## Project facts (from the 2026-06-26 code review)
-- [Bin fetch-end must cover the anchor variant](bin-anchor-coverage.md) — CR-1 invariant for binned↔legacy parity.
+- [Bin fetch-end must cover the anchor variant](bin-anchor-coverage.md) — CR-1; pinned by the bin property test and binning-invariance tests.
 - [WFA fast-path shares the base-quality gate](wfa-bq-gate-contract.md) — CR-2 cross-backend quality contract.
 - [Engine should be output-aware](engine-output-aware.md) — plumb intent across FFI vs compute-then-discard.
 - [Tolerant large-deletion match — superseded](tolerant-deletion-deliberate.md) — issue #91: real large dels are exact-length; wrong-length pure indels → partial_alt; delins stay Phase-3. The 50bp gate is an artifact-SIZE prior (artifacts are small; a ≥50bp op is real), not an event-rarity claim.
@@ -30,13 +30,11 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [maturin develop: repo root only](maturin-develop-repo-root-only.md) — `-m rust/Cargo.toml` bypasses [tool.maturin] and leaves a stale src/gbcms/_rs.so shadowing every rebuild.
 - [Harness cleanup after merge](harness-cleanup-after-merge.md) — delete the ticket's `src_*` builds (rebuildable from BUILT_FROM; patch prototypes first), gzip traces, `cargo clean` when rust/target bloats.
 - [No `timeout` on this Mac](macos-no-timeout-command.md) — `timeout N cmd && ok || fail` always says fail; check SFTP mounts with a plain read.
-- [Legacy count_bam parity oracle](legacy-parity-oracle.md) — feature-gated (`legacy-parity`, default on); shipped wheel omits it; mirror binned-path changes in both or parity breaks.
 
 ## Validation / testing
 - [QC-fail flag absent from MSK data](qcfail-flag-absent-msk-data.md) — no pipeline stage sets 0x200; filter verified correct but inert in practice (contract test pins it).
 - [--trace output wraps](trace-output-wraps.md) — set COLUMNS=3000 before parsing `read call` trace lines, or every read looks untraced.
 - [pysam validation oracle](pysam-validation-oracle.md) — use fetch()+get_reference_positions (not pileup) to cross-check gbcms counts; RD/AD match exact, DP includes neither.
-- [Siblings break binned↔legacy parity](siblings-break-binned-legacy-parity.md) — never pass sibling_variants to count_both; parity only holds without siblings.
 - [vcf2maf oracle](vcf2maf-oracle.md) — VCF↔MAF representation is defined as vcf2maf/maf2vcf output; how to run them locally and their quirks (dies on N, empty ALT for REF==ALT).
 
 ## User (private, local-only — not committed)

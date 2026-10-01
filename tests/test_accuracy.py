@@ -2,9 +2,7 @@
 
 import pysam
 import pytest
-from helpers import count_both
-
-from gbcms._rs import count_bam
+from helpers import count_bam_checked
 
 
 @pytest.fixture
@@ -204,7 +202,7 @@ def test_snp_accuracy(synthetic_bam):
 
     variant = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="T", variant_type="SNP")
 
-    results = count_bam(
+    results = count_bam_checked(
         synthetic_bam,
         [variant],
         decomposed=[None],
@@ -249,7 +247,7 @@ def test_insertion_accuracy(synthetic_bam):
         chrom="chr1", pos=200, ref_allele="A", alt_allele="AT", variant_type="INSERTION"
     )
 
-    results = count_bam(
+    results = count_bam_checked(
         synthetic_bam,
         [variant],
         decomposed=[None],
@@ -372,7 +370,7 @@ def test_complex_accuracy(synthetic_bam, tmp_path):
         gbcms_rs.Variant("chr1", 200, "A", "CT", "COMPLEX"),
     ]
 
-    counts = gbcms_rs.count_bam(
+    counts = count_bam_checked(
         bam_path=sorted_path,
         variants=variants,
         decomposed=[None] * len(variants),
@@ -413,7 +411,7 @@ def test_deletion_accuracy(synthetic_bam):
         chrom="chr1", pos=300, ref_allele="AT", alt_allele="A", variant_type="DELETION"
     )
 
-    results = count_bam(
+    results = count_bam_checked(
         synthetic_bam,
         [variant],
         decomposed=[None],
@@ -443,7 +441,7 @@ def test_mnp_accuracy(synthetic_bam):
 
     variant = Variant(chrom="chr1", pos=400, ref_allele="AT", alt_allele="CG", variant_type="MNP")
 
-    results = count_bam(
+    results = count_bam_checked(
         synthetic_bam,
         [variant],
         decomposed=[None],
@@ -468,92 +466,4 @@ def test_mnp_accuracy(synthetic_bam):
     assert counts.ad == 2
     assert counts.rd == 1
     # Gap 1D invariant: DP includes 'neither' reads
-    assert counts.dp >= counts.rd + counts.ad
-
-
-# ── count_bam_binned parity tests ────────────────────────────────────────
-
-
-def test_snp_accuracy_binned(synthetic_bam):
-    """count_bam_binned produces same SNP counts as count_bam."""
-    from gbcms._rs import Variant
-
-    variant = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="T", variant_type="SNP")
-    counts = count_both(
-        synthetic_bam,
-        [variant],
-        min_mapq=20,
-        min_baseq=20,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-    )[0]
-    assert counts.rd_fwd == 5
-    assert counts.rd_rev == 3
-    assert counts.ad_fwd == 4
-    assert counts.ad_rev == 2
-    assert counts.rd == 8
-    assert counts.ad == 6
-
-
-def test_insertion_accuracy_binned(synthetic_bam):
-    """count_bam_binned produces same insertion counts as count_bam."""
-    from gbcms._rs import Variant
-
-    variant = Variant(
-        chrom="chr1", pos=200, ref_allele="A", alt_allele="AT", variant_type="INSERTION"
-    )
-    counts = count_both(
-        synthetic_bam,
-        [variant],
-        min_mapq=20,
-        min_baseq=20,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-    )[0]
-    assert counts.ad_fwd == 2
-    assert counts.ad == 2
-    assert counts.dp >= counts.rd + counts.ad
-
-
-def test_deletion_accuracy_binned(synthetic_bam):
-    """count_bam_binned produces same deletion counts as count_bam."""
-    from gbcms._rs import Variant
-
-    variant = Variant(
-        chrom="chr1", pos=300, ref_allele="AT", alt_allele="A", variant_type="DELETION"
-    )
-    counts = count_both(
-        synthetic_bam,
-        [variant],
-        min_mapq=20,
-        min_baseq=20,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-    )[0]
-    assert counts.ad_fwd == 3
-    assert counts.ad == 3
-    assert counts.dp >= counts.rd + counts.ad
-
-
-def test_mnp_accuracy_binned(synthetic_bam):
-    """count_bam_binned produces same MNP counts as count_bam."""
-    from gbcms._rs import Variant
-
-    variant = Variant(chrom="chr1", pos=400, ref_allele="AT", alt_allele="CG", variant_type="MNP")
-    counts = count_both(
-        synthetic_bam,
-        [variant],
-        min_mapq=20,
-        min_baseq=20,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-    )[0]
-    assert counts.ad_fwd == 2
-    assert counts.rd_rev == 1
-    assert counts.ad == 2
-    assert counts.rd == 1
     assert counts.dp >= counts.rd + counts.ad

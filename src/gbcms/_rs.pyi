@@ -211,32 +211,6 @@ class PreparedVariant:
     decomposed_variant: Variant | None
     multi_allelic_group: int | None
 
-def count_bam(
-    bam_path: str,
-    variants: list[Variant],
-    decomposed: list[Variant | None],
-    min_mapq: int,
-    min_baseq: int,
-    filter_duplicates: bool,
-    filter_secondary: bool,
-    filter_supplementary: bool,
-    filter_qc_failed: bool,
-    filter_improper_pair: bool,
-    filter_indel: bool,
-    threads: int,
-    fragment_qual_threshold: int = 10,
-    sibling_variants: list[list[Variant]] | None = None,
-    alignment_backend: str = "pairhmm",
-    hmm_llr_threshold: float = 2.3,
-    hmm_gap_open: float = 1e-4,
-    hmm_gap_extend: float = 0.1,
-    hmm_gap_open_repeat: float = 1e-2,
-    hmm_gap_extend_repeat: float = 0.5,
-    mode: str = "dna",
-    enforce_strandedness: bool = False,
-    strandedness: str = "reverse",
-    reference_fasta: str | None = None,
-) -> list[BaseCounts]: ...
 def count_bam_binned(
     bam_path: str,
     variants: list[Variant],
@@ -251,7 +225,7 @@ def count_bam_binned(
     filter_indel: bool,
     threads: int,
     fragment_qual_threshold: int = 10,
-    sibling_variants: list[list[Variant]] | None = None,
+    sibling_variants: list[list[Variant]] = ...,
     alignment_backend: str = "pairhmm",
     hmm_llr_threshold: float = 2.3,
     hmm_gap_open: float = 1e-4,
@@ -269,6 +243,8 @@ def count_bam_binned(
     gtf_cache_dir: str | None = None,
     reference_fasta: str | None = None,
     library_type: str = "capture",
+    bin_window: int | None = None,
+    bin_max_variants: int | None = None,
 ) -> list[BaseCounts]: ...
 def count_bam_binned_observations(
     bam_path: str,
@@ -303,6 +279,8 @@ def count_bam_binned_observations(
     reference_fasta: str | None = None,
     library_type: str = "capture",
     observations_path: str | None = None,
+    bin_window: int | None = None,
+    bin_max_variants: int | None = None,
 ) -> tuple[list[BaseCounts], list[Observation]]: ...
 def build_gtf_cache(
     gtf_path: str,

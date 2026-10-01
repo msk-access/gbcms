@@ -1,6 +1,6 @@
 import pysam
 import pytest
-from helpers import build_bam, count_both, make_read
+from helpers import build_bam, count_bam_checked, count_checked, make_read
 
 from gbcms import _rs as gbcms_rs
 from gbcms.models.core import Variant, VariantType
@@ -100,7 +100,7 @@ def test_filters(mock_bam_with_flags):
 
     # Case 1: No filters (except defaults)
     # Defaults: filter_duplicates=True, others False
-    counts = gbcms_rs.count_bam(
+    counts = count_bam_checked(
         str(mock_bam_with_flags),
         rs_variants,
         [None] * len(rs_variants),
@@ -126,7 +126,7 @@ def test_filters(mock_bam_with_flags):
     assert counts.dp == 4
 
     # Case 2: Filter QC Failed
-    counts = gbcms_rs.count_bam(
+    counts = count_bam_checked(
         str(mock_bam_with_flags),
         rs_variants,
         [None] * len(rs_variants),
@@ -144,7 +144,7 @@ def test_filters(mock_bam_with_flags):
     assert counts.dp == 3
 
     # Case 3: Filter Improper Pair
-    counts = gbcms_rs.count_bam(
+    counts = count_bam_checked(
         str(mock_bam_with_flags),
         rs_variants,
         [None] * len(rs_variants),
@@ -162,7 +162,7 @@ def test_filters(mock_bam_with_flags):
     assert counts.dp == 3
 
     # Case 4: Filter Indel
-    counts = gbcms_rs.count_bam(
+    counts = count_bam_checked(
         str(mock_bam_with_flags),
         rs_variants,
         [None] * len(rs_variants),
@@ -180,7 +180,7 @@ def test_filters(mock_bam_with_flags):
     assert counts.dp == 3
 
     # Case 5: Filter Secondary
-    counts = gbcms_rs.count_bam(
+    counts = count_bam_checked(
         str(mock_bam_with_flags),
         rs_variants,
         [None] * len(rs_variants),
@@ -198,7 +198,7 @@ def test_filters(mock_bam_with_flags):
     assert counts.dp == 4
 
     # Case 6: All Filters
-    counts = gbcms_rs.count_bam(
+    counts = count_bam_checked(
         str(mock_bam_with_flags),
         rs_variants,
         [None] * len(rs_variants),
@@ -216,46 +216,10 @@ def test_filters(mock_bam_with_flags):
     assert counts.dp == 1
 
 
-# ── count_bam_binned parity tests ────────────────────────────────────────
-
-
-def test_filters_binned(mock_bam_with_flags):
-    """count_bam_binned filter behavior matches count_bam for all 6 filter cases."""
-    variant = gbcms_rs.Variant("chr1", 150, "A", "T", "SNP")
-
-    # No filters: 4 reads count (read_secondary is always skipped at read level)
-    counts = count_both(
-        str(mock_bam_with_flags),
-        [variant],
-        min_mapq=0,
-        min_baseq=0,
-        filter_secondary=False,
-        filter_supplementary=False,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-    )[0]
-    assert counts.dp == 4
-
-    # All filters: only read1 remains
-    counts = count_both(
-        str(mock_bam_with_flags),
-        [variant],
-        min_mapq=0,
-        min_baseq=0,
-        filter_secondary=True,
-        filter_supplementary=True,
-        filter_qc_failed=True,
-        filter_improper_pair=True,
-        filter_indel=True,
-    )[0]
-    assert counts.dp == 1
-
-
 def test_supplementary_shared_qname_not_double_counted(tmp_path):
     """The core double-count case: a supplementary segment sharing a QNAME with its
-    primary must not inflate read-level DP even with --no-filter-supplementary.
-    count_both asserts binned↔legacy parity, so both paths must agree on DP=1."""
+    primary must not inflate read-level DP even with --no-filter-supplementary,
+    under any bin geometry (count_checked)."""
     bam_path = tmp_path / "supp.bam"
     header = {"HD": {"VN": "1.0"}, "SQ": [{"LN": 1000, "SN": "chr1"}]}
     with pysam.AlignmentFile(bam_path, "wb", header=header) as outf:
@@ -272,7 +236,7 @@ def test_supplementary_shared_qname_not_double_counted(tmp_path):
     pysam.index(str(bam_path))
 
     variant = gbcms_rs.Variant("chr1", 150, "A", "T", "SNP")
-    counts = count_both(
+    counts = count_checked(
         str(bam_path),
         [variant],
         min_mapq=0,
@@ -314,10 +278,10 @@ def test_supplementary_only_locus_is_seen_at_fragment_level_when_opted_in(tmp_pa
     pysam.index(str(bam_path))
 
     far = gbcms_rs.Variant("chr1", 1050, "A", "T", "SNP")  # only the supplementary reaches it
-    filtered = count_both(str(bam_path), [far], min_mapq=0, min_baseq=0)[0]
+    filtered = count_checked(str(bam_path), [far], min_mapq=0, min_baseq=0)[0]
     assert filtered.dpf == 0, "default must still exclude it"
 
-    admitted = count_both(
+    admitted = count_checked(
         str(bam_path), [far], min_mapq=0, min_baseq=0, filter_supplementary=False
     )[0]
     assert admitted.dpf == 1, "opting out did not admit the supplementary to fragment evidence"
@@ -366,7 +330,7 @@ def test_qc_failed_filter_contract(tmp_path):
     flagged_bam = build_bam(tmp_path, _qc_contract_reads(True), "qc_flagged.bam")
 
     def count(bam, qc_filter):
-        c = count_both(
+        c = count_checked(
             bam,
             [variant],
             min_mapq=0,
@@ -427,7 +391,7 @@ def test_secondary_admission_is_fragment_only(tmp_path):
     bam = build_bam(tmp_path, reads, "sec_leak.bam")
     variant = gbcms_rs.Variant("chr1", 150, "A", "T", "SNP")
 
-    admitted = count_both(
+    admitted = count_checked(
         bam,
         [variant],
         min_mapq=0,
@@ -449,7 +413,7 @@ def test_secondary_admission_is_fragment_only(tmp_path):
     assert (admitted.dpf, admitted.rdf, admitted.adf) == (9, 4, 5)
 
     # Default filters: secondaries excluded everywhere.
-    default = count_both(
+    default = count_checked(
         bam,
         [variant],
         min_mapq=0,

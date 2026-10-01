@@ -2,18 +2,20 @@
 Shared test helpers for gbcms.
 
 Provides:
-- BAM construction helpers (_build_bam, _make_read) for synthetic test data
-- count_one: single-variant counting via legacy API
-- count_one_both: single-variant counting via BOTH APIs with parity assertion
-- count_both: multi-variant counting via BOTH APIs with parity assertion
+- BAM construction helpers (build_bam, make_read, write_contig) for synthetic data
+- count_bam_checked / count_checked / count_one_checked: production counting,
+  checked for binning invariance (every field equal with one variant per bin)
+- assert_same_counts: every field of two lists of BaseCounts equal
 """
+
+import math
 
 import pysam
 
 from gbcms import _rs as gbcms_rs
 
-# Key BaseCounts fields to compare for count_bam vs count_bam_binned parity.
-PARITY_FIELDS = [
+# The core read and fragment counts, for tests that compare two runs on them.
+COUNT_FIELDS = [
     "dp",
     "rd",
     "ad",
@@ -73,52 +75,21 @@ def make_read(name, seq, start, cigar, flag=0, mapq=60, quals=None):
     return a
 
 
-# ── Single-Variant Counting ──────────────────────────────────────────────
+# ── Counting, checked for binning invariance ─────────────────────────────
 
 
-def count_one(bam_path, variant):
-    """Count a single variant via the legacy count_bam API.
-
-    Applies default filters (filter_duplicates, filter_secondary, filter_supplementary).
-    Returns a single BaseCounts object.
-    """
-    results = gbcms_rs.count_bam(
-        bam_path,
-        [variant],
-        decomposed=[None],
-        min_mapq=20,
-        min_baseq=20,
-        filter_duplicates=True,
-        filter_secondary=True,
-        filter_supplementary=True,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-        threads=1,
-    )
-    return results[0]
+def count_bam_checked(*args, **kwargs) -> list:
+    """`count_bam_binned` with production bin geometry, checked against one
+    variant per bin with the per-variant fetch (window 1, cap 1) through the same
+    loop: every field of every row must agree. Takes `count_bam_binned`'s
+    arguments; returns the production counts."""
+    production = gbcms_rs.count_bam_binned(*args, **kwargs)
+    per_variant = gbcms_rs.count_bam_binned(*args, **kwargs, bin_window=1, bin_max_variants=1)
+    assert_same_counts(per_variant, production, "one variant per bin vs production bins")
+    return production
 
 
-def count_one_both(bam_path, variant):
-    """Count a single variant via BOTH APIs, assert parity, return production result.
-
-    Calls count_both with a single variant and returns the single BaseCounts object.
-    """
-    return count_both(
-        bam_path,
-        [variant],
-        min_mapq=20,
-        min_baseq=20,
-        filter_qc_failed=False,
-        filter_improper_pair=False,
-        filter_indel=False,
-    )[0]
-
-
-# ── Multi-Variant Parity Counting ────────────────────────────────────────
-
-
-def count_both(
+def count_checked(
     bam_path: str,
     variants: list,
     *,
@@ -132,24 +103,15 @@ def count_both(
     filter_improper_pair: bool = False,
     filter_indel: bool = False,
     threads: int = 1,
-    fragment_qual_threshold: int = 10,
-    sibling_variants: list | None = None,
+    **kwargs,
 ) -> list:
-    """Call both count_bam and count_bam_binned, assert parity, return results.
-
-    Returns the count_bam_binned results (production path).
-    Raises AssertionError if any parity field differs between the two APIs.
-    """
-    if decomposed is None:
-        decomposed = [None] * len(variants)
-    if sibling_variants is None:
-        sibling_variants = [[] for _ in variants]
-
-    # Legacy path
-    results_legacy = gbcms_rs.count_bam(
+    """`count_bam_checked` with the suite's default filters (duplicates,
+    secondary and supplementary dropped; MAPQ and BQ 20). Extra keyword arguments
+    go to `count_bam_binned`."""
+    return count_bam_checked(
         bam_path,
         variants,
-        decomposed,
+        decomposed if decomposed is not None else [None] * len(variants),
         min_mapq=min_mapq,
         min_baseq=min_baseq,
         filter_duplicates=filter_duplicates,
@@ -159,42 +121,69 @@ def count_both(
         filter_improper_pair=filter_improper_pair,
         filter_indel=filter_indel,
         threads=threads,
+        **kwargs,
     )
 
-    # Production path
-    results_binned = gbcms_rs.count_bam_binned(
-        bam_path,
-        variants,
-        decomposed,
-        min_mapq=min_mapq,
-        min_baseq=min_baseq,
-        filter_duplicates=filter_duplicates,
-        filter_secondary=filter_secondary,
-        filter_supplementary=filter_supplementary,
-        filter_qc_failed=filter_qc_failed,
-        filter_improper_pair=filter_improper_pair,
-        filter_indel=filter_indel,
-        threads=threads,
-        fragment_qual_threshold=fragment_qual_threshold,
-        sibling_variants=sibling_variants,
-    )
 
-    # Assert parity on key fields
-    assert len(results_legacy) == len(results_binned), (
-        f"Result count mismatch: count_bam={len(results_legacy)}, "
-        f"count_bam_binned={len(results_binned)}"
-    )
+def count_one_checked(bam_path, variant, **kwargs):
+    """One variant through `count_checked`."""
+    return count_checked(bam_path, [variant], **kwargs)[0]
 
-    for i, (leg, bn) in enumerate(zip(results_legacy, results_binned, strict=True)):
-        for field in PARITY_FIELDS:
-            v_leg = getattr(leg, field)
-            v_bn = getattr(bn, field)
-            assert v_leg == v_bn, (
-                f"Variant {i} field '{field}' mismatch: "
-                f"count_bam={v_leg}, count_bam_binned={v_bn}"
-            )
 
-    return results_binned
+def write_contig(tmp_path, contig, reads, name="s", chrom="1"):
+    """A one-contig FASTA (indexed) and a sorted, indexed BAM of `reads` on it.
+    Returns (fasta path, bam path) as strings."""
+    fa = tmp_path / f"{name}.fa"
+    fa.write_text(f">{chrom}\n{contig}\n")
+    pysam.faidx(str(fa))
+    hdr = {"HD": {"VN": "1.6", "SO": "coordinate"}, "SQ": [{"SN": chrom, "LN": len(contig)}]}
+    raw = tmp_path / f"{name}.raw.bam"
+    with pysam.AlignmentFile(str(raw), "wb", header=hdr) as fh:
+        for r in reads:
+            fh.write(r)
+    bam = tmp_path / f"{name}.bam"
+    pysam.sort("-o", str(bam), str(raw))
+    pysam.index(str(bam))
+    return str(fa), str(bam)
+
+
+# ── Comparing counts ─────────────────────────────────────────────────────
+
+# Benjamini-Hochberg q-values are computed over the rows in one call, so they
+# legitimately change when a call holds other rows.
+ROW_SET_FIELDS = frozenset({"mfsd_qval_alt_ref", "asjd_qval"})
+
+
+def _fields(obj) -> list[str]:
+    """The public data attributes of a pyo3 counts object."""
+    return sorted(n for n in dir(obj) if not n.startswith("_") and not callable(getattr(obj, n)))
+
+
+def _same(a, b) -> bool:
+    if isinstance(a, float) and isinstance(b, float):
+        if math.isnan(a) or math.isnan(b):
+            return math.isnan(a) and math.isnan(b)
+        # Summation order over hash maps moves the last ulps of some statistics;
+        # the outputs round them far coarser. Relative only: p-values can be tiny.
+        return math.isclose(a, b, rel_tol=1e-9, abs_tol=0.0)
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b, strict=True))
+    return type(a) is type(b) and a == b
+
+
+def assert_same_counts(got: list, want: list, what: str, skip=frozenset()) -> None:
+    """Every field of every BaseCounts equal (floats to 1e-9 relative, NaN equal
+    to NaN), except `skip`."""
+    assert len(got) == len(want), f"{what}: {len(got)} rows vs {len(want)}"
+    for i, (g, w) in enumerate(zip(got, want, strict=True)):
+        for f in _fields(w):
+            if f in skip:
+                continue
+            assert _same(
+                getattr(g, f), getattr(w, f)
+            ), f"{what}: row {i} field {f!r}: {getattr(g, f)!r} vs {getattr(w, f)!r}"
 
 
 # ── MAF Output Reading ───────────────────────────────────────────────────

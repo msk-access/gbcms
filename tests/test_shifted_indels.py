@@ -19,16 +19,13 @@ from helpers import (
     build_bam as _build_bam,
 )
 from helpers import (
-    count_one as _count_one,
-)
-from helpers import (
-    count_one_both as _count_one_both,
+    count_one_checked as _count_one,
 )
 from helpers import (
     make_read as _make_read,
 )
 
-from gbcms._rs import Variant, count_bam  # noqa: F401 — count_bam referenced in comments
+from gbcms._rs import Variant
 
 # ==========================================================================
 # INSERTION TESTS — Variant: chr1:100, REF=A, ALT=AT
@@ -354,33 +351,3 @@ class TestReadDoesNotCover:
         assert counts.rd == 0
         assert counts.ad == 0
         assert counts.dp == 0
-
-
-# ── count_bam_binned parity tests ────────────────────────────────────────
-
-
-# _count_one_both imported from helpers.py above
-
-
-class TestBinnedParity:
-    """Verify count_bam_binned matches count_bam for shifted indel scenarios."""
-
-    def test_insertion_strict_binned(self, tmp_path):
-        reads = [_make_read("r1", "AAAAATAAAA", 96, ((0, 5), (1, 1), (0, 4)))]
-        bam = _build_bam(tmp_path, reads)
-        counts = _count_one_both(bam, INS_VARIANT)
-        assert counts.ad == 1
-        assert counts.rd == 0
-
-    def test_insertion_windowed_binned(self, tmp_path):
-        reads = [_make_read("r1", "AAAAAAAAAA", 96, ((0, 7), (1, 1), (0, 2)))]
-        bam = _build_bam(tmp_path, reads)
-        counts = _count_one_both(bam, INS_A_VARIANT)
-        assert counts.ad == 1
-
-    def test_deletion_strict_binned(self, tmp_path):
-        reads = [_make_read("r1", "AAAAAAAAAA", 196, ((0, 5), (2, 1), (0, 5)))]
-        bam = _build_bam(tmp_path, reads)
-        counts = _count_one_both(bam, DEL_VARIANT)
-        assert counts.ad == 1
-        assert counts.rd == 0

@@ -38,8 +38,8 @@ every item a sub-issue). Merged to develop so far:
   adversarial reviews; acceptance adjudicated per read (harness
   `~/test/gbcms/harness/c21/`, local).
 
-**In review — cluster 1 (C20 #188, C22 #191, C23 #192, C8 #121; C11 #159 closed
-with its measurement):** pure-indel reads count ALT only where their own bases hold
+**Merged — cluster 1, #203 (C20 #188, C22 #191, C23 #192, C8 #121; C11 #159
+closed with its measurement):** pure-indel reads count ALT only where their own bases hold
 the ALT; strict-path reads with another indel in the window, same-length deletions
 whose bases spell another allele, and anchor-keeping reads of `A>CCC` variants are
 another allele. Operator decisions (2026-10-01): no margin base on the ALT side;
@@ -49,6 +49,15 @@ accept the exact-carrier rule's semantics for anchor-changing variants. Branch
 decide: which of a read's other indels decide its REF call, inside vs outside
 the window); C28 #202 (6.6.0,
 measure: anchor-deleting reads fall back to Phase 3's closer haplotype).
+
+**In review — T1 #170 + T2 #171 (test architecture):** the legacy per-variant
+`count_bam` path is retired. Binning invariance replaces parity: a Rust bin property
+test, `tests/test_binning_invariance.py`, and `count_checked` (production vs one
+variant per bin) in every counting test. A read census (`tests/census.py`) checks
+pure-indel classification; the open decisions C26/C27/C28 are strict xfails there.
+Branch `feature/t1-t2-test-architecture`; byte-identity harness
+`~/test/gbcms/harness/t1/` (local). Next: H3 #204, the code-quality sweep (audited;
+work list on the issue).
 
 **Triage (2026-09-30):** every open issue was gone through by cluster with the
 operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
@@ -66,14 +75,15 @@ Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. Cluster 1 PR (in review): merge, close #188 #191 #192 #121, harness cleanup.
-2. T1 #170 (retire the legacy path; binning invariance) with T2 #171 (census
-   oracle).
-3. C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
+1. T1 #170 (retire the legacy path; binning invariance) with T2 #171 (census
+   oracle): design note first. Then a code-quality sweep of the cycle's code
+   (duplication, unused code, silent failures, comments, logging, monitoring) as
+   its own PR, H3 #204 (operator request, 2026-10-01).
+2. C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
    (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
-4. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
+3. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
    mkdocs pin, P3); O1+O2; S1+S2; M2+M4.
-5. Release: D1, D2; D4 before the cut; D6 late; D5 last.
+4. Release: D1, D2; D4 before the cut; D6 late; D5 last.
 
 
 ### Previous: 6.5.0 release
@@ -206,9 +216,10 @@ Remaining (all optional):
 - Stats stay in **Rust** (KS/LLR/Fisher in `mfsd.rs`/`shared/stats.rs`); **no scipy**
   dependency — exact KS is a self-contained Rust DP, validated against baked
   SciPy reference constants.
-- Legacy `count_bam` (per-variant) is kept as the binned↔legacy **parity oracle** but
-  feature-gated (`legacy-parity`, default on) so the **shipped wheel excludes it**
-  (release builds `--no-default-features`); production uses `count_bam_binned` only.
+- Binning invariance replaces the legacy `count_bam` parity oracle (T1 #170,
+  2026-10-01): a second engine sharing the classifier never caught a classification
+  bug; counts must not depend on bin geometry, and the read census checks
+  classification.
 - Tests kept minimal/high-signal (each is a maintenance contract); fixes that reduce
   duplication are preferred over adding code.
 - Source comments/logs explain what/why/how — **never** ticket labels (`CR-`/`HI-`/

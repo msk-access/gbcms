@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — binning invariance and a read census replace the legacy parity path (#170, #171)
+
+- The per-variant `count_bam` (with `count_single_variant`, about 700 lines that
+  duplicated the binned loop) is removed, along with the `legacy-parity` Cargo
+  feature. Production never called it, so output is unchanged: the RC, FORTE and
+  WES acceptance runs are byte-identical.
+  - It shared the classifier, so it could not see classification bugs. Every one
+    found this cycle came from judging reads by their bases.
+  - Its one bin bug, the anchor's fetch end, was found in review. Synthetic
+    fixtures fit in one bin, so parity could not have caught it.
+  - It cost every counting change a second edit.
+- `count_bam_binned` and `count_bam_binned_observations` take two optional test
+  arguments, `bin_window` and `bin_max_variants` (default: the production
+  constants; below 1: `ValueError`). Counts must not depend on them:
+  - A Rust property test checks that every variant lands in exactly one bin whose
+    fetch holds its read window.
+  - `tests/test_binning_invariance.py` compares every field under the per-variant
+    fetch (window 1, cap 1), tiny windows, small caps, one call per row, shuffled
+    input on 4 threads, and decoy rows. Each geometry is asserted to split the bins.
+    Its fixtures are synthetic DNA (plain, and BAQ+UMI+mFSD; siblings, a decomposed
+    twin, overlapping mates), clip carriers past a long anchor, an RNA locus with a
+    GTF and antisense reads, and the real test BAM.
+  - Every counting test now runs through `count_checked`, which also counts with
+    one variant per bin, so the 49 tests that ran only the legacy path test
+    production. Most of those calls hold one variant and so check the per-variant
+    fetch window; the binning suite covers multi-variant bins.
+- `tests/census.py` judges each read by its own bases across a pure indel's tract,
+  with the decided rules: REF needs one base past the first difference, ALT only
+  that base. The census finds each tract by its own slide, and a test checks that
+  prep agrees. `tests/test_read_census.py` checks the engine against it on reads
+  generated around ten pure indels (ending anywhere past the anchor, some
+  soft-clipped). The open decisions are strict xfails: #200, #201, #202.
+- Both new suites were mutation-checked. Re-introducing the bin-end bug fails
+  the property test and the clip-carrier fixture. Disabling the ALT-side window,
+  or the equivalent-placement rule, fails the census test.
+
 ### Fixed — pure-indel reads count ALT only where their own bases hold the ALT (#188, #191, #192, #121)
 
 - C10 (#160) takes REF only from reads whose bases settle the allele. ALT reads

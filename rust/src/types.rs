@@ -523,8 +523,8 @@ pub const OBS_ALLELE_OTHER: u8 = 3;
 /// One molecule's resolved allele at one variant — the per-molecule view that
 /// `BaseCounts` aggregates away.
 ///
-/// Emitted only when observations are requested; the counting path is unchanged, so
-/// binned↔legacy parity is unaffected. The same molecule observed at two variants in the
+/// Emitted only when observations are requested; the counting path is unchanged. The same
+/// molecule observed at two variants in the
 /// same call carries the same `molecule_hash`, which is what lets a consumer link alleles
 /// across loci (e.g. cis/trans phasing) — gbcms itself does no such linking.
 ///

@@ -6,8 +6,7 @@
 //! 3. bcftools-style left-alignment (`realign_left`)
 //! 4. `ref_context` fetch for Smith-Waterman haplotype alignment
 //!
-//! Uses rayon `par_iter().map_init()` with thread-local FASTA readers,
-//! matching the pattern in `counting::engine::count_bam()`.
+//! Uses rayon `par_iter().map_init()` with thread-local FASTA readers.
 //!
 //! ## Submodules
 //!

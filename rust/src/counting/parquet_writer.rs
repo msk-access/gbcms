@@ -15,7 +15,7 @@
 //! ```
 //!
 //! ## Usage
-//! Called from `pipeline.py` immediately after `count_bam()` when
+//! Called from `pipeline.py` immediately after `count_bam_binned()` when
 //! `--mfsd-parquet` is enabled:
 //! ```python
 //! _get_rs().write_fsd_parquet(str(fsd_path), chroms, positions, refs, alts, counts)
@@ -49,7 +49,7 @@ use crate::types::{BaseCounts, Observation, Variant};
 /// * `positions` - 1-based positions (one per variant).
 /// * `refs`      - Reference alleles (one per variant).
 /// * `alts`      - Alternate alleles (one per variant).
-/// * `counts`    - `BaseCounts` list returned by `count_bam()`.
+/// * `counts`    - `BaseCounts` list returned by `count_bam_binned()`.
 ///                 `ref_sizes` and `alt_sizes` fields are read internally.
 ///
 /// # Errors

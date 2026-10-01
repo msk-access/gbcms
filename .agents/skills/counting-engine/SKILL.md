@@ -1,6 +1,6 @@
 ---
 name: counting-engine
-description: Reference for the gbcms counting core — genomic binning (10kb bins, one fetch per bin), the 4-phase variant-check pipeline, and alignment-backend dispatch. Use when modifying engine.rs or variant_checks.rs, debugging count discrepancies, or reasoning about binning and binned↔legacy parity. For fragment/consensus see fragment-counting; for filters/quality see read-filters-qc.
+description: Reference for the gbcms counting core — genomic binning (10kb bins, one fetch per bin), the 4-phase variant-check pipeline, and alignment-backend dispatch. Use when modifying engine.rs or variant_checks.rs, debugging count discrepancies, or reasoning about binning and binning invariance. For fragment/consensus see fragment-counting; for filters/quality see read-filters-qc.
 ---
 
 # Counting Engine Patterns
@@ -16,8 +16,8 @@ Variants are grouped into ~10kb bins for efficient BAM traversal:
 **Invariant (load-bearing):** a bin's fetch-end must cover the *anchor* (leftmost)
 variant's full ref span, not just `bin_start + window`. A bin anchored by a large
 deletion/DelIns whose `ref_allele.len()` exceeds the window will otherwise
-under-fetch its right tail and undercount AD/ADF. Any binning change needs a
-binned↔legacy parity test including large deletions and complex DelIns.
+under-fetch its right tail and undercount AD/ADF. Any binning change must keep
+`tests/test_binning_invariance.py` and the `build_genomic_bins` property test green.
 
 ## Variant Check Pipeline
 
@@ -73,7 +73,7 @@ discriminating positions**. CIGAR `N` = asserted splicing = no observation:
 `ClassifyResult::no_coverage` (`covers_locus=false`) when the N spans ALL of
 them — deletion span `[pos+1, pos+ref_len)`, insertion flanks `[pos, pos+2)`,
 else `[pos, pos+ref_len)` — and the engine **excludes the read from DP/DPF
-entirely** (samtools-pileup semantics; mirrored binned + legacy + per-transcript;
+entirely** (samtools-pileup semantics; the main and per-transcript read loops;
 `splice_skip_excluded=` in the Phase-stats debug line). `D` is deletion
 evidence, `N` never is (no D-vs-N representation flip). Indel ops directly
 after an N get the same anchor/windowed inspection as after an M (shared

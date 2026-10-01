@@ -1,9 +1,8 @@
 """Per-molecule observation export (`count_bam_binned_observations`).
 
-The counting path is untouched by the export, so binned↔legacy parity cannot detect a
-broken export — parity compares `BaseCounts` only. The binding test here is therefore
-load-bearing: for every variant the emitted rows must reconcile with the **fragment-level**
-counts (`adf`/`rdf`/`dpf`).
+The counting path is untouched by the export, so comparing counts cannot detect a broken
+export. The binding test here is therefore load-bearing: for every variant the emitted rows
+must reconcile with the **fragment-level** counts (`adf`/`rdf`/`dpf`).
 
 It must be fragment-level, not read-level: a read excluded by the multi-allelic sibling
 guard still contributes REF evidence to its fragment, so it counts in `rdf` and emits a REF
@@ -146,7 +145,7 @@ def test_decomposed_variant_emits_the_winning_forms_rows(tmp_path, backend):
 
     A decomposed variant runs the classifier twice and the higher-`ad` form wins. The
     observations must follow that same arbitration: pairing the winning counts with the
-    *losing* rows would leave every count — and therefore parity — untouched while the
+    *losing* rows would leave every count untouched while the
     export carried the wrong allele for every molecule. Asserting `used_decomposed` is
     what keeps this test honest; with an identical decomposed form the branch never runs
     and the test would pass vacuously.

@@ -15,7 +15,7 @@ import logging
 
 import pysam
 import pytest
-from helpers import count_both, make_read
+from helpers import count_checked, make_read
 from test_complex_exact_contract import POS, READ, _files, _prepared, _ref
 
 from gbcms import _rs as gbcms_rs
@@ -63,15 +63,15 @@ def _fields(c):
 
 
 def _pair(tmp_path, shape, extra, **kw):
-    """(counts without, counts with) the extra records, legacy and binned in
-    parity (count_both)."""
+    """(counts without, counts with) the extra records, each checked for binning
+    invariance (count_checked)."""
     ref, alt = SHAPES[shape]
     out = []
     for tag, reads in (("without", _ref_reads()), ("with", _ref_reads() + extra)):
         d = tmp_path / tag
         d.mkdir()
         fa, bam = _files(d, _REF, reads)
-        (c,) = count_both(bam, [_prepared(fa, ref, alt)], **kw)
+        (c,) = count_checked(bam, [_prepared(fa, ref, alt)], **kw)
         out.append(c)
     return out
 

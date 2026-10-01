@@ -12,7 +12,7 @@ exercise the specific edge cases identified in the TERT/BRCA2 analysis.
 """
 
 import pytest
-from helpers import build_bam, count_both, count_one, make_read
+from helpers import build_bam, count_checked, count_one_checked, make_read
 
 from gbcms import _rs as gbcms_rs
 
@@ -134,7 +134,7 @@ class TestONPSelectiveQualityGate:
         masked per-position evaluation).
         """
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
-        counts = count_both(mnp_bam, [variant])[0]
+        counts = count_checked(mnp_bam, [variant])[0]
 
         # Expected ALT: 3 (rev) + 2 (fwd, low-qual non-disc) + 1 (fwd, low-qual disc, recovered) = 6
         # OLD: The low-qual-disc read was discarded (aggregate min-BQ gate).
@@ -147,7 +147,7 @@ class TestONPSelectiveQualityGate:
     def test_onp_dp_includes_discarded(self, mnp_bam):
         """DP should include the discarded (neither) reads."""
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
-        counts = count_both(mnp_bam, [variant])[0]
+        counts = count_checked(mnp_bam, [variant])[0]
 
         # Total reads: 5 REF + 3 ALT + 2 ALT(low-q-nondisc) + 1 neither(low-q-disc) + 1 third = 12
         assert (
@@ -157,7 +157,7 @@ class TestONPSelectiveQualityGate:
     def test_onp_strand_counts(self, mnp_bam):
         """Strand-specific counts should be correct."""
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
-        counts = count_both(mnp_bam, [variant])[0]
+        counts = count_checked(mnp_bam, [variant])[0]
 
         # ALT: 3 rev + 3 fwd (2 low-qual-nondisc + 1 low-qual-disc recovered) = 6 total
         assert counts.ad_fwd == 3, f"Expected ad_fwd=3, got {counts.ad_fwd}"
@@ -223,7 +223,7 @@ class TestONPCarrierShapes:
             quals[len(self.LEFT) + low_bq_offset] = 5
         bam = self._bam(tmp_path, block, quals)
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "ONP")
-        counts = count_both(bam, [variant])[0]
+        counts = count_checked(bam, [variant])[0]
 
         assert counts.rd == 20
         assert counts.ad == expected_ad
@@ -251,11 +251,9 @@ class TestONPCarrierShapes:
             quals[len(self.LEFT) + low_bq_offset] = 5
         bam = self._bam(tmp_path, block, quals)
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "ONP")
-        counts = count_both(bam, [variant])[0]
-        legacy = count_one(bam, variant)
+        counts = count_one_checked(bam, variant)
 
         assert counts.mnp_confirmed_alt == expected_confirmed
-        assert legacy.mnp_confirmed_alt == expected_confirmed
         assert counts.mnp_confirmed_alt <= counts.ad
         assert counts.dp >= counts.rd + counts.ad
         assert counts.dpf >= counts.rdf + counts.adf
@@ -290,11 +288,9 @@ class TestONPCarrierShapes:
         ]
         bam = build_bam(tmp_path, reads, "onp_ins_in_block.bam")
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "ONP")
-        counts = count_both(bam, [variant])[0]
-        legacy = count_one(bam, variant)
+        counts = count_one_checked(bam, variant)
 
         assert counts.mnp_confirmed_alt == 0
-        assert legacy.mnp_confirmed_alt == 0
         assert counts.ad == 10
         assert counts.partial_alt == 0
         assert counts.dp >= counts.rd + counts.ad
@@ -305,7 +301,7 @@ class TestONPCarrierShapes:
     def test_confirmed_alt_is_zero_for_non_mnp_variants(self, tmp_path):
         bam = self._bam(tmp_path, "AAGGA")
         snv = gbcms_rs.Variant("chr1", 100, "G", "A", "SNP")
-        counts = count_both(bam, [snv])[0]
+        counts = count_checked(bam, [snv])[0]
         assert counts.ad == 10
         assert counts.mnp_confirmed_alt == 0
         assert counts.dp >= counts.rd + counts.ad
@@ -323,7 +319,7 @@ class TestDNPAllDiscriminating:
     def test_dnp_counts(self, dnp_bam):
         """Basic DNP counting with all positions discriminating."""
         variant = gbcms_rs.Variant("chr1", 100, "GG", "AA", "COMPLEX")
-        counts = count_both(dnp_bam, [variant])[0]
+        counts = count_checked(dnp_bam, [variant])[0]
 
         assert counts.rd == 3, f"Expected rd=3, got {counts.rd}"
         assert counts.ad == 4, f"Expected ad=4, got {counts.ad}"
@@ -338,7 +334,7 @@ class TestFragmentInvariants:
     def test_fragment_ref_lte_read_ref(self, mnp_bam):
         """Fragment REF count must not exceed read REF count."""
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
-        counts = count_both(mnp_bam, [variant])[0]
+        counts = count_checked(mnp_bam, [variant])[0]
         assert (
             counts.rdf <= counts.rd
         ), f"Fragment invariant violated: rdf={counts.rdf} > rd={counts.rd}"
@@ -346,7 +342,7 @@ class TestFragmentInvariants:
     def test_fragment_alt_lte_read_alt(self, mnp_bam):
         """Fragment ALT count must not exceed read ALT count."""
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
-        counts = count_both(mnp_bam, [variant])[0]
+        counts = count_checked(mnp_bam, [variant])[0]
         assert (
             counts.adf <= counts.ad
         ), f"Fragment invariant violated: adf={counts.adf} > ad={counts.ad}"
@@ -354,7 +350,7 @@ class TestFragmentInvariants:
     def test_fragment_sum_lte_dpf(self, mnp_bam):
         """RDF + ADF must not exceed DPF."""
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "COMPLEX")
-        counts = count_both(mnp_bam, [variant])[0]
+        counts = count_checked(mnp_bam, [variant])[0]
         assert (
             counts.rdf + counts.adf <= counts.dpf
         ), f"Fragment invariant violated: rdf+adf={counts.rdf + counts.adf} > dpf={counts.dpf}"
@@ -362,7 +358,7 @@ class TestFragmentInvariants:
     def test_fragment_invariants_dnp(self, dnp_bam):
         """Fragment invariants hold for all-discriminating DNP."""
         variant = gbcms_rs.Variant("chr1", 100, "GG", "AA", "COMPLEX")
-        counts = count_both(dnp_bam, [variant])[0]
+        counts = count_checked(dnp_bam, [variant])[0]
         assert counts.rdf <= counts.rd
         assert counts.adf <= counts.ad
         assert counts.rdf + counts.adf <= counts.dpf

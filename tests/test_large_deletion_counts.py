@@ -1,21 +1,18 @@
-"""Binned ↔ legacy count parity for LARGE deletions.
+"""Large deletions count end to end, the same under any bin geometry.
 
-The load-bearing invariant is that `count_bam_binned` (production) and the legacy
-`count_bam` produce identical counts. The existing parity suites cover only small
-(≤3bp) indels; this module guards the large-deletion path end to end, where the
-bin's single fetch must cover the anchor's full ref span and the binned cache must
-classify reads spanning a wide deletion exactly as the legacy per-variant path does.
-
-`count_both` asserts parity on every key field internally and raises on any
-divergence — so each test here is a parity gate. The explicit count assertions are
-only there to prove the path is actually exercised (not a vacuous all-zero pass).
+A 50bp deletion's carrier and a read spanning the locus without it classify as ALT
+and REF, and a bin anchored by the deletion, with an SNV inside its span, counts
+both variants. `count_checked` also counts one variant per bin with the
+per-variant fetch and asserts every field agrees, so each test checks that the
+bin's single fetch covers the anchor's span. The count assertions prove the path
+is exercised, so no test passes vacuously on all-zero counts.
 
 Synthetic fixtures only — no patient data.
 """
 
 from pathlib import Path
 
-from helpers import build_bam, count_both, make_read
+from helpers import build_bam, count_checked, make_read
 
 from gbcms._rs import Variant
 
@@ -36,16 +33,16 @@ def _large_deletion() -> Variant:
     )
 
 
-def test_parity_large_deletion_alt_and_ref(tmp_path: Path) -> None:
-    """A read carrying the full 50bp deletion (ALT) and a read spanning the locus
-    with no deletion (REF) must classify identically under both engines."""
+def test_a_large_deletion_counts_alt_and_ref(tmp_path: Path) -> None:
+    """A read carrying the full 50bp deletion is ALT; a read spanning the locus
+    with no deletion is REF."""
     # ALT: 31M 50D 30M — the 50D covers exactly [101, 151), the deleted span.
     alt_read = make_read("alt_frag", "A" * 61, 70, ((0, 31), (2, 50), (0, 30)), quals=[30] * 61)
     # REF: 111M spanning [70, 181) with no deletion at the locus.
     ref_read = make_read("ref_frag", "A" * 111, 70, ((0, 111),), quals=[30] * 111)
 
     bam_path = build_bam(tmp_path, [alt_read, ref_read], filename="large_del.bam")
-    counts = count_both(bam_path, [_large_deletion()])[0]  # parity asserted inside
+    counts = count_checked(bam_path, [_large_deletion()])[0]
 
     # Both classes were genuinely exercised.
     assert counts.ad == 1, f"expected 1 ALT read, got {counts.ad}"
@@ -55,17 +52,10 @@ def test_parity_large_deletion_alt_and_ref(tmp_path: Path) -> None:
     assert counts.rd == counts.rd_fwd + counts.rd_rev
 
 
-def test_parity_large_deletion_bin_anchor(tmp_path: Path) -> None:
-    """A bin anchored by a large deletion with a SNP inside its ref span: both
-    variants must count identically under the binned and legacy paths. This is the
-    end-to-end analog of the bin-fetch-end coverage invariant — the anchor's wide
-    ref span drives the shared bin footprint the inner SNP also relies on.
-
-    No `sibling_variants` are passed: pangenomic sibling disambiguation is a
-    binned-only feature that legacy `count_bam` lacks, so it intentionally breaks
-    binned↔legacy parity. The grouping under test here is the proximity-based bin,
-    which applies regardless of siblings.
-    """
+def test_a_bin_anchored_by_a_large_deletion_counts_both_variants(tmp_path: Path) -> None:
+    """A bin anchored by a large deletion with an SNV inside its REF span: both
+    variants count, and the same with one variant per bin. The anchor's wide REF
+    span drives the bin footprint the inner SNV also relies on."""
     big_del = _large_deletion()
     # SNP at 130 sits inside the deletion's ref span [100, 151).
     inner_snp = Variant(
@@ -86,7 +76,7 @@ def test_parity_large_deletion_bin_anchor(tmp_path: Path) -> None:
     snp_read = make_read("snp_frag", "".join(ref_seq), 70, ((0, 111),), quals=[30] * 111)
 
     bam_path = build_bam(tmp_path, [del_read, snp_read], filename="del_anchor.bam")
-    results = count_both(bam_path, [big_del, inner_snp])  # parity asserted inside for BOTH variants
+    results = count_checked(bam_path, [big_del, inner_snp])
 
     del_counts, snp_counts = results
     # Deletion: one ALT (del_read), one REF (snp_read spans without a deletion).

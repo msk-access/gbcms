@@ -12,8 +12,9 @@
 > **Discipline (unchanged from 6.5.0).**
 > - Every count-affecting ticket is measured first and red-first
 >   (xfail-strict battery committed before the fix).
-> - Changes to classification, filtering or fragment consensus are mirrored
->   in the legacy parity oracle.
+> - Counts must not depend on bin geometry (binning invariance), and
+>   classification is checked against the read census (T1/T2, 2026-10-01; until
+>   then, changes were mirrored in the legacy parity oracle).
 > - Each ticket gets an adversarial review before merge, then real-data
 >   acceptance on the local truth sets. Patient data stays local; issues and
 >   PRs stay PHI-free.
@@ -38,7 +39,7 @@ marks a ticket with an open PR.
 | C5 | Long insertions exceed the pangenomic matrix cap | L | [counts] [closed] | #120 |
 | C6 | Error-tolerant exact-length insertion matching | L | [counts] [6.7.0] | #143 (#92) |
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] [6.7.0] | #144 (#92) |
-| C8 | One-base-REF delins without a shared anchor | L | [counts] [in review] | #121 |
+| C8 | One-base-REF delins without a shared anchor | L | [counts] [done] | #121 |
 | C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] [done] | #157 |
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] [closed] | #159 |
@@ -47,15 +48,16 @@ marks a ticket with an open PR.
 | C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
 | C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] [6.7.0] | #173 |
 | C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
-| T1 | Test architecture: retire or unify the legacy parity path | M | [decide] | #170 |
-| T2 | Read census as the classification oracle in tests | M | | #171 |
+| T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [in review] | #170 |
+| T2 | Read census as the classification oracle in tests | M | [in review] | #171 |
+| H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | | #204 |
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
-| C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [decided] [in review] | #188 |
+| C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [done] | #188 |
 | C21 | Homopolymer insertion carriers placed elsewhere in the run counted REF (S3 anchor-base test) | H | [counts] [done] | #189 |
-| C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [decided] [in review] | #191 |
-| C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [decided] [in review] | #192 |
+| C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [done] | #191 |
+| C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [done] | #192 |
 | C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
 | C25 | Exact-carrier long-event junction windows credit REF to anchor-keeping carriers of long anchor-changing insertions | L | [counts] [6.7.0] | #199 |
 | C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decide] | #200 |
@@ -716,7 +718,7 @@ the aligned flank bases, bases below Q20 matching anything).
 - C8 (#121): the strict path credits an anchor-substituting insertion (`A>CCC`)
   from its inserted bases alone.
 
-### Cluster 1 — pure-indel read judgment: C20 (#188), C22 (#191), C23 (#192), C8 (#121); C11 (#159) closed · [counts] [in review]
+### Cluster 1 — pure-indel read judgment: C20 (#188), C22 (#191), C23 (#192), C8 (#121); C11 (#159) closed · [counts] [done]
 One rule, one PR: a carrier holds the ALT haplotype across the window, by its own
 bases.
 
@@ -835,6 +837,158 @@ harness `~/test/gbcms/harness/c20/`, local).**
 - FORTE RNA: the truth set and the STAR repeat-insertion probes are unchanged. One
   T9 probe (a 4bp deletion) loses 2 ALT reads, which carry a 3bp deletion ending
   just after it.
+
+## Test architecture
+
+### T1 (#170) + T2 (#171) — design note (2026-10-01) · [approved] [in review]
+**Facts.**
+- **The legacy path.** `count_bam` (200 lines) and `count_single_variant` (501)
+  sit behind the `legacy-parity` feature: on by default, off in the shipped
+  wheel. 283 of 850 tests call it. 234 compare legacy with binned; 49 run legacy
+  only, so they never test production.
+- **What parity caught.**
+  - Its one bin/fetch bug, CR-1, was found by code review. The synthetic parity
+    suite could not have caught it: every synthetic contig (≤2kb) fits in one
+    10kb bin.
+  - The two divergences between the loops (mq0 tallied before vs after the RNA
+    strand filter; the mFSD N heuristic) were also found in review, in fields
+    parity does not compare.
+  - Every classification bug this cycle sat in the shared classifier: CR-2, CR-4,
+    #91, C12, C21, #166, cluster 1. Parity cannot see those.
+  - It is also blind to BAQ, UMI, RNA, mFSD, ASJD and siblings.
+- **Cost.** 35 commits edited `count_single_variant` twice, 24 of them since the
+  June review. Its tests take 0.07s of the suite's 13.4s, and the extra CI steps
+  about 4s, so retiring it saves the double edits, not time.
+- **Binning.**
+  - There is no fixed grid. A bin starts at the leftmost unbinned variant and
+    ends at max(start + window, the anchor's span end). Variants join while they
+    start before the end and the bin holds fewer than the cap.
+  - The fetch pads by max(5, repeat_span + 2), and each variant filters the
+    cached reads to its own window.
+  - `build_genomic_bins` already takes the window. Window 1 with cap 1 reproduces
+    the legacy fetch exactly, through the production loop.
+  - One variant per call works today; MNP rescue relies on it. Only the BH
+    q-values depend on which rows are in a call.
+
+**Design.**
+1. **A test hook.**
+   - Two optional keyword arguments on `count_bam_binned` and
+     `count_bam_binned_observations`: `bin_window` and `bin_max_variants`.
+   - `None` means the production constants; a value below 1 raises `ValueError`.
+   - The pipeline never passes them. The stub carries them.
+2. **One helper replaces the parity helpers.** `count_both` / `count_one_both`
+   become `count_checked`.
+   - It runs production geometry and window 1 / cap 1 (the legacy fetch, now
+     through the production loop), and compares every field: integers exact,
+     floats to 1e-9 relative, NaN equal to NaN.
+   - Siblings, RNA, BAQ, UMI, mFSD and ASJD are now covered, because there is
+     one loop.
+   - The 49 legacy-only tests move to production through the same helper, and
+     `test_accuracy`'s four legacy/binned twins merge.
+3. **Binning invariance**, in `tests/test_binning_invariance.py` (replacing
+   `test_parity_large_deletion.py`). Counts must agree under these geometries:
+   - production;
+   - window 1 / cap 1;
+   - a tiny window (7–20bp), where anchors longer than the window reproduce CR-1;
+   - cap 2–3;
+   - one call per row (q-values excepted);
+   - shuffled input with 4 threads;
+   - decoy variants that move bin starts (q-values excepted).
+
+   Fixtures:
+   - a dense SNV/MNP/indel/delins cluster with reads starting at every offset;
+   - a 50–60bp deletion anchor with an SNV inside, and reads past its
+     breakpoint;
+   - a long repeat tract on a non-anchor member;
+   - contig start and end;
+   - siblings and a decomposed twin;
+   - RNA with a GTF, strandedness, ASJD, BAQ, mFSD and a UMI tag;
+   - the repo's test BAM with a ~1kb window, so it splits into bins.
+
+   Sorted observation rows must match too. A Rust property test on
+   `build_genomic_bins` checks that every variant lands in exactly one bin and
+   every bin's fetch holds each member's window. As a mutation check,
+   re-introduce the CR-1 bug locally.
+
+   The mutation check (2026-10-01) found that BAM-level counts can show CR-1 in
+   only one read shape. Every counted read overlaps the event's first base, which
+   every fetch holds, except a DNA read admitted by its soft-clipped bases. So
+   the matrix includes left-clipped carriers aligned only after a 60bp delins:
+   with CR-1 back, AD drops from 20 to 0 under window 1. The Rust property test
+   fails too, on the geometry itself.
+4. **The read census (T2)**, in `tests/census.py`. It ports the harness's
+   per-read judge:
+   - bases below `min_baseq` are masked;
+   - it anchors on the read's aligned bases just outside the event (pure indels:
+     the shift region plus a three-base margin; anchor-changing one-base REF:
+     two flank bases each side);
+   - soft-clipped bases are read where they sit;
+   - reading stops at a splice N (SPLICED when the N covers every deciding
+     base).
+
+   Verdicts: ALT, REF, FITS_BOTH, CONTRADICTS_BOTH, NOT_ANCHORED, SPLICED.
+   `census(bam, ref, variant, ...)` gives per-read verdicts and REF/ALT/neither
+   counts with fragment bounds. `assert_matches(counts, census)` checks RD and
+   AD exactly, DP, the fragment bounds and the four counting invariants.
+
+   It is used in three ways:
+   - on the binning-invariance fixtures;
+   - in a property test over generated pure-indel reads, where engine RD/AD must
+     equal the census for the settled read shapes (one indel plus mismatches).
+     The open decisions become strict xfails: C26 #200, C28 #202 and C27 #201;
+   - by new contract tests, with existing ones moving over when touched.
+
+   As a mutation check, revert one cluster-1 fix locally; the property test must
+   fail.
+5. **Delete:**
+   - `count_bam` and `count_single_variant`, and the feature in `Cargo.toml`,
+     `mod.rs` and `lib.rs`;
+   - their stub entries;
+   - the helpers `count_one`, `count_one_both` and `count_both`
+     (`PARITY_FIELDS` → `COUNT_FIELDS`);
+   - the two `TestBinnedParity` classes;
+   - the duplicate CI clippy and `cargo test` steps, and `--no-default-features`
+     in `release.yml` and the Dockerfile;
+   - the parity memories, marked superseded;
+   - doc lines in AGENTS.md, the rules, skills, CONTRIBUTING and the
+     developer/testing guides.
+6. **AGENTS.md invariant 1 becomes binning invariance.** Bin geometry is
+   performance only. `count_bam_binned` must give identical counts under any bin
+   window or cap, one variant per bin, or one variant per call, so every bin's
+   fetch must hold each member's full window. Classification is checked against
+   the read census, never a second engine.
+
+**Order.**
+1. Add the hook, the invariance tests and the census, green on the current code
+   and mutation-checked.
+2. Migrate the helpers.
+3. Delete the legacy path.
+4. Update the docs.
+
+Production output must stay byte-identical: the engine does not change, and the
+RC/WES/FORTE acceptance must show 0 changed rows.
+
+**As built (2026-10-01; approved by the operator as written).**
+- Step 1: the hook, the Rust bin property test, and
+  `tests/test_binning_invariance.py`. Mutation-checked: re-introducing CR-1 fails
+  the property test and the clip-carrier fixture.
+- Step 2: the census (`tests/census.py`, `tests/test_read_census.py`).
+  Mutation-checked: disabling the ALT-side window, or equivalent insertion
+  placements, fails it. Writing it settled the census's conventions to match the
+  decided rules: the anchors are the tract's flank bases; a one-sided reading runs
+  on along each haplotype past the window; wrong-length reads run past where they
+  differ from the ALT, because a two-haplotype census cannot see a third allele in
+  a truncated read.
+- Step 3: `count_checked` everywhere. The 49 legacy-only tests now test
+  production, and all hold. Duplicate twins were removed.
+- Step 4: the legacy path deleted (841 lines out, 59 in), along with the feature,
+  the stub entry, the CI steps and `--no-default-features`.
+- Step 5: docs, rules, skills and memory. The two parity memories were deleted,
+  since the repo now records the rule.
+
+**Found on the way, for H3 #204:** `mfsd_ref_llr` varies in its last ulps
+between identical runs (float summation in HashMap order); output rounds it to
+4 decimals.
 
 ## RNA
 
@@ -1174,12 +1328,41 @@ write raises. Use context managers.
 `is_indel` reduces to `ref_len != alt_len`; its second clause is exactly
 `is_mnp`. Simplify it.
 
+### H3 (#204) — code-quality sweep of the cycle's code · [after T1]
+Operator request (2026-10-01). Audited the same day by three read-only reviews;
+the ranked work list is on #204. In brief:
+- **A. Silent failures that change counts** (test first, measured):
+  - S1: an ALT call stands on placement when the reference near a pure indel is
+    unavailable (contig ends, unprepared variants);
+  - S2: anchor-changing insertions fall back silently from the exact-carrier
+    rule in long runs, because prep never widens their reference;
+  - S4, QUAL `*` read as Q255, joins C19 #182.
+- **B. Degraded modes with no warning:** unprepared variants (S3).
+- **C. Monitoring:** carry the deciding rule on `ClassifyResult`; tally per
+  variant on the Phase stats line; warn once per variant on unjudged ALT and
+  carrier fallback; INFO totals per pass; prep summary counts. No new columns.
+- **D. Logging:** levels, misleading texts, 1-based loci and qnames, named traces
+  for every decision path.
+- **E. Duplication:** CIGAR walks, end-of-walk resolution, the read loops'
+  repeated rules, helpers.
+- **F. Unused or dead code:** a dead parameter; work computed and then discarded
+  (the decomposed twin, `observed_allele` in observations mode); dead branches.
+- **G. Comments:** stale ones, and ticket labels.
+- **H. Need a decision:** the allele-kind enum vs RNA triage; one fragment class
+  shared by observations and mFSD; uppercasing `ref_context` (changes SW on
+  soft-masked FASTAs); `mfsd_ref_llr` ulp nondeterminism; for a read that starts
+  on a pure indel's left flank base, the windows start at the flank while the
+  read-by-bases ALT rule needs an aligned base outside the window (found writing
+  the census, T2).
+
+Pure refactors must leave the acceptance output byte-identical.
+
 ## Performance (M5 leftovers)
 
 ### P1 — Deep-bin fetch reduction (M5b) (#150, under #134) · L
 Deep cfDNA bins read 150k+ reads to count a few variants. Narrowing the fetch
-is the only remaining cfDNA lever. It is parity-sensitive, so scope it behind
-the binned↔legacy parity gate. Investigation first.
+is the only remaining cfDNA lever. It must keep binning invariance, so scope it
+behind the binning-invariance tests (T1). Investigation first.
 
 ### P2 — Bin cost-sort (PF-2) (#151, under #134) · L
 Niche: cfDNA has no long-pole bin. Cheap if a skewed workload appears.
@@ -1256,9 +1439,9 @@ Rust, `Cargo.toml` vs crates.io — mostly semver-major moves:
 3. **Rust:** `cargo update` (semver-compatible) first, then the gates. Then the
    majors one at a time: pyo3 → rust-htslib → bio → arrow/parquet →
    noodles-gtf → statrs → bincode. After each: clippy, `cargo test`, a maturin
-   build, pytest, and the parity suite. The API migrations are the real work.
+   build, pytest (with the binning-invariance tests). The API migrations are the real work.
 4. **Output identity:** on the fully upgraded build, the RC set (28 DNA + 33
-   RNA runs) must be byte-identical and the parity oracle green. Any count
+   RNA runs) must be byte-identical and the binning-invariance tests green. Any count
    change is explained (e.g. an htslib or bio behaviour change) before it is
    adopted.
 5. **Policy:** for each dependency decide upgrade, cap (why), or blocked
@@ -1411,15 +1594,16 @@ code or a principle, and which must come first) and cut the scope:
 
 ## Suggested order
 
-Refreshed 2026-09-30 by the triage; C1, C2, C4, C10, C12, C13, C14, C21, R1, R2
-and O4 are done.
+Refreshed 2026-09-30 by the triage; C1, C2, C4, C8, C10, C12, C13, C14, C20, C21,
+C22, C23, R1, R2 and O4 are done (cluster 1 merged in #203).
 1. **Cluster 1, pure-indel read judgment, one design and one PR:** C20 #188, C22
    #191, C23 #192, measured together and decided as one rule (a carrier holds the
    ALT haplotype across the discrimination window), with C8 #121 (anchor-changing
    one-base-REF variants to the exact-carrier rule) and C11 #159 (Phase-3 context
    sized by the shift region, with C23). Classifier-only: no mirror cost.
 2. **Test architecture:** T1 #170 (retire the legacy path; binning invariance)
-   with T2 #171 (read-census oracle), before the read-admission work.
+   with T2 #171 (read-census oracle), before the read-admission work; then H3
+   #204 (code-quality sweep of the cycle's code), its own PR.
 3. **Read admission and RNA:** C26 #200 (the REF side of cluster 1's one-change
    rule; measured first, then decided) and C28 #202 (the anchor-deleted Phase-3
    fallback; measured first); C17 #176 (measured first); R4 #185 with

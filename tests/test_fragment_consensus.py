@@ -11,9 +11,7 @@ rdf and adf, inflating dpf != rdf + adf.
 
 import pysam
 import pytest
-from helpers import count_both
-
-from gbcms._rs import count_bam
+from helpers import count_bam_checked
 
 
 @pytest.fixture
@@ -186,7 +184,7 @@ def test_fragment_consensus_no_double_counting(fragment_consensus_bam):
         variant_type="SNP",
     )
 
-    results = count_bam(
+    results = count_bam_checked(
         bam_path=fragment_consensus_bam,
         variants=[variant],
         decomposed=[None],
@@ -233,7 +231,7 @@ def test_fragment_consensus_quality_tiebreaker(fragment_consensus_bam):
         variant_type="SNP",
     )
 
-    results = count_bam(
+    results = count_bam_checked(
         bam_path=fragment_consensus_bam,
         variants=[variant],
         decomposed=[None],
@@ -277,7 +275,7 @@ def test_fragment_dpf_includes_neither_reads(fragment_consensus_bam):
         variant_type="SNP",
     )
 
-    results = count_bam(
+    results = count_bam_checked(
         bam_path=fragment_consensus_bam,
         variants=[variant],
         decomposed=[None],
@@ -302,27 +300,3 @@ def test_fragment_dpf_includes_neither_reads(fragment_consensus_bam):
     assert (
         counts.dp >= counts.rd + counts.ad
     ), f"DP invariant failed: dp={counts.dp} < rd+ad={counts.rd + counts.ad}"
-
-
-# ── count_bam_binned parity tests ────────────────────────────────────────
-
-
-def test_fragment_consensus_binned(fragment_consensus_bam):
-    """count_bam_binned produces same fragment consensus counts as count_bam."""
-    from gbcms._rs import Variant
-
-    variant = Variant(chrom="chr1", pos=100, ref_allele="A", alt_allele="T", variant_type="SNP")
-    counts = count_both(
-        fragment_consensus_bam,
-        [variant],
-        min_mapq=0,
-        min_baseq=0,
-        filter_qc_failed=True,
-        filter_improper_pair=False,
-        filter_indel=False,
-    )[0]
-    assert counts.dpf == 6
-    assert counts.rdf == 2
-    assert counts.adf == 3
-    assert counts.dp == 11
-    assert counts.dpf >= counts.rdf + counts.adf

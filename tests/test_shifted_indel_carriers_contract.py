@@ -26,7 +26,7 @@ import random
 
 import pysam
 import pytest
-from helpers import count_both, make_read
+from helpers import count_checked, make_read
 
 from gbcms import _rs as gbcms_rs
 
@@ -68,8 +68,8 @@ def _files(tmp_path, ref, reads):
 
 def _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier, full=False):
     """Five REF reads and five carriers, `carrier(s)` giving each carrier's
-    (sequence, CIGAR[, base qualities]) from its start `s`; counted in both paths
-    (count_both asserts parity). `full` returns the counts object instead of
+    (sequence, CIGAR[, base qualities]) from its start `s`; counted with production
+    bins and one variant per bin (count_checked). `full` returns the counts object instead of
     (rd, ad, partial)."""
     starts = range(A - 50, A - 45)
     reads = [make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)) for i, s in enumerate(starts)]
@@ -81,7 +81,7 @@ def _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier, full=False):
         [gbcms_rs.Variant("1", A, ref_allele, alt_allele, "X")], fa, 5, False, 1, True
     )
     assert pv.gbcms_status == "PASS" and pv.variant.pos == A, pv.gbcms_status_reason
-    (c,) = count_both(bam, [pv.variant])
+    (c,) = count_checked(bam, [pv.variant])
     assert c.dp >= c.rd + c.ad
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev

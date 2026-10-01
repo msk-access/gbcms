@@ -198,10 +198,8 @@ impl ClassifyResult {
     /// indel that is a distinct allele in the same tract (slippage ladder),
     /// not the reference and not the queried ALT. Consumed by the engine to
     /// increment `partial_alt`/`any_alt` (PARTIAL_DOMINANT diagnostics).
-    /// The anchor quality is carried for the legacy path's N heuristic
-    /// (`base_qual == 0 && neither` reads as N-class): a real anchor quality
-    /// keeps these reads out of the N bucket. Fragment consensus ignores the
-    /// qual of neither results.
+    /// The anchor quality is carried with it; fragment consensus ignores the qual
+    /// of neither results, and the N class comes from `has_n_base`, not from qual.
     #[inline]
     pub fn neither_with_nearby(qual: u8, phase: ClassifyPhase) -> Self {
         Self { qual, has_nearby_evidence: true, ..Self::neither(phase) }

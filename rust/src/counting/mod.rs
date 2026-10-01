@@ -6,7 +6,7 @@
 //!
 //! ## Submodules
 //!
-//! - [`engine`] — Core orchestration: `count_bam`, `count_single_variant`, `check_allele_with_qual`
+//! - [`engine`] — Core orchestration: `count_bam_binned` (bins, the shared read loop), `check_allele_with_qual`
 //! - [`fragment`] — Re-export of `shared::fragment` (FragmentEvidence, QNAME hashing)
 //! - [`alignment`] — Smith-Waterman alignment backend (Phase 3)
 //! - [`pairhmm`] — PairHMM alignment backend (probabilistic Phase 3 alternative)
@@ -34,9 +34,7 @@ pub(crate) mod mfsd;
 pub(crate) mod rna;
 pub(crate) mod parquet_writer;
 
-// Re-export the PyO3 entry points so lib.rs can call counting::count_bam / count_bam_binned
-#[cfg(feature = "legacy-parity")]
-pub use engine::count_bam;
+// Re-export the PyO3 entry points so lib.rs can register them
 pub use engine::count_bam_binned;
 pub use engine::count_bam_binned_observations;
 pub use engine::build_gtf_cache;
