@@ -306,27 +306,13 @@ pub fn splice_skip_triage(record: &Record, variant: &Variant) -> Option<Classify
     if !super::rna::has_splice_junction(record) {
         return None;
     }
+    // Malformed alleles (an empty one): the dispatcher counts them as neither.
+    let kind = window::allele_kind(&variant.ref_allele, &variant.alt_allele)?;
     let ref_len = variant.ref_allele.len() as i64;
-    let alt_len = variant.alt_allele.len() as i64;
-    if ref_len == 0 || alt_len == 0 {
-        return None; // malformed alleles: the dispatcher counts them as neither
-    }
-    let anchor_preserved = variant
-        .ref_allele
-        .as_bytes()
-        .first()
-        .map(|b| b.to_ascii_uppercase())
-        == variant
-            .alt_allele
-            .as_bytes()
-            .first()
-            .map(|b| b.to_ascii_uppercase());
-    let (span_start, span_end) = if ref_len == 1 && alt_len > 1 && anchor_preserved {
-        (variant.pos, variant.pos + 2)
-    } else if ref_len > 1 && alt_len == 1 && anchor_preserved {
-        (variant.pos + 1, variant.pos + ref_len)
-    } else {
-        (variant.pos, variant.pos + ref_len)
+    let (span_start, span_end) = match kind {
+        window::AlleleKind::Insertion => (variant.pos, variant.pos + 2),
+        window::AlleleKind::Deletion => (variant.pos + 1, variant.pos + ref_len),
+        _ => (variant.pos, variant.pos + ref_len),
     };
     let obs = observe_read_span(record, span_start, span_end);
     if obs.skipped && !obs.aligned && !obs.deleted {

@@ -47,6 +47,7 @@
 use rust_htslib::bam::record::{Cigar, Record};
 
 use super::rna;
+use super::window::AlleleKind;
 use super::utils::{find_read_pos, median_qual, soft_clips, ClassifyPhase, ClassifyResult};
 use crate::types::Variant;
 
@@ -312,13 +313,10 @@ pub(crate) fn indel_at_block(record: &Record, variant: &Variant) -> bool {
 /// C>TA). SNVs and pure indels have their own classifiers. The dispatcher sends
 /// exactly these here, and prep widens the reference for exactly these.
 pub(crate) fn judges(v: &Variant) -> bool {
-    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
-    match (r.first(), a.first()) {
-        (Some(r0), Some(a0)) => {
-            (r.len() > 1 && a.len() > 1) || ((r.len() == 1) != (a.len() == 1) && !a0.eq_ignore_ascii_case(r0))
-        }
-        _ => false,
-    }
+    matches!(
+        super::window::allele_kind(&v.ref_allele, &v.alt_allele),
+        Some(AlleleKind::Mnp | AlleleKind::Complex)
+    )
 }
 
 /// Whether a reference fetched from `start` is too short to judge the variant:

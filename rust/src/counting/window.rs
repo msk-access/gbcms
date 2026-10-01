@@ -54,6 +54,37 @@ pub(crate) fn change_interval(v: &Variant) -> (i64, i64) {
     })
 }
 
+/// What a row's alleles are, by their lengths and whether the ALT keeps the REF's
+/// first (anchor) base, compared case-insensitively: one classification for the
+/// counting dispatcher, splice triage, the exact-carrier rule's scope and prep's
+/// variant-type label.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AlleleKind {
+    /// One base each.
+    Snv,
+    /// Equal lengths, more than one base.
+    Mnp,
+    /// A one-base REF whose ALT keeps it and adds bases.
+    Insertion,
+    /// A one-base ALT that keeps the REF's first base.
+    Deletion,
+    /// Anything else: a delins, or an insertion or deletion whose anchor changes.
+    Complex,
+}
+
+/// The row's allele kind; None when either allele is empty.
+pub(crate) fn allele_kind(ref_allele: &str, alt_allele: &str) -> Option<AlleleKind> {
+    let (r, a) = (ref_allele.as_bytes(), alt_allele.as_bytes());
+    let anchor_kept = r.first()?.eq_ignore_ascii_case(a.first()?);
+    Some(match (r.len(), a.len()) {
+        (1, 1) => AlleleKind::Snv,
+        (m, n) if m == n => AlleleKind::Mnp,
+        (1, _) if anchor_kept => AlleleKind::Insertion,
+        (_, 1) if anchor_kept => AlleleKind::Deletion,
+        _ => AlleleKind::Complex,
+    })
+}
+
 /// Whether the alleles are a pure insertion or deletion: one allele is the
 /// other plus bases after their shared prefix.
 pub(crate) fn is_pure_indel(ref_allele: &str, alt_allele: &str) -> bool {
@@ -544,6 +575,21 @@ pub(crate) fn siblings_in_window<'a>(variant: &Variant, siblings: &'a [Variant])
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn allele_kind_reads_lengths_and_the_anchor_case_insensitively() {
+        use AlleleKind::*;
+        assert_eq!(allele_kind("A", "T"), Some(Snv));
+        assert_eq!(allele_kind("AC", "GT"), Some(Mnp));
+        assert_eq!(allele_kind("A", "ACC"), Some(Insertion));
+        assert_eq!(allele_kind("a", "ACC"), Some(Insertion));
+        assert_eq!(allele_kind("ACC", "a"), Some(Deletion));
+        assert_eq!(allele_kind("C", "TA"), Some(Complex)); // the anchor changes
+        assert_eq!(allele_kind("GC", "T"), Some(Complex));
+        assert_eq!(allele_kind("GCA", "TT"), Some(Complex));
+        assert_eq!(allele_kind("", "A"), None);
+        assert_eq!(allele_kind("A", ""), None);
+    }
 
     /// A variant with a reference context starting at 0.
     fn var(ctx: &str, pos: i64, r: &str, a: &str) -> Variant {

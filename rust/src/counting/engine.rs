@@ -54,7 +54,7 @@ use bio::alignment::distance::levenshtein;
 use super::utils::{find_read_pos, ref_end, soft_clips, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
-use super::window;
+use super::window::{self, AlleleKind};
 use super::observed;
 use super::carrier;
 use crate::shared::baq::apply_heuristic_baq;
@@ -2420,14 +2420,6 @@ fn alt_needs_the_window(
     result
 }
 
-/// Whether the ALT keeps the REF's first (anchor) base, as a pure insertion or
-/// deletion does.
-fn anchor_preserved(variant: &Variant) -> bool {
-    match (variant.ref_allele.as_bytes().first(), variant.alt_allele.as_bytes().first()) {
-        (Some(r), Some(a)) => r.eq_ignore_ascii_case(a),
-        _ => false,
-    }
-}
 
 /// Check if a read supports the reference or alternate allele.
 /// Returns `ClassifyResult` containing (is_ref, is_alt, base_quality, phase)
@@ -2464,33 +2456,29 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         return result;
     }
 
-    // A row with an empty allele shows no allele (prep rejects such rows; the
-    // counting pass warns once about any passed to it directly).
-    if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
-        return ClassifyResult::neither(ClassifyPhase::Structural);
-    }
-
-    // Dispatch based on allele lengths rather than the variant_type string.
-    // This is more robust than relying on upstream type labels, which can be
-    // inconsistent (e.g., a caller emitting "COMPLEX" for what is really a
-    // pure deletion after normalization).
-    let ref_len = variant.ref_allele.len();
-    let alt_len = variant.alt_allele.len();
+    // Dispatch on the alleles (`window::allele_kind`), never on the variant_type
+    // label, which callers write inconsistently (e.g. "COMPLEX" for what is a pure
+    // deletion after normalization).
     trace!(
         "check_allele {}:{} {}>{} read={}",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
     );
+    let Some(kind) = window::allele_kind(&variant.ref_allele, &variant.alt_allele) else {
+        // A row with an empty allele shows no allele (prep rejects such rows; the
+        // counting pass warns once about any passed to it directly).
+        return ClassifyResult::neither(ClassifyPhase::Structural);
+    };
 
-    if ref_len == 1 && alt_len == 1 {
+    if kind == AlleleKind::Snv {
         // SNP: single base substitution — no Phase 3 needed
         check_snp(record, variant, quals, min_baseq)
-    } else if ref_len == alt_len && carrier::indel_at_block(record, variant) {
+    } else if kind == AlleleKind::Mnp && carrier::indel_at_block(record, variant) {
         // An MNP read with an indel in or right beside the block (an aligner may
         // write a shifted block as an insertion before it and a deletion after):
         // it counts only if its own bases carry the whole allele (exact-carrier rule).
         let route = "an MNP read with an indel at the block";
         classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
-    } else if ref_len == alt_len {
+    } else if kind == AlleleKind::Mnp {
         // MNP: selective discriminating-position quality gate with no Phase 3 fallback.
         match check_mnp(record, variant, quals, min_baseq) {
             MnpResult::Ref(q, had_n) => {
@@ -2539,42 +2527,31 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
             }
         }
-    } else if ref_len == 1 && anchor_preserved(variant) {
+    } else if kind == AlleleKind::Insertion {
         // Pure insertion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
         let result = check_insertion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
         ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
-    } else if ref_len == 1 {
-        // A one-base REF whose ALT changes it (C>TA, A>CCC) is a delins, not an
-        // insertion of its tail: the insertion check compares only the inserted
-        // bases, so reads that keep the anchor counted ALT. Judged by its whole
-        // allele, as a Del+SNV is.
-        let route = "an insertion whose anchor changes";
-        classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
-    } else if alt_len == 1 {
-        // Distinguish pure deletion (anchor base preserved) from complex Del+SNV
-        // (anchor base also substituted, e.g. GC→T where G is both the anchor
-        // AND changes to T).
-        //
-        // Pure deletion example:  GC → G  (anchor G kept, C deleted)
-        // Complex Del+SNV:        GC → T  (C deleted AND G→T at anchor position)
-        //
-        // check_deletion judges the gap and the deleted bases (ref_allele[1..]) and
-        // never reads the anchor, so it cannot tell a Del+SNV carrier from a
-        // pure-deletion carrier. A Del+SNV is judged by its whole allele with the
-        // exact-carrier rule (`classify_complex`), reaching check_complex only when
-        // the rule cannot judge the variant.
-        if anchor_preserved(variant) {
-            // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
-            let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
-            ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
-        } else {
-            // Complex Del+SNV: the anchor base is also substituted.
-            let route = "a deletion whose anchor changes";
-            classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
-        }
+    } else if kind == AlleleKind::Deletion {
+        // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
+        let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+        ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
     } else {
-        // Complex: ref_len != alt_len, both > 1 (e.g., DelIns).
-        classify_complex(record, variant, "a delins", siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        // Complex, judged by its whole allele with the exact-carrier rule
+        // (`classify_complex`), reaching check_complex only when the rule cannot
+        // judge the variant:
+        // - a one-base REF whose ALT changes it (C>TA, A>CCC) is a delins, not an
+        //   insertion of its tail: the insertion check compares only the inserted
+        //   bases, so reads that keep the anchor would count ALT;
+        // - a deletion whose anchor also changes (GC>T): check_deletion judges the
+        //   gap and the deleted bases (ref_allele[1..]) and never reads the anchor,
+        //   so it cannot tell such a carrier from a pure-deletion carrier;
+        // - a delins with both alleles longer than one base.
+        let route = match (variant.ref_allele.len(), variant.alt_allele.len()) {
+            (1, _) => "an insertion whose anchor changes",
+            (_, 1) => "a deletion whose anchor changes",
+            _ => "a delins",
+        };
+        classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     }
 }
 

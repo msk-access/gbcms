@@ -399,12 +399,10 @@ fn assign_multi_allelic_groups(variants: &mut [PreparedVariant]) {
 /// and every multi-base substitution is COMPLEX. Counting dispatches on the
 /// alleles, never on this label; it is what `gbcms normalize` reports.
 fn variant_type_for(ref_al: &str, alt_al: &str) -> &'static str {
-    let (r, a) = (ref_al.as_bytes(), alt_al.as_bytes());
-    let anchor_shared = r.first().map(u8::to_ascii_uppercase) == a.first().map(u8::to_ascii_uppercase);
-    match (r.len(), a.len()) {
-        (1, 1) => "SNP",
-        (1, n) if n > 1 && anchor_shared => "INSERTION",
-        (n, 1) if n > 1 && anchor_shared => "DELETION",
+    match window::allele_kind(ref_al, alt_al) {
+        Some(window::AlleleKind::Snv) => "SNP",
+        Some(window::AlleleKind::Insertion) => "INSERTION",
+        Some(window::AlleleKind::Deletion) => "DELETION",
         _ => "COMPLEX",
     }
 }
