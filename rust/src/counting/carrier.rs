@@ -343,13 +343,34 @@ pub(crate) fn reference_short(start: i64, reference: &str, v: &Variant) -> Optio
 /// genomic [start, end): every base an aligner may place its change on. None
 /// without a reference that holds it, or with an empty allele.
 pub(crate) fn grown_event(v: &Variant) -> Option<(i64, i64)> {
-    let (start, reference) = match (&v.event_ref, &v.ref_context) {
-        (Some((s, seq)), _) => (*s, upper(seq)),
-        (None, Some(ctx)) => (v.ref_context_start, upper(ctx)),
-        (None, None) => return None,
-    };
+    let (start, reference) = prepared_reference(v)?;
     let ev = event(start, &reference, v)?;
     Some((start + ev.lo as i64, start + ev.hi as i64))
+}
+
+/// Why the rule cannot judge a variant (`classify` gives None for every read),
+/// for its once-per-variant warning.
+pub(crate) fn unjudged_reason(v: &Variant) -> &'static str {
+    match prepared_reference(v) {
+        None => "no prepared reference (the variant was not prepared against a FASTA, or failed prep)",
+        Some((start, reference)) if event(start, &reference, v).is_none() => {
+            "the prepared reference does not hold its REF allele"
+        }
+        Some(_) => {
+            "the prepared reference does not hold the event with its flank (a contig end, or a \
+             repeat past the fetch cap)"
+        }
+    }
+}
+
+/// The reference the rule reads, upper case, and its genomic start: the event's
+/// widened reference when prep fetched one, else the reference context.
+fn prepared_reference(v: &Variant) -> Option<(i64, Vec<u8>)> {
+    match (&v.event_ref, &v.ref_context) {
+        (Some((s, seq)), _) => Some((*s, upper(seq))),
+        (None, Some(ctx)) => Some((v.ref_context_start, upper(ctx))),
+        (None, None) => None,
+    }
 }
 
 fn upper(s: &str) -> Vec<u8> {
@@ -421,11 +442,7 @@ fn event(start: i64, reference: &[u8], v: &Variant) -> Option<Event> {
 /// REF and ALT windows for the variant. None without a reference that holds the
 /// event and its flank, or with an empty allele.
 fn windows(v: &Variant) -> Option<Windows> {
-    let (start, reference) = match (&v.event_ref, &v.ref_context) {
-        (Some((s, seq)), _) => (*s, upper(seq)),
-        (None, Some(ctx)) => (v.ref_context_start, upper(ctx)),
-        (None, None) => return None,
-    };
+    let (start, reference) = prepared_reference(v)?;
     let ev = event(start, &reference, v)?;
     if ev.lo < FLANK || ev.hi + FLANK > reference.len() {
         return None; // the reference does not hold the event's flank

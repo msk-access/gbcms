@@ -585,6 +585,7 @@ fn count_bam_binned_core(
             variants.len(), apply_baq, umi_tag, alignment_backend, mfsd, threads,
         );
     }
+    warn_degraded_variants(&variants);
 
     // Build genomic bins using a temporary BAM/CRAM reader for header access
     let mut header_reader = bam::IndexedReader::from_path(&bam_path).map_err(|e| {
@@ -749,9 +750,9 @@ fn count_bam_binned_core(
             // tally is per bin fetch, and bin windows overlap, so it is an upper bound.
             if no_bases > 0 {
                 warn!(
-                    "{}: skipped records stored without bases (SEQ '*') in {} bin fetch(es) \
-                     (a record in overlapping bins counts in each); they show no allele and \
-                     are not counted",
+                    "{}: skipped {} record(s) stored without bases (SEQ '*') (an upper bound: \
+                     a record fetched by overlapping bins counts once per bin); they show no \
+                     allele and are not counted",
                     bam_label, no_bases,
                 );
             }
@@ -2008,8 +2009,8 @@ fn count_variant_from_cache(
 
     // Log per-phase classification breakdown + reads considered
     debug!(
-        "Phase stats {}:{} {}→{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} sw_fallback={} clip_candidates={} ({} backend, {} reads from cache)",
-        variant.chrom, variant.pos, variant.ref_allele, variant.alt_allele,
+        "Phase stats {}:{} {}>{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} sw_fallback={} clip_candidates={} ({} backend, {} reads overlapping the window)",
+        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
         counts.splice_skip_excluded, counts.sw_fallback_reads, counts.clip_candidates,
         match backend {
@@ -2130,9 +2131,9 @@ fn sibling_claims_ref<F: Fn(u8, u8) -> i32>(
         );
         if sib_result.is_alt {
             trace!(
-                "Multi-allelic guard: read is ALT for sibling {}>{} at {}:{} inside the \
+                "Multi-allelic guard: read={} is ALT for sibling {}>{} at {}:{} inside the \
                  window of {}>{} — excluded from its REF",
-                sib.ref_allele, sib.alt_allele, sib.chrom, sib.pos + 1,
+                read_name(record), sib.ref_allele, sib.alt_allele, sib.chrom, sib.pos + 1,
                 variant.ref_allele, variant.alt_allele,
             );
             return true;
@@ -2178,9 +2179,9 @@ fn sibling_claims_alt(
     let cost_ref = levenshtein(&recon.seq, &ref_hap);
     if cost_alt >= cost_ref {
         trace!(
-            "AD-claiming guard: ALT for {}>{} at {}:{} not favored over REF \
+            "AD-claiming guard: read={} ALT for {}>{} at {}:{} not favored over REF \
              (ALT cost {} vs REF cost {}) — partial_alt, not ad",
-            variant.ref_allele, variant.alt_allele,
+            read_name(record), variant.ref_allele, variant.alt_allele,
             variant.chrom, variant.pos + 1, cost_alt, cost_ref,
         );
         return true;
@@ -2200,9 +2201,9 @@ fn sibling_claims_alt(
         || (ref_al.len() == 1 && alt_al.len() > 1 && alt_al[0] == ref_al[0]);
     if result.phase == ClassifyPhase::Alignment && pure_indel {
         trace!(
-            "AD-claiming guard: alignment-phase ALT on pure indel {}>{} at {}:{} \
+            "AD-claiming guard: read={} alignment-phase ALT on pure indel {}>{} at {}:{} \
              in a co-annotated cluster (no structural op) — partial_alt, not ad",
-            variant.ref_allele, variant.alt_allele,
+            read_name(record), variant.ref_allele, variant.alt_allele,
             variant.chrom, variant.pos + 1,
         );
         return true;
@@ -2240,9 +2241,9 @@ fn sibling_claims_alt(
         let sib_c = levenshtein(&recon_s, &sib_hap_s);
         if sib_c < own_c || (equal_but_masked(&recon_s, &own_hap_s) && equal_but_masked(&recon_s, &sib_hap_s)) {
             trace!(
-                "AD-claiming guard: ALT for {}>{} at {}:{} (cost {}) claimed by \
+                "AD-claiming guard: read={} ALT for {}>{} at {}:{} (cost {}) claimed by \
                  sibling {}>{} at {}:{} (cost {}) — partial_alt, not ad",
-                variant.ref_allele, variant.alt_allele,
+                read_name(record), variant.ref_allele, variant.alt_allele,
                 variant.chrom, variant.pos + 1, own_c,
                 sib.ref_allele, sib.alt_allele,
                 sib.chrom, sib.pos + 1, sib_c,
@@ -2303,6 +2304,35 @@ fn has_clip_boundary_in(record: &Record, lo: i64, hi: i64) -> bool {
         || (trailing && (lo..=hi).contains(&read_ref_end(record)))
 }
 
+/// Once per counting pass: rows the rules can only judge degraded. Prep rejects
+/// or prepares every such row, so these come from callers passing unprepared
+/// variants to the engine directly.
+fn warn_degraded_variants(variants: &[Variant]) {
+    let unprepared = variants
+        .iter()
+        .filter(|v| v.ref_allele.len() != v.alt_allele.len() && v.ref_context.is_none())
+        .count();
+    if unprepared > 0 {
+        warn!(
+            "{} insertion, deletion or complex variant(s) carry no prepared reference context \
+             (not prepared against a FASTA, or prep failed): the rules that read the reference \
+             around the event run degraded for them",
+            unprepared,
+        );
+    }
+    let degenerate = variants
+        .iter()
+        .filter(|v| v.ref_allele.len() > 1 && v.ref_allele.eq_ignore_ascii_case(&v.alt_allele))
+        .count();
+    if degenerate > 0 {
+        warn!(
+            "{} MNP row(s) have REF equal to ALT: no read can show either allele, so they count \
+             depth only",
+            degenerate,
+        );
+    }
+}
+
 /// Once per variant: reads a rule could not judge for want of reference around
 /// the event, so their loss is never silent.
 fn warn_unjudged(variant: &Variant, alt_unjudged: u32, carrier_fallback: u32) {
@@ -2311,16 +2341,17 @@ fn warn_unjudged(variant: &Variant, alt_unjudged: u32, carrier_fallback: u32) {
             "{}:{} {}>{}: {} ALT read(s) span neither informative window and could not be judged \
              by their bases: no prepared reference holds the event (the variant was not \
              prepared against a FASTA, or failed prep), or the base that would decide lies \
-             past a contig edge — counted as depth only",
+             past the prepared reference's end (a contig edge, or a short fetch) — counted \
+             as depth only",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, alt_unjudged,
         );
     }
     if carrier_fallback > 0 {
         warn!(
-            "{}:{} {}>{}: {} read(s) could not be judged by the exact-carrier rule: the prepared \
-             reference does not hold the event with its flank (an unprepared variant, a contig \
-             end, or a repeat past the fetch cap) — classified by the previous complex classifier",
+            "{}:{} {}>{}: {} read(s) could not be judged by the exact-carrier rule: {} — \
+             classified by the previous complex classifier",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, carrier_fallback,
+            carrier::unjudged_reason(variant),
         );
     }
 }
@@ -2356,10 +2387,10 @@ fn warn_sw_fallback(variant: &Variant, n: u32) {
 fn ref_needs_the_window(record: &Record, variant: &Variant, mut result: ClassifyResult) -> ClassifyResult {
     if result.is_ref && !window::read_is_informative(record, variant) {
         trace!(
-            "{}:{} {}>{}: read {}..{} spans neither informative window {:?} \
+            "{}:{} {}>{} read={}: aligned {}-{} spans neither informative window {:?} (0-based) \
              — uninformative, not REF",
-            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-            record.pos(), read_ref_end(record), window::informative_windows(variant),
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
+            record.pos() + 1, read_ref_end(record), window::informative_windows(variant),
         );
         result.is_ref = false;
         result.is_structural = false;
@@ -2368,13 +2399,13 @@ fn ref_needs_the_window(record: &Record, variant: &Variant, mut result: Classify
     result
 }
 
-/// An ALT call on an insertion or deletion from a read that spans neither of
-/// C10's windows read on the ALT haplotype (`window::alt_read_is_informative`)
+/// An ALT call on an insertion or deletion from a read that spans neither of the
+/// informative windows read on the ALT haplotype (`window::alt_read_is_informative`)
 /// stands only when the read's own bases tell the alleles apart
 /// (`window::alt_bases_discriminate`). The CIGAR's gap alone is placement: a
 /// carrier ending inside the repeat holds only bases both alleles share, so it
-/// counts toward depth and fragment depth but is neither REF nor ALT (C10's rule
-/// for REF reads, on the ALT side). A read whose bases discriminate (a truncated
+/// counts toward depth and fragment depth but is neither REF nor ALT (the REF
+/// side's rule, on the ALT side). A read whose bases discriminate (a truncated
 /// long insertion's carrier, whose insert consumes the read's span) keeps its ALT.
 fn alt_needs_the_window(
     record: &Record,
@@ -2383,19 +2414,36 @@ fn alt_needs_the_window(
     min_baseq: u8,
     mut result: ClassifyResult,
 ) -> ClassifyResult {
-    if !result.is_alt || window::alt_read_is_informative(record, variant, quals, min_baseq) {
+    if !result.is_alt {
+        return result;
+    }
+    let kept = |why: &str| {
+        trace!(
+            "{}:{} {}>{} read={}: ALT kept — {}",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record), why,
+        );
+    };
+    if window::alt_read_is_informative(record, variant, quals, min_baseq) {
+        kept("it spans an ALT-side window");
         return result;
     }
     let judged = window::alt_bases_discriminate(record, variant, quals, min_baseq);
     if judged == Some(true) {
+        kept("its own bases tell the alleles apart");
         return result;
     }
+    let why = match judged {
+        Some(_) => "its bases fit both alleles",
+        None if variant.event_ref.is_none() && variant.ref_context.is_none() => {
+            "no prepared reference to read its bases against"
+        }
+        None => "the prepared reference ends before the base that would decide",
+    };
     trace!(
-        "{}:{} {}>{}: read {}..{} spans neither ALT-side window around {:?} and {} \
-         — uninformative, not ALT",
-        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-        record.pos(), read_ref_end(record), window::change_interval(variant),
-        if judged.is_none() { "no reference holds the event to read its bases" } else { "its bases fit both alleles" },
+        "{}:{} {}>{} read={}: aligned {}-{} spans neither ALT-side window around {:?} (0-based) \
+         and {} — uninformative, not ALT",
+        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
+        record.pos() + 1, read_ref_end(record), window::change_interval(variant), why,
     );
     result.is_alt = false;
     result.is_structural = false;
@@ -2457,8 +2505,8 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     let ref_len = variant.ref_allele.len();
     let alt_len = variant.alt_allele.len();
     trace!(
-        "check_allele ref_len={} alt_len={} pos={} ref={} alt={}",
-        ref_len, alt_len, variant.pos, variant.ref_allele, variant.alt_allele
+        "check_allele {}:{} {}>{} read={}",
+        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
     );
 
     if ref_len == 1 && alt_len == 1 {
@@ -2468,7 +2516,8 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // An MNP read with an indel in or right beside the block (an aligner may
         // write a shifted block as an insertion before it and a deletion after):
         // it counts only if its own bases carry the whole allele (exact-carrier rule).
-        classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        let route = "an MNP read with an indel at the block";
+        classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     } else if ref_len == alt_len {
         // MNP: selective discriminating-position quality gate with no Phase 3 fallback.
         match check_mnp(record, variant, quals, min_baseq) {
@@ -2514,7 +2563,8 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
             MnpResult::Structural => {
                 // The read carries an indel or clip at the MNP: it counts only if
                 // its own bases carry the whole allele (exact-carrier rule).
-                classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+                let route = "an MNP read with an indel or clip at the block";
+                classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
             }
         }
     } else if ref_len == 1 && anchor_preserved(variant) {
@@ -2526,14 +2576,8 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // insertion of its tail: the insertion check compares only the inserted
         // bases, so reads that keep the anchor counted ALT. Judged by its whole
         // allele, as a Del+SNV is.
-        trace!(
-            "Complex Ins+SNV at {}:{} (ref[0]={} ≠ alt[0]={}): exact-carrier classification",
-            variant.chrom,
-            variant.pos + 1,
-            variant.ref_allele.chars().next().unwrap_or('?'),
-            variant.alt_allele.chars().next().unwrap_or('?'),
-        );
-        classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        let route = "an insertion whose anchor changes";
+        classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     } else if alt_len == 1 {
         // Distinguish pure deletion (anchor base preserved) from complex Del+SNV
         // (anchor base also substituted, e.g. GC→T where G is both the anchor
@@ -2559,19 +2603,13 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
             let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
             ref_needs_the_window(record, variant, alt_needs_the_window(record, variant, quals, min_baseq, result))
         } else {
-            // Complex Del+SNV: anchor base also substituted — route to Phase 3
-            trace!(
-                "Complex Del+SNV at {}:{} (ref[0]={} ≠ alt[0]={}): exact-carrier classification",
-                variant.chrom,
-                variant.pos + 1,
-                variant.ref_allele.chars().next().unwrap_or('?'),
-                variant.alt_allele.chars().next().unwrap_or('?'),
-            );
-            classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+            // Complex Del+SNV: the anchor base is also substituted.
+            let route = "a deletion whose anchor changes";
+            classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
         }
     } else {
         // Complex: ref_len != alt_len, both > 1 (e.g., DelIns).
-        classify_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        classify_complex(record, variant, "a delins", siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
     }
 }
 
@@ -2579,11 +2617,13 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
 /// read carrying an indel) counts a read only when the read's own bases carry
 /// the whole allele: the exact-carrier rule (`carrier`). A variant the rule
 /// cannot judge (built without prep, or its reference fetch failed) goes to the
-/// previous classifier, whose SW_FALLBACK flag keeps that case visible.
+/// previous classifier; such reads are counted and warned once per variant.
+/// `route` names why the read came here, for the trace.
 #[allow(clippy::too_many_arguments)]
 fn classify_complex<F: Fn(u8, u8) -> i32>(
     record: &Record,
     variant: &Variant,
+    route: &str,
     siblings: &[Variant],
     quals: &[u8],
     min_baseq: u8,
@@ -2591,16 +2631,29 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
-    carrier::classify(record, variant, quals, min_baseq).unwrap_or_else(|| {
+    if let Some(result) = carrier::classify(record, variant, quals, min_baseq) {
         trace!(
-            "{}:{} {}>{}: the prepared reference does not hold the event with its flank \
-             — previous complex classifier",
-            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+            "{}:{} {}>{} read={}: exact-carrier rule ({}): ref={} alt={} nearby={} uninformative={} \
+             clip_admissible={} mnp_confirmed={}",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
+            route, result.is_ref, result.is_alt, result.has_nearby_evidence, result.uninformative,
+            result.clip_admissible, result.mnp_confirmed,
         );
-        let mut result = check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
-        result.carrier_fallback = true;
-        result
-    })
+        return result;
+    }
+    trace!(
+        "{}:{} {}>{} read={}: the exact-carrier rule cannot judge ({}) → previous complex classifier",
+        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record), route,
+    );
+    let mut result = check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+    result.carrier_fallback = true;
+    result
+}
+
+/// A read's name for trace lines (lines from bins counted in parallel interleave,
+/// so each per-read line names its read).
+fn read_name(record: &Record) -> std::borrow::Cow<'_, str> {
+    String::from_utf8_lossy(record.qname())
 }
 
 

@@ -429,10 +429,10 @@ class Pipeline:
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
 
-        # Log variant type breakdown for transparency
-        # MNPs (same-length multi-base substitutions) are classified as
-        # COMPLEX by kernel.py but dispatched to check_mnp by the Rust
-        # counting engine based on ref_len == alt_len.
+        # Log variant type breakdown for transparency. MNPs (same-length
+        # multi-base substitutions) are dispatched by allele lengths in the Rust
+        # engine: a per-position quality gate, or the exact-carrier rule for a
+        # read with an indel or clip at the block.
         type_counts: dict[str, int] = {}
         mnp_count = 0
         for p in prepared:
@@ -456,8 +456,9 @@ class Pipeline:
         logger.info("Variant types: %s", type_str)
         if mnp_count > 0:
             logger.info(
-                "MNP counting: %d MNPs use selective discriminating-position "
-                "quality gate (atomic block matching, no check_complex fallback)",
+                "MNP counting: %d MNPs use a per-position quality gate over their "
+                "discriminating bases; reads with an indel or clip at the block are "
+                "judged by the exact-carrier rule",
                 mnp_count,
             )
 

@@ -24,7 +24,7 @@ use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 use bio::alignment::distance::levenshtein;
 use bio::alignment::pairwise::Aligner;
-use log::{debug, trace, warn};
+use log::{debug, trace};
 
 use crate::normalize::repeat::find_tandem_repeat;
 use crate::types::Variant;
@@ -77,7 +77,7 @@ fn pangenomic_classify(
     let matrix = match build_haplotype_matrix(variant, siblings) {
         Some(m) => m,
         None => {
-            debug!(
+            trace!(
                 "pangenomic_classify: matrix construction failed for {}:{} (siblings={})",
                 variant.chrom, variant.pos + 1, siblings.len(),
             );
@@ -185,7 +185,7 @@ fn phase3_classify<F: Fn(u8, u8) -> i32>(
                     );
                 }
             } else {
-                debug!(
+                trace!(
                     "phase3: variant {}:{} has no ref_context → check_complex fallback",
                     variant.chrom, variant.pos + 1,
                 );
@@ -572,10 +572,11 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
         }
     }
 
-    // Safety: an MNP with zero discriminating positions is degenerate
-    // (REF == ALT). Treat as ThirdAllele to surface the issue.
+    // An MNP with zero discriminating positions is degenerate (REF == ALT): no
+    // read can show either allele. Prep rejects such rows; the counting pass warns
+    // once for any that reach it unprepared.
     if n_discriminating == 0 {
-        warn!(
+        trace!(
             "MNP with zero discriminating positions: {}>{} at {}:{}",
             variant.ref_allele, variant.alt_allele, variant.chrom, variant.pos + 1
         );
@@ -588,8 +589,8 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
     // No unmasked positions can vote, so we can't classify this read.
     if n_unmasked == 0 {
         trace!(
-            "MNP all {} discriminating positions masked ({} N, {} low-BQ)",
-            n_discriminating, n_masked, n_discriminating
+            "MNP: all {} discriminating positions masked (N or below BQ {})",
+            n_discriminating, min_baseq
         );
         return MnpResult::LowQuality(positions_matching_alt as u8, had_n_base);
     }
@@ -1400,7 +1401,7 @@ fn resolve_anchor_insertion_candidate(
             // non-ALT.
             trace!(
                 "check_insertion: I({}) at junction after {} matches expected length \
-                 but all inserted bases are below min_baseq → Phase-3 arbitration",
+                 but all inserted bases are below min_baseq → unverifiable",
                 found_ins_len, anchor_pos
             );
             return AnchorInsertionOutcome::Unverifiable;
@@ -1410,7 +1411,7 @@ fn resolve_anchor_insertion_candidate(
         // low-quality case.
         trace!(
             "check_insertion: I({}) at junction after {} extends past the read end \
-             → Phase-3 arbitration",
+             → unverifiable",
             found_ins_len, anchor_pos
         );
         return AnchorInsertionOutcome::Unverifiable;
@@ -1781,7 +1782,16 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         // the insert is the ALT; a substituted one is another
                         // allele).
                         let qual = if read_pos < quals.len() { quals[read_pos] } else { 0 };
-                        if window::read_spells_alt(record, variant, quals, min_baseq) {
+                        let spells = window::read_spells_alt(record, variant, quals, min_baseq);
+                        trace!(
+                            "check_insertion: D then I({}) at the junction after {}: the read's \
+                             bases {} → {}",
+                            ins_len_usize,
+                            anchor_pos,
+                            if spells { "spell the ALT" } else { "do not spell the ALT" },
+                            if spells { "ALT (structural)" } else { "neither + partial evidence" },
+                        );
+                        if spells {
                             return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural);
                         }
                         return ClassifyResult::neither_with_nearby(qual, ClassifyPhase::Structural);
@@ -1874,8 +1884,8 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     // if it doesn't confirm ALT, so the engine counts the read as partial_alt.
     if has_shifted_same_length && found_ref_coverage {
         trace!(
-            "check_insertion: nearby same-length insertion (seq mismatch) at pos {}, \
-             falling back to phase3_classify",
+            "check_insertion: a same-length insertion near the anchor after {} whose bases \
+             differ or could not be verified → phase3_classify",
             anchor_pos
         );
         let mut result = phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
@@ -1910,14 +1920,14 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     // alignment noise — keep rd, but carry the partial evidence so the read is
     // not silently absorbed (matches the pre-rule Phase-3 outcome).
     if has_distinct_allele_nearby && found_ref_coverage {
-        if variant.repeat_span >= 2
-            || window::slides(variant)
+        let in_tract = variant.repeat_span >= 2 || window::slides(variant);
+        if in_tract
             || other_indel_in_window(record, window::discrimination_window(variant), i64::MIN, false)
         {
             trace!(
-                "check_insertion: lone distinct-allele I in repeat tract at pos {} → \
-                 neither + partial evidence",
-                anchor_pos
+                "check_insertion: distinct-allele I after {} {} → neither + partial evidence",
+                anchor_pos,
+                if in_tract { "in the repeat tract" } else { "with another indel across the window" },
             );
             return ClassifyResult::neither_with_nearby(anchor_qual, ClassifyPhase::Structural);
         }
@@ -2124,7 +2134,8 @@ fn verify_deleted_bases(
     let ctx = match &variant.ref_context {
         Some(c) => c.as_bytes(),
         None => {
-            warn!(
+            // Per read; the counting pass warns once for variants without context.
+            trace!(
                 "check_deletion: ref_context is None at {}:{} — cannot validate deleted bases",
                 variant.chrom,
                 variant.pos + 1,
@@ -2378,11 +2389,19 @@ fn resolve_anchor_deletion_candidate(
     // evidence. Phase 3 must not arbitrate: its haplotype window is
     // length-blind inside repeat tracts (and, with narrow context padding,
     // can promote not-the-event reads to definitive calls).
-    trace!(
-        "check_deletion: D({}) at expected start after {} vs expected D({}) — \
-         wrong-length pure deletion → neither + partial evidence",
-        found_del_len, anchor_pos, expected_del_len
-    );
+    if found_del_len == expected_del_len {
+        trace!(
+            "check_deletion: exact-length D({}) at expected start after {} with another \
+             change across the window ({}bp outside the span) → neither + partial evidence",
+            found_del_len, anchor_pos, indels.changed_outside_span
+        );
+    } else {
+        trace!(
+            "check_deletion: D({}) at expected start after {} vs expected D({}) — \
+             wrong-length pure deletion → neither + partial evidence",
+            found_del_len, anchor_pos, expected_del_len
+        );
+    }
     ClassifyResult::neither_with_nearby(qual, ClassifyPhase::Structural)
 }
 
@@ -2510,22 +2529,23 @@ fn scan_windowed_deletion_candidate(
             if del_len_usize >= 5 && del_len_usize == expected_del_len {
                 *has_distinct_allele_nearby = true;
                 trace!(
-                    "check_deletion: windowed D({}) at pos {} gives another haplotype \
-                     → distinct-allele candidate",
+                    "check_deletion: windowed D({}) at pos {} does not give the ALT haplotype \
+                     (or no prepared reference holds it) → distinct-allele candidate",
                     del_len_usize, del_ref_pos
                 );
             } else if del_len_usize >= 5 {
                 *has_shifted_same_length = true;
                 trace!(
-                    "check_deletion: in-band D({}) at shifted pos {} with other deleted \
-                     bases, flagging for Phase 3 fallback",
+                    "check_deletion: in-band D({}) at shifted pos {} whose deleted bases \
+                     differ or could not be verified, flagging for Phase 3",
                     del_len_usize, del_ref_pos
                 );
             } else {
                 trace!(
-                    "check_deletion: S3 reject at shifted pos {} (deleted bases \
-                     mismatch, del_len={} < 5, CIGAR definitive — not flagging Phase 3)",
-                    del_ref_pos, del_len_usize
+                    "check_deletion: windowed D({}) at pos {} does not give the ALT haplotype \
+                     (or no prepared reference holds it); under 5bp the CIGAR stands — not \
+                     flagging Phase 3",
+                    del_len_usize, del_ref_pos
                 );
             }
         }
@@ -2858,7 +2878,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
         // anchor_pos is the 0-based position of the base before the deletion.
         if record.pos() <= anchor_pos && read_ref_end > anchor_pos {
             trace!(
-                "check_deletion: no CIGAR match at pos {}, falling back to check_complex",
+                "check_deletion: no CIGAR match after {} → phase3_classify",
                 anchor_pos
             );
             return phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
@@ -2872,8 +2892,8 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     // arbitrates; propagate has_nearby_evidence if it doesn't confirm ALT.
     if has_shifted_same_length && found_ref_coverage {
         trace!(
-            "check_deletion: nearby same-length deletion (seq mismatch) at pos {}, \
-             falling back to phase3_classify",
+            "check_deletion: an in-band deletion of another length after {} whose deleted \
+             bases differ or could not be verified → phase3_classify",
             anchor_pos
         );
         let mut result = phase3_classify(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
@@ -2904,14 +2924,14 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     // rd, but carry the partial evidence so the nearby deletion is not silently
     // hidden (matches the pre-rule Phase-3 outcome).
     if has_distinct_allele_nearby && found_ref_coverage {
-        if variant.repeat_span >= 2
-            || window::slides(variant)
+        let in_tract = variant.repeat_span >= 2 || window::slides(variant);
+        if in_tract
             || other_indel_in_window(record, window::discrimination_window(variant), i64::MIN, false)
         {
             trace!(
-                "check_deletion: lone distinct-allele D in repeat tract at pos {} → \
-                 neither + partial evidence",
-                anchor_pos
+                "check_deletion: distinct-allele D after {} {} → neither + partial evidence",
+                anchor_pos,
+                if in_tract { "in the repeat tract" } else { "with another indel across the window" },
             );
             return ClassifyResult::neither_with_nearby(anchor_qual, ClassifyPhase::Structural);
         }

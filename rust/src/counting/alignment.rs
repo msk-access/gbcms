@@ -10,7 +10,7 @@
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
 use bio::alignment::pairwise::Aligner;
-use log::{debug, trace};
+use log::trace;
 
 use crate::types::Variant;
 use super::utils::{median_qual, build_haplotypes, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
@@ -264,7 +264,7 @@ pub fn classify_by_alignment<F: Fn(u8, u8) -> i32>(
     let (ref_hap, alt_hap) = match build_haplotypes(variant) {
         Some(haps) => haps,
         None => {
-            debug!("classify_by_alignment: build_haplotypes failed for {}:{}",
+            trace!("classify_by_alignment: build_haplotypes failed for {}:{}",
                    variant.chrom, variant.pos + 1);
             return ClassifyResult::neither(ClassifyPhase::Alignment);
         }
