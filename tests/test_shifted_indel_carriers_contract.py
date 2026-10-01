@@ -66,10 +66,10 @@ def _files(tmp_path, ref, reads):
     return str(fa), str(bam)
 
 
-def _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier):
+def _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier, full=False):
     """Five REF reads and five carriers, `carrier(s)` giving each carrier's
     (sequence, CIGAR) from its start `s`; counted in both paths (count_both asserts
-    parity)."""
+    parity). `full` returns the counts object instead of (rd, ad, partial)."""
     starts = range(A - 50, A - 45)
     reads = [make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)) for i, s in enumerate(starts)]
     for i, s in enumerate(starts):
@@ -85,7 +85,7 @@ def _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier):
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
     assert c.ad == c.ad_fwd + c.ad_rev
-    return c.rd, c.ad, c.partial_alt
+    return c if full else (c.rd, c.ad, c.partial_alt)
 
 
 def _count(tmp_path, ref, ref_allele, alt_allele, junction, op, bases):
