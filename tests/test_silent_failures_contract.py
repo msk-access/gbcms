@@ -214,3 +214,35 @@ def test_a_soft_masked_reference_counts_the_same(tmp_path, backend):
             )
         )
     assert_same_counts(counts[1], counts[0], f"soft-masked vs upper case, {backend}")
+
+
+@pytest.mark.xfail(strict=True, reason="H3 decision 4: red until fixed")
+def test_identical_runs_give_identical_mfsd_bits(tmp_path):
+    """The fragment-size statistics are summed in a fixed order: twenty identical
+    runs give bit-identical values (they varied in the last digits with the
+    fragments' hash order)."""
+    import struct
+
+    rng = random.Random(9)
+    ref = "".join(rng.choice("ACGT") for _ in range(1200))
+    alt = "T" if ref[A] != "T" else "G"
+    reads = []
+    for n in range(120):
+        frag, s = rng.randint(120, 320), A - rng.randint(5, 95)
+        seq = ref[s : s + 100]
+        if n % 3 == 0:
+            seq = seq[: A - s] + alt + seq[A - s + 1 :]
+        m = s + frag - 100
+        r1 = make_read(f"f{n}", seq, s, ((0, 100),), flag=0x1 | 0x2 | 0x40 | 0x20)
+        r2 = make_read(f"f{n}", ref[m : m + 100], m, ((0, 100),), flag=0x1 | 0x2 | 0x80 | 0x10)
+        for r, mate, tlen in ((r1, m, frag), (r2, s, -frag)):
+            r.next_reference_id, r.next_reference_start, r.template_length = 0, mate, tlen
+        reads += [r1, r2]
+    fa, bam = write_contig(tmp_path, ref, reads, "mfsd")
+    v = _prepared(fa, ref[A], alt)
+    fields = ("mfsd_ref_llr", "mfsd_alt_llr", "mfsd_ref_mean", "mfsd_alt_mean", "mfsd_pval_alt_ref")
+    seen = set()
+    for _ in range(20):
+        (c,) = _rs.count_bam_binned(bam, [v], [None], *ARGS, mfsd=True)
+        seen.add(tuple(struct.pack("d", getattr(c, f)) for f in fields))
+    assert len(seen) == 1, f"{len(seen)} distinct results over 20 runs"
