@@ -260,10 +260,6 @@ def test_a_misplaced_deletion_whose_read_base_settles_it_is_alt(tmp_path):
 
 
 # ── Second review findings ────────────────────────────────────────────────────
-_XFAIL = pytest.mark.xfail(strict=True, reason="second cluster-1 review: red until fixed")
-
-
-@_XFAIL
 @pytest.mark.parametrize(
     "ref, ref_allele, kept, reads_after",
     [
@@ -301,7 +297,6 @@ def test_a_deletion_carrier_reading_past_the_run_stays_alt(tmp_path):
     assert _count_reads(tmp_path, HOMOPOLYMER6, "GAA", "G", carrier)[1] == 5
 
 
-@_XFAIL
 @pytest.mark.parametrize(
     "ref_allele, events, expected",
     [
@@ -320,7 +315,6 @@ def test_a_deletion_written_after_an_insertion_is_judged(tmp_path, ref_allele, e
     assert _count_reads(tmp_path, ref, ref_allele, "G", _ops(ref, events)) == expected
 
 
-@_XFAIL
 def test_an_insertion_written_after_a_deletion_is_judged(tmp_path):
     """G>G+ACGTTGCATC, the carriers delete the base after the anchor and then insert
     the ten bases (M D(1) I(10)): another allele, as M I(10) D(1) is, not REF."""
@@ -329,7 +323,6 @@ def test_an_insertion_written_after_a_deletion_is_judged(tmp_path):
     assert _count_reads(tmp_path, ref, "G", "G" + INSERT10, _ops(ref, events)) == (5, 0, 5)
 
 
-@_XFAIL
 def test_a_sliding_large_deletion_with_another_indel_far_in_its_window_is_not_alt(tmp_path):
     """Two copies of a 30bp unit deleted from five: the carriers write the exact
     D(60) at the anchor and insert 10 bases 80 bases on, inside the discrimination
@@ -341,7 +334,6 @@ def test_a_sliding_large_deletion_with_another_indel_far_in_its_window_is_not_al
     assert ad == 0
 
 
-@_XFAIL
 def test_a_base_past_the_reference_stretch_decides_nothing(tmp_path):
     """G>G+ACGTTGCATC before C C C T, carriers ending four bases into the insert with
     the first three masked: they read G ? ? ? T, and the reference also has a T

@@ -53,7 +53,9 @@ discrimination window, a separate event (REF) outside it; other bases keep
 Phase-3 arbitration via `has_shifted_same_length` (partial propagated on non-ALT).
 A same-length deletion ≥5bp of another haplotype is a distinct allele (not Phase 3;
 only in-band ≥50bp ones keep Phase 3). The strict path also needs no other I/D in
-the window. An ALT read spanning neither C10 window must discriminate by its bases
+the window (an I/D pair is inspected in either order). An ALT read spanning
+neither ALT-side window (`window::alt_read_is_informative`: a deletion's are an
+insertion's, its extent counts its own gap) must discriminate by its bases
 (`alt_needs_the_window` / `window::alt_bases_discriminate`), else `uninformative`
 (depth only). "In a repeat" for distinct alleles = `repeat_span >= 2 ||
 window::slides`. One-base-REF ALTs that change the anchor (A>CCC) go to the

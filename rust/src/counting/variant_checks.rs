@@ -1520,12 +1520,15 @@ fn scan_windowed_insertion_candidate(
                 // Inside the discrimination window the read carries another allele
                 // there: a distinct allele, as a wrong-length insertion is (never REF
                 // or ALT in a repeat; Phase 3 must not arbitrate it). Outside it the
-                // read shows the window as reference and the insertion is a separate
-                // event, as it is for an ALT that also substitutes its anchor base.
+                // read shows the window as reference, unless it deletes or inserts
+                // there too (M D I M beside the window: the pair is another allele),
+                // and the insertion is a separate event, as it is for an ALT that
+                // also substitutes its anchor base.
                 let (dw_lo, dw_hi) = dw;
                 let anchor_kept = variant.alt_allele.as_bytes()[0]
                     .eq_ignore_ascii_case(&variant.ref_allele.as_bytes()[0]);
-                if anchor_kept && dw_lo < ins_ref_pos && ins_ref_pos < dw_hi {
+                let in_window = dw_lo < ins_ref_pos && ins_ref_pos < dw_hi;
+                if anchor_kept && (in_window || other_indel_in_window(record, dw, ins_ref_pos, true)) {
                     *has_distinct_allele_nearby = true;
                     trace!(
                         "check_insertion: windowed I({}) at pos {} carries the variant's \
@@ -1754,6 +1757,27 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
             }
             Cigar::Del(len) => {
                 ref_pos += *len as i64;
+                // An I written right after a deletion sits where the deletion
+                // ends: it gets the inspection an M arm gives the op after it, so
+                // the order an aligner writes an I/D pair in does not hide the
+                // insertion (M D I M would otherwise read as reference).
+                if let Some(Cigar::Ins(ins_len)) = cigar_view.get(i + 1) {
+                    let ins_len_usize = *ins_len as usize;
+                    if ref_pos == anchor_pos + 1 {
+                        // The deletion removed the anchor base: the read cannot
+                        // hold the ALT, whatever it inserts.
+                        let qual = if read_pos < quals.len() { quals[read_pos] } else { 0 };
+                        return ClassifyResult::neither_with_nearby(qual, ClassifyPhase::Structural);
+                    }
+                    scan_windowed_insertion_candidate(
+                        record, variant, ref_pos, ins_len_usize,
+                        read_pos, // D consumes no read bases
+                        quals, min_baseq, window_start, window_end,
+                        &mut best_windowed_match,
+                        &mut has_shifted_same_length,
+                        &mut has_distinct_allele_nearby,
+                    );
+                }
             }
             Cigar::RefSkip(len) => {
                 let n_end = ref_pos + *len as i64;
@@ -2279,7 +2303,11 @@ fn resolve_anchor_deletion_candidate(
     // evidence, never REF or ALT.
     let span_start = anchor_pos + 1;
     let span_end = span_start + expected_del_len as i64;
-    let region_end = anchor_pos + expected_del_len as i64 + window;
+    // The band sees every change the strict path saw: as far as the discrimination
+    // window reaches, which for a deletion sliding through a long repeat is past
+    // the deleted span plus the scan window.
+    let region_end = (anchor_pos + expected_del_len as i64 + window)
+        .max(window::discrimination_window(variant).1 - 1);
     let indels = summarize_indels_in_region(record, window_start, region_end, span_start, span_end);
 
     // Large-deletion band: validated pure large deletions align as a single
@@ -2687,6 +2715,30 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
             }
             Cigar::Ins(len) => {
                 read_pos += *len as usize;
+                // A D written right after an insertion starts where the insertion
+                // sits: it gets the inspection an M arm gives the op after it, so
+                // the order an aligner writes an I/D pair in does not hide the
+                // deletion (M I D M would otherwise read as reference).
+                if let Some(Cigar::Del(del_len)) = cigar_view.get(i + 1) {
+                    if ref_pos == anchor_pos + 1 {
+                        let qual = anchor_read_pos
+                            .filter(|&p| p < quals.len())
+                            .map(|p| quals[p])
+                            .unwrap_or(0);
+                        return resolve_anchor_deletion_candidate(
+                            record, variant, *del_len as usize, qual, window_start, window,
+                        );
+                    }
+                    scan_windowed_deletion_candidate(
+                        record, variant, ref_pos, *del_len as usize,
+                        read_pos, // D consumes no read bases
+                        quals, min_baseq,
+                        window_start, window_end,
+                        &mut best_windowed_match,
+                        &mut has_shifted_same_length,
+                        &mut has_distinct_allele_nearby,
+                    );
+                }
             }
             Cigar::SoftClip(len) => {
                 read_pos += *len as usize;

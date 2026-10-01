@@ -3036,9 +3036,10 @@ fn ref_needs_the_window(record: &Record, variant: &Variant, mut result: Classify
     result
 }
 
-/// An ALT call on an insertion or deletion from a read that spans neither
-/// informative window stands only when the read's own bases tell the alleles
-/// apart (`window::alt_bases_discriminate`). The CIGAR's gap alone is placement: a
+/// An ALT call on an insertion or deletion from a read that spans neither of
+/// C10's windows read on the ALT haplotype (`window::alt_read_is_informative`)
+/// stands only when the read's own bases tell the alleles apart
+/// (`window::alt_bases_discriminate`). The CIGAR's gap alone is placement: a
 /// carrier ending inside the repeat holds only bases both alleles share, so it
 /// counts toward depth and fragment depth but is neither REF nor ALT (C10's rule
 /// for REF reads, on the ALT side). A read whose bases discriminate (a truncated
@@ -3051,14 +3052,14 @@ fn alt_needs_the_window(
     mut result: ClassifyResult,
 ) -> ClassifyResult {
     if result.is_alt
-        && !window::read_is_informative(record, variant)
+        && !window::alt_read_is_informative(record, variant)
         && !window::alt_bases_discriminate(record, variant, quals, min_baseq)
     {
         trace!(
-            "{}:{} {}>{}: read {}..{} spans neither informative window {:?} and its \
+            "{}:{} {}>{}: read {}..{} spans neither ALT-side window around {:?} and its \
              bases fit both alleles — uninformative, not ALT",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-            record.pos(), read_ref_end(record), window::informative_windows(variant),
+            record.pos(), read_ref_end(record), window::change_interval(variant),
         );
         result.is_alt = false;
         result.is_structural = false;

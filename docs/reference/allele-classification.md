@@ -330,7 +330,7 @@ Same single-walk strategy as insertion, with four additional features:
 1. **Placement-aware large-deletion band** — For large deletions (≥50bp), a wrong-length D at
    the anchor still counts as the annotated event when the read deletes essentially the whole
    expected span: at most 3 expected-span bases retained, and at most 3 bases deleted/inserted
-   outside the span (within the scan region). This accepts single-op breakpoint wobble AND
+   outside the span (within the scan region, and at least the discrimination window). This accepts single-op breakpoint wobble AND
    split representations (`D(60)+2M+D(40)` for a ~100bp deletion) in pure CIGAR space, while
    rejecting net-matching but *displaced* deletions whose M ops across the span prove the event
    is absent. The 50bp threshold is an **artifact-size prior**: slippage/stutter/alignment
@@ -997,25 +997,34 @@ the same as GATK's AD, which counts only informative reads. The rule does not
 apply to substitution-bearing events (SNV, MNP, delins): they have no shift
 region, and their first base already discriminates.
 
-**The ALT side (6.6.0, #188).** An ALT call from a read that spans neither
-window stands only when the read's own bases tell the alleles apart: read where
+**The ALT side (6.6.0, #188).** An ALT call stands from the CIGAR alone when the
+read spans C10's windows read on the ALT haplotype, `[lo − 1, hi + 2)` or
+`[lo − 2, hi + 1)`. For an insertion these are its REF windows. For a deletion
+they are an insertion's, because a carrier's reference extent counts its own gap:
+spanning the REF windows, a −AA carrier in a run of six A's may hold only
+`G AAAA`, which fits both alleles. Otherwise the call stands only when the read's
+own bases tell the alleles apart: read where
 they sit, rightwards from its aligned base left of the window or leftwards from
 its aligned base right of it, the read must read, unmasked, a base where the
 alleles differ, every base up to it fitting the ALT. There is no margin base past
 it (C10's margin guards CIGAR-only REF calls against a hidden terminal mismatch;
 here the deciding base itself is read, on a read the CIGAR already calls ALT). A carrier
 that ends inside the repeat holds only shared bases, so its gap alone is
-placement: it counts toward depth only. The windows themselves are not mirrored
-onto ALT reads: a long insertion's carrier spends its span inside the insert and
-often cannot reach the far flank, yet its inserted bases discriminate. A masked
-base where the alleles first differ is skipped: a later unmasked one where they
-differ decides.
+placement: it counts toward depth only. A long insertion's carrier spends its
+span inside the insert and often cannot reach the far flank, yet its inserted
+bases discriminate, so its bases decide. A masked base where the alleles first
+differ is skipped: a later unmasked one where they differ decides. Past the
+reference fetched around the event a base decides nothing.
 
 **One change across the window (6.6.0, #188).** An indel at the variant's own
 junction counts ALT only when the read carries no other insertion or deletion
 across the discrimination window; a cancelled pair or a split longer allele
-(+A and +A for a +A row) is a distinct allele, partial evidence. Splices there
-remain the RNA rules' business.
+(+A and +A for a +A row) is a distinct allele, partial evidence. The order the
+aligner writes an I/D pair in does not matter: a deletion right after an
+insertion (`M I D M`), or an insertion right after a deletion (`M D I M`), is
+inspected as one right after an aligned block is. At 50bp or more the
+large-deletion band judges the read, counting every change across the
+discrimination window. Splices there remain the RNA rules' business.
 
 ---
 
