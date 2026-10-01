@@ -1380,6 +1380,25 @@ Pure refactors must leave the acceptance output byte-identical.
   measured.
 - B: refactors, dead code, logging, monitoring and comments, byte-identical to A.
 
+**PR A as built (2026-10-01).**
+- S1: the ALT read-by-bases rule reads clamped reference and reads from a flank
+  the read starts on. Unjudged reads (no reference, or a deciding base past a
+  contig edge) are depth only, counted and warned once per variant.
+- S2: `carrier::judges` is shared by prep and the dispatcher, so anchor-changing
+  insertions and the decomposed twin get a widened reference, and a fallback
+  warns.
+- `observe_molecules` requires a reference.
+- A>CCC uses the delins triage span.
+- Reference windows are upper case.
+- mFSD sums run in a fixed order.
+
+Reviews:
+- The first review found a twin with no reference, warning texts, and C25's ALT
+  side (filed and xfailed). All fixed.
+- Real data: develop vs PR A, 143 of 144 files byte-identical. One row changes:
+  a 66bp duplication gains 11 carriers (start on the anchor, hold the whole
+  insert), the flank-start decision.
+
 ## Performance (M5 leftovers)
 
 ### P1 — Deep-bin fetch reduction (M5b) (#150, under #134) · L

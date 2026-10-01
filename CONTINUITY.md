@@ -45,7 +45,7 @@ whose bases spell another allele, and anchor-keeping reads of `A>CCC` variants a
 another allele. Operator decisions (2026-10-01): no margin base on the ALT side;
 accept the exact-carrier rule's semantics for anchor-changing variants. Branch
 `feature/cluster1-pure-indel-read-judgment`; harness `~/test/gbcms/harness/c20/`
-(local). Follow-ups: R5 #198, C25 #199 and C27 #201 (6.7.0); C26 #200 (6.6.0,
+(local). Follow-ups: R5 #198 and C27 #201 (6.7.0); C25 #199 (moved into 6.6.0); C26 #200 (6.6.0,
 decide: which of a read's other indels decide its REF call, inside vs outside
 the window); C28 #202 (6.6.0,
 measure: anchor-deleting reads fall back to Phase 3's closer haplotype).
