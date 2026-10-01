@@ -216,7 +216,6 @@ def test_a_soft_masked_reference_counts_the_same(tmp_path, backend):
     assert_same_counts(counts[1], counts[0], f"soft-masked vs upper case, {backend}")
 
 
-@pytest.mark.xfail(strict=True, reason="H3 decision 4: red until fixed")
 def test_identical_runs_give_identical_mfsd_bits(tmp_path):
     """The fragment-size statistics are summed in a fixed order: twenty identical
     runs give bit-identical values (they varied in the last digits with the

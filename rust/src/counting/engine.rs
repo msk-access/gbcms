@@ -1287,12 +1287,18 @@ fn count_bin_shared(
 /// `count_variant_from_cache`).
 fn compute_mfsd_stats(
     counts: &mut BaseCounts,
-    ref_sizes: Vec<f64>,
-    alt_sizes: Vec<f64>,
-    nonref_sizes: Vec<f64>,
-    n_sizes: Vec<f64>,
+    mut ref_sizes: Vec<f64>,
+    mut alt_sizes: Vec<f64>,
+    mut nonref_sizes: Vec<f64>,
+    mut n_sizes: Vec<f64>,
     variant: &Variant,
 ) {
+    // The sizes arrive in the fragments' hash order; floating-point sums depend on
+    // order, so sort once and every statistic (and the size arrays written to
+    // --mfsd-parquet) is the same bit for bit run to run.
+    for sizes in [&mut ref_sizes, &mut alt_sizes, &mut nonref_sizes, &mut n_sizes] {
+        sizes.sort_by(f64::total_cmp);
+    }
     counts.mfsd_ref_count    = ref_sizes.len()    as u32;
     counts.mfsd_alt_count    = alt_sizes.len()    as u32;
     counts.mfsd_nonref_count = nonref_sizes.len() as u32;
