@@ -39,10 +39,18 @@ from test_shifted_indel_carriers_contract import (
 SPAN8 = "ATCGGATA"  # a unique 8bp stretch between G and C
 UNIQUE8 = _contig("G" + SPAN8 + "C")
 INSERT10 = "ACGTTGCATC"  # not low-complexity; differs from the flank at once
-COPY66 = "A" + "".join(random.Random(66).choice("ACGT") for _ in range(64)) + "C"
+_RNG66, _RNG57 = random.Random(66), random.Random(57)
+COPY66 = "A" + "".join(_RNG66.choice("ACGT") for _ in range(64)) + "C"
 ITD66 = _contig("G" + COPY66 + "T")  # the ALT duplicates this 66bp copy in tandem
-SPAN57 = "A" + "".join(random.Random(57).choice("ACGT") for _ in range(55)) + "A"
+SPAN57 = "A" + "".join(_RNG57.choice("ACGT") for _ in range(55)) + "A"
 UNIQUE57 = _contig("G" + SPAN57 + "C")
+HOMOPOLYMER6 = _contig("GAAAAAAT")  # G, A x6 at A+1..A+6, T
+_RNG30 = random.Random(30)
+UNIT30 = "".join(_RNG30.choice("ACGT") for _ in range(30))
+while UNIT30[0] == "G" or UNIT30[-1] == "G":
+    UNIT30 = "".join(_RNG30.choice("ACGT") for _ in range(30))
+TANDEM30 = _contig("G" + UNIT30 * 5 + "T")  # G, five copies of a 30bp unit, T
+GCCCT = _contig("GCCCT")  # G at A, C C C T after it
 _CG7 = _contig("C" + "G" * 7 + "C")
 CCG7 = _CG7[: A - 1] + "C" + _CG7[A:]  # C C GGGGGGG C, the second C (the anchor) at A
 
@@ -249,3 +257,100 @@ def test_a_misplaced_deletion_whose_read_base_settles_it_is_alt(tmp_path):
         return seq, ((0, left), (2, 1), (0, READ - left))
 
     assert _count_reads(tmp_path, CCG7, "CG", "C", carrier) == (5, 5, 0)
+
+
+# ── Second review findings ────────────────────────────────────────────────────
+_XFAIL = pytest.mark.xfail(strict=True, reason="second cluster-1 review: red until fixed")
+
+
+@_XFAIL
+@pytest.mark.parametrize(
+    "ref, ref_allele, kept, reads_after",
+    [
+        (HOMOPOLYMER6, "GAA", 2, 2),  # -AA in A6: G AA D(2) AA, the read ends in the run
+        (DUPLICATION, "G" + DUP, 0, 7),  # one copy of a tandem 8bp unit, ending 1 short
+    ],
+    ids=["homopolymer", "duplication"],
+)
+def test_a_deletion_carrier_ending_inside_the_region_is_uninformative(
+    tmp_path, ref, ref_allele, kept, reads_after
+):
+    """The carriers delete the event and end before the region does. Their reference
+    extent counts their own gap, so it spans C10's reference windows; their bases
+    (the anchor, then fewer bases of the repeat than either allele holds) fit both
+    alleles: depth only."""
+    n = len(ref_allele) - 1
+
+    def carrier(s):
+        left = A + 1 + kept - s
+        seq = ref[s : A + 1 + kept] + ref[A + 1 + kept + n : A + 1 + kept + n + reads_after]
+        return seq, ((0, left), (2, n), (0, reads_after))
+
+    c = _count_reads(tmp_path, ref, ref_allele, "G", carrier, full=True)
+    assert (c.ad, c.dp) == (0, 10)
+
+
+def test_a_deletion_carrier_reading_past_the_run_stays_alt(tmp_path):
+    """Guard: -AA in A6, the carriers read G AAAA and then the T, where REF has a
+    fifth A: their bases discriminate, so ALT."""
+
+    def carrier(s):
+        left = A + 3 - s
+        return HOMOPOLYMER6[s : A + 3] + HOMOPOLYMER6[A + 5 : A + 8], ((0, left), (2, 2), (0, 3))
+
+    assert _count_reads(tmp_path, HOMOPOLYMER6, "GAA", "G", carrier)[1] == 5
+
+
+@_XFAIL
+@pytest.mark.parametrize(
+    "ref_allele, events, expected",
+    [
+        # The 57bp deletion written after a 2bp insertion: within the large-deletion
+        # band, as the same pair written D-first is.
+        (UNIQUE57[A : A + 58], [(A + 1, "I", "TT"), (A + 1, "D", 57)], (5, 5, 0)),
+        # An 8bp deletion written after a 1bp insertion: another allele.
+        ("G" + SPAN8, [(A + 1, "I", "T"), (A + 1, "D", 8)], (5, 0, 5)),
+    ],
+    ids=["57bp-band", "8bp"],
+)
+def test_a_deletion_written_after_an_insertion_is_judged(tmp_path, ref_allele, events, expected):
+    """The aligner may write an I/D pair at the junction in either order; the
+    deletion after the insertion must be seen, not read as reference."""
+    ref = UNIQUE57 if len(ref_allele) == 58 else UNIQUE8
+    assert _count_reads(tmp_path, ref, ref_allele, "G", _ops(ref, events)) == expected
+
+
+@_XFAIL
+def test_an_insertion_written_after_a_deletion_is_judged(tmp_path):
+    """G>G+ACGTTGCATC, the carriers delete the base after the anchor and then insert
+    the ten bases (M D(1) I(10)): another allele, as M I(10) D(1) is, not REF."""
+    ref = _contig("GT")
+    events = [(A + 1, "D", 1), (A + 2, "I", INSERT10)]
+    assert _count_reads(tmp_path, ref, "G", "G" + INSERT10, _ops(ref, events)) == (5, 0, 5)
+
+
+@_XFAIL
+def test_a_sliding_large_deletion_with_another_indel_far_in_its_window_is_not_alt(tmp_path):
+    """Two copies of a 30bp unit deleted from five: the carriers write the exact
+    D(60) at the anchor and insert 10 bases 80 bases on, inside the discrimination
+    window (the region is 150bp) but past the band's old reach. The read nets -50:
+    not this allele."""
+    events = [(A + 1, "D", 60), (A + 80, "I", "ACGTACGTAC")]
+    ref_allele = "G" + UNIT30 * 2
+    rd, ad, partial = _count_reads(tmp_path, TANDEM30, ref_allele, "G", _ops(TANDEM30, events))
+    assert ad == 0
+
+
+@_XFAIL
+def test_a_base_past_the_reference_stretch_decides_nothing(tmp_path):
+    """G>G+ACGTTGCATC before C C C T, carriers ending four bases into the insert with
+    the first three masked: they read G ? ? ? T, and the reference also has a T
+    there, so they fit both alleles: depth only."""
+
+    def carrier(s):
+        left = A + 1 - s
+        quals = [30] * left + [5, 5, 5, 30]
+        return GCCCT[s : A + 1] + INSERT10[:4], ((0, left), (1, 4)), quals
+
+    c = _count_reads(tmp_path, GCCCT, "G", "G" + INSERT10, carrier, full=True)
+    assert (c.ad, c.dp) == (0, 10)
