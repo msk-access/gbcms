@@ -45,6 +45,15 @@ def _variant(ref=REF_BASE, alt=ALT_BASE):
     return Variant("chr1", POS, ref, alt, "SNP")
 
 
+def _fasta(tmp_path):
+    """The reference the fixture reads come from: chr1, 500 A's (build_bam's contig)."""
+    fa = tmp_path / "chr1.fa"
+    if not fa.exists():
+        fa.write_text(">chr1\n" + REF_BASE * 500 + "\n")
+        pysam.faidx(str(fa))
+    return str(fa)
+
+
 def _py_variant(ref=REF_BASE, alt=ALT_BASE):
     """The public-model twin of `_variant()`. `observe_molecules` takes these, not `_rs` ones."""
     from gbcms.models.core import Variant as PyVariant
@@ -406,7 +415,12 @@ def test_settings_are_configurable_without_fabricating_a_config(tmp_path):
         GbcmsDnaConfig()  # the four required-but-unread fields
 
     bam = build_bam(tmp_path, [_read("a", ALT_BASE)], filename="nocfg.bam")
-    result = gbcms.observe_molecules(bam, [_py_variant()], filters=ReadFilters(duplicates=False))
+    result = gbcms.observe_molecules(
+        bam,
+        [_py_variant()],
+        filters=ReadFilters(duplicates=False),
+        reference_fasta=_fasta(tmp_path),
+    )
     assert result.n_rows == 1
 
 
@@ -425,8 +439,15 @@ def test_filters_argument_actually_reaches_the_engine(tmp_path):
     dup.flag |= 0x400  # mark duplicate
     bam = build_bam(tmp_path, [_read("keep", ALT_BASE), dup], filename="dupfilt.bam")
 
-    filtered = gbcms.observe_molecules(bam, [_py_variant()], filters=ReadFilters(duplicates=True))
-    kept = gbcms.observe_molecules(bam, [_py_variant()], filters=ReadFilters(duplicates=False))
+    filtered = gbcms.observe_molecules(
+        bam, [_py_variant()], filters=ReadFilters(duplicates=True), reference_fasta=_fasta(tmp_path)
+    )
+    kept = gbcms.observe_molecules(
+        bam,
+        [_py_variant()],
+        filters=ReadFilters(duplicates=False),
+        reference_fasta=_fasta(tmp_path),
+    )
     assert filtered.n_rows == 1, "duplicate was not filtered"
     assert kept.n_rows == 2, "duplicates=False did not reach the engine"
 
@@ -442,8 +463,12 @@ def test_umi_tag_argument_decides_what_counts_as_one_molecule(tmp_path):
     r2.set_tag("MI", "famB")  # same template, deliberately different families
     bam = build_bam(tmp_path, [r1, r2], filename="umitag.bam")
 
-    by_qname = gbcms.observe_molecules(bam, [_py_variant()], umi_tag=None)
-    by_umi = gbcms.observe_molecules(bam, [_py_variant()], umi_tag="MI")
+    by_qname = gbcms.observe_molecules(
+        bam, [_py_variant()], umi_tag=None, reference_fasta=_fasta(tmp_path)
+    )
+    by_umi = gbcms.observe_molecules(
+        bam, [_py_variant()], umi_tag="MI", reference_fasta=_fasta(tmp_path)
+    )
     assert by_qname.n_rows == 1, "without a UMI tag the pair is one molecule"
     assert by_umi.n_rows == 2, "umi_tag did not reach the engine"
 
@@ -459,11 +484,10 @@ def _throwaway_config(tmp_path, bam, **over):
     from gbcms.models.core import GbcmsDnaConfig, OutputConfig
 
     (tmp_path / "unused.txt").write_text("")
-    (tmp_path / "unused.fa").write_text(">chr1\nA\n")
     return GbcmsDnaConfig(
         variant_file=tmp_path / "unused.txt",
         bam_files={"s": Path(bam)},
-        reference_fasta=tmp_path / "unused.fa",
+        reference_fasta=Path(_fasta(tmp_path)),
         output=OutputConfig(directory=tmp_path / "unused_out"),
         **over,
     )
@@ -527,6 +551,7 @@ def test_public_wrapper_returns_observations(tmp_path):
                 chrom="chr1", pos=POS, ref=REF_BASE, alt=ALT_BASE, variant_type=VariantType.SNP
             )
         ],
+        reference_fasta=_fasta(tmp_path),
     )
     assert result.n_rows == len(result.observations) == 3
     assert result.path is None
@@ -652,8 +677,10 @@ def test_parquet_sink_matches_the_in_memory_rows(tmp_path):
     # front rather than failing the n_rows comparison below.
     pq = pytest.importorskip("pyarrow.parquet")
 
-    mem = gbcms.observe_molecules(bam, variants)
-    written = gbcms.observe_molecules(bam, variants, observations_path=out)
+    mem = gbcms.observe_molecules(bam, variants, reference_fasta=_fasta(tmp_path))
+    written = gbcms.observe_molecules(
+        bam, variants, observations_path=out, reference_fasta=_fasta(tmp_path)
+    )
 
     assert written.path == out and out.exists()
     assert written.observations == [], "rows must not cross the FFI boundary when written"
@@ -750,25 +777,11 @@ def test_cli_flag_writes_observations_alongside_counts(tmp_path):
     assert list(out.glob("*.vcf")) or list(out.glob("*.maf"))
 
 
-@pytest.mark.xfail(strict=True, reason="H3 S3: red until fixed")
-def test_observing_indels_without_a_reference_is_warned(tmp_path, caplog):
-    """Without `reference_fasta` the variants are not normalized and carry no
-    reference context, so the indel rules lose their repeat tract and the bases
-    they read against. That must be said once, not left silent; SNVs need nothing."""
-    import logging
-
+def test_observing_without_a_reference_is_refused(tmp_path):
+    """The variants are normalized and judged against the reference, so a missing
+    one is an error (as for the CLI), never a silently degraded run."""
     import gbcms
-    from gbcms.models.core import Variant as PyVariant
-    from gbcms.models.core import VariantType
 
     bam = build_bam(tmp_path, [_read("a", ALT_BASE)], filename="noref.bam")
-    with caplog.at_level(logging.WARNING, logger="gbcms.observations"):
+    with pytest.raises(ValueError, match="reference_fasta"):
         gbcms.observe_molecules(bam, [_py_variant()])
-    assert not [r for r in caplog.records if "reference_fasta" in r.getMessage()]
-    indel = PyVariant(
-        chrom="chr1", pos=POS, ref=REF_BASE, alt=REF_BASE + "T", variant_type=VariantType.INSERTION
-    )
-    with caplog.at_level(logging.WARNING, logger="gbcms.observations"):
-        gbcms.observe_molecules(bam, [_py_variant(), indel])
-    warns = [r.getMessage() for r in caplog.records if "reference_fasta" in r.getMessage()]
-    assert len(warns) == 1 and "1 variant" in warns[0], warns

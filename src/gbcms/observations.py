@@ -27,7 +27,7 @@ Example::
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -92,14 +92,13 @@ class ObservationResult:
     ``variant_status`` is one entry per input variant, positionally aligned with the
     ``variants`` argument (and therefore with ``Observation.variant_index``). Anything other
     than ``"PASS"`` means normalization rejected that variant — e.g. ``REF_MISMATCH`` — and
-    its rows should be discarded. It is ``None`` when no reference was supplied, since
-    without one there is nothing to validate against.
+    its rows should be discarded.
     """
 
     observations: list[Observation]
     path: Path | None
     n_rows: int
-    variant_status: list[str] | None = None
+    variant_status: list[str] = field(default_factory=list)
 
 
 def observe_molecules(
@@ -126,15 +125,18 @@ def observe_molecules(
         variants: Variants to observe. ``Observation.variant_index`` indexes into this list,
             positionally — the list is never filtered or reordered, so the join key stays
             meaningful even when a variant fails validation.
-        reference_fasta: Reference for normalization (left-alignment and ``ref_context``).
-            **Strongly recommended for indels**: without it, a deletion that the aligner
-            shifted is scored REF and its ALT molecules are exported as ``OTHER``.
+        reference_fasta: **Required** (here, or through ``config``). The reference the
+            variants are normalized and judged against: left-alignment, the repeat tract an
+            indel slides over, and the reference context each read is compared with.
+            Without it the indel and complex-variant rules cannot run as designed, so a
+            missing reference is an error, as it is for the CLI.
         is_maf: Set when the variants came from a MAF, whose ``-`` alleles need anchor
-            resolution during normalization. Ignored without ``reference_fasta``.
-        config: A full :class:`GbcmsDnaConfig` to take settings from. Convenient when you
-            already have one; prefer the individual arguments below otherwise, since
-            ``GbcmsDnaConfig`` requires ``variant_file``/``bam_files``/``reference_fasta``/
-            ``output`` — none of which this entry point reads.
+            resolution during normalization.
+        config: A full :class:`GbcmsDnaConfig` to take settings from (its
+            ``reference_fasta`` among them, when no ``reference_fasta`` is passed).
+            Convenient when you already have one; prefer the individual arguments otherwise,
+            since ``GbcmsDnaConfig`` also requires ``variant_file``/``bam_files``/``output``,
+            which this entry point never reads.
         filters: Read filters. **Set ``supplementary=False`` for cross-locus phasing**: a
             molecule spanning a large deletion reaches the far locus only through its
             supplementary alignment, and the default (filtered, matching counting) leaves
@@ -188,9 +190,9 @@ def observe_molecules(
     """
 
     # Resolution order: explicit argument > `config` field > library default. `config` is
-    # accepted for convenience, but its four required fields (variant_file, bam_files,
-    # reference_fasta, output) are ones this entry point never reads — so requiring it just
-    # to change a filter meant fabricating paths that look meaningful and are not.
+    # accepted for convenience, but three of its required fields (variant_file, bam_files,
+    # output) are ones this entry point never reads — so requiring it just to change a
+    # filter meant fabricating paths that look meaningful and are not.
     def _pick(explicit: object, attr: str, fallback: object, unset: object = None) -> object:
         """explicit argument > `config` field > library default.
 
@@ -212,28 +214,33 @@ def observe_molecules(
     umi_tag = cast("str | None", _pick(umi_tag, "umi_tag", None, unset=_UNSET))
     library_type = cast(str, _pick(library_type, "library_type", "capture"))
     rescue_homopolymer = cast(bool, _pick(rescue_homopolymer, "rescue_homopolymer", False))
+    reference_fasta = cast("str | Path | None", _pick(reference_fasta, "reference_fasta", None))
+    if reference_fasta is None:
+        raise ValueError(
+            "observe_molecules needs reference_fasta (or a config that carries one): variants "
+            "are normalized and judged against the reference, as in the CLI"
+        )
 
     rs_variants = [_RsVariant(v.chrom, v.pos, v.ref, v.alt, v.variant_type.value) for v in variants]
-    decomposed: list[_RsVariant | None] = [None] * len(rs_variants)
-    status: list[str] | None = None
 
-    # Normalize when a reference is available (left-alignment, ref_context). The homopolymer
+    # Normalize (left-alignment, the shift region, the reference context). The homopolymer
     # twin is threaded exactly as Pipeline does: only with rescue_homopolymer, since by
     # default a row counts the given allele.
     # Variants are NOT filtered to PASS: `variant_index` is the caller's join key and must
     # stay positional. Failures are reported via `variant_status` instead.
-    if reference_fasta is not None:
-        prepared = prepare_variants(
-            rs_variants,
-            str(reference_fasta),
-            quality.context_padding,
-            is_maf,
-            threads,
-            quality.adaptive_context,
-        )
-        rs_variants = [p.variant for p in prepared]
-        decomposed = [p.decomposed_variant if rescue_homopolymer else None for p in prepared]
-        status = [p.gbcms_status for p in prepared]
+    prepared = prepare_variants(
+        rs_variants,
+        str(reference_fasta),
+        quality.context_padding,
+        is_maf,
+        threads,
+        quality.adaptive_context,
+    )
+    rs_variants = [p.variant for p in prepared]
+    decomposed: list[_RsVariant | None] = [
+        p.decomposed_variant if rescue_homopolymer else None for p in prepared
+    ]
+    status = [p.gbcms_status for p in prepared]
 
     _counts, observations = count_bam_binned_observations(
         str(bam),
