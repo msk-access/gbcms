@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use rust_htslib::bam::record::{Cigar, Record};
 
 use super::variant_checks::reconstruct_span;
+use super::utils::ref_end;
 use super::window;
 use crate::types::Variant;
 
@@ -80,7 +81,7 @@ pub(crate) fn observed_allele(
         if record.is_secondary() || record.is_supplementary() || record.mapq() < min_mapq {
             continue;
         }
-        let read_end = window::ref_end(record);
+        let read_end = ref_end(record);
         if record.pos() > core_lo - FLANK || read_end < core_hi + FLANK {
             continue;
         }

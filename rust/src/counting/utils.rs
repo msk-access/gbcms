@@ -2,14 +2,14 @@
 //!
 //! Contains variant-specific helpers (classification types, haplotype
 //! construction, masked sequence comparison) and re-exports of shared
-//! BAM utilities (`find_read_pos`, `median_qual`) from `shared::bam_utils`.
+//! BAM utilities (`find_read_pos`, `median_qual`, `ref_end`) from `shared::bam_utils`.
 
 use log::trace;
 
 use crate::types::Variant;
 
 // Re-export shared BAM utilities so existing `super::utils::*` imports work.
-pub use crate::shared::bam_utils::{find_read_pos, median_qual};
+pub use crate::shared::bam_utils::{find_read_pos, median_qual, ref_end, soft_clips};
 
 /// Minimum number of usable (base-quality ≥ `min_baseq`) read bases required to
 /// attempt allele classification. Below this, there is too little high-quality

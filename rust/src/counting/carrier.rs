@@ -45,7 +45,8 @@
 
 use rust_htslib::bam::record::{Cigar, Record};
 
-use super::utils::{ClassifyPhase, ClassifyResult};
+use super::rna;
+use super::utils::{find_read_pos, median_qual, soft_clips, ClassifyPhase, ClassifyResult};
 use crate::types::Variant;
 
 /// Reference bases required on each side of the event.
@@ -140,7 +141,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         // A record stored without its bases (SEQ '*') shows nothing here.
         return Some(ClassifyResult::no_coverage(ClassifyPhase::MaskedCompare));
     }
-    let skips = ref_skips(record, win.span());
+    let skips = rna::splice_junctions_in(record, win.span());
     let (ev_lo, ev_hi) = win.event;
     if skips.iter().any(|&(n0, n1)| n0 < ev_hi && n1 > ev_lo) {
         // Spliced through the event: the read skips bases where the alleles
@@ -177,7 +178,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         }
         held.push((r.mismatches == 0, a.mismatches == 0));
     }
-    let qual = median(&qual_bases, min_baseq);
+    let qual = median_qual(&qual_bases, min_baseq);
     let every = |want: (bool, bool)| !held.is_empty() && held.iter().all(|&h| h == want);
     let mut result = if every((false, true)) {
         ClassifyResult::is_alt(qual, ClassifyPhase::MaskedCompare)
@@ -212,15 +213,8 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
 /// Query positions [first, after) of the read's aligned bases: its soft clips lie
 /// before `first` and from `after` on. None for a read with no aligned base.
 fn aligned_query_range(record: &Record) -> Option<(usize, usize)> {
-    let ops: Vec<Cigar> = record.cigar().iter().copied().filter(|op| !matches!(op, Cigar::HardClip(_))).collect();
-    let lead = match ops.first() {
-        Some(Cigar::SoftClip(n)) => *n as usize,
-        _ => 0,
-    };
-    let tail = match ops.last() {
-        Some(Cigar::SoftClip(n)) if ops.len() > 1 => *n as usize,
-        _ => 0,
-    };
+    let (lead, tail) = soft_clips(record);
+    let (lead, tail) = (lead as usize, tail as usize);
     let len = record.seq_len();
     (lead + tail < len).then_some((lead, len - tail))
 }
@@ -269,7 +263,7 @@ fn fragment_query_span(record: &Record) -> Option<(usize, usize)> {
         let hi = if frag_end >= ref_end {
             after_q + (frag_end - ref_end)
         } else {
-            qpos(record, frag_end - 1).map_or(after_q, |q| q as i64 + 1)
+            find_read_pos(record, frag_end - 1).map_or(after_q, |q| q as i64 + 1)
         };
         Some((0, hi.clamp(0, len) as usize))
     } else {
@@ -278,7 +272,7 @@ fn fragment_query_span(record: &Record) -> Option<(usize, usize)> {
         let lo = if frag_start <= record.pos() {
             first_q - (record.pos() - frag_start)
         } else {
-            qpos(record, frag_start).map_or(first_q, |q| q as i64)
+            find_read_pos(record, frag_start).map_or(first_q, |q| q as i64)
         };
         Some((lo.clamp(0, len) as usize, len as usize))
     }
@@ -570,42 +564,16 @@ fn repeat_end(r: &[u8], b: usize, max_unit: usize) -> usize {
     best
 }
 
-/// The query position aligned to reference position `g` (an M/=/X base), if any.
-fn qpos(record: &Record, g: i64) -> Option<usize> {
-    let (mut ref_pos, mut read_pos) = (record.pos(), 0usize);
-    for op in record.cigar().iter() {
-        match op {
-            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) => {
-                let len = *len as i64;
-                if g >= ref_pos && g < ref_pos + len {
-                    return Some(read_pos + (g - ref_pos) as usize);
-                }
-                ref_pos += len;
-                read_pos += len as usize;
-            }
-            Cigar::Ins(len) | Cigar::SoftClip(len) => read_pos += *len as usize,
-            Cigar::Del(len) | Cigar::RefSkip(len) => {
-                if g >= ref_pos && g < ref_pos + *len as i64 {
-                    return None;
-                }
-                ref_pos += *len as i64;
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
 /// Read `w` from the read at the window's own position: from the query position
 /// of its first reference base, and back from its last. For a read aligned with
 /// the event between the anchors the two readings are the same bases; the closer
 /// one counts. None when the read holds the window from neither anchor.
 fn read_window(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: &Window) -> Option<Reading> {
     let n = w.seq.len();
-    let from_left = w.left.and_then(|g| qpos(record, g)).filter(|&q| q + n <= seq.len()).map(|q| (q, q + n));
+    let from_left = w.left.and_then(|g| find_read_pos(record, g)).filter(|&q| q + n <= seq.len()).map(|q| (q, q + n));
     let to_right = w
         .right
-        .and_then(|g| qpos(record, g - 1))
+        .and_then(|g| find_read_pos(record, g - 1))
         .map(|q| q + 1)
         .filter(|&e| e >= n && e <= seq.len())
         .map(|e| (e - n, e));
@@ -630,36 +598,6 @@ fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, us
         }
     }
     Reading { mismatches, masked, had_n, span }
-}
-
-/// The read's splices (CIGAR N, genomic [start, end)) that overlap `[lo, hi)`.
-fn ref_skips(record: &Record, (lo, hi): (i64, i64)) -> Vec<(i64, i64)> {
-    let mut skips = Vec::new();
-    let mut pos = record.pos();
-    for op in record.cigar().iter() {
-        match op {
-            Cigar::RefSkip(len) => {
-                let end = pos + *len as i64;
-                if *len > 0 && pos < hi && end > lo {
-                    skips.push((pos, end));
-                }
-                pos = end;
-            }
-            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) | Cigar::Del(len) => pos += *len as i64,
-            _ => {}
-        }
-    }
-    skips
-}
-
-/// Median of the qualities at or above `min_baseq` (0 when none).
-fn median(quals: &[u8], min_baseq: u8) -> u8 {
-    let mut q: Vec<u8> = quals.iter().copied().filter(|&x| x >= min_baseq).collect();
-    if q.is_empty() {
-        return 0;
-    }
-    q.sort_unstable();
-    q[q.len() / 2]
 }
 
 #[cfg(test)]

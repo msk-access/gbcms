@@ -25,7 +25,7 @@
 use rust_htslib::bam::record::{Cigar, Record};
 
 use crate::normalize::repeat::first_change_offset;
-use crate::shared::bam_utils::find_read_pos;
+use crate::shared::bam_utils::{find_read_pos, ref_end};
 use crate::types::Variant;
 
 /// Reference interval `[lo, hi)` (0-based, half-open) holding every base at
@@ -115,6 +115,25 @@ pub(crate) fn discrimination_window(v: &Variant) -> (i64, i64) {
     } else {
         (lo - 1, hi + 1)
     }
+}
+
+/// How far past its anchor a variant's reads and windowed scans reach: 5 bases,
+/// or its repeat span plus 2 when wider, so a read reaches past the tract.
+pub(crate) fn scan_pad(variant: &Variant) -> i64 {
+    pad_for_repeat_span(variant.repeat_span as i64)
+}
+
+/// `scan_pad` for a repeat span (a bin pads by its widest member's).
+pub(crate) fn pad_for_repeat_span(repeat_span: i64) -> i64 {
+    std::cmp::max(5, repeat_span + 2)
+}
+
+/// The variant's read window `[start, end)`: its REF span padded by `scan_pad`
+/// on each side. The cached reads overlapping it are the variant's reads; each
+/// bin's fetch holds it for every member (`build_genomic_bins`).
+pub(crate) fn read_window(variant: &Variant) -> (i64, i64) {
+    let pad = scan_pad(variant);
+    ((variant.pos - pad).max(0), variant.pos + variant.ref_allele.len() as i64 + pad)
 }
 
 /// The windowed indel scan's reference range `[start, end]` (inclusive): `window`
@@ -505,20 +524,6 @@ pub(crate) fn alt_read_is_informative(record: &Record, v: &Variant, quals: &[u8]
     let from_left = start < lo && end >= hi + 2 && (start < lo - 1 || flank_read(lo - 1));
     let to_right = start < lo - 1 && end > hi && (end > hi + 1 || flank_read(hi));
     from_left || to_right
-}
-
-/// End (exclusive) of the read's aligned reference extent: M/=/X/D/N; clips
-/// excluded.
-pub(crate) fn ref_end(record: &Record) -> i64 {
-    let mut end = record.pos();
-    for op in record.cigar().iter() {
-        match op {
-            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len)
-            | Cigar::Del(len) | Cigar::RefSkip(len) => end += *len as i64,
-            _ => {}
-        }
-    }
-    end
 }
 
 /// The siblings whose change lies inside `variant`'s discrimination window:

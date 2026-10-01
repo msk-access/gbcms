@@ -160,10 +160,10 @@ pub fn prepare_variants(
 /// Scan-window pad for tract-cluster grouping: how far past its REF span the
 /// engine's windowed scan reaches on either side (uncapped, like the
 /// classification scan), so grouping reach covers classification reach. The
-/// scan runs `max(5, repeat_span + 2)` around the anchor and to every placement
-/// of the variant in its shift region (`counting::window::scan_window`).
+/// scan runs `window::scan_pad` around the anchor and to every placement of the
+/// variant in its shift region (`window::scan_window`).
 fn window_pad(v: &Variant) -> i64 {
-    let window = std::cmp::max(5, v.repeat_span as i64 + 2);
+    let window = window::scan_pad(v);
     let (start, end) = crate::counting::window::scan_window(v, window);
     let span_end = v.pos + v.ref_allele.len() as i64;
     window.max(v.pos - start).max(end - span_end)

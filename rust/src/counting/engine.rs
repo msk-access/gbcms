@@ -24,6 +24,7 @@
 //! - Annotation: exon_boundary_dist (GTF-informed, RNA mode only)
 
 use pyo3::prelude::*;
+#[cfg(test)]
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::{self, Read, Record};
 use std::collections::{HashMap, HashSet};
@@ -50,7 +51,7 @@ use super::fragment::{FragmentEvidence, MoleculeClass, hash_qname, hash_molecule
 use super::alignment::{SW_GAP_EXTEND, SW_GAP_OPEN};
 use super::variant_checks::{check_snp, check_mnp, check_complex, check_insertion, check_deletion, splice_skip_triage, reconstruct_span, MnpResult};
 use bio::alignment::distance::levenshtein;
-use super::utils::{find_read_pos, ClassifyResult, ClassifyPhase};
+use super::utils::{find_read_pos, ref_end, soft_clips, ClassifyResult, ClassifyPhase};
 use super::mfsd;
 use super::rna;
 use super::window;
@@ -248,9 +249,9 @@ fn build_genomic_bins(
             j += 1;
         }
 
-        // Pad by the widest member's read window, max(5, repeat_span + 2), the
-        // filter each variant applies to the cached reads (`count_variant_from_cache`).
-        let padding = std::cmp::max(5, max_repeat_span + 2);
+        // Pad by the widest member's read window (`window::read_window`), the
+        // filter each variant applies to the cached reads.
+        let padding = window::pad_for_repeat_span(max_repeat_span);
         bins.push(GenomicBin {
             tid,
             start: (bin_start - padding).max(0),
@@ -981,27 +982,6 @@ pub fn count_bam_binned_observations(
     )
 }
 
-/// Compute the reference-consumed end position of an aligned record.
-///
-/// Walks the CIGAR string summing reference-consuming operations (M/=/X/D/N),
-/// the same value as `record.cigar().end_pos()`. Used by the read loops to
-/// determine anchor overlap.
-#[inline]
-fn read_ref_end(record: &Record) -> i64 {
-    let mut rend = record.pos();
-    for op in record.cigar().iter() {
-        match op {
-            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len)
-            | Cigar::Del(len) | Cigar::RefSkip(len) => {
-                rend += *len as i64;
-            }
-            _ => {}
-        }
-    }
-    rend
-}
-
-
 // ── Shared-Read Bin Processing ─────────────────────────────────────────────
 //
 // D10: Port of the original C++ GBCMS block-processing architecture.
@@ -1448,15 +1428,9 @@ fn count_variant_from_cache(
     let mut carrier_fallback_reads: u32 = 0;
     let mut ref_dists: Vec<u32> = Vec::with_capacity(500);
 
-    // Create SW aligners ONCE per variant (indelpost pattern).
-    // Score function: N in read or haplotype → 0 (neutral, uninformative).
-    // Matches GATK approach: N contributes no evidence for match or mismatch.
-    // Handles N-in-read (duplex masking / sequencer failure) and N-in-haplotype (rare).
-    let score_fn = |a: u8, b: u8| -> i32 {
-        if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
-    };
-    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
-    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    // Create SW aligners ONCE per variant (indelpost pattern), scored by `sw_score`.
+    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
+    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
     // Siblings whose change lies inside this row's discrimination window:
     // the only ones whose carriers the REF guard excludes.
     let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
@@ -1466,9 +1440,7 @@ fn count_variant_from_cache(
 
     // The variant's read window: which cached reads overlap this variant (the bin's
     // fetch holds it for every member; see `build_genomic_bins`)
-    let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
-    let v_start = (variant.pos - window_pad).max(0);
-    let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
+    let (v_start, v_end) = window::read_window(variant);
 
     // ── NO CONSENSUS SPLICING OF ref_context (removed, issue #94 cluster B).
     // An earlier step ("D6") drained consensus introns from ref_context in
@@ -1496,7 +1468,7 @@ fn count_variant_from_cache(
         // This is the key filter that ensures each variant only sees reads
         // that would have been fetched by a per-variant bam.fetch().
         let r_start = record.pos();
-        let r_end = read_ref_end(record);
+        let r_end = ref_end(record);
         if r_start >= v_end || r_end <= v_start {
             continue; // Read doesn't overlap variant fetch window
         }
@@ -1564,15 +1536,8 @@ fn count_variant_from_cache(
         // (CIGAR N) are downgraded. Default: off for DNA (upstream BQSR),
         // on for RNA (no upstream BQ recalibration). Skipped at exon edges:
         // `use_baq` is `baq_applies`, resolved once per variant above.
-        let baq_adjusted = if use_baq {
-            apply_heuristic_baq(record, baq_spare)
-        } else {
-            None
-        };
-        let effective_quals: &[u8] = match &baq_adjusted {
-            Some(adj) => adj,
-            None => record.qual(),
-        };
+        let quals = effective_quals(record, use_baq, baq_spare);
+        let effective_quals: &[u8] = &quals;
 
         // ── Allele classification
         let result = check_allele_with_qual(
@@ -1587,7 +1552,7 @@ fn count_variant_from_cache(
         // anchor-preserved deletion it is deliberately stricter than pileup
         // at POS (the anchor base may be aligned) — an unobservant read in
         // DP would only deflate VAF. Must run before the anchor-overlap
-        // gate below, which is span-based (read_ref_end includes N) and
+        // gate below, which is span-based (ref_end includes N) and
         // would otherwise admit these reads.
         if !result.covers_locus {
             if !antisense_excluded {
@@ -1722,29 +1687,12 @@ fn count_variant_from_cache(
         // UMI-aware fragment grouping: when umi_tag is set, reads with
         // different UMIs are treated as distinct molecules. The UMI is
         // extracted from the BAM aux tag (e.g., RX:Z:ACGT).
-        let mut mol_hash = if let Some(tag) = umi_tag {
-            let umi_bytes = record.aux(&tag)
-                .ok()
-                .and_then(|aux| match aux {
-                    rust_htslib::bam::record::Aux::String(s) => Some(s.as_bytes()),
-                    _ => None,
-                });
-            if umi_bytes.is_some() {
-                counts.umi_tagged_reads += 1;
-            }
-            hash_molecule(record.qname(), umi_bytes)
-        } else {
-            hash_qname(record.qname())
-        };
+        let (mol_hash, umi_tagged) = molecule_key(record, umi_tag, amplicon_mode);
+        if umi_tagged {
+            counts.umi_tagged_reads += 1;
+        }
         let is_read1 = record.is_first_in_template();
         let is_forward = !is_reverse;
-
-        // P5: Amplicon mode — XOR read number into fragment hash so R1 and R2
-        // are treated as independent observations (no fragment consensus).
-        // This bypasses R1/R2 merging without modifying fragment.rs.
-        if amplicon_mode {
-            mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
-        }
 
         let evidence = fragments.entry(mol_hash).or_insert_with(FragmentEvidence::new);
 
@@ -2155,7 +2103,7 @@ fn sibling_claims_alt(
     }
 
     let read_lo = record.pos();
-    let read_hi = read_ref_end(record);
+    let read_hi = ref_end(record);
     let own_ctx_end = variant.ref_context_start
         + variant.ref_context.as_ref().map_or(0, |c| c.len() as i64);
     let w_lo = read_lo.max(variant.ref_context_start);
@@ -2292,13 +2240,9 @@ fn tally_clip_candidate(
 /// continue the alignment) lies in `[lo, hi]`. Hard clips at the read ends
 /// are skipped when locating the soft clip.
 fn has_clip_boundary_in(record: &Record, lo: i64, hi: i64) -> bool {
-    let cigar = record.cigar();
-    let ops: Vec<&Cigar> = cigar.iter().filter(|op| !matches!(op, Cigar::HardClip(_))).collect();
-    let leading = matches!(ops.first(), Some(Cigar::SoftClip(n)) if *n >= CLIP_CANDIDATE_MIN_LEN);
-    let trailing = ops.len() > 1
-        && matches!(ops.last(), Some(Cigar::SoftClip(n)) if *n >= CLIP_CANDIDATE_MIN_LEN);
-    (leading && (lo..=hi).contains(&record.pos()))
-        || (trailing && (lo..=hi).contains(&read_ref_end(record)))
+    let (lead, tail) = soft_clips(record);
+    (lead >= CLIP_CANDIDATE_MIN_LEN && (lo..=hi).contains(&record.pos()))
+        || (tail >= CLIP_CANDIDATE_MIN_LEN && (lo..=hi).contains(&ref_end(record)))
 }
 
 /// Once per counting pass: rows the rules can only judge degraded. Prep rejects
@@ -2395,7 +2339,7 @@ fn ref_needs_the_window(record: &Record, variant: &Variant, mut result: Classify
             "{}:{} {}>{} read={}: aligned {}-{} spans neither informative window {:?} (0-based) \
              — uninformative, not REF",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
-            record.pos() + 1, read_ref_end(record), window::informative_windows(variant),
+            record.pos() + 1, ref_end(record), window::informative_windows(variant),
         );
         result.is_ref = false;
         result.is_structural = false;
@@ -2448,7 +2392,7 @@ fn alt_needs_the_window(
         "{}:{} {}>{} read={}: aligned {}-{} spans neither ALT-side window around {:?} (0-based) \
          and {} — uninformative, not ALT",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
-        record.pos() + 1, read_ref_end(record), window::change_interval(variant), why,
+        record.pos() + 1, ref_end(record), window::change_interval(variant), why,
     );
     result.is_alt = false;
     result.is_structural = false;
@@ -2661,6 +2605,42 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
     result
 }
 
+/// Smith-Waterman scoring for the read classifiers: an N in the read or the
+/// haplotype is neutral (0), evidence for neither a match nor a mismatch (as in
+/// GATK), so duplex-masked bases decide nothing.
+fn sw_score(a: u8, b: u8) -> i32 {
+    if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
+}
+
+/// The read's base qualities as the classifiers read them: heuristic BAQ when
+/// `use_baq` (sparing the variant's own evidence, `baq_spare`), else as stored.
+fn effective_quals(record: &Record, use_baq: bool, baq_spare: Option<(i64, i64)>) -> std::borrow::Cow<'_, [u8]> {
+    match use_baq.then(|| apply_heuristic_baq(record, baq_spare)).flatten() {
+        Some(adjusted) => std::borrow::Cow::Owned(adjusted),
+        None => std::borrow::Cow::Borrowed(record.qual()),
+    }
+}
+
+/// The read's molecule key, and whether it carried the UMI: a hash of its QNAME,
+/// with its UMI when `umi_tag` is set (reads with different UMIs are different
+/// molecules). In amplicon mode R1 and R2 key apart, so each read is its own
+/// observation (no fragment consensus).
+fn molecule_key(record: &Record, umi_tag: Option<[u8; 2]>, amplicon_mode: bool) -> (u64, bool) {
+    let umi = umi_tag.and_then(|tag| match record.aux(&tag) {
+        Ok(rust_htslib::bam::record::Aux::String(s)) => Some(s.as_bytes()),
+        _ => None,
+    });
+    let mut key = if umi_tag.is_some() {
+        hash_molecule(record.qname(), umi)
+    } else {
+        hash_qname(record.qname())
+    };
+    if amplicon_mode {
+        key ^= if record.is_first_in_template() { 0x1 } else { 0x2 };
+    }
+    (key, umi.is_some())
+}
+
 /// A read's name for trace lines (lines from bins counted in parallel interleave,
 /// so each per-read line names its read).
 fn read_name(record: &Record) -> std::borrow::Cow<'_, str> {
@@ -2735,15 +2715,10 @@ fn count_per_transcript(
         transcript_ids.join(", "),
     );
 
-    // Step 2: Compute variant overlap window (same as count_variant_from_cache)
-    let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
-    let v_start = (variant.pos - window_pad).max(0);
-    let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
+    // Step 2: The variant's read window (as in the main counts)
+    let (v_start, v_end) = window::read_window(variant);
 
     // Step 3: Create aligners (same pattern as count_variant_from_cache)
-    let score_fn = |a: u8, b: u8| -> i32 {
-        if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
-    };
 
     // Step 4: Per-transcript counting
     let mut read_entries: Vec<String> = Vec::with_capacity(transcript_ids.len());
@@ -2770,13 +2745,13 @@ fn count_per_transcript(
         let mut tx_fragments: HashMap<u64, FragmentEvidence> = HashMap::new();
 
         // Fresh aligners per transcript to avoid cross-contamination
-        let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
-        let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+        let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
+        let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
 
         for record in read_cache {
             // ── Overlap check: does this read overlap the variant window?
             let r_start = record.pos();
-            let r_end = read_ref_end(record);
+            let r_end = ref_end(record);
             if r_start >= v_end || r_end <= v_start {
                 continue;
             }
@@ -2799,15 +2774,8 @@ fn count_per_transcript(
 
             // ── BAQ under the main counts' rule (`use_baq`), so the spliced
             // reads at an exon edge count here as they do in the main counts.
-            let baq_adjusted = if use_baq {
-                apply_heuristic_baq(record, baq_spare)
-            } else {
-                None
-            };
-            let effective_quals: &[u8] = match &baq_adjusted {
-                Some(adj) => adj,
-                None => record.qual(),
-            };
+            let quals = effective_quals(record, use_baq, baq_spare);
+            let effective_quals: &[u8] = &quals;
 
             // ── Allele classification
             let result = check_allele_with_qual(
@@ -2838,25 +2806,10 @@ fn count_per_transcript(
             }
 
             // ── Fragment tracking
-            let mut mol_hash = if let Some(tag) = umi_tag {
-                let umi_bytes = record.aux(&tag)
-                    .ok()
-                    .and_then(|aux| match aux {
-                        rust_htslib::bam::record::Aux::String(s) => Some(s.as_bytes()),
-                        _ => None,
-                    });
-                hash_molecule(record.qname(), umi_bytes)
-            } else {
-                hash_qname(record.qname())
-            };
+            let (mol_hash, _) = molecule_key(record, umi_tag, amplicon_mode);
             let is_read1 = record.is_first_in_template();
             let is_forward = !record.is_reverse();
             let tlen = mfsd::calc_physical_insert_size(record);
-
-            // P5: Amplicon mode — same XOR trick as count_variant_from_cache
-            if amplicon_mode {
-                mol_hash ^= if is_read1 { 0x1 } else { 0x2 };
-            }
 
             // ── Multi-allelic guards (the main engine's read-level rules): an
             // ALT match won by a sibling is excluded from tx_ad and from
@@ -3369,16 +3322,12 @@ fn detect_asjd(
     // below are unchanged.
     let chrom_key = crate::shared::contig::normalize_contig(&variant.chrom);
     let chrom = chrom_key.as_str();
-    let window_pad: i64 = std::cmp::max(5, variant.repeat_span as i64 + 2);
-    let v_start = (variant.pos - window_pad).max(0);
-    let v_end = variant.pos + (variant.ref_allele.len() as i64) + window_pad;
+    let window_pad = window::scan_pad(variant);
+    let (v_start, v_end) = window::read_window(variant);
 
     // Create aligners
-    let score_fn = |a: u8, b: u8| -> i32 {
-        if a == b'N' || b == b'N' { 0 } else if a == b { 1 } else { -1 }
-    };
-    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
-    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &score_fn);
+    let mut alt_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
+    let mut ref_aligner = Aligner::new(SW_GAP_OPEN, SW_GAP_EXTEND, &sw_score);
 
     // Step 1: Partition reads into REF/ALT and collect junctions with strand info.
     // Tracks per-junction transcript-strand counts for STRAND_DISCORDANT detection:
@@ -3403,7 +3352,7 @@ fn detect_asjd(
 
     for record in read_cache {
         let r_start = record.pos();
-        let r_end = read_ref_end(record);
+        let r_end = ref_end(record);
         if r_start >= v_end || r_end <= v_start {
             continue;
         }
@@ -3418,15 +3367,8 @@ fn detect_asjd(
 
         // BAQ under the main counts' rule (`use_baq`): at an exon edge the
         // spliced reads are exactly ASJD's evidence.
-        let baq_adjusted = if use_baq {
-            apply_heuristic_baq(record, baq_spare)
-        } else {
-            None
-        };
-        let effective_quals: &[u8] = match &baq_adjusted {
-            Some(adj) => adj,
-            None => record.qual(),
-        };
+        let quals = effective_quals(record, use_baq, baq_spare);
+        let effective_quals: &[u8] = &quals;
 
         // Classify allele
         let result = check_allele_with_qual(
@@ -3816,7 +3758,7 @@ mod tests {
     fn every_variant_lands_in_one_bin_whose_fetch_holds_its_window() {
         // Bin geometry is performance only: under any window and cap, each variant
         // belongs to exactly one bin, and that bin's fetch holds the variant's whole
-        // read window (its span padded by max(5, repeat_span + 2), the filter each
+        // read window (`window::read_window`, the filter each
         // variant applies to the bin's cached reads). Random clusters of SNVs and
         // indels up to 300bp, with repeat spans, over a deterministic LCG.
         let header = build_header_with_contig("1", 1_000_000);
@@ -3844,13 +3786,12 @@ mod tests {
                         for &k in &bin.variant_indices {
                             seen[k] += 1;
                             let v = &variants[k];
-                            let pad = std::cmp::max(5, v.repeat_span as i64 + 2);
+                            let (lo, hi) = window::read_window(v);
                             assert!(
-                                bin.start <= (v.pos - pad).max(0)
-                                    && bin.end >= v.pos + v.ref_allele.len() as i64 + pad,
+                                bin.start <= lo && bin.end >= hi,
                                 "window {window} cap {cap}: bin [{}, {}) misses variant at {} \
-                                 (ref {}bp, pad {pad})",
-                                bin.start, bin.end, v.pos, v.ref_allele.len(),
+                                 (read window [{lo}, {hi}))",
+                                bin.start, bin.end, v.pos,
                             );
                         }
                     }
@@ -5017,7 +4958,7 @@ mod tests {
         // Geometry:
         //   Read starts at pos 10, CIGAR: 4M 3S
         //   Covers ref positions 10-13 (4M), then 3bp soft-clipped
-        //   Anchor at pos 14 — read's ref end is 14, so read_ref_end (14) > anchor_pos (14)?
+        //   Anchor at pos 14 — read's ref end is 14, so ref_end (14) > anchor_pos (14)?
         //   No: 14 > 14 is false. Let's adjust.
         //   Use: 5M 3S at pos 10 → covers 10-14, ref_end=15
         //   Anchor at 14 → anchor is the last M base → BUT that means anchor_pos == block_end - 1
@@ -5040,13 +4981,13 @@ mod tests {
         //   Use: 3M 1I 2D at pos 10 → M covers 10-12, I (point), D skips 13-14.
         //   The M block ends at ref_pos=13 (block_end=13), anchor at 14 → not covered.
         //   After I: ref_pos still 13. After D(2): ref_pos=15.
-        //   found_ref_coverage stays false. read_ref_end = 10 + 3(M) + 2(D) = 15.
+        //   found_ref_coverage stays false. ref_end = 10 + 3(M) + 2(D) = 15.
         //   15 > 14 → spans anchor → Phase 3.
         //   BUT: this read doesn't have another M after the D, so it's truncated.
         //   We need more sequence. Add more M at the end:
         //   3M 1I 2D 3M at pos 10 → M covers 10-12, D skips 13-14, M covers 15-17.
         //   Anchor at 14: not in any M block → found_ref_coverage stays false.
-        //   read_ref_end = 10 + 3 + 2 + 3 = 18. Spans anchor. Phase 3 invoked.
+        //   ref_end = 10 + 3 + 2 + 3 = 18. Spans anchor. Phase 3 invoked.
         let seq = b"GGGCGGG"; // 3M + 1I + 3M = 7 read bases
         let qual = &[35_u8; 7];
         let cigar = CigarString(vec![
