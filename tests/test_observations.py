@@ -748,3 +748,27 @@ def test_cli_flag_writes_observations_alongside_counts(tmp_path):
     ]
     # the counts output is still produced, unchanged by the flag
     assert list(out.glob("*.vcf")) or list(out.glob("*.maf"))
+
+
+@pytest.mark.xfail(strict=True, reason="H3 S3: red until fixed")
+def test_observing_indels_without_a_reference_is_warned(tmp_path, caplog):
+    """Without `reference_fasta` the variants are not normalized and carry no
+    reference context, so the indel rules lose their repeat tract and the bases
+    they read against. That must be said once, not left silent; SNVs need nothing."""
+    import logging
+
+    import gbcms
+    from gbcms.models.core import Variant as PyVariant
+    from gbcms.models.core import VariantType
+
+    bam = build_bam(tmp_path, [_read("a", ALT_BASE)], filename="noref.bam")
+    with caplog.at_level(logging.WARNING, logger="gbcms.observations"):
+        gbcms.observe_molecules(bam, [_py_variant()])
+    assert not [r for r in caplog.records if "reference_fasta" in r.getMessage()]
+    indel = PyVariant(
+        chrom="chr1", pos=POS, ref=REF_BASE, alt=REF_BASE + "T", variant_type=VariantType.INSERTION
+    )
+    with caplog.at_level(logging.WARNING, logger="gbcms.observations"):
+        gbcms.observe_molecules(bam, [_py_variant(), indel])
+    warns = [r.getMessage() for r in caplog.records if "reference_fasta" in r.getMessage()]
+    assert len(warns) == 1 and "1 variant" in warns[0], warns
