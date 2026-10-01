@@ -1357,6 +1357,21 @@ the ranked work list is on #204. In brief:
 
 Pure refactors must leave the acceptance output byte-identical.
 
+**Decisions (operator, 2026-10-01).**
+- Allele kinds: one enum. A>CCC triages like a delins, `[pos, pos+1)`. A read
+  spliced over the anchor that resumes at pos+1 leaves DP (DP-only, RNA-only,
+  measured).
+- Fragment class: share the classifier and keep both behaviours (no output
+  change).
+- `ref_context`: uppercase it at prep (fixes SW on soft-masked FASTAs).
+- mFSD: sum in a deterministic order.
+- Reads starting on a flank: measure first.
+
+**Plan: two PRs.**
+- A: the count-affecting fixes (S1, S2, S3, the decisions above), test-first and
+  measured.
+- B: refactors, dead code, logging, monitoring and comments, byte-identical to A.
+
 ## Performance (M5 leftovers)
 
 ### P1 — Deep-bin fetch reduction (M5b) (#150, under #134) · L
