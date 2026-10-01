@@ -23,7 +23,9 @@ spliced reads, strandedness and BAQ; and the repository's real test BAM with
 its 155 VCF variants.
 """
 
+import logging
 import random
+import re
 from pathlib import Path
 
 import pysam
@@ -55,8 +57,10 @@ GEOMETRIES = [
     {"bin_window": 50, "bin_max_variants": 2},
 ]
 
-READ, FRAG = 100, 260
+READ = 100
+FRAGS = (150, 260)  # mates overlapping by 50 bases, and apart
 TESTDATA = Path(__file__).parent / "testdata"
+ENGINE_LOGGER = "_rs.counting.engine"
 
 
 # ── Synthetic DNA ─────────────────────────────────────────────────────────────
@@ -65,10 +69,12 @@ def _dna_contig():
     rand = lambda n: "".join(rng.choice("ACGT") for _ in range(n))  # noqa: E731
     parts = [
         rand(900),
-        "G" + "A" * 9 + "T",  # homopolymer at 900..909
+        "G" + "A" * 9 + "T",  # G at 900, an A run at 901..909, T
         rand(90),
-        "G" + "CA" * 8 + "T",  # STR at 1000..1017
-        rand(1382),
+        "G" + "CA" * 8 + "T",  # G at 1001, (CA)8 at 1002..1017, T
+        rand(131),
+        "A" + "C" * 6 + "TA",  # A at 1150, a C run at 1151..1156, T
+        rand(1242),
     ]
     return "".join(parts)
 
@@ -96,7 +102,8 @@ DNA_VARIANTS = [
     _v(720, 1, DNA[720] + "TTG"),  # unique insertion
     _v(760, 5, DNA[760]),  # unique deletion
     _v(900, 1, "GA"),  # homopolymer insertion
-    _v(1000, 3, "G"),  # STR deletion (-CA)
+    _v(1001, 3, "G"),  # STR deletion (-CA)
+    _v(1151, 6, "T"),  # a homopolymer delins with a decomposed twin (CCCCCC>CCCCCT)
     _v(1300, 56, DNA[1300]),  # 55bp deletion
     _v(1320, 1, _alt_base(1320)),  # inside the 55bp deletion
     _v(1360, 1, _alt_base(1360)),  # just past its right breakpoint
@@ -131,15 +138,22 @@ def _alt_read(contig, start, variant, length):
 
 def _pairs(contig, variants, seed, step=3, umi=False):
     """Read pairs from every `step`-th start: each fragment is REF or carries one
-    variant fully inside both mates' reach; a few low-quality bases."""
+    variant fully inside mate 1's reach (and mate 2's too where the mates
+    overlap it); a few low-quality bases."""
     rng = random.Random(seed)
     reads = []
-    for n, s in enumerate(range(0, len(contig) - FRAG, step)):
+    for n, s in enumerate(range(0, len(contig) - max(FRAGS), step)):
+        frag_len = rng.choice(FRAGS)
         inside = [v for v in variants if s < v[0] and v[0] + len(v[1]) + 6 < s + READ]
         variant = rng.choice(inside) if inside and rng.random() < 0.45 else None
-        frag = []
-        for mate, start in ((1, s), (2, s + FRAG - READ)):
-            if variant is not None and mate == 1:
+        mate2 = s + frag_len - READ
+        for mate, start in ((1, s), (2, mate2)):
+            carries = (
+                variant is not None
+                and start < variant[0]
+                and variant[0] + len(variant[1]) + 6 < start + READ
+            )
+            if carries:
                 seq, cigar = _alt_read(contig, start, variant, READ)
             else:
                 seq, cigar = contig[start : start + READ], ((0, READ),)
@@ -147,12 +161,11 @@ def _pairs(contig, variants, seed, step=3, umi=False):
             flag = 0x1 | 0x2 | (0x40 | 0x20 if mate == 1 else 0x80 | 0x10)
             r = make_read(f"f{n}", seq, start, cigar, flag=flag, quals=quals)
             r.next_reference_id = 0
-            r.next_reference_start = s + FRAG - READ if mate == 1 else s
-            r.template_length = FRAG if mate == 1 else -FRAG
+            r.next_reference_start = mate2 if mate == 1 else s
+            r.template_length = frag_len if mate == 1 else -frag_len
             if umi:
                 r.set_tag("RX", f"U{n % 7}")
-            frag.append(r)
-        reads.extend(frag)
+            reads.append(r)
     return reads
 
 
@@ -172,34 +185,56 @@ def _prepared(fa, rows):
 
 
 # ── The invariance checks ─────────────────────────────────────────────────────
-def _check_invariance(bam, variants, decomposed, siblings, per_row=True, **kw):
+def _bins(caplog, call):
+    """`call()`'s result and the number of bins the engine built for it."""
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger=ENGINE_LOGGER):
+        gbcms_rs.reset_log_caching()
+        out = call()
+    built = [
+        int(m.group(1))
+        for r in caplog.records
+        if (m := re.search(r"Built (\d+) genomic bins", r.getMessage()))
+    ]
+    assert built, "the engine logs the bins it builds"
+    return out, built[-1]
+
+
+def _check_invariance(caplog, bam, variants, decomposed, siblings, per_row=True, **kw):
     def run(vs=variants, ds=decomposed, ss=siblings, threads=1, **geometry):
         return gbcms_rs.count_bam_binned(
             bam, vs, ds, **ARGS, threads=threads, sibling_variants=ss, **kw, **geometry
         )
 
-    base = run()
+    base, production_bins = _bins(caplog, run)
     for c in base:
         assert c.dp >= c.rd + c.ad and c.dpf >= c.rdf + c.adf
         assert c.rd == c.rd_fwd + c.rd_rev and c.ad == c.ad_fwd + c.ad_rev
     assert sum(c.ad for c in base) > 0, "the fixture must exercise ALT reads"
 
     for geometry in GEOMETRIES:
-        assert_same_counts(run(**geometry), base, f"geometry {geometry}")
+        counts, bins = _bins(caplog, lambda g=geometry: run(**g))
+        assert bins > production_bins or len(variants) == 1, f"{geometry} must split the bins"
+        assert_same_counts(counts, base, f"geometry {geometry}")
 
-    # Shuffled input on four threads: results come back in input order.
+    # Shuffled input on four threads over many bins: results come back in input order.
     order = list(range(len(variants)))
     random.Random(7).shuffle(order)
-    shuffled = run(
-        [variants[i] for i in order],
-        [decomposed[i] for i in order],
-        [siblings[i] for i in order],
-        threads=4,
+    shuffled, bins = _bins(
+        caplog,
+        lambda: run(
+            [variants[i] for i in order],
+            [decomposed[i] for i in order],
+            [siblings[i] for i in order],
+            threads=4,
+            bin_window=20,
+        ),
     )
+    assert bins > 1 or len(variants) == 1
     back = [None] * len(order)
     for k, i in enumerate(order):
         back[i] = shuffled[k]
-    assert_same_counts(back, base, "shuffled, 4 threads")
+    assert_same_counts(back, base, "shuffled, 4 threads, window 20")
 
     if per_row:
         one_by_one = [
@@ -214,26 +249,36 @@ def _check_invariance(bam, variants, decomposed, siblings, per_row=True, **kw):
     [{}, {"apply_baq": True, "umi_tag": "RX", "mfsd": True}],
     ids=["plain", "baq-umi-mfsd"],
 )
-def test_dna_counts_do_not_depend_on_bin_geometry(tmp_path, features):
+def test_dna_counts_do_not_depend_on_bin_geometry(tmp_path, caplog, features):
     reads = _pairs(DNA, DNA_VARIANTS, seed=1, umi="umi_tag" in features)
     fa, bam = write_contig(tmp_path, DNA, reads, "dna")
     variants, decomposed, siblings = _prepared(fa, DNA_VARIANTS)
-    base, run = _check_invariance(bam, variants, decomposed, siblings, **features)
+    assert any(d is not None for d in decomposed), "the fixture must carry a decomposed twin"
+    base, run = _check_invariance(caplog, bam, variants, decomposed, siblings, **features)
+    assert any(c.dpf < c.dp for c in base), "some fragments must hold both mates over a variant"
 
     # Decoy rows interleaved before, among and after the targets move where bins
-    # start; the targets' counts stay.
+    # start and which rows share one (under a 50bp window, where bins split); the
+    # targets' counts stay.
     decoy_rows = [
         _v(p, 1, _alt_base(p))
         for p in range(480, 1500, 37)
         if p not in {r[0] for r in DNA_VARIANTS}
     ]
     decoys, _, _ = _prepared(fa, decoy_rows)
-    with_decoys = run(
-        decoys[: len(decoys) // 2] + variants + decoys[len(decoys) // 2 :],
-        [None] * (len(decoys) // 2) + decomposed + [None] * (len(decoys) - len(decoys) // 2),
-        [[]] * (len(decoys) // 2) + siblings + [[]] * (len(decoys) - len(decoys) // 2),
+    half = len(decoys) // 2
+    _, alone = _bins(caplog, lambda: run(bin_window=50))
+    with_decoys, mixed = _bins(
+        caplog,
+        lambda: run(
+            decoys[:half] + variants + decoys[half:],
+            [None] * half + decomposed + [None] * (len(decoys) - half),
+            [[]] * half + siblings + [[]] * (len(decoys) - half),
+            bin_window=50,
+        ),
     )
-    targets = with_decoys[len(decoys) // 2 : len(decoys) // 2 + len(variants)]
+    assert mixed != alone, "the decoys must change the bins"
+    targets = with_decoys[half : half + len(variants)]
     assert_same_counts(targets, base, "with decoys", skip=ROW_SET_FIELDS)
 
 
@@ -259,24 +304,24 @@ def test_observation_rows_do_not_depend_on_bin_geometry(tmp_path):
         assert got == base_rows, f"observation rows differ under {geometry}"
 
 
-def test_clip_carriers_past_a_long_anchor_do_not_depend_on_bin_geometry(tmp_path):
+def test_clip_carriers_past_a_long_anchor_do_not_depend_on_bin_geometry(tmp_path, caplog):
     """A 60bp REF to a 10bp ALT anchoring its bin, carriers aligned only after the
     event with the event clipped at their start: counted reads that never overlap
     the anchor, so a bin whose fetch stopped short of the anchor's own span (the
     6.4 bug the Rust property test pins) would lose them under a small window."""
     ref, alt, hap = _clip_case()
     reads = [
-        _paired(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)), FRAG)
+        _paired(make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)), 260)
         for i, s in enumerate(range(CLIP_POS - 60, CLIP_POS - 50))
     ]
     after = CLIP_POS + 60  # first REF base after the event; on the haplotype, CLIP_POS + 10
     for i, hs in enumerate(range(CLIP_POS - 40, CLIP_POS - 20)):
         clip = CLIP_POS + 10 - hs
         read = make_read(f"l{i}", hap[hs : hs + READ], after, ((4, clip), (0, READ - clip)))
-        reads.append(_paired(read, FRAG, reverse=True))
+        reads.append(_paired(read, 260, reverse=True))
     fa, bam = write_contig(tmp_path, ref, reads, "clip")
     variants, decomposed, siblings = _prepared(fa, [(CLIP_POS, ref[CLIP_POS : CLIP_POS + 60], alt)])
-    base, _ = _check_invariance(bam, variants, decomposed, siblings)
+    base, _ = _check_invariance(caplog, bam, variants, decomposed, siblings)
     assert (base[0].rd, base[0].ad) == (10, 20), "the clipped carriers must count"
 
 
@@ -302,7 +347,7 @@ def _paired(read, tlen, reverse=False):
 
 
 # ── RNA ───────────────────────────────────────────────────────────────────────
-def test_rna_counts_do_not_depend_on_bin_geometry(tmp_path):
+def test_rna_counts_do_not_depend_on_bin_geometry(tmp_path, caplog):
     ref = mk_ref()
     donor, acceptor = E1[1], E2[0]
     snvs = [E1[1] - 30, E1[1] - 12, E1[1] - 3, E2[0] + 4, E2[0] + 25]
@@ -310,6 +355,10 @@ def test_rna_counts_do_not_depend_on_bin_geometry(tmp_path):
     for i, p in enumerate(snvs):
         alt = "T" if ref[p] != "T" else "G"
         reads += through(ref, p, alt, 6, f"a{i}_") + through(ref, p, ref[p], 6, f"r{i}_")
+        # Antisense reads (the strandedness filter drops them from counting).
+        for k in range(3):
+            s = p - 40 + k
+            reads.append(make_read(f"x{i}_{k}", ref[s : s + READ], s, ((0, READ),)))
     ins_at = E1[1] - 20
     for i in range(6):
         s = ins_at - 50 + i
@@ -330,7 +379,8 @@ def test_rna_counts_do_not_depend_on_bin_geometry(tmp_path):
         (ins_at, ref[ins_at], ref[ins_at] + "AC")
     ]
     variants, decomposed, siblings = _prepared(str(fa), rows)
-    _check_invariance(
+    base, _ = _check_invariance(
+        caplog,
         str(bam),
         variants,
         decomposed,
@@ -340,6 +390,7 @@ def test_rna_counts_do_not_depend_on_bin_geometry(tmp_path):
         enforce_strandedness=True,
         gtf_path=str(gtf),
     )
+    assert sum(c.antisense_depth for c in base) > 0, "antisense reads must reach the tally"
 
 
 # ── The repository's real test BAM ────────────────────────────────────────────
@@ -394,6 +445,11 @@ def test_a_bin_geometry_below_one_is_rejected(tmp_path):
             True,
         )
     ]
-    for bad in ({"bin_window": 0}, {"bin_max_variants": 0}):
+    for bad in (
+        {"bin_window": 0},
+        {"bin_max_variants": 0},
+        {"bin_window": -5},
+        {"bin_max_variants": -1},
+    ):
         with pytest.raises(ValueError, match="at least 1"):
             gbcms_rs.count_bam_binned(bam, [v], [None], **ARGS, threads=1, **bad)

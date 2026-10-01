@@ -73,7 +73,7 @@ discriminating positions**. CIGAR `N` = asserted splicing = no observation:
 `ClassifyResult::no_coverage` (`covers_locus=false`) when the N spans ALL of
 them — deletion span `[pos+1, pos+ref_len)`, insertion flanks `[pos, pos+2)`,
 else `[pos, pos+ref_len)` — and the engine **excludes the read from DP/DPF
-entirely** (samtools-pileup semantics; mirrored binned + legacy + per-transcript;
+entirely** (samtools-pileup semantics; the main and per-transcript read loops;
 `splice_skip_excluded=` in the Phase-stats debug line). `D` is deletion
 evidence, `N` never is (no D-vs-N representation flip). Indel ops directly
 after an N get the same anchor/windowed inspection as after an M (shared

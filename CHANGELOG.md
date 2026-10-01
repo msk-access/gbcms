@@ -25,17 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     fetch holds its read window.
   - `tests/test_binning_invariance.py` compares every field under the per-variant
     fetch (window 1, cap 1), tiny windows, small caps, one call per row, shuffled
-    input on 4 threads, and decoy rows. Its fixtures are synthetic DNA (plain, and
-    BAQ+UMI+mFSD), clip carriers past a long anchor, an RNA locus with a GTF, and
-    the real test BAM.
-  - Every counting test now runs through `count_checked`, production bins against
+    input on 4 threads, and decoy rows. Each geometry is asserted to split the bins.
+    Its fixtures are synthetic DNA (plain, and BAQ+UMI+mFSD; siblings, a decomposed
+    twin, overlapping mates), clip carriers past a long anchor, an RNA locus with a
+    GTF and antisense reads, and the real test BAM.
+  - Every counting test now runs through `count_checked`, which also counts with
     one variant per bin, so the 49 tests that ran only the legacy path test
-    production.
+    production. Most of those calls hold one variant and so check the per-variant
+    fetch window; the binning suite covers multi-variant bins.
 - `tests/census.py` judges each read by its own bases across a pure indel's tract,
   with the decided rules: REF needs one base past the first difference, ALT only
-  that base. `tests/test_read_census.py` checks the engine against it on reads
-  generated around ten pure indels that end anywhere past the anchor. The open
-  decisions are strict xfails: #200, #201, #202.
+  that base. The census finds each tract by its own slide, and a test checks that
+  prep agrees. `tests/test_read_census.py` checks the engine against it on reads
+  generated around ten pure indels (ending anywhere past the anchor, some
+  soft-clipped). The open decisions are strict xfails: #200, #201, #202.
 - Both new suites were mutation-checked. Re-introducing the bin-end bug fails
   the property test and the clip-carrier fixture. Disabling the ALT-side window,
   or the equivalent-placement rule, fails the census test.

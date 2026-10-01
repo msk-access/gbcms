@@ -251,10 +251,8 @@ class TestONPCarrierShapes:
             quals[len(self.LEFT) + low_bq_offset] = 5
         bam = self._bam(tmp_path, block, quals)
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "ONP")
-        counts = count_checked(bam, [variant])[0]
         counts = count_one_checked(bam, variant)
 
-        assert counts.mnp_confirmed_alt == expected_confirmed
         assert counts.mnp_confirmed_alt == expected_confirmed
         assert counts.mnp_confirmed_alt <= counts.ad
         assert counts.dp >= counts.rd + counts.ad
@@ -290,10 +288,8 @@ class TestONPCarrierShapes:
         ]
         bam = build_bam(tmp_path, reads, "onp_ins_in_block.bam")
         variant = gbcms_rs.Variant("chr1", 100, "GAGGG", "AAGGA", "ONP")
-        counts = count_checked(bam, [variant])[0]
         counts = count_one_checked(bam, variant)
 
-        assert counts.mnp_confirmed_alt == 0
         assert counts.mnp_confirmed_alt == 0
         assert counts.ad == 10
         assert counts.partial_alt == 0

@@ -109,12 +109,17 @@ repeat_span + 2)`, the anchor's included.
   fetch holds its window, over random clusters × window {1, 7, 100, 10k} × cap
   {1, 2, 3, 200}.
 - `tests/test_binning_invariance.py`: the geometries above on synthetic DNA pairs
-  (plain; BAQ + UMI + mFSD), clip carriers aligned past a long anchor (the one read
-  shape in which an under-fetched anchor changes a count: every other counted read
-  overlaps the event's first base), an RNA locus with a GTF, and the real test BAM;
-  observation rows too.
-- `tests/helpers.py` `count_checked` / `count_bam_checked`: every counting test runs
-  production bins and one variant per bin and compares every field.
+  (plain; BAQ + UMI + mFSD; siblings, a decomposed twin, overlapping mates), clip
+  carriers aligned past a long anchor (the one read shape in which an under-fetched
+  anchor changes a count: every other counted read overlaps the event's first base),
+  an RNA locus with a GTF and antisense reads, and the real test BAM; observation rows
+  too. Each geometry is asserted to split the bins (the engine's bin log), and the
+  decoys to change them, so no check is vacuous. Not exercised: ASJD (the RNA fixture
+  has no junction-borne ALT) and the `--mfsd-parquet` size arrays (no getters).
+- `tests/helpers.py` `count_checked` / `count_bam_checked`: every counting test also
+  counts with one variant per bin and compares every field. Most such calls hold one
+  variant, so they check the per-variant fetch window only; multi-variant binning,
+  threads and bin starts are covered by `test_binning_invariance.py`.
 - `bin_window` / `bin_max_variants` are test arguments of `count_bam_binned` and
   `count_bam_binned_observations`; the pipeline passes neither.
 

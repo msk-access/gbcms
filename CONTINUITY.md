@@ -216,9 +216,10 @@ Remaining (all optional):
 - Stats stay in **Rust** (KS/LLR/Fisher in `mfsd.rs`/`shared/stats.rs`); **no scipy**
   dependency — exact KS is a self-contained Rust DP, validated against baked
   SciPy reference constants.
-- Legacy `count_bam` (per-variant) is kept as the binned↔legacy **parity oracle** but
-  feature-gated (`legacy-parity`, default on) so the **shipped wheel excludes it**
-  (release builds `--no-default-features`); production uses `count_bam_binned` only.
+- Binning invariance replaces the legacy `count_bam` parity oracle (T1 #170,
+  2026-10-01): a second engine sharing the classifier never caught a classification
+  bug; counts must not depend on bin geometry, and the read census checks
+  classification.
 - Tests kept minimal/high-signal (each is a maintenance contract); fixes that reduce
   duplication are preferred over adding code.
 - Source comments/logs explain what/why/how — **never** ticket labels (`CR-`/`HI-`/

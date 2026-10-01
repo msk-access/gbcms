@@ -225,7 +225,7 @@ def count_bam_binned(
     filter_indel: bool,
     threads: int,
     fragment_qual_threshold: int = 10,
-    sibling_variants: list[list[Variant]] | None = None,
+    sibling_variants: list[list[Variant]] = ...,
     alignment_backend: str = "pairhmm",
     hmm_llr_threshold: float = 2.3,
     hmm_gap_open: float = 1e-4,

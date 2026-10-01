@@ -106,15 +106,15 @@ const BIN_MAX_VARIANTS: usize = 200;
 /// The bin geometry for one call: the production constants unless a test passes
 /// its own. Bin geometry is performance only, so tests vary it to check that
 /// counts do not depend on it; a window or cap below 1 is rejected.
-fn bin_geometry(bin_window: Option<i64>, bin_max_variants: Option<usize>) -> PyResult<(i64, usize)> {
+fn bin_geometry(bin_window: Option<i64>, bin_max_variants: Option<i64>) -> PyResult<(i64, usize)> {
     let window = bin_window.unwrap_or(BIN_WINDOW);
-    let cap = bin_max_variants.unwrap_or(BIN_MAX_VARIANTS);
+    let cap = bin_max_variants.unwrap_or(BIN_MAX_VARIANTS as i64);
     if window < 1 || cap < 1 {
         return Err(pyo3::exceptions::PyValueError::new_err(format!(
             "bin_window and bin_max_variants must be at least 1 (got {window}, {cap})"
         )));
     }
-    Ok((window, cap))
+    Ok((window, cap as usize))
 }
 
 /// A genomic region containing one or more co-located variants.
@@ -188,7 +188,7 @@ fn build_genomic_bins(
     // `bin_start + window` under-fetched a bin anchored by a deletion whose ref
     // span exceeds the window, dropping reads aligned past it.)
     let span_end = |idx: usize| -> i64 {
-        variants[idx].pos + variants[idx].ref_allele.len() as i64 + window / 2
+        (variants[idx].pos + variants[idx].ref_allele.len() as i64).saturating_add(window / 2)
     };
 
     let mut bins: Vec<GenomicBin> = Vec::new();
@@ -218,7 +218,7 @@ fn build_genomic_bins(
 
         let bin_start = variants[first_idx].pos;
         // Cover at least one window, but also the anchor variant's full ref span.
-        let mut bin_end = (bin_start + window).max(span_end(first_idx));
+        let mut bin_end = bin_start.saturating_add(window).max(span_end(first_idx));
         let mut indices = vec![first_idx];
         let mut max_repeat_span: i64 = variants[first_idx].repeat_span as i64;
 
@@ -254,7 +254,7 @@ fn build_genomic_bins(
         bins.push(GenomicBin {
             tid,
             start: (bin_start - padding).max(0),
-            end: bin_end + padding,
+            end: bin_end.saturating_add(padding),
             variant_indices: indices,
         });
 
@@ -434,7 +434,7 @@ fn count_bam_binned_core(
     reference_fasta: Option<&str>,
     library_type: &str,
     bin_window: Option<i64>,
-    bin_max_variants: Option<usize>,
+    bin_max_variants: Option<i64>,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     let (window, max_variants) = bin_geometry(bin_window, bin_max_variants)?;
     let backend = parse_alignment_backend(
@@ -908,7 +908,7 @@ pub fn count_bam_binned(
     reference_fasta: Option<&str>,
     library_type: &str,
     bin_window: Option<i64>,
-    bin_max_variants: Option<usize>,
+    bin_max_variants: Option<i64>,
 ) -> PyResult<Vec<BaseCounts>> {
     let (counts, _observations) = count_bam_binned_core(
         py, false, None, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -970,7 +970,7 @@ pub fn count_bam_binned_observations(
     library_type: &str,
     observations_path: Option<&str>,
     bin_window: Option<i64>,
-    bin_max_variants: Option<usize>,
+    bin_max_variants: Option<i64>,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     count_bam_binned_core(
         py, true, observations_path, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,

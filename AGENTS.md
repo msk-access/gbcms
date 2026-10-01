@@ -19,10 +19,10 @@ native Parquet, Rayon per-bin parallelism. Full module map: `.agents/rules/archi
 1. **Binning invariance.** Bin geometry is performance only: `count_bam_binned` gives
    identical counts (every field; BH q-values excepted when the set of rows changes)
    under any bin window or cap, one variant per bin, or one variant per call, so every
-   bin's fetch must hold each member's full read window, anchor included. Tests count
-   through `count_checked` (production vs one variant per bin) and
-   `tests/test_binning_invariance.py`; classification is checked against the read
-   census (`tests/census.py`), never a second engine. Contract:
+   bin's fetch must hold each member's full read window, anchor included. Checked by
+   `tests/test_binning_invariance.py` and the bin property test (every counting test's
+   `count_checked` adds the per-variant fetch window); classification is checked
+   against the read census (`tests/census.py`), never a second engine. Contract:
    `.agents/rules/architecture.md` §"Binning invariance".
 2. **One quality contract across alignment backends.** SW, PairHMM, and the WFA
    fast-path must apply the *same* base-quality gate. The fast path must not make a

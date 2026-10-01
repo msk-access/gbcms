@@ -20,6 +20,11 @@ How a read is judged:
   of each allele.
 - **Masking:** a base below `min_baseq`, or N, fits anything.
 - **Splices:** reading stops at a splice N, as if the read ended there.
+- **Soft clips:** for a pure indel, reading stops at a clip (the rule reads aligned
+  bases only); for other variants clipped bases are read where they sit.
+
+The tract is the census's own slide of the indel along the reference, not prep's
+`shift_region`, so a prep error cannot move the census with it.
 
 Two of the engine's decided rules are encoded here, because they are policy, not
 bases:
@@ -29,11 +34,16 @@ bases:
 
 Engine REF/ALT counts must equal the census REF/ALT counts. Every other verdict is
 neither, whether partial or uninformative. The census is exact for clean bases,
-with two limits:
+with three limits:
 - A pure indel's REF call stands on its CIGAR and extent, so a sequencing error or
   a masked base inside the window can make the two differ.
 - The census knows two haplotypes. A read carrying a third allele that ends before
   that allele differs from the ALT fits the ALT, while the engine reads its CIGAR.
+- A read that starts on the left flank base or inside the tract: the engine's
+  read-by-bases ALT rule needs an aligned base outside the window to read from,
+  and its REF window needs a margin base beyond a flank, which the census reading
+  from the flank does not ask for. The tests' reads start at or before that
+  margin base.
 """
 
 from __future__ import annotations
@@ -67,6 +77,7 @@ class Window:
 
     left: int
     right: int
+    indel: bool
     ref: str
     alt: str
     ref_right: str
@@ -99,14 +110,37 @@ def is_pure_indel(ref: str, alt: str) -> bool:
     return len(short) != len(long_) and len(short) >= 1 and long_.startswith(short)
 
 
+def tract(pos: int, ref: str, alt: str, contig: str) -> tuple[int, int]:
+    """A pure indel's tract `[lo, hi)`, found by sliding it along `contig` (no use
+    of prep): a deletion's removed bases over every equivalent start, an
+    insertion's junctions `lo..=hi` (empty, `lo == hi`, in unique sequence)."""
+    ref, alt, contig = ref.upper(), alt.upper(), contig.upper()
+    if len(alt) > len(ref):
+        bases, j = alt[len(ref) :], pos + len(ref)  # inserted before reference position j
+        lo, hi, x = j, j, bases
+        while hi < len(contig) and contig[hi] == x[0]:
+            x, hi = x[1:] + x[0], hi + 1
+        x = bases
+        while lo > 0 and contig[lo - 1] == x[-1]:
+            x, lo = x[-1] + x[:-1], lo - 1
+        return lo, hi
+    n, start = len(ref) - len(alt), pos + len(alt)  # deleted [start, start + n)
+    lo, hi = start, start
+    while hi + n < len(contig) and contig[hi] == contig[hi + n]:
+        hi += 1
+    while lo > 0 and contig[lo - 1] == contig[lo - 1 + n]:
+        lo -= 1
+    return lo, hi + n
+
+
 def window_for(variant, contig: str) -> Window:
-    """The census window for a prepared `Variant` on `contig` (the reference
-    sequence its positions index). A pure indel's anchors are the two flank bases
-    of its tract, which both alleles share."""
+    """The census window for a `Variant` on `contig` (the reference sequence its
+    positions index). A pure indel's anchors are the two flank bases of its tract,
+    which both alleles share; the tract is the census's own slide."""
     pos, ref, alt = variant.pos, variant.ref_allele.upper(), variant.alt_allele.upper()
     contig = contig.upper()
     if is_pure_indel(ref, alt):
-        lo, hi = variant.shift_region or (pos + 1, pos + len(ref))  # [lo, hi), the tract
+        lo, hi = tract(pos, ref, alt, contig)
         left, right = lo - 1, hi
     else:
         left, right = pos - 1, pos + len(ref)
@@ -119,6 +153,7 @@ def window_for(variant, contig: str) -> Window:
     return Window(
         left,
         right,
+        is_pure_indel(ref, alt),
         contig[left + 1 : right],
         hap[left + 1 : right + delta],
         contig[left + 1 : hi_ext],
@@ -138,13 +173,13 @@ def _first_difference(a: str, b: str) -> int | None:
     return next((i for i, (x, y) in enumerate(zip(a, b, strict=False)) if x != y), None)
 
 
-def _one_side(stretch: str, ref: str, alt: str) -> tuple[bool, bool]:
+def _one_side(stretch: str, ref: str, alt: str, margin: bool) -> tuple[bool, bool]:
     """(fits ALT, fits REF) for a stretch read from one anchor, against the same
-    length of each haplotype read from that anchor. REF needs one base past the
-    first difference."""
+    length of each haplotype read from that anchor. For a pure indel REF needs one
+    base past the first difference."""
     k = len(stretch)
     fits_alt, fits_ref = _fits(stretch, alt[:k]), _fits(stretch, ref[:k])
-    if fits_ref and not fits_alt:
+    if margin and fits_ref and not fits_alt:
         d = _first_difference(ref[:k], alt[:k])
         if d is not None and k < d + 2:
             return True, True  # ends on the deciding base: not decisive for REF
@@ -159,6 +194,22 @@ def _verdict(fits_alt: bool, fits_ref: bool) -> Verdict:
     if fits_ref:
         return Verdict.REF
     return Verdict.CONTRADICTS_BOTH
+
+
+def _clips(read) -> tuple[int, int]:
+    """Query offsets bounding the aligned bases: soft clips at either end lie
+    outside `[lead, trail)`."""
+    ops = read.cigartuples
+    lead = sum(n for op, n in _leading(ops) if op == 4)
+    trail = len(read.query_sequence) - sum(n for op, n in _leading(ops[::-1]) if op == 4)
+    return lead, trail
+
+
+def _leading(ops):
+    for op, n in ops:
+        if op not in (4, 5):
+            return
+        yield op, n
 
 
 def _splices(read) -> list[tuple[int, int, int]]:
@@ -192,15 +243,20 @@ def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
         stretch = bases[ql + 1 : qr]
         return _verdict(_fits(stretch, window.alt), _fits(stretch, window.ref))
     n = max(len(window.ref), len(window.alt))
+    # A pure indel's rules do not read soft-clipped bases (an aligner's clip of a
+    # pure indel's carrier is the clip-borne-carrier work, not this rule's).
+    lead, trail = _clips(read) if window.indel else (0, len(bases))
     sides = []
     if ql is not None:
-        end = min([q for q in stops if q > ql] + [len(bases)])
+        end = min([q for q in stops if q > ql] + [trail])
         stretch = bases[ql + 1 : min(ql + 1 + n, end)]
-        sides.append(_one_side(stretch, window.ref_right, window.alt_right))
+        sides.append(_one_side(stretch, window.ref_right, window.alt_right, window.indel))
     if qr is not None:
-        start = max([q for q in stops if q <= qr] + [0])
+        start = max([q for q in stops if q <= qr] + [lead])
         stretch = bases[max(qr - n, start) : qr]
-        sides.append(_one_side(stretch[::-1], window.ref_left[::-1], window.alt_left[::-1]))
+        sides.append(
+            _one_side(stretch[::-1], window.ref_left[::-1], window.alt_left[::-1], window.indel)
+        )
     if not sides:
         covered = any(a <= window.left + 1 and b >= window.right for _, a, b in splices)
         return Verdict.SPLICED if covered else Verdict.NOT_ANCHORED
@@ -231,12 +287,18 @@ def census(
     return result
 
 
-def assert_matches(counts, result: Census, what: str = "") -> None:
-    """Engine REF and ALT equal the census's; everything else is neither."""
+def assert_matches(counts, result: Census, what: str = "", depth: bool = True) -> None:
+    """Engine REF and ALT equal the census's; everything else is neither. With
+    `depth`, DP equals the census's read count (unpaired DNA reads over the anchor,
+    none admitted by clipped bases or spliced over it)."""
     assert (counts.rd, counts.ad) == (result.rd, result.ad), (
         f"{what}: engine rd/ad {counts.rd}/{counts.ad}, census {result.rd}/{result.ad} "
         f"({dict(result.counts)})"
     )
+    if depth:
+        assert counts.dp == len(
+            result.verdicts
+        ), f"{what}: engine dp {counts.dp}, census reads {len(result.verdicts)}"
     assert counts.dp >= counts.rd + counts.ad
     assert counts.dpf >= counts.rdf + counts.adf
     assert counts.rd == counts.rd_fwd + counts.rd_rev

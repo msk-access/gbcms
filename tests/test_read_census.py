@@ -27,7 +27,7 @@ its CIGAR's length and calls it another allele.
 import random
 
 import pytest
-from census import Verdict, assert_matches, census, judge, window_for
+from census import Verdict, assert_matches, census, judge, tract, window_for
 from helpers import make_read, write_contig
 
 from gbcms import _rs as gbcms_rs
@@ -65,10 +65,11 @@ def _contig(motif, seed=189):
     return "".join(seq)
 
 
-def _read(contig, start, length, events):
+def _read(contig, start, length, events, aligned=None):
     """A read of `length` bases from `start` with `events` placed before their
-    reference positions: (pos, "I", bases) or (pos, "D", n). None when the read
-    would end inside an insertion or in a deletion."""
+    reference positions: (pos, "I", bases) or (pos, "D", n), soft-clipped after
+    `aligned` bases when given. None when the aligned part would end inside an
+    insertion or in a deletion."""
     seq, cigar, p = "", [], start
     for pos, op, x in events:
         if pos > p:
@@ -83,14 +84,15 @@ def _read(contig, start, length, events):
             p += x
     seq += contig[p : p + length]
     cigar.append([0, length])
+    keep = length if aligned is None else min(aligned, length)
     out, q = [], 0
     for op, n in cigar:
-        if q >= length:
+        if q >= keep:
             break
         if op == 2:
             out.append([2, n])
             continue
-        take = min(n, length - q)
+        take = min(n, keep - q)
         if op == 1 and take < n:
             return None
         out.append([op, take])
@@ -103,6 +105,8 @@ def _read(contig, start, length, events):
             merged[-1][1] += n
         else:
             merged.append([op, n])
+    if keep < length:
+        merged.append([4, length - keep])
     return seq[:length], tuple(map(tuple, merged))
 
 
@@ -110,8 +114,8 @@ def _engine_and_census(tmp_path, name, contig, ref, alt, shapes):
     """Reads from `shapes` [(start, length, events)] in one BAM; the engine's
     counts and the census for the row."""
     reads = []
-    for i, (s, n, events) in enumerate(shapes):
-        built = _read(contig, s, n, events)
+    for i, (s, n, events, *aligned) in enumerate(shapes):
+        built = _read(contig, s, n, events, *aligned)
         if built is not None:
             reads.append(make_read(f"{name}{i}", built[0], s, built[1]))
     fa, bam = write_contig(tmp_path, contig, reads, name)
@@ -185,24 +189,26 @@ def test_reading_stops_at_a_splice(tmp_path):
 
 
 # ── The engine against the census ─────────────────────────────────────────────
-def _placements(contig, ref, alt, prepared):
-    """Equivalent junctions (insertions) or starts (deletions) of the indel."""
-    lo, hi = prepared.shift_region
+def _placements(contig, ref, alt):
+    """Equivalent junctions (insertions) or starts (deletions) of the indel, from
+    the census's own slide."""
+    lo, hi = tract(A, ref, alt, contig)
     n = abs(len(alt) - len(ref))
     return list(range(lo, hi + 1)) if len(alt) > len(ref) else list(range(lo, hi - n + 1))
 
 
-def _settled_shapes(contig, ref, alt, prepared, rng):
-    """(class, [(start, length, events)]) for the settled classes."""
-    lo, hi = prepared.shift_region
+def _settled_shapes(contig, ref, alt, rng):
+    """(class, [(start, length, events[, aligned])]) for the settled classes. Every
+    read starts at or before the margin base left of the tract's flank."""
+    lo, hi = tract(A, ref, alt, contig)
     ins = len(alt) > len(ref)
     n = abs(len(alt) - len(ref))
-    shapes = {"ref": [], "alt": [], "wrong": [], "elsewhere": []}
+    shapes = {"ref": [], "alt": [], "wrong": [], "elsewhere": [], "clipped": []}
     for _ in range(40):
-        s = A - rng.randint(1, 60)  # every read overlaps the anchor
+        s = lo - 2 - rng.randint(0, 59)  # every read overlaps the anchor
         length = rng.randint(A + 1 - s, 100)  # and ends anywhere past it
         shapes["ref"].append((s, length, []))
-        j = rng.choice(_placements(contig, ref, alt, prepared))
+        j = rng.choice(_placements(contig, ref, alt))
         if ins:
             # The inserted bases are the haplotype's at this junction (a rotation).
             k = j - (A + 1)
@@ -217,22 +223,33 @@ def _settled_shapes(contig, ref, alt, prepared, rng):
             else:
                 shapes["wrong"].append((s, 100, [(A + 1, "D", n + 1)]))  # at the junction
         far = hi + 6 + rng.randint(0, 10)  # well past the tract and its flank
-        shapes["elsewhere"].append(
-            (s, max(length, far - s + 20), [(far, "I", alt[1:])] if ins else [(far, "D", n)])
-        )
+        far_event = [(far, "I", alt[1:])] if ins else [(far, "D", n)]
+        shapes["elsewhere"].append((s, rng.randint(A + 1 - s, far - s + 20), far_event))
+        # Soft-clipped from a point past the anchor: a pure indel's rules read only
+        # aligned bases, so the clipped bases decide nothing.
+        events = [] if rng.random() < 0.5 else shapes["alt"][-1][2]
+        shapes["clipped"].append((s, 100, events, rng.randint(A + 1 - s, 100)))
     return shapes
 
 
 @pytest.mark.parametrize("row", sorted(ROWS))
-def test_engine_counts_equal_the_census(tmp_path, row):
+def test_prep_finds_the_census_tract(tmp_path, row):
+    """Prep's shift region is the tract the census slides independently."""
     motif, ref, alt = ROWS[row]
     contig = _contig(motif)
     fa, _ = write_contig(tmp_path, contig, [], "prep")
     (pv,) = gbcms_rs.prepare_variants(
         [gbcms_rs.Variant("1", A, ref, alt, "X")], fa, 5, False, 1, True
     )
+    assert tuple(pv.variant.shift_region) == tract(A, ref, alt, contig)
+
+
+@pytest.mark.parametrize("row", sorted(ROWS))
+def test_engine_counts_equal_the_census(tmp_path, row):
+    motif, ref, alt = ROWS[row]
+    contig = _contig(motif)
     rng = random.Random(row)
-    for cls, shapes in _settled_shapes(contig, ref, alt, pv.variant, rng).items():
+    for cls, shapes in _settled_shapes(contig, ref, alt, rng).items():
         counts, result, _, n_reads = _engine_and_census(
             tmp_path, f"{row}_{cls}", contig, ref, alt, shapes
         )
@@ -274,3 +291,30 @@ def test_c27_the_alt_split_across_ops(tmp_path):
 @pytest.mark.xfail(strict=True, reason="C28 #202: a read deleting the anchor falls back to Phase 3")
 def test_c28_a_read_deleting_the_anchor(tmp_path):
     _open_case(tmp_path, "hp-AA", [(A, "D", 3)], "c28")
+
+
+def test_a_pure_indels_clipped_bases_decide_nothing(tmp_path):
+    """The rule reads aligned bases only: a REF-haplotype read aligned up to the run
+    and soft-clipped from it fits both alleles, as the engine counts it."""
+    motif, ref, alt = ROWS["hp+A"]
+    contig = _contig(motif)
+    s = A - 50
+    seq, cigar = _read(contig, s, 100, [], aligned=A + 1 - s)
+    fa, _ = write_contig(tmp_path, contig, [], "clip")
+    (pv,) = gbcms_rs.prepare_variants(
+        [gbcms_rs.Variant("1", A, ref, alt, "X")], fa, 5, False, 1, True
+    )
+    assert judge(make_read("c", seq, s, cigar), window_for(pv.variant, contig)) == Verdict.FITS_BOTH
+
+
+def test_a_substitution_needs_no_margin(tmp_path):
+    """An SNV's REF read ending on the SNV's base reads it: REF (the margin is a
+    pure indel's rule)."""
+    contig = _contig("GCT")
+    fa, _ = write_contig(tmp_path, contig, [], "snv")
+    (pv,) = gbcms_rs.prepare_variants(
+        [gbcms_rs.Variant("1", A + 1, "C", "A", "SNP")], fa, 5, False, 1, True
+    )
+    s = A - 50
+    read = make_read("s", contig[s : A + 2], s, ((0, A + 2 - s),))  # ends on the C
+    assert judge(read, window_for(pv.variant, contig)) == Verdict.REF

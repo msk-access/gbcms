@@ -154,9 +154,6 @@ def write_contig(tmp_path, contig, reads, name="s", chrom="1"):
 ROW_SET_FIELDS = frozenset({"mfsd_qval_alt_ref", "asjd_qval"})
 
 
-_PLAIN = (int, float, str, bytes, type(None))
-
-
 def _fields(obj) -> list[str]:
     """The public data attributes of a pyo3 counts object."""
     return sorted(n for n in dir(obj) if not n.startswith("_") and not callable(getattr(obj, n)))
@@ -167,16 +164,13 @@ def _same(a, b) -> bool:
         if math.isnan(a) or math.isnan(b):
             return math.isnan(a) and math.isnan(b)
         # Summation order over hash maps moves the last ulps of some statistics;
-        # the outputs round them far coarser.
-        return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12)
+        # the outputs round them far coarser. Relative only: p-values can be tiny.
+        return math.isclose(a, b, rel_tol=1e-9, abs_tol=0.0)
     if isinstance(a, dict) and isinstance(b, dict):
         return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
     if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
         return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b, strict=True))
-    if isinstance(a, _PLAIN) or isinstance(b, _PLAIN):
-        return a == b
-    # A nested pyo3 object (per-transcript counts): compare its fields.
-    return type(a) is type(b) and all(_same(getattr(a, f), getattr(b, f)) for f in _fields(a))
+    return type(a) is type(b) and a == b
 
 
 def assert_same_counts(got: list, want: list, what: str, skip=frozenset()) -> None:
