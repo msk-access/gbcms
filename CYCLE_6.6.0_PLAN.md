@@ -1302,6 +1302,32 @@ write raises. Use context managers.
 `is_indel` reduces to `ref_len != alt_len`; its second clause is exactly
 `is_mnp`. Simplify it.
 
+### H3 (#204) — code-quality sweep of the cycle's code · [after T1]
+Operator request (2026-10-01). Audited the same day by three read-only reviews;
+the ranked work list is on #204. In brief:
+- **A. Silent failures that change counts** (test first, measured):
+  - S1: an ALT call stands on placement when the reference near a pure indel is
+    unavailable (contig ends, unprepared variants);
+  - S2: anchor-changing insertions fall back silently from the exact-carrier
+    rule in long runs, because prep never widens their reference;
+  - S4, QUAL `*` read as Q255, joins C19 #182.
+- **B. Degraded modes with no warning:** unprepared variants (S3).
+- **C. Monitoring:** carry the deciding rule on `ClassifyResult`; tally per
+  variant on the Phase stats line; warn once per variant on unjudged ALT and
+  carrier fallback; INFO totals per pass; prep summary counts. No new columns.
+- **D. Logging:** levels, misleading texts, 1-based loci and qnames, named traces
+  for every decision path.
+- **E. Duplication:** CIGAR walks, end-of-walk resolution, the read loops'
+  repeated rules, helpers.
+- **F. Unused or dead code:** a dead parameter; work computed and then discarded
+  (the decomposed twin, `observed_allele` in observations mode); dead branches.
+- **G. Comments:** stale ones, and ticket labels.
+- **H. Need a decision:** the allele-kind enum vs RNA triage; one fragment class
+  shared by observations and mFSD; uppercasing `ref_context` (changes SW on
+  soft-masked FASTAs); `mfsd_ref_llr` ulp nondeterminism.
+
+Pure refactors must leave the acceptance output byte-identical.
+
 ## Performance (M5 leftovers)
 
 ### P1 — Deep-bin fetch reduction (M5b) (#150, under #134) · L
