@@ -256,7 +256,9 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
 /// Whether the read's bases between its nearest aligned base left of a pure indel's
 /// discrimination window and its nearest aligned base right of it (its own gap may
 /// cover a flank base) are exactly the ALT over that stretch (bases below
-/// `min_baseq`, or N, fit anything; at least one base read). Judges a read whose
+/// `min_baseq`, or N, fit anything; at least one base read), and wherever the
+/// haplotype its own alignment proposes differs from the ALT the read shows the
+/// ALT's base unmasked (else it fits another allele as well). Judges a read whose
 /// CIGAR writes the event somewhere it gives another haplotype: compensating
 /// mismatches can make its bases the ALT nonetheless.
 pub(crate) fn read_spells_alt(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
@@ -290,11 +292,48 @@ pub(crate) fn read_spells_alt(record: &Record, v: &Variant, quals: &[u8], min_ba
     if qr <= ql || qr - ql - 1 != altw.len() {
         return false;
     }
+    // The haplotype the read's own alignment proposes between the anchors: the
+    // reference where it aligns, its bases where it inserts.
     let seq = record.seq().as_bytes();
+    let mut claimed: Vec<u8> = Vec::with_capacity(altw.len());
+    let (mut rp, mut qp) = (record.pos(), 0usize);
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
+                for k in 0..*n as usize {
+                    if qp + k > ql && qp + k < qr {
+                        claimed.push(refw[(rp + k as i64 - (left + 1)) as usize]);
+                    }
+                }
+                rp += *n as i64;
+                qp += *n as usize;
+            }
+            Cigar::Ins(n) | Cigar::SoftClip(n) => {
+                for k in 0..*n as usize {
+                    if qp + k > ql && qp + k < qr {
+                        claimed.push(seq[qp + k].to_ascii_uppercase());
+                    }
+                }
+                qp += *n as usize;
+            }
+            Cigar::Del(n) | Cigar::RefSkip(n) => rp += *n as i64,
+            _ => {}
+        }
+    }
+    if claimed.len() != altw.len() {
+        return false;
+    }
+    // Every unmasked base fits the ALT, and wherever the alignment's haplotype and
+    // the ALT disagree the read must say which, with an unmasked base: a masked one
+    // there fits both alleles (an N where "deleted a C" and "deleted a G" differ).
     let mut read_any = false;
     for (i, q) in (ql + 1..qr).enumerate() {
         let b = seq[q].to_ascii_uppercase();
-        if b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq) {
+        let masked = b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq);
+        if masked {
+            if claimed[i] != altw[i] {
+                return false;
+            }
             continue;
         }
         if b != altw[i] {

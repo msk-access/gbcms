@@ -36,8 +36,6 @@ from test_shifted_indel_carriers_contract import (
     _ops,
 )
 
-RED = pytest.mark.xfail(strict=True, reason="cluster 1: masked-base ambiguity")
-
 SPAN8 = "ATCGGATA"  # a unique 8bp stretch between G and C
 UNIQUE8 = _contig("G" + SPAN8 + "C")
 INSERT10 = "ACGTTGCATC"  # not low-complexity; differs from the flank at once
@@ -206,7 +204,6 @@ def test_soft_clipped_bases_behind_a_hard_clip_are_not_read(tmp_path):
     assert (c.rd, c.ad, c.partial_alt) == (5, 0, 0)
 
 
-@RED
 def test_a_misplaced_deletion_ambiguous_at_a_masked_base_is_not_alt(tmp_path):
     """CG>C deletes a G of the run after C C. The carriers' CIGAR deletes the first
     C instead, and the base where "deleted a C" (C GGGGGGG) and "deleted a G"
