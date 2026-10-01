@@ -154,3 +154,24 @@ def test_an_anchor_changing_insertion_counts_the_same_in_a_long_run(tmp_path):
     short = _ins_snv(tmp_path, 30, "run30")
     assert short[0] == 6, short  # only the REF reads
     assert _ins_snv(tmp_path, 80, "run80") == short
+
+
+@pytest.mark.xfail(strict=True, reason="H3 decision 1: red until fixed")
+def test_a_read_spliced_over_an_anchor_changing_insertions_anchor_is_out_of_depth(tmp_path):
+    """A>CCC changes its anchor base, so the anchor is what a read must show: an RNA
+    read spliced over it, resuming at the next base, observes nothing of the allele
+    and leaves depth, as for any delins (operator decision, 2026-10-01)."""
+    rng = random.Random(3)
+    ref = "".join(rng.choice("GT") for _ in range(900))
+    ref = ref[:A] + "A" + ref[A + 1 :]
+    reads = []
+    for i in range(5):
+        s = A - 340 + i
+        seq = ref[s : s + 40] + ref[A + 1 : A + 61]
+        reads.append(make_read(f"r{i}", seq, s, ((0, 40), (3, A + 1 - (s + 40)), (0, 60))))
+    fa, bam = write_contig(tmp_path, ref, reads, "spliced")
+    v = _prepared(fa, "A", "CCC")
+    (c,) = count_bam_checked(
+        bam, [v], [None], 0, 0, True, True, True, False, False, False, 1, mode="rna"
+    )
+    assert (c.dp, c.splice_skip_excluded) == (0, 5)
