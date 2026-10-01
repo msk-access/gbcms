@@ -786,3 +786,7 @@ def test_observing_without_a_reference_is_refused(tmp_path):
     for missing in ({}, {"reference_fasta": None}, {"reference_fasta": ""}):
         with pytest.raises(ValueError, match="reference_fasta"):
             gbcms.observe_molecules(bam, [_py_variant()], **missing)
+    # Path("") is Path("."): a directory, like any other, is not a reference
+    for not_a_file in (Path(""), tmp_path, str(tmp_path)):
+        with pytest.raises(ValueError, match="reference_fasta"):
+            gbcms.observe_molecules(bam, [_py_variant()], reference_fasta=not_a_file)

@@ -220,6 +220,8 @@ def observe_molecules(
             "observe_molecules needs reference_fasta (or a config that carries one): variants "
             "are normalized and judged against the reference, as in the CLI"
         )
+    if not Path(reference_fasta).is_file():  # Path("") is ".", a directory
+        raise ValueError(f"reference_fasta is not a file: {reference_fasta}")
 
     rs_variants = [_RsVariant(v.chrom, v.pos, v.ref, v.alt, v.variant_type.value) for v in variants]
 

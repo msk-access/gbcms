@@ -426,6 +426,15 @@ class GbcmsBaseConfig(BaseModel):
             raise ValueError(f"File not found: {v}")
         return v
 
+    @field_validator("reference_fasta")
+    @classmethod
+    def validate_reference_is_file(cls, v: Path) -> Path:
+        """The reference is read by its index, so it must be a file: a directory (an
+        empty path is `.`) would otherwise fail deep in the engine."""
+        if not v.is_file():
+            raise ValueError(f"The reference is not a file: {v}")
+        return v
+
     @model_validator(mode="after")
     def validate_bams(self) -> "GbcmsBaseConfig":
         """Validate that all BAM files exist."""
