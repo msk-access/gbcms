@@ -245,3 +245,27 @@ def test_identical_runs_give_identical_mfsd_bits(tmp_path):
         (c,) = _rs.count_bam_binned(bam, [v], [None], *ARGS, mfsd=True)
         seen.add(tuple(struct.pack("d", getattr(c, f)) for f in fields))
     assert len(seen) == 1, f"{len(seen)} distinct results over 20 runs"
+
+
+@pytest.mark.xfail(strict=True, reason="H3 review: red until fixed")
+def test_a_decomposed_twin_in_a_long_run_is_judged_by_the_exact_carrier_rule(tmp_path, caplog):
+    """Prep gives the homopolymer twin (AAA>C read as AAA>AAC) its own widened
+    reference, so in a long run the exact-carrier rule judges the twin's reads too
+    rather than falling back, with a warning naming an allele the user never gave."""
+    run = 80
+    ref = _flank(41) + "G" + "A" * run + "C" + _flank(42)
+    end = A + 1 + run  # the C
+    pos = end - 3  # REF: the run's last three A's
+    reads = []
+    for i in range(6):
+        s = pos - 60 + i
+        seq = ref[s : end - 2] + ref[end : s + 102]
+        reads.append(make_read(f"d{i}", seq, s, ((0, end - 2 - s), (2, 2), (0, s + 102 - end))))
+        reads.append(make_read(f"r{i}", ref[s : s + 100], s, ((0, 100),)))
+    fa, bam = write_contig(tmp_path, ref, reads, "twin")
+    (pv,) = _rs.prepare_variants([_rs.Variant("1", pos, "AAA", "C", "X")], fa, 5, False, 1, True)
+    assert pv.decomposed_variant is not None and pv.decomposed_variant.event_ref is not None
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        count_bam_checked(bam, [pv.variant], [pv.decomposed_variant], *ARGS)
+    assert not [r for r in caplog.records if "exact-carrier rule" in r.getMessage()]
