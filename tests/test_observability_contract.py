@@ -25,7 +25,7 @@ import random
 import types
 
 import pysam
-from helpers import make_read, read_maf_output
+from helpers import count_bam_checked, make_read, read_maf_output
 from typer.testing import CliRunner
 
 from gbcms import _rs
@@ -120,13 +120,12 @@ def test_well_formed_context_never_falls_back(tmp_path):
     assert c.sw_fallback_reads == 0
 
 
-def test_sw_fallback_counter_parity_with_legacy(tmp_path):
+def test_sw_fallback_counter_does_not_depend_on_bin_geometry(tmp_path):
     bam, misplaced, _ = _sw_setup(tmp_path)
-    (b,) = _binned(bam, [misplaced])
-    (legacy,) = _rs.count_bam(
+    (c,) = count_bam_checked(
         str(bam), [misplaced], [None], 20, 20, True, False, False, False, False, False, 1
     )
-    assert b.sw_fallback_reads == legacy.sw_fallback_reads == 6
+    assert c.sw_fallback_reads == 6
 
 
 def test_sw_fallback_counts_only_depth_reads(tmp_path):
@@ -177,17 +176,17 @@ def _no_context_setup(tmp_path):
 def test_missing_context_reads_are_flagged_not_silent(tmp_path, caplog):
     """Without a reference context the PairHMM matrix, and SW, cannot run:
     reads needing Phase 3 end NEITHER. That loss must be counted and warned
-    (with the real reason), not silent — in both the binned and legacy paths."""
+    (with the real reason), not silent."""
     bam, variant = _no_context_setup(tmp_path)
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
         (c,) = _binned(bam, [variant])
     assert c.sw_fallback_reads == 5
     warns = [r.message for r in caplog.records if "SW_FALLBACK(5)" in r.message]
     assert len(warns) == 1 and "no reference context" in warns[0], warns
-    (legacy,) = _rs.count_bam(
+    (checked,) = count_bam_checked(
         str(bam), [variant], [None], 20, 20, True, False, False, False, False, False, 1
     )
-    assert legacy.sw_fallback_reads == 5
+    assert checked.sw_fallback_reads == 5
     (sw,) = _binned(bam, [variant], backend="sw")
     assert sw.sw_fallback_reads == 0, "explicit SW backend: SW is chosen, not fallen into"
 

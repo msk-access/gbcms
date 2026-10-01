@@ -19,7 +19,7 @@ import random
 
 import pysam
 import pytest
-from helpers import count_both, make_read, read_maf_output
+from helpers import count_checked, make_read, read_maf_output
 from typer.testing import CliRunner
 
 from gbcms import _rs as gbcms_rs
@@ -93,7 +93,7 @@ def test_reads_ending_inside_a_homopolymer_deletion_are_uninformative(tmp_path):
     ref = _ref(TRACT)
     fa, bam = _files(tmp_path, ref, _deletion_reads(ref))
     (v,) = _prepared(fa, [gbcms_rs.Variant("1", 199, "CA", "C", "DELETION")])
-    c = count_both(bam, [v])[0]
+    c = count_checked(bam, [v])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 10)
     assert c.dp == 40  # the 20 uninformative reads stay in depth
@@ -120,7 +120,7 @@ def test_reads_ending_inside_a_homopolymer_insertion_are_uninformative(tmp_path)
         reads.append(make_read(f"alt_part{i}", alt[s : s + READ], s, ((0, READ),)))
     fa, bam = _files(tmp_path, ref, reads)
     (v,) = _prepared(fa, [gbcms_rs.Variant("1", 199, "C", "CA", "INSERTION")])
-    c = count_both(bam, [v])[0]
+    c = count_checked(bam, [v])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 10)
     assert c.dp == 40
@@ -135,7 +135,7 @@ def test_spanning_reads_in_unique_sequence_stay_ref(tmp_path):
     ]
     fa, bam = _files(tmp_path, ref, reads)
     (v,) = _prepared(fa, [gbcms_rs.Variant("1", 199, ref[199:202], ref[199], "DELETION")])
-    c = count_both(bam, [v])[0]
+    c = count_checked(bam, [v])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 0)
 
@@ -149,7 +149,7 @@ def test_snv_counts_unchanged_by_the_window(tmp_path):
     ]
     fa, bam = _files(tmp_path, ref, reads)
     (v,) = _prepared(fa, [gbcms_rs.Variant("1", 205, "A", "C", "SNP")])
-    c = count_both(bam, [v])[0]
+    c = count_checked(bam, [v])[0]
     assert (c.rd, c.ad) == (10, 0)
 
 
@@ -323,7 +323,7 @@ def test_tandem_duplication_longer_than_the_context_pad(tmp_path):
     )
     lo, hi = pv.variant.shift_region
     assert hi - lo >= 30
-    c = count_both(bam, [pv.variant])[0]
+    c = count_checked(bam, [pv.variant])[0]
     _invariants(c)
     assert (c.rd, c.ad) == (10, 10)
     assert c.dp == 40

@@ -30,7 +30,7 @@ import glob
 import random
 
 import pysam
-from helpers import make_read, read_maf_output
+from helpers import count_bam_checked, make_read, read_maf_output
 from typer.testing import CliRunner
 
 from gbcms.cli import app
@@ -515,12 +515,11 @@ def test_spliced_over_delins_carries_no_information(tmp_path):
     ), f"spliced-over delins reads must not count DP, got dp={r['total_count']}"
 
 
-def test_legacy_parity_with_spliced_reads(tmp_path):
-    """The binned↔legacy parity oracle holds for N-CIGAR reads: the
-    splice-skip exclusion, the post-N deletion evidence, and span-aligned
-    REF testimony all live in the shared checker (count_both asserts every
-    parity field)."""
-    from helpers import build_bam, count_both
+def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
+    """N-CIGAR reads: the splice-skip exclusion, the post-N deletion evidence and
+    span-aligned REF testimony count the same with one variant per bin
+    (count_checked compares every field)."""
+    from helpers import build_bam, count_checked
 
     from gbcms._rs import Variant
 
@@ -557,21 +556,19 @@ def test_legacy_parity_with_spliced_reads(tmp_path):
         ref_context=ref[anchor - pad : p0 + 2 + pad],
         ref_context_start=anchor - pad,
     )
-    c = count_both(bam, [v], min_mapq=0, min_baseq=0)[0]
+    c = count_checked(bam, [v], min_mapq=0, min_baseq=0)[0]
     assert c.dp >= c.rd + c.ad
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
     assert c.ad == c.ad_fwd + c.ad_rev
-    assert c.ad == 4, f"M-N-D-M carriers must count ALT in both paths, got ad={c.ad}"
+    assert c.ad == 4, f"M-N-D-M carriers must count ALT, got ad={c.ad}"
     assert c.rd == 8, f"pre-mRNA reads AND span-aligned junction reads count REF, got rd={c.rd}"
 
 
 def test_mq0_tracking_precedes_strandedness_filter(tmp_path):
     """mq0_count is a physical-locus red flag: an antisense MAPQ-0 read is
-    still a read at the locus, so it must be tallied BEFORE the strandedness
-    filter drops it — in BOTH engine paths. The binned path previously
-    filtered strandedness first, so its mq0_count diverged from legacy for
-    stranded RNA libraries."""
+    still a read at the locus, so it is tallied before the strandedness filter
+    drops it from counting."""
     from helpers import build_bam
 
     from gbcms import _rs
@@ -610,21 +607,14 @@ def test_mq0_tracking_precedes_strandedness_filter(tmp_path):
         "enforce_strandedness": True,
         "strandedness": "reverse",
     }
-    legacy = _rs.count_bam(bam, [v], [None], **kwargs)[0]
-    binned = _rs.count_bam_binned(bam, [v], [None], **kwargs)[0]
-    assert (
-        legacy.mq0_count == 1
-    ), f"legacy must tally the antisense MAPQ-0 read, got {legacy.mq0_count}"
-    assert (
-        binned.mq0_count == legacy.mq0_count
-    ), f"binned mq0_count ({binned.mq0_count}) diverges from legacy ({legacy.mq0_count})"
-    # The antisense read must still be excluded from counting proper.
-    for c in (legacy, binned):
-        assert c.dp == 1 and c.rd == 1 and c.ad == 0
-        assert c.dp >= c.rd + c.ad
-        assert c.dpf >= c.rdf + c.adf
-        assert c.rd == c.rd_fwd + c.rd_rev
-        assert c.ad == c.ad_fwd + c.ad_rev
+    c = count_bam_checked(bam, [v], [None], **kwargs)[0]
+    assert c.mq0_count == 1, f"the antisense MAPQ-0 read must be tallied, got {c.mq0_count}"
+    # The antisense read is still excluded from counting proper.
+    assert c.dp == 1 and c.rd == 1 and c.ad == 0
+    assert c.dp >= c.rd + c.ad
+    assert c.dpf >= c.rdf + c.adf
+    assert c.rd == c.rd_fwd + c.rd_rev
+    assert c.ad == c.ad_fwd + c.ad_rev
 
 
 def test_large_deletion_band_near_junction(tmp_path):

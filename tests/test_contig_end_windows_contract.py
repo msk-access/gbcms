@@ -21,7 +21,7 @@ import random
 
 import pysam
 import pytest
-from helpers import count_both, make_read
+from helpers import count_checked, make_read
 
 from gbcms import _rs as gbcms_rs
 
@@ -109,7 +109,7 @@ def test_carriers_are_counted_by_the_haplotype_matrix(tmp_path, site):
     ref = _contig(anchor)
     fa, bam = _files(tmp_path, ref, _reads(ref, anchor))
     (pv,) = gbcms_rs.prepare_variants([_right_shifted(ref, anchor)], fa, 5, False, 1, True)
-    (c,) = count_both(bam, [pv.variant])
+    (c,) = count_checked(bam, [pv.variant])
     assert c.dp >= c.rd + c.ad
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
@@ -174,7 +174,7 @@ def test_depth_near_the_contig_end_counts_as_mid_contig(tmp_path, site):
         d.mkdir()
         fa, bam = _files(d, ref, _clipped_carriers(ref, anchor))
         (pv,) = gbcms_rs.prepare_variants([_right_shifted(ref, anchor)], fa, 5, False, 1, True)
-        (c,) = count_both(bam, [pv.variant])
+        (c,) = count_checked(bam, [pv.variant])
         counts[label] = (c.dp, c.rd, c.ad)
     assert counts[site] == counts["mid-contig (guard)"] == (10, 5, 0), counts
 
@@ -212,7 +212,7 @@ def test_a_complex_variant_is_judged_near_the_contig_end_as_mid_contig(tmp_path,
         (pv,) = gbcms_rs.prepare_variants(
             [gbcms_rs.Variant("1", p, ref[p : p + 2], "TCC", "COMPLEX")], fa, 5, False, 1, True
         )
-        (c,) = count_both(bam, [pv.variant])
+        (c,) = count_checked(bam, [pv.variant])
         counts[label] = (c.rd, c.ad, c.partial_alt, c.dp)
     assert counts["contig end"] == counts["mid-contig"], counts
     assert counts["contig end"][1] <= 5, "a read carrying another allele is never ALT"

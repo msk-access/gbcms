@@ -84,8 +84,7 @@ def test_rna_baq_keeps_the_variants_own_indel_reads_at_q37(tmp_path, shape):
 
 @pytest.mark.parametrize("shape", list(SHAPES))
 def test_dna_baq_keeps_the_variants_own_indel_reads_at_q37(tmp_path, shape):
-    """The same with BAQ opted into in DNA mode (the legacy parity path never runs
-    BAQ, so the binned counter is called directly)."""
+    """The same with BAQ opted into in DNA mode."""
     ref_len, alt_len = SHAPES[shape]
     ref, ref_allele, alt, reads = _case(ref_len, alt_len, 37)
     fa, bam = _files(tmp_path, ref, reads)

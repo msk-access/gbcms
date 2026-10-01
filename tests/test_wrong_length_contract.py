@@ -20,14 +20,14 @@ full ALT call:
     surfaced, never silently absorbed)
   - delins/complex variants -> Phase-3 (unchanged)
 
-Every counting assertion runs through count_both (binned<->legacy parity) and
+Every counting assertion runs through count_checked (binning invariance) and
 asserts the counting invariants.
 """
 
 import random
 
 import pysam
-from helpers import count_both, make_read
+from helpers import count_checked, make_read
 
 from gbcms._rs import Variant
 
@@ -133,7 +133,7 @@ def _ins_reads(ref, anchor, ins_seq, n=6, rl=100):
 
 
 def _count(bam, variant):
-    c = count_both(bam, [variant], min_mapq=0, min_baseq=0)[0]
+    c = count_checked(bam, [variant], min_mapq=0, min_baseq=0)[0]
     assert c.dp >= c.rd + c.ad
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev

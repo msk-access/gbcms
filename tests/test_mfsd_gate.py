@@ -12,7 +12,7 @@ cost under Nextflow fan-out, where N gbcms processes run concurrently.
 
 import pysam
 import pytest
-from helpers import PARITY_FIELDS
+from helpers import COUNT_FIELDS
 
 from gbcms._rs import Variant, count_bam_binned
 
@@ -108,5 +108,5 @@ def test_mfsd_gate_is_count_neutral(paired_bam):
     """Gating mFSD must not change any allele/depth count — only the mFSD fields."""
     off = _count(paired_bam, mfsd=False)
     on = _count(paired_bam, mfsd=True)
-    for field in PARITY_FIELDS:
+    for field in COUNT_FIELDS:
         assert getattr(off, field) == getattr(on, field), f"{field} drifted when mFSD toggled"
