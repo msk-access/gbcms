@@ -20,6 +20,9 @@ data, and each breaks "judge a read's bases, not its placement":
 Committed red (xfail-strict) before the implementation; flipped green with it.
 """
 
+import random
+
+import pytest
 from test_shifted_indel_carriers_contract import (
     ANCHOR_SUB,
     DUP,
@@ -33,9 +36,15 @@ from test_shifted_indel_carriers_contract import (
     _ops,
 )
 
+RED = pytest.mark.xfail(strict=True, reason="cluster 1: review findings")
+
 SPAN8 = "ATCGGATA"  # a unique 8bp stretch between G and C
 UNIQUE8 = _contig("G" + SPAN8 + "C")
 INSERT10 = "ACGTTGCATC"  # not low-complexity; differs from the flank at once
+COPY66 = "A" + "".join(random.Random(66).choice("ACGT") for _ in range(64)) + "C"
+ITD66 = _contig("G" + COPY66 + "T")  # the ALT duplicates this 66bp copy in tandem
+SPAN57 = "A" + "".join(random.Random(57).choice("ACGT") for _ in range(55)) + "A"
+UNIQUE57 = _contig("G" + SPAN57 + "C")
 
 
 # ── C20: an uninformative carrier is not ALT unless its bases discriminate ──────
@@ -89,11 +98,27 @@ def test_a_split_minus_two_read_is_another_allele_at_the_junction(tmp_path):
 
 
 # ── C22: a non-equivalent same-length deletion is a distinct allele ─────────────
+@RED
 def test_a_non_equivalent_same_length_deletion_is_a_distinct_allele(tmp_path):
     """G+ATCGGATA>G in unique sequence, the carriers delete 8 other bases starting
-    2 in: another haplotype, never ALT; in unique sequence the anchor stays REF and
-    the read is partial evidence."""
-    assert _count(tmp_path, UNIQUE8, "G" + SPAN8, "G", A + 3, "D", 8) == (10, 0, 5)
+    2 in: another haplotype inside the discrimination window, so neither REF nor
+    ALT: partial evidence."""
+    assert _count(tmp_path, UNIQUE8, "G" + SPAN8, "G", A + 3, "D", 8) == (5, 0, 5)
+
+
+@RED
+@pytest.mark.parametrize("shift", [1, 2, 3])
+def test_a_misplaced_deletion_whose_bases_are_the_alt_counts_alt(tmp_path, shift):
+    """G+ATCGGATA>G, the carriers' bases are exactly the ALT haplotype but the
+    aligner wrote the D(8) `shift` bases to the right with compensating mismatches:
+    their bases carry the allele, so they are ALT."""
+
+    def carrier(s):
+        left = A + 1 + shift - s
+        seq = (UNIQUE8[s : A + 1] + UNIQUE8[A + 9 :])[:READ]
+        return seq, ((0, left), (2, 8), (0, READ - left))
+
+    assert _count_reads(tmp_path, UNIQUE8, "G" + SPAN8, "G", carrier) == (5, 5, 0)
 
 
 # ── C23: "in a repeat" is decided by the shift region ──────────────────────────
@@ -128,3 +153,58 @@ def test_true_anchor_changing_carriers_count_alt(tmp_path):
         return seq, ((0, left), (1, 2), (0, READ - left - 2))
 
     assert _count_reads(tmp_path, ANCHOR_SUB, "A", "CCC", carrier) == (5, 5, 0)
+
+
+# ── Review findings ──────────────────────────────────────────────────────────
+@RED
+def test_a_long_duplication_carrier_ending_with_the_insert_is_uninformative(tmp_path):
+    """G>G+COPY66, a tandem duplication of the 66 bases after the G: the carriers
+    write the whole insert at the junction and end there. Their bases (G then one
+    copy) are also the reference, so they fit both alleles: depth only. The rule
+    must reach long events (it judged nothing from about 58bp up)."""
+
+    def carrier(s):
+        left = A + 1 - s
+        return ITD66[s : A + 1] + COPY66, ((0, left), (1, 66))
+
+    c = _count_reads(tmp_path, ITD66, "G", "G" + COPY66, carrier, full=True)
+    assert c.ad == 0
+    assert c.dp == 10
+
+
+@RED
+def test_a_masked_first_inserted_base_does_not_withdraw_a_carrier(tmp_path):
+    """G>G+ACGTTGCATC in unique sequence, carriers ending inside the insert whose
+    first inserted base is below --min-baseq: the next nine discriminate, so ALT."""
+    ref = _contig("G")
+
+    def carrier(s):
+        left = A + 1 - s
+        quals = [30] * left + [5] + [30] * 9
+        return ref[s : A + 1] + INSERT10, ((0, left), (1, 10)), quals
+
+    assert _count_reads(tmp_path, ref, "G", "G" + INSERT10, carrier) == (5, 5, 0)
+
+
+@RED
+def test_a_large_deletion_with_a_small_insertion_at_its_far_junction_stays_alt(tmp_path):
+    """A unique 57bp deletion, the carriers write D(57) then I(TT): within the
+    large-deletion band's tolerance (≤3 changed bases), as D(56)+I(TT) already is."""
+    events = [(A + 1, "D", 57), (A + 58, "I", "TT")]
+    ref = UNIQUE57
+    assert _count_reads(tmp_path, ref, ref[A : A + 58], ref[A], _ops(ref, events)) == (5, 5, 0)
+
+
+@RED
+def test_soft_clipped_bases_behind_a_hard_clip_are_not_read(tmp_path):
+    """GA>G in G AAAAA T, carriers ending two bases into the run, the rest of the
+    read soft-clipped and then hard-clipped: the clipped bases are not read, so the
+    carriers fit both alleles and are uninformative."""
+
+    def carrier(s):
+        left = A + 1 - s
+        seq = HOMOPOLYMER[s : A + 1] + HOMOPOLYMER[A + 2 : A + 4] + HOMOPOLYMER[A + 4 : A + 10]
+        return seq, ((0, left), (2, 1), (0, 2), (4, 6), (5, 3))
+
+    c = _count_reads(tmp_path, HOMOPOLYMER, "GA", "G", carrier, full=True)
+    assert (c.rd, c.ad, c.partial_alt) == (5, 0, 0)

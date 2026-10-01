@@ -68,13 +68,14 @@ def _files(tmp_path, ref, reads):
 
 def _count_reads(tmp_path, ref, ref_allele, alt_allele, carrier, full=False):
     """Five REF reads and five carriers, `carrier(s)` giving each carrier's
-    (sequence, CIGAR) from its start `s`; counted in both paths (count_both asserts
-    parity). `full` returns the counts object instead of (rd, ad, partial)."""
+    (sequence, CIGAR[, base qualities]) from its start `s`; counted in both paths
+    (count_both asserts parity). `full` returns the counts object instead of
+    (rd, ad, partial)."""
     starts = range(A - 50, A - 45)
     reads = [make_read(f"r{i}", ref[s : s + READ], s, ((0, READ),)) for i, s in enumerate(starts)]
     for i, s in enumerate(starts):
-        seq, cigar = carrier(s)
-        reads.append(make_read(f"a{i}", seq, s, cigar))
+        seq, cigar, *quals = carrier(s)
+        reads.append(make_read(f"a{i}", seq, s, cigar, quals=quals[0] if quals else None))
     fa, bam = _files(tmp_path, ref, reads)
     (pv,) = gbcms_rs.prepare_variants(
         [gbcms_rs.Variant("1", A, ref_allele, alt_allele, "X")], fa, 5, False, 1, True
