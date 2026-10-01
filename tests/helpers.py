@@ -199,6 +199,23 @@ def count_both(
     return results_binned
 
 
+def write_contig(tmp_path, contig, reads, name="s", chrom="1"):
+    """A one-contig FASTA (indexed) and a sorted, indexed BAM of `reads` on it.
+    Returns (fasta path, bam path) as strings."""
+    fa = tmp_path / f"{name}.fa"
+    fa.write_text(f">{chrom}\n{contig}\n")
+    pysam.faidx(str(fa))
+    hdr = {"HD": {"VN": "1.6", "SO": "coordinate"}, "SQ": [{"SN": chrom, "LN": len(contig)}]}
+    raw = tmp_path / f"{name}.raw.bam"
+    with pysam.AlignmentFile(str(raw), "wb", header=hdr) as fh:
+        for r in reads:
+            fh.write(r)
+    bam = tmp_path / f"{name}.bam"
+    pysam.sort("-o", str(bam), str(raw))
+    pysam.index(str(bam))
+    return str(fa), str(bam)
+
+
 # ── Comparing counts ─────────────────────────────────────────────────────
 
 # Benjamini-Hochberg q-values are computed over the rows in one call, so they

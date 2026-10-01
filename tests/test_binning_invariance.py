@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pysam
 import pytest
-from helpers import ROW_SET_FIELDS, assert_same_counts, make_read
+from helpers import ROW_SET_FIELDS, assert_same_counts, make_read, write_contig
 from rna_fixtures import E1, E2, SENSE, mk_ref, spliced, through, write_bam, write_fasta, write_gtf
 
 from gbcms import _rs as gbcms_rs
@@ -156,21 +156,6 @@ def _pairs(contig, variants, seed, step=3, umi=False):
     return reads
 
 
-def _write(tmp_path, contig, reads, name):
-    fa = tmp_path / f"{name}.fa"
-    fa.write_text(f">1\n{contig}\n")
-    pysam.faidx(str(fa))
-    hdr = {"HD": {"VN": "1.6", "SO": "coordinate"}, "SQ": [{"SN": "1", "LN": len(contig)}]}
-    raw = tmp_path / f"{name}.raw.bam"
-    with pysam.AlignmentFile(str(raw), "wb", header=hdr) as fh:
-        for r in reads:
-            fh.write(r)
-    bam = tmp_path / f"{name}.bam"
-    pysam.sort("-o", str(bam), str(raw))
-    pysam.index(str(bam))
-    return str(fa), str(bam)
-
-
 def _prepared(fa, rows):
     pvs = gbcms_rs.prepare_variants(
         [gbcms_rs.Variant("1", p, r, a, "X") for p, r, a in rows], fa, 5, False, 1, True
@@ -231,7 +216,7 @@ def _check_invariance(bam, variants, decomposed, siblings, per_row=True, **kw):
 )
 def test_dna_counts_do_not_depend_on_bin_geometry(tmp_path, features):
     reads = _pairs(DNA, DNA_VARIANTS, seed=1, umi="umi_tag" in features)
-    fa, bam = _write(tmp_path, DNA, reads, "dna")
+    fa, bam = write_contig(tmp_path, DNA, reads, "dna")
     variants, decomposed, siblings = _prepared(fa, DNA_VARIANTS)
     base, run = _check_invariance(bam, variants, decomposed, siblings, **features)
 
@@ -255,7 +240,7 @@ def test_dna_counts_do_not_depend_on_bin_geometry(tmp_path, features):
 def test_observation_rows_do_not_depend_on_bin_geometry(tmp_path):
     """The per-molecule rows come from the same loop: same rows, same calls."""
     reads = _pairs(DNA, DNA_VARIANTS, seed=2)
-    fa, bam = _write(tmp_path, DNA, reads, "obs")
+    fa, bam = write_contig(tmp_path, DNA, reads, "obs")
     variants, decomposed, siblings = _prepared(fa, DNA_VARIANTS)
 
     def rows(**geometry):
@@ -289,7 +274,7 @@ def test_clip_carriers_past_a_long_anchor_do_not_depend_on_bin_geometry(tmp_path
         clip = CLIP_POS + 10 - hs
         read = make_read(f"l{i}", hap[hs : hs + READ], after, ((4, clip), (0, READ - clip)))
         reads.append(_paired(read, FRAG, reverse=True))
-    fa, bam = _write(tmp_path, ref, reads, "clip")
+    fa, bam = write_contig(tmp_path, ref, reads, "clip")
     variants, decomposed, siblings = _prepared(fa, [(CLIP_POS, ref[CLIP_POS : CLIP_POS + 60], alt)])
     base, _ = _check_invariance(bam, variants, decomposed, siblings)
     assert (base[0].rd, base[0].ad) == (10, 20), "the clipped carriers must count"
@@ -397,7 +382,7 @@ def test_real_bam_counts_do_not_depend_on_bin_geometry():
 
 
 def test_a_bin_geometry_below_one_is_rejected(tmp_path):
-    fa, bam = _write(tmp_path, DNA[:400], [], "empty")
+    fa, bam = write_contig(tmp_path, DNA[:400], [], "empty")
     (v,) = [
         pv.variant
         for pv in gbcms_rs.prepare_variants(
