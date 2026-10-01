@@ -1000,14 +1000,16 @@ region, and their first base already discriminates.
 **The ALT side (6.6.0, #188).** An ALT call from a read that spans neither
 window stands only when the read's own bases tell the alleles apart: read where
 they sit, rightwards from its aligned base left of the window or leftwards from
-its aligned base right of it, the read must hold the first base where the
-alleles differ, unmasked, plus one more, every base fitting the ALT. A carrier
+its aligned base right of it, the read must read, unmasked, a base where the
+alleles differ, every base up to it fitting the ALT. There is no margin base past
+it (C10's margin guards CIGAR-only REF calls against a hidden terminal mismatch;
+here the deciding base itself is read, on a read the CIGAR already calls ALT). A carrier
 that ends inside the repeat holds only shared bases, so its gap alone is
 placement: it counts toward depth only. The windows themselves are not mirrored
 onto ALT reads: a long insertion's carrier spends its span inside the insert and
 often cannot reach the far flank, yet its inserted bases discriminate. A masked
 base where the alleles first differ is skipped: a later unmasked one where they
-differ, and one more unmasked base, decide.
+differ decides.
 
 **One change across the window (6.6.0, #188).** An indel at the variant's own
 junction counts ALT only when the read carries no other insertion or deletion

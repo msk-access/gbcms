@@ -163,9 +163,11 @@ pub(crate) fn slides(v: &Variant) -> bool {
 /// Whether a read's own bases tell a pure indel's ALT from its REF, read where
 /// they sit. Rightwards from the read's aligned base just left of the
 /// discrimination window, or leftwards from its aligned base just right of it,
-/// the read must hold the first base at which the two alleles differ, unmasked,
-/// and one more (the margin C10 gives REF reads), every base up to there fitting
-/// the ALT; a base below `min_baseq`, or N, fits anything. Soft-clipped bases are
+/// the read must read, unmasked, a base where the two alleles differ (the first
+/// such base, or a later one when that is masked), every base up to there fitting
+/// the ALT; a base below `min_baseq`, or N, fits anything. Unlike C10's REF rule
+/// there is no margin base past it: that margin guards CIGAR-only REF calls
+/// against a hidden terminal mismatch, while this reads the deciding base. Soft-clipped bases are
 /// not read. Used for a read that spans neither informative window: the CIGAR's
 /// gap alone is placement, and a carrier ending inside the repeat holds only
 /// bases the alleles share, while a truncated long insertion's carrier holds the
@@ -209,14 +211,15 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     let lead = clip(&mut cig.iter());
     let trail = seq.len() - clip(&mut cig.iter().rev());
     // The read's bases at query offsets `idx`, judged against `refh` and `alth`:
-    // every unmasked base fits the ALT, and the read reads (unmasked) a base at or
-    // past the first differing one where the alleles differ, then one more
-    // unmasked base.
+    // every unmasked base fits the ALT, up to a base at or past the first
+    // differing one where the alleles differ, read unmasked. No margin base past
+    // it: C10's margin protects a CIGAR-only REF call from a hidden terminal
+    // mismatch, while this reads the deciding base itself, on a read the CIGAR
+    // already calls ALT.
     let holds = |idx: &mut dyn Iterator<Item = usize>, refh: &[u8], alth: &[u8]| -> bool {
         let Some(d) = refh.iter().zip(alth).position(|(x, y)| x != y) else {
             return false;
         };
-        let mut found = false;
         for (i, q) in idx.enumerate() {
             if i >= alth.len() {
                 return false;
@@ -229,10 +232,9 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
             if b != alth[i] {
                 return false;
             }
-            if found {
+            if i >= d && refh.get(i) != Some(&alth[i]) {
                 return true;
             }
-            found = i >= d && refh.get(i) != Some(&alth[i]);
         }
         false
     };
