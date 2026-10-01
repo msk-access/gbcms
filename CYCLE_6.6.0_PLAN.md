@@ -1366,6 +1366,8 @@ Pure refactors must leave the acceptance output byte-identical.
 - `ref_context`: uppercase it at prep (fixes SW on soft-masked FASTAs).
 - mFSD: sum in a deterministic order.
 - Reads starting on a flank: measure first.
+- `observe_molecules` requires a reference FASTA (argument or config); without one
+  it is a `ValueError`, as for the CLI. This replaces the S3 warning.
 
 **Plan: two PRs.**
 - A: the count-affecting fixes (S1, S2, S3, the decisions above), test-first and
