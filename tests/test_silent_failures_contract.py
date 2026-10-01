@@ -10,10 +10,11 @@ changed a call with nothing logged:
   withdrawn. Without any prepared reference, the same, with no warning.
 - An insertion whose ALT also changes the anchor base (C>TA) goes to the
   exact-carrier rule, but prep never widened its reference for that rule, so in a
-  long run the rule fell back to the previous classifier with only a trace: reads
-  that keep the anchor counted REF.
+  long run the rule fell back to the previous classifier with only a trace. Prep
+  now widens it; a variant the rule still cannot judge is warned once.
 
-Committed red (xfail-strict) before the fix.
+Committed red (xfail-strict) before the fix. The long-run count equality waits on
+C25 #199 (strict xfail).
 """
 
 import logging
@@ -59,7 +60,6 @@ def _ending_in_the_run(ref):
     return reads
 
 
-@pytest.mark.xfail(strict=True, reason="H3 S1: red until fixed")
 def test_carriers_ending_in_the_run_at_a_contig_end_are_uninformative(tmp_path):
     """The same run and reads mid-contig and two bases from the contig end: both
     alleles' readers are uninformative in both places, so neither REF nor ALT."""
@@ -71,7 +71,6 @@ def test_carriers_ending_in_the_run_at_a_contig_end_are_uninformative(tmp_path):
         assert (c.rd, c.ad, c.dp) == (0, 0, 12), name
 
 
-@pytest.mark.xfail(strict=True, reason="H3 S1: red until fixed")
 def test_an_alt_read_without_a_reference_to_read_is_depth_only_and_warned(tmp_path, caplog):
     """An unprepared +A row (no reference around it): carriers ending with the
     inserted base span neither window, and their bases cannot be read against any
@@ -111,10 +110,47 @@ def _ins_snv(tmp_path, run_len, name):
     return c.rd, c.ad, c.partial_alt
 
 
-@pytest.mark.xfail(strict=True, reason="H3 S2: red until fixed")
-def test_an_anchor_changing_insertion_in_a_long_run_is_judged_by_its_whole_allele(tmp_path):
-    """The same reads before a 30bp and an 80bp A run count the same: the
-    exact-carrier rule judges both (reads keeping the anchor are not REF)."""
+def _traces(caplog, call):
+    caplog.clear()
+    with caplog.at_level(5, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        out = call()
+    return out, [r.getMessage() for r in caplog.records]
+
+
+def test_an_anchor_changing_insertion_in_a_long_run_is_judged_by_the_exact_carrier_rule(
+    tmp_path, caplog
+):
+    """Prep widens the reference for every variant the exact-carrier rule judges,
+    anchor-changing insertions included, so a long run does not send the rule to
+    the previous classifier."""
+    _, logs = _traces(caplog, lambda: _ins_snv(tmp_path, 80, "run80"))
+    assert not [m for m in logs if "previous complex classifier" in m], "no fallback"
+
+
+def test_an_unjudgeable_complex_variant_is_warned_once(tmp_path, caplog):
+    """Without a prepared reference the exact-carrier rule cannot judge C>TA: the
+    previous classifier counts its reads, and one warning per count says so."""
+    ref = _flank(13) + "C" + "A" * 10 + "G" + _flank(14)
+    reads = [
+        make_read(f"r{i}", ref[A - 40 + i : A + 60 + i], A - 40 + i, ((0, 100),)) for i in range(4)
+    ]
+    _, bam = write_contig(tmp_path, ref, reads, "bare")
+    v = _rs.Variant("1", A, "C", "TA", "COMPLEX")  # not prepared
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        (c,) = count_bam_checked(bam, [v], [None], *ARGS)
+    _invariants(c)
+    warns = [r.getMessage() for r in caplog.records if "exact-carrier rule" in r.getMessage()]
+    assert len(warns) == 2 and "1:401 C>TA: 4 read(s)" in warns[0], warns
+
+
+@pytest.mark.xfail(
+    strict=True, reason="C25 #199: long-event junction windows credit REF to anchor-keeping reads"
+)
+def test_an_anchor_changing_insertion_counts_the_same_in_a_long_run(tmp_path):
+    """The same reads before a 30bp and an 80bp A run count the same (reads
+    keeping the anchor are not REF)."""
     short = _ins_snv(tmp_path, 30, "run30")
     assert short[0] == 6, short  # only the REF reads
     assert _ins_snv(tmp_path, 80, "run80") == short

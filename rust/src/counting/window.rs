@@ -146,6 +146,37 @@ pub(crate) fn reference_span(v: &Variant, lo: i64, hi: i64) -> Option<Vec<u8>> {
         .or_else(|| v.ref_context.as_ref().and_then(|ctx| slice(v.ref_context_start, ctx)))
 }
 
+/// Reference bases from `lo` towards `hi`, upper-case, from the variant's prepared
+/// reference (its event reference, else its `ref_context`), stopping where that
+/// reference ends (a contig end). None when it does not hold `lo`.
+pub(crate) fn reference_from(v: &Variant, lo: i64, hi: i64) -> Option<Vec<u8>> {
+    let slice = |start: i64, seq: &str| {
+        let a = lo - start;
+        let b = (hi - start).min(seq.len() as i64);
+        (a >= 0 && a < b).then(|| seq.as_bytes()[a as usize..b as usize].to_ascii_uppercase())
+    };
+    v.event_ref
+        .as_ref()
+        .and_then(|(start, seq)| slice(*start, seq))
+        .or_else(|| v.ref_context.as_ref().and_then(|ctx| slice(v.ref_context_start, ctx)))
+}
+
+/// Reference bases from `lo` up to `hi`, upper-case, starting where the variant's
+/// prepared reference starts if that is after `lo` (a contig start), with the
+/// position of the first base. None when it does not hold the base before `hi`.
+pub(crate) fn reference_to(v: &Variant, lo: i64, hi: i64) -> Option<(i64, Vec<u8>)> {
+    let slice = |start: i64, seq: &str| {
+        let a = (lo - start).max(0);
+        let b = hi - start;
+        (a < b && b <= seq.len() as i64)
+            .then(|| (start + a, seq.as_bytes()[a as usize..b as usize].to_ascii_uppercase()))
+    };
+    v.event_ref
+        .as_ref()
+        .and_then(|(start, seq)| slice(*start, seq))
+        .or_else(|| v.ref_context.as_ref().and_then(|ctx| slice(v.ref_context_start, ctx)))
+}
+
 /// Whether a pure indel slides: its shift region is wider than the event (an
 /// insertion with more than one junction, a deletion whose region is longer than
 /// itself). This, not `repeat_span` (motifs of up to 6 bases only), says whether
@@ -171,11 +202,13 @@ pub(crate) fn slides(v: &Variant) -> bool {
 /// not read. Used for an ALT read that spans neither ALT-side window: the CIGAR's
 /// gap alone is placement, and a carrier ending inside the repeat holds only
 /// bases the alleles share, while a truncated long insertion's carrier holds the
-/// inserted bases. True when the reference around the event is unavailable (the
-/// read cannot be judged, so the call stands).
-pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
+/// inserted bases. Each reading uses the reference it can hold, stopping at a
+/// contig end. A read with no aligned base on either side of the window has
+/// nothing to read from: false. None when the read has a side to read from but no
+/// prepared reference holds it (an unprepared variant): it cannot be judged.
+pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> Option<bool> {
     if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
-        return true;
+        return Some(true);
     }
     let (lo, hi) = change_interval(v);
     let (dlo, dhi) = (lo - 1, hi + 1);
@@ -188,29 +221,27 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     // removed bases are taken from inside the window).
     let ext = 2;
     // The ALT haplotype of reference [from, to): the insert added, or the deleted
-    // bases removed, at j0.
-    let alt_of = |from: i64, seq: &[u8]| -> Vec<u8> {
-        let k = (j0 - from) as usize;
+    // bases removed, at j0. None when the stretch stops short of the event (it
+    // reaches a contig end inside it).
+    let alt_of = |from: i64, seq: &[u8]| -> Option<Vec<u8>> {
+        let k = usize::try_from(j0 - from).ok()?;
         if ins.is_empty() {
-            [&seq[..k], &seq[k + n as usize..]].concat()
+            let rest = k + n as usize;
+            (rest <= seq.len()).then(|| [&seq[..k], &seq[rest..]].concat())
         } else {
-            [&seq[..k], ins.as_slice(), &seq[k..]].concat()
+            (k <= seq.len()).then(|| [&seq[..k], ins.as_slice(), &seq[k..]].concat())
         }
     };
     // An insertion's ALT stretch is n bases longer than the reference it is built
-    // from: the REF stretch reaches as far where the prepared reference holds it
-    // (a long event's may not), and past the REF stretch a base decides nothing.
+    // from: the REF stretch reaches as far, where the prepared reference holds it;
+    // past the REF stretch (a contig end) a base decides nothing.
     let nn = if ins.is_empty() { 0 } else { n };
-    let fetch = |lo: i64, hi: i64, far_lo: i64, far_hi: i64| {
-        reference_span(v, far_lo, far_hi)
-            .map(|s| (far_lo, s))
-            .or_else(|| reference_span(v, lo, hi).map(|s| (lo, s)))
-    };
-    let (Some((rfrom, right)), Some((lfrom, left))) =
-        (fetch(dlo, dhi + ext, dlo, dhi + ext + nn), fetch(dlo - ext, dhi, dlo - ext - nn, dhi))
-    else {
-        return true;
-    };
+    let (ql, qr) = (find_read_pos(record, dlo - 1), find_read_pos(record, dhi));
+    if ql.is_none() && qr.is_none() {
+        return Some(false);
+    }
+    let right = reference_from(v, dlo, dhi + ext + nn);
+    let left = reference_to(v, dlo - ext - nn, dhi);
     let seq = record.seq().as_bytes();
     let cig: Vec<Cigar> = record.cigar().iter().copied().collect();
     // Soft clips at either end (behind any hard clip) are not read.
@@ -220,7 +251,7 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
             .sum()
     };
     let lead = clip(&mut cig.iter());
-    let trail = seq.len() - clip(&mut cig.iter().rev());
+    let trail = seq.len().saturating_sub(clip(&mut cig.iter().rev()));
     // The read's bases at query offsets `idx`, judged against `refh` and `alth`:
     // every unmasked base fits the ALT, up to a base at or past the first
     // differing one where the alleles differ, read unmasked. No margin base past
@@ -249,21 +280,28 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
         }
         false
     };
-    if let Some(q) = find_read_pos(record, dlo - 1) {
-        let alth = alt_of(rfrom, &right);
-        if holds(&mut ((q + 1)..trail), &right, &alth) {
-            return true;
+    // A side the read can be read from but no reference holds leaves it unjudged.
+    let mut unjudged = false;
+    if let Some(q) = ql {
+        match right.as_deref().and_then(|r| alt_of(dlo, r).map(|a| (r, a))) {
+            Some((right, alth)) if holds(&mut ((q + 1)..trail), right, &alth) => return Some(true),
+            Some(_) => {}
+            None => unjudged = true,
         }
     }
-    if let Some(q) = find_read_pos(record, dhi) {
-        let alth = alt_of(lfrom, &left);
-        let refr: Vec<u8> = left.iter().rev().copied().collect();
-        let altr: Vec<u8> = alth.iter().rev().copied().collect();
-        if holds(&mut (lead..q).rev(), &refr, &altr) {
-            return true;
+    if let Some(q) = qr {
+        match left.as_ref().and_then(|(from, l)| alt_of(*from, l).map(|a| (l, a))) {
+            Some((left, alth)) => {
+                let refr: Vec<u8> = left.iter().rev().copied().collect();
+                let altr: Vec<u8> = alth.iter().rev().copied().collect();
+                if holds(&mut (lead..q).rev(), &refr, &altr) {
+                    return Some(true);
+                }
+            }
+            None => unjudged = true,
         }
     }
-    false
+    if unjudged { None } else { Some(false) }
 }
 
 /// Whether the read's bases between its nearest aligned base left of a pure indel's

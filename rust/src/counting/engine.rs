@@ -1439,6 +1439,9 @@ fn count_variant_from_cache(
     let mut alt_dists: Vec<u32> = Vec::with_capacity(500);
     // Reads admitted by the soft-clipped bases that carry their allele.
     let mut clip_admitted_reads: u32 = 0;
+    // Reads a rule could not judge for want of reference (warned once below).
+    let mut alt_unjudged_reads: u32 = 0;
+    let mut carrier_fallback_reads: u32 = 0;
     let mut ref_dists: Vec<u32> = Vec::with_capacity(500);
 
     // Create SW aligners ONCE per variant (indelpost pattern).
@@ -1704,6 +1707,8 @@ fn count_variant_from_cache(
             if result.sw_fallback {
                 counts.sw_fallback_reads += 1;
             }
+            alt_unjudged_reads += u32::from(result.alt_unjudged);
+            carrier_fallback_reads += u32::from(result.carrier_fallback);
         }
 
         // ── FRAGMENT TRACKING: track ALL fragments for DPF.
@@ -1993,6 +1998,7 @@ fn count_variant_from_cache(
     }
 
     warn_sw_fallback(variant, counts.sw_fallback_reads);
+    warn_unjudged(variant, alt_unjudged_reads, carrier_fallback_reads);
     if clip_admitted_reads > 0 {
         debug!(
             "{}:{} {}>{}: {} read(s) admitted by the soft-clipped bases that carry their allele",
@@ -2303,6 +2309,27 @@ fn has_clip_boundary_in(record: &Record, lo: i64, hi: i64) -> bool {
 /// variant's reference context is missing or does not contain it, i.e.
 /// upstream input was malformed. Without any context no scorer can run, so
 /// those reads end NEITHER — the message says which outcome applied.
+/// Once per variant: reads a rule could not judge for want of reference around
+/// the event, so their loss is never silent.
+fn warn_unjudged(variant: &Variant, alt_unjudged: u32, carrier_fallback: u32) {
+    if alt_unjudged > 0 {
+        warn!(
+            "{}:{} {}>{}: {} ALT read(s) span neither informative window and could not be judged \
+             by their bases: no prepared reference reaches past the event to read them against \
+             (an unprepared variant, or a contig end) — counted as depth only",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, alt_unjudged,
+        );
+    }
+    if carrier_fallback > 0 {
+        warn!(
+            "{}:{} {}>{}: {} read(s) could not be judged by the exact-carrier rule: the prepared \
+             reference does not hold the event with its flank (an unprepared variant, a contig \
+             end, or a repeat past the fetch cap) — classified by the previous complex classifier",
+            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, carrier_fallback,
+        );
+    }
+}
+
 fn warn_sw_fallback(variant: &Variant, n: u32) {
     if n > 0 {
         let outcome = if variant.ref_context.is_none() {
@@ -2355,22 +2382,26 @@ fn alt_needs_the_window(
     min_baseq: u8,
     mut result: ClassifyResult,
 ) -> ClassifyResult {
-    if result.is_alt
-        && !window::alt_read_is_informative(record, variant)
-        && !window::alt_bases_discriminate(record, variant, quals, min_baseq)
-    {
-        trace!(
-            "{}:{} {}>{}: read {}..{} spans neither ALT-side window around {:?} and its \
-             bases fit both alleles — uninformative, not ALT",
-            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-            record.pos(), read_ref_end(record), window::change_interval(variant),
-        );
-        result.is_alt = false;
-        result.is_structural = false;
-        result.has_nearby_evidence = false;
-        result.partial_match_count = 0;
-        result.uninformative = true;
+    if !result.is_alt || window::alt_read_is_informative(record, variant) {
+        return result;
     }
+    let judged = window::alt_bases_discriminate(record, variant, quals, min_baseq);
+    if judged == Some(true) {
+        return result;
+    }
+    trace!(
+        "{}:{} {}>{}: read {}..{} spans neither ALT-side window around {:?} and {} \
+         — uninformative, not ALT",
+        variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
+        record.pos(), read_ref_end(record), window::change_interval(variant),
+        if judged.is_none() { "no reference holds the event to read its bases" } else { "its bases fit both alleles" },
+    );
+    result.is_alt = false;
+    result.is_structural = false;
+    result.has_nearby_evidence = false;
+    result.partial_match_count = 0;
+    result.uninformative = true;
+    result.alt_unjudged = judged.is_none();
     result
 }
 
@@ -2561,10 +2592,13 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
 ) -> ClassifyResult {
     carrier::classify(record, variant, quals, min_baseq).unwrap_or_else(|| {
         trace!(
-            "{}:{} {}>{}: no reference holds the event, previous complex classifier",
+            "{}:{} {}>{}: the prepared reference does not hold the event with its flank \
+             — previous complex classifier",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         );
-        check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        let mut result = check_complex(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
+        result.carrier_fallback = true;
+        result
     })
 }
 

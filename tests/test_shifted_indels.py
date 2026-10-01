@@ -81,21 +81,22 @@ class TestInsertionWindowed:
     """Insertion shifted within ±5bp of the expected anchor position."""
 
     def test_shifted_right_2bp(self, tmp_path):
-        """An A inserted 2bp to the right of the anchor → ALT (windowed): in the A
-        run it is the same haplotype. Read starts at 96, 7M 1I 2M: the insertion
-        sits before 103."""
+        """An A inserted 2bp to the right of the anchor, in a read that lies inside
+        the A run the variant's context holds (start 96, 7M 1I 2M): its bases read
+        the same with or without the A, so it counts toward depth only. (Carriers
+        that span the run count ALT at every junction: the shifted-carrier battery.)"""
         reads = [_make_read("r1", "AAAAAAAAAA", 96, ((0, 7), (1, 1), (0, 2)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, INS_A_VARIANT)
-        assert counts.ad == 1, f"Expected ad=1 (windowed ALT), got {counts.ad}"
+        assert (counts.ad, counts.rd, counts.dp) == (0, 0, 1)
 
     def test_shifted_left_3bp(self, tmp_path):
-        """An A inserted 3bp to the left of the anchor → ALT (windowed). Read
-        starts at 96, 2M 1I 7M: the insertion sits before 98."""
+        """An A inserted 3bp to the left of the anchor (start 96, 2M 1I 7M), the read
+        inside the run: depth only, as above."""
         reads = [_make_read("r1", "AAAAAAAAAA", 96, ((0, 2), (1, 1), (0, 7)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, INS_A_VARIANT)
-        assert counts.ad == 1, f"Expected ad=1 (windowed ALT, shifted left), got {counts.ad}"
+        assert (counts.ad, counts.rd, counts.dp) == (0, 0, 1)
 
     def test_shifted_other_haplotype_is_not_alt(self, tmp_path):
         """A T inserted 2bp right of where the variant puts its T: in the A run
@@ -163,12 +164,12 @@ class TestInsertionHomopolymer:
     """Insertions in homopolymer runs — the primary use case for windowed detection."""
 
     def test_homopolymer_shifted(self, tmp_path):
-        """An A inserted into the A run, shifted +4bp by the aligner → ALT: the
-        same haplotype wherever it sits in the run."""
+        """An A inserted into the A run, shifted +4bp by the aligner, in a read
+        inside the run: depth only (its bases fit both alleles)."""
         reads = [_make_read("r1", "AAAAAAAAAAAA", 96, ((0, 9), (1, 1), (0, 2)))]
         bam = _build_bam(tmp_path, reads)
         counts = _count_one(bam, INS_A_VARIANT)
-        assert counts.ad == 1, f"Expected ad=1 (homopolymer shift), got {counts.ad}"
+        assert (counts.ad, counts.rd, counts.dp) == (0, 0, 1)
 
 
 # ==========================================================================
