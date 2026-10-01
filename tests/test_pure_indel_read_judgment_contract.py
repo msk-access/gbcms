@@ -36,6 +36,8 @@ from test_shifted_indel_carriers_contract import (
     _ops,
 )
 
+RED = pytest.mark.xfail(strict=True, reason="cluster 1: masked-base ambiguity")
+
 SPAN8 = "ATCGGATA"  # a unique 8bp stretch between G and C
 UNIQUE8 = _contig("G" + SPAN8 + "C")
 INSERT10 = "ACGTTGCATC"  # not low-complexity; differs from the flank at once
@@ -43,6 +45,8 @@ COPY66 = "A" + "".join(random.Random(66).choice("ACGT") for _ in range(64)) + "C
 ITD66 = _contig("G" + COPY66 + "T")  # the ALT duplicates this 66bp copy in tandem
 SPAN57 = "A" + "".join(random.Random(57).choice("ACGT") for _ in range(55)) + "A"
 UNIQUE57 = _contig("G" + SPAN57 + "C")
+_CG7 = _contig("C" + "G" * 7 + "C")
+CCG7 = _CG7[: A - 1] + "C" + _CG7[A:]  # C C GGGGGGG C, the second C (the anchor) at A
 
 
 # ── C20: an uninformative carrier is not ALT unless its bases discriminate ──────
@@ -200,3 +204,33 @@ def test_soft_clipped_bases_behind_a_hard_clip_are_not_read(tmp_path):
 
     c = _count_reads(tmp_path, HOMOPOLYMER, "GA", "G", carrier, full=True)
     assert (c.rd, c.ad, c.partial_alt) == (5, 0, 0)
+
+
+@RED
+def test_a_misplaced_deletion_ambiguous_at_a_masked_base_is_not_alt(tmp_path):
+    """CG>C deletes a G of the run after C C. The carriers' CIGAR deletes the first
+    C instead, and the base where "deleted a C" (C GGGGGGG) and "deleted a G"
+    (CC GGGGGG) differ is an N: their bases cannot tell the two alleles apart, so
+    not ALT (a real RC case)."""
+
+    def carrier(s):
+        left = A - 1 - s
+        hap = CCG7[s : A - 1] + CCG7[A:]  # the first C deleted
+        seq = (hap[: left + 1] + "N" + hap[left + 2 :])[:READ]
+        return seq, ((0, left), (2, 1), (0, READ - left))
+
+    rd, ad, partial = _count_reads(tmp_path, CCG7, "CG", "C", carrier)
+    assert ad == 0
+
+
+def test_a_misplaced_deletion_whose_read_base_settles_it_is_alt(tmp_path):
+    """Guard: the same carriers with a C read (unmasked) at that base spell the ALT
+    (CC GGGGGG): their bases carry the allele wherever the CIGAR put the gap."""
+
+    def carrier(s):
+        left = A - 1 - s
+        hap = CCG7[s : A - 1] + CCG7[A:]
+        seq = (hap[: left + 1] + "C" + hap[left + 2 :])[:READ]
+        return seq, ((0, left), (2, 1), (0, READ - left))
+
+    assert _count_reads(tmp_path, CCG7, "CG", "C", carrier) == (5, 5, 0)
