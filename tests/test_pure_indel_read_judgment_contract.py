@@ -20,7 +20,6 @@ data, and each breaks "judge a read's bases, not its placement":
 Committed red (xfail-strict) before the implementation; flipped green with it.
 """
 
-import pytest
 from test_shifted_indel_carriers_contract import (
     ANCHOR_SUB,
     DUP,
@@ -34,15 +33,12 @@ from test_shifted_indel_carriers_contract import (
     _ops,
 )
 
-RED = pytest.mark.xfail(strict=True, reason="cluster 1: pure-indel read judgment")
-
 SPAN8 = "ATCGGATA"  # a unique 8bp stretch between G and C
 UNIQUE8 = _contig("G" + SPAN8 + "C")
 INSERT10 = "ACGTTGCATC"  # not low-complexity; differs from the flank at once
 
 
 # ── C20: an uninformative carrier is not ALT unless its bases discriminate ──────
-@RED
 def test_a_carrier_ending_inside_the_run_is_uninformative(tmp_path):
     """GA>G in G AAAAA T: the carriers delete an A after the G and end two bases
     later, inside the run. Their bases (G A A) fit both alleles: depth, neither."""
@@ -70,7 +66,6 @@ def test_a_carrier_whose_inserted_bases_discriminate_stays_alt(tmp_path):
 
 
 # ── C20, strict path: the indel must be the read's only change in the window ────
-@RED
 def test_an_insertion_at_the_junction_with_a_deletion_in_the_window_is_not_alt(tmp_path):
     """G>GA, the carriers insert the A at the junction and delete one 3 bases on:
     their bases are the reference run."""
@@ -79,7 +74,6 @@ def test_an_insertion_at_the_junction_with_a_deletion_in_the_window_is_not_alt(t
     assert ad == 0
 
 
-@RED
 def test_a_split_plus_two_read_is_another_allele_at_the_junction(tmp_path):
     """G>GA, the carriers insert an A at the junction and another 3 bases on: a +AA
     allele, partial evidence for the +A row."""
@@ -87,7 +81,6 @@ def test_a_split_plus_two_read_is_another_allele_at_the_junction(tmp_path):
     assert _count_reads(tmp_path, HOMOPOLYMER, "G", "GA", _ops(HOMOPOLYMER, events)) == (5, 0, 5)
 
 
-@RED
 def test_a_split_minus_two_read_is_another_allele_at_the_junction(tmp_path):
     """GA>G, the carriers delete an A at the junction and another 3 bases on: a -AA
     allele, partial evidence for the -A row."""
@@ -96,7 +89,6 @@ def test_a_split_minus_two_read_is_another_allele_at_the_junction(tmp_path):
 
 
 # ── C22: a non-equivalent same-length deletion is a distinct allele ─────────────
-@RED
 def test_a_non_equivalent_same_length_deletion_is_a_distinct_allele(tmp_path):
     """G+ATCGGATA>G in unique sequence, the carriers delete 8 other bases starting
     2 in: another haplotype, never ALT; in unique sequence the anchor stays REF and
@@ -105,7 +97,6 @@ def test_a_non_equivalent_same_length_deletion_is_a_distinct_allele(tmp_path):
 
 
 # ── C23: "in a repeat" is decided by the shift region ──────────────────────────
-@RED
 def test_a_distinct_allele_in_a_long_period_duplication_is_not_ref(tmp_path):
     """G>G+ACGTTGCA over two copies of it (no motif of 6bp or fewer repeats): the
     carriers insert the 8 bases unrotated 13 bases in, another haplotype inside the
@@ -113,7 +104,6 @@ def test_a_distinct_allele_in_a_long_period_duplication_is_not_ref(tmp_path):
     assert _count(tmp_path, DUPLICATION, "G", "G" + DUP, A + 13, "I", DUP) == (5, 0, 5)
 
 
-@RED
 def test_a_wrong_length_deletion_in_a_long_period_duplication_is_not_ref(tmp_path):
     """G+ACGTTGCA>G over two copies of it: the carriers delete 5 bases starting 5 in
     (a wrong-length deletion inside the region): neither + partial, not REF."""
@@ -121,7 +111,6 @@ def test_a_wrong_length_deletion_in_a_long_period_duplication_is_not_ref(tmp_pat
 
 
 # ── C8: an anchor-changing one-base-REF ALT is judged by its whole allele ──────
-@RED
 def test_a_read_keeping_the_anchor_is_not_an_anchor_changing_alt(tmp_path):
     """A>CCC in A CC T: the carriers keep the anchor A and insert CC right after it
     (ACCCCT, not CCCCCT): not the given allele."""

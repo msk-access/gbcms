@@ -1348,6 +1348,20 @@ fn resolve_anchor_insertion_candidate(
             let (mismatches, reliable) =
                 masked_single_compare(ins_seq, ins_quals, expected_ins_seq, min_baseq);
             if reliable > 0 && mismatches == 0 {
+                if other_indel_in_window(record, window::discrimination_window(variant), anchor_pos + 1, true) {
+                    // The insert with another insertion or deletion across the
+                    // window: the read's haplotype is not the ALT (a cancelled
+                    // pair, a split longer allele).
+                    trace!(
+                        "check_insertion: I({}) at the junction after pos {} with another \
+                         indel in the window → distinct allele, partial evidence",
+                        found_ins_len, anchor_pos
+                    );
+                    return AnchorInsertionOutcome::Classified(ClassifyResult::neither_with_nearby(
+                        qual,
+                        ClassifyPhase::Structural,
+                    ));
+                }
                 trace!(
                     "check_insertion: I({}) match at expected junction after pos {}, \
                      qual={} (structural)",
@@ -1579,9 +1593,9 @@ fn scan_windowed_insertion_candidate(
 ///    either a truncation of the expected insert (≥90% substring identity,
 ///    both sequences non-low-complexity → ALT; this also admits a real split
 ///    representation's anchor-prefix piece) or a distinct allele in the same
-///    tract (neither + partial evidence, never Phase 3). Applies to every
-///    single-base-REF variant the dispatcher sends here, including
-///    anchor-substituting Ins+SNV (A>CCC).
+///    tract (neither + partial evidence, never Phase 3). The dispatcher sends
+///    only anchor-preserving one-base-REF variants here; one whose ALT changes
+///    the anchor (A>CCC) is a delins, judged by the exact-carrier rule.
 /// 5. **Phase 3 haplotype fallback:** When a length-matching insertion of other
 ///    bases exists nearby (e.g., same biological event represented differently
 ///    by caller vs aligner), falls back to check_complex for Smith-Waterman
@@ -1847,14 +1861,15 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     // not run here (a wrong-length windowed I's bases are not extracted during
     // the scan); shifted truncations of a long insert therefore land in
     // partial, not ALT.
-    // A wrong-length I inside a repeat tract is a distinct slippage allele →
-    // neither + partial evidence (Phase 3 must not arbitrate: it is
-    // length-blind inside repeat tracts). In unique context the
-    // anchor-covering M is definitive REF and the stray I is alignment
-    // noise — keep rd, but carry the partial evidence so the read is not
-    // silently absorbed (matches the pre-rule Phase-3 outcome).
+    // Where the event slides (a repeat of any period: repeat_span ≥ 2, or a
+    // shift region wider than the event, as a long-period duplication's) the
+    // distinct allele is a slippage allele → neither + partial evidence (Phase 3
+    // must not arbitrate: it is length-blind inside repeat tracts). In unique
+    // context the anchor-covering M is definitive REF and the stray I is
+    // alignment noise — keep rd, but carry the partial evidence so the read is
+    // not silently absorbed (matches the pre-rule Phase-3 outcome).
     if has_distinct_allele_nearby && found_ref_coverage {
-        if variant.repeat_span >= 2 {
+        if variant.repeat_span >= 2 || window::slides(variant) {
             trace!(
                 "check_insertion: lone distinct-allele I in repeat tract at pos {} → \
                  neither + partial evidence",
@@ -1926,18 +1941,33 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     ClassifyResult::neither(ClassifyPhase::Structural) // Read does not cover the variant region
 }
 
-/// Reference bases `[lo, hi)`, upper-case, from the variant's prepared reference:
-/// its event reference, else its `ref_context`. None when neither holds them.
-fn reference_span(v: &Variant, lo: i64, hi: i64) -> Option<Vec<u8>> {
-    let slice = |start: i64, seq: &str| {
-        let (a, b) = (lo - start, hi - start);
-        (a >= 0 && a <= b && b as usize <= seq.len())
-            .then(|| seq.as_bytes()[a as usize..b as usize].to_ascii_uppercase())
-    };
-    v.event_ref
-        .as_ref()
-        .and_then(|(start, seq)| slice(*start, seq))
-        .or_else(|| v.ref_context.as_ref().and_then(|ctx| slice(v.ref_context_start, ctx)))
+/// Whether the read carries an insertion or deletion across the window `[lo, hi)`
+/// besides its own at `at` (an insertion before `at`, or a deletion starting
+/// there). An insertion counts when it sits strictly inside the window (one before
+/// its first base leaves the window as reference). Splices are not counted: a
+/// junction at the event (an anchor spliced out, an insert at an exon edge) is the
+/// RNA rules' business.
+fn other_indel_in_window(record: &Record, (lo, hi): (i64, i64), at: i64, own_is_ins: bool) -> bool {
+    let is_own = |is_ins: bool, pos: i64| is_ins == own_is_ins && pos == at;
+    let mut rp = record.pos();
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::RefSkip(n) => rp += *n as i64,
+            Cigar::Ins(_) => {
+                if lo < rp && rp < hi && !is_own(true, rp) {
+                    return true;
+                }
+            }
+            Cigar::Del(n) => {
+                if rp < hi && rp + *n as i64 > lo && !is_own(false, rp) {
+                    return true;
+                }
+                rp += *n as i64;
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Whether the read's indel op at `at` is its only change across the reference
@@ -1978,7 +2008,8 @@ fn only_change_in_window(
 /// `X + S == S + Y` (Y right of X) or `S + X == Y + S` (Y left of X). A read base
 /// below `min_baseq`, or N, matches anything; at least one must be read. An ALT that
 /// also substitutes its anchor base is not a pure insertion: no placement elsewhere
-/// gives it. Whether the read carries only this change is `only_change_in_window`.
+/// gives it (the dispatcher sends those to the exact-carrier rule; this guards
+/// direct callers). Whether the read carries only this change is `only_change_in_window`.
 fn same_insertion_haplotype(v: &Variant, at: i64, ins: &[u8], ins_quals: &[u8], min_baseq: u8) -> bool {
     let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
     if r.len() != 1 || !a[0].eq_ignore_ascii_case(&r[0]) {
@@ -1989,7 +2020,7 @@ fn same_insertion_haplotype(v: &Variant, at: i64, ins: &[u8], ins_quals: &[u8], 
     if ins.len() != x.len() {
         return false;
     }
-    let Some(s) = reference_span(v, j0.min(at), j0.max(at)) else {
+    let Some(s) = window::reference_span(v, j0.min(at), j0.max(at)) else {
         return false;
     };
     let (expected, y_at): (Vec<u8>, usize) = if at >= j0 {
@@ -2022,7 +2053,7 @@ fn same_insertion_haplotype(v: &Variant, at: i64, ins: &[u8], ins_quals: &[u8], 
 fn same_deletion_haplotype(v: &Variant, at: i64, len: usize) -> bool {
     let j0 = v.pos + 1;
     let (lo, hi) = (j0.min(at), j0.max(at));
-    let Some(seq) = reference_span(v, lo, hi + len as i64) else {
+    let Some(seq) = window::reference_span(v, lo, hi + len as i64) else {
         return false;
     };
     (0..(hi - lo) as usize).all(|i| seq[i] == seq[i + len])
@@ -2214,6 +2245,17 @@ fn resolve_anchor_deletion_candidate(
     let expected_del_seq = &variant.ref_allele.as_bytes()[1..];
 
     if found_del_len == expected_del_len {
+        if other_indel_in_window(record, window::discrimination_window(variant), anchor_pos + 1, false) {
+            // The deletion with another insertion or deletion across the window:
+            // the read's haplotype is not the ALT (a cancelled pair, a split
+            // longer allele).
+            trace!(
+                "check_deletion: D({}) at the expected span after pos {} with another \
+                 indel in the window → distinct allele, partial evidence",
+                found_del_len, anchor_pos
+            );
+            return ClassifyResult::neither_with_nearby(qual, ClassifyPhase::Structural);
+        }
         trace!(
             "check_deletion: D({}) match at expected span after pos {}, qual={} (structural)",
             found_del_len, anchor_pos, qual
@@ -2402,16 +2444,26 @@ fn scan_windowed_deletion_candidate(
             // S3 failed: this deletion gives another haplotype than the
             // variant's (a shift-equivalent placement, such as a caller's
             // left-aligned deletion the aligner wrote further right, passes
-            // above). At 5bp or more, track for the Phase 3 fallback: the caller
-            // and aligner may write one larger event differently. Short (1-4bp)
-            // same-length deletions that fail S3 are almost certainly
-            // spurious/unrelated noise — CIGAR remains definitive for them.
-            if del_len_usize >= 5 {
+            // above). At 5bp or more an exact-length one is a distinct allele,
+            // as a wrong-length one is: Phase 3 called such reads ALT (on the RC
+            // set every one it reached was another allele by its bases). An
+            // in-band (≥50bp, other length) one whose bases differ keeps Phase-3
+            // arbitration. Short (1-4bp) same-length deletions that fail S3 are
+            // almost certainly spurious/unrelated noise — CIGAR remains definitive
+            // for them.
+            if del_len_usize >= 5 && del_len_usize == expected_del_len {
+                *has_distinct_allele_nearby = true;
+                trace!(
+                    "check_deletion: windowed D({}) at pos {} gives another haplotype \
+                     → distinct-allele candidate",
+                    del_len_usize, del_ref_pos
+                );
+            } else if del_len_usize >= 5 {
                 *has_shifted_same_length = true;
                 trace!(
-                    "check_deletion: S3 reject at shifted pos {} (deleted bases \
-                     mismatch, del_len={} >= 5), flagging for Phase 3 fallback",
-                    del_ref_pos, del_len_usize
+                    "check_deletion: in-band D({}) at shifted pos {} with other deleted \
+                     bases, flagging for Phase 3 fallback",
+                    del_len_usize, del_ref_pos
                 );
             } else {
                 trace!(
@@ -2758,19 +2810,19 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
         return result;
     }
 
-    // A distinct allele in the window: a wrong-length deletion (flagged ops are
-    // ≥5bp — smaller ones were dropped as noise during the scan), or the
-    // variant's deletion written elsewhere with another change across its
-    // window (no same-length candidate of another haplotype). The read shows
-    // REF at the anchor junction, so the expected event is absent; the
-    // distinct allele is a slippage allele inside
-    // a repeat tract → neither + partial evidence (Phase 3 must not
-    // arbitrate: it is length-blind inside repeat tracts). In unique context
-    // the anchor-covering M is definitive REF — keep rd, but carry the
-    // partial evidence so the nearby deletion is not silently hidden
-    // (matches the pre-rule Phase-3 outcome).
+    // A distinct allele in the window: a wrong-length deletion or a same-length
+    // one of another haplotype (flagged ops are ≥5bp — smaller ones were dropped
+    // as noise during the scan), or the variant's deletion written elsewhere
+    // with another change across its window. The read shows REF at the anchor
+    // junction, so the expected event is absent. Where the event slides (a
+    // repeat of any period: repeat_span ≥ 2, or a shift region wider than the
+    // event) the distinct allele is a slippage allele → neither + partial
+    // evidence (Phase 3 must not arbitrate: it is length-blind inside repeat
+    // tracts). In unique context the anchor-covering M is definitive REF — keep
+    // rd, but carry the partial evidence so the nearby deletion is not silently
+    // hidden (matches the pre-rule Phase-3 outcome).
     if has_distinct_allele_nearby && found_ref_coverage {
-        if variant.repeat_span >= 2 {
+        if variant.repeat_span >= 2 || window::slides(variant) {
             trace!(
                 "check_deletion: lone distinct-allele D in repeat tract at pos {} → \
                  neither + partial evidence",

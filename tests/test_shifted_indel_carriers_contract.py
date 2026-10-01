@@ -206,8 +206,10 @@ def test_a_read_spliced_over_the_run_start_is_not_alt(tmp_path):
 
 def test_an_anchor_substituting_insertion_is_not_matched_elsewhere(tmp_path):
     """A>CCC in A CC T: the carriers keep the anchor A and insert CC after the two
-    C's (ACCCCT, not CCCCCT). No placement elsewhere substitutes the anchor: REF."""
-    assert _count(tmp_path, ANCHOR_SUB, "A", "CCC", A + 3, "I", "CC") == (10, 0, 0)
+    C's (ACCCCT, not CCCCCT). No placement elsewhere substitutes the anchor. The
+    variant is a delins judged by its whole allele (#121): the read holds neither
+    window (an insertion inside the event's window), so it is partial evidence."""
+    assert _count(tmp_path, ANCHOR_SUB, "A", "CCC", A + 3, "I", "CC") == (5, 0, 5)
 
 
 @pytest.mark.parametrize("junction", [9, 13, 17])

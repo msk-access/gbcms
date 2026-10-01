@@ -50,7 +50,14 @@ every placement in `shift_region` (deletions: starts up to hi − len), and
 tract-cluster grouping's `window_pad` reaches as far. The variant's bases at a non-equivalent
 spot are a distinct allele (`has_distinct_allele_nearby`) inside the
 discrimination window, a separate event (REF) outside it; other bases keep
-Phase-3 arbitration via `has_shifted_same_length` (partial propagated on non-ALT). Windowed wrong-length
+Phase-3 arbitration via `has_shifted_same_length` (partial propagated on non-ALT).
+A same-length deletion ≥5bp of another haplotype is a distinct allele (not Phase 3;
+only in-band ≥50bp ones keep Phase 3). The strict path also needs no other I/D in
+the window. An ALT read spanning neither C10 window must discriminate by its bases
+(`alt_needs_the_window` / `window::alt_bases_discriminate`), else `uninformative`
+(depth only). "In a repeat" for distinct alleles = `repeat_span >= 2 ||
+window::slides`. One-base-REF ALTs that change the anchor (A>CCC) go to the
+exact-carrier rule, like Del+SNV (cluster 1: #188, #191, #192, #121). Windowed wrong-length
 (dels ≥5bp only — 1–4bp windowed Ds are noise → plain REF; ins any size):
 repeat tract → neither+partial; unique context → REF+partial.
 Delins stay `check_complex` (Phase-3 realignment is CORRECT for them).

@@ -36,14 +36,16 @@ flowchart LR
 ```
 
 !!! info "Allele-Length and Anchor-Base Routing"
-    Dispatch uses `ref_allele.len()` and `alt_allele.len()` as the primary selector. For `N×1` variants (deletion format), it additionally checks whether the anchor base substitutes (`alt_allele[0] ≠ ref_allele[0]`):
+    Dispatch uses `ref_allele.len()` and `alt_allele.len()` as the primary selector. For `N×1` variants (deletion format) and `1×N` variants (insertion format), it additionally checks whether the anchor base substitutes (`alt_allele[0] ≠ ref_allele[0]`):
 
     - **Pure deletion** (`alt[0] == ref[0]`) → `check_deletion` — e.g., `AC→A` where anchor A is preserved
     - **Complex Del+SNV** (`alt[0] ≠ ref[0]`) → the [exact-carrier rule](#the-exact-carrier-rule) — e.g., `GC→T` where anchor G also substitutes to T
+    - **Pure insertion** (`alt[0] == ref[0]`) → `check_insertion` — e.g., `A→AC`
+    - **Complex Ins+SNV** (`alt[0] ≠ ref[0]`) → the exact-carrier rule — e.g., `C→TA`, `A→CCC`. Before 6.6.0 these went to `check_insertion`, which compares only the inserted bases, so reads that keep the anchor counted ALT (on WES, 156 of 463 ALT reads at 10 such loci; #121)
 
-    This distinction is critical: `check_deletion`'s CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. The exact-carrier rule reads the substituted anchor as part of the allele.
+    This distinction is critical: the pure-indel CIGAR safeguards cannot correctly classify reads that simultaneously carry the anchor substitution. The exact-carrier rule reads the substituted anchor as part of the allele.
 
-    `check_deletion` also falls back to `check_complex` for large deletions (≥5bp) where S3 sequence validation fails due to BWA left-alignment shifting the anchor position (see [Deletion — Windowed Safeguards](#windowed-scan-safeguards-1)).
+    `check_deletion` falls back to Phase 3 only for an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ (see [Deletion — Windowed Safeguards](#windowed-scan-safeguards-1)); a same-length deletion of another haplotype is a distinct allele.
 
 ---
 
@@ -118,7 +120,7 @@ Bases inserted after an **anchor** position. The anchor is the last reference ba
 
 | Property | Value |
 |:---------|:------|
-| Detection | `len(REF) == 1 && len(ALT) > 1` |
+| Detection | `len(REF) == 1 && len(ALT) > 1`, the ALT keeping the anchor base |
 | Position | 0-based index of the **anchor** base |
 | Quality check | Quality-masked sequence comparison |
 
@@ -211,7 +213,7 @@ flowchart TD
     Eval -->|No| SLCheck{"has_shifted_same_length\nAND ref coverage?"}
     SLCheck -->|Yes| CPX(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
     SLCheck -->|No| WLCheck{"has_distinct_allele_nearby\nAND ref coverage?"}
-    WLCheck -->|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
+    WLCheck -->|"Yes, the event slides\n(repeat_span ≥ 2 or a\nwide shift region)"| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
     WLCheck -->|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
     WLCheck -->|No| HasRef{"Anchor covered by M?"}
     HasRef -->|Yes| Ref(["✅ REF"]):::ref
@@ -246,7 +248,8 @@ Three layers of validation prevent false-positive windowed matches:
     - **`has_distinct_allele_nearby`** — the windowed scan found an insertion of the
       **wrong length** (flagged at any size, so REF can never silently absorb it), or the
       variant's bases placed where they give **another haplotype** inside its discrimination
-      window. Resolved without Phase 3: inside a repeat tract (`repeat_span ≥ 2`) it is a
+      window. Resolved without Phase 3: where the event slides (`repeat_span ≥ 2`, or a shift
+      region wider than the event, as a long-period duplication's) it is a
       distinct allele → neither + `partial_alt`; in unique context the anchor-covering M is
       definitive REF and the stray insertion is surfaced as `partial_alt` alongside `rd`.
 
@@ -417,7 +420,7 @@ flowchart TD
     Spans -->|Yes| SLCheck{"has_shifted_same_length?"}
     SLCheck -->|Yes| CPXP(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
     SLCheck -->|No| WLCheck{"has_distinct_allele_nearby?"}
-    WLCheck -->|"Yes, repeat tract\n(repeat_span ≥ 2)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
+    WLCheck -->|"Yes, the event slides\n(repeat_span ≥ 2 or a\nwide shift region)"| WLPartial(["⚪ Neither + partial\n(distinct slippage allele)"]):::partial
     WLCheck -->|"Yes, unique context"| RefPartial(["✅ REF + partial\n(noise surfaced, rd kept)"]):::ref
     WLCheck -->|No| Ref(["✅ REF"]):::ref
 
@@ -438,10 +441,10 @@ Three layers of validation prevent false-positive windowed matches:
 | **S1** | Deleted length matches expected `ref_len − 1` exactly, or is within the ≥50bp ±3bp band | Wrong-length deletions never match; ≥5bp ones flag `has_distinct_allele_nearby` (distinct-allele candidates), <5bp ones are alignment noise (CIGAR-definitive) |
 | **S2** | Closest match wins (minimum distance from anchor) | When multiple candidates exist, picks the most likely |
 | **S3** | An exact-length deletion gives the variant's haplotype: the reference between the two placements repeats with period `len` (the same bases in a homopolymer, a rotation such as `AC` for `CA` in an STR), and it is the read's only change across the discrimination window (otherwise a distinct allele). An in-band (≥50bp) length compares the deleted bases over the overlapping span | Verifies the shifted Del is the same event. Before 6.6.0 S3 compared the deleted bases themselves, so a rotated STR placement under 5bp counted REF (#189) |
-| **del_len ≥ 5 guard** | Only flag `has_shifted_same_length` for Dels ≥5bp that fail S3 | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A longer one that gives another haplotype may be the same event written differently by the caller and the aligner |
+| **del_len ≥ 5 guard** | A same-length Del ≥5bp that fails S3 is a distinct allele (`has_distinct_allele_nearby`); an in-band (≥50bp) one whose bases differ flags `has_shifted_same_length` | Short (1–4bp) Dels failing S3 are almost certainly spurious noise — CIGAR remains definitive. A same-length one ≥5bp gives another haplotype: Phase 3 called such reads ALT (44–94% of synthetic cases; on the RC set every one it reached was another allele by its bases), so it is partial evidence instead (#191) |
 
 !!! note "has_shifted_same_length Phase 3 Fallback"
-    When the windowed scan finds a deletion that matches in **length** (≥5bp) but gives another haplotype (S3 fails), the engine flags `has_shifted_same_length` and routes to Phase-3 haplotype arbitration (WFA+PairHMM under the default backend), propagating `partial_alt` evidence when Phase 3 does not confirm ALT. A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
+    Only an in-band large deletion (≥50bp, another length within 3bp) whose deleted bases differ over the overlap flags `has_shifted_same_length` and goes to Phase-3 haplotype arbitration (WFA+PairHMM under the default backend), propagating `partial_alt` evidence when Phase 3 does not confirm ALT. A same-length deletion (≥5bp) that gives another haplotype is a distinct allele, not Phase 3 (before 6.6.0 Phase 3 often called it ALT; #191). A deletion the aligner wrote elsewhere in the event's shift region (left-alignment moves the caller's anchor left of the reads' `D`) gives the same haplotype and passes S3 directly.
 
     Example: **TP53 `GACCGTGCAAGT→-` (12bp)** — left-alignment moves the anchor 3bp left of the actual `D(12)` position in reads. That placement gives the same haplotype, so S3 (same haplotype) accepts it; before 6.6.0 S3 compared the deleted bases, failed, and Phase 3 classified these reads as ALT.
 
@@ -655,7 +658,7 @@ The contiguity check is performed **first** (before quality or sequence comparis
 
 ## Complex (Indel + Substitution)
 
-Variants where REF and ALT differ in both sequence **and** length. It also covers **complex Del+SNV** variants (`N×1` with a substituted anchor) and MNP reads that carry an indel inside the block.
+Variants where REF and ALT differ in both sequence **and** length. It also covers **complex Del+SNV** variants (`N×1` with a substituted anchor), **complex Ins+SNV** variants (`1×N` with a substituted anchor, since 6.6.0) and MNP reads that carry an indel inside the block.
 
 ### The exact-carrier rule
 
@@ -992,6 +995,24 @@ Reads that fail the rule count toward `DP` and `DPF` but are neither REF nor ALT
 the same as GATK's AD, which counts only informative reads. The rule does not
 apply to substitution-bearing events (SNV, MNP, delins): they have no shift
 region, and their first base already discriminates.
+
+**The ALT side (6.6.0, #188).** An ALT call from a read that spans neither
+window stands only when the read's own bases tell the alleles apart: read where
+they sit, rightwards from its aligned base left of the window or leftwards from
+its aligned base right of it, the read must hold the first base where the
+alleles differ, unmasked, plus one more, every base fitting the ALT. A carrier
+that ends inside the repeat holds only shared bases, so its gap alone is
+placement: it counts toward depth only. The windows themselves are not mirrored
+onto ALT reads: a long insertion's carrier spends its span inside the insert and
+often cannot reach the far flank, yet its inserted bases discriminate (on the RC
+set 2,738 such carriers keep their ALT; 25 that fit both alleles or align neither
+flank do not).
+
+**One change across the window (6.6.0, #188).** An indel at the variant's own
+junction counts ALT only when the read carries no other insertion or deletion
+across the discrimination window; a cancelled pair or a split longer allele
+(+A and +A for a +A row) is a distinct allele, partial evidence. Splices there
+remain the RNA rules' business.
 
 ---
 

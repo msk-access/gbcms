@@ -22,6 +22,7 @@
 use rust_htslib::bam::record::{Cigar, Record};
 
 use crate::normalize::repeat::first_change_offset;
+use crate::shared::bam_utils::find_read_pos;
 use crate::types::Variant;
 
 /// Reference interval `[lo, hi)` (0-based, half-open) holding every base at
@@ -126,6 +127,119 @@ pub(crate) fn scan_window(variant: &Variant, window: i64) -> (i64, i64) {
         end = end.max(hi - del_len);
     }
     (start.max(0), end)
+}
+
+/// Reference bases `[lo, hi)`, upper-case, from the variant's prepared reference:
+/// its event reference, else its `ref_context`. None when neither holds them.
+pub(crate) fn reference_span(v: &Variant, lo: i64, hi: i64) -> Option<Vec<u8>> {
+    let slice = |start: i64, seq: &str| {
+        let (a, b) = (lo - start, hi - start);
+        (a >= 0 && a <= b && b as usize <= seq.len())
+            .then(|| seq.as_bytes()[a as usize..b as usize].to_ascii_uppercase())
+    };
+    v.event_ref
+        .as_ref()
+        .and_then(|(start, seq)| slice(*start, seq))
+        .or_else(|| v.ref_context.as_ref().and_then(|ctx| slice(v.ref_context_start, ctx)))
+}
+
+/// Whether a pure indel slides: its shift region is wider than the event (an
+/// insertion with more than one junction, a deletion whose region is longer than
+/// itself). This, not `repeat_span` (motifs of up to 6 bases only), says whether
+/// the event sits in a repeat: a long-period tandem duplication slides too.
+pub(crate) fn slides(v: &Variant) -> bool {
+    let (lo, hi) = change_interval(v);
+    let (r, a) = (v.ref_allele.len() as i64, v.alt_allele.len() as i64);
+    if a > r {
+        hi > lo
+    } else {
+        hi - lo > r - a
+    }
+}
+
+/// Whether a read's own bases tell a pure indel's ALT from its REF, read where
+/// they sit. Rightwards from the read's aligned base just left of the
+/// discrimination window, or leftwards from its aligned base just right of it,
+/// the read must hold the first base at which the two alleles differ, unmasked,
+/// and one more (the margin C10 gives REF reads), every base up to there fitting
+/// the ALT; a base below `min_baseq`, or N, fits anything. Soft-clipped bases are
+/// not read. Used for a read that spans neither informative window: the CIGAR's
+/// gap alone is placement, and a carrier ending inside the repeat holds only
+/// bases the alleles share, while a truncated long insertion's carrier holds the
+/// inserted bases. True when the reference around the event is unavailable (the
+/// read cannot be judged, so the call stands).
+pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
+    if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
+        return true;
+    }
+    let (lo, hi) = change_interval(v);
+    let (dlo, dhi) = (lo - 1, hi + 1);
+    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
+    let n = (a.len() as i64 - r.len() as i64).abs();
+    let ins: Vec<u8> = if a.len() > r.len() { a[r.len()..].to_ascii_uppercase() } else { Vec::new() };
+    let j0 = v.pos + r.len().min(a.len()) as i64;
+    let ext = n + 2;
+    // The ALT haplotype of reference [from, to): the insert added, or the deleted
+    // bases removed, at j0.
+    let alt_of = |from: i64, seq: &[u8]| -> Vec<u8> {
+        let k = (j0 - from) as usize;
+        if ins.is_empty() {
+            [&seq[..k], &seq[k + n as usize..]].concat()
+        } else {
+            [&seq[..k], ins.as_slice(), &seq[k..]].concat()
+        }
+    };
+    let (Some(right), Some(left)) = (reference_span(v, dlo, dhi + ext), reference_span(v, dlo - ext, dhi)) else {
+        return true;
+    };
+    let seq = record.seq().as_bytes();
+    let cig: Vec<Cigar> = record.cigar().iter().copied().collect();
+    let lead = match cig.first() {
+        Some(Cigar::SoftClip(k)) => *k as usize,
+        _ => 0,
+    };
+    let trail = seq.len()
+        - match cig.last() {
+            Some(Cigar::SoftClip(k)) => *k as usize,
+            _ => 0,
+        };
+    // The read's bases at query offsets `idx`, judged against `refh` and `alth`.
+    let holds = |idx: &mut dyn Iterator<Item = usize>, refh: &[u8], alth: &[u8]| -> bool {
+        let Some(d) = refh.iter().zip(alth).position(|(x, y)| x != y) else {
+            return false;
+        };
+        if d + 2 > alth.len() {
+            return false;
+        }
+        let mut i = 0;
+        for q in idx.take(d + 2) {
+            let b = seq[q].to_ascii_uppercase();
+            let masked = b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq);
+            if masked && i == d {
+                return false;
+            }
+            if !masked && b != alth[i] {
+                return false;
+            }
+            i += 1;
+        }
+        i == d + 2
+    };
+    if let Some(q) = find_read_pos(record, dlo - 1) {
+        let alth = alt_of(dlo, &right);
+        if holds(&mut ((q + 1)..trail), &right, &alth) {
+            return true;
+        }
+    }
+    if let Some(q) = find_read_pos(record, dhi) {
+        let alth = alt_of(dlo - ext, &left);
+        let refr: Vec<u8> = left.iter().rev().copied().collect();
+        let altr: Vec<u8> = alth.iter().rev().copied().collect();
+        if holds(&mut (lead..q).rev(), &refr, &altr) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The two reference intervals `[lo, hi)`, one per side, of which a read must
@@ -319,6 +433,22 @@ mod tests {
     fn substitution_bearing_events_have_no_informative_windows() {
         assert_eq!(informative_windows(&var(HOMO, 2, "C", "GA")), None);
         assert_eq!(informative_windows(&var(HOMO, 5, "A", "G")), None);
+    }
+
+    #[test]
+    fn an_event_slides_when_its_region_is_wider_than_itself() {
+        // A homopolymer insertion slides over the run; a deletion of the whole
+        // run's worth of one base slides; a unique insertion does not.
+        assert!(slides(&var(HOMO, 2, "C", "CA")));
+        assert!(slides(&var(HOMO, 2, "CA", "C")));
+        assert!(!slides(&var("TGCTGACTGA", 2, "C", "CG")));
+        // A long-period duplication slides whatever repeat_span says.
+        let mut dup = var(HOMO, 9, "G", "GACGTTGCA");
+        dup.shift_region = Some((10, 26));
+        assert!(slides(&dup));
+        let mut unique_del = var(HOMO, 9, "GACGTTGCA", "G");
+        unique_del.shift_region = Some((10, 18));
+        assert!(!slides(&unique_del));
     }
 
     #[test]
