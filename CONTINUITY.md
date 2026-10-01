@@ -45,19 +45,27 @@ whose bases spell another allele, and anchor-keeping reads of `A>CCC` variants a
 another allele. Operator decisions (2026-10-01): no margin base on the ALT side;
 accept the exact-carrier rule's semantics for anchor-changing variants. Branch
 `feature/cluster1-pure-indel-read-judgment`; harness `~/test/gbcms/harness/c20/`
-(local). Follow-ups: R5 #198, C25 #199 and C27 #201 (6.7.0); C26 #200 (6.6.0,
+(local). Follow-ups: R5 #198 and C27 #201 (6.7.0); C25 #199 (moved into 6.6.0); C26 #200 (6.6.0,
 decide: which of a read's other indels decide its REF call, inside vs outside
 the window); C28 #202 (6.6.0,
 measure: anchor-deleting reads fall back to Phase 3's closer haplotype).
 
-**In review — T1 #170 + T2 #171 (test architecture):** the legacy per-variant
+**Merged — T1 #170 + T2 #171, #205 (test architecture):** the legacy per-variant
 `count_bam` path is retired. Binning invariance replaces parity: a Rust bin property
 test, `tests/test_binning_invariance.py`, and `count_checked` (production vs one
 variant per bin) in every counting test. A read census (`tests/census.py`) checks
 pure-indel classification; the open decisions C26/C27/C28 are strict xfails there.
-Branch `feature/t1-t2-test-architecture`; byte-identity harness
-`~/test/gbcms/harness/t1/` (local). Next: H3 #204, the code-quality sweep (audited;
-work list on the issue).
+
+**In progress — H3 #204 PR A (count-affecting fixes):** branch
+`feature/h3-code-quality-sweep`, not yet pushed. The ALT read-by-bases rule reads
+clamped reference and from a flank the read reads (unmasked, the reference's);
+unjudged reads are depth only, counted and warned; `carrier::judges` shared by
+prep and dispatch; a reference is required (and must be a file) for
+`observe_molecules`; A>CCC uses the delins triage span; upper-case reference
+windows; deterministic mFSD. Acceptance (harness `~/test/gbcms/harness/h3/`,
+local): 140 of 144 files byte-identical; 4 rows adjudicated per read (plan H3
+"PR A as built"). Then PR B: refactors, dead code, logging, monitoring and
+comments, byte-identical to A.
 
 **Triage (2026-09-30):** every open issue was gone through by cluster with the
 operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
@@ -79,7 +87,7 @@ community practice before deciding; record the decision in the issue.
    oracle): design note first. Then a code-quality sweep of the cycle's code
    (duplication, unused code, silent failures, comments, logging, monitoring) as
    its own PR, H3 #204 (operator request, 2026-10-01).
-2. C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
+2. C25 #199 (moved into 6.6.0), C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
    (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
 3. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
    mkdocs pin, P3); O1+O2; S1+S2; M2+M4.

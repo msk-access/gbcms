@@ -59,7 +59,7 @@ marks a ticket with an open PR.
 | C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [done] | #191 |
 | C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [done] | #192 |
 | C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
-| C25 | Exact-carrier long-event junction windows credit REF to anchor-keeping carriers of long anchor-changing insertions | L | [counts] [6.7.0] | #199 |
+| C25 | Exact-carrier long-event junction windows: a read holding one junction decides the call (REF for anchor-keeping reads; ALT for reads carrying only the substitution) | M | [counts] | #199 |
 | C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decide] | #200 |
 | C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [6.7.0] | #201 |
 | C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
@@ -1357,6 +1357,60 @@ the ranked work list is on #204. In brief:
 
 Pure refactors must leave the acceptance output byte-identical.
 
+**Decisions (operator, 2026-10-01).**
+- Allele kinds: one enum. A>CCC triages like a delins, `[pos, pos+1)`. A read
+  spliced over the anchor that resumes at pos+1 leaves DP (DP-only, RNA-only,
+  measured).
+- Fragment class: share the classifier and keep both behaviours (no output
+  change).
+- `ref_context`: uppercase it at prep (fixes SW on soft-masked FASTAs).
+- mFSD: sum in a deterministic order.
+- Reads starting on a flank: measured (one row, a 66bp duplication regaining 11
+  carriers that start on the anchor and hold the whole insert), then decided: the
+  read-by-bases rule reads from the flank.
+- S2's widening stays; C25 #199 moves into 6.6.0 (its junction windows can make a
+  false ALT, now reached by anchor-changing insertions in long runs too).
+- A deciding base past a contig edge: depth only (circular contigs), counted and
+  warned like other unjudged reads.
+- `observe_molecules` requires a reference FASTA (argument or config); without one
+  it is a `ValueError`, as for the CLI. This replaces the S3 warning.
+
+**Plan: two PRs.**
+- A: the count-affecting fixes (S1, S2, S3, the decisions above), test-first and
+  measured.
+- B: refactors, dead code, logging, monitoring and comments, byte-identical to A.
+
+**PR A as built (2026-10-01).**
+- S1: the ALT read-by-bases rule reads clamped reference and reads from a flank
+  the read starts on. Unjudged reads (no reference, or a deciding base past a
+  contig edge) are depth only, counted and warned once per variant.
+- S2: `carrier::judges` is shared by prep and the dispatcher, so anchor-changing
+  insertions and the decomposed twin get a widened reference, and a fallback
+  warns.
+- `observe_molecules` requires a reference.
+- A>CCC uses the delins triage span.
+- Reference windows are upper case.
+- mFSD sums run in a fixed order.
+
+Reviews:
+- The first review found a twin with no reference, warning texts, and C25's ALT
+  side (filed and xfailed). All fixed.
+- The flank review found that a carrier starting (or ending) on a masked flank
+  was ALT, in both the fallbacks and the ALT windows: the flank base must now be
+  read (unmasked, the reference's). Also fixed:
+  - the census anchors on a flank the same way;
+  - C28's example spelled the ALT one base along, so it now holds neither
+    allele, with xfails in both directions;
+  - a reference that is not a file is refused, in the CLI config and in
+    `observe_molecules`.
+- Real data after the flank review: develop vs PR A, 140 of 144 files
+  byte-identical. The 66bp duplication still gains 11 ALT reads. Three
+  deletions lose 5 ALT reads (fragments unchanged); each read's flank base was at
+  BQ 9–15, and its bases fit both alleles.
+- Real data: develop vs PR A, 143 of 144 files byte-identical. One row changes:
+  a 66bp duplication gains 11 carriers (start on the anchor, hold the whole
+  insert), the flank-start decision.
+
 ## Performance (M5 leftovers)
 
 ### P1 — Deep-bin fetch reduction (M5b) (#150, under #134) · L
@@ -1604,9 +1658,10 @@ C22, C23, R1, R2 and O4 are done (cluster 1 merged in #203).
 2. **Test architecture:** T1 #170 (retire the legacy path; binning invariance)
    with T2 #171 (read-census oracle), before the read-admission work; then H3
    #204 (code-quality sweep of the cycle's code), its own PR.
-3. **Read admission and RNA:** C26 #200 (the REF side of cluster 1's one-change
-   rule; measured first, then decided) and C28 #202 (the anchor-deleted Phase-3
-   fallback; measured first); C17 #176 (measured first); R4 #185 with
+3. **Read admission and RNA:** C25 #199 (long-event junction windows; moved into
+   6.6.0 on 2026-10-01: it can make a false ALT), C26 #200 (the REF side of
+   cluster 1's one-change rule; measured first, then decided) and C28 #202 (the
+   anchor-deleted Phase-3 fallback; measured first); C17 #176 (measured first); R4 #185 with
    O8 #186 (one PR); C16 #174 (traced first).
 4. **Small batches, any order, parallelisable:** records (C19 #182, O7 #183);
    MAF input (I1 #123, I2 #124, C9 #122); allele columns (I3 #125, I4 #126's doc

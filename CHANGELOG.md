@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `observe_molecules` requires a reference FASTA (#204) — breaking
+
+- `observe_molecules()` takes `reference_fasta` from the argument or from `config`.
+  Neither (or an empty string) raises `ValueError`, as the CLI does; so does a path
+  that is not a file. Without a reference, the variants were neither normalized nor given a reference context.
+  The indel and complex-variant rules then ran degraded, with nothing said:
+  - carriers written elsewhere in a repeat were not recognised;
+  - reads were judged against the bare event;
+  - complex variants went to the previous classifier.
+- `ObservationResult.variant_status` is always set (a list; it was `None` without a
+  reference).
+- The CLI's config refuses a reference that is not a file. An empty `--fasta ""`
+  is `.`, a directory, which passed the existence check and failed in the engine
+  with a FASTA-index error.
+
+### Fixed — missing data never changes a count silently (#204)
+
+- **ALT calls without a reference to read against.** An ALT call on a pure indel
+  from a read that spans neither window stood on placement alone when the
+  reference around the event was unavailable. At a contig end the ALT side's
+  reading stretch failed to fetch, so carriers whose bases fit both alleles
+  counted ALT while the same REF reads were withdrawn. Now:
+  - the rule reads the reference that exists, stopping at the contig end;
+  - a read with a side to read from but no prepared reference (an unprepared
+    variant, or one that failed prep) counts toward depth only, and is counted
+    and warned once per variant;
+  - a read lying inside the tract has nothing to read from either way, so it is
+    depth only;
+  - a read whose deciding base lies past a contig edge stays depth only (a
+    circular contig continues at its start), but is counted and warned with the
+    others.
+- **Reads starting on a flank.** The ALT read-by-bases rule reads from a flank base
+  the read starts on (rightwards), or ends on (leftwards). The ALT side's windows
+  already started there, and the flank is a base both alleles share. Carriers that
+  start on the anchor and whose bases discriminate count ALT; before, they were
+  withdrawn.
+  - The read must read that flank base: unmasked (BQ at the threshold) and the
+    reference's. For a deletion sliding through a repeat, the flank is all that
+    tells a carrier from REF placed one base along the run. This now holds for the
+    ALT windows too: a window that starts (or ends) on the read's own end base
+    needs that base read, where before the read's extent alone made it
+    informative. A carrier with a masked flank is no longer ALT.
+- **The exact-carrier rule's reference.** Prep widens the reference for exactly the
+  variants the rule judges: one predicate, `carrier::judges`, shared with the
+  dispatcher. Anchor-changing insertions (C>TA) and the homopolymer twin now get
+  it, so a long run no longer sends them silently to the previous classifier. A
+  read the rule still cannot judge is counted and warned once per variant.
+  - In a long run, the rule's junction windows have a known gap (#199): a read
+    holding only the left junction can decide the call. Both sides are strict
+    xfails.
+- **Splice triage for anchor-changing insertions.** An insertion that also changes
+  its anchor (A>CCC) uses the delins span. An RNA read spliced over the anchor
+  and resuming at the next base leaves depth; it counted toward DP as neither.
+- **Soft-masked references.** Every reference window prep reads is upper case.
+  Over a soft-masked (lower-case) FASTA region, left-alignment could not shift.
+  The SW and PairHMM scorers saw reference bases as mismatches: on a synthetic
+  deletion locus REF went 6 → 12 under SW, and partial 6 → 0 under both.
+  Prepared alleles there are now upper case.
+- **mFSD determinism.** The fragment-size statistics are bit-identical run to run.
+  The size vectors arrived in hash order, and the float sums depended on it: 17
+  distinct `mfsd_ref_llr` values over 20 identical runs. The `--mfsd-parquet` size
+  arrays are now in a fixed order. The MAF and VCF columns round far coarser and
+  are unchanged.
+- Three older tests expected ALT from 10bp all-A reads inside an all-A context.
+  Their bases fit both alleles, so they are depth only.
+- **Measured** on RC DNA, FORTE RNA and WES (develop vs branch, every MAF cell
+  compared):
+  - 140 of 144 files are byte-identical; the other fixes target cases this data
+    does not hold;
+  - four rows change, each adjudicated read by read:
+    - a 66bp tandem duplication gains 11 ALT reads (8 fragments). Each starts on
+      the anchor and holds the whole 66bp insert past the first base where the
+      alleles differ, so they are carriers by their bases;
+    - three deletions (14bp, and 1bp in two G runs) lose 5 ALT reads in all; no
+      fragment counts change. Each read starts or ends on a flank base read at
+      BQ 9–15, so its bases fit both alleles.
+
 ### Changed — binning invariance and a read census replace the legacy parity path (#170, #171)
 
 - The per-variant `count_bam` (with `count_single_variant`, about 700 lines that

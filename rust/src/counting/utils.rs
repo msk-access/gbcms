@@ -147,6 +147,16 @@ pub struct ClassifyResult {
     /// sibling's allele it carries is partial evidence here), and a fragment whose
     /// reads are all like this is left out of the mFSD classes.
     pub uninformative: bool,
+    /// An ALT call on a pure indel withdrawn because the read spans neither
+    /// ALT-side window and its bases could not be judged: no prepared reference
+    /// holds the event (an unprepared variant), or the deciding base lies past a
+    /// contig edge. Counted per variant (DP reads) and warned once, so the loss
+    /// is never silent.
+    pub alt_unjudged: bool,
+    /// The exact-carrier rule could not judge this read (the prepared reference
+    /// does not hold the event with its flank) and the previous complex
+    /// classifier did. Counted per variant (DP reads) and warned once.
+    pub carrier_fallback: bool,
 }
 
 impl ClassifyResult {
@@ -173,6 +183,8 @@ impl ClassifyResult {
             clip_admissible: false,
             sw_fallback: false,
             uninformative: false,
+            alt_unjudged: false,
+            carrier_fallback: false,
         }
     }
 

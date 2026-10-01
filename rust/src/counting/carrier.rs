@@ -310,14 +310,27 @@ pub(crate) fn indel_at_block(record: &Record, variant: &Variant) -> bool {
     false
 }
 
+/// Whether this rule judges the variant: every substitution-bearing event that is
+/// not an SNV — an MNP (for reads with an indel or clip at the block), a delins,
+/// and a deletion or insertion whose ALT also changes the anchor base (GC>T,
+/// C>TA). SNVs and pure indels have their own classifiers. The dispatcher sends
+/// exactly these here, and prep widens the reference for exactly these.
+pub(crate) fn judges(v: &Variant) -> bool {
+    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
+    match (r.first(), a.first()) {
+        (Some(r0), Some(a0)) => {
+            (r.len() > 1 && a.len() > 1) || ((r.len() == 1) != (a.len() == 1) && !a0.eq_ignore_ascii_case(r0))
+        }
+        _ => false,
+    }
+}
+
 /// Whether a reference fetched from `start` is too short to judge the variant:
 /// (on the left, on the right), for prep to fetch more. None when it holds the
 /// event with its flank and padding, or the variant is not judged by this rule.
 pub(crate) fn reference_short(start: i64, reference: &str, v: &Variant) -> Option<(bool, bool)> {
-    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
-    let del_snv = a.len() == 1 && r.len() > 1 && !a[0].eq_ignore_ascii_case(&r[0]);
-    if !(r.len() > 1 && a.len() > 1 || del_snv) {
-        return None; // SNVs and pure indels have their own classifiers
+    if !judges(v) {
+        return None;
     }
     let reference = upper(reference);
     let ev = event(start, &reference, v)?;

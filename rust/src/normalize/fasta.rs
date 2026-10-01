@@ -34,7 +34,10 @@ pub(crate) fn fetch_region(
 /// end, and prep pads its windows on both sides, so an indel near the end lost
 /// every window. Callers index from `start`, so only the end is clamped: a
 /// shorter result means the window reached the contig end. Exact fetches (a REF
-/// allele, a MAF anchor) use [`fetch_region`] and fail instead.
+/// allele, a MAF anchor) use [`fetch_region`] and fail instead. Upper-case: a
+/// soft-masked FASTA's lower case is the same reference, and every reader of a
+/// window (left-alignment, the shift region, the event reference, `ref_context`
+/// and the aligners scoring against it) compares bases case-sensitively.
 pub(crate) fn fetch_window(
     reader: &mut fasta::IndexedReader<File>,
     chrom: &str,
@@ -42,7 +45,8 @@ pub(crate) fn fetch_window(
     end: u64,
 ) -> anyhow::Result<Vec<u8>> {
     // Inside the contig, as nearly every window is: the plain fetch, at no extra cost.
-    if let Ok(seq) = fetch_region(reader, chrom, start, end) {
+    if let Ok(mut seq) = fetch_region(reader, chrom, start, end) {
+        seq.make_ascii_uppercase();
         return Ok(seq);
     }
     // Past the contig end: clamp to the length of the record fetch_region reads
@@ -57,6 +61,7 @@ pub(crate) fn fetch_window(
     let mut buf = Vec::new();
     reader.fetch(&name, start, end)?;
     reader.read(&mut buf)?;
+    buf.make_ascii_uppercase();
     Ok(buf)
 }
 
