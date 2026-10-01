@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — code-quality sweep: logging, monitoring, dead code, duplication (#204)
+
+Counts are unchanged on prepared input: 144 of 144 acceptance files (RC DNA,
+FORTE RNA, WES) are byte-identical to the previous build, every MAF cell compared.
+- **Logging.**
+  - Per-read WARN and DEBUG lines move to trace.
+  - Rows the engine can only judge degraded are warned once per counting pass,
+    with their count: indels and complex variants without a prepared reference
+    context, MNPs whose REF equals ALT, and rows with an empty allele.
+  - The exact-carrier fallback warning names its reason.
+  - Misleading texts are corrected; for example, an exact-length deletion is
+    no longer called "wrong-length".
+  - Per-read traces name their read; the Phase stats line is 1-based.
+  - Every decision path has a named trace: why an ALT call is kept, and each
+    route to the exact-carrier rule.
+- **Monitoring** (no new columns).
+  - Each read's `read call` trace names the rule that decided it (`rule=`).
+  - The Phase stats line counts these rules per variant: reads withdrawn as
+    uninformative, ALT kept by its bases, exact-carrier judged or fell back,
+    sibling-guard exclusions and clip admissions.
+  - One INFO line per counting pass gives the totals.
+  - Prep counts what it could not fetch in full (capped or missing shift
+    regions, missing or short event references, missing reference contexts,
+    capped left-alignments) and warns once when any occurred.
+- **API.**
+  - `prepare_variants` takes `rescue_homopolymer` (default off). It builds the
+    homopolymer twin only when the twin will be counted; the pipeline and
+    `observe_molecules` pass the flag.
+  - `BaseCounts.singleton_alt_count` and `duplex_alt_count` are removed. Nothing
+    ever wrote them; they were always 0.
+  - `Variant.shift_region` and `event_ref` are read-only from Python.
+  - A row with an empty allele counts neither and is warned once per pass; no
+    read can carry an empty allele. Prep fails such rows, so pipeline counts are
+    unchanged. Two places did see them:
+    - `observe_molecules`, which passes FAIL rows through to keep rows
+      positional: such a row's molecules are now OTHER (with an empty ALT they
+      counted REF);
+    - unprepared rows passed straight to the engine, which could reach the MNP
+      check, where `len - 1` underflowed.
+- **Dead code and duplication.**
+  - Unused parameters, branches and setters are removed.
+  - Observations and mFSD share one molecule classifier.
+  - Six reference-end CIGAR walks, the soft-clip rule, the scan pad and read
+    window, the read loops' quality, scoring and molecule-key code, and the
+    insertion and deletion checks' end-of-walk resolution each have one helper.
+  - The large-deletion band's literals are named constants.
+  - One allele-kind classification (SNV, MNP, insertion, deletion, complex)
+    drives the dispatcher, splice triage's span, the exact-carrier rule's scope
+    and prep's variant-type label, which each spelled out the same rule.
+- **Comments.** Stale comments are corrected, and ticket labels are removed
+  from code comments and log text.
+
 ### Changed — `observe_molecules` requires a reference FASTA (#204) — breaking
 
 - `observe_molecules()` takes `reference_fasta` from the argument or from `config`.
