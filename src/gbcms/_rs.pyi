@@ -269,6 +269,8 @@ def count_bam_binned(
     gtf_cache_dir: str | None = None,
     reference_fasta: str | None = None,
     library_type: str = "capture",
+    bin_window: int | None = None,
+    bin_max_variants: int | None = None,
 ) -> list[BaseCounts]: ...
 def count_bam_binned_observations(
     bam_path: str,
@@ -303,6 +305,8 @@ def count_bam_binned_observations(
     reference_fasta: str | None = None,
     library_type: str = "capture",
     observations_path: str | None = None,
+    bin_window: int | None = None,
+    bin_max_variants: int | None = None,
 ) -> tuple[list[BaseCounts], list[Observation]]: ...
 def build_gtf_cache(
     gtf_path: str,

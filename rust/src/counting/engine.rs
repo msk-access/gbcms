@@ -98,9 +98,24 @@ const BIN_WINDOW: i64 = 10_000;
 ///
 /// When exceeded, the bin is split to prevent O(V × R) blowup in the
 /// shared-read classification loop. Matches the original C++ GBCMS default.
-/// Not a CLI flag — this is an internal performance constant that does not
-/// affect output (validated by D1 parity tests).
+/// Not a CLI flag: an internal performance constant that does not affect output
+/// (the binning-invariance tests vary it, with the window, through the
+/// `bin_window` / `bin_max_variants` test arguments).
 const BIN_MAX_VARIANTS: usize = 200;
+
+/// The bin geometry for one call: the production constants unless a test passes
+/// its own. Bin geometry is performance only, so tests vary it to check that
+/// counts do not depend on it; a window or cap below 1 is rejected.
+fn bin_geometry(bin_window: Option<i64>, bin_max_variants: Option<usize>) -> PyResult<(i64, usize)> {
+    let window = bin_window.unwrap_or(BIN_WINDOW);
+    let cap = bin_max_variants.unwrap_or(BIN_MAX_VARIANTS);
+    if window < 1 || cap < 1 {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "bin_window and bin_max_variants must be at least 1 (got {window}, {cap})"
+        )));
+    }
+    Ok((window, cap))
+}
 
 /// A genomic region containing one or more co-located variants.
 ///
@@ -146,11 +161,13 @@ fn resolve_tid(bam_header: &bam::HeaderView, chrom: &str) -> Option<u32> {
 /// # Arguments
 /// * `variants` — Variants (need not be sorted; sorting is internal)
 /// * `bam_header` — BAM header for chromosome → tid lookup
-/// * `window` — Bin window size in bp (default: 10,000)
+/// * `window` — Bin window size in bp (production: `BIN_WINDOW`)
+/// * `max_variants` — Variants per bin before a split (production: `BIN_MAX_VARIANTS`)
 fn build_genomic_bins(
     variants: &[Variant],
     bam_header: &bam::HeaderView,
     window: i64,
+    max_variants: usize,
 ) -> Vec<GenomicBin> {
     if variants.is_empty() {
         return Vec::new();
@@ -217,10 +234,10 @@ fn build_genomic_bins(
                 break;
             }
             // Enforce max variants per bin — split if exceeded
-            if indices.len() >= BIN_MAX_VARIANTS {
+            if indices.len() >= max_variants {
                 debug!(
-                    "Bin split: {} variants reached BIN_MAX_VARIANTS={} at {}:{}",
-                    indices.len(), BIN_MAX_VARIANTS,
+                    "Bin split: {} variants reached the per-bin cap {} at {}:{}",
+                    indices.len(), max_variants,
                     chrom, variants[jdx].pos + 1,
                 );
                 break;
@@ -629,7 +646,10 @@ fn count_bam_binned_core(
     gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
+    bin_window: Option<i64>,
+    bin_max_variants: Option<usize>,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
+    let (window, max_variants) = bin_geometry(bin_window, bin_max_variants)?;
     let backend = parse_alignment_backend(
         alignment_backend,
         hmm_llr_threshold,
@@ -791,7 +811,7 @@ fn count_bam_binned_core(
             )
         })?;
     }
-    let bins = build_genomic_bins(&variants, header_reader.header(), BIN_WINDOW);
+    let bins = build_genomic_bins(&variants, header_reader.header(), window, max_variants);
 
     // Pre-pad sibling_variants
     let mut sibling_variants = sibling_variants;
@@ -1060,12 +1080,13 @@ fn count_bam_binned_core(
 
 /// Bin-centric parallel BAM counting with BAQ and UMI support.
 ///
-/// Unchanged public entry point: same signature, same `list[BaseCounts]` return. Delegates
-/// to `count_bam_binned_core` with observations off, so nothing about this call path — or
-/// its callers — changes. For per-molecule rows use `count_bam_binned_observations`.
+/// Returns `list[BaseCounts]`, one per variant in input order. Delegates to
+/// `count_bam_binned_core` with observations off. For per-molecule rows use
+/// `count_bam_binned_observations`. `bin_window` / `bin_max_variants` are test
+/// arguments (production passes neither): counts must not depend on them.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture"))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -1099,6 +1120,8 @@ pub fn count_bam_binned(
     gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
+    bin_window: Option<i64>,
+    bin_max_variants: Option<usize>,
 ) -> PyResult<Vec<BaseCounts>> {
     let (counts, _observations) = count_bam_binned_core(
         py, false, None, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -1107,6 +1130,7 @@ pub fn count_bam_binned(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
+        bin_window, bin_max_variants,
     )?;
     Ok(counts)
 }
@@ -1123,7 +1147,7 @@ pub fn count_bam_binned(
 /// Counts are byte-identical to `count_bam_binned` — same core, same classifier.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", observations_path=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", observations_path=None, bin_window=None, bin_max_variants=None))]
 pub fn count_bam_binned_observations(
     py: Python<'_>,
     bam_path: String,
@@ -1158,6 +1182,8 @@ pub fn count_bam_binned_observations(
     reference_fasta: Option<&str>,
     library_type: &str,
     observations_path: Option<&str>,
+    bin_window: Option<i64>,
+    bin_max_variants: Option<usize>,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     count_bam_binned_core(
         py, true, observations_path, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -1166,6 +1192,7 @@ pub fn count_bam_binned_observations(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
+        bin_window, bin_max_variants,
     )
 }
 
@@ -4387,7 +4414,7 @@ mod tests {
             build_variant(2_000, "C", "T"),
         ];
 
-        let bins = build_genomic_bins(&variants, &header, window);
+        let bins = build_genomic_bins(&variants, &header, window, BIN_MAX_VARIANTS);
         assert_eq!(bins.len(), 1, "both variants belong in one bin");
         let bin = &bins[0];
 
@@ -4409,6 +4436,54 @@ mod tests {
             "anchor deletion right breakpoint (13000) must be fetched, got bin.end={}",
             bin.end,
         );
+    }
+
+    #[test]
+    fn every_variant_lands_in_one_bin_whose_fetch_holds_its_window() {
+        // Bin geometry is performance only: under any window and cap, each variant
+        // belongs to exactly one bin, and that bin's fetch holds the variant's whole
+        // read window (its span padded by max(5, repeat_span + 2), the filter each
+        // variant applies to the bin's cached reads). Random clusters of SNVs and
+        // indels up to 300bp, with repeat spans, over a deterministic LCG.
+        let header = build_header_with_contig("1", 1_000_000);
+        let mut state: u64 = 0x5eed;
+        let mut next = |n: u64| -> u64 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 33) % n
+        };
+        for _trial in 0..200 {
+            let count = 1 + next(40) as usize;
+            let mut variants = Vec::with_capacity(count);
+            for _ in 0..count {
+                let pos = 1 + next(30_000) as i64;
+                let ref_len = if next(3) == 0 { 1 + next(300) as usize } else { 1 };
+                let mut v = build_variant(pos, &"A".repeat(ref_len), "A");
+                v.repeat_span = next(40) as usize;
+                variants.push(v);
+            }
+            for &window in &[1_i64, 7, 100, 10_000] {
+                for &cap in &[1_usize, 2, 3, 200] {
+                    let bins = build_genomic_bins(&variants, &header, window, cap);
+                    let mut seen = vec![0_usize; variants.len()];
+                    for bin in &bins {
+                        assert!(bin.variant_indices.len() <= cap);
+                        for &k in &bin.variant_indices {
+                            seen[k] += 1;
+                            let v = &variants[k];
+                            let pad = std::cmp::max(5, v.repeat_span as i64 + 2);
+                            assert!(
+                                bin.start <= (v.pos - pad).max(0)
+                                    && bin.end >= v.pos + v.ref_allele.len() as i64 + pad,
+                                "window {window} cap {cap}: bin [{}, {}) misses variant at {} \
+                                 (ref {}bp, pad {pad})",
+                                bin.start, bin.end, v.pos, v.ref_allele.len(),
+                            );
+                        }
+                    }
+                    assert!(seen.iter().all(|&n| n == 1), "window {window} cap {cap}: {seen:?}");
+                }
+            }
+        }
     }
 
     // ── ASJD per-fragment junction dedup ──

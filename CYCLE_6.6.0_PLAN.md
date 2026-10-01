@@ -907,7 +907,14 @@ harness `~/test/gbcms/harness/c20/`, local).**
    Sorted observation rows must match too. A Rust property test on
    `build_genomic_bins` checks that every variant lands in exactly one bin and
    every bin's fetch holds each member's window. As a mutation check,
-   re-introduce the CR-1 bug locally; the tiny-window geometry must fail.
+   re-introduce the CR-1 bug locally.
+
+   The mutation check (2026-10-01) found that BAM-level counts can show CR-1 in
+   only one read shape. Every counted read overlaps the event's first base, which
+   every fetch holds, except a DNA read admitted by its soft-clipped bases. So
+   the matrix includes left-clipped carriers aligned only after a 60bp delins:
+   with CR-1 back, AD drops from 20 to 0 under window 1. The Rust property test
+   fails too, on the geometry itself.
 4. **The read census (T2)**, in `tests/census.py`. It ports the harness's
    per-read judge:
    - bases below `min_baseq` are masked;

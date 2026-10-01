@@ -8,6 +8,8 @@ Provides:
 - count_both: multi-variant counting via BOTH APIs with parity assertion
 """
 
+import math
+
 import pysam
 
 from gbcms import _rs as gbcms_rs
@@ -195,6 +197,51 @@ def count_both(
             )
 
     return results_binned
+
+
+# ── Comparing counts ─────────────────────────────────────────────────────
+
+# Benjamini-Hochberg q-values are computed over the rows in one call, so they
+# legitimately change when a call holds other rows.
+ROW_SET_FIELDS = frozenset({"mfsd_qval_alt_ref", "asjd_qval"})
+
+
+_PLAIN = (int, float, str, bytes, type(None))
+
+
+def _fields(obj) -> list[str]:
+    """The public data attributes of a pyo3 counts object."""
+    return sorted(n for n in dir(obj) if not n.startswith("_") and not callable(getattr(obj, n)))
+
+
+def _same(a, b) -> bool:
+    if isinstance(a, float) and isinstance(b, float):
+        if math.isnan(a) or math.isnan(b):
+            return math.isnan(a) and math.isnan(b)
+        # Summation order over hash maps moves the last ulps of some statistics;
+        # the outputs round them far coarser.
+        return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12)
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b, strict=True))
+    if isinstance(a, _PLAIN) or isinstance(b, _PLAIN):
+        return a == b
+    # A nested pyo3 object (per-transcript counts): compare its fields.
+    return type(a) is type(b) and all(_same(getattr(a, f), getattr(b, f)) for f in _fields(a))
+
+
+def assert_same_counts(got: list, want: list, what: str, skip=frozenset()) -> None:
+    """Every field of every BaseCounts equal (floats to 1e-9 relative, NaN equal
+    to NaN), except `skip`."""
+    assert len(got) == len(want), f"{what}: {len(got)} rows vs {len(want)}"
+    for i, (g, w) in enumerate(zip(got, want, strict=True)):
+        for f in _fields(w):
+            if f in skip:
+                continue
+            assert _same(
+                getattr(g, f), getattr(w, f)
+            ), f"{what}: row {i} field {f!r}: {getattr(g, f)!r} vs {getattr(w, f)!r}"
 
 
 # ── MAF Output Reading ───────────────────────────────────────────────────
