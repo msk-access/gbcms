@@ -26,7 +26,7 @@ pub const SW_GAP_OPEN: i32 = -5;
 /// defaults cap it at 0.5, and the pre-round value always fell in
 /// (−0.9, −0.5]), so the relaxation never engaged. Traced real runs (ACCESS
 /// duplex, MSI-high) confirmed SW scores nothing under the default PairHMM
-/// backend on well-formed input (issue #92), so a real relaxation curve
+/// backend on well-formed input, so a real relaxation curve
 /// would have had no measurable use.
 ///
 /// SW has two roles: the explicit `--alignment-backend sw` scorer (kept for

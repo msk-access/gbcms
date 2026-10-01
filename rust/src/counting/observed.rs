@@ -9,11 +9,13 @@
 //! (`window::change_interval`, the shift region for pure indels) plus one base on
 //! each side. A read must cover the core plus [`FLANK`] bases to be read, so it
 //! is anchored. The flank itself is not compared, so a germline SNP beside the
-//! event is not an allele of this row. Reads with a base below min BQ in the core
-//! are skipped: the quality contract the classifiers use. Identical core
-//! sequences are counted; the most frequent one that is neither REF, the given
-//! ALT, nor a co-annotated sibling's ALT (already an input row) is named when
-//! enough reads carry it exactly.
+//! event is not an allele of this row. Reads with a base below min BQ anywhere in
+//! the stretch compared (the core widened over the read's own indels, and the
+//! anchor base before it) are skipped: the classifiers let such a base (or an N)
+//! match any allele, but an allele is named here only from bases read with
+//! confidence. Identical core sequences are counted; the most frequent one that
+//! is neither REF, the given ALT, nor a co-annotated sibling's ALT (already an
+//! input row) is named when enough reads carry it exactly.
 
 use std::collections::HashMap;
 

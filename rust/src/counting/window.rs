@@ -13,9 +13,9 @@
 //!   it covers a flank of the region and runs one base past the first base
 //!   where REF and ALT differ reading inward from that flank
 //!   ([`read_is_informative`]). Otherwise the read counts toward depth only.
-//! - An ALT call stands when the read spans C10's windows read on the ALT
-//!   haplotype ([`alt_read_is_informative`]), or else when its own bases tell the
-//!   alleles apart ([`alt_bases_discriminate`]): its gap alone is placement.
+//! - An ALT call stands when the read spans the informative windows read on the
+//!   ALT haplotype ([`alt_read_is_informative`]), or else when its own bases tell
+//!   the alleles apart ([`alt_bases_discriminate`]): its gap alone is placement.
 //! - A co-annotated sibling's carriers are excluded from a row's REF only when
 //!   the sibling's change lies inside that row's discrimination window (the
 //!   region plus one base on each side, [`discrimination_window`]). A carrier
@@ -215,19 +215,19 @@ pub(crate) fn slides(v: &Variant) -> bool {
 /// discrimination window, or leftwards from its aligned base just right of it,
 /// the read must read, unmasked, a base where the two alleles differ (the first
 /// such base, or a later one when that is masked), every base up to there fitting
-/// the ALT; a base below `min_baseq`, or N, fits anything. Unlike C10's REF rule
-/// there is no margin base past it: that margin guards CIGAR-only REF calls
-/// against a hidden terminal mismatch, while this reads the deciding base. Soft-clipped bases are
-/// not read. Used for an ALT read that spans neither ALT-side window: the CIGAR's
-/// gap alone is placement, and a carrier ending inside the repeat holds only
-/// bases the alleles share, while a truncated long insertion's carrier holds the
-/// inserted bases. A read starting (or ending) on a flank base reads from it.
-/// Each reading uses the reference it can hold, stopping at a contig end. A read
-/// with no aligned base on either side of the window has nothing to read from:
-/// false. None when the read has a side to read from but no prepared reference
-/// holds it (an unprepared variant), or its deciding base lies past a contig edge
-/// (REF has no base there, but a circular contig's continues at its start): it
-/// cannot be judged.
+/// the ALT; a base below `min_baseq`, or N, fits anything. Unlike the REF rule
+/// ([`read_is_informative`]) there is no margin base past it: that margin guards
+/// CIGAR-only REF calls against a hidden terminal mismatch, while this reads the
+/// deciding base. Soft-clipped bases are not read. Used for an ALT read that
+/// spans neither ALT-side window: the CIGAR's gap alone is placement, and a
+/// carrier ending inside the repeat holds only bases the alleles share, while a
+/// truncated long insertion's carrier holds the inserted bases. A read starting
+/// (or ending) on a flank base reads from it. Each reading uses the reference it
+/// can hold, stopping at a contig end. A read with no aligned base on either side
+/// of the window has nothing to read from: false. None when the read has a side
+/// to read from but no prepared reference holds it (an unprepared variant), or
+/// its deciding base lies past a contig edge (REF has no base there, but a
+/// circular contig's continues at its start): it cannot be judged.
 pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> Option<bool> {
     if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
         return Some(true);
@@ -300,10 +300,10 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     // The read's bases at query offsets `idx`, judged against `refh` and `alth`:
     // every unmasked base fits the ALT, up to a base at or past the first
     // differing one where the alleles differ, read unmasked. No margin base past
-    // it: C10's margin protects a CIGAR-only REF call from a hidden terminal
-    // mismatch, while this reads the deciding base itself, on a read the CIGAR
-    // already calls ALT. Reading stops where either stretch ends: Some(true) ALT,
-    // Some(false) not, None when the read still had bases past the stretch's end.
+    // it: the REF rule's margin protects a CIGAR-only REF call from a hidden
+    // terminal mismatch, while this reads the deciding base itself, on a read the
+    // CIGAR already calls ALT. Reading stops where either stretch ends: Some(true)
+    // ALT, Some(false) not, None when the read still had bases past the stretch's end.
     let holds = |idx: &mut dyn Iterator<Item = usize>, refh: &[u8], alth: &[u8]| -> Option<bool> {
         // The first base where the alleles differ: past the shorter stretch when
         // they agree over it (a REF stretch cut at a contig edge).
@@ -494,7 +494,7 @@ pub(crate) fn read_is_informative(record: &Record, v: &Variant) -> bool {
 }
 
 /// Whether an ALT read's CIGAR alone settles a pure indel: its aligned reference
-/// extent spans one of C10's windows as seen from the ALT haplotype,
+/// extent spans one of the informative windows as seen from the ALT haplotype,
 /// `[lo - 1, hi + 2)` or `[lo - 2, hi + 1)`. An insertion's are its REF windows (its
 /// carrier's extent leaves out the inserted bases, so spanning them it reads more,
 /// not less). A deletion's carrier's extent counts its own gap, so spanning the

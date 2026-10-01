@@ -13,7 +13,6 @@
 //!
 //! Used by:
 //! - `counting/engine.rs` — Phase 0 quality adjustment before classification
-//! - `hla/router.rs` (future) — quality adjustment before PairHMM scoring
 
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;

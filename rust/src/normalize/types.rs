@@ -73,9 +73,11 @@ pub struct PreparedVariant {
     #[pyo3(get)]
     pub decomposed_variant: Option<Variant>,
 
-    /// Group ID for overlapping multi-allelic variants at the same locus.
-    /// `None` for isolated variants, `Some(id)` when multiple variants share
-    /// overlapping genomic footprints (same chrom, overlapping REF spans).
+    /// Group ID for co-annotated variants the engine evaluates jointly.
+    /// `None` for isolated variants, `Some(id)` when variants on one chrom have
+    /// overlapping REF spans (MULTI_ALLELIC) or, for length-changing variants,
+    /// overlapping scan windows (TRACT_CLUSTER), closed transitively
+    /// (`assign_multi_allelic_groups`).
     #[pyo3(get)]
     pub multi_allelic_group: Option<u32>,
 }

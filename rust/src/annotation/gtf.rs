@@ -47,11 +47,6 @@ pub fn parse_gtf(
     Ok(parse_gtf_to_bundle(gtf_path, variant_chroms)?.into_index())
 }
 
-/// Parse a GTF into the serializable [`GtfIndexBundle`] — the M5a cache payload:
-/// everything an [`AnnotationIndex`] needs *except* the COITrees, which are rebuilt
-/// from the exon records by [`GtfIndexBundle::into_index`]. Splitting the parse out
-/// here lets the cache layer persist/restore the bundle without touching the
-/// arch-specific trees. This is the function that does the ~8.7s text parse.
 /// Warn once for every variant chromosome that has no loaded exons.
 ///
 /// A variant chromosome absent from `chrom_map` makes splice distance,
@@ -83,6 +78,11 @@ pub(crate) fn warn_uncovered_variant_chroms(
     }
 }
 
+/// Parse a GTF into the serializable [`GtfIndexBundle`] — the cache payload:
+/// everything an [`AnnotationIndex`] needs *except* the COITrees, which are rebuilt
+/// from the exon records by [`GtfIndexBundle::into_index`]. Splitting the parse out
+/// here lets the cache layer persist/restore the bundle without touching the
+/// arch-specific trees. This is the function that does the ~8.7s text parse.
 pub(crate) fn parse_gtf_to_bundle(
     gtf_path: &str,
     variant_chroms: &HashSet<String>,

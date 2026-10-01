@@ -1,4 +1,4 @@
-//! M5a: on-disk cache for the parsed GTF intermediate.
+//! On-disk cache for the parsed GTF intermediate.
 //!
 //! Parsing a full Ensembl GTF is ~8.7s (3.4M lines of text). Under a Nextflow
 //! cohort that cost is paid once *per task* — N samples × 8.7s of redundant

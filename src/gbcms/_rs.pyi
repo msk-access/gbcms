@@ -142,10 +142,11 @@ class BaseCounts:
     observed_given_reads: int
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
-    # P4b: Per-transcript counts (empty string when no GTF or no overlap)
+    # Per-transcript counts (empty string when no GTF or no overlap)
     transcript_read_counts: str
     transcript_fragment_counts: str
-    # P4c: ASJD fields (defaults: flag=False, pval/qval=0.0, strings="", bools=False, ints=0)
+    # ASJD fields (defaults: flag=False, strings="", bools=False, ints=0; pval/qval=0.0
+    # in DNA mode or without a GTF, 1.0 in RNA mode with a GTF and no junction reads)
     asjd_flag: bool
     asjd_pval: float
     asjd_qval: float

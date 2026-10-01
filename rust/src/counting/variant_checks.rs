@@ -5,8 +5,11 @@
 //! - `check_mnp` — multi-nucleotide polymorphism (with `MnpResult`)
 //! - `check_insertion` — insertion with windowed CIGAR scan
 //! - `check_deletion` — deletion with windowed CIGAR scan
-//! - `check_complex` — complex variant (indel + substitution) with
-//!   phased Masked Comparison → Levenshtein → SW alignment pipeline
+//! - `check_complex` — phased Masked Comparison → Levenshtein → SW alignment
+//!   pipeline: the fallback for a complex variant (indel + substitution) the
+//!   exact-carrier rule (`carrier`) cannot judge, and Phase 3's entry for
+//!   insertions and deletions (via `phase3_classify`, which under PairHMM tries
+//!   the pangenomic route first)
 //!
 //! ## N-base handling
 //!
@@ -391,7 +394,7 @@ fn has_indel_in_window(record: &Record, wstart: i64, wend: i64) -> bool {
 
 
 /// Result from MNP classification — distinguishes failure reason so the
-/// caller can decide whether Phase 3 SW fallback is appropriate.
+/// caller can decide whether the exact-carrier rule should judge the read.
 ///
 /// This replaces the previous `(bool, bool, u8)` return which conflated
 /// quality failures, third alleles, and structural issues into a single
@@ -419,14 +422,15 @@ pub enum MnpResult {
     ThirdAllele(u8, bool),
     /// Structural issue prevents string comparison:
     ///   - Read doesn't cover the entire MNP region
-    ///   - Position not found in CIGAR walk
-    ///   - Indel within the MNP block (contiguity check failed)
+    ///   - The block's first or last base not aligned (in a soft clip or a splice N)
+    ///   - A splice N inside the block that leaves part of it aligned
+    ///     (contiguity check failed)
     ///
-    /// Phase 3 fallback IS appropriate: the read may carry the variant
-    /// through a complex alignment (e.g., complex variant annotated as MNP).
-    /// No had_n field: structural issues route to check_complex which
-    /// independently detects N in the reconstructed haplotype and propagates
-    /// has_n_base through its own Phase 2 return paths.
+    /// Reads with an indel in or beside the block never reach `check_mnp`: the
+    /// dispatcher sends them to the exact-carrier rule first
+    /// (`carrier::indel_at_block`). A Structural read goes to the same rule, which
+    /// judges it by its own bases across the whole allele. No had_n field: that
+    /// rule (or its fallback, `check_complex`) detects N bases itself.
     Structural,
 }
 
@@ -499,14 +503,17 @@ pub fn check_mnp(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8
     }
 
     // ── Step 3: Contiguity check FIRST (fail-fast for structural issues) ──
-    // Verify no indels within the MNP block before doing quality/sequence.
-    // This catches complex variants misannotated as MNPs.
+    // Reads with an indel in or beside the block went to the exact-carrier rule
+    // before this check (`carrier::indel_at_block`), so this catches the block's
+    // last base in a soft clip or a splice N, and a splice N inside the block that
+    // leaves part of it aligned (one spanning the whole block is triaged before
+    // dispatch).
     let end_read_pos = match find_read_pos(record, variant.pos + len as i64 - 1) {
         Some(p) => p,
         None => return MnpResult::Structural,
     };
     if end_read_pos - start_read_pos != len - 1 {
-        return MnpResult::Structural; // Indel within MNP block
+        return MnpResult::Structural; // A gap inside the block (from dispatch, a splice N)
     }
 
     // ── Step 4+5: Masked per-position evaluation ──
@@ -742,7 +749,7 @@ pub(crate) fn reconstruct_span(
             }
             Cigar::SoftClip(len) => {
                 let len_usize = *len as usize;
-                // P1-2: Include soft-clipped bases that overlap the variant window.
+                // Include soft-clipped bases that overlap the variant window.
                 // Soft clips don't consume reference, so ref_pos is unchanged.
                 // This recovers evidence from reads where the aligner clipped
                 // the variant-supporting bases (inspired by VarDict's approach).
@@ -763,6 +770,9 @@ pub(crate) fn reconstruct_span(
 }
 
 /// Check if a read supports a complex variant (indel + substitution).
+///
+/// Called for a complex variant the exact-carrier rule cannot judge, and as
+/// Phase 3 for insertions and deletions (`phase3_classify`).
 ///
 /// Uses **haplotype reconstruction**: walks the CIGAR to rebuild what the read
 /// shows for the genomic region covered by REF, then compares the reconstructed
@@ -825,9 +835,8 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
             // into rd. No clean evidence exists for such a read → neither.
             // (Splice-aware Phase-3 scoring would need a spliced haplotype
             // with an explicit genomic→spliced coordinate map and
-            // junction-compatible extraction — tracked in issue #94; until
-            // real-data measurement justifies that machinery, this stays
-            // conservative.)
+            // junction-compatible extraction; until real-data measurement
+            // justifies that machinery, this stays conservative.)
             if super::rna::has_splice_junction(record)
                 && observe_read_span(record, win_start, win_end).skipped
             {
@@ -1141,8 +1150,9 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
     }
 
     // --- Phase 3: Alignment-based fallback (indelpost approach) ---
-    // When narrow-window reconstruction fails (FM1: D-truncation, FM2: adjacent I),
-    // expand to the full ref_context window and use alignment-based classification.
+    // When narrow-window reconstruction fails (a deletion truncating it, or an
+    // adjacent insertion), expand to the full ref_context window and use
+    // alignment-based classification.
     //
     // CRITICAL: Use raw read window extraction (not CIGAR-projected) to preserve
     // the true biological sequence. For complex variants (e.g. EPHA7 REF=TCC ALT=CT),
@@ -1494,19 +1504,19 @@ fn scan_windowed_insertion_candidate(
     }
     let expected_ins_len = variant.alt_allele.len() - 1;
 
-    // Safeguard 1: length must match
+    // The length check: the inserted length must match
     if ins_len_usize == expected_ins_len {
         if ins_start + ins_len_usize <= record.seq().len() {
             let ins_seq = &record.seq().as_bytes()[ins_start..ins_start + ins_len_usize];
             let ins_quals = &quals[ins_start..ins_start + ins_len_usize];
-            // Safeguard 3: the placement gives the variant's haplotype (its own
-            // bases, or a rotation of them, elsewhere in the repeat) and is the
+            // The haplotype check: the placement gives the variant's haplotype (its
+            // own bases, or a rotation of them, elsewhere in the repeat) and is the
             // read's only change across the discrimination window.
             let dw = window::discrimination_window(variant);
             if same_insertion_haplotype(variant, ins_ref_pos, ins_seq, ins_quals, min_baseq) {
                 let q_right = ins_start + ins_len_usize;
                 if only_change_in_window(record, dw, ins_ref_pos, ins_start, ins_ref_pos, q_right) {
-                    // Safeguard 2: track closest match
+                    // Track the closest windowed match
                     let distance = (ins_ref_pos - (anchor_pos + 1)).unsigned_abs();
                     if best_windowed_match.is_none_or(|prev| distance < prev) {
                         *best_windowed_match = Some(distance);
@@ -1599,10 +1609,10 @@ fn scan_windowed_insertion_candidate(
 ///    Returns ALT immediately if length + sequence match.
 /// 3. **Windowed scan (fallback):** Any insertion within `window::scan_pad`
 ///    of the anchor or in the variant's shift region, validated by three
-///    safeguards:
-///    - S1: Inserted length matches the expected insert
-///    - S2: Closest match wins (minimum |shift_pos - anchor_pos|)
-///    - S3: The placement gives the variant's haplotype: its bases, or a
+///    checks:
+///    - Length: the inserted length matches the expected insert
+///    - Closest: the closest match wins (minimum |shift_pos - anchor_pos|)
+///    - Haplotype: the placement gives the variant's haplotype: its bases, or a
 ///      rotation of them, elsewhere in the repeat (quality-masked), and it is the
 ///      read's only change across the discrimination window (no other gap,
 ///      insertion or splice there; otherwise a distinct allele). The variant's
@@ -1617,8 +1627,9 @@ fn scan_windowed_insertion_candidate(
 ///    the anchor (A>CCC) is a delins, judged by the exact-carrier rule.
 /// 5. **Phase 3 haplotype fallback:** When a length-matching insertion of other
 ///    bases exists nearby (e.g., same biological event represented differently
-///    by caller vs aligner), falls back to check_complex for Smith-Waterman
-///    haplotype comparison.
+///    by caller vs aligner), or no gap is recognised on a read spanning the
+///    anchor, falls back to `phase3_classify` for haplotype comparison (under
+///    PairHMM the pangenomic route first, else `check_complex`).
 #[allow(clippy::too_many_arguments)]
 pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     record: &Record,
@@ -1672,7 +1683,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                     anchor_read_pos = Some(read_pos + offset);
                 }
 
-                // --- P0-2: Backward boundary check ---
+                // --- Backward boundary check ---
                 // When anchor falls at block_end of prior M block, CIGAR geometry
                 // places it at ref_pos of THIS block (after the Ins was consumed).
                 // Check backward: was the previous op a matching insertion?
@@ -2098,7 +2109,7 @@ fn same_deletion_haplotype(v: &Variant, at: i64, len: usize) -> bool {
 /// Verify that the reference bases at an observed deletion position match the
 /// variant's expected deleted bases over `compare_len` positions.
 ///
-/// Used by `check_deletion`'s Safeguard 3 for in-band windowed matches (an
+/// Used by `check_deletion`'s haplotype check for in-band windowed matches (an
 /// exact-length one is judged by `same_deletion_haplotype`) and as the
 /// context-integrity guard of the strict-path band.
 /// For a SHIFTED position, comparing the reference at the observed breakpoint
@@ -2306,10 +2317,10 @@ fn resolve_anchor_deletion_candidate(
 
     // D found at the expected start but with the WRONG length (or, at 50bp or
     // more, the right length with another small change across the window). For a
-    // PURE deletion (the dispatcher guarantees purity — delins go to
-    // check_complex) this is one of two things, resolved in order below:
-    // the same large event with breakpoint wobble or a split representation
-    // (net band), or a distinct allele in the same tract — partial
+    // PURE deletion (the dispatcher guarantees purity — delins go to the
+    // exact-carrier rule, `classify_complex`) this is one of two things, resolved
+    // in order below: the same large event with breakpoint wobble or a split
+    // representation (net band), or a distinct allele in the same tract — partial
     // evidence, never REF or ALT.
     let span_start = anchor_pos + 1;
     let span_end = span_start + expected_del_len as i64;
@@ -2416,7 +2427,7 @@ fn scan_windowed_deletion_candidate(
     let expected_del_len = variant.ref_allele.len() - 1;
     let expected_del_seq = &variant.ref_allele.as_bytes()[1..];
 
-    // Safeguard 1: deletion length check.
+    // The length check.
     // Accept exact matches, OR for large deletions (≥50bp) a ≤3bp length
     // difference — the same breakpoint band as the anchor-candidate path
     // (validated pure large deletions show zero length wobble, so anything
@@ -2433,8 +2444,8 @@ fn scan_windowed_deletion_candidate(
         true
     } else if del_len_usize >= 5 {
         // Wrong-length D in the window: a distinct-allele candidate,
-        // resolved after the walk (partial, or Phase 3 when the read looks
-        // like a split representation).
+        // resolved after the walk without Phase 3 (`resolve_walk`: neither,
+        // or REF in unique context, with partial evidence).
         *has_distinct_allele_nearby = true;
         trace!(
             "check_deletion: windowed D({}) at pos {} (expected D({})), \
@@ -2455,9 +2466,9 @@ fn scan_windowed_deletion_candidate(
     };
 
     if length_ok {
-        // Safeguard 3: an exact-length deletion placed elsewhere is the variant
-        // when it gives the same haplotype, which a rotation of the bases in a
-        // repeat does, and is the read's only change across the discrimination
+        // The haplotype check: an exact-length deletion placed elsewhere is the
+        // variant when it gives the same haplotype, which a rotation of the bases
+        // in a repeat does, and is the read's only change across the discrimination
         // window. In-band (different-length) matches compare the deleted
         // reference bases over the OVERLAPPING span instead of skipping
         // verification, so an unrelated deletion of different bases is not
@@ -2493,20 +2504,20 @@ fn scan_windowed_deletion_candidate(
         };
 
         if del_ok {
-            // Safeguard 2: track closest match
+            // Track the closest windowed match
             let distance = (del_ref_pos - (anchor_pos + 1)).unsigned_abs();
             if best_windowed_match.is_none_or(|prev| distance < prev) {
                 *best_windowed_match = Some(distance);
             }
         } else {
-            // S3 failed: the read's bases are not the ALT (an exact-length
-            // deletion that gives the variant's haplotype, or whose read spells
-            // the ALT despite where its gap sits, passed above). At 5bp or more
+            // The haplotype check failed: the read's bases are not the ALT (an
+            // exact-length deletion that gives the variant's haplotype, or whose read
+            // spells the ALT despite where its gap sits, passed above). At 5bp or more
             // an exact-length one is a distinct allele, as a wrong-length one is:
             // Phase 3 called such reads ALT (on the RC set every one it reached
             // was another allele by its bases). An in-band (≥50bp, other length)
             // one whose bases differ keeps Phase-3 arbitration. Short (1-4bp)
-            // same-length deletions that fail S3 are almost certainly
+            // same-length deletions that fail it are almost certainly
             // spurious/unrelated noise — CIGAR remains definitive for them.
             if del_len_usize >= 5 && del_len_usize == expected_del_len {
                 *has_distinct_allele_nearby = true;
@@ -2543,9 +2554,9 @@ fn scan_windowed_deletion_candidate(
 /// 1. **Strict match (fast path):** Deletion immediately after anchor, length matches.
 /// 2. **Windowed scan (fallback):** Any deletion within `window::scan_pad`
 ///    of the anchor or starting in the variant's shift region, validated by:
-///    - S1: Deletion length matches expected
-///    - S2: Closest match wins
-///    - S3: The placement gives the variant's haplotype (its bases, or a
+///    - Length: the deletion length matches expected
+///    - Closest: the closest match wins
+///    - Haplotype: the placement gives the variant's haplotype (its bases, or a
 ///      rotation of them, elsewhere in the repeat) and is the read's only change
 ///      across the discrimination window (otherwise a distinct allele); an
 ///      in-band large deletion compares its deleted reference bases over the
@@ -2558,8 +2569,9 @@ fn scan_windowed_deletion_candidate(
 ///    tract (neither + partial evidence, never Phase 3).
 /// 4. **Haplotype fallback:** When CIGAR geometry doesn't match (e.g. a
 ///    soft-clip at the anchor, or an in-band large D whose bases differ),
-///    delegates to `check_complex` for quality-aware haplotype comparison. A
-///    same-length D of 5bp or more that fails S3 is a distinct allele.
+///    delegates to `phase3_classify` for haplotype comparison (under PairHMM the
+///    pangenomic route first, else `check_complex`). A same-length D of 5bp or
+///    more that fails the haplotype check is a distinct allele.
 #[allow(clippy::too_many_arguments)]
 pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     record: &Record,

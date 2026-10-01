@@ -125,7 +125,7 @@ def _variant_format(path: Path) -> str:
 
 
 def _exit_on_sample_failure(result: dict) -> None:
-    """Propagate per-sample *failures* to the process exit code (HI-1).
+    """Propagate per-sample *failures* to the process exit code.
 
     ``Pipeline.run()`` catches per-sample errors, records them in ``failed_samples``,
     and returns normally, so a run where a BAM failed (e.g. a Rust panic surfaced as
@@ -563,7 +563,7 @@ def dna(
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
 
-    # HI-1: exit non-zero if any sample failed (or none were processed). Outside the
+    # Exit non-zero if any sample failed (or none were processed). Outside the
     # try so typer.Exit isn't caught by `except Exception` above.
     _exit_on_sample_failure(result)
 
@@ -658,7 +658,7 @@ def rna(
             "sample in a cohort at one shared directory to parse the GTF only once."
         ),
     ),
-    # P5: Library type flag
+    # Library type flag
     library_type: str = typer.Option(
         "capture",
         "--library-type",
@@ -953,7 +953,7 @@ def rna(
         logger.exception("Pipeline failed: %s", e)
         raise typer.Exit(code=1) from e
 
-    # HI-1: exit non-zero if any sample failed (or none were processed). Outside the
+    # Exit non-zero if any sample failed (or none were processed). Outside the
     # try so typer.Exit isn't caught by `except Exception` above.
     _exit_on_sample_failure(result)
 

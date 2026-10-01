@@ -1,8 +1,8 @@
-//! Shared utilities used by both `counting` and `hla` modules.
+//! Shared utilities used by the `counting`, `normalize` and `annotation` modules.
 //!
 //! This module provides reusable infrastructure that is not tied to any
 //! specific analysis mode. Domain-specific logic stays in its respective
-//! module (`counting/` for variant counting, `hla/` for HLA typing).
+//! module.
 //!
 //! ## Submodules
 //!

@@ -359,7 +359,7 @@ fn parse_alignment_backend(
 
 /// Pre-build the GTF annotation cache without counting — the Nextflow pre-warm step.
 ///
-/// Parses `gtf_path` for the chromosomes covered by `variants` and writes the
+/// Parses `gtf_path` for the chromosomes in `variant_chroms` and writes the
 /// serialized intermediate into `cache_dir`. Running this once before a cohort
 /// fans out means every per-sample `count_bam_binned` that follows hits a warm
 /// cache (~0.05s load) instead of each re-parsing the GTF (~8.7s). The chromosome
@@ -472,7 +472,7 @@ fn count_bam_binned_core(
             let variant_chroms: HashSet<String> = variants.iter()
                 .map(|v| crate::shared::contig::normalize_contig(&v.chrom))
                 .collect();
-            // M5a: when a cache dir is supplied, reuse a serialized parse if one
+            // When a cache dir is supplied, reuse a serialized parse if one
             // exists (skips the ~8.7s GTF text parse); otherwise parse + populate it.
             let annot = match gtf_cache_dir {
                 Some(dir) => crate::annotation::parse_gtf_cached(path, &variant_chroms, dir),
@@ -550,7 +550,7 @@ fn count_bam_binned_core(
     // Store FASTA path for thread-local readers (used by ASJD motif classification)
     let fasta_path_owned: Option<String> = reference_fasta.map(|p| p.to_string());
 
-    // P5: Convert library_type string to boolean for amplicon mode.
+    // Convert library_type string to boolean for amplicon mode.
     // In amplicon mode, R1/R2 hash to separate "fragments" (no consensus).
     let amplicon_mode = library_type == "amplicon";
 
@@ -682,7 +682,7 @@ fn count_bam_binned_core(
                             bin.variant_indices.len(),
                         );
 
-                        // ── D10: Shared-read optimization ──
+                        // ── Shared-read optimization ──
                         // Single bam.fetch() per bin; reads shared across all
                         // variants via count_bin_shared.
                         #[allow(clippy::needless_question_mark)]
@@ -850,7 +850,7 @@ fn count_bam_binned_core(
             // with no-test variants (which would inflate n and over-correct);
             // a genuine D=0 test legitimately keeps its p=1.0.
             //
-            // PF-1: when `--mfsd` is off, mFSD was never computed so the KS fields sit at
+            // When `--mfsd` is off, mFSD was never computed so the KS fields sit at
             // their BaseCounts default (0.0, not NaN). The `mfsd &&` guard keeps the family
             // empty in that case — otherwise every variant would be treated as a real test
             // and BH-corrected over default p-values.
@@ -1000,7 +1000,7 @@ pub fn count_bam_binned_observations(
 
 // ── Shared-Read Bin Processing ─────────────────────────────────────────────
 //
-// D10: Port of the original C++ GBCMS block-processing architecture.
+// A port of the original C++ GBCMS block-processing architecture.
 // Instead of calling bam.fetch() per variant, we fetch once for the entire
 // bin and share the read buffer across all variants. This eliminates
 // redundant I/O for co-located variants.
@@ -1020,8 +1020,8 @@ pub fn count_bam_binned_observations(
 /// Process all variants in a genomic bin using a shared read cache.
 ///
 /// Fetches reads once for the entire bin region, applies universal filters,
-/// then classifies each read against each variant in the bin. This is the
-/// D10 shared-read optimization.
+/// then classifies each read against each variant in the bin (the shared-read
+/// optimization).
 ///
 /// # Arguments
 ///
@@ -1453,35 +1453,27 @@ fn count_variant_from_cache(
     // fetch holds it for every member; see `build_genomic_bins`)
     let (v_start, v_end) = window::read_window(variant);
 
-    // ── NO CONSENSUS SPLICING OF ref_context (removed, issue #94 cluster B).
-    // An earlier step ("D6") drained consensus introns from ref_context in
-    // place so Phase 3 could score junction reads against a mature-mRNA
-    // haplotype. It had no coordinate map: splicing shrank the context while
-    // ref_context_start stayed genomic, so every `pos - ref_context_start`
-    // indexer right of a snipped intron — S3 sequence verification, the
-    // large-deletion band's context guard, haplotype offsets — read garbage,
-    // so exon-contained reads were scored against haplotypes whose offsets
-    // no longer matched their genomic coordinates (and pre-mRNA /
-    // intron-retention reads, whose bases genuinely include intron sequence,
-    // against a haplotype missing those bases — such reads must stay
-    // genomically scored in any future spliced-haplotype rework).
-    // Meanwhile its intended consumer became unreachable: the
-    // splice-aware evidence rule refuses to extract or string-compare across
-    // an N, so junction-spanning reads never reach Phase 3 scoring at all.
-    // ref_context is therefore ALWAYS genomic. Splice-aware Phase-3 scoring,
-    // if real-data measurement shows it is needed, requires an explicit
-    // genomic→spliced coordinate map with junction-compatible extraction
-    // and translated variant/sibling offsets — tracked in issue #94.
+    // ── ref_context is ALWAYS genomic: consensus introns are never spliced out.
+    // Splicing it without a coordinate map would shrink the context while
+    // ref_context_start stays genomic, so every `pos - ref_context_start`
+    // indexer right of a snipped intron — the deleted-bases check, the
+    // large-deletion band's context guard, haplotype offsets — would read the
+    // wrong bases, and pre-mRNA / intron-retention reads, whose bases genuinely
+    // include intron sequence, would be scored against a haplotype missing
+    // those bases. Junction-spanning reads never reach Phase 3 scoring anyway:
+    // the splice-aware evidence rule refuses to extract or string-compare
+    // across an N. Splice-aware Phase-3 scoring, if real-data measurement shows
+    // it is needed, requires an explicit genomic→spliced coordinate map with
+    // junction-compatible extraction and translated variant/sibling offsets.
     let mut reads_considered = 0u32;
 
     for record in read_cache {
-        // ── Per-variant overlap check: does this read overlap the variant window?
-        // This is the key filter that ensures each variant only sees reads
-        // that would have been fetched by a per-variant bam.fetch().
+        // ── Read window filter: the bin's cache holds the reads of every member's
+        // read window; each variant sees only the cached reads that overlap its own.
         let r_start = record.pos();
         let r_end = ref_end(record);
         if r_start >= v_end || r_end <= v_start {
-            continue; // Read doesn't overlap variant fetch window
+            continue; // Read doesn't overlap the variant's read window
         }
 
         // Supplementary/secondary alignments share a QNAME with their primary, so they are
@@ -1868,7 +1860,7 @@ fn count_variant_from_cache(
     // GC bias affects count depth, not fragment length, so these raw sizes are
     // already unbiased samples of the true size distribution.
     //
-    // PF-1: mFSD is output-aware. When `--mfsd` is off the size vectors are never
+    // mFSD is output-aware. When `--mfsd` is off the size vectors are never
     // reserved or filled and the stats block below is skipped — sparing the per-variant
     // `counts.ref_sizes`/`alt_sizes` arrays that are otherwise held on every BaseCounts
     // for the whole run (the dominant mFSD memory cost under Nextflow fan-out).
@@ -1878,7 +1870,7 @@ fn count_variant_from_cache(
     let mut nonref_sizes: Vec<f64> = Vec::with_capacity(mfsd_cap);
     let mut n_sizes:      Vec<f64> = Vec::with_capacity(mfsd_cap);
 
-    // Observation export: one row per fragment, mirroring the PF-1 mFSD gate above —
+    // Observation export: one row per fragment, mirroring the mFSD gate above —
     // capacity 0 (no allocation) when the caller did not ask for observations.
     let mut observations: Vec<Observation> =
         Vec::with_capacity(if emit_obs { fragments.len() } else { 0 });
@@ -1928,7 +1920,7 @@ fn count_variant_from_cache(
         }
 
         // mFSD: classify fragment into size class vectors (only when --mfsd is on;
-        // PF-1 output-aware gate — leaves the size vectors empty otherwise)
+        // an output-aware gate — leaves the size vectors empty otherwise)
         if let Some(sz) = evidence.insert_size {
             if mfsd && (50..=1000).contains(&sz) {
                 let sz_f = sz as f64;
@@ -1956,7 +1948,7 @@ fn count_variant_from_cache(
     counts.fsb_pval = fsb_pval;
     counts.fsb_or = fsb_or;
 
-    // ── mFSD Statistics — only when requested (PF-1 output-aware gate). When off,
+    // ── mFSD Statistics — only when requested (output-aware gate). When off,
     // the size vectors are empty and all mFSD fields stay at their BaseCounts default;
     // the writers omit the mFSD columns and the post-counting BH-FDR pass skips them.
     if mfsd {
@@ -2015,43 +2007,6 @@ fn window_haplotypes(v: &Variant, w_lo: i64, w_hi: i64) -> Option<(Vec<u8>, Vec<
     Some((ref_hap, alt_hap))
 }
 
-/// Multi-allelic AD-claiming guard: decide whether a representation-tolerant
-/// ALT classification really belongs to this row at a co-annotated locus.
-///
-/// Representation-tolerant matching (windowed S3 shifts, BQ-masked
-/// comparison, PairHMM alignment) lets one physical event satisfy several
-/// co-annotated rows in the same tract — and lets unannotated same-tract
-/// ladder events be absorbed as ALT — so without this guard the per-locus
-/// AD sum exceeds the number of distinct ALT molecules (measured 2-5x at a
-/// real hypermutation cluster; sign-out uses exclusive assignment).
-///
-/// Anchor-exact evidence (Phase 0: a structural CIGAR op at the annotated
-/// left-aligned position, or a direct SNP base observation) is never
-/// contested — a molecule genuinely carrying two anchor-exact ops counts
-/// full AD on both rows. Everything else faces three demotion tests, each
-/// decisive for a distinct failure mode measured on signed-out data:
-///
-/// 1. **REF test** (foreign events): over the read-covered slice of this
-///    variant's genomic context, the read's reconstruction must explain
-///    strictly better with the row's ALT haplotype than its REF haplotype
-///    (Levenshtein). A read carrying only an event in the flanks ties or
-///    favors REF → demote.
-/// 2. **Probabilistic pure indel** (unannotated ladders): an
-///    Alignment-phase (Phase 3) ALT on a *pure* indel row carries no
-///    matching structural op at any position — in a contested tract that
-///    is ambiguity (PairHMM absorbs D11 into a D14 row because 3 edits
-///    beat 11), so demote. Complex/MNP rows are exempt: Phase 3 is their
-///    own carriers' normal resolution path.
-/// 3. **Strictly-better sibling** (same-tract competitors): over a window
-///    covering both spans, a sibling whose ALT haplotype explains the
-///    read at strictly lower cost claims it. Equal cost means equivalent
-///    representations of the same event (e.g. a delins double-annotated
-///    as an insertion) — both rows keep the read rather than zeroing one.
-///
-/// Demoted reads surface as partial evidence (any_alt/partial_alt) and are
-/// excluded from AD and ADF (the caller downgrades before fragment
-/// evidence). Reads that do not fully span the event, or splice-poisoned
-/// windows, keep their classification. Isolated variants are untouched.
 /// Mask sub-threshold and N bases to a sentinel byte that matches no
 /// haplotype base: the contest then charges them equally against every
 /// candidate instead of letting sequencing noise coincidentally vote for
@@ -2107,6 +2062,44 @@ fn sibling_claims_ref<F: Fn(u8, u8) -> i32>(
     false
 }
 
+/// Multi-allelic AD-claiming guard: decide whether a representation-tolerant
+/// ALT classification really belongs to this row at a co-annotated locus.
+///
+/// Representation-tolerant matching (windowed matches at shifted
+/// placements, BQ-masked comparison, PairHMM alignment) lets one physical
+/// event satisfy several co-annotated rows in the same tract — and lets
+/// unannotated same-tract ladder events be absorbed as ALT — so without
+/// this guard the per-locus AD sum exceeds the number of distinct ALT
+/// molecules (measured 2-5x at a real hypermutation cluster; sign-out uses
+/// exclusive assignment).
+///
+/// Anchor-exact evidence (Phase 0: a structural CIGAR op at the annotated
+/// left-aligned position, or a direct SNP base observation) is never
+/// contested — a molecule genuinely carrying two anchor-exact ops counts
+/// full AD on both rows. Everything else faces three demotion tests, each
+/// decisive for a distinct failure mode measured on signed-out data:
+///
+/// 1. **REF test** (foreign events): over the read-covered slice of this
+///    variant's genomic context, the read's reconstruction must explain
+///    strictly better with the row's ALT haplotype than its REF haplotype
+///    (Levenshtein). A read carrying only an event in the flanks ties or
+///    favors REF → demote.
+/// 2. **Probabilistic pure indel** (unannotated ladders): an
+///    Alignment-phase (Phase 3) ALT on a *pure* indel row carries no
+///    matching structural op at any position — in a contested tract that
+///    is ambiguity (PairHMM absorbs D11 into a D14 row because 3 edits
+///    beat 11), so demote. Complex/MNP rows are exempt: the exact-carrier
+///    rule judges their carriers by their own bases.
+/// 3. **Strictly-better sibling** (same-tract competitors): over a window
+///    covering both spans, a sibling whose ALT haplotype explains the
+///    read at strictly lower cost claims it. Equal cost means equivalent
+///    representations of the same event (e.g. a delins double-annotated
+///    as an insertion) — both rows keep the read rather than zeroing one.
+///
+/// Demoted reads surface as partial evidence (any_alt/partial_alt) and are
+/// excluded from AD and ADF (the caller downgrades before fragment
+/// evidence). Reads that do not fully span the event, or splice-poisoned
+/// windows, keep their classification. Isolated variants are untouched.
 fn sibling_claims_alt(
     record: &Record,
     variant: &Variant,
@@ -2159,7 +2152,8 @@ fn sibling_claims_alt(
     // partial_alt, and clip rescue is tracked separately (CLIP_CANDIDATES).
     // Pure = anchor-preserved
     // deletion/insertion; a delins that merely has a 1-base side (e.g.
-    // CAG>T) is complex and exempt (Phase 3 is its carriers' normal path).
+    // CAG>T) is complex and exempt (the exact-carrier rule judges its carriers by
+    // their own bases).
     let ref_al = variant.ref_allele.as_bytes();
     let alt_al = variant.alt_allele.as_bytes();
     let pure_indel = (alt_al.len() == 1 && ref_al.len() > 1 && ref_al[0] == alt_al[0])
@@ -2564,18 +2558,11 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // Pure deletion example:  GC → G  (anchor G kept, C deleted)
         // Complex Del+SNV:        GC → T  (C deleted AND G→T at anchor position)
         //
-        // check_deletion's S3 safeguard validates shifted deletions by comparing
-        // the deleted reference bases against `expected_del_seq` (ref_allele[1..]).
-        // For complex Del+SNV the anchor mismatch causes a cascade: reads whose
-        // deletion left-shifts away from the anchor pass the S3 check at the
-        // shifted position only if the reference base there matches expected_del_seq;
-        // when it doesn't S3 rejects the windowed match, `found_ref_coverage` is
-        // set to true (the anchor M-block still covers the anchor), and the read
-        // is definitively classified as REF — hiding the true ALT reads.
-        //
-        // Routing complex Del+SNV to check_complex lets Phase 3 (PairHMM/SW)
-        // align the read against the full REF and ALT haplotype contexts where
-        // both the deletion and the anchor substitution are captured correctly.
+        // check_deletion judges the gap and the deleted bases (ref_allele[1..]) and
+        // never reads the anchor, so it cannot tell a Del+SNV carrier from a
+        // pure-deletion carrier. A Del+SNV is judged by its whole allele with the
+        // exact-carrier rule (`classify_complex`), reaching check_complex only when
+        // the rule cannot judge the variant.
         if anchor_preserved(variant) {
             // Pure deletion: CIGAR-based fast paths, then backend-aware Phase 3 fallback
             let result = check_deletion(record, variant, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend);
@@ -2591,12 +2578,14 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     }
 }
 
-/// A complex variant (delins, a deletion whose anchor also changes, or an MNP
-/// read carrying an indel) counts a read only when the read's own bases carry
-/// the whole allele: the exact-carrier rule (`carrier`). A variant the rule
-/// cannot judge (built without prep, or its reference fetch failed) goes to the
-/// previous classifier; such reads are counted and warned once per variant.
-/// `route` names why the read came here, for the trace.
+/// A complex variant (delins, a deletion whose anchor also changes, an insertion
+/// whose ALT changes the anchor such as C>TA, or an MNP read carrying an indel or
+/// clip at the block) counts a read only when the read's own bases carry the
+/// whole allele: the exact-carrier rule (`carrier`). A variant the rule cannot
+/// judge (no prepared reference, or one that does not hold the REF allele or the
+/// event with its flank) goes to the previous classifier (`check_complex`); such
+/// reads are counted and warned once per variant. `route` names why the read
+/// came here, for the trace.
 #[allow(clippy::too_many_arguments)]
 fn classify_complex<F: Fn(u8, u8) -> i32>(
     record: &Record,
@@ -2703,7 +2692,7 @@ fn read_name(record: &Record) -> std::borrow::Cow<'_, str> {
 /// 1. Filters the read cache by splice-junction compatibility
 /// 2. Re-invokes allele classification on compatible reads
 /// 3. Applies fragment consensus per-transcript
-/// 4. Formats results as semicolon-separated strings
+/// 4. Formats results as `|`-separated strings
 ///
 /// Returns `(transcript_read_counts, transcript_fragment_counts)`.
 ///
@@ -2716,7 +2705,7 @@ fn read_name(record: &Record) -> std::borrow::Cow<'_, str> {
 ///
 /// Read:     `"ENST...:AD,RD,DP|ENST...:AD,RD,DP"`
 /// Fragment: `"ENST...:ADF,RDF,DPF|ENST...:ADF,RDF,DPF"`
-/// Transcripts are separated by `|` (VCF-INFO-safe; ME-2); fields within an entry by `:`/`,`.
+/// Transcripts are separated by `|` (VCF-INFO-safe); fields within an entry by `:`/`,`.
 ///
 /// # Performance
 ///
@@ -2913,11 +2902,10 @@ fn count_per_transcript(
         return (String::new(), String::new());
     }
 
-    // ME-2: separate transcripts with '|' (not ';'). ';' is the VCF INFO field separator,
-    // so a ';'-joined value corrupts VCF INFO parsing — which is why the writer used to
-    // repair ';'→'|' for VCF only, leaving MAF inconsistent. Joining with '|' here makes
-    // MAF, VCF, and the documented `ENST:AD,RD,DP|…` header all agree. (Within an entry,
-    // ':'/',' are the field separators — unaffected.)
+    // Separate transcripts with '|' (not ';'): ';' is the VCF INFO field separator, so a
+    // ';'-joined value would corrupt VCF INFO parsing. Joining with '|' here makes MAF,
+    // VCF, and the documented `ENST:AD,RD,DP|…` header all agree. (Within an entry,
+    // ':'/',' are the field separators.)
     (read_entries.join("|"), frag_entries.join("|"))
 }
 
@@ -3093,7 +3081,7 @@ const ASJD_MIN_REF_JUNC: u32 = 10;
 /// count is the mutant allele's splicing outcome — ALT-side evidence.
 const ASJD_MIN_ALT_JUNC: u32 = 5;
 
-/// ASJD-2 splice-disruption markers for `asjd_diagnostic` (issue #97).
+/// ASJD-2 splice-disruption markers for `asjd_diagnostic`.
 ///
 /// ASJD's tallies only see allele-classified reads, but at a splice-site
 /// variant the informative reads are often the ones the splice-aware
@@ -4237,7 +4225,7 @@ mod tests {
     fn test_mnp_all_masked_returns_low_quality_with_zero_partial() {
         // DNP: GG→AA. Read has AA (would match ALT) but both positions have Q < 20.
         // All discriminating positions masked → LowQuality.
-        // After G1 fix: positions_matching_alt only counts UNMASKED positions,
+        // positions_matching_alt only counts UNMASKED positions,
         // so when ALL positions are masked, partial=0 (no reliable evidence).
         let seq = b"CCAAGCC";
         let qual = &[30, 30, 5, 8, 30, 30, 30]; // both discriminating positions low-Q
@@ -4554,7 +4542,7 @@ mod tests {
         assert!(hmm.is_alt, "PairHMM should classify 2bp sub as ALT, got is_ref={} is_alt={}", hmm.is_ref, hmm.is_alt);
     }
 
-    // ── G5: n_count accumulation integration tests ──
+    // ── n_count accumulation integration tests ──
     //
     // Verify that has_n_base flows through the classification dispatch
     // and would correctly drive counts.n_count += 1 in the engine.
@@ -4665,7 +4653,7 @@ mod tests {
         assert!(result.is_alt && !result.mnp_confirmed, "SNV ALT → never MNP-confirmed");
     }
 
-    // ── G4: check_complex N base propagation tests ──
+    // ── check_complex N base propagation tests ──
     //
     // Verify that check_complex detects N in the reconstructed haplotype
     // and propagates has_n_base through all Phase 2 return paths.
@@ -4760,8 +4748,8 @@ mod tests {
     // These tests verify the wrong-length INDEL handling added to fix
     // PAX5-class discordances (originally Phase-3 fallbacks; now the
     // wrong-length rule resolves lone ops directly as neither + partial
-    // evidence, with Phase 3 kept for split representations and shifted
-    // same-length candidates). Each test documents which code path in
+    // evidence, with Phase 3 kept for shifted same-length candidates and in-band
+    // large deletions whose bases differ). Each test documents which code path in
     // check_insertion/check_deletion it exercises.
 
     // Aligner construction is inlined in each test below because:

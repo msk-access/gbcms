@@ -81,12 +81,14 @@ pub struct ClassifyResult {
     /// Whether the checker found structural evidence of the variant but the
     /// final classification was REF or neither. Set by:
     /// - `check_insertion`/`check_deletion`: right-length INDEL, wrong sequence
+    ///   (Phase 3 arbitrates; the flag is kept on non-ALT results)
     /// - `check_insertion`/`check_deletion`: WRONG-length pure indel at/near
-    ///   the anchor — a distinct allele in the same tract (lone op →
-    ///   `neither_with_nearby`; split-suspect → Phase 3 with this flag
-    ///   propagated on non-ALT results)
+    ///   the anchor — a distinct allele in the same tract, resolved without
+    ///   Phase 3 (`neither_with_nearby`; REF with this flag in unique context)
     /// - `check_complex` Levenshtein: ALT edit distance close to REF
     /// - `classify_by_alignment`: ALT alignment score close to REF
+    /// - the exact-carrier rule: a read holding the windows, carrying neither
+    ///   allele, closer to ALT
     ///
     /// Consumed by engine to increment `partial_alt`/`any_alt`.
     pub has_nearby_evidence: bool,
@@ -138,14 +140,16 @@ pub struct ClassifyResult {
     /// backend, where SW is the chosen scorer. Counted per variant (DP reads
     /// only) as `BaseCounts::sw_fallback_reads`.
     pub sw_fallback: bool,
-    /// Whether a REF or ALT call on a pure indel was withdrawn because the read
-    /// cannot tell the alleles apart: it starts or ends inside the event's shift
-    /// region (`window::read_is_informative`) and, for an ALT call, its own bases
-    /// do not discriminate either (`window::alt_bases_discriminate`). Also set by
-    /// the exact-carrier rule for a read that holds neither window. Such a read
-    /// counts toward depth only. The sibling REF guard still checks it (a
-    /// sibling's allele it carries is partial evidence here), and a fragment whose
-    /// reads are all like this is left out of the mFSD classes.
+    /// Whether the read cannot tell the alleles apart. Set when a REF call on a
+    /// pure indel is withdrawn because the read spans neither informative window
+    /// (`ref_needs_the_window`); when an ALT call on a pure indel is withdrawn
+    /// because the read spans neither ALT-side window and its own bases fit both
+    /// alleles or could not be judged (`alt_needs_the_window`); and by the
+    /// exact-carrier rule for a read that holds no window pair or is spliced
+    /// through the event. Such a read counts toward depth only. The sibling REF
+    /// guard still checks it (a sibling's allele it carries is partial evidence
+    /// here), and a fragment whose reads are all like this is left out of the mFSD
+    /// classes.
     pub uninformative: bool,
     /// An ALT call on a pure indel withdrawn because the read spans neither
     /// ALT-side window and its bases could not be judged: no prepared reference

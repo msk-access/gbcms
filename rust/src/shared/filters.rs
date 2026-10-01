@@ -8,7 +8,6 @@
 //!
 //! Used by:
 //! - `counting/engine.rs` — Phase 0 universal read filtering
-//! - `hla/extract.rs` (future) — MHC region read extraction filtering
 
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;

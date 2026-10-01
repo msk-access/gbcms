@@ -41,14 +41,14 @@ use serde::{Deserialize, Serialize};
 // Re-export the GTF parser for use by engine.rs (wired in the splice-annotation integration step)
 #[allow(unused_imports)]
 pub(crate) use gtf::parse_gtf;
-// M5a: cache-backed parse — deserializes the parsed intermediate when a fresh
+// Cache-backed parse — deserializes the parsed intermediate when a fresh
 // cache exists, else parses + writes it. Falls back to a plain parse on any cache error.
 pub(crate) use cache::parse_gtf_cached;
 
 // ─── Data Structures ─────────────────────────────────────────────────────────
 
 /// Metadata for a single exon, stored in a flat Vec and referenced by COITree
-/// node metadata (index into this Vec). Serializable so the M5a GTF cache can
+/// node metadata (index into this Vec). Serializable so the GTF cache can
 /// persist the parsed intermediate (the COITrees are rebuilt from these on load).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExonRecord {
@@ -115,7 +115,7 @@ pub struct AnnotationIndex {
 
 /// Rebuild the per-chromosome exon interval trees from the flat exon list.
 ///
-/// Shared by `parse_gtf` (fresh parse) and the M5a cache-load path, so a cached
+/// Shared by `parse_gtf` (fresh parse) and the cache-load path, so a cached
 /// `AnnotationIndex` is equivalent to a freshly parsed one: the COITree metadata is
 /// the index into `exons`, and identical exon ordering in gives identical query
 /// results out. Cheap relative to the GTF text parse — the trees are built from

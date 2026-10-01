@@ -21,11 +21,19 @@ use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_o
 
 /// Prepare variants for counting in a single pass over the reference FASTA.
 ///
-/// For each variant, this function performs (in order):
-/// 1. **MAF anchor fetch** — if `is_maf`, resolve `-` alleles to VCF-style
-/// 2. **REF validation** — check REF against the reference genome
-/// 3. **Left-alignment** — bcftools `realign_left()` for indels
-/// 4. **ref_context fetch** — flanking sequence for Smith-Waterman alignment
+/// For each variant, this function performs (in order; see `prepare_single_variant`):
+/// 1. **Malformed-allele rejection** — EMPTY_ALLELE / ALT_EQUALS_REF FAIL rows
+/// 2. **MAF anchor fetch** — if `is_maf`, resolve `-` alleles to VCF-style
+/// 3. **REF validation** — check REF against the reference genome; reject an
+///    ALT containing N (ALT_CONTAINS_N)
+/// 4. **Left-alignment** — bcftools `realign_left()` for indels and delins
+/// 5. **ref_context fetch** — flanking sequence for Phase-3 haplotype alignment
+///    (indels and delins), padded through repeats with `adaptive_context`
+/// 6. **Homopolymer twin** — only with `rescue_homopolymer`
+/// 7. **repeat_span, shift region and event reference** (`event_ref`)
+///
+/// Then groups co-annotated variants (`assign_multi_allelic_groups`:
+/// MULTI_ALLELIC span overlaps, TRACT_CLUSTER window overlaps).
 ///
 /// Uses rayon `par_iter().map_init()` with thread-local FASTA readers.
 ///
@@ -401,9 +409,6 @@ fn variant_type_for(ref_al: &str, alt_al: &str) -> &'static str {
     }
 }
 
-/// Process a single variant through the full preparation pipeline.
-///
-/// Steps: MAF anchor → validate REF → left-align → adaptive context → fetch ref_context.
 /// A pure indel's shift-equivalence region (see `counting::window`), measured
 /// over a reference fetch sized to the event: 256bp each side, doubled while
 /// the slide reaches the fetch's edge, up to 16kb. `ref_context` is padded for
@@ -541,6 +546,20 @@ impl PrepTally {
     }
 }
 
+/// Process a single variant through the full preparation pipeline.
+///
+/// Steps:
+/// 0. Reject malformed alleles (EMPTY_ALLELE, ALT_EQUALS_REF) as FAIL rows.
+/// 1. MAF anchor resolution for dash alleles (FETCH_FAILED when the fetch fails).
+/// 2. REF validation (a REF ≥90% similar to the FASTA is corrected to it,
+///    WARN_REF_CORRECTED); then (2b) reject an ALT containing N (ALT_CONTAINS_N).
+/// 3. Left-alignment for indels and delins (not MNPs).
+/// 4. `ref_context` fetch for indels and delins, adaptively padded in repeats.
+/// 5. The homopolymer twin (`decomposed_variant`), only with
+///    `rescue_homopolymer`, with its own `event_ref`.
+///
+/// Then `repeat_span` (scanned at the first changed base), the shift region
+/// (`indel_shift_region`) and `event_ref` (`event_core_ref`).
 fn prepare_single_variant(
     reader_result: &mut Result<fasta::IndexedReader<File>, anyhow::Error>,
     variant: &Variant,
@@ -873,7 +892,7 @@ fn prepare_single_variant(
         // Scan for repeats at the FIRST CHANGED base, not the shared anchor:
         // a left-aligned repeat indel's anchor sits one base left of the
         // tract, where the scan finds span 1 and adaptive padding never
-        // widens (issue #91).
+        // widens.
         let change_off = first_change_offset(&ref_al, &alt_al);
         let effective_padding = if adaptive_context {
             compute_adaptive_padding(
@@ -966,7 +985,7 @@ fn prepare_single_variant(
         let ctx_bytes = ctx.as_bytes();
         // Same first-changed-base anchoring as the adaptive scan above:
         // repeat_span feeds the windowed-scan width and SW gap tuning, and an
-        // anchor-based scan misses edge tracts entirely (issue #91).
+        // anchor-based scan misses edge tracts entirely.
         let scan_pos = pos + first_change_offset(&ref_al, &alt_al);
         let pos_in_ctx = (scan_pos - ref_context_start) as usize;
         let (_motif_len, span) = find_tandem_repeat(ctx_bytes, pos_in_ctx.min(ctx_bytes.len().saturating_sub(1)));
@@ -1264,7 +1283,7 @@ mod tests {
 
     // Formula: genuine repeat (span >= 2) pads by the full tract span on top
     // of the default, so the haplotype window always contains the tract plus
-    // unique flank on both sides (issue #91). Non-repeats keep the default.
+    // unique flank on both sides. Non-repeats keep the default.
     fn effective_padding(span: usize, default_pad: i64, max_pad: i64) -> i64 {
         let adaptive = if span >= 2 { span as i64 + default_pad } else { 0 };
         default_pad.max(adaptive).min(max_pad)
@@ -1294,7 +1313,7 @@ mod tests {
         assert_eq!(effective_padding(120, 5, 50), 50, "Should be capped at max_pad");
     }
 
-    // -- first_change_offset + scan-anchor regression (issue #91) --
+    // -- first_change_offset: scanning at the first changed base finds edge tracts --
 
     #[test]
     fn test_first_change_offset_indels_and_complex() {
@@ -1318,7 +1337,7 @@ mod tests {
         assert_eq!(span_at_change, 10, "first-changed-base scan finds the tract");
     }
 
-    // -- Gap 1B: Dynamic window expansion tests --
+    // -- Dynamic window expansion tests --
 
     #[test]
     fn test_window_expansion_long_homopolymer() {

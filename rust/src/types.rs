@@ -13,9 +13,12 @@ pub struct Variant {
     pub alt_allele: String,
     #[pyo3(get, set)]
     pub variant_type: String, // "SNP", "INSERTION", "DELETION", "COMPLEX"
-    /// Reference sequence around the variant for windowed indel detection.
+    /// Reference sequence around the variant (prep fetches it for indels and delins).
     /// Covers [ref_context_start, ref_context_start + len) in genomic coords.
-    /// Used by Safeguard 3 to verify shifted indels are biologically valid.
+    /// Read by the Phase-3 haplotypes, the pangenome matrix and the sibling guard;
+    /// the exact-carrier rule and the windowed indel checks fall back to it without
+    /// an `event_ref` (the windowed checks also where `event_ref` does not hold the
+    /// bases; the in-band large-deletion check reads its deleted bases from it).
     #[pyo3(get, set)]
     pub ref_context: Option<String>,
     /// Genomic start position (0-based) of the ref_context string.
@@ -337,7 +340,8 @@ pub struct BaseCounts {
     pub mfsd_mono_nuc_alt_frac: f64,
 
     // ── mFSD: Raw size arrays (for --mfsd-parquet export) ────────────────────
-    // Populated in all runs but only copied to disk when --mfsd-parquet is set.
+    // Populated only with --mfsd (empty otherwise), and copied to disk only when
+    // --mfsd-parquet is set.
     // NOT exported via PyO3 — written directly to Parquet by write_fsd_parquet()
     // in parquet_writer.rs, avoiding an FFI round-trip and the pyarrow dependency.
     /// Raw REF fragment sizes (bp). Internal only; use write_fsd_parquet() to persist.

@@ -313,7 +313,7 @@ class Pipeline:
         logger.info("Starting gbcms pipeline")
         logger.info("Output directory: %s", self.config.output.directory)
 
-        # Log all resolved parameters at DEBUG for full reproducibility (#19)
+        # Log all resolved parameters at DEBUG for full reproducibility
         logger.debug(
             "Parameters:\n"
             "  mode=%s\n"
@@ -573,7 +573,7 @@ class Pipeline:
             # given allele.
             decomposed = [prepared[i].decomposed_variant for i in valid_indices]
 
-            # Build sibling Variant objects for multi-allelic exclusion (Gap 1A)
+            # Build sibling Variant objects for multi-allelic exclusion
             # For each variant in a multi-allelic group, collect the full Variant
             # objects of all OTHER variants in the same group. This allows the
             # Rust-side guard to run the complete classification pipeline

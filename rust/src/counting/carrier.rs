@@ -1,7 +1,8 @@
 //! Exact-carrier classification for complex variants.
 //!
-//! A complex variant (a delins, a deletion whose anchor also changes, or an MNP
-//! read with an indel in or right beside its block) is REF or ALT for a read only when the read's own
+//! A complex variant (a delins, a deletion whose anchor also changes, an
+//! insertion whose ALT changes the anchor such as C>TA, or an MNP read with an
+//! indel or clip at its block) is REF or ALT for a read only when the read's own
 //! bases carry that allele across the whole event, with [`FLANK`] reference bases
 //! on each side. The read's bases include soft clips; bases below min BQ (and N)
 //! match anything, the one quality rule every backend shares. Nothing else is
@@ -130,10 +131,11 @@ struct Reading {
 
 /// Classify a read at a complex variant by the exact-carrier rule, or None when
 /// the rule cannot judge this variant: it needs both alleles non-empty and a
-/// reference (prep's `event_ref`, else the `ref_context`) holding the event, its
-/// flank and padding. Prep fetches enough for that, so None means an unprepared
-/// variant or an event at a contig end; the caller then uses the previous
-/// classifier.
+/// reference (prep's `event_ref`, else the `ref_context`) holding the REF allele
+/// and the event with its flank. None whenever `windows` is None: no prepared
+/// reference, a reference that does not hold the REF allele, or one that does not
+/// hold the event with its flank (a contig end, or a repeat past prep's 16 kb
+/// fetch cap). The caller then uses the previous classifier.
 pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8) -> Option<ClassifyResult> {
     let win = windows(variant)?;
     let seq = record.seq().as_bytes();
