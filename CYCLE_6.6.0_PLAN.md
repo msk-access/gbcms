@@ -47,7 +47,7 @@ marks a ticket with an open PR.
 | C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
 | C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] [6.7.0] | #173 |
 | C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
-| T1 | Test architecture: retire or unify the legacy parity path | M | [decide] | #170 |
+| T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [decided] [design for review] | #170 |
 | T2 | Read census as the classification oracle in tests | M | | #171 |
 | H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | | #204 |
 | C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
@@ -836,6 +836,133 @@ harness `~/test/gbcms/harness/c20/`, local).**
 - FORTE RNA: the truth set and the STAR repeat-insertion probes are unchanged. One
   T9 probe (a 4bp deletion) loses 2 ALT reads, which carry a 3bp deletion ending
   just after it.
+
+## Test architecture
+
+### T1 (#170) + T2 (#171) — design note (2026-10-01) · [decided: retire] [design for review]
+**Facts.**
+- **The legacy path.** `count_bam` (200 lines) and `count_single_variant` (501)
+  sit behind the `legacy-parity` feature: on by default, off in the shipped
+  wheel. 283 of 850 tests call it. 234 compare legacy with binned; 49 run legacy
+  only, so they never test production.
+- **What parity caught.**
+  - Its one bin/fetch bug, CR-1, was found by code review. The synthetic parity
+    suite could not have caught it: every synthetic contig (≤2kb) fits in one
+    10kb bin.
+  - The two divergences between the loops (mq0 tallied before vs after the RNA
+    strand filter; the mFSD N heuristic) were also found in review, in fields
+    parity does not compare.
+  - Every classification bug this cycle sat in the shared classifier: CR-2, CR-4,
+    #91, C12, C21, #166, cluster 1. Parity cannot see those.
+  - It is also blind to BAQ, UMI, RNA, mFSD, ASJD and siblings.
+- **Cost.** 35 commits edited `count_single_variant` twice, 24 of them since the
+  June review. Its tests take 0.07s of the suite's 13.4s, and the extra CI steps
+  about 4s, so retiring it saves the double edits, not time.
+- **Binning.**
+  - There is no fixed grid. A bin starts at the leftmost unbinned variant and
+    ends at max(start + window, the anchor's span end). Variants join while they
+    start before the end and the bin holds fewer than the cap.
+  - The fetch pads by max(5, repeat_span + 2), and each variant filters the
+    cached reads to its own window.
+  - `build_genomic_bins` already takes the window. Window 1 with cap 1 reproduces
+    the legacy fetch exactly, through the production loop.
+  - One variant per call works today; MNP rescue relies on it. Only the BH
+    q-values depend on which rows are in a call.
+
+**Design.**
+1. **A test hook.**
+   - Two optional keyword arguments on `count_bam_binned` and
+     `count_bam_binned_observations`: `bin_window` and `bin_max_variants`.
+   - `None` means the production constants; a value below 1 raises `ValueError`.
+   - The pipeline never passes them. The stub carries them.
+2. **One helper replaces the parity helpers.** `count_both` / `count_one_both`
+   become `count_checked`.
+   - It runs production geometry and window 1 / cap 1 (the legacy fetch, now
+     through the production loop), and compares every field: integers exact,
+     floats to 1e-9 relative, NaN equal to NaN.
+   - Siblings, RNA, BAQ, UMI, mFSD and ASJD are now covered, because there is
+     one loop.
+   - The 49 legacy-only tests move to production through the same helper, and
+     `test_accuracy`'s four legacy/binned twins merge.
+3. **Binning invariance**, in `tests/test_binning_invariance.py` (replacing
+   `test_parity_large_deletion.py`). Counts must agree under these geometries:
+   - production;
+   - window 1 / cap 1;
+   - a tiny window (7–20bp), where anchors longer than the window reproduce CR-1;
+   - cap 2–3;
+   - one call per row (q-values excepted);
+   - shuffled input with 4 threads;
+   - decoy variants that move bin starts (q-values excepted).
+
+   Fixtures:
+   - a dense SNV/MNP/indel/delins cluster with reads starting at every offset;
+   - a 50–60bp deletion anchor with an SNV inside, and reads past its
+     breakpoint;
+   - a long repeat tract on a non-anchor member;
+   - contig start and end;
+   - siblings and a decomposed twin;
+   - RNA with a GTF, strandedness, ASJD, BAQ, mFSD and a UMI tag;
+   - the repo's test BAM with a ~1kb window, so it splits into bins.
+
+   Sorted observation rows must match too. A Rust property test on
+   `build_genomic_bins` checks that every variant lands in exactly one bin and
+   every bin's fetch holds each member's window. As a mutation check,
+   re-introduce the CR-1 bug locally; the tiny-window geometry must fail.
+4. **The read census (T2)**, in `tests/census.py`. It ports the harness's
+   per-read judge:
+   - bases below `min_baseq` are masked;
+   - it anchors on the read's aligned bases just outside the event (pure indels:
+     the shift region plus a three-base margin; anchor-changing one-base REF:
+     two flank bases each side);
+   - soft-clipped bases are read where they sit;
+   - reading stops at a splice N (SPLICED when the N covers every deciding
+     base).
+
+   Verdicts: ALT, REF, FITS_BOTH, CONTRADICTS_BOTH, NOT_ANCHORED, SPLICED.
+   `census(bam, ref, variant, ...)` gives per-read verdicts and REF/ALT/neither
+   counts with fragment bounds. `assert_matches(counts, census)` checks RD and
+   AD exactly, DP, the fragment bounds and the four counting invariants.
+
+   It is used in three ways:
+   - on the binning-invariance fixtures;
+   - in a property test over generated pure-indel reads, where engine RD/AD must
+     equal the census for the settled read shapes (one indel plus mismatches).
+     The open decisions become strict xfails: C26 #200, C28 #202 and C27 #201;
+   - by new contract tests, with existing ones moving over when touched.
+
+   As a mutation check, revert one cluster-1 fix locally; the property test must
+   fail.
+5. **Delete:**
+   - `count_bam` and `count_single_variant`, and the feature in `Cargo.toml`,
+     `mod.rs` and `lib.rs`;
+   - their stub entries;
+   - the helpers `count_one`, `count_one_both` and `count_both`
+     (`PARITY_FIELDS` → `COUNT_FIELDS`);
+   - the two `TestBinnedParity` classes;
+   - the duplicate CI clippy and `cargo test` steps, and `--no-default-features`
+     in `release.yml` and the Dockerfile;
+   - the parity memories, marked superseded;
+   - doc lines in AGENTS.md, the rules, skills, CONTRIBUTING and the
+     developer/testing guides.
+6. **AGENTS.md invariant 1 becomes binning invariance.** Bin geometry is
+   performance only. `count_bam_binned` must give identical counts under any bin
+   window or cap, one variant per bin, or one variant per call, so every bin's
+   fetch must hold each member's full window. Classification is checked against
+   the read census, never a second engine.
+
+**Order.**
+1. Add the hook, the invariance tests and the census, green on the current code
+   and mutation-checked.
+2. Migrate the helpers.
+3. Delete the legacy path.
+4. Update the docs.
+
+Production output must stay byte-identical: the engine does not change, and the
+RC/WES/FORTE acceptance must show 0 changed rows.
+
+**Found on the way, for H3 #204:** `mfsd_ref_llr` varies in its last ulps
+between identical runs (float summation in HashMap order); output rounds it to
+4 decimals.
 
 ## RNA
 
