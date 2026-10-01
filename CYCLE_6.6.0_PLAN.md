@@ -59,7 +59,7 @@ marks a ticket with an open PR.
 | C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [done] | #191 |
 | C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [done] | #192 |
 | C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
-| C25 | Exact-carrier long-event junction windows credit REF to anchor-keeping carriers of long anchor-changing insertions | L | [counts] [6.7.0] | #199 |
+| C25 | Exact-carrier long-event junction windows: a read holding one junction decides the call (REF for anchor-keeping reads; ALT for reads carrying only the substitution) | M | [counts] | #199 |
 | C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decide] | #200 |
 | C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [6.7.0] | #201 |
 | C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
@@ -1365,7 +1365,13 @@ Pure refactors must leave the acceptance output byte-identical.
   change).
 - `ref_context`: uppercase it at prep (fixes SW on soft-masked FASTAs).
 - mFSD: sum in a deterministic order.
-- Reads starting on a flank: measure first.
+- Reads starting on a flank: measured (one row, a 66bp duplication regaining 11
+  carriers that start on the anchor and hold the whole insert), then decided: the
+  read-by-bases rule reads from the flank.
+- S2's widening stays; C25 #199 moves into 6.6.0 (its junction windows can make a
+  false ALT, now reached by anchor-changing insertions in long runs too).
+- A deciding base past a contig edge: depth only (circular contigs), counted and
+  warned like other unjudged reads.
 - `observe_molecules` requires a reference FASTA (argument or config); without one
   it is a `ValueError`, as for the CLI. This replaces the S3 warning.
 
@@ -1621,9 +1627,10 @@ C22, C23, R1, R2 and O4 are done (cluster 1 merged in #203).
 2. **Test architecture:** T1 #170 (retire the legacy path; binning invariance)
    with T2 #171 (read-census oracle), before the read-admission work; then H3
    #204 (code-quality sweep of the cycle's code), its own PR.
-3. **Read admission and RNA:** C26 #200 (the REF side of cluster 1's one-change
-   rule; measured first, then decided) and C28 #202 (the anchor-deleted Phase-3
-   fallback; measured first); C17 #176 (measured first); R4 #185 with
+3. **Read admission and RNA:** C25 #199 (long-event junction windows; moved into
+   6.6.0 on 2026-10-01: it can make a false ALT), C26 #200 (the REF side of
+   cluster 1's one-change rule; measured first, then decided) and C28 #202 (the
+   anchor-deleted Phase-3 fallback; measured first); C17 #176 (measured first); R4 #185 with
    O8 #186 (one PR); C16 #174 (traced first).
 4. **Small batches, any order, parallelisable:** records (C19 #182, O7 #183);
    MAF input (I1 #123, I2 #124, C9 #122); allele columns (I3 #125, I4 #126's doc

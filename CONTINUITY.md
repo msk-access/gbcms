@@ -79,7 +79,7 @@ community practice before deciding; record the decision in the issue.
    oracle): design note first. Then a code-quality sweep of the cycle's code
    (duplication, unused code, silent failures, comments, logging, monitoring) as
    its own PR, H3 #204 (operator request, 2026-10-01).
-2. C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
+2. C25 #199 (moved into 6.6.0), C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
    (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
 3. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
    mkdocs pin, P3); O1+O2; S1+S2; M2+M4.
