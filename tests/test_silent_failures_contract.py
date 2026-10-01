@@ -176,7 +176,6 @@ def test_a_read_spliced_over_an_anchor_changing_insertions_anchor_is_out_of_dept
     assert (c.dp, c.splice_skip_excluded) == (0, 5)
 
 
-@pytest.mark.xfail(strict=True, reason="H3 decision 3: red until fixed")
 @pytest.mark.parametrize("backend", ["sw", "pairhmm"])
 def test_a_soft_masked_reference_counts_the_same(tmp_path, backend):
     """A FASTA soft-masked (lower case) over the locus is the same reference: the
