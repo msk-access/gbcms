@@ -1022,7 +1022,10 @@ across the discrimination window; a cancelled pair or a split longer allele
 (+A and +A for a +A row) is a distinct allele, partial evidence. The order the
 aligner writes an I/D pair in does not matter: a deletion right after an
 insertion (`M I D M`), or an insertion right after a deletion (`M D I M`), is
-inspected as one right after an aligned block is. At 50bp or more the
+inspected as one right after an aligned block is; a deleted anchor followed by
+an insertion is judged by the read's bases (a re-inserted anchor with the insert
+is the ALT). A same-length insertion of other bases beside another indel in the
+window is another allele, not Phase 3's to arbitrate. At 50bp or more the
 large-deletion band judges the read, counting every change across the
 discrimination window. Splices there remain the RNA rules' business.
 

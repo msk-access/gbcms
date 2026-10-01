@@ -352,10 +352,6 @@ def test_a_base_past_the_reference_stretch_decides_nothing(tmp_path):
 
 
 # ── Third review findings ─────────────────────────────────────────────────────
-_XFAIL = pytest.mark.xfail(strict=True, reason="third cluster-1 review: red until fixed")
-
-
-@_XFAIL
 def test_a_deletion_then_a_same_length_insertion_of_other_bases_is_not_alt(tmp_path):
     """G>G+ACGTA, the carriers delete the base after the anchor and insert ACGTC
     (M D(1) I(5) M): the read changes length by 4, never the ALT's 5. Another
@@ -365,7 +361,6 @@ def test_a_deletion_then_a_same_length_insertion_of_other_bases_is_not_alt(tmp_p
     assert _count_reads(tmp_path, ref, "G", "GACGTA", _ops(ref, events)) == (5, 0, 5)
 
 
-@_XFAIL
 def test_a_long_insertion_carrier_masked_past_the_first_difference_stays_alt(tmp_path):
     """G>G+INSERT60 in unique sequence, carriers ending ten bases into the insert
     with the first three masked: the next seven discriminate, as they do for a short
@@ -379,7 +374,6 @@ def test_a_long_insertion_carrier_masked_past_the_first_difference_stays_alt(tmp
     assert _count_reads(tmp_path, UNIQUE_GT, "G", "G" + INSERT60, carrier) == (5, 5, 0)
 
 
-@_XFAIL
 def test_a_deleted_anchor_reinserted_with_the_insert_is_alt(tmp_path):
     """G>G+ACGTTGCATC, the carriers delete the anchor G and insert G+ACGTTGCATC
     after it (M D(1) I(11) M): their bases are exactly the ALT, so ALT."""

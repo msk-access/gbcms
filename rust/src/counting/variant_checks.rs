@@ -1542,6 +1542,16 @@ fn scan_windowed_insertion_candidate(
                         ins_len_usize, ins_ref_pos
                     );
                 }
+            } else if other_indel_in_window(record, dw, ins_ref_pos, true) {
+                // Same length, other bases, beside another gap or insertion in the
+                // window (M D I M): the read's length change is not the ALT's, so
+                // it cannot be the event written differently. Another allele.
+                *has_distinct_allele_nearby = true;
+                trace!(
+                    "check_insertion: windowed I({}) at pos {} of other bases with \
+                     another indel in the window → distinct-allele candidate",
+                    ins_len_usize, ins_ref_pos
+                );
             } else {
                 // Same length, other bases: the caller and the aligner may write
                 // one event differently; Phase 3 arbitrates.
@@ -1764,9 +1774,15 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                 if let Some(Cigar::Ins(ins_len)) = cigar_view.get(i + 1) {
                     let ins_len_usize = *ins_len as usize;
                     if ref_pos == anchor_pos + 1 {
-                        // The deletion removed the anchor base: the read cannot
-                        // hold the ALT, whatever it inserts.
+                        // The deletion ends at the variant's junction (it removed
+                        // the anchor base, or is empty) and the insertion follows
+                        // it: the read's bases decide (a re-inserted anchor with
+                        // the insert is the ALT; a substituted one is another
+                        // allele).
                         let qual = if read_pos < quals.len() { quals[read_pos] } else { 0 };
+                        if window::read_spells_alt(record, variant, quals, min_baseq) {
+                            return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural);
+                        }
                         return ClassifyResult::neither_with_nearby(qual, ClassifyPhase::Structural);
                     }
                     scan_windowed_insertion_candidate(
