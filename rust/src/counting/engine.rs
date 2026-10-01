@@ -742,6 +742,22 @@ fn count_bam_binned_core(
                 all_counts[vi] = counts;
             }
 
+            // Which rule decided the pass's depth reads, once per BAM (logs only).
+            let mut t = crate::types::DecisionTally::default();
+            for c in &all_counts {
+                t.add(&c.decisions);
+            }
+            let sw: u64 = all_counts.iter().map(|c| c.sw_fallback_reads as u64).sum();
+            info!(
+                "{}: depth reads by deciding rule over {} variant(s): withdrawn as uninformative \
+                 {} REF, {} ALT ({} unjudged); ALT kept by its bases {}; exact-carrier rule {} \
+                 judged, {} fell back; sibling guards {} REF excluded, {} ALT claimed; clip \
+                 admissions {}; SW fallback {}",
+                bam_label, all_counts.len(), t.ref_withdrawn, t.alt_withdrawn, t.alt_unjudged,
+                t.alt_by_bases, t.carrier_judged, t.carrier_fallback, t.sibling_ref_excluded,
+                t.sibling_alt_claimed, t.clip_admitted, sw,
+            );
+
             // Records stored without bases (SEQ '*') show no allele, so the read
             // filter drops them. Say so once per counting pass: a BAM stripped of its
             // sequences would otherwise count nothing with no word above DEBUG. The
@@ -1421,11 +1437,6 @@ fn count_variant_from_cache(
 
     // Distance-to-read-end tracking for QC metrics
     let mut alt_dists: Vec<u32> = Vec::with_capacity(500);
-    // Reads admitted by the soft-clipped bases that carry their allele.
-    let mut clip_admitted_reads: u32 = 0;
-    // Reads a rule could not judge for want of reference (warned once below).
-    let mut alt_unjudged_reads: u32 = 0;
-    let mut carrier_fallback_reads: u32 = 0;
     let mut ref_dists: Vec<u32> = Vec::with_capacity(500);
 
     // Create SW aligners ONCE per variant (indelpost pattern), scored by `sw_score`.
@@ -1586,13 +1597,14 @@ fn count_variant_from_cache(
         // the reads behind it (read-level validation against the BAM).
         trace!(
             "read call {}:{} {}>{} read={} mate={} ref={} alt={} phase={:?} partial={} nearby={} \
-             sibling_claimed={} ref_sibling_claimed={} uninformative={} antisense_excluded={}",
+             sibling_claimed={} ref_sibling_claimed={} uninformative={} antisense_excluded={} \
+             rule={}",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
-            String::from_utf8_lossy(record.qname()),
+            read_name(record),
             if record.is_first_in_template() { 1 } else { 2 },
             is_ref, is_alt, result.phase, result.partial_match_count,
             result.has_nearby_evidence, claimed_by_sibling, ref_claimed_by_sibling,
-            result.uninformative, antisense_excluded,
+            result.uninformative, antisense_excluded, deciding_rule(&result),
         );
 
         // An antisense read excluded by strandedness (first-class, over the anchor:
@@ -1648,7 +1660,6 @@ fn count_variant_from_cache(
             continue;
         }
         if clip_admitted {
-            clip_admitted_reads += 1;
             trace!(
                 "read {} admitted at {}:{} {}>{} by its soft-clipped bases (ref={} alt={})",
                 String::from_utf8_lossy(record.qname()), variant.chrom, variant.pos + 1,
@@ -1676,8 +1687,17 @@ fn count_variant_from_cache(
             if result.sw_fallback {
                 counts.sw_fallback_reads += 1;
             }
-            alt_unjudged_reads += u32::from(result.alt_unjudged);
-            carrier_fallback_reads += u32::from(result.carrier_fallback);
+            // Which rule decided the read (logs only).
+            let d = &mut counts.decisions;
+            d.ref_withdrawn += u32::from(result.ref_withdrawn);
+            d.alt_withdrawn += u32::from(result.alt_withdrawn);
+            d.alt_unjudged += u32::from(result.alt_unjudged);
+            d.alt_by_bases += u32::from(result.alt_by_bases);
+            d.carrier_judged += u32::from(result.carrier_judged);
+            d.carrier_fallback += u32::from(result.carrier_fallback);
+            d.sibling_ref_excluded += u32::from(result.is_ref && ref_claimed_by_sibling);
+            d.sibling_alt_claimed += u32::from(result.is_alt && claimed_by_sibling);
+            d.clip_admitted += u32::from(clip_admitted);
         }
 
         // ── FRAGMENT TRACKING: track ALL fragments for DPF.
@@ -1944,20 +1964,20 @@ fn count_variant_from_cache(
     }
 
     warn_sw_fallback(variant, counts.sw_fallback_reads);
-    warn_unjudged(variant, alt_unjudged_reads, carrier_fallback_reads);
-    if clip_admitted_reads > 0 {
-        debug!(
-            "{}:{} {}>{}: {} read(s) admitted by the soft-clipped bases that carry their allele",
-            variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, clip_admitted_reads,
-        );
-    }
+    let d = counts.decisions;
+    warn_unjudged(variant, d.alt_unjudged, d.carrier_fallback);
 
-    // Log per-phase classification breakdown + reads considered
+    // Per-phase classification breakdown, and which rule decided the depth reads
     debug!(
-        "Phase stats {}:{} {}>{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} sw_fallback={} clip_candidates={} ({} backend, {} reads overlapping the window)",
+        "Phase stats {}:{} {}>{}: P0={} P1={} P2={} P2.5={} P3={} splice_skip_excluded={} \
+         sw_fallback={} clip_candidates={} | withdrawn ref={} alt={} (unjudged {}) \
+         alt_by_bases={} carrier judged={} fallback={} sibling ref_excluded={} alt_claimed={} \
+         clip_admitted={} ({} backend, {} reads overlapping the window)",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele,
         phase_counts[0], phase_counts[1], phase_counts[2], phase_counts[3], phase_counts[4],
         counts.splice_skip_excluded, counts.sw_fallback_reads, counts.clip_candidates,
+        d.ref_withdrawn, d.alt_withdrawn, d.alt_unjudged, d.alt_by_bases, d.carrier_judged,
+        d.carrier_fallback, d.sibling_ref_excluded, d.sibling_alt_claimed, d.clip_admitted,
         match backend {
             AlignmentBackend::SmithWaterman => "SW",
             AlignmentBackend::PairHMM { .. } => "HMM",
@@ -2344,6 +2364,7 @@ fn ref_needs_the_window(record: &Record, variant: &Variant, mut result: Classify
         result.is_ref = false;
         result.is_structural = false;
         result.uninformative = true;
+        result.ref_withdrawn = true;
     }
     result
 }
@@ -2379,6 +2400,7 @@ fn alt_needs_the_window(
     let judged = window::alt_bases_discriminate(record, variant, quals, min_baseq);
     if judged == Some(true) {
         kept("its own bases tell the alleles apart");
+        result.alt_by_bases = true;
         return result;
     }
     let why = match judged {
@@ -2399,6 +2421,7 @@ fn alt_needs_the_window(
     result.has_nearby_evidence = false;
     result.partial_match_count = 0;
     result.uninformative = true;
+    result.alt_withdrawn = true;
     result.alt_unjudged = judged.is_none();
     result
 }
@@ -2586,7 +2609,8 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
-    if let Some(result) = carrier::classify(record, variant, quals, min_baseq) {
+    if let Some(mut result) = carrier::classify(record, variant, quals, min_baseq) {
+        result.carrier_judged = true;
         trace!(
             "{}:{} {}>{} read={}: exact-carrier rule ({}): ref={} alt={} nearby={} uninformative={} \
              clip_admissible={} mnp_confirmed={}",
@@ -2639,6 +2663,27 @@ fn molecule_key(record: &Record, umi_tag: Option<[u8; 2]>, amplicon_mode: bool) 
         key ^= if record.is_first_in_template() { 0x1 } else { 0x2 };
     }
     (key, umi.is_some())
+}
+
+/// The rule that decided a read's call, for its `read call` trace line.
+fn deciding_rule(r: &ClassifyResult) -> &'static str {
+    if r.alt_unjudged {
+        "alt_unjudged"
+    } else if r.alt_withdrawn {
+        "alt_withdrawn"
+    } else if r.ref_withdrawn {
+        "ref_withdrawn"
+    } else if r.alt_by_bases {
+        "alt_by_bases"
+    } else if r.carrier_fallback {
+        "carrier_fallback"
+    } else if r.carrier_judged {
+        "exact_carrier"
+    } else if r.sw_fallback {
+        "sw_fallback"
+    } else {
+        "checks"
+    }
 }
 
 /// A read's name for trace lines (lines from bins counted in parallel interleave,

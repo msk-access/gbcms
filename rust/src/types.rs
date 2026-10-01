@@ -98,6 +98,47 @@ impl Variant {
     }
 }
 
+/// Per-variant counts of the rule that decided each depth read (DP reads only),
+/// for the Phase stats line and the counting pass's totals. They change no count
+/// and reach no output column.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DecisionTally {
+    /// REF calls withdrawn: the read spans neither informative window.
+    pub ref_withdrawn: u32,
+    /// ALT calls withdrawn: neither ALT-side window, bases fit both alleles or
+    /// could not be judged.
+    pub alt_withdrawn: u32,
+    /// Of those, the reads whose bases could not be judged (warned per variant).
+    pub alt_unjudged: u32,
+    /// ALT calls kept by the read's own bases.
+    pub alt_by_bases: u32,
+    /// Reads the exact-carrier rule judged.
+    pub carrier_judged: u32,
+    /// Reads it could not judge, left to the previous classifier (warned).
+    pub carrier_fallback: u32,
+    /// REF reads excluded as a sibling's ALT (the multi-allelic REF guard).
+    pub sibling_ref_excluded: u32,
+    /// ALT reads claimed by a sibling (the AD-claiming guard).
+    pub sibling_alt_claimed: u32,
+    /// Reads admitted by the soft-clipped bases that carry their allele.
+    pub clip_admitted: u32,
+}
+
+impl DecisionTally {
+    /// Field-wise sum, for the pass's totals.
+    pub fn add(&mut self, o: &DecisionTally) {
+        self.ref_withdrawn += o.ref_withdrawn;
+        self.alt_withdrawn += o.alt_withdrawn;
+        self.alt_unjudged += o.alt_unjudged;
+        self.alt_by_bases += o.alt_by_bases;
+        self.carrier_judged += o.carrier_judged;
+        self.carrier_fallback += o.carrier_fallback;
+        self.sibling_ref_excluded += o.sibling_ref_excluded;
+        self.sibling_alt_claimed += o.sibling_alt_claimed;
+        self.clip_admitted += o.clip_admitted;
+    }
+}
+
 #[pyclass]
 #[derive(Debug, Clone, Default)]
 pub struct BaseCounts {
@@ -422,6 +463,9 @@ pub struct BaseCounts {
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.
     pub umi_tagged_reads: u32,
+    /// Which rule decided each depth read. Internal only (no Python getter):
+    /// logged per variant and summed per counting pass.
+    pub decisions: DecisionTally,
 
     // ── GTF-informed annotation (None when no GTF provided) ──────────────
     /// Distance (bp) from the variant's REF span to the nearest annotated exon

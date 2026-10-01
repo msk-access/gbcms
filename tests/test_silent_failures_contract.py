@@ -376,6 +376,8 @@ def test_why_an_alt_call_is_kept_is_traced(tmp_path, caplog):
     assert c.ad == 3
     kept = [m for m in logs if "ALT kept — its own bases tell the alleles apart" in m]
     assert kept and all(" read=k" in m for m in kept), kept
+    totals = [m for m in logs if "depth reads by deciding rule" in m]
+    assert totals and all("ALT kept by its bases 3;" in m for m in totals), totals
 
 
 def test_a_row_with_an_empty_allele_counts_no_allele_and_is_warned(tmp_path, caplog):

@@ -149,14 +149,26 @@ pub struct ClassifyResult {
     pub uninformative: bool,
     /// An ALT call on a pure indel withdrawn because the read spans neither
     /// ALT-side window and its bases could not be judged: no prepared reference
-    /// holds the event (an unprepared variant), or the deciding base lies past a
-    /// contig edge. Counted per variant (DP reads) and warned once, so the loss
-    /// is never silent.
+    /// holds the event (an unprepared variant), or the deciding base lies past the
+    /// prepared reference's end. Counted per variant (DP reads) and warned once,
+    /// so the loss is never silent.
     pub alt_unjudged: bool,
     /// The exact-carrier rule could not judge this read (the prepared reference
     /// does not hold the event with its flank) and the previous complex
     /// classifier did. Counted per variant (DP reads) and warned once.
     pub carrier_fallback: bool,
+    // Which rule decided the read, tallied per variant and per pass
+    // (`DecisionTally`); they change no count.
+    /// A REF call withdrawn: the read spans neither informative window.
+    pub ref_withdrawn: bool,
+    /// An ALT call withdrawn: the read spans neither ALT-side window and its
+    /// bases fit both alleles or could not be judged (`alt_unjudged`).
+    pub alt_withdrawn: bool,
+    /// An ALT call kept because the read's own bases tell the alleles apart,
+    /// though it spans neither ALT-side window.
+    pub alt_by_bases: bool,
+    /// The exact-carrier rule judged the read.
+    pub carrier_judged: bool,
 }
 
 impl ClassifyResult {
@@ -185,6 +197,10 @@ impl ClassifyResult {
             uninformative: false,
             alt_unjudged: false,
             carrier_fallback: false,
+            ref_withdrawn: false,
+            alt_withdrawn: false,
+            alt_by_bases: false,
+            carrier_judged: false,
         }
     }
 

@@ -4,6 +4,7 @@
 //! (per-variant pipeline), and `assign_multi_allelic_groups` (post-processing).
 
 use std::fs::File;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use bio::io::fasta;
 use log::{debug, info, warn};
@@ -78,6 +79,8 @@ pub fn prepare_variants(
         })?;
 
     let fasta_path_clone = fasta_path.clone();
+    let tally = PrepTally::default();
+    let tally_ref = &tally;
 
     // Release GIL for parallel execution
     #[allow(deprecated)]
@@ -105,6 +108,7 @@ pub fn prepare_variants(
                                 is_maf,
                                 adaptive_context,
                                 rescue_homopolymer,
+                                tally_ref,
                             )
                         },
                     )
@@ -112,6 +116,7 @@ pub fn prepare_variants(
             })
         });
 
+    tally.warn_if_any();
     match results {
         Ok(mut r) => {
             // Post-processing: assign multi-allelic group IDs
@@ -411,6 +416,7 @@ fn indel_shift_region(
     pos: i64,
     ref_al: &str,
     alt_al: &str,
+    tally: &PrepTally,
 ) -> Option<(i64, i64)> {
     if !window::is_pure_indel(ref_al, alt_al) {
         return None;
@@ -419,7 +425,10 @@ fn indel_shift_region(
     loop {
         let lo = (pos - pad).max(0);
         let hi = pos + ref_al.len() as i64 + pad;
-        let seq = fetch_window(reader, chrom, lo as u64, hi as u64).ok()?;
+        let Ok(seq) = fetch_window(reader, chrom, lo as u64, hi as u64) else {
+            PrepTally::bump(&tally.shift_missing);
+            return None;
+        };
         let end = lo + seq.len() as i64;
         let (a, b) = window::shift_region_over(pos, ref_al, alt_al, |g| {
             (g >= lo && g < end).then(|| seq[(g - lo) as usize].to_ascii_uppercase())
@@ -427,7 +436,10 @@ fn indel_shift_region(
         // A slide stopped by the fetch's edge is the region's true end only at
         // a contig start (lo = 0) or a contig end (the window came back short).
         let cut = (a <= lo && lo > 0) || (b >= end && end == hi);
-        if !cut || pad >= 16_384 {
+        if !cut || pad >= SHIFT_REGION_MAX_PAD {
+            if cut {
+                PrepTally::bump(&tally.shift_capped);
+            }
             return Some((a, b));
         }
         pad *= 2;
@@ -440,7 +452,7 @@ fn indel_shift_region(
 /// more where a complex variant's exact-carrier windows need it: an event grown
 /// through a long repeat, with its flank and padding. For the observed-allele
 /// diagnostic and the exact-carrier rule; None when the fetch fails.
-fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Option<(i64, String)> {
+fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant, tally: &PrepTally) -> Option<(i64, String)> {
     let (c_lo, c_hi) = window::change_interval(v);
     let (from, to) = (c_lo.min(v.pos), c_hi.max(v.pos + v.ref_allele.len() as i64));
     // An insertion's ALT reads its length further than the REF: the read-level ALT
@@ -451,10 +463,13 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Optio
     loop {
         let lo = (from - left).max(0);
         let hi = to + right;
-        let seq = fetch_window(reader, &v.chrom, lo as u64, hi as u64).ok()?;
-        if seq.is_empty() {
-            return None;
-        }
+        let seq = match fetch_window(reader, &v.chrom, lo as u64, hi as u64) {
+            Ok(seq) if !seq.is_empty() => seq,
+            _ => {
+                PrepTally::bump(&tally.event_ref_missing);
+                return None;
+            }
+        };
         // A window that came back short reached the contig end.
         let at_contig_end = lo + (seq.len() as i64) < hi;
         let seq = String::from_utf8_lossy(&seq).to_ascii_uppercase();
@@ -466,6 +481,9 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Optio
         let more_left = short_left && lo > 0 && left < EVENT_REF_MAX_MARGIN;
         let more_right = short_right && !at_contig_end && right < EVENT_REF_MAX_MARGIN;
         if !(more_left || more_right) {
+            if (short_left && lo > 0) || (short_right && !at_contig_end) {
+                PrepTally::bump(&tally.event_ref_short); // still short at the cap
+            }
             return Some((lo, seq));
         }
         if more_left {
@@ -477,10 +495,51 @@ fn event_core_ref(reader: &mut fasta::IndexedReader<File>, v: &Variant) -> Optio
     }
 }
 
-/// Reference margin kept around each event for the observed-allele diagnostic.
+/// Reference margin kept around each event (`Variant::event_ref`).
 const EVENT_REF_MARGIN: i64 = 60;
 /// Widest margin fetched for an event grown through a repeat.
 const EVENT_REF_MAX_MARGIN: i64 = 16_384;
+/// Widest pad fetched each side to measure a shift region.
+const SHIFT_REGION_MAX_PAD: i64 = 16_384;
+
+/// What prep could not fetch in full, counted across its worker threads for one
+/// summary warning (a per-variant warning already names the reference-context
+/// and left-alignment cases).
+#[derive(Default)]
+struct PrepTally {
+    shift_capped: AtomicU32,
+    shift_missing: AtomicU32,
+    event_ref_missing: AtomicU32,
+    event_ref_short: AtomicU32,
+    ref_context_missing: AtomicU32,
+    left_align_capped: AtomicU32,
+}
+
+impl PrepTally {
+    fn bump(counter: &AtomicU32) {
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn warn_if_any(&self) {
+        let n = |c: &AtomicU32| c.load(Ordering::Relaxed);
+        let all = [
+            &self.shift_capped, &self.shift_missing, &self.event_ref_missing,
+            &self.event_ref_short, &self.ref_context_missing, &self.left_align_capped,
+        ];
+        if all.iter().all(|c| n(c) == 0) {
+            return;
+        }
+        warn!(
+            "prepare_variants: reference fetched short for some variants — shift regions: {} \
+             capped at {}bp, {} not fetched; event references: {} not fetched, {} still short \
+             at {}bp; reference contexts: {} not fetched; left-alignments stopped at the window \
+             cap: {}. The rules that read these references run degraded for those variants.",
+            n(&self.shift_capped), SHIFT_REGION_MAX_PAD, n(&self.shift_missing),
+            n(&self.event_ref_missing), n(&self.event_ref_short), EVENT_REF_MAX_MARGIN,
+            n(&self.ref_context_missing), n(&self.left_align_capped),
+        );
+    }
+}
 
 fn prepare_single_variant(
     reader_result: &mut Result<fasta::IndexedReader<File>, anyhow::Error>,
@@ -489,6 +548,7 @@ fn prepare_single_variant(
     is_maf: bool,
     adaptive_context: bool,
     rescue_homopolymer: bool,
+    tally: &PrepTally,
 ) -> Result<PreparedVariant, anyhow::Error> {
     let reader = reader_result.as_mut().map_err(|e| {
         anyhow::anyhow!("FASTA reader not available: {}", e)
@@ -770,6 +830,7 @@ fn prepare_single_variant(
                                          not be fully left-aligned",
                                         max_norm_window, variant.chrom, pos + 1, shift
                                     );
+                                    PrepTally::bump(&tally.left_align_capped);
                                 }
                             }
                             _ => {
@@ -846,6 +907,7 @@ fn prepare_single_variant(
                      alignment (Phase 3) will be skipped for this variant",
                     variant.chrom, ctx_start, ctx_end,
                 );
+                PrepTally::bump(&tally.ref_context_missing);
                 (None, 0)
             }
         }
@@ -893,7 +955,7 @@ fn prepare_single_variant(
     // variant, so it gets the same widened reference (without one it always fell
     // back in a long run).
     let decomposed_variant = decomposed_variant.map(|mut twin| {
-        twin.event_ref = event_core_ref(reader, &twin);
+        twin.event_ref = event_core_ref(reader, &twin, tally);
         twin
     });
 
@@ -913,7 +975,7 @@ fn prepare_single_variant(
         0
     };
 
-    let shift_region = indel_shift_region(reader, &variant.chrom, pos, &ref_al, &alt_al);
+    let shift_region = indel_shift_region(reader, &variant.chrom, pos, &ref_al, &alt_al, tally);
     let mut prepared = Variant {
         chrom: variant.chrom.clone(),
         pos,
@@ -928,7 +990,7 @@ fn prepare_single_variant(
         event_ref: None,
         boundary_span: None,
     };
-    prepared.event_ref = event_core_ref(reader, &prepared);
+    prepared.event_ref = event_core_ref(reader, &prepared, tally);
 
     Ok(PreparedVariant {
         variant: prepared,
