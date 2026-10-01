@@ -268,3 +268,33 @@ def test_a_decomposed_twin_in_a_long_run_is_judged_by_the_exact_carrier_rule(tmp
         _rs.reset_log_caching()
         count_bam_checked(bam, [pv.variant], [pv.decomposed_variant], *ARGS)
     assert not [r for r in caplog.records if "exact-carrier rule" in r.getMessage()]
+
+
+@pytest.mark.xfail(
+    strict=True, reason="C25 #199: a long event's left junction alone decides the call"
+)
+@pytest.mark.parametrize(
+    "ref_allele, alt_allele, read_hap",
+    [
+        # C>TA before a 60-A run: the reads carry only C>T and span the run and the G
+        # (T + 60 A + G; the ALT is T + 61 A + G).
+        ("C", "TA", lambda ref: ref[:A] + "T" + ref[A + 1 :]),
+        # CA>T before the same run: the reads carry only C>T, not the deleted A.
+        ("CA", "T", lambda ref: ref[:A] + "T" + ref[A + 1 :]),
+    ],
+    ids=["ins-snv", "del-snv"],
+)
+def test_a_long_events_left_junction_alone_does_not_make_alt(
+    tmp_path, ref_allele, alt_allele, read_hap
+):
+    """Reads whose bases carry only the anchor substitution, spanning the whole
+    run and its far flank, contradict the ALT there: not ALT. The exact-carrier
+    rule's long-event junction windows let the left junction alone decide."""
+    ref = _flank(61) + "C" + "A" * 60 + "G" + _flank(62, 500)
+    s, e = A - 50, A + 62  # the last base read is the G after the run
+    hap = read_hap(ref)
+    reads = [make_read(f"snv{i}", hap[s:e], s, ((0, e - s),)) for i in range(3)]
+    fa, bam = write_contig(tmp_path, ref, reads, "junction")
+    (c,) = count_bam_checked(bam, [_prepared(fa, ref_allele, alt_allele)], [None], *ARGS)
+    _invariants(c)
+    assert c.ad == 0
