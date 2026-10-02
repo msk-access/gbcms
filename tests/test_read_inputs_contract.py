@@ -14,6 +14,7 @@ Committed red (xfail-strict) before the fixes; see docs/reference/read-judgment.
 import logging
 import random
 
+import pytest
 from census import census
 from helpers import make_read, write_contig
 
@@ -96,6 +97,67 @@ def test_a_molecule_spanning_the_run_is_ref(tmp_path):
     fa, bam = write_contig(tmp_path, contig, reads, "span")
     (pv,) = _rs.prepare_variants([_rs.Variant("1", A, "GA", "G", "X")], fa, 5, False, 1, True)
     assert _count(bam, pv.variant).rd == 8
+
+
+def _counts(c):
+    return (c.dp, c.rd, c.ad, c.partial_alt, c.rdf, c.adf)
+
+
+@pytest.mark.xfail(
+    strict=True, reason="C17 #176: masked adapter bases fill a complex window as matches"
+)
+@pytest.mark.parametrize(
+    "ref,alt", [("TA", "GG"), ("TAC", "GGT"), ("TAC", "GG"), ("T", "GA")], ids=str
+)
+def test_a_read_past_its_fragment_end_counts_as_the_read_trimmed_there(tmp_path, ref, alt):
+    """A forward molecule ends on the event's first base, which carries the ALT's
+    first base; R1 reads on into adapter. Its call must be the call of the same
+    read trimmed at its fragment end: the adapter neither matches nor reaches."""
+    contig = _contig("TACGT")
+    counts = []
+    for trimmed in (False, True):
+        reads = []
+        for i in range(4):
+            s, end = A - 60 + i, A + 1
+            seq = list(contig[s : s + 100])
+            seq[A - s] = alt[0]
+            r1 = "".join(seq)
+            pair = _pair(f"t{i}", contig, s, end, r1)
+            if trimmed:
+                n = end - s
+                pair[0].query_sequence = r1[:n]
+                pair[0].cigartuples = ((0, n),)
+                pair[0].query_qualities = [30] * n
+            reads += pair
+        fa, bam = write_contig(tmp_path, contig, reads, f"cx{int(trimmed)}")
+        (pv,) = _rs.prepare_variants([_rs.Variant("1", A, ref, alt, "X")], fa, 5, False, 1, True)
+        counts.append(_counts(_count(bam, pv.variant)))
+    assert counts[0] == counts[1], counts
+    assert counts[0][2] == 0, counts
+
+
+@pytest.mark.xfail(strict=True, reason="C17 #176: an outward (RF) pair's TLEN read as a fragment")
+def test_an_outward_pair_keeps_its_bases(tmp_path):
+    """R1 forward at s, R2 reverse ending before s: an outward-facing (RF) pair,
+    as at a tandem-duplication junction. BWA writes TLEN 5' to 5' with R1's
+    negative; no fragment is defined, so nothing past it is adapter."""
+    contig = _contig("GCT")
+    reads = []
+    for i in range(6):
+        s = A - 20 + i
+        seq = list(contig[s : s + 100])
+        seq[A + 1 - s] = "A"
+        a = make_read(f"o{i}", "".join(seq), s, ((0, 100),), flag=0x1 | 0x20 | 0x40)
+        b = make_read(
+            f"o{i}", contig[s - 111 : s - 11], s - 111, ((0, 100),), flag=0x1 | 0x10 | 0x80
+        )
+        a.template_length, b.template_length = -13, 13
+        a.next_reference_id = b.next_reference_id = 0
+        a.next_reference_start, b.next_reference_start = s - 111, s
+        reads += [a, b]
+    _, bam = write_contig(tmp_path, contig, reads, "rf")
+    c = _count(bam, _rs.Variant("1", A + 1, contig[A + 1], "A", "SNP"))
+    assert (c.dp, c.ad) == (6, 6), (c.dp, c.rd, c.ad)
 
 
 # ── RJ-11: absent base qualities ───────────────────────────────────────────
