@@ -15,7 +15,10 @@ it shows in review instead of slipping in with an unrelated fix.
 
 1. **Spec first.** A change to how reads are judged starts here: the shapes it
    affects, their call today, the proposed call, and the evidence (the read
-   census's verdict on each shape, and real-data counts adjudicated per read).
+   census's verdict on each shape, real-data counts adjudicated per read, and
+   what other tools do: GATK, samtools/bcftools, fgbio, VarDict, Strelka2,
+   freebayes, bam-readcount, LoFreq and the original GetBaseCounts, saying where
+   a tool's handling is not documented).
 2. **Decide.** The operator decides; the decision gets an entry in the register
    below, naming any earlier decision it amends.
 3. **Then code.** The implementation turns the case table's open cells into

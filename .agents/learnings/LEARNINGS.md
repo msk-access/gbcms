@@ -17,6 +17,17 @@ regenerating a section.
 
 ---
 
+## [LRN-20261002-001] rule-body | a community-practice survey covers several tools
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** for group 1 (read inputs) I surveyed only GATK. The operator
+  pointed out there are more tools to look at. The validation standard said
+  "callers and genotypers" but named none, so the survey defaulted to one.
+- **Promotion target:** `docs/reference/read-judgment.md` "How a change to read
+  judgment is made", step 1 — `DONE:` names the tool set to survey. Memory
+  `survey-several-tools`.
+- **Related:** [[survey-several-tools]].
+
 ## [LRN-20261001-001] rule-body | a failing test's expectation is changed only with the operator's say
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body
