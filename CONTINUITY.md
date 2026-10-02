@@ -74,13 +74,15 @@ comments):**
 - an adversarial review plus a develop-vs-branch fuzz found no count change
   beyond the declared ones (see the plan's H3 "PR B as built").
 
-**In progress — group 1, what a read contributes (#176, #182, #183, #207):**
-- branch `feature/g1-read-inputs`, not yet pushed; RJ-10 to RJ-13 in the spec;
-- C17 final rule (operator): clip only adapter-like bases past the TLEN fragment
-  end; two adversarial reviews; measured at default MAPQ and `--min-mapq 0`
-  (harness `~/test/gbcms/harness/g1/`, local; plan "Group 1 as built");
-- next: push, PR, comments on the issues (ask first); then group 2 (C28, C27,
-  C16).
+**Merged — group 1, what a read contributes, #211 (C17 #176, C19 #182, O7 #183,
+C29 #207):** RJ-10 to RJ-13; C17 clips only adapter-like bases past the TLEN
+fragment end (operator); follow-up C31 #212 (6.7.0). Plan "Group 1 as built".
+
+**In progress — group 2, read judgment (C28 #202, C27 #201, C16 #174; policy for
+C24 #195, C6 #143):** branch `feature/g2-read-judgment`; the spec gains the
+insertion-side and shifted-pair cells (open). Prototypes `proto/c27` and
+`proto/c28` (local, never pushed) measured in `~/test/gbcms/harness/g2/`; the
+C1 splice probes rerun for C16. Decisions with the operator before code.
 
 Follow-ups filed:
 - C29 #207 (6.6.0): `check_complex`'s inline query walk counts hard clips;

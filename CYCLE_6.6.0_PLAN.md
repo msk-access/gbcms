@@ -51,9 +51,9 @@ marks a ticket with an open PR.
 | T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [in review] | #170 |
 | T2 | Read census as the classification oracle in tests | M | [in review] | #171 |
 | H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | | #204 |
-| C17 | A read ends at its fragment end: adapter-like read-through bases are clipped in every read | M | [counts] [decided] [in review] | #176 |
+| C17 | A read ends at its fragment end: adapter-like read-through bases are clipped in every read | M | [counts] [decided] [done] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
-| C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decided] [in review] | #182 |
+| C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decided] [done] | #182 |
 | C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [done] | #188 |
 | C21 | Homopolymer insertion carriers placed elsewhere in the run counted REF (S3 anchor-base test) | H | [counts] [done] | #189 |
 | C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [done] | #191 |
@@ -63,7 +63,7 @@ marks a ticket with an open PR.
 | C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decided] | #200 |
 | C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [6.7.0] | #201 |
 | C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
-| C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] [in review] | #207 |
+| C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] [done] | #207 |
 | C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] [6.7.0] | #208 |
 | C31 | Measure the fragment end from the mate's unclipped 5' end (MC tag), so a mate's clipped 5' end does not clip molecule bases as adapter | L | [counts] [6.7.0] | #212 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
@@ -71,7 +71,7 @@ marks a ticket with an open PR.
 | R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] [6.7.0] | #198 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | [6.7.0] | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] [6.7.0] | #180 |
-| O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | [decided] [in review] | #183 |
+| O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | [decided] [done] | #183 |
 | O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | | #186 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] [done] | #114 |
@@ -1736,7 +1736,7 @@ code or a principle, and which must come first) and cut the scope:
 
 Refreshed 2026-10-02 (operator): the remaining work is grouped by the rule each
 item touches, across 6.6.0 and 6.7.0, so related decisions are made once. Done:
-cluster 1 (#203), T1 + T2 (#205), H3 (#206, #209), C25 + C26 (#210).
+cluster 1 (#203), T1 + T2 (#205), H3 (#206, #209), C25 + C26 (#210), group 1 (#211).
 
 Each group starts from one table (affected cases, today's call, the proposal,
 the evidence) and an effects map (the earlier decisions, spec cells, tests and

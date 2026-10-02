@@ -189,9 +189,30 @@ def _pure_shapes(contig: str, ref: str, alt: str):
             0,
             100,
         )
+    run_base = contig[A + 1]
+    in_run = contig[A + 1 : A + 6] == run_base * 5
+    if in_run and len(ref) == 2 and len(alt) == 1:  # -1 in a run as a shifted pair
+        shapes["the ALT written as D2 + I1 at the anchor"] = (
+            [(A + 1, "D", 2), (A + 3, "I", run_base)],
+            0,
+            100,
+        )
+        shapes["the ALT written as D2 + I1 inside the run"] = (
+            [(A + 2, "D", 2), (A + 4, "I", run_base)],
+            0,
+            100,
+        )
+    if in_run and len(ref) == 1 and len(alt) == 2:  # +1 in a run as a shifted pair
+        shapes["the ALT written as I2 + D1 at the anchor"] = (
+            [(A + 1, "I", run_base * 2), (A + 1, "D", 1)],
+            0,
+            100,
+        )
     if len(ref) > 3:  # the anchor deleted
         shapes["anchor deleted, then an insertion"] = ([(A, "D", 3), (A + 5, "I", "T")], 0, 100)
         shapes["anchor deleted"] = ([(A, "D", 3)], 0, 100)
+    if len(alt) > 2:  # an insertion row whose read deletes the anchor
+        shapes["anchor deleted"] = ([(A, "D", 2)], 0, 100)
     return shapes
 
 
@@ -301,7 +322,7 @@ def _pure_group(shape: str) -> str:
         return "C26 inside the window"
     if "outside the window" in shape:
         return "C26 outside the window"
-    if "two deletions" in shape:
+    if shape.startswith("the ALT written as"):
         return "C27 the ALT across ops"
     return "C28 anchor deleted"
 
@@ -423,6 +444,11 @@ EXPECT = {
     "u-8 | the ALT written as two deletions": (0, 0, 4),
     "u-8 | anchor deleted, then an insertion": (0, 4, 0),
     "u-8 | anchor deleted": (4, 0, 0),
+    "u+10 | anchor deleted": (4, 0, 0),
+    "dup+8 | anchor deleted": (4, 0, 0),
+    "hp-A | the ALT written as D2 + I1 at the anchor": (0, 0, 4),
+    "hp-A | the ALT written as D2 + I1 inside the run": (0, 0, 4),
+    "hp+A | the ALT written as I2 + D1 at the anchor": (0, 0, 4),
     "u+10 | REF read spanning the tract": (4, 0, 0),
     "u+10 | REF read ending inside the tract": (4, 0, 0),
     "u+10 | exact carrier": (0, 4, 0),

@@ -116,9 +116,9 @@ and at anchor-changing events before an A run.
 | Other indels inside the window | D1 or I1 near the anchor, D2 after it | decided (RJ-7) |
 | Other indels outside the window | D1, D5 or I1 past the tract; a carrier with one | decided (RJ-8) |
 | Complex, long events | the same read haplotypes before a 60-A run | decided (RJ-9) |
-| The ALT across ops | a deletion written as two | open (C27) |
+| The ALT across ops | a deletion written as two; a 1-base deletion in a run written D2 + I1 (at the anchor, inside the run); a 1-base insertion written I2 + D1 | open (C27) |
 | Read inputs | read-through adapter base on an SNV (ALT, REF); absent qualities; a hard-clipped read at the previous complex classifier (with an unclipped control) | decided (RJ-10, RJ-11; C29 #207 is a bug fix) |
-| Anchor deleted | the anchor deleted, with or without an insertion | open (C28) |
+| Anchor deleted | the anchor deleted, with or without an insertion; an insertion row's anchor deleted (counted REF today) | open (C28) |
 
 Run `python tests/read_judgment_cases.py` for the full table: every case's call,
 with the read census's verdict next to each pure-indel case.
