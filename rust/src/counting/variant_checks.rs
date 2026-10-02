@@ -1601,6 +1601,9 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
+    if let Some(alt) = alt_across_ops(record, variant, quals, min_baseq, "insertion") {
+        return alt;
+    }
     let cigar_view = record.cigar();
     // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut ref_pos = record.pos();
@@ -1899,6 +1902,24 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
     }
     if !w.found_ref_coverage {
         if record.pos() <= anchor_pos && ref_end(record) > anchor_pos {
+            // A read whose own deletion covers the anchor holds neither allele there
+            // unless its bases spell the ALT: judged by its bases, never by the
+            // closer of two haplotypes.
+            if let Some(q) = deleted_anchor_query(record, anchor_pos) {
+                let qual = quals.get(q).copied().unwrap_or(0);
+                let spells = window::read_bases_fit_alt(record, variant, quals, min_baseq);
+                trace!(
+                    "check_{}: the read deletes the anchor {}: its bases {} → {}",
+                    w.kind,
+                    anchor_pos,
+                    if spells { "spell the ALT" } else { "do not spell the ALT" },
+                    if spells { "ALT (structural)" } else { "neither + partial evidence" },
+                );
+                if spells {
+                    return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural);
+                }
+                return ClassifyResult::neither_with_nearby(qual, ClassifyPhase::Structural);
+            }
             trace!(
                 "check_{}: no CIGAR match after {}, the read spans the anchor → phase3_classify",
                 w.kind, anchor_pos
@@ -1937,6 +1958,74 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
         );
     }
     ClassifyResult::is_ref(w.anchor_qual, ClassifyPhase::Structural)
+}
+
+/// The ALT written across several ops: a read with two or more insertion or
+/// deletion ops across the variant's discrimination window whose bases spell the
+/// ALT (an aligner's split of one event) counts ALT, judged by its bases before
+/// the wrong-length and one-change rules read its ops. None otherwise.
+fn alt_across_ops(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8, kind: &str) -> Option<ClassifyResult> {
+    let (lo, hi) = window::discrimination_window(variant);
+    let (mut rp, mut qp, mut ops, mut first_q) = (record.pos(), 0usize, 0usize, None);
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
+                rp += *n as i64;
+                qp += *n as usize;
+            }
+            Cigar::Ins(n) => {
+                if lo < rp && rp < hi {
+                    ops += 1;
+                    first_q.get_or_insert(qp);
+                }
+                qp += *n as usize;
+            }
+            Cigar::Del(n) => {
+                if rp < hi && rp + *n as i64 > lo {
+                    ops += 1;
+                    first_q.get_or_insert(qp);
+                }
+                rp += *n as i64;
+            }
+            Cigar::RefSkip(n) => rp += *n as i64,
+            Cigar::SoftClip(n) => qp += *n as usize,
+            _ => {}
+        }
+    }
+    if ops < 2 || !window::read_spells_alt(record, variant, quals, min_baseq) {
+        return None;
+    }
+    let qual = first_q.and_then(|q| quals.get(q).copied()).unwrap_or(0);
+    trace!(
+        "check_{}: {} indel ops across the window after {} spell the ALT → ALT (structural)",
+        kind, ops, variant.pos
+    );
+    Some(ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural))
+}
+
+/// The query offset just past the read's deletion that covers reference position
+/// `anchor` (the first base it reads after it), or None when no deletion of the
+/// read covers it.
+fn deleted_anchor_query(record: &Record, anchor: i64) -> Option<usize> {
+    let (mut rp, mut qp) = (record.pos(), 0usize);
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
+                rp += *n as i64;
+                qp += *n as usize;
+            }
+            Cigar::Ins(n) | Cigar::SoftClip(n) => qp += *n as usize,
+            Cigar::Del(n) => {
+                if rp <= anchor && anchor < rp + *n as i64 {
+                    return Some(qp);
+                }
+                rp += *n as i64;
+            }
+            Cigar::RefSkip(n) => rp += *n as i64,
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Whether the read carries an insertion or deletion across the window `[lo, hi)`
@@ -2535,6 +2624,9 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
 ) -> ClassifyResult {
+    if let Some(alt) = alt_across_ops(record, variant, quals, min_baseq, "deletion") {
+        return alt;
+    }
     let cigar_view = record.cigar();
     // NOTE: quals is passed from the caller — either raw record.qual() or BAQ-adjusted.
     let mut ref_pos = record.pos();

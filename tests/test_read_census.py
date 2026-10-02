@@ -11,10 +11,10 @@ census's:
 - wrong-length indels of the same kind where the rules are settled;
 - the indel's bases written well outside the tract.
 
-Read shapes whose rules are still open decisions are strict xfails. They turn
-green only when the decision lands:
-- C27 #201: the ALT spelled across several ops;
-- C28 #202: a read that deletes the anchor falls back to Phase 3.
+Shapes decided from the read-judgment spec (docs/reference/read-judgment.md):
+- C26 #200: another indel inside or outside the window;
+- C27 #201: the ALT spelled across several ops counts ALT;
+- C28 #202: a read that deletes the anchor is judged by its bases.
 
 Clean bases only (Q30): a pure indel's REF call stands on its CIGAR and extent, so
 sequencing errors inside the window are not what this compares. Wrong-length reads
@@ -257,7 +257,7 @@ def test_engine_counts_equal_the_census(tmp_path, row):
         assert_matches(counts, result, f"{row} {cls}")
 
 
-# ── Open decisions: strict xfails until they land ─────────────────────────────
+# ── Decided from the spec: C26, C27, C28 ──────────────────────────────────────
 def _open_case(tmp_path, row, events, name):
     motif, ref, alt = ROWS[row]
     contig = _contig(motif)
@@ -278,14 +278,10 @@ def test_c26_short_indels_in_the_window(tmp_path, row, events):
     _open_case(tmp_path, row, events, "c26")
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C27 #201: the ALT spelled across several ops counts partial"
-)
 def test_c27_the_alt_split_across_ops(tmp_path):
     _open_case(tmp_path, "hp-AA", [(A + 1, "D", 1), (A + 2, "D", 1)], "c27")
 
 
-@pytest.mark.xfail(strict=True, reason="C28 #202: a read deleting the anchor falls back to Phase 3")
 @pytest.mark.parametrize(
     "events",
     [
@@ -295,9 +291,9 @@ def test_c27_the_alt_split_across_ops(tmp_path):
     ids=["credited-alt", "credited-ref"],
 )
 def test_c28_a_read_deleting_the_anchor(tmp_path, events):
-    """Phase 3 credits whichever haplotype is closer to a read that deletes the
-    anchor, so reads holding neither allele count ALT or REF. (A read deleting the
-    anchor whose bases spell the ALT one base along is ALT, and is: judge bases.)"""
+    """A read that deletes the anchor is judged by its bases: holding neither
+    allele, it is neither (Phase 3 used to credit the closer haplotype, ALT or
+    REF). A read deleting the anchor whose bases spell the ALT is ALT."""
     _open_case(tmp_path, "u-8", events, "c28")
 
 

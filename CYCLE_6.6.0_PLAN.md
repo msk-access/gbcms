@@ -61,8 +61,8 @@ marks a ticket with an open PR.
 | C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
 | C25 | Exact-carrier long-event junction windows: a read holding one junction decides the call (REF for anchor-keeping reads; ALT for reads carrying only the substitution) | M | [counts] [decided] | #199 |
 | C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decided] | #200 |
-| C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [6.7.0] | #201 |
-| C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
+| C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [decided] | #201 |
+| C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] [decided] | #202 |
 | C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] [done] | #207 |
 | C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] [6.7.0] | #208 |
 | C31 | Measure the fragment end from the mate's unclipped 5' end (MC tag), so a mate's clipped 5' end does not clip molecule bases as adapter | L | [counts] [6.7.0] | #212 |

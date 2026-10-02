@@ -383,6 +383,17 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
 /// CIGAR writes the event somewhere it gives another haplotype: compensating
 /// mismatches can make its bases the ALT nonetheless.
 pub(crate) fn read_spells_alt(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
+    read_spells_alt_checked(record, v, quals, min_baseq, true)
+}
+
+/// `read_spells_alt` without the check that the read says, unmasked, which allele
+/// where its own alignment proposes another haplotype: for a read whose gap covers
+/// the anchor, where the alignment's placement is a tie-break, not evidence.
+pub(crate) fn read_bases_fit_alt(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
+    read_spells_alt_checked(record, v, quals, min_baseq, false)
+}
+
+fn read_spells_alt_checked(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, check_claimed: bool) -> bool {
     if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
         return false;
     }
@@ -452,7 +463,7 @@ pub(crate) fn read_spells_alt(record: &Record, v: &Variant, quals: &[u8], min_ba
         let b = seq[q].to_ascii_uppercase();
         let masked = b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq);
         if masked {
-            if claimed[i] != altw[i] {
+            if check_claimed && claimed[i] != altw[i] {
                 return false;
             }
             continue;

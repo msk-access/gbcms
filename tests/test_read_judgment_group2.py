@@ -6,7 +6,6 @@ its gap a tie-break (RJ-15); the ALT written across several ops counts ALT
 
 import random
 
-import pytest
 from census import census
 from helpers import make_read, write_contig
 
@@ -82,9 +81,6 @@ def test_a_longer_deletion_over_the_anchor_is_not_the_alt(tmp_path):
     assert census(bam, contig, v).ad == 0
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C28 #202: Phase 3 credits a read with no base read at the event"
-)
 def test_a_deleted_anchor_with_every_window_base_masked_is_not_alt(tmp_path):
     """GA>G; the reads delete the anchor and every base left between their aligned
     flanks is N, the shared flank base too. Nothing at the event is read: not ALT."""
