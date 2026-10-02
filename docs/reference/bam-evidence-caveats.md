@@ -176,9 +176,9 @@ caveat in gbcms's output.
 ### Adapter read-through
 - **In the BAM:** when the fragment is shorter than the read, bases past the mate's
   5' end are adapter.
-- **gbcms now:** a read ends at its fragment end. Bases past it are soft-clipped
-  and masked as the read enters counting, so they are neither bases nor reach, in
-  every rule (RJ-10, C17 #176).
+- **gbcms now:** a read ends at its fragment end. Bases past it are hard-clipped
+  as the read enters counting, as if trimmed, so they are neither bases nor reach,
+  in every rule (RJ-10, C17 #176).
 - **Should do:** decided and done.
 - **Community:** GATK hard-clips adapter at the insert-size boundary; fgbio
   ClipBam clips bases past the mate (`--clip-bases-past-mate`). Adapter trimming

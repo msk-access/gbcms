@@ -52,7 +52,7 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-7 | A read with another insertion or deletion inside the discrimination window (not the ALT at another placement) is not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel. | C26 #200, operator 2026-10-01 |
 | RJ-8 | Another insertion or deletion outside the window, of any length, is a separate event: the read is REF where its bases across the window are REF, with no partial evidence. | C26 #200, operator 2026-10-01 |
 | RJ-9 | A long complex event's junction windows are read on inward as far as the read reaches; a read whose later bases contradict an allele is not that allele. A read ending inside the event is judged by the bases it has (one base-identical to REF counts REF). | C25 #199, operator 2026-10-01 |
-| RJ-10 | A read ends at its fragment end: bases past it (read-through into adapter, insert shorter than the read) are neither bases nor reach, in every read and rule (soft-clipped and masked before classification), the census included. | C17 #176, operator 2026-10-02 |
+| RJ-10 | A read ends at its fragment end: bases past it (read-through into adapter, insert shorter than the read) are neither bases nor reach, in every read and rule, the census included. They are hard-clipped as the read enters counting, as if trimmed (a masked base would still fill a window as a match). Only an inward-facing pair defines a fragment (TLEN positive on the forward read). | C17 #176, operator 2026-10-02 |
 | RJ-11 | A record with absent base qualities (QUAL `*`, stored as 0xFF) is dropped by the read filter and warned once per BAM, as a record without bases is. | C19 #182, operator 2026-10-02 |
 | RJ-12 | An unmapped record (flag 0x4) is not an alignment: dropped by the read filter. A mapped read whose mate is unmapped still counts, and mapped MAPQ-0 alignments stay countable (`--min-mapq 0`, pseudogene loci such as PMS2). | O7 #183, operator 2026-10-02 |
 | RJ-13 | Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0. | C15 #173, C7 #144, C18 #177, operator 2026-10-02 |
@@ -76,6 +76,10 @@ at 384 rows (0.03% of reads), 61 unmapped records placed on events (27 rows), an
 no records with absent qualities or hard-clipped admitted reads. Masking adapter
 bases alone (measured: 244 rows, ALT −63, REF −128) left reach: a read whose
 molecule ends inside a repeat still counted REF on its adapter, hence RJ-10 clips.
+An adversarial review found soft-clipping with masked qualities still left reach
+in complex and MNP windows (a forward molecule ending on the event's first base
+counted ALT, unlike the same read trimmed), and an outward pair's TLEN read as a
+fragment; the clip now removes the bases and needs an inward pair.
 At `--min-mapq 0` an unmapped mate carrying a CIGAR counted as an ALT read. Other
 tools: GATK hard-clips adapter at the insert-size boundary and drops reads whose
 bases and qualities differ in length (WellformedReadFilter) and unmapped reads

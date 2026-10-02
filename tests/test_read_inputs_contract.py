@@ -103,9 +103,6 @@ def _counts(c):
     return (c.dp, c.rd, c.ad, c.partial_alt, c.rdf, c.adf)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C17 #176: masked adapter bases fill a complex window as matches"
-)
 @pytest.mark.parametrize(
     "ref,alt", [("TA", "GG"), ("TAC", "GGT"), ("TAC", "GG"), ("T", "GA")], ids=str
 )
@@ -136,7 +133,6 @@ def test_a_read_past_its_fragment_end_counts_as_the_read_trimmed_there(tmp_path,
     assert counts[0][2] == 0, counts
 
 
-@pytest.mark.xfail(strict=True, reason="C17 #176: an outward (RF) pair's TLEN read as a fragment")
 def test_an_outward_pair_keeps_its_bases(tmp_path):
     """R1 forward at s, R2 reverse ending before s: an outward-facing (RF) pair,
     as at a tandem-duplication junction. BWA writes TLEN 5' to 5' with R1's

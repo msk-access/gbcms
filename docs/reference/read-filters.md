@@ -83,12 +83,13 @@ windows overlap, so a record can count more than once).
 
 **A read ends at its fragment end.** When the insert is shorter than the read,
 the read runs on past its mate's 5' end into adapter (read-through). For a pair
-whose fragment is well defined (mate mapped on the same contig in the opposite
-orientation, TLEN set), the bases past the fragment end are soft-clipped and
-their qualities set to 0 as the read enters the counting pass, so no rule sees
-them as bases or as reach, and a reverse read's start moves past any aligned
-bases it loses. TLEN is read as BWA-MEM writes it, from the forward read's 5' end
-to the reverse read's. Tags are kept. GATK hard-clips adapter at the same
+whose fragment is well defined (mate mapped on the same contig, the pair facing
+inward), the bases past the fragment end are hard-clipped as the read enters the
+counting pass, as if the read had been trimmed, so no rule sees them as bases or
+as reach, and a reverse read's start moves past any aligned bases it loses. TLEN
+is read as BWA-MEM, samtools fixmate and Picard write it, from the forward read's
+5' end to the reverse read's, positive on the forward read; an outward-facing
+pair (as at a tandem-duplication junction) defines no fragment. Tags are kept. GATK hard-clips adapter at the same
 boundary, and fgbio ClipBam's `--clip-bases-past-mate` does it as a separate step.
 See [Read Judgment](read-judgment.md) (RJ-10 to RJ-12).
 

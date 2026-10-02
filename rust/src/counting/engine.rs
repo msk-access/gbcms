@@ -1140,7 +1140,7 @@ fn count_bin_shared(
         }
 
         // A read ends at its fragment end: read-through bases past it are adapter,
-        // soft-clipped and masked here so that no rule sees them as bases or reach.
+        // hard-clipped here, as if trimmed, so that no rule sees them as bases or reach.
         let Some(record) = crate::shared::bam_utils::clip_to_fragment(record) else {
             trace!("clip_to_fragment: no aligned base inside the fragment");
             continue;

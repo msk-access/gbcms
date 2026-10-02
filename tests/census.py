@@ -251,9 +251,10 @@ def _splices(read) -> list[tuple[int, int, int]]:
 
 def fragment_span(read) -> tuple[int, int] | None:
     """Query offsets `[lo, hi)` inside the read's fragment, when the fragment is
-    well defined: paired, mate mapped on the same contig in the opposite
-    orientation, TLEN set. TLEN runs from the forward read's 5' end to the reverse
-    read's 5' end, so a forward read keeps its bases up to the last aligned one
+    well defined: paired, mate mapped on the same contig, the pair facing inward.
+    TLEN runs from the forward read's 5' end to the reverse read's 5' end,
+    positive on the forward read (an outward pair defines no fragment), so a
+    forward read keeps its bases up to the last aligned one
     before the fragment end and a reverse read from the first aligned one at or
     after the fragment start (an insertion beside the boundary lies outside). Past
     an aligned end the boundary falls in the soft clip, base for base."""
@@ -263,6 +264,7 @@ def fragment_span(read) -> tuple[int, int] | None:
         or read.template_length == 0
         or read.next_reference_id != read.reference_id
         or read.is_reverse == read.mate_is_reverse
+        or (read.template_length > 0) == read.is_reverse
     ):
         return None
     aligned = read.get_aligned_pairs(matches_only=True)
@@ -275,11 +277,11 @@ def fragment_span(read) -> tuple[int, int] | None:
         frag_end = start + tlen
         if frag_end >= end:
             return 0, min(after_q + frag_end - end, n)
-        return 0, max(q for q, r in aligned if r < frag_end) + 1
+        return 0, max((q for q, r in aligned if r < frag_end), default=-1) + 1
     frag_start = end - tlen
     if frag_start <= start:
         return max(first_q - (start - frag_start), 0), n
-    return min(q for q, r in aligned if r >= frag_start), n
+    return min((q for q, r in aligned if r >= frag_start), default=after_q), n
 
 
 def _molecule(read) -> tuple[int, int, dict[int, int]]:
