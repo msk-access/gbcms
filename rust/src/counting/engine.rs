@@ -4691,6 +4691,42 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "C29 #207: red until the previous complex classifier skips hard clips"]
+    fn test_complex_anchor_quality_skips_a_leading_hard_clip() {
+        // A REF read over a long deletion-direction complex allele (100 REF bases
+        // replaced by one), ending 8 bases past the anchor: too little of the REF
+        // span for the masked comparison, so the clean-coverage path calls it REF
+        // from the anchor's quality. The read is hard-clipped by 5 bases at its
+        // start; hard-clipped bases are not in SEQ, so that quality is the one at
+        // the anchor's own query position (Q30), not 5 bases on (Q5).
+        let ref_allele = format!("G{}", "ACGT".repeat(24) + "ACG");
+        let context = format!("{}{}{}", "A".repeat(10), ref_allele, "T".repeat(20));
+        let seq = &context.as_bytes()[..18];
+        let mut qual = [30u8; 18];
+        qual[15] = 5;
+        let cigar = CigarString(vec![Cigar::HardClip(5), Cigar::Match(18)]);
+        let record = build_record(seq, &qual, &cigar, 0);
+        let variant = build_variant_with_context(10, &ref_allele, "A", &context, 0);
+        let scoring_fn = |a: u8, b: u8| if a == b { 1i32 } else { -1i32 };
+        let mut alt_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+        let mut ref_a = Aligner::with_capacity_and_scoring(
+            200, 200, bio::alignment::pairwise::Scoring::new(-5, -1, &scoring_fn)
+                .xclip(bio::alignment::pairwise::MIN_SCORE).yclip(0),
+        );
+        let result = check_complex(
+            &record, &variant, &[], record.qual(), 20,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+        );
+        assert!(
+            result.is_ref && result.qual == 30,
+            "expected REF at the anchor's Q30, got is_ref={} qual={}", result.is_ref, result.qual
+        );
+    }
+
+    #[test]
     fn test_complex_no_n_in_reconstructed_haplotype() {
         // Complex variant with no N bases — has_n_base should be false.
         // REF=TCC, ALT=GA at pos 5.
