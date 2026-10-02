@@ -756,6 +756,47 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-what-a-read-contributes-adapter-read-through-absent-qualities-unmapped-records-176-182-183-207">Changed — what a read contributes: adapter read-through, absent qualities, unmapped records (#176, #182, #183, #207)<a class="headerlink" href="#changed-what-a-read-contributes-adapter-read-through-absent-qualities-unmapped-records-176-182-183-207" title="Permanent link">¶</a></h3>
+<p>The read-judgment spec gains RJ-10 to RJ-12, which decide what a read brings
+before any rule reads it.
+- <strong>A read ends at its fragment end</strong> (#176). When the insert is shorter than the
+  read, the bases past the mate's 5' end are adapter. They are now hard-clipped as
+  the read enters counting, as if the read had been trimmed, so they are neither
+  bases nor reach in any rule.
+  - Only adapter-like bases are clipped: soft-clipped, or at most two aligned past
+    the boundary (an aligner's chance extension into adapter), none inserted.
+  - A read whose bases go on aligning past the boundary, or hold an insertion
+    there, keeps them. TLEN is a reference distance, so it leaves out an ITD's
+    inserted bases and a mate's clipped 5' bases.
+  - Only an inward-facing pair defines a fragment; an outward one (TLEN negative
+    on the forward read) is left alone.
+  - In MSK data the first base past the boundary is A (the adapter's first base)
+    in 97% of clipped reads.
+- <strong>Records without base qualities</strong> (QUAL <code>*</code>) are dropped by the read filter
+  and warned once per <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> (#182). Before, they voted as Q255, and the fragment
+  consensus margin could overflow; it now saturates.
+- <strong>Unmapped records</strong> (flag 0x4) are dropped by the read filter (#183). An
+  unmapped mate placed at a variant counted in <code>mq0_count</code>, and at
+  <code>--min-mapq 0</code> as a read (an ALT read when it carried the ALT). A read whose
+  mate is unmapped still counts, and mapped <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-0 alignments stay countable at
+  <code>--min-mapq 0</code> (pseudogene loci such as PMS2).
+- <strong>Fixed:</strong> the complex classifier read a hard-clipped read's anchor quality
+  from the wrong base (#207).
+- <strong>Measured:</strong> develop vs this branch on RC DNA, FORTE RNA and WES, every <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>
+  cell compared, at the default <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> and at <code>--min-mapq 0</code>.
+  - 182 rows change at the default <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>. RC DNA: 160 rows, ALT −57, REF −66. WES:
+    13 rows, REF −12. FORTE: 9 probe rows, REF −3; the truth set is unchanged.
+  - Every changed row is explained by reads that read through. All 57 lost ALT
+    reads had their ALT on a removed adapter overhang; 52 of the 54 at SNVs
+    showed the adapter's A.
+  - On SNV rows the change equals the read census's (ALT −53, REF −31). On the
+    57 changed pure-indel rows the engine moves toward the census: summed
+    distance REF 167 to 125, ALT 69 to 62.
+  - At <code>--min-mapq 0</code>: 184 rows. The two extra rows lose one REF read each to
+    the same clip on reads below <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20. The PMS2 row keeps its <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-0 reads
+    (REF 5,439 at <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 vs 5,414 at the default). No row moved by an unmapped
+    record.
+  - The FLT3 ITD a first build lost 13 ALT reads at is unchanged.</p>
 <h3 id="changed-which-reads-count-ref-for-a-pure-indel-long-complex-events-read-through-the-read-200-199">Changed — which reads count REF for a pure indel; long complex events read through the read (#200, #199)<a class="headerlink" href="#changed-which-reads-count-ref-for-a-pure-indel-long-complex-events-read-through-the-read-200-199" title="Permanent link">¶</a></h3>
 <p>Read judgment now has one spec, <code>docs/reference/read-judgment.md</code>:
 a table of read shapes and their calls, with the decision behind each, executed

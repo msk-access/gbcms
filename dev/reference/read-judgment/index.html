@@ -1982,7 +1982,13 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <ol>
 <li><strong>Spec first.</strong> A change to how reads are judged starts here: the shapes it
    affects, their call today, the proposed call, and the evidence (the read
-   census's verdict on each shape, and real-data counts adjudicated per read).</li>
+   census's verdict on each shape, real-data counts adjudicated per read, and
+   what other tools do: GATK, samtools/bcftools, fgbio, VarDict, Strelka2,
+   freebayes, bam-readcount, LoFreq and the original GetBaseCounts, saying where
+   a tool's handling is not documented). The census changes in step with a rule
+   about read inputs (what a read contributes), so for such a rule it cannot be
+   the evidence: check the bases in question themselves and the mates'
+   alignments, ITD and indel rows first.</li>
 <li><strong>Decide.</strong> The operator decides; the decision gets an entry in the register
    below, naming any earlier decision it amends.</li>
 <li><strong>Then code.</strong> The implementation turns the case table's open cells into
@@ -2057,6 +2063,26 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">A long complex event's junction windows are read on inward as far as the read reaches; a read whose later bases contradict an allele is not that allele. A read ending inside the event is judged by the bases it has (one base-identical to REF counts REF).</td>
 <td style="text-align: left;">C25 #199, operator 2026-10-01</td>
 </tr>
+<tr>
+<td style="text-align: left;">RJ-10</td>
+<td style="text-align: left;">A read ends at its fragment end: bases past it (read-through into adapter, insert shorter than the read) are neither bases nor reach, in every read and rule, the census included. They are hard-clipped as the read enters counting, as if trimmed (a masked base would still fill a window as a match). Only an inward-facing pair defines a fragment (TLEN positive on the forward read), and only adapter-like bases are clipped: soft-clipped, or at most two aligned past the boundary, none inserted. More are the molecule's: TLEN, a reference distance, leaves out an ITD's inserted bases and a mate's clipped 5' bases.</td>
+<td style="text-align: left;">C17 #176, operator 2026-10-02 (adapter-like bases only, same day)</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-11</td>
+<td style="text-align: left;">A record with absent base qualities (QUAL <code>*</code>, stored as 0xFF) is dropped by the read filter and warned once per <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, as a record without bases is.</td>
+<td style="text-align: left;">C19 #182, operator 2026-10-02</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-12</td>
+<td style="text-align: left;">An unmapped record (flag 0x4) is not an alignment: dropped by the read filter. A mapped read whose mate is unmapped still counts, and mapped <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-0 alignments stay countable (<code>--min-mapq 0</code>, pseudogene loci such as PMS2).</td>
+<td style="text-align: left;">O7 #183, operator 2026-10-02</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-13</td>
+<td style="text-align: left;">Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0.</td>
+<td style="text-align: left;">C15 #173, C7 #144, C18 #177, operator 2026-10-02</td>
+</tr>
 </tbody>
 </table>
 <h3 id="open">Open<a class="headerlink" href="#open" title="Permanent link">¶</a></h3>
@@ -2092,6 +2118,33 @@ read census counts 57,199 REF reads; develop counted 60,619 and the decided rule
 57,218. The largest moves are deep slippage loci (a BRCA2 cluster where an
 unannotated 1bp deletion in an A run sits inside two annotated rows' windows; a
 T run). RJ-9 changed no row on RC, FORTE or WES.</p>
+<p>Evidence behind RJ-10 to RJ-13 (2026-10-02). A survey of every harness input
+(RC DNA, FORTE, WES) found 1,197 reads with event bases past their fragment end
+at 384 rows (0.03% of reads), 61 unmapped records placed on events (27 rows), and
+no records with absent qualities or hard-clipped admitted reads. Masking adapter
+bases alone (measured: 244 rows, ALT −63, REF −128) left reach: a read whose
+molecule ends inside a repeat still counted REF on its adapter, hence RJ-10 clips.
+An adversarial review found soft-clipping with masked qualities still left reach
+in complex and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> windows (a forward molecule ending on the event's first base
+counted ALT, unlike the same read trimmed), and an outward pair's TLEN read as a
+fragment; the clip now removes the bases and needs an inward pair. That build
+lost 13 ALT reads at an FLT3 ITD: TLEN, a reference distance, left out the
+molecule's 66 inserted bases. On the 12,239 read-through reads of the changed
+rows, one aligned base past the boundary mismatched the reference 75% of the time
+(adapter; 9,174 reads), two 30%, ten or more 0.7% (the molecule; 97 reads), and
+446 reads held inserted bases past it (three aligned bases mismatched 9%, so
+they are mostly the molecule). Hence only adapter-like bases are clipped. The
+final rule changes 182 rows (ALT −57, REF −81); the first base past the
+boundary is A, the adapter's first base, in 97% of clipped reads, and 52 of the
+54 lost SNV ALT reads showed that A.
+At <code>--min-mapq 0</code> an unmapped mate carrying a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> counted as an ALT read. Other
+tools: GATK hard-clips adapter at the insert-size boundary and drops reads whose
+bases and qualities differ in length (WellformedReadFilter) and unmapped reads
+(MappedReadFilter); fgbio ClipBam clips bases past the mate (soft, soft with
+mask, or hard); samtools and bcftools mpileup always discard unmapped reads, null
+overlapping mates' duplicate bases by quality 0, and bcftools caps base quality at
+max-BQ; bam-readcount filters nothing by default; VarDict, Strelka2, freebayes,
+LoFreq and GetBaseCounts document none of these cases.</p>
 <h2 id="the-cases">The cases<a class="headerlink" href="#the-cases" title="Permanent link">¶</a></h2>
 <p>Each group below is a set of shapes in <code>read_judgment_cases.py</code>, run at pure
 indels in homopolymers, dinucleotide repeats, duplications and unique sequence,
@@ -2146,6 +2199,11 @@ and at anchor-changing events before an A run.</p>
 <td style="text-align: left;">open (C27)</td>
 </tr>
 <tr>
+<td style="text-align: left;">Read inputs</td>
+<td style="text-align: left;">read-through adapter base on an SNV (ALT, REF); absent qualities; a hard-clipped read at the previous complex classifier (with an unclipped control)</td>
+<td style="text-align: left;">decided (RJ-10, RJ-11; C29 #207 is a bug fix)</td>
+</tr>
+<tr>
 <td style="text-align: left;">Anchor deleted</td>
 <td style="text-align: left;">the anchor deleted, with or without an insertion</td>
 <td style="text-align: left;">open (C28)</td>
@@ -2179,7 +2237,7 @@ with the read census's verdict next to each pure-indel case.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 2, 2026 02:34:16 UTC"><span class="timeago" datetime="2026-10-02T02:34:16+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 2, 2026 02:34:16 UTC">2026-10-02</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 2, 2026 15:31:12 UTC"><span class="timeago" datetime="2026-10-02T15:31:12+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 2, 2026 15:31:12 UTC">2026-10-02</span>
   </span>
 
     

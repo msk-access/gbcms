@@ -9517,6 +9517,7 @@ counting but still <strong>written to the output</strong> with their <code>FAIL<
     </nav>
     <pre class="mermaid"><code>flowchart LR
     Start(["📖 BAM Read"]):::start
+    U0{"⓪ Unmapped?\n0x4 (always)"}:::on
 
     subgraph Auto ["🟢 Auto-On (default enabled)"]
         direction LR
@@ -9536,14 +9537,17 @@ counting but still <strong>written to the output</strong> with their <code>FAIL<
         O1 --&gt;|No| O2
     end
 
-    S1{"⑦ No bases?\nSEQ '*' (always)"}:::on
+    S1{"⑦ No bases or qualities?\nSEQ / QUAL '*' (always)"}:::on
     F5{"⑧ MAPQ &lt; threshold\n(20 DNA / 1 RNA)"}:::on
 
-    Start --&gt; F1
+    Start --&gt; U0
+    U0 --&gt;|No| F1
+    U0 --&gt;|Yes| Drop
     F4 --&gt;|No| O1
     O2 --&gt;|No| S1
     S1 --&gt;|No| F5
-    F5 --&gt;|Pass| Done(["✅ Allele Classifier"]):::pass
+    F5 --&gt;|Pass| Clip["✂️ Clip to fragment end"]:::on
+    Clip --&gt; Done(["✅ Allele Classifier"]):::pass
 
     F1 --&gt;|Yes| Drop(["❌ Discard"]):::drop
     F2 --&gt;|Yes| Drop
@@ -9564,13 +9568,38 @@ counting but still <strong>written to the output</strong> with their <code>FAIL<
 Use mouse to pan and zoom
 </div>
 </div>
-<p><strong>Records without bases.</strong> A record stored with no sequence (SEQ <code>*</code>) shows no
-allele. Aligners write some secondary alignments this way, and a stripped <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>
-can hold primaries like it. Such a record is always dropped right after the flag
-filters (step ⑦), in every mode and counting path. It is counted
-in neither depth, fragments nor <code>mq0_count</code>. Each counting pass logs one WARNING
-with the number of bin fetches that skipped one (bin windows overlap, so a record
-can count more than once).</p>
+<p><strong>Unmapped records.</strong> A record flagged unmapped (0x4) is not an alignment. An
+aligner places it at its mate's position with <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0, sometimes with a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>, so
+it would otherwise reach a variant there: in <code>mq0_count</code> by default, and as a read
+at <code>--min-mapq 0</code>. It is always dropped first (step ⓪), in every mode. Its mapped
+mate still counts (one mapped read of a pair is a read), and mapped <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-0
+alignments stay countable at <code>--min-mapq 0</code>, as pseudogene loci such as PMS2 need.
+samtools/bcftools mpileup and GATK (MappedReadFilter) drop unmapped reads too.</p>
+<p><strong>Records without bases or qualities.</strong> A record stored with no sequence
+(SEQ <code>*</code>) shows no allele. Aligners write some secondary alignments this way, and
+a stripped <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> can hold primaries like it. A record with bases but no qualities
+(QUAL <code>*</code>, stored as 0xFF bytes) gives its bases no error rate, so no rule can
+weigh them (GATK's WellformedReadFilter rejects it too). Either is always dropped
+right after the flag filters (step ⑦), in every mode and counting path, and
+counted in neither depth, fragments nor <code>mq0_count</code>. Each counting pass logs one
+WARNING for each kind, with the number of bin fetches that skipped one (bin
+windows overlap, so a record can count more than once).</p>
+<p><strong>A read ends at its fragment end.</strong> When the insert is shorter than the read,
+the read runs on past its mate's 5' end into adapter (read-through). For a pair
+whose fragment is well defined (mate mapped on the same contig, the pair facing
+inward), the bases past the fragment end are hard-clipped as the read enters the
+counting pass, as if the read had been trimmed, so no rule sees them as bases or
+as reach, and a reverse read's start moves past any aligned bases it loses. TLEN
+is read as <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-MEM, samtools fixmate and Picard write it, from the forward read's
+5' end to the reverse read's, positive on the forward read; an outward-facing
+pair (as at a tandem-duplication junction) defines no fragment. Tags are kept.
+Only adapter-like bases are clipped: soft-clipped, or at most two aligned past
+the boundary (an aligner's chance extension into adapter), none inserted. A read
+whose bases go on aligning past the boundary, or hold an insertion there, keeps
+them: TLEN is a reference distance, so it leaves out the inserted bases of an
+ITD and a mate's clipped 5' bases, and those bases are the molecule's. GATK hard-clips adapter at the same
+boundary, and fgbio ClipBam's <code>--clip-bases-past-mate</code> does it as a separate step.
+See <a href="#reference-read-judgment">Read Judgment</a> (RJ-10 to RJ-12).</p>
 <hr>
 <h2 id="reference-read-filters-filter-options">Filter Options<a class="headerlink" href="#reference-read-filters-filter-options" title="Permanent link">¶</a></h2>
 <table>
@@ -12352,7 +12381,13 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <ol>
 <li><strong>Spec first.</strong> A change to how reads are judged starts here: the shapes it
    affects, their call today, the proposed call, and the evidence (the read
-   census's verdict on each shape, and real-data counts adjudicated per read).</li>
+   census's verdict on each shape, real-data counts adjudicated per read, and
+   what other tools do: GATK, samtools/bcftools, fgbio, VarDict, Strelka2,
+   freebayes, bam-readcount, LoFreq and the original GetBaseCounts, saying where
+   a tool's handling is not documented). The census changes in step with a rule
+   about read inputs (what a read contributes), so for such a rule it cannot be
+   the evidence: check the bases in question themselves and the mates'
+   alignments, ITD and indel rows first.</li>
 <li><strong>Decide.</strong> The operator decides; the decision gets an entry in the register
    below, naming any earlier decision it amends.</li>
 <li><strong>Then code.</strong> The implementation turns the case table's open cells into
@@ -12427,6 +12462,26 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">A long complex event's junction windows are read on inward as far as the read reaches; a read whose later bases contradict an allele is not that allele. A read ending inside the event is judged by the bases it has (one base-identical to REF counts REF).</td>
 <td style="text-align: left;">C25 #199, operator 2026-10-01</td>
 </tr>
+<tr>
+<td style="text-align: left;">RJ-10</td>
+<td style="text-align: left;">A read ends at its fragment end: bases past it (read-through into adapter, insert shorter than the read) are neither bases nor reach, in every read and rule, the census included. They are hard-clipped as the read enters counting, as if trimmed (a masked base would still fill a window as a match). Only an inward-facing pair defines a fragment (TLEN positive on the forward read), and only adapter-like bases are clipped: soft-clipped, or at most two aligned past the boundary, none inserted. More are the molecule's: TLEN, a reference distance, leaves out an ITD's inserted bases and a mate's clipped 5' bases.</td>
+<td style="text-align: left;">C17 #176, operator 2026-10-02 (adapter-like bases only, same day)</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-11</td>
+<td style="text-align: left;">A record with absent base qualities (QUAL <code>*</code>, stored as 0xFF) is dropped by the read filter and warned once per <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>, as a record without bases is.</td>
+<td style="text-align: left;">C19 #182, operator 2026-10-02</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-12</td>
+<td style="text-align: left;">An unmapped record (flag 0x4) is not an alignment: dropped by the read filter. A mapped read whose mate is unmapped still counts, and mapped <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-0 alignments stay countable (<code>--min-mapq 0</code>, pseudogene loci such as PMS2).</td>
+<td style="text-align: left;">O7 #183, operator 2026-10-02</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-13</td>
+<td style="text-align: left;">Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0.</td>
+<td style="text-align: left;">C15 #173, C7 #144, C18 #177, operator 2026-10-02</td>
+</tr>
 </tbody>
 </table>
 <h3 id="reference-read-judgment-open">Open<a class="headerlink" href="#reference-read-judgment-open" title="Permanent link">¶</a></h3>
@@ -12462,6 +12517,33 @@ read census counts 57,199 REF reads; develop counted 60,619 and the decided rule
 57,218. The largest moves are deep slippage loci (a BRCA2 cluster where an
 unannotated 1bp deletion in an A run sits inside two annotated rows' windows; a
 T run). RJ-9 changed no row on RC, FORTE or WES.</p>
+<p>Evidence behind RJ-10 to RJ-13 (2026-10-02). A survey of every harness input
+(RC DNA, FORTE, WES) found 1,197 reads with event bases past their fragment end
+at 384 rows (0.03% of reads), 61 unmapped records placed on events (27 rows), and
+no records with absent qualities or hard-clipped admitted reads. Masking adapter
+bases alone (measured: 244 rows, ALT −63, REF −128) left reach: a read whose
+molecule ends inside a repeat still counted REF on its adapter, hence RJ-10 clips.
+An adversarial review found soft-clipping with masked qualities still left reach
+in complex and <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> windows (a forward molecule ending on the event's first base
+counted ALT, unlike the same read trimmed), and an outward pair's TLEN read as a
+fragment; the clip now removes the bases and needs an inward pair. That build
+lost 13 ALT reads at an FLT3 ITD: TLEN, a reference distance, left out the
+molecule's 66 inserted bases. On the 12,239 read-through reads of the changed
+rows, one aligned base past the boundary mismatched the reference 75% of the time
+(adapter; 9,174 reads), two 30%, ten or more 0.7% (the molecule; 97 reads), and
+446 reads held inserted bases past it (three aligned bases mismatched 9%, so
+they are mostly the molecule). Hence only adapter-like bases are clipped. The
+final rule changes 182 rows (ALT −57, REF −81); the first base past the
+boundary is A, the adapter's first base, in 97% of clipped reads, and 52 of the
+54 lost SNV ALT reads showed that A.
+At <code>--min-mapq 0</code> an unmapped mate carrying a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> counted as an ALT read. Other
+tools: GATK hard-clips adapter at the insert-size boundary and drops reads whose
+bases and qualities differ in length (WellformedReadFilter) and unmapped reads
+(MappedReadFilter); fgbio ClipBam clips bases past the mate (soft, soft with
+mask, or hard); samtools and bcftools mpileup always discard unmapped reads, null
+overlapping mates' duplicate bases by quality 0, and bcftools caps base quality at
+max-BQ; bam-readcount filters nothing by default; VarDict, Strelka2, freebayes,
+LoFreq and GetBaseCounts document none of these cases.</p>
 <h2 id="reference-read-judgment-the-cases">The cases<a class="headerlink" href="#reference-read-judgment-the-cases" title="Permanent link">¶</a></h2>
 <p>Each group below is a set of shapes in <code>read_judgment_cases.py</code>, run at pure
 indels in homopolymers, dinucleotide repeats, duplications and unique sequence,
@@ -12514,6 +12596,11 @@ and at anchor-changing events before an A run.</p>
 <td style="text-align: left;">The ALT across ops</td>
 <td style="text-align: left;">a deletion written as two</td>
 <td style="text-align: left;">open (C27)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Read inputs</td>
+<td style="text-align: left;">read-through adapter base on an SNV (ALT, REF); absent qualities; a hard-clipped read at the previous complex classifier (with an unclipped control)</td>
+<td style="text-align: left;">decided (RJ-10, RJ-11; C29 #207 is a bug fix)</td>
 </tr>
 <tr>
 <td style="text-align: left;">Anchor deleted</td>
@@ -14856,8 +14943,8 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Adapter read-through</td>
-<td style="text-align: left;">Masked only for clipped-carrier admission</td>
-<td style="text-align: left;">Proposed (every read)</td>
+<td style="text-align: left;">Clipped at the fragment end in every read</td>
+<td style="text-align: left;">Decided (done)</td>
 <td style="text-align: left;">C17 #176</td>
 </tr>
 <tr>
@@ -15063,10 +15150,15 @@ caveat in gbcms's output.</p>
 <ul>
 <li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> when the fragment is shorter than the read, bases past the mate's
   5' end are adapter.</li>
-<li><strong>gbcms now:</strong> those bases are masked only when admitting a clipped carrier.</li>
-<li><strong>Should do:</strong> proposed. Mask them in every read (C17 #176).</li>
-<li><strong>Community:</strong> GATK checks for a well-defined fragment before trusting clipped
-  bases. Adapter trimming upstream (fastp, cutadapt) is common but not universal.</li>
+<li><strong>gbcms now:</strong> a read ends at its fragment end. Bases past it are hard-clipped
+  as the read enters counting, as if trimmed, so they are neither bases nor reach,
+  in every rule (RJ-10, C17 #176), when they look like adapter (soft-clipped, or
+  at most two aligned). Bases that go on aligning, or an insertion past the
+  boundary, are kept: TLEN understates a molecule carrying an ITD.</li>
+<li><strong>Should do:</strong> decided and done.</li>
+<li><strong>Community:</strong> GATK hard-clips adapter at the insert-size boundary; fgbio
+  ClipBam clips bases past the mate (<code>--clip-bases-past-mate</code>). Adapter trimming
+  upstream (fastp, cutadapt) is common but not universal.</li>
 </ul>
 <h3 id="reference-bam-evidence-caveats-stutter-and-polymerase-slippage-in-repeats">Stutter and polymerase slippage in repeats<a class="headerlink" href="#reference-bam-evidence-caveats-stutter-and-polymerase-slippage-in-repeats" title="Permanent link">¶</a></h3>
 <ul>
@@ -16998,6 +17090,47 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-what-a-read-contributes-adapter-read-through-absent-qualities-unmapped-records-176-182-183-207">Changed — what a read contributes: adapter read-through, absent qualities, unmapped records (#176, #182, #183, #207)<a class="headerlink" href="#development-changelog-changed-what-a-read-contributes-adapter-read-through-absent-qualities-unmapped-records-176-182-183-207" title="Permanent link">¶</a></h3>
+<p>The read-judgment spec gains RJ-10 to RJ-12, which decide what a read brings
+before any rule reads it.
+- <strong>A read ends at its fragment end</strong> (#176). When the insert is shorter than the
+  read, the bases past the mate's 5' end are adapter. They are now hard-clipped as
+  the read enters counting, as if the read had been trimmed, so they are neither
+  bases nor reach in any rule.
+  - Only adapter-like bases are clipped: soft-clipped, or at most two aligned past
+    the boundary (an aligner's chance extension into adapter), none inserted.
+  - A read whose bases go on aligning past the boundary, or hold an insertion
+    there, keeps them. TLEN is a reference distance, so it leaves out an ITD's
+    inserted bases and a mate's clipped 5' bases.
+  - Only an inward-facing pair defines a fragment; an outward one (TLEN negative
+    on the forward read) is left alone.
+  - In MSK data the first base past the boundary is A (the adapter's first base)
+    in 97% of clipped reads.
+- <strong>Records without base qualities</strong> (QUAL <code>*</code>) are dropped by the read filter
+  and warned once per <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> (#182). Before, they voted as Q255, and the fragment
+  consensus margin could overflow; it now saturates.
+- <strong>Unmapped records</strong> (flag 0x4) are dropped by the read filter (#183). An
+  unmapped mate placed at a variant counted in <code>mq0_count</code>, and at
+  <code>--min-mapq 0</code> as a read (an ALT read when it carried the ALT). A read whose
+  mate is unmapped still counts, and mapped <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-0 alignments stay countable at
+  <code>--min-mapq 0</code> (pseudogene loci such as PMS2).
+- <strong>Fixed:</strong> the complex classifier read a hard-clipped read's anchor quality
+  from the wrong base (#207).
+- <strong>Measured:</strong> develop vs this branch on RC DNA, FORTE RNA and WES, every <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>
+  cell compared, at the default <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> and at <code>--min-mapq 0</code>.
+  - 182 rows change at the default <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>. RC DNA: 160 rows, ALT −57, REF −66. WES:
+    13 rows, REF −12. FORTE: 9 probe rows, REF −3; the truth set is unchanged.
+  - Every changed row is explained by reads that read through. All 57 lost ALT
+    reads had their ALT on a removed adapter overhang; 52 of the 54 at SNVs
+    showed the adapter's A.
+  - On SNV rows the change equals the read census's (ALT −53, REF −31). On the
+    57 changed pure-indel rows the engine moves toward the census: summed
+    distance REF 167 to 125, ALT 69 to 62.
+  - At <code>--min-mapq 0</code>: 184 rows. The two extra rows lose one REF read each to
+    the same clip on reads below <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 20. The PMS2 row keeps its <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-0 reads
+    (REF 5,439 at <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0 vs 5,414 at the default). No row moved by an unmapped
+    record.
+  - The FLT3 ITD a first build lost 13 ALT reads at is unchanged.</p>
 <h3 id="development-changelog-changed-which-reads-count-ref-for-a-pure-indel-long-complex-events-read-through-the-read-200-199">Changed — which reads count REF for a pure indel; long complex events read through the read (#200, #199)<a class="headerlink" href="#development-changelog-changed-which-reads-count-ref-for-a-pure-indel-long-complex-events-read-through-the-read-200-199" title="Permanent link">¶</a></h3>
 <p>Read judgment now has one spec, <code>docs/reference/read-judgment.md</code>:
 a table of read shapes and their calls, with the decision behind each, executed

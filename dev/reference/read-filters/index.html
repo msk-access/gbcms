@@ -1071,6 +1071,7 @@
 </nav>
 <pre class="mermaid"><code>flowchart LR
     Start(["📖 BAM Read"]):::start
+    U0{"⓪ Unmapped?\n0x4 (always)"}:::on
 
     subgraph Auto ["🟢 Auto-On (default enabled)"]
         direction LR
@@ -1090,14 +1091,17 @@
         O1 --&gt;|No| O2
     end
 
-    S1{"⑦ No bases?\nSEQ '*' (always)"}:::on
+    S1{"⑦ No bases or qualities?\nSEQ / QUAL '*' (always)"}:::on
     F5{"⑧ MAPQ &lt; threshold\n(20 DNA / 1 RNA)"}:::on
 
-    Start --&gt; F1
+    Start --&gt; U0
+    U0 --&gt;|No| F1
+    U0 --&gt;|Yes| Drop
     F4 --&gt;|No| O1
     O2 --&gt;|No| S1
     S1 --&gt;|No| F5
-    F5 --&gt;|Pass| Done(["✅ Allele Classifier"]):::pass
+    F5 --&gt;|Pass| Clip["✂️ Clip to fragment end"]:::on
+    Clip --&gt; Done(["✅ Allele Classifier"]):::pass
 
     F1 --&gt;|Yes| Drop(["❌ Discard"]):::drop
     F2 --&gt;|Yes| Drop
@@ -1118,13 +1122,38 @@
 Use mouse to pan and zoom
 </div>
 </div>
-<p><strong>Records without bases.</strong> A record stored with no sequence (SEQ <code>*</code>) shows no
-allele. Aligners write some secondary alignments this way, and a stripped <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>
-can hold primaries like it. Such a record is always dropped right after the flag
-filters (step ⑦), in every mode and counting path. It is counted
-in neither depth, fragments nor <code>mq0_count</code>. Each counting pass logs one WARNING
-with the number of bin fetches that skipped one (bin windows overlap, so a record
-can count more than once).</p>
+<p><strong>Unmapped records.</strong> A record flagged unmapped (0x4) is not an alignment. An
+aligner places it at its mate's position with <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 0, sometimes with a <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>, so
+it would otherwise reach a variant there: in <code>mq0_count</code> by default, and as a read
+at <code>--min-mapq 0</code>. It is always dropped first (step ⓪), in every mode. Its mapped
+mate still counts (one mapped read of a pair is a read), and mapped <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>-0
+alignments stay countable at <code>--min-mapq 0</code>, as pseudogene loci such as PMS2 need.
+samtools/bcftools mpileup and GATK (MappedReadFilter) drop unmapped reads too.</p>
+<p><strong>Records without bases or qualities.</strong> A record stored with no sequence
+(SEQ <code>*</code>) shows no allele. Aligners write some secondary alignments this way, and
+a stripped <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> can hold primaries like it. A record with bases but no qualities
+(QUAL <code>*</code>, stored as 0xFF bytes) gives its bases no error rate, so no rule can
+weigh them (GATK's WellformedReadFilter rejects it too). Either is always dropped
+right after the flag filters (step ⑦), in every mode and counting path, and
+counted in neither depth, fragments nor <code>mq0_count</code>. Each counting pass logs one
+WARNING for each kind, with the number of bin fetches that skipped one (bin
+windows overlap, so a record can count more than once).</p>
+<p><strong>A read ends at its fragment end.</strong> When the insert is shorter than the read,
+the read runs on past its mate's 5' end into adapter (read-through). For a pair
+whose fragment is well defined (mate mapped on the same contig, the pair facing
+inward), the bases past the fragment end are hard-clipped as the read enters the
+counting pass, as if the read had been trimmed, so no rule sees them as bases or
+as reach, and a reverse read's start moves past any aligned bases it loses. TLEN
+is read as <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr>-MEM, samtools fixmate and Picard write it, from the forward read's
+5' end to the reverse read's, positive on the forward read; an outward-facing
+pair (as at a tandem-duplication junction) defines no fragment. Tags are kept.
+Only adapter-like bases are clipped: soft-clipped, or at most two aligned past
+the boundary (an aligner's chance extension into adapter), none inserted. A read
+whose bases go on aligning past the boundary, or hold an insertion there, keeps
+them: TLEN is a reference distance, so it leaves out the inserted bases of an
+ITD and a mate's clipped 5' bases, and those bases are the molecule's. GATK hard-clips adapter at the same
+boundary, and fgbio ClipBam's <code>--clip-bases-past-mate</code> does it as a separate step.
+See <a href="../read-judgment/">Read Judgment</a> (RJ-10 to RJ-12).</p>
 <hr>
 <h2 id="filter-options">Filter Options<a class="headerlink" href="#filter-options" title="Permanent link">¶</a></h2>
 <table>
@@ -1494,7 +1523,7 @@ same strand (<code>forward</code> swaps them):</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 29, 2026 19:58:07 UTC"><span class="timeago" datetime="2026-09-29T19:58:07+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 29, 2026 19:58:07 UTC">2026-09-29</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 2, 2026 14:36:02 UTC"><span class="timeago" datetime="2026-10-02T14:36:02+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 2, 2026 14:36:02 UTC">2026-10-02</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
