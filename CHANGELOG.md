@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — what a read contributes: adapter read-through, absent qualities, unmapped records (#176, #182, #183, #207)
+
+The read-judgment spec gains RJ-10 to RJ-12, which decide what a read brings
+before any rule reads it.
+- **A read ends at its fragment end** (#176). When the insert is shorter than the
+  read, the bases past the mate's 5' end are adapter. They are now hard-clipped as
+  the read enters counting, as if the read had been trimmed, so they are neither
+  bases nor reach in any rule.
+  - Only adapter-like bases are clipped: soft-clipped, or at most two aligned past
+    the boundary (an aligner's chance extension into adapter), none inserted.
+  - A read whose bases go on aligning past the boundary, or hold an insertion
+    there, keeps them. TLEN is a reference distance, so it leaves out an ITD's
+    inserted bases and a mate's clipped 5' bases.
+  - Only an inward-facing pair defines a fragment; an outward one (TLEN negative
+    on the forward read) is left alone.
+  - In MSK data the first base past the boundary is A (the adapter's first base)
+    in 97% of clipped reads.
+- **Records without base qualities** (QUAL `*`) are dropped by the read filter
+  and warned once per BAM (#182). Before, they voted as Q255, and the fragment
+  consensus margin could overflow; it now saturates.
+- **Unmapped records** (flag 0x4) are dropped by the read filter (#183). An
+  unmapped mate placed at a variant counted in `mq0_count`, and at
+  `--min-mapq 0` as a read (an ALT read when it carried the ALT). A read whose
+  mate is unmapped still counts, and mapped MAPQ-0 alignments stay countable at
+  `--min-mapq 0` (pseudogene loci such as PMS2).
+- **Fixed:** the complex classifier read a hard-clipped read's anchor quality
+  from the wrong base (#207).
+- **Measured:** develop vs this branch on RC DNA, FORTE RNA and WES, every MAF
+  cell compared, at the default MAPQ and at `--min-mapq 0`.
+  - 182 rows change at the default MAPQ. RC DNA: 160 rows, ALT −57, REF −66. WES:
+    13 rows, REF −12. FORTE: 9 probe rows, REF −3; the truth set is unchanged.
+  - Every changed row is explained by reads that read through. All 57 lost ALT
+    reads had their ALT on a removed adapter overhang; 52 of the 54 at SNVs
+    showed the adapter's A.
+  - On SNV rows the change equals the read census's (ALT −53, REF −31). On the
+    57 changed pure-indel rows the engine moves toward the census: summed
+    distance REF 167 to 125, ALT 69 to 62.
+  - At `--min-mapq 0`: 184 rows. The two extra rows lose one REF read each to
+    the same clip on reads below MAPQ 20. The PMS2 row keeps its MAPQ-0 reads
+    (REF 5,439 at MAPQ 0 vs 5,414 at the default). No row moved by an unmapped
+    record.
+  - The FLT3 ITD a first build lost 13 ALT reads at is unchanged.
+
 ### Changed — which reads count REF for a pure indel; long complex events read through the read (#200, #199)
 
 Read judgment now has one spec, `docs/reference/read-judgment.md`:

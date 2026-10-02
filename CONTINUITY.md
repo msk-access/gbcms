@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-01_
+_Last updated: 2026-10-02_
 
 ## Now
 **6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
@@ -73,6 +73,14 @@ comments):**
   (`~/test/gbcms/harness/h3/`, `accept.py h3c h3pb`);
 - an adversarial review plus a develop-vs-branch fuzz found no count change
   beyond the declared ones (see the plan's H3 "PR B as built").
+
+**In progress — group 1, what a read contributes (#176, #182, #183, #207):**
+- branch `feature/g1-read-inputs`, not yet pushed; RJ-10 to RJ-13 in the spec;
+- C17 final rule (operator): clip only adapter-like bases past the TLEN fragment
+  end; two adversarial reviews; measured at default MAPQ and `--min-mapq 0`
+  (harness `~/test/gbcms/harness/g1/`, local; plan "Group 1 as built");
+- next: push, PR, comments on the issues (ask first); then group 2 (C28, C27,
+  C16).
 
 Follow-ups filed:
 - C29 #207 (6.6.0): `check_complex`'s inline query walk counts hard clips;

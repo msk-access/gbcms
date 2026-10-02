@@ -18,7 +18,10 @@ it shows in review instead of slipping in with an unrelated fix.
    census's verdict on each shape, real-data counts adjudicated per read, and
    what other tools do: GATK, samtools/bcftools, fgbio, VarDict, Strelka2,
    freebayes, bam-readcount, LoFreq and the original GetBaseCounts, saying where
-   a tool's handling is not documented).
+   a tool's handling is not documented). The census changes in step with a rule
+   about read inputs (what a read contributes), so for such a rule it cannot be
+   the evidence: check the bases in question themselves and the mates'
+   alignments, ITD and indel rows first.
 2. **Decide.** The operator decides; the decision gets an entry in the register
    below, naming any earlier decision it amends.
 3. **Then code.** The implementation turns the case table's open cells into
@@ -84,7 +87,11 @@ lost 13 ALT reads at an FLT3 ITD: TLEN, a reference distance, left out the
 molecule's 66 inserted bases. On the 12,239 read-through reads of the changed
 rows, one aligned base past the boundary mismatched the reference 75% of the time
 (adapter; 9,174 reads), two 30%, ten or more 0.7% (the molecule; 97 reads), and
-446 reads held inserted bases past it. Hence only adapter-like bases are clipped.
+446 reads held inserted bases past it (three aligned bases mismatched 9%, so
+they are mostly the molecule). Hence only adapter-like bases are clipped. The
+final rule changes 182 rows (ALT −57, REF −81); the first base past the
+boundary is A, the adapter's first base, in 97% of clipped reads, and 52 of the
+54 lost SNV ALT reads showed that A.
 At `--min-mapq 0` an unmapped mate carrying a CIGAR counted as an ALT read. Other
 tools: GATK hard-clips adapter at the insert-size boundary and drops reads whose
 bases and qualities differ in length (WellformedReadFilter) and unmapped reads

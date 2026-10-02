@@ -51,9 +51,9 @@ marks a ticket with an open PR.
 | T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [in review] | #170 |
 | T2 | Read census as the classification oracle in tests | M | [in review] | #171 |
 | H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | | #204 |
-| C17 | Mask read-through bases past the fragment end in every read | M | [counts] | #176 |
+| C17 | A read ends at its fragment end: adapter-like read-through bases are clipped in every read | M | [counts] [decided] [in review] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
-| C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decide] | #182 |
+| C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decided] [in review] | #182 |
 | C20 | ALT carriers ending inside an indel's repeat tract credited from the CIGAR gap (C10's ALT side) | M | [counts] [done] | #188 |
 | C21 | Homopolymer insertion carriers placed elsewhere in the run counted REF (S3 anchor-base test) | H | [counts] [done] | #189 |
 | C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [done] | #191 |
@@ -63,14 +63,14 @@ marks a ticket with an open PR.
 | C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decided] | #200 |
 | C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [6.7.0] | #201 |
 | C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
-| C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] | #207 |
+| C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] [in review] | #207 |
 | C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] [6.7.0] | #208 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
 | R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
 | R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] [6.7.0] | #198 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | [6.7.0] | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] [6.7.0] | #180 |
-| O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | | #183 |
+| O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | [decided] [in review] | #183 |
 | O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | | #186 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] [done] | #114 |
@@ -1675,6 +1675,32 @@ prototype is measured. Evidence: the census agrees on every synthetic shape; 105
 changed DNA/WES rows: REF develop 60,619, rule 57,218, census 57,199; FORTE rows:
 every row moves no more reads than its census "contradicts both" count. C25
 changed nothing on real data.
+
+**Group 1 as built (2026-10-02): what a read contributes.** RJ-10 to RJ-13
+(branch `feature/g1-read-inputs`).
+- C19: records without base qualities are dropped and warned; the consensus
+  margin saturates. O7: unmapped records are dropped; mates of unmapped reads and
+  mapped MAPQ-0 alignments still count. C29: `find_read_pos` for the anchor.
+- C17 took three builds, each measured:
+  - soft-clip plus masked qualities: an adversarial review found masked adapter
+    filling complex windows as matches (false ALT), and RF pairs losing bases;
+  - hard clip at the TLEN boundary, inward pairs only: the FLT3 ITD lost 13 ALT
+    reads, because TLEN, a reference distance, leaves out inserted bases (the
+    census agreed, since it shares the rule);
+  - final (operator): clip only adapter-like bases (soft-clipped, or at most two
+    aligned past the boundary, none inserted). One aligned base past the boundary
+    mismatches the reference 75%, three 9%, ten or more 0.7%.
+- Measured (develop vs final, every MAF cell; default MAPQ and `--min-mapq 0`):
+  182 rows (ALT −57, REF −81), 184 at MAPQ 0. Every row is attributed to
+  read-through reads. SNV rows equal the census; indel rows move toward it. All
+  57 lost ALT reads had their ALT on a removed overhang; the first base past the
+  boundary is the adapter's A in 97% of clipped reads. PMS2 keeps its MAPQ-0
+  reads. Watchlist: base, the hard-clip build and the final build recorded.
+- Known limit (second review): soft-clipped bases past a TLEN that understates
+  the molecule (mate's 5' end clipped) are clipped as adapter. No count moved on
+  real data (only complex/MNP windows read clips); 203 of 1,782 such reads had a
+  mate 5' clip. Fix belongs with C15/C7 in 6.7.0: measure from the mate's
+  unclipped 5' end via the MC tag, as fgbio does.
 
 ## Triage (2026-09-30, operator)
 
