@@ -65,6 +65,7 @@ marks a ticket with an open PR.
 | C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
 | C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] [in review] | #207 |
 | C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] [6.7.0] | #208 |
+| C31 | Measure the fragment end from the mate's unclipped 5' end (MC tag), so a mate's clipped 5' end does not clip molecule bases as adapter | L | [counts] [6.7.0] | #212 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
 | R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
 | R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] [6.7.0] | #198 |
@@ -1699,7 +1700,7 @@ changed nothing on real data.
 - Known limit (second review): soft-clipped bases past a TLEN that understates
   the molecule (mate's 5' end clipped) are clipped as adapter. No count moved on
   real data (only complex/MNP windows read clips); 203 of 1,782 such reads had a
-  mate 5' clip. Fix belongs with C15/C7 in 6.7.0: measure from the mate's
+  mate 5' clip. Filed as C31 #212 (6.7.0, with C15/C7): measure from the mate's
   unclipped 5' end via the MC tag, as fgbio does.
 
 ## Triage (2026-09-30, operator)
