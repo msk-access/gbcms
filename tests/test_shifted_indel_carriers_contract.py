@@ -324,5 +324,6 @@ def test_a_deletion_after_a_splice_over_the_anchor_is_not_alt(tmp_path, ref, alt
 def test_another_deletion_inside_a_deletions_span_is_not_alt(tmp_path, ref, n, start):
     """A unique deletion, but the carriers delete a different stretch of its length
     starting inside it: another haplotype, never ALT (a deletion slides over its
-    shift region only up to its last placement)."""
-    assert _count(tmp_path, ref, ref[A : A + n + 1], ref[A], A + start, "D", n) == (10, 0, 0)
+    shift region only up to its last placement). Their deletion lies inside the
+    window, so they are not REF either: partial evidence (C26, operator 2026-10-01)."""
+    assert _count(tmp_path, ref, ref[A : A + n + 1], ref[A], A + start, "D", n) == (5, 0, 5)

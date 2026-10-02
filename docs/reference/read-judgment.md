@@ -46,16 +46,22 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-4 | Complex variants (delins, anchor-changing indels, MNP reads with an indel at the block) count exact carriers: the read's bases across the whole event with two flank bases; long events by junction windows. | C1 #141 |
 | RJ-5 | A REF read that is ALT for a co-annotated sibling whose event lies inside this row's discrimination window is not REF here (partial evidence), for reads and fragments alike. | C2 #119 |
 | RJ-6 | Wrong-length pure indels are another allele (partial evidence); deletions of 50bp or more match within a 3-base band. | #91 |
+| RJ-7 | A read with another insertion or deletion inside the discrimination window (not the ALT at another placement) is not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel. | C26 #200, operator 2026-10-01 |
+| RJ-8 | Another insertion or deletion outside the window, of any length, is a separate event: the read is REF where its bases across the window are REF, with no partial evidence. | C26 #200, operator 2026-10-01 |
+| RJ-9 | A long complex event's junction windows are read on inward as far as the read reaches; a read whose later bases contradict an allele is not that allele. A read ending inside the event is judged by the bases it has (one base-identical to REF counts REF). | C25 #199, operator 2026-10-01 |
 
 ### Open
 
 | ID | Question | Today | Proposal | Evidence |
 |:--|:--|:--|:--|:--|
-| C26-in | A read with **another indel inside the discrimination window** (not the ALT at another placement). | REF | Not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel. | Census: every such shape contradicts both alleles. Real data (105 DNA/WES rows): REF develop 60,619, proposal 57,218, census 57,199. |
-| C26-out | A read with **another indel outside the window**, any length. | REF (most rows); REF withdrawn or REF + partial in some. | A separate event: REF where the read's bases across the window are REF; no partial evidence. | Census: REF on every such shape. An RC 6bp deletion regains 10 REF reads. |
-| C25 | A **long complex event**'s reads holding one junction. | Decided by that junction's short window. | Read the junction windows inward as far as the read reaches. | Fixes false ALT (substitution-only reads reaching the run end) and false REF (anchor-keeping reads with a length change). No change on RC, FORTE or WES. |
-| C27 | **The ALT written across several ops** (a deletion split in two). | Partial | ALT (its bases hold the ALT). | Census: ALT on every such shape. |
-| C28 | **A read deleting the anchor.** | Phase 3's closer haplotype: ALT or REF. | Judged by its bases: neither unless they hold an allele. | Census: contradicts both on every such shape. |
+| C27 | **The ALT written across several ops** (a deletion split in two). | Partial | ALT (its bases hold the ALT). Adopted in principle (operator, 2026-10-01); lands after a prototype is measured. | Census: ALT on every such shape. |
+| C28 | **A read deleting the anchor.** | Phase 3's closer haplotype: ALT or REF. | Judged by its bases: neither unless they hold an allele. Adopted in principle (operator, 2026-10-01); lands after a prototype is measured. | Census: contradicts both on every such shape. |
+
+Evidence behind RJ-7 to RJ-9 (2026-10-01): on 105 changed DNA and WES rows the
+read census counts 57,199 REF reads; develop counted 60,619 and the decided rules
+57,218. The largest moves are deep slippage loci (a BRCA2 cluster where an
+unannotated 1bp deletion in an A run sits inside two annotated rows' windows; a
+T run). RJ-9 changed no row on RC, FORTE or WES.
 
 ## The cases
 
@@ -69,9 +75,9 @@ and at anchor-changing events before an A run.
 | Carriers | exact carrier; the ALT at another placement in the tract | decided (RJ-2) |
 | Complex, whole windows | REF, substitution only, anchor kept with a length change, exact carrier; ending inside the run, on the base after it, past it (10-A run) | decided (RJ-4) |
 | Siblings | a co-annotated SNV inside the span; outside the window | decided (RJ-5) |
-| Other indels inside the window | D1 or I1 near the anchor, D2 after it | open (C26-in) |
-| Other indels outside the window | D1, D5 or I1 past the tract; a carrier with one | open (C26-out) |
-| Complex, long events | the same read haplotypes before a 60-A run | open (C25) |
+| Other indels inside the window | D1 or I1 near the anchor, D2 after it | decided (RJ-7) |
+| Other indels outside the window | D1, D5 or I1 past the tract; a carrier with one | decided (RJ-8) |
+| Complex, long events | the same read haplotypes before a 60-A run | decided (RJ-9) |
 | The ALT across ops | a deletion written as two | open (C27) |
 | Anchor deleted | the anchor deleted, with or without an insertion | open (C28) |
 
