@@ -722,6 +722,15 @@
 <nav aria-label="[Unreleased]" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#changed-code-quality-sweep-logging-monitoring-dead-code-duplication-204">
+<span class="md-ellipsis">
+      
+        Changed — code-quality sweep: logging, monitoring, dead code, duplication (#204)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#changed-observe_molecules-requires-a-reference-fasta-204-breaking">
 <span class="md-ellipsis">
       
@@ -2506,6 +2515,56 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-code-quality-sweep-logging-monitoring-dead-code-duplication-204">Changed — code-quality sweep: logging, monitoring, dead code, duplication (#204)<a class="headerlink" href="#changed-code-quality-sweep-logging-monitoring-dead-code-duplication-204" title="Permanent link">¶</a></h3>
+<p>Counts are unchanged on prepared input: 144 of 144 acceptance files (RC DNA,
+FORTE RNA, WES) are byte-identical to the previous build, every <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> cell compared.
+- <strong>Logging.</strong>
+  - Per-read WARN and DEBUG lines move to trace.
+  - Rows the engine can only judge degraded are warned once per counting pass,
+    with their count: indels and complex variants without a prepared reference
+    context, MNPs whose REF equals ALT, and rows with an empty allele.
+  - The exact-carrier fallback warning names its reason.
+  - Misleading texts are corrected; for example, an exact-length deletion is
+    no longer called "wrong-length".
+  - Per-read traces name their read; the Phase stats line is 1-based.
+  - Every decision path has a named trace: why an ALT call is kept, and each
+    route to the exact-carrier rule.
+- <strong>Monitoring</strong> (no new columns).
+  - Each read's <code>read call</code> trace names the rule that decided it (<code>rule=</code>).
+  - The Phase stats line counts these rules per variant: reads withdrawn as
+    uninformative, ALT kept by its bases, exact-carrier judged or fell back,
+    sibling-guard exclusions and clip admissions.
+  - One INFO line per counting pass gives the totals.
+  - Prep counts what it could not fetch in full (capped or missing shift
+    regions, missing or short event references, missing reference contexts,
+    capped left-alignments) and warns once when any occurred.
+- <strong>API.</strong>
+  - <code>prepare_variants</code> takes <code>rescue_homopolymer</code> (default off). It builds the
+    homopolymer twin only when the twin will be counted; the pipeline and
+    <code>observe_molecules</code> pass the flag.
+  - <code>BaseCounts.singleton_alt_count</code> and <code>duplex_alt_count</code> are removed. Nothing
+    ever wrote them; they were always 0.
+  - <code>Variant.shift_region</code> and <code>event_ref</code> are read-only from Python.
+  - A row with an empty allele counts neither and is warned once per pass; no
+    read can carry an empty allele. Prep fails such rows, so pipeline counts are
+    unchanged. Two places did see them:
+    - <code>observe_molecules</code>, which passes FAIL rows through to keep rows
+      positional: such a row's molecules are now OTHER (with an empty ALT they
+      counted REF);
+    - unprepared rows passed straight to the engine, which could reach the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>
+      check, where <code>len - 1</code> underflowed.
+- <strong>Dead code and duplication.</strong>
+  - Unused parameters, branches and setters are removed.
+  - Observations and <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> share one molecule classifier.
+  - Six reference-end <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> walks, the soft-clip rule, the scan pad and read
+    window, the read loops' quality, scoring and molecule-key code, and the
+    insertion and deletion checks' end-of-walk resolution each have one helper.
+  - The large-deletion band's literals are named constants.
+  - One allele-kind classification (SNV, <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, insertion, deletion, complex)
+    drives the dispatcher, splice triage's span, the exact-carrier rule's scope
+    and prep's variant-type label, which each spelled out the same rule.
+- <strong>Comments.</strong> Stale comments are corrected, and ticket labels are removed
+  from code comments and log text.</p>
 <h3 id="changed-observe_molecules-requires-a-reference-fasta-204-breaking">Changed — <code>observe_molecules</code> requires a reference <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr> (#204) — breaking<a class="headerlink" href="#changed-observe_molecules-requires-a-reference-fasta-204-breaking" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>observe_molecules()</code> takes <code>reference_fasta</code> from the argument or from <code>config</code>.
