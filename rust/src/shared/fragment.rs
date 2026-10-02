@@ -533,6 +533,21 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "C19 #182: red until the consensus margin cannot overflow"]
+    fn resolve_compares_qualities_without_overflow() {
+        // A quality of 255 (absent qualities read as 0xFF) plus the margin used to
+        // overflow u8: a panic in debug builds, a wrapped margin in release.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 255, true, true, 200, false, false, 60, true);
+        ev.observe(false, true, 255, false, false, 200, false, false, 60, true);
+        assert_eq!(ev.resolve(10), (false, false), "equal qualities: within the margin");
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 30, true, true, 200, false, false, 60, true);
+        ev.observe(false, true, 255, false, false, 200, false, false, 60, true);
+        assert_eq!(ev.resolve(10), (false, true), "255 beats 30 by more than the margin");
+    }
+
+    #[test]
     fn resolve_no_evidence_returns_neither() {
         // No evidence at all → neither. Should not normally happen
         // (filtered upstream), but the function handles it gracefully.

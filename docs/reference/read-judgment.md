@@ -52,16 +52,15 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-7 | A read with another insertion or deletion inside the discrimination window (not the ALT at another placement) is not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel. | C26 #200, operator 2026-10-01 |
 | RJ-8 | Another insertion or deletion outside the window, of any length, is a separate event: the read is REF where its bases across the window are REF, with no partial evidence. | C26 #200, operator 2026-10-01 |
 | RJ-9 | A long complex event's junction windows are read on inward as far as the read reaches; a read whose later bases contradict an allele is not that allele. A read ending inside the event is judged by the bases it has (one base-identical to REF counts REF). | C25 #199, operator 2026-10-01 |
+| RJ-10 | A read ends at its fragment end: bases past it (read-through into adapter, insert shorter than the read) are neither bases nor reach, in every read and rule (soft-clipped and masked before classification), the census included. | C17 #176, operator 2026-10-02 |
+| RJ-11 | A record with absent base qualities (QUAL `*`, stored as 0xFF) is dropped by the read filter and warned once per BAM, as a record without bases is. | C19 #182, operator 2026-10-02 |
+| RJ-12 | An unmapped record (flag 0x4) is not an alignment: dropped by the read filter. A mapped read whose mate is unmapped still counts, and mapped MAPQ-0 alignments stay countable (`--min-mapq 0`, pseudogene loci such as PMS2). | O7 #183, operator 2026-10-02 |
+| RJ-13 | Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0. | C15 #173, C7 #144, C18 #177, operator 2026-10-02 |
 
 ### Open
 
 | ID | Question | Today | Proposal | Evidence |
 |:--|:--|:--|:--|:--|
-| G1-QUAL | **Absent base qualities** (QUAL `*`; BAM stores 0xFF, read as 255). | The base votes as Q255, passing every quality gate; fragment consensus overflows. | Unknown, like a masked base (the SAM spec: quality "not stored"); fix the overflow. | None in RC, FORTE or WES (survey). C19 #182. |
-| G1-ADAPTER | **Bases past the fragment end** (read-through into adapter, insert shorter than the read). | Counted as the read's own. | Masked in every read and rule, the census included (GATK clips at the same boundary). | 1,197 reads at 384 rows over all harness data (0.03% of reads). C17 #176. |
-| G1-HARD | **Hard clips** in the previous complex classifier's query walk. | Hard-clipped bases shift its query offsets: wrong anchor quality. | Hard-clipped bases are not in SEQ: never offset. | No hard-clipped admitted read in the harness data. C29 #207. |
-| G1-UNMAPPED | **Unmapped records** placed at their mate's position. | Counted in `mq0_count`. | Not an alignment: dropped by the read filter. | 61 records at 27 rows. O7 #183. |
-| G1-CLIPS (6.7.0 policy) | **Soft-clipped bases** inside the fragment (C15 #173, C7 #144) and **split reads** (C18 #177). | Clipped carriers admitted for complex/MNP in DNA only; supplementaries filtered. | To decide with group 1: clipped bases inside the fragment are the read's bases; RNA exon-edge clips excluded until measured; split reads join their molecule. | Built in 6.7.0. |
 | C27 | **The ALT written across several ops** (a deletion split in two). | Partial | ALT (its bases hold the ALT). Adopted in principle (operator, 2026-10-01); lands after a prototype is measured. | Census: ALT on every such shape. |
 | C28 | **A read deleting the anchor.** | Phase 3's closer haplotype: ALT or REF. | Judged by its bases: neither unless they hold an allele. Adopted in principle (operator, 2026-10-01); lands after a prototype is measured. | Census: contradicts both on every such shape. |
 
@@ -70,6 +69,21 @@ read census counts 57,199 REF reads; develop counted 60,619 and the decided rule
 57,218. The largest moves are deep slippage loci (a BRCA2 cluster where an
 unannotated 1bp deletion in an A run sits inside two annotated rows' windows; a
 T run). RJ-9 changed no row on RC, FORTE or WES.
+
+Evidence behind RJ-10 to RJ-13 (2026-10-02). A survey of every harness input
+(RC DNA, FORTE, WES) found 1,197 reads with event bases past their fragment end
+at 384 rows (0.03% of reads), 61 unmapped records placed on events (27 rows), and
+no records with absent qualities or hard-clipped admitted reads. Masking adapter
+bases alone (measured: 244 rows, ALT −63, REF −128) left reach: a read whose
+molecule ends inside a repeat still counted REF on its adapter, hence RJ-10 clips.
+At `--min-mapq 0` an unmapped mate carrying a CIGAR counted as an ALT read. Other
+tools: GATK hard-clips adapter at the insert-size boundary and drops reads whose
+bases and qualities differ in length (WellformedReadFilter) and unmapped reads
+(MappedReadFilter); fgbio ClipBam clips bases past the mate (soft, soft with
+mask, or hard); samtools and bcftools mpileup always discard unmapped reads, null
+overlapping mates' duplicate bases by quality 0, and bcftools caps base quality at
+max-BQ; bam-readcount filters nothing by default; VarDict, Strelka2, freebayes,
+LoFreq and GetBaseCounts document none of these cases.
 
 ## The cases
 
@@ -87,7 +101,7 @@ and at anchor-changing events before an A run.
 | Other indels outside the window | D1, D5 or I1 past the tract; a carrier with one | decided (RJ-8) |
 | Complex, long events | the same read haplotypes before a 60-A run | decided (RJ-9) |
 | The ALT across ops | a deletion written as two | open (C27) |
-| Read inputs | read-through adapter base on an SNV (ALT, REF); absent qualities; a hard-clipped read at the previous complex classifier (with an unclipped control) | open (group 1) |
+| Read inputs | read-through adapter base on an SNV (ALT, REF); absent qualities; a hard-clipped read at the previous complex classifier (with an unclipped control) | decided (RJ-10, RJ-11; C29 #207 is a bug fix) |
 | Anchor deleted | the anchor deleted, with or without an insertion | open (C28) |
 
 Run `python tests/read_judgment_cases.py` for the full table: every case's call,
