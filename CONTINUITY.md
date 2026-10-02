@@ -79,6 +79,11 @@ Follow-ups filed:
 - C30 #208 (6.7.0): two pure-indel tests disagree with the allele kind on
   lowercase or unprepared input.
 
+**In progress — C25 #199 + C26 #200 (read judgment):** branch
+`feature/c25-c26-read-judgment`, not yet pushed. Decided spec-first from
+`docs/reference/read-judgment.md` (RJ-7, RJ-8, RJ-9; C27/C28 adopted in
+principle, measure first). Harness `~/test/gbcms/harness/c2526/` (local).
+
 **Triage (2026-09-30):** every open issue was gone through by cluster with the
 operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
 moved to a new 6.7.0 milestone (each with its reason on the issue); C5 and P2
