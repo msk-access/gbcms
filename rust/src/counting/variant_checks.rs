@@ -1186,37 +1186,11 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
                         | rust_htslib::bam::record::Cigar::Diff(len) => {
                             let block_end = rpos + *len as i64;
                             if anchor_pos >= rpos && anchor_pos < block_end {
-                                // Compute read position for this anchor
-                                let qp = {
-                                    let mut q_off = 0usize;
-                                    let mut r_off = record.pos();
-                                    for op2 in record.cigar().iter() {
-                                        match op2 {
-                                            rust_htslib::bam::record::Cigar::Match(l)
-                                            | rust_htslib::bam::record::Cigar::Equal(l)
-                                            | rust_htslib::bam::record::Cigar::Diff(l) => {
-                                                if anchor_pos >= r_off && anchor_pos < r_off + *l as i64 {
-                                                    q_off += (anchor_pos - r_off) as usize;
-                                                    break;
-                                                }
-                                                r_off += *l as i64;
-                                                q_off += *l as usize;
-                                            }
-                                            rust_htslib::bam::record::Cigar::Del(l)
-                                            | rust_htslib::bam::record::Cigar::RefSkip(l) => {
-                                                r_off += *l as i64;
-                                            }
-                                            rust_htslib::bam::record::Cigar::Ins(l)
-                                            | rust_htslib::bam::record::Cigar::SoftClip(l)
-                                            | rust_htslib::bam::record::Cigar::HardClip(l) => {
-                                                q_off += *l as usize;
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                    q_off
-                                };
-                                let qual_val = quals.get(qp).copied().unwrap_or(0);
+                                // The anchor's query position: hard-clipped bases are not
+                                // in SEQ, so they never offset it (find_read_pos).
+                                let qual_val = find_read_pos(record, anchor_pos)
+                                    .and_then(|qp| quals.get(qp).copied())
+                                    .unwrap_or(0);
                                 if qual_val >= min_baseq {
                                     anchor_qual = Some(qual_val);
                                 }

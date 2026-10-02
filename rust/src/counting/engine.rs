@@ -41,7 +41,7 @@ use rayon::prelude::*;
 /// What one genomic bin produces: `(vi, counts)` pairs, the per-molecule rows for
 /// those variants (empty unless observations were requested), and how many fetched
 /// records the read filter dropped for having no bases (warned once per BAM).
-type BinOutput = (Vec<(usize, BaseCounts)>, Vec<Observation>, u64);
+type BinOutput = (Vec<(usize, BaseCounts)>, Vec<Observation>, (u64, u64));
 
 use anyhow::{Context, Result};
 use log::{debug, info, trace, warn};
@@ -724,11 +724,12 @@ fn count_bam_binned_core(
                 // sort below fixes comes from `HashMap` iteration *within* a variant, not
                 // from here.)
                 .try_reduce(
-                    || (Vec::new(), Vec::new(), 0),
+                    || (Vec::new(), Vec::new(), (0, 0)),
                     |mut acc: BinOutput, batch| {
                         acc.0.extend(batch.0);
                         acc.1.extend(batch.1);
-                        acc.2 += batch.2;
+                        acc.2 .0 += batch.2 .0;
+                        acc.2 .1 += batch.2 .1;
                         Ok(acc)
                     },
                 )
@@ -737,7 +738,7 @@ fn count_bam_binned_core(
 
     // Scatter results back to variant-order array
     match bin_results {
-        Ok((pairs, mut observations, no_bases)) => {
+        Ok((pairs, mut observations, (no_bases, no_quals))) => {
             for (vi, counts) in pairs {
                 all_counts[vi] = counts;
             }
@@ -768,6 +769,14 @@ fn count_bam_binned_core(
                      a record fetched by overlapping bins counts once per bin); they show no \
                      allele and are not counted",
                     bam_label, no_bases,
+                );
+            }
+            if no_quals > 0 {
+                warn!(
+                    "{}: skipped {} record(s) stored without base qualities (QUAL '*') (an upper \
+                     bound: a record fetched by overlapping bins counts once per bin); their bases \
+                     have no stated quality and are not counted",
+                    bam_label, no_quals,
                 );
             }
 
@@ -1130,16 +1139,22 @@ fn count_bin_shared(
             continue;
         }
 
+        // A read ends at its fragment end: read-through bases past it are adapter,
+        // soft-clipped and masked here so that no rule sees them as bases or reach.
+        let Some(record) = crate::shared::bam_utils::clip_to_fragment(record) else {
+            trace!("clip_to_fragment: no aligned base inside the fragment");
+            continue;
+        };
         read_cache.push(record);
     }
 
     debug!(
-        "Bin tid={} {}-{}: {} reads cached ({} filtered: dup={} sec={} supp={} qc={} pair={} indel={} no_bases={} mapq={})",
+        "Bin tid={} {}-{}: {} reads cached ({} filtered: dup={} sec={} supp={} qc={} pair={} indel={} no_bases={} unmapped={} no_quals={} mapq={})",
         bin.tid, bin.start, bin.end, read_cache.len(),
         filter_counts.total() + mapq_filtered,
         filter_counts.duplicates, filter_counts.secondary, filter_counts.supplementary,
         filter_counts.qc_failed, filter_counts.improper_pair, filter_counts.indel,
-        filter_counts.no_bases, mapq_filtered,
+        filter_counts.no_bases, filter_counts.unmapped, filter_counts.no_quals, mapq_filtered,
     );
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1269,7 +1284,7 @@ fn count_bin_shared(
         results.push((vi, final_counts));
     }
 
-    Ok((results, bin_observations, filter_counts.no_bases))
+    Ok((results, bin_observations, (filter_counts.no_bases, filter_counts.no_quals)))
 }
 
 
@@ -4691,7 +4706,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "C29 #207: red until the previous complex classifier skips hard clips"]
     fn test_complex_anchor_quality_skips_a_leading_hard_clip() {
         // A REF read over a long deletion-direction complex allele (100 REF bases
         // replaced by one), ending 8 bases past the anchor: too little of the REF

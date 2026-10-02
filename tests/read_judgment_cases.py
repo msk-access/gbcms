@@ -358,7 +358,7 @@ DECISIONS = {
     "C27 the ALT across ops": "open (adopted in principle: ALT; measure first): C27 #201",
     "C28 anchor deleted": "open (adopted in principle: judged by bases; measure first): C28 #202",
     "C25 long events": "decided: junction windows read on through the read (C25 #199)",
-    "read inputs": "open: group 1, what a read contributes (C17 #176, C19 #182, C29 #207)",
+    "read inputs": "decided: a read contributes its molecule's bases, with qualities (C17 #176, C19 #182; C29 #207 a fix)",
 }
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
@@ -498,11 +498,11 @@ EXPECT = {
     "CA>T run60 | exact carrier, ends past the run": (0, 4, 0),
     "u-8 | sibling SNV inside the span": (0, 0, 4),
     "u-8 | sibling SNV outside the window": (4, 0, 0),
-    "read inputs | absent base qualities (QUAL '*'), showing the ALT": (0, 4, 0),
+    "read inputs | absent base qualities (QUAL '*'), showing the ALT": (0, 0, 0),
     "read inputs | previous complex classifier: REF read with a leading hard clip": (4, 0, 0),
     "read inputs | previous complex classifier: REF read, no clip": (4, 0, 0),
-    "read inputs | read-through: the base on the SNV is adapter, showing REF": (4, 0, 0),
-    "read inputs | read-through: the base on the SNV is adapter, showing the ALT": (0, 4, 0),
+    "read inputs | read-through: the base on the SNV is adapter, showing REF": (0, 0, 0),
+    "read inputs | read-through: the base on the SNV is adapter, showing the ALT": (0, 0, 0),
 }
 
 

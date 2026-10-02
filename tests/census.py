@@ -22,6 +22,9 @@ How a read is judged:
 - **Splices:** reading stops at a splice N, as if the read ended there.
 - **Soft clips:** for a pure indel, reading stops at a clip (the rule reads aligned
   bases only); for other variants clipped bases are read where they sit.
+- **Fragment end:** a read ends at its fragment end. Bases past it (read-through
+  into adapter, when the insert is shorter than the read) are not read, and the
+  read's extent stops at its last aligned base inside the fragment.
 
 The tract is the census's own slide of the indel along the reference, not prep's
 `shift_region`, so a prep error cannot move the census with it.
@@ -246,6 +249,47 @@ def _splices(read) -> list[tuple[int, int, int]]:
     return out
 
 
+def fragment_span(read) -> tuple[int, int] | None:
+    """Query offsets `[lo, hi)` inside the read's fragment, when the fragment is
+    well defined: paired, mate mapped on the same contig in the opposite
+    orientation, TLEN set. TLEN runs from the forward read's 5' end to the reverse
+    read's 5' end, so a forward read keeps its bases up to the last aligned one
+    before the fragment end and a reverse read from the first aligned one at or
+    after the fragment start (an insertion beside the boundary lies outside). Past
+    an aligned end the boundary falls in the soft clip, base for base."""
+    if (
+        not read.is_paired
+        or read.mate_is_unmapped
+        or read.template_length == 0
+        or read.next_reference_id != read.reference_id
+        or read.is_reverse == read.mate_is_reverse
+    ):
+        return None
+    aligned = read.get_aligned_pairs(matches_only=True)
+    if not aligned:
+        return None
+    n, tlen = len(read.query_sequence), abs(read.template_length)
+    start, end = read.reference_start, read.reference_end
+    first_q, after_q = aligned[0][0], aligned[-1][0] + 1
+    if not read.is_reverse:
+        frag_end = start + tlen
+        if frag_end >= end:
+            return 0, min(after_q + frag_end - end, n)
+        return 0, max(q for q, r in aligned if r < frag_end) + 1
+    frag_start = end - tlen
+    if frag_start <= start:
+        return max(first_q - (start - frag_start), 0), n
+    return min(q for q, r in aligned if r >= frag_start), n
+
+
+def _molecule(read) -> tuple[int, int, dict[int, int]]:
+    """The read's query offsets inside its fragment `[lo, hi)` and its aligned
+    pairs there, reference to query."""
+    lo, hi = fragment_span(read) or (0, len(read.query_sequence))
+    pairs = {r: q for q, r in read.get_aligned_pairs(matches_only=True) if lo <= q < hi}
+    return lo, hi, pairs
+
+
 def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
     seq = read.query_sequence
     if not seq:
@@ -254,7 +298,7 @@ def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
     bases = "".join(
         "N" if quals is not None and quals[i] < min_baseq else b for i, b in enumerate(seq.upper())
     )
-    pairs = {r: q for q, r in read.get_aligned_pairs(matches_only=True)}
+    frag_lo, frag_hi, pairs = _molecule(read)
     splices = _splices(read)
     stops = [q for q, _, _ in splices]
     ql, qr = pairs.get(window.left), pairs.get(window.right)
@@ -274,6 +318,7 @@ def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
     # A pure indel's rules do not read soft-clipped bases (an aligner's clip of a
     # pure indel's carrier is the clip-borne-carrier work, not this rule's).
     lead, trail = _clips(read) if window.indel else (0, len(bases))
+    lead, trail = max(lead, frag_lo), min(trail, frag_hi)
 
     def from_left():
         end = min([q for q in stops if q > ql] + [trail])
@@ -316,15 +361,17 @@ def census(
     min_baseq: int = 20,
     skip_flags: int = SKIP_FLAGS,
 ) -> Census:
-    """Judge every admitted read overlapping the variant's anchor base (the reads
-    whose depth the engine reports), keyed by (name, mate)."""
+    """Judge every admitted read whose extent inside its fragment overlaps the
+    variant's anchor base (the reads whose depth the engine reports), keyed by
+    (name, mate)."""
     window = window_for(variant, contig)
     result = Census(window)
     with pysam.AlignmentFile(bam_path) as fh:
         for read in fh.fetch(variant.chrom, variant.pos, variant.pos + 1):
             if read.flag & skip_flags or read.mapping_quality < min_mapq or not read.query_sequence:
                 continue
-            if not (read.reference_start <= variant.pos < read.reference_end):
+            _, _, pairs = _molecule(read)
+            if not pairs or not (min(pairs) <= variant.pos <= max(pairs)):
                 continue
             mate = 2 if read.is_read2 else 1
             result.verdicts[(read.query_name, mate)] = judge(read, window, min_baseq)

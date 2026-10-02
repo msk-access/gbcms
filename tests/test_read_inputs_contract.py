@@ -8,13 +8,12 @@
   count (mq0_count included), also at --min-mapq 0. A mapped MAPQ-0 alignment
   still counts there (pseudogene loci such as PMS2 are run at --min-mapq 0).
 
-Committed red (xfail-strict) before the fixes. See docs/reference/read-judgment.md.
+Committed red (xfail-strict) before the fixes; see docs/reference/read-judgment.md.
 """
 
 import logging
 import random
 
-import pytest
 from census import census
 from helpers import make_read, write_contig
 
@@ -57,7 +56,6 @@ def _pair(name, contig, s, frag_end, r1_seq=None):
 # ── RJ-10: a read ends at its fragment end ─────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="C17 #176: adapter bases past the fragment end count")
 def test_an_adapter_base_on_an_snv_is_not_the_reads(tmp_path):
     """R1 reads 50 bases past its fragment's end, onto the SNV: those bases are
     adapter, so R1 neither shows an allele there nor reaches the SNV (depth)."""
@@ -73,9 +71,6 @@ def test_an_adapter_base_on_an_snv_is_not_the_reads(tmp_path):
     assert (c.dp, c.rd, c.ad) == (0, 0, 0)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C17 #176: adapter bases past the fragment end count as reach"
-)
 def test_a_molecule_ending_inside_the_run_is_not_ref_on_its_adapter(tmp_path):
     """GA>G in G A*5 T. The molecule ends inside the run (A+3); R1's adapter bases
     align on past it. Its molecule cannot tell the alleles apart: depth only, as
@@ -106,7 +101,6 @@ def test_a_molecule_spanning_the_run_is_ref(tmp_path):
 # ── RJ-11: absent base qualities ───────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="C19 #182: absent base qualities vote as Q255")
 def test_a_record_with_absent_qualities_is_dropped_and_warned(tmp_path, caplog):
     contig = _contig("GCT")
     reads = []
@@ -145,14 +139,12 @@ def _snv_with_unmapped_mate(tmp_path, name, mapq0_read=False):
     return bam, _rs.Variant("1", A + 1, contig[A + 1], "A", "SNP")
 
 
-@pytest.mark.xfail(strict=True, reason="O7 #183: an unmapped mate counts in mq0_count")
 def test_an_unmapped_mate_counts_nowhere(tmp_path):
     bam, v = _snv_with_unmapped_mate(tmp_path, "um")
     c = _count(bam, v)
     assert (c.dp, c.rd, c.ad, c.mq0_count) == (10, 10, 0, 0)
 
 
-@pytest.mark.xfail(strict=True, reason="O7 #183: at --min-mapq 0 an unmapped mate counts as a read")
 def test_an_unmapped_mate_counts_nowhere_at_mapq0(tmp_path):
     bam, v = _snv_with_unmapped_mate(tmp_path, "um0")
     c = _count(bam, v, min_mapq=0)

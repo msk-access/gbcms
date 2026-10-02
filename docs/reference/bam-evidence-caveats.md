@@ -43,7 +43,7 @@ caveat in gbcms's output.
 | Reference bias: ALT reads map worse, clip, or go unmapped | Counts what maps | Proposed (diagnostic) | O5 #179 |
 | Alt contigs and decoys split coverage | Contig naming handled | Proposed (warn) | O2 #131 |
 | Base-quality calibration: binned, BQSR, BAQ | One masking rule; BAQ spares the variant's own indel | Decided (done); warn on bins | O2 #131 |
-| Adapter read-through | Masked only for clipped-carrier admission | Proposed (every read) | C17 #176 |
+| Adapter read-through | Clipped at the fragment end in every read | Decided (done) | C17 #176 |
 | Stutter in repeats | Counted exactly; named by a diagnostic | Decided (done) | — |
 | OxoG / FFPE orientation artifacts | Strand counts only | To measure (decide) | O6 #180 |
 | Unmarked duplicates; UMI consensus N's | Duplicate flag honoured; N masked | Proposed (warn) | O2 #131 |
@@ -176,10 +176,13 @@ caveat in gbcms's output.
 ### Adapter read-through
 - **In the BAM:** when the fragment is shorter than the read, bases past the mate's
   5' end are adapter.
-- **gbcms now:** those bases are masked only when admitting a clipped carrier.
-- **Should do:** proposed. Mask them in every read (C17 #176).
-- **Community:** GATK checks for a well-defined fragment before trusting clipped
-  bases. Adapter trimming upstream (fastp, cutadapt) is common but not universal.
+- **gbcms now:** a read ends at its fragment end. Bases past it are soft-clipped
+  and masked as the read enters counting, so they are neither bases nor reach, in
+  every rule (RJ-10, C17 #176).
+- **Should do:** decided and done.
+- **Community:** GATK hard-clips adapter at the insert-size boundary; fgbio
+  ClipBam clips bases past the mate (`--clip-bases-past-mate`). Adapter trimming
+  upstream (fastp, cutadapt) is common but not universal.
 
 ### Stutter and polymerase slippage in repeats
 - **In the BAM:** reads with one repeat unit more or fewer than the molecule.
