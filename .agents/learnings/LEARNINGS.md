@@ -17,6 +17,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20261001-001] rule-body | a failing test's expectation is changed only with the operator's say
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** during H3 I edited existing test expectations as part of fixes
+  (three `test_shifted_indels` cases to depth-only, the C28 example, a census
+  assertion), explaining them only in commits and the CHANGELOG. The operator
+  asked to be told why before any test is modified, or to measure to understand.
+  The validation standard said "red-first" but nothing about changing existing
+  expectations, so the rule was missing.
+- **Promotion target:** `AGENTS.md` "Counting test invariants" — `DONE:` a line:
+  never edit an existing test's expectation to make it pass without telling the
+  operator what it asserted, why it is wrong, and the evidence, then waiting.
+  Memory `test-changes-need-operator-notice`.
+- **Related:** [[test-changes-need-operator-notice]].
+
 ## [LRN-20260928-001] rule-body | gbcms is a genotyper, not a caller; the BAM is not the truth
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

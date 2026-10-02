@@ -49,6 +49,9 @@ assert counts.dpf >= counts.rdf + counts.adf    # DPF includes discarded fragmen
 assert counts.rd == counts.rd_fwd + counts.rd_rev   # strand consistency
 assert counts.ad == counts.ad_fwd + counts.ad_rev
 ```
+**Never edit an existing test's expectation to make it pass** without first telling the
+operator what it asserted, why it is wrong, and the evidence — then wait. A failing test
+is a decision point (new tests, and removing the strict-xfail marker a fix targets, are fine).
 
 ## Before every commit (lint gate)
 ```bash
