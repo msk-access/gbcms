@@ -23,8 +23,6 @@ use bio::stats::pairhmm::{
 };
 use bio::stats::{LogProb, Prob};
 use log::trace;
-#[cfg(test)]
-use log::debug;
 
 use super::utils::{median_qual, ClassifyResult, ClassifyPhase, MIN_USABLE_BASES};
 
@@ -324,7 +322,7 @@ pub fn classify_by_pairhmm(
     let (ref_hap, alt_hap) = match build_haplotypes(variant) {
         Some(haps) => haps,
         None => {
-            debug!("classify_by_pairhmm: build_haplotypes failed for {}:{}",
+            trace!("classify_by_pairhmm: build_haplotypes failed for {}:{}",
                    variant.chrom, variant.pos + 1);
             return ClassifyResult::neither(ClassifyPhase::Alignment);
         }

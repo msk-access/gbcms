@@ -13,8 +13,10 @@ class Variant:
     ref_context_start: int
     repeat_span: int
     gene_strand: str | None
-    shift_region: tuple[int, int] | None
-    event_ref: tuple[int, str] | None
+    @property
+    def shift_region(self) -> tuple[int, int] | None: ...
+    @property
+    def event_ref(self) -> tuple[int, str] | None: ...
     # 0-based inclusive span the exon-boundary distance is measured over (None:
     # the variant's own REF span); MNP rescue sets it to the MNP's span.
     boundary_span: tuple[int, int] | None
@@ -103,8 +105,6 @@ class BaseCounts:
     mq0_count: int
     alt_dist_end_median: float
     ref_dist_end_median: float
-    singleton_alt_count: int
-    duplex_alt_count: int
     # Decomposed ALT counting (diagnostic, all variant types)
     # Invariant: any_alt = ad + partial_alt
     any_alt: int
@@ -142,10 +142,11 @@ class BaseCounts:
     observed_given_reads: int
     # GTF-informed annotation (None when no GTF)
     exon_boundary_dist: int | None
-    # P4b: Per-transcript counts (empty string when no GTF or no overlap)
+    # Per-transcript counts (empty string when no GTF or no overlap)
     transcript_read_counts: str
     transcript_fragment_counts: str
-    # P4c: ASJD fields (defaults: flag=False, pval/qval=0.0, strings="", bools=False, ints=0)
+    # ASJD fields (defaults: flag=False, strings="", bools=False, ints=0; pval/qval=0.0
+    # in DNA mode or without a GTF, 1.0 in RNA mode with a GTF and no junction reads)
     asjd_flag: bool
     asjd_pval: float
     asjd_qval: float
@@ -295,6 +296,7 @@ def prepare_variants(
     is_maf: bool,
     threads: int = 1,
     adaptive_context: bool = True,
+    rescue_homopolymer: bool = False,
 ) -> list[PreparedVariant]: ...
 def write_fsd_parquet(
     path: str,

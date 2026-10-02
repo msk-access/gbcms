@@ -56,16 +56,28 @@ test, `tests/test_binning_invariance.py`, and `count_checked` (production vs one
 variant per bin) in every counting test. A read census (`tests/census.py`) checks
 pure-indel classification; the open decisions C26/C27/C28 are strict xfails there.
 
-**In progress — H3 #204 PR A (count-affecting fixes):** branch
-`feature/h3-code-quality-sweep`, not yet pushed. The ALT read-by-bases rule reads
-clamped reference and from a flank the read reads (unmasked, the reference's);
-unjudged reads are depth only, counted and warned; `carrier::judges` shared by
-prep and dispatch; a reference is required (and must be a file) for
-`observe_molecules`; A>CCC uses the delins triage span; upper-case reference
-windows; deterministic mFSD. Acceptance (harness `~/test/gbcms/harness/h3/`,
-local): 140 of 144 files byte-identical; 4 rows adjudicated per read (plan H3
-"PR A as built"). Then PR B: refactors, dead code, logging, monitoring and
-comments, byte-identical to A.
+**Merged — H3 #204 PR A, #206 (count-affecting fixes):**
+- the ALT read-by-bases rule reads clamped reference, and reads from a flank the
+  read reads (unmasked, the reference's);
+- unjudged reads are depth only, counted and warned;
+- `carrier::judges` is shared by prep and dispatch;
+- `observe_molecules` requires a reference, which must be a file;
+- A>CCC uses the delins triage span;
+- reference windows are upper case, and mFSD is deterministic;
+- acceptance: 140 of 144 files byte-identical, 4 rows adjudicated per read.
+
+**In progress — H3 #204 PR B (refactors, dead code, logging, monitoring,
+comments):**
+- branch `feature/h3-pr-b-cleanup`, not yet pushed;
+- byte-identity acceptance against PR A's build: 144 of 144 files identical
+  (`~/test/gbcms/harness/h3/`, `accept.py h3c h3pb`);
+- an adversarial review plus a develop-vs-branch fuzz found no count change
+  beyond the declared ones (see the plan's H3 "PR B as built").
+
+Follow-ups filed:
+- C29 #207 (6.6.0): `check_complex`'s inline query walk counts hard clips;
+- C30 #208 (6.7.0): two pure-indel tests disagree with the allele kind on
+  lowercase or unprepared input.
 
 **Triage (2026-09-30):** every open issue was gone through by cluster with the
 operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
@@ -87,7 +99,7 @@ community practice before deciding; record the decision in the issue.
    oracle): design note first. Then a code-quality sweep of the cycle's code
    (duplication, unused code, silent failures, comments, logging, monitoring) as
    its own PR, H3 #204 (operator request, 2026-10-01).
-2. C25 #199 (moved into 6.6.0), C26 #200 (measure first, decide) and C28 #202 (measure first); C17 #176
+2. C25 #199 (moved into 6.6.0), C26 #200 (measure first, decide), C28 #202 (measure first) and C29 #207 (measure first); C17 #176
    (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
 3. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
    mkdocs pin, P3); O1+O2; S1+S2; M2+M4.

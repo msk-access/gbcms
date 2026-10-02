@@ -232,7 +232,7 @@ Step 3: corrected_alt = C × (ref_len - 1) + alt_last = CCCCC + T = CCCCCT
 
 ### Dual-Counting Flow
 
-The corrected variant is stored in `PreparedVariant.decomposed_variant`. During counting, **both** the original and corrected alleles are counted independently. The result with the higher `alt_count` wins:
+With `--rescue-homopolymer` (`prepare_variants(..., rescue_homopolymer=True)`), the corrected variant is stored in `PreparedVariant.decomposed_variant`; without it, prep builds no twin. During counting, **both** the original and corrected alleles are counted independently. The result with the higher `alt_count` wins:
 
 ```mermaid
 flowchart TD

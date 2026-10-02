@@ -790,3 +790,17 @@ def test_observing_without_a_reference_is_refused(tmp_path):
     for not_a_file in (Path(""), tmp_path, str(tmp_path)):
         with pytest.raises(ValueError, match="reference_fasta"):
             gbcms.observe_molecules(bam, [_py_variant()], reference_fasta=not_a_file)
+
+
+def test_a_row_with_an_empty_allele_is_exported_as_other(tmp_path):
+    """Rows stay positional, FAIL rows included. A row prep fails for an empty allele
+    shows no allele (no read can carry it), so its molecules are OTHER, never REF."""
+    import gbcms
+
+    bam = build_bam(tmp_path, [_read(f"r{i}", REF_BASE) for i in range(4)], filename="empty.bam")
+    result = gbcms.observe_molecules(
+        bam, [_py_variant(), _py_variant(ref="AA", alt="")], reference_fasta=_fasta(tmp_path)
+    )
+    assert result.variant_status[1] != "PASS"
+    alleles = Counter(o.allele for o in result.observations if o.variant_index == 1)
+    assert alleles and set(alleles) == {ALLELE_OTHER}, alleles

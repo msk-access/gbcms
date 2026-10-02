@@ -1,7 +1,8 @@
 //! Exact-carrier classification for complex variants.
 //!
-//! A complex variant (a delins, a deletion whose anchor also changes, or an MNP
-//! read with an indel in or right beside its block) is REF or ALT for a read only when the read's own
+//! A complex variant (a delins, a deletion whose anchor also changes, an
+//! insertion whose ALT changes the anchor such as C>TA, or an MNP read with an
+//! indel or clip at its block) is REF or ALT for a read only when the read's own
 //! bases carry that allele across the whole event, with [`FLANK`] reference bases
 //! on each side. The read's bases include soft clips; bases below min BQ (and N)
 //! match anything, the one quality rule every backend shares. Nothing else is
@@ -45,7 +46,9 @@
 
 use rust_htslib::bam::record::{Cigar, Record};
 
-use super::utils::{ClassifyPhase, ClassifyResult};
+use super::rna;
+use super::window::AlleleKind;
+use super::utils::{find_read_pos, median_qual, soft_clips, ClassifyPhase, ClassifyResult};
 use crate::types::Variant;
 
 /// Reference bases required on each side of the event.
@@ -129,10 +132,11 @@ struct Reading {
 
 /// Classify a read at a complex variant by the exact-carrier rule, or None when
 /// the rule cannot judge this variant: it needs both alleles non-empty and a
-/// reference (prep's `event_ref`, else the `ref_context`) holding the event, its
-/// flank and padding. Prep fetches enough for that, so None means an unprepared
-/// variant or an event at a contig end; the caller then uses the previous
-/// classifier.
+/// reference (prep's `event_ref`, else the `ref_context`) holding the REF allele
+/// and the event with its flank. None whenever `windows` is None: no prepared
+/// reference, a reference that does not hold the REF allele, or one that does not
+/// hold the event with its flank (a contig end, or a repeat past prep's 16 kb
+/// fetch cap). The caller then uses the previous classifier.
 pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8) -> Option<ClassifyResult> {
     let win = windows(variant)?;
     let seq = record.seq().as_bytes();
@@ -140,7 +144,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         // A record stored without its bases (SEQ '*') shows nothing here.
         return Some(ClassifyResult::no_coverage(ClassifyPhase::MaskedCompare));
     }
-    let skips = ref_skips(record, win.span());
+    let skips = rna::splice_junctions_in(record, win.span());
     let (ev_lo, ev_hi) = win.event;
     if skips.iter().any(|&(n0, n1)| n0 < ev_hi && n1 > ev_lo) {
         // Spliced through the event: the read skips bases where the alleles
@@ -177,7 +181,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         }
         held.push((r.mismatches == 0, a.mismatches == 0));
     }
-    let qual = median(&qual_bases, min_baseq);
+    let qual = median_qual(&qual_bases, min_baseq);
     let every = |want: (bool, bool)| !held.is_empty() && held.iter().all(|&h| h == want);
     let mut result = if every((false, true)) {
         ClassifyResult::is_alt(qual, ClassifyPhase::MaskedCompare)
@@ -212,15 +216,8 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
 /// Query positions [first, after) of the read's aligned bases: its soft clips lie
 /// before `first` and from `after` on. None for a read with no aligned base.
 fn aligned_query_range(record: &Record) -> Option<(usize, usize)> {
-    let ops: Vec<Cigar> = record.cigar().iter().copied().filter(|op| !matches!(op, Cigar::HardClip(_))).collect();
-    let lead = match ops.first() {
-        Some(Cigar::SoftClip(n)) => *n as usize,
-        _ => 0,
-    };
-    let tail = match ops.last() {
-        Some(Cigar::SoftClip(n)) if ops.len() > 1 => *n as usize,
-        _ => 0,
-    };
+    let (lead, tail) = soft_clips(record);
+    let (lead, tail) = (lead as usize, tail as usize);
     let len = record.seq_len();
     (lead + tail < len).then_some((lead, len - tail))
 }
@@ -269,7 +266,7 @@ fn fragment_query_span(record: &Record) -> Option<(usize, usize)> {
         let hi = if frag_end >= ref_end {
             after_q + (frag_end - ref_end)
         } else {
-            qpos(record, frag_end - 1).map_or(after_q, |q| q as i64 + 1)
+            find_read_pos(record, frag_end - 1).map_or(after_q, |q| q as i64 + 1)
         };
         Some((0, hi.clamp(0, len) as usize))
     } else {
@@ -278,7 +275,7 @@ fn fragment_query_span(record: &Record) -> Option<(usize, usize)> {
         let lo = if frag_start <= record.pos() {
             first_q - (record.pos() - frag_start)
         } else {
-            qpos(record, frag_start).map_or(first_q, |q| q as i64)
+            find_read_pos(record, frag_start).map_or(first_q, |q| q as i64)
         };
         Some((lo.clamp(0, len) as usize, len as usize))
     }
@@ -316,13 +313,10 @@ pub(crate) fn indel_at_block(record: &Record, variant: &Variant) -> bool {
 /// C>TA). SNVs and pure indels have their own classifiers. The dispatcher sends
 /// exactly these here, and prep widens the reference for exactly these.
 pub(crate) fn judges(v: &Variant) -> bool {
-    let (r, a) = (v.ref_allele.as_bytes(), v.alt_allele.as_bytes());
-    match (r.first(), a.first()) {
-        (Some(r0), Some(a0)) => {
-            (r.len() > 1 && a.len() > 1) || ((r.len() == 1) != (a.len() == 1) && !a0.eq_ignore_ascii_case(r0))
-        }
-        _ => false,
-    }
+    matches!(
+        super::window::allele_kind(&v.ref_allele, &v.alt_allele),
+        Some(AlleleKind::Mnp | AlleleKind::Complex)
+    )
 }
 
 /// Whether a reference fetched from `start` is too short to judge the variant:
@@ -343,13 +337,34 @@ pub(crate) fn reference_short(start: i64, reference: &str, v: &Variant) -> Optio
 /// genomic [start, end): every base an aligner may place its change on. None
 /// without a reference that holds it, or with an empty allele.
 pub(crate) fn grown_event(v: &Variant) -> Option<(i64, i64)> {
-    let (start, reference) = match (&v.event_ref, &v.ref_context) {
-        (Some((s, seq)), _) => (*s, upper(seq)),
-        (None, Some(ctx)) => (v.ref_context_start, upper(ctx)),
-        (None, None) => return None,
-    };
+    let (start, reference) = prepared_reference(v)?;
     let ev = event(start, &reference, v)?;
     Some((start + ev.lo as i64, start + ev.hi as i64))
+}
+
+/// Why the rule cannot judge a variant (`classify` gives None for every read),
+/// for its once-per-variant warning.
+pub(crate) fn unjudged_reason(v: &Variant) -> &'static str {
+    match prepared_reference(v) {
+        None => "no prepared reference (the variant was not prepared against a FASTA, or failed prep)",
+        Some((start, reference)) if event(start, &reference, v).is_none() => {
+            "the prepared reference does not hold its REF allele"
+        }
+        Some(_) => {
+            "the prepared reference does not hold the event with its flank (a contig end, or a \
+             repeat past the fetch cap)"
+        }
+    }
+}
+
+/// The reference the rule reads, upper case, and its genomic start: the event's
+/// widened reference when prep fetched one, else the reference context.
+fn prepared_reference(v: &Variant) -> Option<(i64, Vec<u8>)> {
+    match (&v.event_ref, &v.ref_context) {
+        (Some((s, seq)), _) => Some((*s, upper(seq))),
+        (None, Some(ctx)) => Some((v.ref_context_start, upper(ctx))),
+        (None, None) => None,
+    }
 }
 
 fn upper(s: &str) -> Vec<u8> {
@@ -421,11 +436,7 @@ fn event(start: i64, reference: &[u8], v: &Variant) -> Option<Event> {
 /// REF and ALT windows for the variant. None without a reference that holds the
 /// event and its flank, or with an empty allele.
 fn windows(v: &Variant) -> Option<Windows> {
-    let (start, reference) = match (&v.event_ref, &v.ref_context) {
-        (Some((s, seq)), _) => (*s, upper(seq)),
-        (None, Some(ctx)) => (v.ref_context_start, upper(ctx)),
-        (None, None) => return None,
-    };
+    let (start, reference) = prepared_reference(v)?;
     let ev = event(start, &reference, v)?;
     if ev.lo < FLANK || ev.hi + FLANK > reference.len() {
         return None; // the reference does not hold the event's flank
@@ -553,42 +564,16 @@ fn repeat_end(r: &[u8], b: usize, max_unit: usize) -> usize {
     best
 }
 
-/// The query position aligned to reference position `g` (an M/=/X base), if any.
-fn qpos(record: &Record, g: i64) -> Option<usize> {
-    let (mut ref_pos, mut read_pos) = (record.pos(), 0usize);
-    for op in record.cigar().iter() {
-        match op {
-            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) => {
-                let len = *len as i64;
-                if g >= ref_pos && g < ref_pos + len {
-                    return Some(read_pos + (g - ref_pos) as usize);
-                }
-                ref_pos += len;
-                read_pos += len as usize;
-            }
-            Cigar::Ins(len) | Cigar::SoftClip(len) => read_pos += *len as usize,
-            Cigar::Del(len) | Cigar::RefSkip(len) => {
-                if g >= ref_pos && g < ref_pos + *len as i64 {
-                    return None;
-                }
-                ref_pos += *len as i64;
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
 /// Read `w` from the read at the window's own position: from the query position
 /// of its first reference base, and back from its last. For a read aligned with
 /// the event between the anchors the two readings are the same bases; the closer
 /// one counts. None when the read holds the window from neither anchor.
 fn read_window(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: &Window) -> Option<Reading> {
     let n = w.seq.len();
-    let from_left = w.left.and_then(|g| qpos(record, g)).filter(|&q| q + n <= seq.len()).map(|q| (q, q + n));
+    let from_left = w.left.and_then(|g| find_read_pos(record, g)).filter(|&q| q + n <= seq.len()).map(|q| (q, q + n));
     let to_right = w
         .right
-        .and_then(|g| qpos(record, g - 1))
+        .and_then(|g| find_read_pos(record, g - 1))
         .map(|q| q + 1)
         .filter(|&e| e >= n && e <= seq.len())
         .map(|e| (e - n, e));
@@ -613,36 +598,6 @@ fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, us
         }
     }
     Reading { mismatches, masked, had_n, span }
-}
-
-/// The read's splices (CIGAR N, genomic [start, end)) that overlap `[lo, hi)`.
-fn ref_skips(record: &Record, (lo, hi): (i64, i64)) -> Vec<(i64, i64)> {
-    let mut skips = Vec::new();
-    let mut pos = record.pos();
-    for op in record.cigar().iter() {
-        match op {
-            Cigar::RefSkip(len) => {
-                let end = pos + *len as i64;
-                if *len > 0 && pos < hi && end > lo {
-                    skips.push((pos, end));
-                }
-                pos = end;
-            }
-            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len) | Cigar::Del(len) => pos += *len as i64,
-            _ => {}
-        }
-    }
-    skips
-}
-
-/// Median of the qualities at or above `min_baseq` (0 when none).
-fn median(quals: &[u8], min_baseq: u8) -> u8 {
-    let mut q: Vec<u8> = quals.iter().copied().filter(|&x| x >= min_baseq).collect();
-    if q.is_empty() {
-        return 0;
-    }
-    q.sort_unstable();
-    q[q.len() / 2]
 }
 
 #[cfg(test)]

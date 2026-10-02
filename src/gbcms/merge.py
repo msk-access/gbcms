@@ -743,7 +743,7 @@ def _compute_combined_strand_bias(
             ]
         )
     # ── Sanitize NaN/Inf in strand bias columns ─────────────────────────────
-    # Fisher exact test returns NaN for OR when alt_total ≤ 1 (issue #19).
+    # Fisher exact test returns NaN for OR when alt_total ≤ 1.
     # Polars writes NaN as literal 'NaN' in CSV — convert to 'NA' for MAF.
     sb_cols = [c for c in df.columns if "strand_bias" in c and c.startswith("simplex_duplex_")]
     if sb_cols:

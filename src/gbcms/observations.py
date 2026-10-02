@@ -226,7 +226,7 @@ def observe_molecules(
     rs_variants = [_RsVariant(v.chrom, v.pos, v.ref, v.alt, v.variant_type.value) for v in variants]
 
     # Normalize (left-alignment, the shift region, the reference context). The homopolymer
-    # twin is threaded exactly as Pipeline does: only with rescue_homopolymer, since by
+    # twin is built exactly as Pipeline builds it: only with rescue_homopolymer, since by
     # default a row counts the given allele.
     # Variants are NOT filtered to PASS: `variant_index` is the caller's join key and must
     # stay positional. Failures are reported via `variant_status` instead.
@@ -237,11 +237,10 @@ def observe_molecules(
         is_maf,
         threads,
         quality.adaptive_context,
+        rescue_homopolymer,
     )
     rs_variants = [p.variant for p in prepared]
-    decomposed: list[_RsVariant | None] = [
-        p.decomposed_variant if rescue_homopolymer else None for p in prepared
-    ]
+    decomposed: list[_RsVariant | None] = [p.decomposed_variant for p in prepared]
     status = [p.gbcms_status for p in prepared]
 
     _counts, observations = count_bam_binned_observations(

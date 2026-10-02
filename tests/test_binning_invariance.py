@@ -171,7 +171,13 @@ def _pairs(contig, variants, seed, step=3, umi=False):
 
 def _prepared(fa, rows):
     pvs = gbcms_rs.prepare_variants(
-        [gbcms_rs.Variant("1", p, r, a, "X") for p, r, a in rows], fa, 5, False, 1, True
+        [gbcms_rs.Variant("1", p, r, a, "X") for p, r, a in rows],
+        fa,
+        5,
+        False,
+        1,
+        True,
+        rescue_homopolymer=True,
     )
     assert all(pv.gbcms_status == "PASS" for pv in pvs), [pv.gbcms_status_reason for pv in pvs]
     variants = [pv.variant for pv in pvs]

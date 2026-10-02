@@ -13,9 +13,9 @@
 //!   it covers a flank of the region and runs one base past the first base
 //!   where REF and ALT differ reading inward from that flank
 //!   ([`read_is_informative`]). Otherwise the read counts toward depth only.
-//! - An ALT call stands when the read spans C10's windows read on the ALT
-//!   haplotype ([`alt_read_is_informative`]), or else when its own bases tell the
-//!   alleles apart ([`alt_bases_discriminate`]): its gap alone is placement.
+//! - An ALT call stands when the read spans the informative windows read on the
+//!   ALT haplotype ([`alt_read_is_informative`]), or else when its own bases tell
+//!   the alleles apart ([`alt_bases_discriminate`]): its gap alone is placement.
 //! - A co-annotated sibling's carriers are excluded from a row's REF only when
 //!   the sibling's change lies inside that row's discrimination window (the
 //!   region plus one base on each side, [`discrimination_window`]). A carrier
@@ -25,7 +25,7 @@
 use rust_htslib::bam::record::{Cigar, Record};
 
 use crate::normalize::repeat::first_change_offset;
-use crate::shared::bam_utils::find_read_pos;
+use crate::shared::bam_utils::{find_read_pos, ref_end};
 use crate::types::Variant;
 
 /// Reference interval `[lo, hi)` (0-based, half-open) holding every base at
@@ -51,6 +51,37 @@ pub(crate) fn change_interval(v: &Variant) -> (i64, i64) {
     shift_region_over(v.pos, &v.ref_allele, &v.alt_allele, |g| {
         let i = g - v.ref_context_start;
         (i >= 0 && (i as usize) < ctx.len()).then(|| ctx[i as usize].to_ascii_uppercase())
+    })
+}
+
+/// What a row's alleles are, by their lengths and whether the ALT keeps the REF's
+/// first (anchor) base, compared case-insensitively: one classification for the
+/// counting dispatcher, splice triage, the exact-carrier rule's scope and prep's
+/// variant-type label.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AlleleKind {
+    /// One base each.
+    Snv,
+    /// Equal lengths, more than one base.
+    Mnp,
+    /// A one-base REF whose ALT keeps it and adds bases.
+    Insertion,
+    /// A one-base ALT that keeps the REF's first base.
+    Deletion,
+    /// Anything else: a delins, or an insertion or deletion whose anchor changes.
+    Complex,
+}
+
+/// The row's allele kind; None when either allele is empty.
+pub(crate) fn allele_kind(ref_allele: &str, alt_allele: &str) -> Option<AlleleKind> {
+    let (r, a) = (ref_allele.as_bytes(), alt_allele.as_bytes());
+    let anchor_kept = r.first()?.eq_ignore_ascii_case(a.first()?);
+    Some(match (r.len(), a.len()) {
+        (1, 1) => AlleleKind::Snv,
+        (m, n) if m == n => AlleleKind::Mnp,
+        (1, _) if anchor_kept => AlleleKind::Insertion,
+        (_, 1) if anchor_kept => AlleleKind::Deletion,
+        _ => AlleleKind::Complex,
     })
 }
 
@@ -115,6 +146,25 @@ pub(crate) fn discrimination_window(v: &Variant) -> (i64, i64) {
     } else {
         (lo - 1, hi + 1)
     }
+}
+
+/// How far past its anchor a variant's reads and windowed scans reach: 5 bases,
+/// or its repeat span plus 2 when wider, so a read reaches past the tract.
+pub(crate) fn scan_pad(variant: &Variant) -> i64 {
+    pad_for_repeat_span(variant.repeat_span as i64)
+}
+
+/// `scan_pad` for a repeat span (a bin pads by its widest member's).
+pub(crate) fn pad_for_repeat_span(repeat_span: i64) -> i64 {
+    std::cmp::max(5, repeat_span + 2)
+}
+
+/// The variant's read window `[start, end)`: its REF span padded by `scan_pad`
+/// on each side. The cached reads overlapping it are the variant's reads; each
+/// bin's fetch holds it for every member (`build_genomic_bins`).
+pub(crate) fn read_window(variant: &Variant) -> (i64, i64) {
+    let pad = scan_pad(variant);
+    ((variant.pos - pad).max(0), variant.pos + variant.ref_allele.len() as i64 + pad)
 }
 
 /// The windowed indel scan's reference range `[start, end]` (inclusive): `window`
@@ -196,19 +246,19 @@ pub(crate) fn slides(v: &Variant) -> bool {
 /// discrimination window, or leftwards from its aligned base just right of it,
 /// the read must read, unmasked, a base where the two alleles differ (the first
 /// such base, or a later one when that is masked), every base up to there fitting
-/// the ALT; a base below `min_baseq`, or N, fits anything. Unlike C10's REF rule
-/// there is no margin base past it: that margin guards CIGAR-only REF calls
-/// against a hidden terminal mismatch, while this reads the deciding base. Soft-clipped bases are
-/// not read. Used for an ALT read that spans neither ALT-side window: the CIGAR's
-/// gap alone is placement, and a carrier ending inside the repeat holds only
-/// bases the alleles share, while a truncated long insertion's carrier holds the
-/// inserted bases. A read starting (or ending) on a flank base reads from it.
-/// Each reading uses the reference it can hold, stopping at a contig end. A read
-/// with no aligned base on either side of the window has nothing to read from:
-/// false. None when the read has a side to read from but no prepared reference
-/// holds it (an unprepared variant), or its deciding base lies past a contig edge
-/// (REF has no base there, but a circular contig's continues at its start): it
-/// cannot be judged.
+/// the ALT; a base below `min_baseq`, or N, fits anything. Unlike the REF rule
+/// ([`read_is_informative`]) there is no margin base past it: that margin guards
+/// CIGAR-only REF calls against a hidden terminal mismatch, while this reads the
+/// deciding base. Soft-clipped bases are not read. Used for an ALT read that
+/// spans neither ALT-side window: the CIGAR's gap alone is placement, and a
+/// carrier ending inside the repeat holds only bases the alleles share, while a
+/// truncated long insertion's carrier holds the inserted bases. A read starting
+/// (or ending) on a flank base reads from it. Each reading uses the reference it
+/// can hold, stopping at a contig end. A read with no aligned base on either side
+/// of the window has nothing to read from: false. None when the read has a side
+/// to read from but no prepared reference holds it (an unprepared variant), or
+/// its deciding base lies past a contig edge (REF has no base there, but a
+/// circular contig's continues at its start): it cannot be judged.
 pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> Option<bool> {
     if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
         return Some(true);
@@ -281,10 +331,10 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
     // The read's bases at query offsets `idx`, judged against `refh` and `alth`:
     // every unmasked base fits the ALT, up to a base at or past the first
     // differing one where the alleles differ, read unmasked. No margin base past
-    // it: C10's margin protects a CIGAR-only REF call from a hidden terminal
-    // mismatch, while this reads the deciding base itself, on a read the CIGAR
-    // already calls ALT. Reading stops where either stretch ends: Some(true) ALT,
-    // Some(false) not, None when the read still had bases past the stretch's end.
+    // it: the REF rule's margin protects a CIGAR-only REF call from a hidden
+    // terminal mismatch, while this reads the deciding base itself, on a read the
+    // CIGAR already calls ALT. Reading stops where either stretch ends: Some(true)
+    // ALT, Some(false) not, None when the read still had bases past the stretch's end.
     let holds = |idx: &mut dyn Iterator<Item = usize>, refh: &[u8], alth: &[u8]| -> Option<bool> {
         // The first base where the alleles differ: past the shorter stretch when
         // they agree over it (a REF stretch cut at a contig edge).
@@ -475,7 +525,7 @@ pub(crate) fn read_is_informative(record: &Record, v: &Variant) -> bool {
 }
 
 /// Whether an ALT read's CIGAR alone settles a pure indel: its aligned reference
-/// extent spans one of C10's windows as seen from the ALT haplotype,
+/// extent spans one of the informative windows as seen from the ALT haplotype,
 /// `[lo - 1, hi + 2)` or `[lo - 2, hi + 1)`. An insertion's are its REF windows (its
 /// carrier's extent leaves out the inserted bases, so spanning them it reads more,
 /// not less). A deletion's carrier's extent counts its own gap, so spanning the
@@ -507,20 +557,6 @@ pub(crate) fn alt_read_is_informative(record: &Record, v: &Variant, quals: &[u8]
     from_left || to_right
 }
 
-/// End (exclusive) of the read's aligned reference extent: M/=/X/D/N; clips
-/// excluded.
-pub(crate) fn ref_end(record: &Record) -> i64 {
-    let mut end = record.pos();
-    for op in record.cigar().iter() {
-        match op {
-            Cigar::Match(len) | Cigar::Equal(len) | Cigar::Diff(len)
-            | Cigar::Del(len) | Cigar::RefSkip(len) => end += *len as i64,
-            _ => {}
-        }
-    }
-    end
-}
-
 /// The siblings whose change lies inside `variant`'s discrimination window:
 /// the only ones whose carriers are not REF testimony for `variant`.
 pub(crate) fn siblings_in_window<'a>(variant: &Variant, siblings: &'a [Variant]) -> Vec<&'a Variant> {
@@ -539,6 +575,21 @@ pub(crate) fn siblings_in_window<'a>(variant: &Variant, siblings: &'a [Variant])
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn allele_kind_reads_lengths_and_the_anchor_case_insensitively() {
+        use AlleleKind::*;
+        assert_eq!(allele_kind("A", "T"), Some(Snv));
+        assert_eq!(allele_kind("AC", "GT"), Some(Mnp));
+        assert_eq!(allele_kind("A", "ACC"), Some(Insertion));
+        assert_eq!(allele_kind("a", "ACC"), Some(Insertion));
+        assert_eq!(allele_kind("ACC", "a"), Some(Deletion));
+        assert_eq!(allele_kind("C", "TA"), Some(Complex)); // the anchor changes
+        assert_eq!(allele_kind("GC", "T"), Some(Complex));
+        assert_eq!(allele_kind("GCA", "TT"), Some(Complex));
+        assert_eq!(allele_kind("", "A"), None);
+        assert_eq!(allele_kind("A", ""), None);
+    }
 
     /// A variant with a reference context starting at 0.
     fn var(ctx: &str, pos: i64, r: &str, a: &str) -> Variant {

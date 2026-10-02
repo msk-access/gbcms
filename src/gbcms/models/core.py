@@ -538,7 +538,7 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
     gtf_cache_dir: Path | None = Field(
         default=None,
         description=(
-            "Directory for caching the parsed GTF index (M5a). When set, the parsed "
+            "Directory for caching the parsed GTF index. When set, the parsed "
             "annotation intermediate is persisted here and reused across runs over "
             "the same GTF and variant set, skipping the GTF text parse. Intended as "
             "a directory shared across a Nextflow cohort so the GTF is parsed once. "
@@ -546,7 +546,7 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         ),
     )
 
-    # P5: Library type flag — controls fragment consensus behavior
+    # Library type flag — controls fragment consensus behavior
     library_type: str = Field(
         default="capture",
         description=(
@@ -610,7 +610,7 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
 
     @model_validator(mode="after")
     def validate_amplicon_strandedness(self) -> "GbcmsRnaConfig":
-        """P5: Auto-disable strandedness for amplicon libraries.
+        """Auto-disable strandedness for amplicon libraries.
 
         Amplicon libraries are not strand-specific, so enforcing dUTP
         strandedness filtering would incorrectly discard ~50% of reads.

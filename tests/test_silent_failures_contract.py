@@ -143,6 +143,7 @@ def test_an_unjudgeable_complex_variant_is_warned_once(tmp_path, caplog):
     _invariants(c)
     warns = [r.getMessage() for r in caplog.records if "exact-carrier rule" in r.getMessage()]
     assert len(warns) == 2 and "1:401 C>TA: 4 read(s)" in warns[0], warns
+    assert "no prepared reference" in warns[0], "the warning names why the rule could not judge"
 
 
 @pytest.mark.xfail(
@@ -262,7 +263,9 @@ def test_a_decomposed_twin_in_a_long_run_is_judged_by_the_exact_carrier_rule(tmp
         reads.append(make_read(f"d{i}", seq, s, ((0, end - 2 - s), (2, 2), (0, s + 102 - end))))
         reads.append(make_read(f"r{i}", ref[s : s + 100], s, ((0, 100),)))
     fa, bam = write_contig(tmp_path, ref, reads, "twin")
-    (pv,) = _rs.prepare_variants([_rs.Variant("1", pos, "AAA", "C", "X")], fa, 5, False, 1, True)
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", pos, "AAA", "C", "X")], fa, 5, False, 1, True, rescue_homopolymer=True
+    )
     assert pv.decomposed_variant is not None and pv.decomposed_variant.event_ref is not None
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
         _rs.reset_log_caching()
@@ -323,5 +326,74 @@ def test_a_deciding_base_past_the_contig_end_is_depth_only_and_warned(tmp_path, 
         (c,) = count_bam_checked(bam, [_prepared(fa, "G", "GA")], [None], *ARGS)
     _invariants(c)
     assert (c.ad, c.dp) == (0, 5)
-    warns = [r.getMessage() for r in caplog.records if "past a contig edge" in r.getMessage()]
+    warns = [r.getMessage() for r in caplog.records if "a contig edge" in r.getMessage()]
     assert len(warns) == 2 and "5 ALT read(s)" in warns[0], warns
+
+
+def test_the_pass_warns_once_about_rows_it_can_only_judge_degraded(tmp_path, caplog):
+    """Rows passed to the engine unprepared are said once per counting pass, with
+    their count: indels and complex variants without a prepared reference context,
+    and MNPs whose REF equals ALT."""
+    ref = _flank(21) + "C" + "A" * 10 + "G" + _flank(22)
+    reads = [
+        make_read(f"r{i}", ref[A - 40 + i : A + 60 + i], A - 40 + i, ((0, 100),)) for i in range(4)
+    ]
+    _, bam = write_contig(tmp_path, ref, reads, "degraded")
+    rows = [
+        _rs.Variant("1", A, "C", "TA", "COMPLEX"),
+        _rs.Variant("1", A, "CA", "C", "DEL"),
+        _rs.Variant("1", A + 1, "AA", "aa", "MNP"),
+    ]
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        for c in _rs.count_bam_binned(bam, rows, [None] * 3, *ARGS):
+            _invariants(c)
+    msgs = [r.getMessage() for r in caplog.records]
+    unprepared = [m for m in msgs if "carry no prepared reference context" in m]
+    degenerate = [m for m in msgs if "have REF equal to ALT" in m]
+    assert len(unprepared) == 1 and unprepared[0].startswith("2 "), unprepared
+    assert len(degenerate) == 1 and degenerate[0].startswith("1 "), degenerate
+
+
+def test_each_route_to_the_exact_carrier_rule_is_named_per_read(tmp_path, caplog):
+    """Every read the exact-carrier rule judges has a trace naming its read, the
+    route that sent it there, and the outcome."""
+    _, logs = _traces(caplog, lambda: _ins_snv(tmp_path, 10, "route"))
+    routed = [m for m in logs if "exact-carrier rule (an insertion whose anchor changes)" in m]
+    assert routed and all(" read=" in m and " alt=" in m for m in routed), routed[:3]
+
+
+def test_why_an_alt_call_is_kept_is_traced(tmp_path, caplog):
+    """An ALT call from a read spanning neither ALT-side window stands on its bases,
+    and the trace says so: carriers of GA>G in G A*40 T reading from the G to the T."""
+    ref = _flank(31) + "G" + "A" * 40 + "T" + _flank(32)
+    seq = "G" + "A" * 39 + "T"
+    reads = [make_read(f"k{i}", seq, A, ((0, 20), (2, 1), (0, 21))) for i in range(3)]
+    fa, bam = write_contig(tmp_path, ref, reads, "kept")
+    v = _prepared(fa, "GA", "G")
+    (c,), logs = _traces(caplog, lambda: count_bam_checked(bam, [v], [None], *ARGS))
+    _invariants(c)
+    assert c.ad == 3
+    kept = [m for m in logs if "ALT kept — its own bases tell the alleles apart" in m]
+    assert kept and all(" read=k" in m for m in kept), kept
+    totals = [m for m in logs if "depth reads by deciding rule" in m]
+    assert totals and all("ALT kept by its bases 3;" in m for m in totals), totals
+
+
+def test_a_row_with_an_empty_allele_counts_no_allele_and_is_warned(tmp_path, caplog):
+    """Prep rejects empty alleles; a row passed to the engine directly with one shows
+    no allele (neither REF nor ALT, no panic), and the pass says so once."""
+    ref = _flank(41) + "C" + "A" * 10 + "G" + _flank(42)
+    reads = [
+        make_read(f"r{i}", ref[A - 40 + i : A + 60 + i], A - 40 + i, ((0, 100),)) for i in range(4)
+    ]
+    _, bam = write_contig(tmp_path, ref, reads, "empty")
+    rows = [_rs.Variant("1", A, "", "T", "X"), _rs.Variant("1", A, "", "", "X")]
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOGGER):
+        _rs.reset_log_caching()
+        counts = _rs.count_bam_binned(bam, rows, [None] * 2, *ARGS)
+    for c in counts:
+        _invariants(c)
+        assert (c.rd, c.ad, c.partial_alt) == (0, 0, 0)
+    empty = [r.getMessage() for r in caplog.records if "have an empty allele" in r.getMessage()]
+    assert len(empty) == 1 and empty[0].startswith("2 "), empty

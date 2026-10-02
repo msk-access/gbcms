@@ -217,7 +217,7 @@ Computed at **both** levels:
 
 ## Complete Output Column Reference
 
-The core counting fields of the `BaseCounts` struct returned by `count_bam_binned()` — the binned counting entry point that groups variants into ~10kb genomic bins for a single `bam.fetch()` per bin before classifying reads. See [Architecture → Genomic Binning](architecture.md#genomic-binning) for how bins are built. (The gated mFSD, RNA, and ASJD fields — plus QC fields like `mq0_count`, `singleton_alt_count`, `duplex_alt_count`, `alt_dist_end_median`/`ref_dist_end_median`, and `non_discriminating_locus` — are documented in their own sections above and in the [output-formats reference](output-formats.md).)
+The core counting fields of the `BaseCounts` struct returned by `count_bam_binned()` — the binned counting entry point that groups variants into ~10kb genomic bins for a single `bam.fetch()` per bin before classifying reads. See [Architecture → Genomic Binning](architecture.md#genomic-binning) for how bins are built. (The gated mFSD, RNA, and ASJD fields — plus QC fields like `mq0_count`, `alt_dist_end_median`/`ref_dist_end_median`, and `non_discriminating_locus` — are documented in their own sections above and in the [output-formats reference](output-formats.md).)
 
 | Column | Type | Description |
 |:-------|:-----|:------------|

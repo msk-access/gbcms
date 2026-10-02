@@ -85,8 +85,12 @@ def test_twin_dual_count_does_not_depend_on_bin_geometry(tmp_path):
     ref = _dna_ref()
     fa = _fasta(tmp_path, ref)
     variant = _rs.Variant("1", DNA_RUN, "C" * RUN_LEN, "T", "COMPLEX")
-    (prepared,) = _rs.prepare_variants([variant], str(fa), 5, False, 1, True)
+    (prepared,) = _rs.prepare_variants(
+        [variant], str(fa), 5, False, 1, True, rescue_homopolymer=True
+    )
     assert prepared.decomposed_variant.alt_allele == "C" * (RUN_LEN - 1) + "T"
+    (plain,) = _rs.prepare_variants([variant], str(fa), 5, False, 1, True)
+    assert plain.decomposed_variant is None, "no twin is built unless it will be counted"
     reads = [_twin_carrier(f"t{i}", ref, DNA_RUN, DNA_RUN - 60 + i) for i in range(8)]
     reads += [_ref_read(f"r{i}", ref, DNA_RUN - 50 + i) for i in range(6)]
     (counts,) = count_checked(

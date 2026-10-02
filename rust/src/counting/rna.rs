@@ -214,6 +214,15 @@ pub fn extract_splice_junctions(record: &Record) -> Vec<(i64, i64)> {
 
     junctions
 }
+
+/// The read's splice junctions of nonzero length (genomic [start, end)) that
+/// overlap `[lo, hi)`.
+pub(crate) fn splice_junctions_in(record: &Record, (lo, hi): (i64, i64)) -> Vec<(i64, i64)> {
+    extract_splice_junctions(record)
+        .into_iter()
+        .filter(|&(s, e)| e > s && s < hi && e > lo)
+        .collect()
+}
 /// Build an O(1) lookup set of known RNA editing sites from REDIportal TABLE1.
 ///
 /// Parses the REDIportal TABLE1 format (tab-delimited, with header row):

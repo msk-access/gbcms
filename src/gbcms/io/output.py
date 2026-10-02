@@ -54,7 +54,7 @@ def _fmt(v: float) -> str:
 
     NaN/Inf → 'NA' (standard missing value for tabular formats).
     Guards against both NaN and Inf which can arise from Fisher strand
-    bias when ALT total ≤ 1 (OR undefined, see issue #19).
+    bias when ALT total ≤ 1 (OR undefined).
     """
     if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
         return "NA"
@@ -244,7 +244,7 @@ class MafWriter(OutputWriter):
         self.command_line = command_line
         self.file = open(path, "w")
 
-        # Write provenance comment headers before TSV data (issue #19).
+        # Write provenance comment headers before TSV data.
         # These are #-prefixed lines that downstream readers skip via
         # comment_prefix="#" (e.g., Polars read_maf in batch.py).
         from .. import __version__
@@ -525,7 +525,7 @@ class MafWriter(OutputWriter):
             f"{p}alt_count_fragment": str(counts.adf),
             f"{p}total_count_fragment": str(counts.dpf),
             f"{p}vaf_fragment": f"{vaf_frag:.4f}",
-            # Strand bias (unprefixed) — use _fmt/_fmt_sci guards for NaN/Inf (#19)
+            # Strand bias (unprefixed) — use _fmt/_fmt_sci guards for NaN/Inf
             "strand_bias_p_value": _fmt_sci(counts.sb_pval),
             "strand_bias_odds_ratio": _fmt(counts.sb_or),
             "fragment_strand_bias_p_value": _fmt_sci(counts.fsb_pval),
@@ -834,7 +834,7 @@ class VcfWriter(OutputWriter):
             "##fileformat=VCFv4.2",
             f"##source=gbcms v{__version__}",
         ]
-        # Provenance headers (issue #19)
+        # Provenance headers
         if self.command_line:
             headers.append(f"##gbcms_command={self.command_line}")
         if self.reference_fasta:
@@ -884,8 +884,8 @@ class VcfWriter(OutputWriter):
                     '##INFO=<ID=MFSD_REF_LLR,Number=1,Type=Float,Description="mFSD LLR for REF fragments">',
                     '##INFO=<ID=MFSD_ALT_COUNT,Number=1,Type=Integer,Description="ALT-classified fragments in mFSD window (50–1000 bp)">',
                     '##INFO=<ID=MFSD_REF_COUNT,Number=1,Type=Integer,Description="REF-classified fragments in mFSD window (50–1000 bp)">',
-                    # ME-1: sub/mono-nucleosomal fractions — were computed and written to MAF
-                    # but omitted from VCF; added here so the VCF mFSD surface matches MAF.
+                    # Sub/mono-nucleosomal fractions, declared as in MAF so the VCF mFSD
+                    # surface matches MAF.
                     '##INFO=<ID=MFSD_SUB_NUC_REF_FRAC,Number=1,Type=Float,Description="mFSD sub-nucleosomal (<150 bp) fraction of REF fragments">',
                     '##INFO=<ID=MFSD_SUB_NUC_ALT_FRAC,Number=1,Type=Float,Description="mFSD sub-nucleosomal (<150 bp) fraction of ALT fragments">',
                     '##INFO=<ID=MFSD_SUB_NUC_ENRICHMENT,Number=1,Type=Float,Description="mFSD sub-nucleosomal enrichment (ALT frac / REF frac); ctDNA indicator">',
@@ -1049,7 +1049,7 @@ class VcfWriter(OutputWriter):
                     f"MFSD_REF_LLR={_fmt_vcf(counts.mfsd_ref_llr)}",
                     f"MFSD_ALT_COUNT={counts.mfsd_alt_count}",
                     f"MFSD_REF_COUNT={counts.mfsd_ref_count}",
-                    # ME-1: sub/mono-nucleosomal fractions (VCF↔MAF parity).
+                    # Sub/mono-nucleosomal fractions (VCF↔MAF parity).
                     f"MFSD_SUB_NUC_REF_FRAC={_fmt_vcf(counts.mfsd_sub_nuc_ref_frac)}",
                     f"MFSD_SUB_NUC_ALT_FRAC={_fmt_vcf(counts.mfsd_sub_nuc_alt_frac)}",
                     f"MFSD_SUB_NUC_ENRICHMENT={_fmt_vcf(counts.mfsd_sub_nuc_enrichment)}",
@@ -1082,8 +1082,8 @@ class VcfWriter(OutputWriter):
                 # EBD: exon boundary distance (GTF-informed, '.' when no GTF)
                 ebd = counts.exon_boundary_dist
                 info_parts.append(f"EBD={ebd if ebd is not None else '.'}")
-                # TXRC/TXFC: per-transcript counts, already '|'-separated by the engine
-                # (ME-2), so VCF-safe as-is; empty → '.'.
+                # TXRC/TXFC: per-transcript counts, already '|'-separated by the engine,
+                # so VCF-safe as-is; empty → '.'.
                 txrc = counts.transcript_read_counts
                 txfc = counts.transcript_fragment_counts
                 info_parts.append(f"TXRC={txrc if txrc else '.'}")

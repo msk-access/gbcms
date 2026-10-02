@@ -54,7 +54,7 @@ pub fn fisher_exact_2x2(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
     // either row. For the primary use-case (strand bias), row 2 = ALT counts.
     // With 0–1 ALT reads there is no statistical power to detect asymmetry;
     // the Hypergeometric distribution becomes degenerate (K ≈ N), causing
-    // floating-point underflow that produces p ≈ 0 (see GitHub issue #19).
+    // floating-point underflow that produces p ≈ 0.
     //
     // Returning NaN for OR signals "undefined" — downstream writers format
     // NaN as '.' in VCF (spec-compliant missing value).
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn test_fisher_single_alt_read_runx1() {
-        // Regression: RUNX1 duplex BAM variant with 1 ALT read (GitHub #19).
+        // Regression: RUNX1 duplex BAM variant with 1 ALT read.
         // Previously returned (p≈0.0, OR=inf) due to degenerate Hypergeometric.
         // With ≤1 ALT read, strand bias is undefined — must return (1.0, NaN).
         let (p, or) = fisher_exact_2x2(1852, 1484, 0, 1);

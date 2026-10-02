@@ -171,7 +171,7 @@ def _compute_kde(
     Returns (x_values, density_values) suitable for a Plotly scatter trace.
     Returns empty lists if fewer than 2 data points.
 
-    Bandwidth floor (LO-13): Silverman's rule collapses toward 0 for a
+    Bandwidth floor: Silverman's rule collapses toward 0 for a
     near-zero-variance size class (e.g. all fragments the same length), which
     would render a spike indistinguishable from a point mass. We clamp the
     bandwidth to a 5.0 bp floor in that degenerate case so the density stays

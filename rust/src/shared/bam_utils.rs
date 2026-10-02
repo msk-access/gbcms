@@ -3,10 +3,7 @@
 //! Provides CIGAR-aware position lookup and quality computation helpers
 //! that are independent of any variant-specific logic.
 //!
-//! Used by:
-//! - `counting/alignment.rs` — `median_qual` for alignment quality scoring
-//! - `counting/engine.rs` — `find_read_pos` for position lookup
-//! - `hla/aggregate.rs` (future) — quality metrics on HLA-assigned reads
+//! Used throughout `counting` (re-exported by `counting::utils`).
 
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::Record;
@@ -48,6 +45,26 @@ pub fn find_read_pos(record: &Record, target_pos: i64) -> Option<usize> {
     None
 }
 
+/// End (exclusive, 0-based) of the read's aligned reference extent: its start
+/// plus every reference-consuming op (M, =, X, D, N); clips and insertions add
+/// nothing.
+pub fn ref_end(record: &Record) -> i64 {
+    record.cigar().end_pos()
+}
+
+/// Lengths of the read's leading and trailing soft clips, behind any hard clip.
+/// A CIGAR of one (non-hard-clip) op has no trailing clip.
+pub fn soft_clips(record: &Record) -> (u32, u32) {
+    let cigar = record.cigar();
+    let mut ops = cigar.iter().filter(|op| !matches!(op, Cigar::HardClip(_)));
+    let clip = |op: Option<&Cigar>| match op {
+        Some(Cigar::SoftClip(n)) => *n,
+        _ => 0,
+    };
+    let lead = clip(ops.next());
+    (lead, clip(ops.next_back()))
+}
+
 /// Compute the median quality of bases that pass the minimum threshold.
 ///
 /// Follows the GATK `BaseQuality` annotation standard (median rather than min)
@@ -56,7 +73,7 @@ pub fn find_read_pos(record: &Record, target_pos: i64) -> Option<usize> {
 ///
 /// Returns 0 if no qualifying bases.
 ///
-/// Even-count convention (LO-7): returns the *upper* of the two middle values
+/// Even-count convention: returns the *upper* of the two middle values
 /// (`filtered[len / 2]`), a slight upward bias, rather than averaging them. This
 /// is deliberate — `med_qual` feeds classification thresholds in `variant_checks`,
 /// `alignment`, and `pairhmm`, so switching to an exact average could flip

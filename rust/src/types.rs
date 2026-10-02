@@ -13,9 +13,12 @@ pub struct Variant {
     pub alt_allele: String,
     #[pyo3(get, set)]
     pub variant_type: String, // "SNP", "INSERTION", "DELETION", "COMPLEX"
-    /// Reference sequence around the variant for windowed indel detection.
+    /// Reference sequence around the variant (prep fetches it for indels and delins).
     /// Covers [ref_context_start, ref_context_start + len) in genomic coords.
-    /// Used by Safeguard 3 to verify shifted indels are biologically valid.
+    /// Read by the Phase-3 haplotypes, the pangenome matrix and the sibling guard;
+    /// the exact-carrier rule and the windowed indel checks fall back to it without
+    /// an `event_ref` (the windowed checks also where `event_ref` does not hold the
+    /// bases; the in-band large-deletion check reads its deleted bases from it).
     #[pyo3(get, set)]
     pub ref_context: Option<String>,
     /// Genomic start position (0-based) of the ref_context string.
@@ -39,15 +42,18 @@ pub struct Variant {
     /// sized to the event, so a long duplication or tract is not cut at the
     /// edge of `ref_context`. None otherwise; counting then slides over
     /// `ref_context`.
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub shift_region: Option<(i64, i64)>,
 
-    /// Reference bases around the event (its change interval plus 60 bases on
-    /// each side), with their 0-based start. Prep fetches them for every
-    /// variant, SNVs and MNPs included (those carry no `ref_context`); the
-    /// observed-allele diagnostic and the windowed indel checks' placement
-    /// equivalence read them.
-    #[pyo3(get, set)]
+    /// Reference bases around the event, with their 0-based start: its change
+    /// interval plus a margin each side (60 bases, or the insertion's length
+    /// plus 3 when longer), widened where the exact-carrier rule's windows need
+    /// more, up to 16,384 bases. Prep fetches them for every variant that
+    /// passes validation, SNVs and MNPs included (those carry no
+    /// `ref_context`), and for the decomposed twin. The exact-carrier rule, the
+    /// ALT-side read judgments, the observed-allele diagnostic and the windowed
+    /// indel checks' placement equivalence read them.
+    #[pyo3(get)]
     pub event_ref: Option<(i64, String)>,
 
     /// The 0-based inclusive reference span the exon-boundary distance (the
@@ -92,6 +98,48 @@ impl Variant {
             event_ref,
             boundary_span,
         }
+    }
+}
+
+/// Per-variant counts of the rule that decided each depth read (DP reads only;
+/// u64 so a pass's sum cannot overflow),
+/// for the Phase stats line and the counting pass's totals. They change no count
+/// and reach no output column.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DecisionTally {
+    /// REF calls withdrawn: the read spans neither informative window.
+    pub ref_withdrawn: u64,
+    /// ALT calls withdrawn: neither ALT-side window, bases fit both alleles or
+    /// could not be judged.
+    pub alt_withdrawn: u64,
+    /// Of those, the reads whose bases could not be judged (warned per variant).
+    pub alt_unjudged: u64,
+    /// ALT calls kept by the read's own bases.
+    pub alt_by_bases: u64,
+    /// Reads the exact-carrier rule judged.
+    pub carrier_judged: u64,
+    /// Reads it could not judge, left to the previous classifier (warned).
+    pub carrier_fallback: u64,
+    /// REF reads excluded as a sibling's ALT (the multi-allelic REF guard).
+    pub sibling_ref_excluded: u64,
+    /// ALT reads claimed by a sibling (the AD-claiming guard).
+    pub sibling_alt_claimed: u64,
+    /// Reads admitted by the soft-clipped bases that carry their allele.
+    pub clip_admitted: u64,
+}
+
+impl DecisionTally {
+    /// Field-wise sum, for the pass's totals.
+    pub fn add(&mut self, o: &DecisionTally) {
+        self.ref_withdrawn += o.ref_withdrawn;
+        self.alt_withdrawn += o.alt_withdrawn;
+        self.alt_unjudged += o.alt_unjudged;
+        self.alt_by_bases += o.alt_by_bases;
+        self.carrier_judged += o.carrier_judged;
+        self.carrier_fallback += o.carrier_fallback;
+        self.sibling_ref_excluded += o.sibling_ref_excluded;
+        self.sibling_alt_claimed += o.sibling_alt_claimed;
+        self.clip_admitted += o.clip_admitted;
     }
 }
 
@@ -293,7 +341,8 @@ pub struct BaseCounts {
     pub mfsd_mono_nuc_alt_frac: f64,
 
     // ── mFSD: Raw size arrays (for --mfsd-parquet export) ────────────────────
-    // Populated in all runs but only copied to disk when --mfsd-parquet is set.
+    // Populated only with --mfsd (empty otherwise), and copied to disk only when
+    // --mfsd-parquet is set.
     // NOT exported via PyO3 — written directly to Parquet by write_fsd_parquet()
     // in parquet_writer.rs, avoiding an FFI round-trip and the pyarrow dependency.
     /// Raw REF fragment sizes (bp). Internal only; use write_fsd_parquet() to persist.
@@ -311,12 +360,6 @@ pub struct BaseCounts {
     /// Median distance of REF-supporting bases to read end.
     #[pyo3(get)]
     pub ref_dist_end_median: f64,
-    /// ALT reads from singleton UMI families (no mate confirmation).
-    #[pyo3(get)]
-    pub singleton_alt_count: u32,
-    /// ALT reads from duplex UMI families (both strands confirmed).
-    #[pyo3(get)]
-    pub duplex_alt_count: u32,
 
     // ── Decomposed ALT counting (diagnostic, all variant types) ──────────
     // Enables DMP-compatible "any evidence of ALT" counting alongside the
@@ -425,6 +468,9 @@ pub struct BaseCounts {
     /// (no Python getter): summed per BAM to warn when a requested UMI tag is
     /// never seen and fragment grouping silently fell back to QNAME.
     pub umi_tagged_reads: u32,
+    /// Which rule decided each depth read. Internal only (no Python getter):
+    /// logged per variant and summed per counting pass.
+    pub decisions: DecisionTally,
 
     // ── GTF-informed annotation (None when no GTF provided) ──────────────
     /// Distance (bp) from the variant's REF span to the nearest annotated exon

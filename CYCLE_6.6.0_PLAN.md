@@ -63,6 +63,8 @@ marks a ticket with an open PR.
 | C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decide] | #200 |
 | C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [6.7.0] | #201 |
 | C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
+| C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] | #207 |
+| C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] [6.7.0] | #208 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
 | R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
 | R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] [6.7.0] | #198 |
@@ -1407,9 +1409,45 @@ Reviews:
   byte-identical. The 66bp duplication still gains 11 ALT reads. Three
   deletions lose 5 ALT reads (fragments unchanged); each read's flank base was at
   BQ 9–15, and its bases fit both alleles.
-- Real data: develop vs PR A, 143 of 144 files byte-identical. One row changes:
-  a 66bp duplication gains 11 carriers (start on the anchor, hold the whole
-  insert), the flank-start decision.
+- (Before the flank review, the first measurement: 143 of 144 files
+  byte-identical; only the 66bp duplication changed.)
+
+**PR B as built (2026-10-01).** Byte-identical to PR A on prepared input. Measured: PR A vs PR B, 144 of 144 files byte-identical (RC DNA, FORTE RNA, WES), every MAF cell compared. An adversarial review plus a develop-vs-branch fuzz (about 2.2M values) found no count change beyond the declared ones.
+- Logging:
+  - per-read WARN/DEBUG lines move to trace;
+  - rows judged degraded are warned once per pass;
+  - truthful texts;
+  - read names on per-read traces;
+  - named traces for every decision path.
+- Monitoring:
+  - the deciding rule on each read (`rule=` on `read call`);
+  - per-variant tallies on the Phase stats line;
+  - one INFO totals line per pass;
+  - prep counts its short fetches and warns once.
+- Dead code:
+  - prep builds the twin only with `rescue_homopolymer`;
+  - per-transcript `clip_admission`, `anchor_kept`, the unreachable
+    empty-allele guards (the guard moves to the dispatcher), never-written
+    `BaseCounts` fields and unused setters are removed.
+- Duplication: one helper each for
+  - the reference end and soft clips;
+  - the scan pad and read window;
+  - the read loops' qualities, scoring and molecule key;
+  - the insertion and deletion end-of-walk resolution;
+  - the molecule classifier (decision 2);
+  - the allele kind (decision 1), wherever the existing rules already agreed;
+  - plus named constants for the band.
+- Not consolidated, because merging would change behaviour:
+  - the indel-in-window predicates;
+  - the haplotype builders' reference sources;
+  - `observed::canonical` vs left-alignment.
+- Left for later: the FASTA growth loops (their stop rules differ), and the
+  per-variant carrier windows (a performance change).
+- Comments: stale ones fixed; ticket labels removed from code and log text.
+- Follow-ups filed:
+  - C29 #207 (6.6.0): `check_complex`'s inline query walk counts hard clips;
+  - C30 #208 (6.7.0): two pure-indel tests disagree with the allele kind on
+    lowercase or unprepared input.
 
 ## Performance (M5 leftovers)
 

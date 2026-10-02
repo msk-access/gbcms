@@ -6,7 +6,6 @@
 //!
 //! Used by:
 //! - `counting/engine.rs` — variant-level fragment dedup and consensus
-//! - `hla/extract.rs` (future) — HLA read extraction dedup
 
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
@@ -47,7 +46,7 @@ pub struct FragmentEvidence {
     /// is ignored. Only sizes in the cfDNA range (50–1000 bp) are later
     /// aggregated into mFSD class vectors.
     pub insert_size: Option<i32>,
-    /// True if the base at the variant position was 'N' (ambiguous) on any read.
+    /// True if any read carried an N at a discriminating position.
     /// Sticky: once set, never cleared. Used to split "neither-REF-nor-ALT"
     /// fragments into the N class vs. the NonREF class for mFSD analysis.
     pub has_n_base: bool,
@@ -72,10 +71,10 @@ pub struct FragmentEvidence {
     /// exact ALT-side failure fixed above).
     pub has_structural_ref: bool,
     /// Sticky flag: some read in this fragment could tell the alleles apart
-    /// (every read except an indel read that starts or ends inside the event's
-    /// shift region). A neither-REF-nor-ALT fragment without one carries no
-    /// allele at all, so mFSD leaves it out of its classes instead of calling
-    /// it a third allele.
+    /// (any read no rule withdrew as uninformative; see
+    /// `ClassifyResult::uninformative`). A neither-REF-nor-ALT fragment without
+    /// one carries no allele at all, so mFSD leaves it out of its classes instead
+    /// of calling it a third allele.
     pub has_informative_read: bool,
 
     // ── Mapping confidence ──────────────────────────────────────────────────────────
@@ -117,7 +116,7 @@ impl FragmentEvidence {
     /// recorded for REF or ALT, the orientation of THAT read is stored.
     /// This couples the strand direction to the winning evidence, not just R1.
     ///
-    /// Tie-break (LO-6): the best-quality update uses a strict `>`, so on an
+    /// Tie-break: the best-quality update uses a strict `>`, so on an
     /// exact base-quality tie the *first-observed* mate's orientation is kept.
     /// Reads arrive in coordinate order from a sorted BAM, so this is fully
     /// deterministic per input — but it follows iteration order, not a fixed
@@ -131,8 +130,8 @@ impl FragmentEvidence {
     /// - `tlen`: CIGAR-corrected physical insert size (`|TLEN| - D + I`).
     ///   Updated via `min()` across both reads to keep the most corrected value.
     ///   TLEN=0 (unpaired/unmapped mate) is skipped.
-    /// - `is_n_base`: set `true` when the base at the variant position is 'N'.
-    ///   Sticky across reads of the pair — once set, not cleared.
+    /// - `is_n_base`: set `true` when the read carried an N at a discriminating
+    ///   position. Sticky across reads of the pair — once set, not cleared.
     /// ## Structural INDEL tracking
     /// - `is_structural`: set `true` when the read's classification came from
     ///   a direct CIGAR I/D op match (via `ClassifyResult::is_alt_structural`).
@@ -214,7 +213,7 @@ impl FragmentEvidence {
                 }
             }
         }
-        // mFSD: sticky N flag — once a read sees 'N' at this position, it stays
+        // mFSD: sticky N flag (an N at a discriminating position) — once set, it stays
         if is_n_base {
             self.has_n_base = true;
         }
@@ -248,10 +247,14 @@ impl FragmentEvidence {
     ///
     /// ## Known limitations
     ///
-    /// Variants classified through Phase 3 alignment (complex variants,
-    /// wrong-length INDELs) have `is_structural=false` and continue to use
-    /// quality-weighted consensus. This is intentional: Phase 3 classifications
-    /// are probabilistic, and quality arbitration is appropriate for them.
+    /// Reads judged by their bases rather than a CIGAR op have
+    /// `is_structural=false` and use quality-weighted consensus: complex
+    /// variants (the exact-carrier rule, phase MaskedCompare) and Phase 3
+    /// alignment calls. This is intentional: those calls rest on base
+    /// qualities, and Phase 3 classifications are probabilistic, so quality
+    /// arbitration is appropriate for them. Wrong-length indels are neither
+    /// (with partial evidence) in the Structural phase, so they add no REF or
+    /// ALT evidence to the fragment.
     pub fn resolve(&self, qual_diff_threshold: u8) -> (bool, bool) {
         let has_ref = self.best_ref_qual > 0;
         // Structural ALT evidence exists independently of base quality: the
@@ -292,7 +295,7 @@ impl FragmentEvidence {
                     (false, false)
                 }
             }
-            (false, false) => (false, false),  // Should not happen (filtered earlier)
+            (false, false) => (false, false),  // Every read was neither: no REF or ALT evidence
         }
     }
 
@@ -311,13 +314,48 @@ impl FragmentEvidence {
             .or(self.read1_orientation)
             .or(self.read2_orientation)
     }
+
+    /// The molecule's class, from its resolved call (`resolve`). The observations
+    /// export and the mFSD size classes both read this one classifier and differ
+    /// only in what they do with `Unread`.
+    pub fn class(&self, frag_ref: bool, frag_alt: bool) -> MoleculeClass {
+        if frag_ref {
+            MoleculeClass::Ref
+        } else if frag_alt {
+            MoleculeClass::Alt
+        } else if self.has_n_base {
+            MoleculeClass::N
+        } else if self.has_informative_read {
+            MoleculeClass::Other
+        } else {
+            MoleculeClass::Unread
+        }
+    }
+}
+
+/// A molecule's allele class at one variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoleculeClass {
+    Ref,
+    Alt,
+    /// Neither, with an N at a discriminating position (in consensus BAMs, a
+    /// strand-discordant molecule).
+    N,
+    /// Neither, with an informative read: a third allele, or a REF/ALT tie the
+    /// consensus discarded.
+    Other,
+    /// No informative read: a rule withdrew every read as uninformative
+    /// (`ClassifyResult::uninformative`), so the molecule carries no readable
+    /// allele. The observations export writes it as OTHER (its rows reconcile
+    /// with DPF); mFSD gives it no size class.
+    Unread,
 }
 
 /// Hash a QNAME to u64 for memory-efficient fragment tracking.
 /// Using DefaultHasher for speed — collision probability is negligible
 /// for typical variant-level read counts (~1000 fragments).
 ///
-/// Note (LO-4): the fragment map is keyed on this u64 with no stored QNAME, so a
+/// Note: the fragment map is keyed on this u64 with no stored QNAME, so a
 /// birthday collision would silently merge two fragments. At realistic per-locus
 /// depth the probability is ~5e-10 — not worth the memory of storing keys.
 /// Revisit only if per-locus fragment counts grow orders of magnitude, then
@@ -422,6 +460,20 @@ mod tests {
         let mut ev = FragmentEvidence::new();
         ev.observe(true, false, 30, true, true, 200, false, false, 0, true);
         assert_eq!(ev.min_mapq, 0);
+    }
+
+    #[test]
+    fn class_follows_the_call_then_the_ambiguous_base_then_informative_reads() {
+        let ev = FragmentEvidence::new();
+        assert_eq!(ev.class(true, false), MoleculeClass::Ref);
+        assert_eq!(ev.class(false, true), MoleculeClass::Alt);
+        assert_eq!(ev.class(false, false), MoleculeClass::Unread);
+        let mut read = FragmentEvidence::new();
+        read.has_informative_read = true;
+        assert_eq!(read.class(false, false), MoleculeClass::Other);
+        read.has_n_base = true;
+        assert_eq!(read.class(false, false), MoleculeClass::N);
+        assert_eq!(read.class(true, false), MoleculeClass::Ref);
     }
 
     // ── resolve() structural priority tests ───────────────────────────

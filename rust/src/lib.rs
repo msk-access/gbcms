@@ -1,14 +1,12 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 use pyo3::prelude::*;
 
-#[allow(dead_code)] // annotation types used internally by engine.rs (not exported to Python)
 mod annotation;
 mod counting;
 mod normalize;
 mod shared;
 mod types;
 
-/// A Python module implemented in Rust (bundled as gbcms._rs).
 /// pyo3-log's reset handle, kept so Python can invalidate the per-target
 /// level cache after changing logger levels (see `reset_log_caching`).
 static LOG_RESET_HANDLE: std::sync::OnceLock<pyo3_log::ResetHandle> = std::sync::OnceLock::new();
@@ -28,6 +26,7 @@ fn reset_log_caching() {
     }
 }
 
+/// A Python module implemented in Rust (bundled as gbcms._rs).
 #[pymodule]
 fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Forward Rust log records to Python's `logging` module. The filter must

@@ -136,4 +136,4 @@ def test_skipped_records_are_warned_once_per_counting_pass(tmp_path, caplog):
             bam, [_prepared(fa, ref, alt)], [None], 20, 20, True, True, True, False, False, False, 1
         )
     warns = [r.message for r in caplog.records if "without bases" in r.message]
-    assert len(warns) == 1 and "in 2 bin fetch" in warns[0], warns
+    assert len(warns) == 1 and "skipped 2 record(s)" in warns[0], warns

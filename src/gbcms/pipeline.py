@@ -132,8 +132,6 @@ def _zero_counts():
         mq0_count=0,
         alt_dist_end_median=_nan,
         ref_dist_end_median=_nan,
-        singleton_alt_count=0,
-        duplex_alt_count=0,
         # Decomposed ALT counting (invariant: any_alt = ad + partial_alt)
         any_alt=0,
         partial_alt=0,
@@ -315,7 +313,7 @@ class Pipeline:
         logger.info("Starting gbcms pipeline")
         logger.info("Output directory: %s", self.config.output.directory)
 
-        # Log all resolved parameters at DEBUG for full reproducibility (#19)
+        # Log all resolved parameters at DEBUG for full reproducibility
         logger.debug(
             "Parameters:\n"
             "  mode=%s\n"
@@ -401,6 +399,7 @@ class Pipeline:
             is_maf,
             self.config.threads,
             self.config.quality.adaptive_context,
+            self.config.rescue_homopolymer,
         )
 
         # Split into valid (for counting) and all (for output)
@@ -429,10 +428,10 @@ class Pipeline:
         if len(invalid) > 5:
             logger.warning("... and %d more rejected variants", len(invalid) - 5)
 
-        # Log variant type breakdown for transparency
-        # MNPs (same-length multi-base substitutions) are classified as
-        # COMPLEX by kernel.py but dispatched to check_mnp by the Rust
-        # counting engine based on ref_len == alt_len.
+        # Log variant type breakdown for transparency. MNPs (same-length
+        # multi-base substitutions) are dispatched by allele lengths in the Rust
+        # engine: a per-position quality gate, or the exact-carrier rule for a
+        # read with an indel or clip at the block.
         type_counts: dict[str, int] = {}
         mnp_count = 0
         for p in prepared:
@@ -456,8 +455,9 @@ class Pipeline:
         logger.info("Variant types: %s", type_str)
         if mnp_count > 0:
             logger.info(
-                "MNP counting: %d MNPs use selective discriminating-position "
-                "quality gate (atomic block matching, no check_complex fallback)",
+                "MNP counting: %d MNPs use a per-position quality gate over their "
+                "discriminating bases; reads with an indel or clip at the block are "
+                "judged by the exact-carrier rule",
                 mnp_count,
             )
 
@@ -568,15 +568,12 @@ class Pipeline:
 
         try:
             # Run Rust Engine (only on valid variants)
-            # Build decomposed variants list for dual-counting
-            # The homopolymer twin is dual-counted only on request
-            # (--rescue-homopolymer); by default the row counts the given allele.
-            decomposed = [
-                prepared[i].decomposed_variant if self.config.rescue_homopolymer else None
-                for i in valid_indices
-            ]
+            # The homopolymer twin, dual-counted only on request: prep builds it
+            # only with --rescue-homopolymer, so by default the row counts the
+            # given allele.
+            decomposed = [prepared[i].decomposed_variant for i in valid_indices]
 
-            # Build sibling Variant objects for multi-allelic exclusion (Gap 1A)
+            # Build sibling Variant objects for multi-allelic exclusion
             # For each variant in a multi-allelic group, collect the full Variant
             # objects of all OTHER variants in the same group. This allows the
             # Rust-side guard to run the complete classification pipeline
