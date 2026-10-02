@@ -1707,29 +1707,38 @@ code or a principle, and which must come first) and cut the scope:
 
 ## Suggested order
 
-Refreshed 2026-09-30 by the triage; C1, C2, C4, C8, C10, C12, C13, C14, C20, C21,
-C22, C23, R1, R2 and O4 are done (cluster 1 merged in #203).
-1. **Cluster 1, pure-indel read judgment, one design and one PR:** C20 #188, C22
-   #191, C23 #192, measured together and decided as one rule (a carrier holds the
-   ALT haplotype across the discrimination window), with C8 #121 (anchor-changing
-   one-base-REF variants to the exact-carrier rule) and C11 #159 (Phase-3 context
-   sized by the shift region, with C23). Classifier-only: no mirror cost.
-2. **Test architecture:** T1 #170 (retire the legacy path; binning invariance)
-   with T2 #171 (read-census oracle), before the read-admission work; then H3
-   #204 (code-quality sweep of the cycle's code), its own PR.
-3. **Read admission and RNA:** C25 #199 (long-event junction windows; moved into
-   6.6.0 on 2026-10-01: it can make a false ALT), C26 #200 (the REF side of
-   cluster 1's one-change rule; measured first, then decided) and C28 #202 (the
-   anchor-deleted Phase-3 fallback; measured first); C17 #176 (measured first); R4 #185 with
-   O8 #186 (one PR); C16 #174 (traced first).
-4. **Small batches, any order, parallelisable:** records (C19 #182, O7 #183);
-   MAF input (I1 #123, I2 #124, C9 #122); allele columns (I3 #125, I4 #126's doc
-   line); hygiene (H1 #148, H2 #149, #147, the `mkdocs-material<2` pin, P3 #152);
-   rescue messages (O1 #130, O2 #131); mFSD reporting (S1 #153, S2 #154); merge
-   (M2 #129 with M4 #194).
-5. **Release:** D1 #136 and D2 #137 any time; D4 #139 before the cut; D6 #156
-   after the diagnostic changes settle; D5 #155 last, as the release comparison.
+Refreshed 2026-10-02 (operator): the remaining work is grouped by the rule each
+item touches, across 6.6.0 and 6.7.0, so related decisions are made once. Done:
+cluster 1 (#203), T1 + T2 (#205), H3 (#206, #209), C25 + C26 (#210).
 
-The 6.6.0 cut is gated on steps 1–5. The release comparison is the D5 panel run
+Each group starts from one table (affected cases, today's call, the proposal,
+the evidence) and an effects map (the earlier decisions, spec cells, tests and
+watchlist loci it touches). Its decisions cover the whole rule family: 6.7.0
+items in the group are decided as policy now and built later under it.
+Read-judgment groups extend `docs/reference/read-judgment.md`; the read census
+changes in step whenever the read inputs do.
+
+1. **What a read contributes** (bases and qualities before any rule reads them):
+   C19 #182 (absent base qualities), O7 #183 (unmapped mates in mq0_count), C17
+   #176 (read-through bases past the fragment end), C29 #207 (hard clips in
+   `check_complex`'s query walk). Policy for 6.7.0: C15 #173 (clipped carriers),
+   C7 #144 (clip-borne ITDs), C18 #177 (supplementary and split reads).
+2. **Read judgment, from the spec:** C28 #202 and C27 #201 (adopted in principle:
+   judge their bases), C16 #174 (stray ALT at RNA exon edges; traced first).
+   Policy for 6.7.0: C24 #195 (Phase-3 fallback tail), C6 #143 (identity band).
+3. **RNA strand and splices:** R4 #185 with O8 #186, R5 #198 (splices counted as
+   REF coverage). Policy for 6.7.0: R3 #178 (editing sites in windows).
+4. **Input and representation:** C9 #122, I1 #123, I2 #124, I3 #125, I4 #126,
+   #147, H2 #149, C30 #208 (lowercase or unprepared alleles).
+5. **Merge, outputs, observability:** M4 #194, M2 #129, H1 #148, O1 #130, O2
+   #131, D6 #156. Policy for 6.7.0: M1 #128, #146.
+6. **Statistics:** S1 #153 (decided), S2 #154.
+7. **Release:** D1 #136, D2 #137, D4 #139 before the cut, P3 #152, D5 #155 last.
+
+Stay in 6.7.0 (no shared rule with the groups): the decomposition line (#111,
+#112, #145), performance and infrastructure (#150, #127, #138), and the
+diagnostics O5 #179 and O6 #180.
+
+The 6.6.0 cut is gated on groups 1–7. The release comparison is the D5 panel run
 on HPC, with the same release-candidate check as 6.5.0: every changed cell
 attributed to a ticket.
