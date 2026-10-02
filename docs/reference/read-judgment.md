@@ -54,6 +54,11 @@ it shows in review instead of slipping in with an unrelated fix.
 
 | ID | Question | Today | Proposal | Evidence |
 |:--|:--|:--|:--|:--|
+| G1-QUAL | **Absent base qualities** (QUAL `*`; BAM stores 0xFF, read as 255). | The base votes as Q255, passing every quality gate; fragment consensus overflows. | Unknown, like a masked base (the SAM spec: quality "not stored"); fix the overflow. | None in RC, FORTE or WES (survey). C19 #182. |
+| G1-ADAPTER | **Bases past the fragment end** (read-through into adapter, insert shorter than the read). | Counted as the read's own. | Masked in every read and rule, the census included (GATK clips at the same boundary). | 1,197 reads at 384 rows over all harness data (0.03% of reads). C17 #176. |
+| G1-HARD | **Hard clips** in the previous complex classifier's query walk. | Hard-clipped bases shift its query offsets: wrong anchor quality. | Hard-clipped bases are not in SEQ: never offset. | No hard-clipped admitted read in the harness data. C29 #207. |
+| G1-UNMAPPED | **Unmapped records** placed at their mate's position. | Counted in `mq0_count`. | Not an alignment: dropped by the read filter. | 61 records at 27 rows. O7 #183. |
+| G1-CLIPS (6.7.0 policy) | **Soft-clipped bases** inside the fragment (C15 #173, C7 #144) and **split reads** (C18 #177). | Clipped carriers admitted for complex/MNP in DNA only; supplementaries filtered. | To decide with group 1: clipped bases inside the fragment are the read's bases; RNA exon-edge clips excluded until measured; split reads join their molecule. | Built in 6.7.0. |
 | C27 | **The ALT written across several ops** (a deletion split in two). | Partial | ALT (its bases hold the ALT). Adopted in principle (operator, 2026-10-01); lands after a prototype is measured. | Census: ALT on every such shape. |
 | C28 | **A read deleting the anchor.** | Phase 3's closer haplotype: ALT or REF. | Judged by its bases: neither unless they hold an allele. Adopted in principle (operator, 2026-10-01); lands after a prototype is measured. | Census: contradicts both on every such shape. |
 
@@ -79,6 +84,7 @@ and at anchor-changing events before an A run.
 | Other indels outside the window | D1, D5 or I1 past the tract; a carrier with one | decided (RJ-8) |
 | Complex, long events | the same read haplotypes before a 60-A run | decided (RJ-9) |
 | The ALT across ops | a deletion written as two | open (C27) |
+| Read inputs | read-through adapter base on an SNV (ALT, REF); absent qualities; a hard-clipped read at the previous complex classifier (with an unclipped control) | open (group 1) |
 | Anchor deleted | the anchor deleted, with or without an insertion | open (C28) |
 
 Run `python tests/read_judgment_cases.py` for the full table: every case's call,
