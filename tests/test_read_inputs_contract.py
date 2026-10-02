@@ -42,10 +42,14 @@ def _count(bam, variant, min_mapq=20):
     return c
 
 
-def _pair(name, contig, s, frag_end, r1_seq=None):
-    """R1 forward from s, 100 bases, its fragment [s, frag_end): bases past
-    frag_end are adapter. R2 reverse ends at frag_end."""
-    a = make_read(name, r1_seq or contig[s : s + 100], s, ((0, 100),), flag=99)
+# The Illumina TruSeq adapter a read runs into past a short insert.
+ADAPTER = "AGATCGGAAGAGCACACGTCTGAACTCCAGTCACAGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT" * 2
+
+
+def _pair(name, contig, s, frag_end, r1_seq=None, r1_cigar=((0, 100),)):
+    """R1 forward from s, its fragment [s, frag_end). R2 reverse, 100 bases,
+    ends at frag_end."""
+    a = make_read(name, r1_seq or contig[s : s + 100], s, r1_cigar, flag=99)
     b = make_read(name, contig[frag_end - 100 : frag_end], frag_end - 100, ((0, 100),), flag=147)
     t = frag_end - s
     a.template_length, b.template_length = t, -t
@@ -54,34 +58,44 @@ def _pair(name, contig, s, frag_end, r1_seq=None):
     return [a, b]
 
 
-# ── RJ-10: a read ends at its fragment end ─────────────────────────────────
+def _through(contig, s, frag_end, aligned, molecule=None):
+    """R1's 100 bases and CIGAR as an aligner writes a read through a short insert:
+    the molecule [s, frag_end) (or `molecule`, its bases), then adapter, whose
+    first bases are aligned on past the fragment end by chance (`aligned`, as
+    BWA-MEM keeps an end mismatch over a clip) and the rest soft-clipped."""
+    mol = molecule or contig[s:frag_end]
+    tail = ADAPTER[len(aligned) : 100 - len(mol)]
+    return mol + aligned + tail, ((0, len(mol) + len(aligned)), (4, len(tail)))
 
 
 def test_an_adapter_base_on_an_snv_is_not_the_reads(tmp_path):
-    """R1 reads 50 bases past its fragment's end, onto the SNV: those bases are
-    adapter, so R1 neither shows an allele there nor reaches the SNV (depth)."""
+    """R1's molecule ends just before the SNV; the adapter's first base, an A
+    (the ALT, by chance), is aligned on the SNV and the rest soft-clipped. That
+    base is not the read's: R1 neither shows an allele there nor reaches it."""
     contig = _contig("GCT")
     reads = []
     for i in range(4):
         s = A - 60 + i
-        seq = list(contig[s : s + 100])
-        seq[A + 1 - s] = "A"  # the ALT, on an adapter base
-        reads += _pair(f"f{i}", contig, s, s + 50, "".join(seq))
+        seq, cig = _through(contig, s, A + 1, ADAPTER[0])
+        reads += _pair(f"f{i}", contig, s, A + 1, seq, cig)
     _, bam = write_contig(tmp_path, contig, reads, "snv")
     c = _count(bam, _rs.Variant("1", A + 1, contig[A + 1], "A", "SNP"))
     assert (c.dp, c.rd, c.ad) == (0, 0, 0)
 
 
 def test_a_molecule_ending_inside_the_run_is_not_ref_on_its_adapter(tmp_path):
-    """GA>G in G A*5 T. The molecule ends inside the run (A+3); R1's adapter bases
-    align on past it. Its molecule cannot tell the alleles apart: depth only, as
-    the census says (the census reads only the molecule's bases)."""
-    contig = _contig("GAAAAAT")
+    """CA>C in C A*5 G C. The molecule ends after the fourth A; the adapter's first
+    two bases, AG, align on by chance as the fifth A and the G, so the read looks
+    REF. Its molecule cannot tell the alleles apart: depth only, as the census
+    says (the census reads only the molecule's bases)."""
+    contig = _contig("CAAAAAGC")
     reads = []
     for i in range(4):
-        reads += _pair(f"m{i}", contig, A - 60 + i, A + 3)
+        s = A - 60 + i
+        seq, cig = _through(contig, s, A + 5, ADAPTER[:2])
+        reads += _pair(f"m{i}", contig, s, A + 5, seq, cig)
     fa, bam = write_contig(tmp_path, contig, reads, "run")
-    (pv,) = _rs.prepare_variants([_rs.Variant("1", A, "GA", "G", "X")], fa, 5, False, 1, True)
+    (pv,) = _rs.prepare_variants([_rs.Variant("1", A, "CA", "C", "X")], fa, 5, False, 1, True)
     c = _count(bam, pv.variant)
     assert c.rd == 0, (c.rd, c.ad)
     result = census(bam, contig, pv.variant)
@@ -108,29 +122,90 @@ def _counts(c):
 )
 def test_a_read_past_its_fragment_end_counts_as_the_read_trimmed_there(tmp_path, ref, alt):
     """A forward molecule ends on the event's first base, which carries the ALT's
-    first base; R1 reads on into adapter. Its call must be the call of the same
-    read trimmed at its fragment end: the adapter neither matches nor reaches."""
+    first base; R1 reads on into adapter (one base aligned, the rest clipped). Its
+    call must be the call of the same read trimmed at its fragment end: the
+    adapter neither matches nor reaches."""
     contig = _contig("TACGT")
     counts = []
     for trimmed in (False, True):
         reads = []
         for i in range(4):
             s, end = A - 60 + i, A + 1
-            seq = list(contig[s : s + 100])
-            seq[A - s] = alt[0]
-            r1 = "".join(seq)
-            pair = _pair(f"t{i}", contig, s, end, r1)
+            mol = contig[s:A] + alt[0]
             if trimmed:
-                n = end - s
-                pair[0].query_sequence = r1[:n]
-                pair[0].cigartuples = ((0, n),)
-                pair[0].query_qualities = [30] * n
-            reads += pair
+                seq, cig = mol, ((0, len(mol)),)
+            else:
+                seq, cig = _through(contig, s, end, ADAPTER[0], mol)
+            reads += _pair(f"t{i}", contig, s, end, seq, cig)
         fa, bam = write_contig(tmp_path, contig, reads, f"cx{int(trimmed)}")
         (pv,) = _rs.prepare_variants([_rs.Variant("1", A, ref, alt, "X")], fa, 5, False, 1, True)
         counts.append(_counts(_count(bam, pv.variant)))
     assert counts[0] == counts[1], counts
     assert counts[0][2] == 0, counts
+
+
+@pytest.mark.xfail(
+    strict=True, reason="C17 #176: a read's genomic bases past its TLEN end are clipped"
+)
+def test_a_read_whose_bases_align_on_past_its_tlen_end_keeps_them(tmp_path):
+    """R2's 5' end is soft-clipped (20 bases), so TLEN, from aligned 5' ends,
+    understates the molecule. R1's bases align on to the genome past that boundary
+    and onto the SNV, with the ALT: they are the molecule's, not adapter."""
+    contig = _contig("GCT")
+    reads = []
+    for i in range(4):
+        s, end = A - 60 + i, A - 9  # R2's aligned 5' end; its clip runs on to A + 11
+        r1 = list(contig[s : s + 100])
+        r1[A + 1 - s] = "A"
+        r2 = list(contig[end - 80 : end + 20])
+        r2[A + 1 - (end - 80)] = "A"
+        a = make_read(f"c{i}", "".join(r1), s, ((0, 100),), flag=99)
+        b = make_read(f"c{i}", "".join(r2), end - 80, ((0, 80), (4, 20)), flag=147)
+        a.template_length, b.template_length = end - s, s - end
+        a.next_reference_id = b.next_reference_id = 0
+        a.next_reference_start, b.next_reference_start = end - 80, s
+        reads += [a, b]
+    _, bam = write_contig(tmp_path, contig, reads, "mclip")
+    c = _count(bam, _rs.Variant("1", A + 1, contig[A + 1], "A", "SNP"))
+    assert (c.dp, c.ad) == (4, 4), (c.dp, c.rd, c.ad)
+
+
+INS = "GTCAGTTCAGGTACCATGCA"
+
+
+@pytest.mark.xfail(
+    strict=True, reason="C17 #176: an insertion past the TLEN end is clipped as adapter"
+)
+def test_an_insertion_past_the_tlen_end_is_the_molecules(tmp_path):
+    """TLEN is a reference distance: it leaves out the molecule's inserted bases,
+    as at a tandem duplication. R2 ends in the insertion (its 5' end), so R1's
+    insertion and flank after it lie past R1's TLEN end, but they are the
+    molecule's: R1 stays an exact carrier."""
+    contig = _contig("GCT")
+    reads = []
+    for i in range(4):
+        s = A - 50 + i
+        n = A + 1 - s  # R1's aligned bases up to the insertion point
+        rest = 100 - n - len(INS)
+        a = make_read(
+            f"i{i}",
+            contig[s : A + 1] + INS + contig[A + 1 : A + 1 + rest],
+            s,
+            ((0, n), (1, len(INS)), (0, rest)),
+            flag=99,
+        )
+        b = make_read(
+            f"i{i}", contig[A + 1 - 80 : A + 1] + INS, A + 1 - 80, ((0, 80), (1, 20)), flag=147
+        )
+        a.template_length, b.template_length = n, -n
+        a.next_reference_id = b.next_reference_id = 0
+        a.next_reference_start, b.next_reference_start = A + 1 - 80, s
+        reads += [a, b]
+    fa, bam = write_contig(tmp_path, contig, reads, "ins")
+    v = _rs.Variant("1", A, contig[A], contig[A] + INS, "X")
+    (pv,) = _rs.prepare_variants([v], fa, 5, False, 1, True)
+    c = _count(bam, pv.variant)
+    assert c.ad >= 4, (c.dp, c.rd, c.ad)
 
 
 def test_an_outward_pair_keeps_its_bases(tmp_path):
