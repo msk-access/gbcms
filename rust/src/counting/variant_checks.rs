@@ -1885,8 +1885,10 @@ struct WalkFindings {
     /// A candidate only haplotype comparison can settle (Phase 3), and why.
     phase3_candidate: bool,
     phase3_reason: &'static str,
-    /// Another allele in the window (wrong length, another haplotype, or the
-    /// variant written elsewhere with another change across its window).
+    /// Another allele flagged in the scan window (wrong length, another haplotype,
+    /// or the variant written elsewhere with another change across its window).
+    /// Inside the discrimination window the read's own indel makes it neither;
+    /// outside it, it is a separate event (traced).
     distinct_allele_nearby: bool,
 }
 
@@ -1896,12 +1898,11 @@ struct WalkFindings {
 ///   anchor (a soft clip there, or no gap the walk recognised), and is neither
 ///   otherwise (no information about the variant);
 /// - with the anchor covered: a Phase-3 candidate is arbitrated there, keeping
-///   partial evidence when Phase 3 does not confirm ALT; another allele in the
-///   window is neither with partial evidence where the event slides (a slippage
-///   allele; Phase 3 is length-blind inside repeat tracts) or with another indel
-///   across the window, and REF with partial evidence in unique context (the
-///   stray gap is alignment noise); else REF, since the CIGAR is definitive for
-///   a pure insertion or deletion.
+///   partial evidence when Phase 3 does not confirm ALT; a read with any other
+///   insertion or deletion inside the discrimination window is another allele
+///   there, neither with partial evidence (its bases are not REF across the
+///   window); else REF. Another allele outside the window, of any length, is a
+///   separate event: the read's bases across the window are REF.
 #[allow(clippy::too_many_arguments)]
 fn resolve_walk<F: Fn(u8, u8) -> i32>(
     record: &Record,
@@ -1947,29 +1948,19 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
         }
         return result;
     }
-    if w.distinct_allele_nearby {
-        let op = if w.kind == "insertion" { "I" } else { "D" };
-        let in_tract = variant.repeat_span >= 2 || window::slides(variant);
-        if in_tract
-            || other_indel_in_window(record, window::discrimination_window(variant), i64::MIN, false)
-        {
-            trace!(
-                "check_{}: distinct-allele {} after {} {} → neither + partial evidence",
-                w.kind,
-                op,
-                anchor_pos,
-                if in_tract { "in the repeat tract" } else { "with another indel across the window" },
-            );
-            return ClassifyResult::neither_with_nearby(w.anchor_qual, ClassifyPhase::Structural);
-        }
+    if other_indel_in_window(record, window::discrimination_window(variant), i64::MIN, false) {
         trace!(
-            "check_{}: lone distinct-allele {} in window at pos {} (unique context) → REF at \
-             anchor + partial evidence",
-            w.kind, op, anchor_pos
+            "check_{}: another insertion or deletion inside the window after {} → neither + \
+             partial evidence",
+            w.kind, anchor_pos
         );
-        let mut result = ClassifyResult::is_ref(w.anchor_qual, ClassifyPhase::Structural);
-        result.has_nearby_evidence = true;
-        return result;
+        return ClassifyResult::neither_with_nearby(w.anchor_qual, ClassifyPhase::Structural);
+    }
+    if w.distinct_allele_nearby {
+        trace!(
+            "check_{}: another allele outside the window after {} is a separate event → REF",
+            w.kind, anchor_pos
+        );
     }
     ClassifyResult::is_ref(w.anchor_qual, ClassifyPhase::Structural)
 }
@@ -2429,9 +2420,10 @@ fn scan_windowed_deletion_candidate(
         );
         true
     } else if del_len_usize >= 5 {
-        // Wrong-length D in the window: a distinct-allele candidate,
-        // resolved after the walk without Phase 3 (`resolve_walk`: neither,
-        // or REF in unique context, with partial evidence).
+        // Wrong-length D in the scan window: a distinct-allele candidate,
+        // resolved after the walk without Phase 3 (`resolve_walk`: inside the
+        // discrimination window the read is neither, with partial evidence;
+        // outside it, a separate event).
         *has_distinct_allele_nearby = true;
         trace!(
             "check_deletion: windowed D({}) at pos {} (expected D({})), \

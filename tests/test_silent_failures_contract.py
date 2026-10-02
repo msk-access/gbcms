@@ -13,8 +13,8 @@ changed a call with nothing logged:
   long run the rule fell back to the previous classifier with only a trace. Prep
   now widens it; a variant the rule still cannot judge is warned once.
 
-Committed red (xfail-strict) before the fix. The long-run count equality waits on
-C25 #199 (strict xfail).
+Committed red (xfail-strict) before the fix. Long complex events' junction
+windows read on through the read (C25 #199).
 """
 
 import logging
@@ -146,15 +146,13 @@ def test_an_unjudgeable_complex_variant_is_warned_once(tmp_path, caplog):
     assert "no prepared reference" in warns[0], "the warning names why the rule could not judge"
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C25 #199: long-event junction windows credit REF to anchor-keeping reads"
-)
-def test_an_anchor_changing_insertion_counts_the_same_in_a_long_run(tmp_path):
-    """The same reads before a 30bp and an 80bp A run count the same (reads
-    keeping the anchor are not REF)."""
-    short = _ins_snv(tmp_path, 30, "run30")
-    assert short[0] == 6, short  # only the REF reads
-    assert _ins_snv(tmp_path, 80, "run80") == short
+def test_an_anchor_changing_insertion_in_a_long_run_judges_reads_by_their_bases(tmp_path):
+    """C>TA before an A run: reads keeping the C with the inserted A show it only
+    once they reach the run's end. Before a 30bp run they do, and are neither;
+    before an 80bp run they end inside it, base for base the REF reads, and count
+    REF like them: bases decide, not the CIGAR's insertion (operator, 2026-10-01)."""
+    assert _ins_snv(tmp_path, 30, "run30") == (6, 6, 0)
+    assert _ins_snv(tmp_path, 80, "run80") == (12, 6, 0)
 
 
 def test_a_read_spliced_over_an_anchor_changing_insertions_anchor_is_out_of_depth(tmp_path):
@@ -273,9 +271,6 @@ def test_a_decomposed_twin_in_a_long_run_is_judged_by_the_exact_carrier_rule(tmp
     assert not [r for r in caplog.records if "exact-carrier rule" in r.getMessage()]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C25 #199: a long event's left junction alone decides the call"
-)
 @pytest.mark.parametrize(
     "ref_allele, alt_allele, read_hap",
     [

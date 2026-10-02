@@ -31,8 +31,11 @@
 //!   windows at each end, reading inward: a flank through one base past the first
 //!   base where they differ, and through the shorter allele when that fits in
 //!   [`LONG_EVENT`] bases (the right junction from just before its first
-//!   difference, so growth on the left favours neither allele). A read must match
-//!   the same allele at every junction it holds.
+//!   difference, so growth on the left favours neither allele). A read holding a
+//!   junction is also read on inward, as far as it reaches, against the rest of
+//!   each allele's window: a read whose later bases contradict an allele (one A
+//!   more than the ALT's run) is not that allele. A read must match the same
+//!   allele at every junction it holds.
 //! - **Outcomes.** A read decides only where it holds both the REF and the ALT
 //!   window (padding can let one complete where the other cannot). A read
 //!   matching both (through masked bases) is neither. A read holding no pair is
@@ -72,6 +75,11 @@ struct Window {
     /// after it, counted from where the alleles differ.
     before: usize,
     after: usize,
+    /// For a junction window, the rest of the allele's window inward of it (after
+    /// a left-anchored one, before a right-anchored one), compared as far as the
+    /// read reaches. Empty for whole windows, and for a spliced read (its bases
+    /// past a splice come from the next exon).
+    beyond: Vec<u8>,
 }
 
 /// The REF and ALT windows, paired: whole-event windows (one pair) or junction
@@ -106,7 +114,7 @@ impl Windows {
                 after -= drop;
                 right = right.map(|_| n0);
             }
-            Window { seq, left, right, before, after }
+            Window { seq, left, right, before, after, beyond: Vec::new() }
         };
         Windows { pairs: self.pairs.iter().map(|(r, a)| (cut(r), cut(a))).collect(), event: self.event }
     }
@@ -469,6 +477,7 @@ fn windows(v: &Variant) -> Option<Windows> {
             right: None,
             before: c_lo - lo,
             after: (lo + j_left).saturating_sub(end),
+            beyond: seq[j_left..].to_vec(),
         };
         let right = |seq: &[u8]| Window {
             seq: seq[seq.len() - j_right..].to_vec(),
@@ -476,6 +485,7 @@ fn windows(v: &Variant) -> Option<Windows> {
             right: Some(g(hi)),
             before: c_lo.saturating_sub(lo + seq.len() - j_right),
             after: hi - c_hi,
+            beyond: seq[..seq.len() - j_right].to_vec(),
         };
         let alt_end = (c_hi as i64 + d) as usize;
         return Some(Windows {
@@ -513,6 +523,7 @@ fn windows(v: &Variant) -> Option<Windows> {
         right: Some(g(b)),
         before: c_lo - a,
         after: b - c_hi,
+        beyond: Vec::new(),
     };
     Some(Windows { pairs: vec![(whole(ref_w, span[0]), whole(alt_w, span[1]))], event: (g(c_lo), g(c_hi)) })
 }
@@ -577,11 +588,22 @@ fn read_window(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: &Win
         .map(|q| q + 1)
         .filter(|&e| e >= n && e <= seq.len())
         .map(|e| (e - n, e));
-    [from_left, to_right]
-        .into_iter()
-        .flatten()
-        .map(|(a, b)| score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b)))
-        .min_by_key(|r| (r.mismatches, r.masked))
+    // A junction window's reading continues inward through `beyond`, as far as the
+    // read reaches; its mismatches count (the quality and span stay the window's).
+    let n_beyond = w.beyond.len();
+    let left_read = from_left.map(|(a, b)| {
+        let mut r = score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b));
+        let k = n_beyond.min(seq.len() - b);
+        r.mismatches += score(&seq[b..b + k], &quals[b..b + k], min_baseq, &w.beyond[..k], (b, b + k)).mismatches;
+        r
+    });
+    let right_read = to_right.map(|(a, b)| {
+        let mut r = score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b));
+        let k = n_beyond.min(a);
+        r.mismatches += score(&seq[a - k..a], &quals[a - k..a], min_baseq, &w.beyond[n_beyond - k..], (a - k, a)).mismatches;
+        r
+    });
+    [left_read, right_read].into_iter().flatten().min_by_key(|r| (r.mismatches, r.masked))
 }
 
 /// Mismatches of read bases against haplotype bases position by position, masked

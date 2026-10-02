@@ -13,7 +13,6 @@ census's:
 
 Read shapes whose rules are still open decisions are strict xfails. They turn
 green only when the decision lands:
-- C26 #200: a short indel of another length or kind inside the window;
 - C27 #201: the ALT spelled across several ops;
 - C28 #202: a read that deletes the anchor falls back to Phase 3.
 
@@ -267,9 +266,6 @@ def _open_case(tmp_path, row, events, name):
     assert_matches(counts, result, name)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C26 #200: a short indel of another length or kind in the window counts REF"
-)
 @pytest.mark.parametrize(
     "row, events",
     [

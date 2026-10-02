@@ -227,20 +227,6 @@ pub(crate) fn reference_to(v: &Variant, lo: i64, hi: i64) -> Option<(i64, Vec<u8
         .or_else(|| v.ref_context.as_ref().and_then(|ctx| slice(v.ref_context_start, ctx)))
 }
 
-/// Whether a pure indel slides: its shift region is wider than the event (an
-/// insertion with more than one junction, a deletion whose region is longer than
-/// itself). This, not `repeat_span` (motifs of up to 6 bases only), says whether
-/// the event sits in a repeat: a long-period tandem duplication slides too.
-pub(crate) fn slides(v: &Variant) -> bool {
-    let (lo, hi) = change_interval(v);
-    let (r, a) = (v.ref_allele.len() as i64, v.alt_allele.len() as i64);
-    if a > r {
-        hi > lo
-    } else {
-        hi - lo > r - a
-    }
-}
-
 /// Whether a read's own bases tell a pure indel's ALT from its REF, read where
 /// they sit. Rightwards from the read's aligned base just left of the
 /// discrimination window, or leftwards from its aligned base just right of it,
@@ -704,22 +690,6 @@ mod tests {
     fn substitution_bearing_events_have_no_informative_windows() {
         assert_eq!(informative_windows(&var(HOMO, 2, "C", "GA")), None);
         assert_eq!(informative_windows(&var(HOMO, 5, "A", "G")), None);
-    }
-
-    #[test]
-    fn an_event_slides_when_its_region_is_wider_than_itself() {
-        // A homopolymer insertion slides over the run; a deletion of the whole
-        // run's worth of one base slides; a unique insertion does not.
-        assert!(slides(&var(HOMO, 2, "C", "CA")));
-        assert!(slides(&var(HOMO, 2, "CA", "C")));
-        assert!(!slides(&var("TGCTGACTGA", 2, "C", "CG")));
-        // A long-period duplication slides whatever repeat_span says.
-        let mut dup = var(HOMO, 9, "G", "GACGTTGCA");
-        dup.shift_region = Some((10, 26));
-        assert!(slides(&dup));
-        let mut unique_del = var(HOMO, 9, "GACGTTGCA", "G");
-        unique_del.shift_region = Some((10, 18));
-        assert!(!slides(&unique_del));
     }
 
     #[test]

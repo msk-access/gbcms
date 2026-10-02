@@ -59,8 +59,8 @@ marks a ticket with an open PR.
 | C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [done] | #191 |
 | C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [done] | #192 |
 | C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
-| C25 | Exact-carrier long-event junction windows: a read holding one junction decides the call (REF for anchor-keeping reads; ALT for reads carrying only the substitution) | M | [counts] | #199 |
-| C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decide] | #200 |
+| C25 | Exact-carrier long-event junction windows: a read holding one junction decides the call (REF for anchor-keeping reads; ALT for reads carrying only the substitution) | M | [counts] [decided] | #199 |
+| C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decided] | #200 |
 | C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [6.7.0] | #201 |
 | C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] | #202 |
 | C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] | #207 |
@@ -1654,6 +1654,27 @@ hid the RNA exon-edge collapse.
 - PRs, issues and plans carry aggregates and allele shapes only.
 - Not yet covered: WGS, public reference data, other aligners and quality bins
   (D5 arms).
+
+**Read judgment is decided spec-first (operator, 2026-10-01).** Read-judgment
+tickets kept moving each other's boundaries (the same BRCA2 cluster came back in
+#92, C2, C21 and C26), because each was decided against develop alone. Now:
+- `docs/reference/read-judgment.md` is the spec: read shape × variant → call,
+  with a decision register (RJ-n). A ticket that touches read judgment changes
+  the spec first; the operator decides; code follows. A new decision names the
+  ones it amends.
+- `tests/test_read_judgment_spec.py` executes it (decided cells hold the rule's
+  call; open cells pin today's), so a change shows in review the day it happens.
+- Related tickets are decided together from that table (C25, C26, C27, C28 were).
+- An existing test expectation changes only with the operator's say (AGENTS.md).
+
+**C25 + C26 as built (2026-10-01).** Decided together with C27 and C28 from the
+spec: RJ-7 (another indel inside the window: not REF, partial), RJ-8 (outside:
+a separate event, REF, no partial), RJ-9 (long complex events read through the
+read). C27 and C28 adopted in principle (judge their bases), to land after a
+prototype is measured. Evidence: the census agrees on every synthetic shape; 105
+changed DNA/WES rows: REF develop 60,619, rule 57,218, census 57,199; FORTE rows:
+every row moves no more reads than its census "contradicts both" count. C25
+changed nothing on real data.
 
 ## Triage (2026-09-30, operator)
 

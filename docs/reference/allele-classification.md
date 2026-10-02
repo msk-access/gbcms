@@ -1,5 +1,8 @@
 # Allele Classification
 
+> What call each read shape gets, and the decision behind it, is specified in
+> [Read Judgment](read-judgment.md); this page describes how the engine computes it.
+
 How gbcms classifies each read as supporting the **reference** allele, the **alternate** allele, or **neither**.
 
 !!! tip "Detailed Visual Reference (PDF)"

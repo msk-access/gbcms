@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — which reads count REF for a pure indel; long complex events read through the read (#200, #199)
+
+Read judgment now has one spec, `docs/reference/read-judgment.md`:
+a table of read shapes and their calls, with the decision behind each, executed
+by `tests/test_read_judgment_spec.py`. Changes to how reads are judged are
+decided against it.
+- **Another indel inside the discrimination window means not REF** (#200). A
+  read carrying another insertion or deletion inside the window (not the ALT
+  at another placement) is neither, with partial evidence: its bases are not
+  REF there. This extends the sibling REF guard (#119) from co-annotated rows
+  to any indel. Most visible at deep slippage loci: a BRCA2 cluster where an
+  unannotated 1bp deletion in an A run lies inside two rows' windows, and
+  homopolymer runs.
+- **Another indel outside the window is a separate event** (#200). Of any
+  length, it leaves the read REF where its bases across the window are REF,
+  with no partial evidence. Before, a 5bp-or-longer one withdrew REF in a
+  repeat, and kept REF with partial evidence in unique sequence.
+- **Long complex events read through the read** (#199). The junction windows
+  of an event too long for one read are read on inward as far as the read
+  reaches. A read whose later bases contradict an allele is no longer called
+  that allele: for example, a substitution-only read reaching the end of the
+  run after a C>TA or CA>T, or a read that keeps the anchor and changes the
+  run length.
+- **Measured:** develop vs this branch, on RC DNA, FORTE RNA and WES, with every
+  MAF cell compared.
+  - 112 of 144 files are byte-identical. 155 rows change, all from the
+    inside-window rule: REF −4,327, partial +4,324. ALT and depth are
+    unchanged everywhere. The long-event change moved no row.
+  - Checked against the read census (bases only): on the 105 changed DNA/WES
+    rows it counts 57,199 REF reads, develop 60,619, this branch 57,218. On
+    every FORTE row, the reads moved out of REF are no more than those whose
+    bases contradict both alleles.
+  - The largest moves:
+    - a BRCA2 cluster: the +AAG row goes 1,413 → 408 REF in one sample
+      (census 368), the 12bp-deletion row 1,213 → 402;
+    - a 1bp-deletion row in a homopolymer: 1,009 → 698;
+    - a FORTE T-run probe: about −1.5% REF.
+
 ### Changed — code-quality sweep: logging, monitoring, dead code, duplication (#204)
 
 Counts are unchanged on prepared input: 144 of 144 acceptance files (RC DNA,

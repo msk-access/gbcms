@@ -4908,9 +4908,9 @@ mod tests {
 
     #[test]
     fn test_insertion_wrong_length_in_window() {
-        // Read has I(1) at a windowed position (2bp from anchor) for expected I(2).
-        // Expected path: Step 1.3 → windowed else clause →
-        //   has_nearby_length_match = true → post-walk Phase 3 fallback.
+        // Read has I(1) at a windowed position (2bp from anchor) for expected I(2),
+        // outside the discrimination window in unique context: a separate event,
+        // so the read's bases across the window are REF (operator, 2026-10-01).
         //
         // Geometry:
         //   Ref:    ...GGGGGAGGGGG...   (anchor A at pos 15)
@@ -4921,7 +4921,6 @@ mod tests {
         //   [15-5, 15+5] = [10, 20]. Step 1.3's else clause sets
         //   has_nearby_length_match = true.
         //
-        // Post-walk: has_nearby_length_match && found_ref_coverage → Phase 3.
         let seq = b"GGGCGGAGGGGG";
         let qual = &[35_u8; 12];
         // 3M at pos 10 → covers 10,11,12
@@ -4947,13 +4946,9 @@ mod tests {
             &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
         );
 
-        // The read has I(1) near the anchor (in window) but we expect I(2).
-        // Phase 3 should be invoked. If Phase 3 returns non-ALT,
-        // has_nearby_evidence must be set.
         assert!(
-            result.has_nearby_evidence || result.is_alt,
-            "Wrong-length I(1) in window for expected I(2) must either be ALT \
-             or have has_nearby_evidence=true. \
+            result.is_ref && !result.has_nearby_evidence,
+            "An I(1) outside the window is a separate event: REF, no partial evidence. \
              Got is_ref={}, is_alt={}, has_nearby_evidence={}",
             result.is_ref, result.is_alt, result.has_nearby_evidence
         );
