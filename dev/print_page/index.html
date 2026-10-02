@@ -865,6 +865,8 @@
       
         
       
+        
+      
     
     
     
@@ -1123,6 +1125,34 @@
     
   
     Allele Classification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/read-judgment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read Judgment
   
 
     
@@ -1970,6 +2000,17 @@
     <span class="md-ellipsis">
       
         Allele Classification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reference-read-judgment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read Judgment
       
     </span>
   </a>
@@ -10629,6 +10670,10 @@ per-<abbr title="Binary Alignment Map - Compressed sequence alignment file forma
         })
         </script>
         </head><body><div><h1 id="allele-classification">Allele Classification<a class="headerlink" href="#reference-allele-classification-allele-classification" title="Permanent link">¶</a></h1>
+<blockquote>
+<p>What call each read shape gets, and the decision behind it, is specified in
+<a href="#reference-read-judgment">Read Judgment</a>; this page describes how the engine computes it.</p>
+</blockquote>
 <p>How gbcms classifies each read as supporting the <strong>reference</strong> allele, the <strong>alternate</strong> allele, or <strong>neither</strong>.</p>
 <div class="admonition tip">
 <p class="admonition-title">Detailed Visual Reference (PDF)</p>
@@ -12287,7 +12332,201 @@ constants and do not use it).</p>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-counting-metrics" heading-number="5.9"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-read-judgment" heading-number="5.9"><html><head>
+        <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function () {
+            remove_material_navigation();remove_mkdocs_theme_navigation();
+        })
+        </script>
+        </head><body><div><h1 id="read-judgment">Read Judgment<a class="headerlink" href="#reference-read-judgment-read-judgment" title="Permanent link">¶</a></h1>
+<p>How gbcms decides what one read says about one variant: REF, ALT, partial
+evidence of another allele, or depth only. This page is the <strong>spec</strong>: a table of
+read shapes and the call each gets, with the decision behind every call. The
+algorithms that implement it are in <a href="#reference-allele-classification">Allele Classification</a>.</p>
+<p>The table is executable. <code>tests/read_judgment_cases.py</code> builds every shape
+(synthetic, four reads each) and <code>tests/test_read_judgment_spec.py</code> checks the
+engine's call for each one. A <strong>decided</strong> case fails when the engine breaks its
+rule. An <strong>open</strong> case pins today's call until its decision lands, so a change to
+it shows in review instead of slipping in with an unrelated fix.</p>
+<h2 id="reference-read-judgment-how-a-change-to-read-judgment-is-made">How a change to read judgment is made<a class="headerlink" href="#reference-read-judgment-how-a-change-to-read-judgment-is-made" title="Permanent link">¶</a></h2>
+<ol>
+<li><strong>Spec first.</strong> A change to how reads are judged starts here: the shapes it
+   affects, their call today, the proposed call, and the evidence (the read
+   census's verdict on each shape, and real-data counts adjudicated per read).</li>
+<li><strong>Decide.</strong> The operator decides; the decision gets an entry in the register
+   below, naming any earlier decision it amends.</li>
+<li><strong>Then code.</strong> The implementation turns the case table's open cells into
+   decided ones. A test expectation that changes is part of the decision, never a
+   side effect of the fix.</li>
+</ol>
+<h2 id="reference-read-judgment-principles">Principles<a class="headerlink" href="#reference-read-judgment-principles" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>Count the given allele; judge bases, not placement.</strong> A read is ALT only when
+  its own bases carry the ALT, and REF only when its bases show REF where the
+  alleles differ. Alignments can be wrong, so the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr>'s placement of an indel
+  never decides a call on its own (AGENTS.md invariant 7).</li>
+<li><strong>Informative reads only.</strong> A read that cannot tell the alleles apart (one that
+  starts or ends inside an indel's repeat tract, or holds no window of a complex
+  variant) counts toward depth only.</li>
+<li><strong>One oracle.</strong> For pure indels, the read census (<code>tests/census.py</code>) judges each
+  read by its bases alone; the engine's pure-indel counts are checked against it.</li>
+</ul>
+<h2 id="reference-read-judgment-decision-register">Decision register<a class="headerlink" href="#reference-read-judgment-decision-register" title="Permanent link">¶</a></h2>
+<h3 id="reference-read-judgment-decided">Decided<a class="headerlink" href="#reference-read-judgment-decided" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">ID</th>
+<th style="text-align: left;">Rule</th>
+<th style="text-align: left;">Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">RJ-1</td>
+<td style="text-align: left;">REF only from reads that span an informative window; a read starting or ending inside the tract is depth only.</td>
+<td style="text-align: left;">C10 #157</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-2</td>
+<td style="text-align: left;">ALT only where the read's own bases hold the ALT: carriers ending inside the tract are depth only; a read with another indel in the window on the strict path, or a same-length deletion spelling another allele, is another allele; reads that keep the anchor of an anchor-changing insertion are another allele.</td>
+<td style="text-align: left;">#161, cluster 1 (#188, #191, #192, #121)</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-3</td>
+<td style="text-align: left;">Reads starting (or ending) on a pure indel's flank are read from the flank when they read that base (unmasked, the reference's). A deciding base past a contig edge leaves the read depth only, counted and warned.</td>
+<td style="text-align: left;">H3 #204</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-4</td>
+<td style="text-align: left;">Complex variants (delins, anchor-changing indels, <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads with an indel at the block) count exact carriers: the read's bases across the whole event with two flank bases; long events by junction windows.</td>
+<td style="text-align: left;">C1 #141</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-5</td>
+<td style="text-align: left;">A REF read that is ALT for a co-annotated sibling whose event lies inside this row's discrimination window is not REF here (partial evidence), for reads and fragments alike.</td>
+<td style="text-align: left;">C2 #119</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-6</td>
+<td style="text-align: left;">Wrong-length pure indels are another allele (partial evidence); deletions of 50bp or more match within a 3-base band.</td>
+<td style="text-align: left;">#91</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-7</td>
+<td style="text-align: left;">A read with another insertion or deletion inside the discrimination window (not the ALT at another placement) is not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel.</td>
+<td style="text-align: left;">C26 #200, operator 2026-10-01</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-8</td>
+<td style="text-align: left;">Another insertion or deletion outside the window, of any length, is a separate event: the read is REF where its bases across the window are REF, with no partial evidence.</td>
+<td style="text-align: left;">C26 #200, operator 2026-10-01</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-9</td>
+<td style="text-align: left;">A long complex event's junction windows are read on inward as far as the read reaches; a read whose later bases contradict an allele is not that allele. A read ending inside the event is judged by the bases it has (one base-identical to REF counts REF).</td>
+<td style="text-align: left;">C25 #199, operator 2026-10-01</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reference-read-judgment-open">Open<a class="headerlink" href="#reference-read-judgment-open" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">ID</th>
+<th style="text-align: left;">Question</th>
+<th style="text-align: left;">Today</th>
+<th style="text-align: left;">Proposal</th>
+<th style="text-align: left;">Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">C27</td>
+<td style="text-align: left;"><strong>The ALT written across several ops</strong> (a deletion split in two).</td>
+<td style="text-align: left;">Partial</td>
+<td style="text-align: left;">ALT (its bases hold the ALT). Adopted in principle (operator, 2026-10-01); lands after a prototype is measured.</td>
+<td style="text-align: left;">Census: ALT on every such shape.</td>
+</tr>
+<tr>
+<td style="text-align: left;">C28</td>
+<td style="text-align: left;"><strong>A read deleting the anchor.</strong></td>
+<td style="text-align: left;">Phase 3's closer haplotype: ALT or REF.</td>
+<td style="text-align: left;">Judged by its bases: neither unless they hold an allele. Adopted in principle (operator, 2026-10-01); lands after a prototype is measured.</td>
+<td style="text-align: left;">Census: contradicts both on every such shape.</td>
+</tr>
+</tbody>
+</table>
+<p>Evidence behind RJ-7 to RJ-9 (2026-10-01): on 105 changed DNA and WES rows the
+read census counts 57,199 REF reads; develop counted 60,619 and the decided rules
+57,218. The largest moves are deep slippage loci (a BRCA2 cluster where an
+unannotated 1bp deletion in an A run sits inside two annotated rows' windows; a
+T run). RJ-9 changed no row on RC, FORTE or WES.</p>
+<h2 id="reference-read-judgment-the-cases">The cases<a class="headerlink" href="#reference-read-judgment-the-cases" title="Permanent link">¶</a></h2>
+<p>Each group below is a set of shapes in <code>read_judgment_cases.py</code>, run at pure
+indels in homopolymers, dinucleotide repeats, duplications and unique sequence,
+and at anchor-changing events before an A run.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Group</th>
+<th style="text-align: left;">Shapes</th>
+<th style="text-align: left;">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">REF reads</td>
+<td style="text-align: left;">spanning the tract; ending inside it</td>
+<td style="text-align: left;">decided (RJ-1)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Carriers</td>
+<td style="text-align: left;">exact carrier; the ALT at another placement in the tract</td>
+<td style="text-align: left;">decided (RJ-2)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Complex, whole windows</td>
+<td style="text-align: left;">REF, substitution only, anchor kept with a length change, exact carrier; ending inside the run, on the base after it, past it (10-A run)</td>
+<td style="text-align: left;">decided (RJ-4)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Siblings</td>
+<td style="text-align: left;">a co-annotated SNV inside the span; outside the window</td>
+<td style="text-align: left;">decided (RJ-5)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Other indels inside the window</td>
+<td style="text-align: left;">D1 or I1 near the anchor, D2 after it</td>
+<td style="text-align: left;">decided (RJ-7)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Other indels outside the window</td>
+<td style="text-align: left;">D1, D5 or I1 past the tract; a carrier with one</td>
+<td style="text-align: left;">decided (RJ-8)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Complex, long events</td>
+<td style="text-align: left;">the same read haplotypes before a 60-A run</td>
+<td style="text-align: left;">decided (RJ-9)</td>
+</tr>
+<tr>
+<td style="text-align: left;">The ALT across ops</td>
+<td style="text-align: left;">a deletion written as two</td>
+<td style="text-align: left;">open (C27)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Anchor deleted</td>
+<td style="text-align: left;">the anchor deleted, with or without an insertion</td>
+<td style="text-align: left;">open (C28)</td>
+</tr>
+</tbody>
+</table>
+<p>Run <code>python tests/read_judgment_cases.py</code> for the full table: every case's call,
+with the read census's verdict next to each pure-indel case.</p>
+<!-- Abbreviation definitions for gbcms documentation -->
+<!-- These provide hover tooltips for technical acronyms -->
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-counting-metrics" heading-number="5.10"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -13438,7 +13677,7 @@ equals the p-value until the post-counting BH pass runs.</p>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-mfsd-report" heading-number="5.10"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-mfsd-report" heading-number="5.11"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -13723,7 +13962,7 @@ Use mouse to pan and zoom
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-molecule-observations" heading-number="5.11"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-molecule-observations" heading-number="5.12"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -14138,7 +14377,7 @@ are safe; simply do not turn it on for such data.</p>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-complex-indels" heading-number="5.12"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-complex-indels" heading-number="5.13"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -14512,7 +14751,7 @@ not describe. Inspect per-read lengths with <code>--trace</code>.</p>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-bam-evidence-caveats" heading-number="5.13"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-bam-evidence-caveats" heading-number="5.14"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -14895,7 +15134,7 @@ caveat in gbcms's output.</p>
 </ul>
 <!-- Abbreviation definitions for gbcms documentation -->
 <!-- These provide hover tooltips for technical acronyms -->
-<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-glossary" heading-number="5.14"><html><head>
+<p><span hidden="">abbreviations</span></p></div></body></html></section><section class="print-page" id="reference-glossary" heading-number="5.15"><html><head>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function () {
             remove_material_navigation();remove_mkdocs_theme_navigation();
@@ -16759,6 +16998,42 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-which-reads-count-ref-for-a-pure-indel-long-complex-events-read-through-the-read-200-199">Changed — which reads count REF for a pure indel; long complex events read through the read (#200, #199)<a class="headerlink" href="#development-changelog-changed-which-reads-count-ref-for-a-pure-indel-long-complex-events-read-through-the-read-200-199" title="Permanent link">¶</a></h3>
+<p>Read judgment now has one spec, <code>docs/reference/read-judgment.md</code>:
+a table of read shapes and their calls, with the decision behind each, executed
+by <code>tests/test_read_judgment_spec.py</code>. Changes to how reads are judged are
+decided against it.
+- <strong>Another indel inside the discrimination window means not REF</strong> (#200). A
+  read carrying another insertion or deletion inside the window (not the ALT
+  at another placement) is neither, with partial evidence: its bases are not
+  REF there. This extends the sibling REF guard (#119) from co-annotated rows
+  to any indel. Most visible at deep slippage loci: a BRCA2 cluster where an
+  unannotated 1bp deletion in an A run lies inside two rows' windows, and
+  homopolymer runs.
+- <strong>Another indel outside the window is a separate event</strong> (#200). Of any
+  length, it leaves the read REF where its bases across the window are REF,
+  with no partial evidence. Before, a 5bp-or-longer one withdrew REF in a
+  repeat, and kept REF with partial evidence in unique sequence.
+- <strong>Long complex events read through the read</strong> (#199). The junction windows
+  of an event too long for one read are read on inward as far as the read
+  reaches. A read whose later bases contradict an allele is no longer called
+  that allele: for example, a substitution-only read reaching the end of the
+  run after a C&gt;TA or CA&gt;T, or a read that keeps the anchor and changes the
+  run length.
+- <strong>Measured:</strong> develop vs this branch, on RC DNA, FORTE RNA and WES, with every
+  <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> cell compared.
+  - 112 of 144 files are byte-identical. 155 rows change, all from the
+    inside-window rule: REF −4,327, partial +4,324. ALT and depth are
+    unchanged everywhere. The long-event change moved no row.
+  - Checked against the read census (bases only): on the 105 changed DNA/WES
+    rows it counts 57,199 REF reads, develop 60,619, this branch 57,218. On
+    every FORTE row, the reads moved out of REF are no more than those whose
+    bases contradict both alleles.
+  - The largest moves:
+    - a BRCA2 cluster: the +AAG row goes 1,413 → 408 REF in one sample
+      (census 368), the 12bp-deletion row 1,213 → 402;
+    - a 1bp-deletion row in a homopolymer: 1,009 → 698;
+    - a FORTE T-run probe: about −1.5% REF.</p>
 <h3 id="development-changelog-changed-code-quality-sweep-logging-monitoring-dead-code-duplication-204">Changed — code-quality sweep: logging, monitoring, dead code, duplication (#204)<a class="headerlink" href="#development-changelog-changed-code-quality-sweep-logging-monitoring-dead-code-duplication-204" title="Permanent link">¶</a></h3>
 <p>Counts are unchanged on prepared input: 144 of 144 acceptance files (RC DNA,
 FORTE RNA, WES) are byte-identical to the previous build, every <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> cell compared.
@@ -19966,34 +20241,39 @@ genuinely has nothing to count.</p>
                 .print-site-enumerate-headings #reference-allele-classification h2:before { content: '5.8.' counter(counter-reference-allele-classification-2) ' ' }
                 .print-site-enumerate-headings #reference-allele-classification h2 {  counter-increment: counter-reference-allele-classification-2 }
             
-.print-site-enumerate-headings #reference-counting-metrics > h1:before { content: '5.9 ' }
+.print-site-enumerate-headings #reference-read-judgment > h1:before { content: '5.9 ' }
 
-                .print-site-enumerate-headings #reference-counting-metrics h2:before { content: '5.9.' counter(counter-reference-counting-metrics-2) ' ' }
+                .print-site-enumerate-headings #reference-read-judgment h2:before { content: '5.9.' counter(counter-reference-read-judgment-2) ' ' }
+                .print-site-enumerate-headings #reference-read-judgment h2 {  counter-increment: counter-reference-read-judgment-2 }
+            
+.print-site-enumerate-headings #reference-counting-metrics > h1:before { content: '5.10 ' }
+
+                .print-site-enumerate-headings #reference-counting-metrics h2:before { content: '5.10.' counter(counter-reference-counting-metrics-2) ' ' }
                 .print-site-enumerate-headings #reference-counting-metrics h2 {  counter-increment: counter-reference-counting-metrics-2 }
             
-.print-site-enumerate-headings #reference-mfsd-report > h1:before { content: '5.10 ' }
+.print-site-enumerate-headings #reference-mfsd-report > h1:before { content: '5.11 ' }
 
-                .print-site-enumerate-headings #reference-mfsd-report h2:before { content: '5.10.' counter(counter-reference-mfsd-report-2) ' ' }
+                .print-site-enumerate-headings #reference-mfsd-report h2:before { content: '5.11.' counter(counter-reference-mfsd-report-2) ' ' }
                 .print-site-enumerate-headings #reference-mfsd-report h2 {  counter-increment: counter-reference-mfsd-report-2 }
             
-.print-site-enumerate-headings #reference-molecule-observations > h1:before { content: '5.11 ' }
+.print-site-enumerate-headings #reference-molecule-observations > h1:before { content: '5.12 ' }
 
-                .print-site-enumerate-headings #reference-molecule-observations h2:before { content: '5.11.' counter(counter-reference-molecule-observations-2) ' ' }
+                .print-site-enumerate-headings #reference-molecule-observations h2:before { content: '5.12.' counter(counter-reference-molecule-observations-2) ' ' }
                 .print-site-enumerate-headings #reference-molecule-observations h2 {  counter-increment: counter-reference-molecule-observations-2 }
             
-.print-site-enumerate-headings #reference-complex-indels > h1:before { content: '5.12 ' }
+.print-site-enumerate-headings #reference-complex-indels > h1:before { content: '5.13 ' }
 
-                .print-site-enumerate-headings #reference-complex-indels h2:before { content: '5.12.' counter(counter-reference-complex-indels-2) ' ' }
+                .print-site-enumerate-headings #reference-complex-indels h2:before { content: '5.13.' counter(counter-reference-complex-indels-2) ' ' }
                 .print-site-enumerate-headings #reference-complex-indels h2 {  counter-increment: counter-reference-complex-indels-2 }
             
-.print-site-enumerate-headings #reference-bam-evidence-caveats > h1:before { content: '5.13 ' }
+.print-site-enumerate-headings #reference-bam-evidence-caveats > h1:before { content: '5.14 ' }
 
-                .print-site-enumerate-headings #reference-bam-evidence-caveats h2:before { content: '5.13.' counter(counter-reference-bam-evidence-caveats-2) ' ' }
+                .print-site-enumerate-headings #reference-bam-evidence-caveats h2:before { content: '5.14.' counter(counter-reference-bam-evidence-caveats-2) ' ' }
                 .print-site-enumerate-headings #reference-bam-evidence-caveats h2 {  counter-increment: counter-reference-bam-evidence-caveats-2 }
             
-.print-site-enumerate-headings #reference-glossary > h1:before { content: '5.14 ' }
+.print-site-enumerate-headings #reference-glossary > h1:before { content: '5.15 ' }
 
-                .print-site-enumerate-headings #reference-glossary h2:before { content: '5.14.' counter(counter-reference-glossary-2) ' ' }
+                .print-site-enumerate-headings #reference-glossary h2:before { content: '5.15.' counter(counter-reference-glossary-2) ' ' }
                 .print-site-enumerate-headings #reference-glossary h2 {  counter-increment: counter-reference-glossary-2 }
             
 .print-site-enumerate-headings #section-6 > h1:before { content: '6 ' }
