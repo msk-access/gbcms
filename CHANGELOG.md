@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — which reads count REF for a pure indel; long complex events read through the read (#200, #199)
 
-Read judgment now has one spec, [Read Judgment](docs/reference/read-judgment.md):
+Read judgment now has one spec, `docs/reference/read-judgment.md`:
 a table of read shapes and their calls, with the decision behind each, executed
 by `tests/test_read_judgment_spec.py`. Changes to how reads are judged are
 decided against it.
