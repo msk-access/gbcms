@@ -17,6 +17,17 @@ regenerating a section.
 
 ---
 
+## [LRN-20261002-003] environment | a detached harness run is invisible to the operator
+- **Status:** resolved (memory)
+- **Cause:** environment
+- **Summary:** acceptance runs started with `nohup` (to outlive the 30-minute
+  tracked-task limit) do not show in the app's background list; the operator saw
+  "nothing running" mid-acceptance. A full `--trace` probe run also ground for an
+  hour before I switched to a targeted trace.
+- **Promotion target:** memory `long-runs-visible` — `DONE:` pair each detached
+  run with a tracked waiter; say why a run is slow and switch methods.
+- **Related:** [[long-runs-visible]].
+
 ## [LRN-20261002-002] rule-body | a read-input rule is validated against an oracle that does not share it
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body
