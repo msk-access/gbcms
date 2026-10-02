@@ -15,7 +15,13 @@ it shows in review instead of slipping in with an unrelated fix.
 
 1. **Spec first.** A change to how reads are judged starts here: the shapes it
    affects, their call today, the proposed call, and the evidence (the read
-   census's verdict on each shape, and real-data counts adjudicated per read).
+   census's verdict on each shape, real-data counts adjudicated per read, and
+   what other tools do: GATK, samtools/bcftools, fgbio, VarDict, Strelka2,
+   freebayes, bam-readcount, LoFreq and the original GetBaseCounts, saying where
+   a tool's handling is not documented). The census changes in step with a rule
+   about read inputs (what a read contributes), so for such a rule it cannot be
+   the evidence: check the bases in question themselves and the mates'
+   alignments, ITD and indel rows first.
 2. **Decide.** The operator decides; the decision gets an entry in the register
    below, naming any earlier decision it amends.
 3. **Then code.** The implementation turns the case table's open cells into
@@ -49,6 +55,10 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-7 | A read with another insertion or deletion inside the discrimination window (not the ALT at another placement) is not REF: neither, with partial evidence. Extends RJ-5 from annotated siblings to any indel. | C26 #200, operator 2026-10-01 |
 | RJ-8 | Another insertion or deletion outside the window, of any length, is a separate event: the read is REF where its bases across the window are REF, with no partial evidence. | C26 #200, operator 2026-10-01 |
 | RJ-9 | A long complex event's junction windows are read on inward as far as the read reaches; a read whose later bases contradict an allele is not that allele. A read ending inside the event is judged by the bases it has (one base-identical to REF counts REF). | C25 #199, operator 2026-10-01 |
+| RJ-10 | A read ends at its fragment end: bases past it (read-through into adapter, insert shorter than the read) are neither bases nor reach, in every read and rule, the census included. They are hard-clipped as the read enters counting, as if trimmed (a masked base would still fill a window as a match). Only an inward-facing pair defines a fragment (TLEN positive on the forward read), and only adapter-like bases are clipped: soft-clipped, or at most two aligned past the boundary, none inserted. More are the molecule's: TLEN, a reference distance, leaves out an ITD's inserted bases and a mate's clipped 5' bases. | C17 #176, operator 2026-10-02 (adapter-like bases only, same day) |
+| RJ-11 | A record with absent base qualities (QUAL `*`, stored as 0xFF) is dropped by the read filter and warned once per BAM, as a record without bases is. | C19 #182, operator 2026-10-02 |
+| RJ-12 | An unmapped record (flag 0x4) is not an alignment: dropped by the read filter. A mapped read whose mate is unmapped still counts, and mapped MAPQ-0 alignments stay countable (`--min-mapq 0`, pseudogene loci such as PMS2). | O7 #183, operator 2026-10-02 |
+| RJ-13 | Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0. | C15 #173, C7 #144, C18 #177, operator 2026-10-02 |
 
 ### Open
 
@@ -62,6 +72,34 @@ read census counts 57,199 REF reads; develop counted 60,619 and the decided rule
 57,218. The largest moves are deep slippage loci (a BRCA2 cluster where an
 unannotated 1bp deletion in an A run sits inside two annotated rows' windows; a
 T run). RJ-9 changed no row on RC, FORTE or WES.
+
+Evidence behind RJ-10 to RJ-13 (2026-10-02). A survey of every harness input
+(RC DNA, FORTE, WES) found 1,197 reads with event bases past their fragment end
+at 384 rows (0.03% of reads), 61 unmapped records placed on events (27 rows), and
+no records with absent qualities or hard-clipped admitted reads. Masking adapter
+bases alone (measured: 244 rows, ALT −63, REF −128) left reach: a read whose
+molecule ends inside a repeat still counted REF on its adapter, hence RJ-10 clips.
+An adversarial review found soft-clipping with masked qualities still left reach
+in complex and MNP windows (a forward molecule ending on the event's first base
+counted ALT, unlike the same read trimmed), and an outward pair's TLEN read as a
+fragment; the clip now removes the bases and needs an inward pair. That build
+lost 13 ALT reads at an FLT3 ITD: TLEN, a reference distance, left out the
+molecule's 66 inserted bases. On the 12,239 read-through reads of the changed
+rows, one aligned base past the boundary mismatched the reference 75% of the time
+(adapter; 9,174 reads), two 30%, ten or more 0.7% (the molecule; 97 reads), and
+446 reads held inserted bases past it (three aligned bases mismatched 9%, so
+they are mostly the molecule). Hence only adapter-like bases are clipped. The
+final rule changes 182 rows (ALT −57, REF −81); the first base past the
+boundary is A, the adapter's first base, in 97% of clipped reads, and 52 of the
+54 lost SNV ALT reads showed that A.
+At `--min-mapq 0` an unmapped mate carrying a CIGAR counted as an ALT read. Other
+tools: GATK hard-clips adapter at the insert-size boundary and drops reads whose
+bases and qualities differ in length (WellformedReadFilter) and unmapped reads
+(MappedReadFilter); fgbio ClipBam clips bases past the mate (soft, soft with
+mask, or hard); samtools and bcftools mpileup always discard unmapped reads, null
+overlapping mates' duplicate bases by quality 0, and bcftools caps base quality at
+max-BQ; bam-readcount filters nothing by default; VarDict, Strelka2, freebayes,
+LoFreq and GetBaseCounts document none of these cases.
 
 ## The cases
 
@@ -79,6 +117,7 @@ and at anchor-changing events before an A run.
 | Other indels outside the window | D1, D5 or I1 past the tract; a carrier with one | decided (RJ-8) |
 | Complex, long events | the same read haplotypes before a 60-A run | decided (RJ-9) |
 | The ALT across ops | a deletion written as two | open (C27) |
+| Read inputs | read-through adapter base on an SNV (ALT, REF); absent qualities; a hard-clipped read at the previous complex classifier (with an unclipped control) | decided (RJ-10, RJ-11; C29 #207 is a bug fix) |
 | Anchor deleted | the anchor deleted, with or without an insertion | open (C28) |
 
 Run `python tests/read_judgment_cases.py` for the full table: every case's call,

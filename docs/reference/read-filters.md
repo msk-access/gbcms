@@ -15,6 +15,7 @@ Every read from the BAM passes through a **filter cascade** before being checked
 ```mermaid
 flowchart LR
     Start(["📖 BAM Read"]):::start
+    U0{"⓪ Unmapped?\n0x4 (always)"}:::on
 
     subgraph Auto ["🟢 Auto-On (default enabled)"]
         direction LR
@@ -34,14 +35,17 @@ flowchart LR
         O1 -->|No| O2
     end
 
-    S1{"⑦ No bases?\nSEQ '*' (always)"}:::on
+    S1{"⑦ No bases or qualities?\nSEQ / QUAL '*' (always)"}:::on
     F5{"⑧ MAPQ < threshold\n(20 DNA / 1 RNA)"}:::on
 
-    Start --> F1
+    Start --> U0
+    U0 -->|No| F1
+    U0 -->|Yes| Drop
     F4 -->|No| O1
     O2 -->|No| S1
     S1 -->|No| F5
-    F5 -->|Pass| Done(["✅ Allele Classifier"]):::pass
+    F5 -->|Pass| Clip["✂️ Clip to fragment end"]:::on
+    Clip --> Done(["✅ Allele Classifier"]):::pass
 
     F1 -->|Yes| Drop(["❌ Discard"]):::drop
     F2 -->|Yes| Drop
@@ -59,13 +63,40 @@ flowchart LR
     classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 ```
 
-**Records without bases.** A record stored with no sequence (SEQ `*`) shows no
-allele. Aligners write some secondary alignments this way, and a stripped BAM
-can hold primaries like it. Such a record is always dropped right after the flag
-filters (step ⑦), in every mode and counting path. It is counted
-in neither depth, fragments nor `mq0_count`. Each counting pass logs one WARNING
-with the number of bin fetches that skipped one (bin windows overlap, so a record
-can count more than once).
+**Unmapped records.** A record flagged unmapped (0x4) is not an alignment. An
+aligner places it at its mate's position with MAPQ 0, sometimes with a CIGAR, so
+it would otherwise reach a variant there: in `mq0_count` by default, and as a read
+at `--min-mapq 0`. It is always dropped first (step ⓪), in every mode. Its mapped
+mate still counts (one mapped read of a pair is a read), and mapped MAPQ-0
+alignments stay countable at `--min-mapq 0`, as pseudogene loci such as PMS2 need.
+samtools/bcftools mpileup and GATK (MappedReadFilter) drop unmapped reads too.
+
+**Records without bases or qualities.** A record stored with no sequence
+(SEQ `*`) shows no allele. Aligners write some secondary alignments this way, and
+a stripped BAM can hold primaries like it. A record with bases but no qualities
+(QUAL `*`, stored as 0xFF bytes) gives its bases no error rate, so no rule can
+weigh them (GATK's WellformedReadFilter rejects it too). Either is always dropped
+right after the flag filters (step ⑦), in every mode and counting path, and
+counted in neither depth, fragments nor `mq0_count`. Each counting pass logs one
+WARNING for each kind, with the number of bin fetches that skipped one (bin
+windows overlap, so a record can count more than once).
+
+**A read ends at its fragment end.** When the insert is shorter than the read,
+the read runs on past its mate's 5' end into adapter (read-through). For a pair
+whose fragment is well defined (mate mapped on the same contig, the pair facing
+inward), the bases past the fragment end are hard-clipped as the read enters the
+counting pass, as if the read had been trimmed, so no rule sees them as bases or
+as reach, and a reverse read's start moves past any aligned bases it loses. TLEN
+is read as BWA-MEM, samtools fixmate and Picard write it, from the forward read's
+5' end to the reverse read's, positive on the forward read; an outward-facing
+pair (as at a tandem-duplication junction) defines no fragment. Tags are kept.
+Only adapter-like bases are clipped: soft-clipped, or at most two aligned past
+the boundary (an aligner's chance extension into adapter), none inserted. A read
+whose bases go on aligning past the boundary, or hold an insertion there, keeps
+them: TLEN is a reference distance, so it leaves out the inserted bases of an
+ITD and a mate's clipped 5' bases, and those bases are the molecule's. GATK hard-clips adapter at the same
+boundary, and fgbio ClipBam's `--clip-bases-past-mate` does it as a separate step.
+See [Read Judgment](read-judgment.md) (RJ-10 to RJ-12).
 
 ---
 

@@ -2,7 +2,8 @@
 //!
 //! Provides a `ReadFilter` struct that encapsulates all universal BAM flag
 //! checks (duplicates, secondary, supplementary, QC-failed, improper pair,
-//! indel CIGAR) and drops records stored without bases.
+//! indel CIGAR) and drops records that are no observation: unmapped, stored
+//! without bases, or without base qualities.
 //! Mode-specific filtering (RNA NH rescue, MAPQ=0 tracking)
 //! remains in the respective module's engine.
 //!
@@ -40,6 +41,10 @@ pub struct FilterCounts {
     pub indel: u64,
     /// Records stored without bases (SEQ `*`): always dropped.
     pub no_bases: u64,
+    /// Unmapped records (flag 0x4), placed at their mate's position: always dropped.
+    pub unmapped: u64,
+    /// Records stored without base qualities (QUAL `*`, 0xFF): always dropped.
+    pub no_quals: u64,
 }
 
 impl FilterCounts {
@@ -47,6 +52,7 @@ impl FilterCounts {
     pub fn total(&self) -> u64 {
         self.duplicates + self.secondary + self.supplementary
             + self.qc_failed + self.improper_pair + self.indel + self.no_bases
+            + self.unmapped + self.no_quals
     }
 }
 
@@ -62,6 +68,14 @@ impl ReadFilter {
     /// **Note:** MAPQ filtering is NOT handled here — it has mode-specific
     /// behavior (RNA NH rescue, MAPQ=0 tracking) and stays in the engine.
     pub fn passes(&self, record: &Record, counts: &mut FilterCounts) -> bool {
+        // An unmapped record (placed at its mate's position, MAPQ 0) is no
+        // alignment, so no observation; at --min-mapq 0 nothing else would screen
+        // it out. Its mapped mate still counts.
+        if record.is_unmapped() {
+            counts.unmapped += 1;
+            trace!("ReadFilter: rejected unmapped record");
+            return false;
+        }
         if self.filter_duplicates && record.is_duplicate() {
             counts.duplicates += 1;
             trace!("ReadFilter: rejected duplicate");
@@ -102,6 +116,14 @@ impl ReadFilter {
         if record.seq_len() == 0 {
             counts.no_bases += 1;
             trace!("ReadFilter: rejected record without bases (SEQ '*')");
+            return false;
+        }
+        // Without base qualities (QUAL `*`, which BAM stores as 0xFF bytes) its
+        // bases have no stated error rate: no rule can weigh them, as GATK's
+        // well-formed-read filter also rejects them.
+        if record.qual().first() == Some(&0xFF) {
+            counts.no_quals += 1;
+            trace!("ReadFilter: rejected record without base qualities (QUAL '*')");
             return false;
         }
         true

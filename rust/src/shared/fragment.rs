@@ -286,9 +286,10 @@ impl FragmentEvidence {
                 }
                 // Non-structural conflict (SNPs, Phase 3 returns):
                 // quality-weighted consensus with threshold-based discard.
-                if self.best_ref_qual > self.best_alt_qual + qual_diff_threshold {
+                // Saturating: a quality near 255 plus the margin must not wrap.
+                if self.best_ref_qual > self.best_alt_qual.saturating_add(qual_diff_threshold) {
                     (true, false)  // REF wins by quality margin
-                } else if self.best_alt_qual > self.best_ref_qual + qual_diff_threshold {
+                } else if self.best_alt_qual > self.best_ref_qual.saturating_add(qual_diff_threshold) {
                     (false, true)  // ALT wins by quality margin
                 } else {
                     // Within threshold — ambiguous, discard to preserve VAF accuracy
@@ -530,6 +531,20 @@ mod tests {
         // Only ALT evidence seen → ALT wins. No conflict to resolve.
         let ev = evidence_with(0, 50, false);
         assert_eq!(ev.resolve(10), (false, true), "ALT-only should return ALT");
+    }
+
+    #[test]
+    fn resolve_compares_qualities_without_overflow() {
+        // A quality of 255 (absent qualities read as 0xFF) plus the margin used to
+        // overflow u8: a panic in debug builds, a wrapped margin in release.
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 255, true, true, 200, false, false, 60, true);
+        ev.observe(false, true, 255, false, false, 200, false, false, 60, true);
+        assert_eq!(ev.resolve(10), (false, false), "equal qualities: within the margin");
+        let mut ev = FragmentEvidence::new();
+        ev.observe(true, false, 30, true, true, 200, false, false, 60, true);
+        ev.observe(false, true, 255, false, false, 200, false, false, 60, true);
+        assert_eq!(ev.resolve(10), (false, true), "255 beats 30 by more than the margin");
     }
 
     #[test]

@@ -60,6 +60,22 @@ COMPLEX = {
 }
 
 
+# What a read contributes, at an SNV (C>A at A + 1) and an unprepared Del+SNV
+# (GCT>A at A, which the previous complex classifier judges): read-through bases
+# past the fragment end, absent base qualities, hard clips.
+# The Illumina TruSeq adapter a read runs into past a short insert.
+ADAPTER = "AGATCGGAAGAGCACACGTCTGAACTCCAGTCACAGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT" * 2
+
+READ_INPUTS = {
+    "read-through: the base on the SNV is adapter, showing the ALT",
+    "read-through: the base on the SNV is adapter, showing REF",
+    "read-through: the read aligns on past its TLEN end (R2's 5' end clipped), showing the ALT",
+    "absent base qualities (QUAL '*'), showing the ALT",
+    "previous complex classifier: REF read, no clip",
+    "previous complex classifier: REF read with a leading hard clip",
+}
+
+
 @dataclass(frozen=True)
 class Case:
     id: str
@@ -224,7 +240,56 @@ def cases() -> list[Case]:
             "sibling SNV outside the window",
         )
     )
+    for shape in sorted(READ_INPUTS):
+        out.append(Case(f"read inputs | {shape}", "read inputs", "read inputs", shape))
     return out
+
+
+def _read_input_bam(d: Path, shape: str):
+    """The reads of a read-input case, the contig, and the variant they cover."""
+    contig = _contig("GCT")
+    reads = []
+    if shape.startswith("read-through"):
+        # R1's molecule ends just before the SNV and it reads on into adapter: the
+        # adapter's first base is aligned on the SNV by chance (showing the ALT or
+        # REF), the rest soft-clipped. With "aligns on", its bases past TLEN's end
+        # are the genome's instead (R2's 5' end clipped): the molecule goes on.
+        base = "A" if "ALT" in shape else contig[A + 1]
+        on = "aligns on" in shape
+        for i in range(N_READS):
+            s, end = A - 60 + i, (A - 9 if on else A + 1)
+            if on:
+                r1 = list(contig[s : s + 100])
+                r1[A + 1 - s] = base
+                seq, cig = "".join(r1), ((0, 100),)
+                r2, r2_cig = contig[end - 80 : end + 20], ((0, 80), (4, 20))
+            else:
+                tail = ADAPTER[1 : 100 - (A + 2 - s) + 1]
+                seq, cig = contig[s : A + 1] + base + tail, ((0, A + 2 - s), (4, len(tail)))
+                r2, r2_cig = contig[end - 100 : end], ((0, 100),)
+            a = make_read(f"f{i}", seq, s, cig, flag=99)
+            b = make_read(f"f{i}", r2, end - len(r2) + (20 if on else 0), r2_cig, flag=147)
+            a.template_length, b.template_length = end - s, s - end
+            a.next_reference_id = b.next_reference_id = 0
+            a.next_reference_start, b.next_reference_start = b.reference_start, s
+            reads += [a, b]
+        return contig, reads, _rs.Variant("1", A + 1, contig[A + 1], "A", "SNP")
+    if shape.startswith("absent"):
+        for i in range(N_READS):
+            s = A - 50 + i
+            seq = list(contig[s : s + 100])
+            seq[A + 1 - s] = "A"
+            a = make_read(f"q{i}", "".join(seq), s, ((0, 100),))
+            a.query_qualities = None  # QUAL '*': the BAM stores 0xFF
+            reads.append(a)
+        return contig, reads, _rs.Variant("1", A + 1, contig[A + 1], "A", "SNP")
+    clip = "hard clip" in shape
+    for i in range(N_READS):
+        s = A - 60 + i
+        cig = ((5, 20), (0, 70)) if clip else ((0, 70),)
+        reads.append(make_read(f"h{i}", contig[s : s + 70], s, cig))
+    # Unprepared (no reference context): the exact-carrier rule cannot judge it.
+    return contig, reads, _rs.Variant("1", A, contig[A : A + 3], "A", "COMPLEX")
 
 
 def _pure_group(shape: str) -> str:
@@ -275,6 +340,11 @@ def run(case: Case, workdir: Path) -> tuple[tuple[int, int, int], str]:
         return (c.rd, c.ad, c.partial_alt), ", ".join(
             f"{k} {n}" for k, n in sorted(verdicts.items())
         )
+    if case.variant == "read inputs":
+        contig, reads, v = _read_input_bam(d, case.shape)
+        _, bam = write_contig(d, contig, reads, "c")
+        (c,) = _rs.count_bam_binned(bam, [v], [None], **ARGS)
+        return (c.rd, c.ad, c.partial_alt), ""
     run_len, r, a = COMPLEX[case.variant]
     contig = _complex_contig(run_len)
     haps, ends = _complex_reads(run_len, r, a)
@@ -304,6 +374,7 @@ DECISIONS = {
     "C27 the ALT across ops": "open (adopted in principle: ALT; measure first): C27 #201",
     "C28 anchor deleted": "open (adopted in principle: judged by bases; measure first): C28 #202",
     "C25 long events": "decided: junction windows read on through the read (C25 #199)",
+    "read inputs": "decided: a read contributes its molecule's bases, with qualities (C17 #176, C19 #182; C29 #207 a fix)",
 }
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
@@ -443,6 +514,16 @@ EXPECT = {
     "CA>T run60 | exact carrier, ends past the run": (0, 4, 0),
     "u-8 | sibling SNV inside the span": (0, 0, 4),
     "u-8 | sibling SNV outside the window": (4, 0, 0),
+    "read inputs | absent base qualities (QUAL '*'), showing the ALT": (0, 0, 0),
+    "read inputs | previous complex classifier: REF read with a leading hard clip": (4, 0, 0),
+    "read inputs | previous complex classifier: REF read, no clip": (4, 0, 0),
+    "read inputs | read-through: the base on the SNV is adapter, showing REF": (0, 0, 0),
+    "read inputs | read-through: the base on the SNV is adapter, showing the ALT": (0, 0, 0),
+    "read inputs | read-through: the read aligns on past its TLEN end (R2's 5' end clipped), showing the ALT": (
+        0,
+        4,
+        0,
+    ),
 }
 
 

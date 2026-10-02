@@ -17,6 +17,32 @@ regenerating a section.
 
 ---
 
+## [LRN-20261002-002] rule-body | a read-input rule is validated against an oracle that does not share it
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** the first C17 build (clip bases past the TLEN fragment end) agreed
+  with the read census on every SNV row, because the census was changed in step
+  and shares the rule. Tracing the three indel rows that moved away from the
+  census showed 13 genuine FLT3-ITD ALT reads lost: TLEN, a reference distance,
+  leaves out inserted bases. The process named the census as the oracle without
+  saying it cannot judge a rule it implements.
+- **Promotion target:** `docs/reference/read-judgment.md` "How a change to read
+  judgment is made", step 1 — `DONE:` for a read-input rule the census mirrors,
+  the evidence includes an oracle it does not share. Memory
+  `census-mirrors-read-inputs`.
+- **Related:** [[census-mirrors-read-inputs]], [[holistic-effects-map]].
+
+## [LRN-20261002-001] rule-body | a community-practice survey covers several tools
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** for group 1 (read inputs) I surveyed only GATK. The operator
+  pointed out there are more tools to look at. The validation standard said
+  "callers and genotypers" but named none, so the survey defaulted to one.
+- **Promotion target:** `docs/reference/read-judgment.md` "How a change to read
+  judgment is made", step 1 — `DONE:` names the tool set to survey. Memory
+  `survey-several-tools`.
+- **Related:** [[survey-several-tools]].
+
 ## [LRN-20261001-001] rule-body | a failing test's expectation is changed only with the operator's say
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body
