@@ -89,7 +89,12 @@ counting pass, as if the read had been trimmed, so no rule sees them as bases or
 as reach, and a reverse read's start moves past any aligned bases it loses. TLEN
 is read as BWA-MEM, samtools fixmate and Picard write it, from the forward read's
 5' end to the reverse read's, positive on the forward read; an outward-facing
-pair (as at a tandem-duplication junction) defines no fragment. Tags are kept. GATK hard-clips adapter at the same
+pair (as at a tandem-duplication junction) defines no fragment. Tags are kept.
+Only adapter-like bases are clipped: soft-clipped, or at most two aligned past
+the boundary (an aligner's chance extension into adapter), none inserted. A read
+whose bases go on aligning past the boundary, or hold an insertion there, keeps
+them: TLEN is a reference distance, so it leaves out the inserted bases of an
+ITD and a mate's clipped 5' bases, and those bases are the molecule's. GATK hard-clips adapter at the same
 boundary, and fgbio ClipBam's `--clip-bases-past-mate` does it as a separate step.
 See [Read Judgment](read-judgment.md) (RJ-10 to RJ-12).
 

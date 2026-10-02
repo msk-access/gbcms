@@ -144,9 +144,6 @@ def test_a_read_past_its_fragment_end_counts_as_the_read_trimmed_there(tmp_path,
     assert counts[0][2] == 0, counts
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C17 #176: a read's genomic bases past its TLEN end are clipped"
-)
 def test_a_read_whose_bases_align_on_past_its_tlen_end_keeps_them(tmp_path):
     """R2's 5' end is soft-clipped (20 bases), so TLEN, from aligned 5' ends,
     understates the molecule. R1's bases align on to the genome past that boundary
@@ -173,14 +170,11 @@ def test_a_read_whose_bases_align_on_past_its_tlen_end_keeps_them(tmp_path):
 INS = "GTCAGTTCAGGTACCATGCA"
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C17 #176: an insertion past the TLEN end is clipped as adapter"
-)
 def test_an_insertion_past_the_tlen_end_is_the_molecules(tmp_path):
     """TLEN is a reference distance: it leaves out the molecule's inserted bases,
     as at a tandem duplication. R2 ends in the insertion (its 5' end), so R1's
     insertion and flank after it lie past R1's TLEN end, but they are the
-    molecule's: R1 stays an exact carrier."""
+    molecule's: R1 stays an exact carrier (R2 holds the whole insertion too)."""
     contig = _contig("GCT")
     reads = []
     for i in range(4):
@@ -205,7 +199,7 @@ def test_an_insertion_past_the_tlen_end_is_the_molecules(tmp_path):
     v = _rs.Variant("1", A, contig[A], contig[A] + INS, "X")
     (pv,) = _rs.prepare_variants([v], fa, 5, False, 1, True)
     c = _count(bam, pv.variant)
-    assert c.ad >= 4, (c.dp, c.rd, c.ad)
+    assert (c.dp, c.rd, c.ad) == (8, 0, 8), (c.dp, c.rd, c.ad)
 
 
 def test_an_outward_pair_keeps_its_bases(tmp_path):

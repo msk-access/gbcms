@@ -17,6 +17,7 @@ def mock_bam_with_flags(tmp_path):
         a = pysam.AlignedSegment()
         a.query_name = "read1"
         a.query_sequence = "A" * 100
+        a.query_qualities = pysam.qualitystring_to_array("I" * 100)
         a.flag = 2  # Proper pair
         a.reference_id = 0
         a.reference_start = 100
@@ -31,6 +32,7 @@ def mock_bam_with_flags(tmp_path):
         a = pysam.AlignedSegment()
         a.query_name = "read_qc_fail"
         a.query_sequence = "A" * 100
+        a.query_qualities = pysam.qualitystring_to_array("I" * 100)
         a.flag = 512 | 2
         a.reference_id = 0
         a.reference_start = 100
@@ -44,6 +46,7 @@ def mock_bam_with_flags(tmp_path):
         a = pysam.AlignedSegment()
         a.query_name = "read_improper"
         a.query_sequence = "A" * 100
+        a.query_qualities = pysam.qualitystring_to_array("I" * 100)
         a.flag = 1
         a.reference_id = 0
         a.reference_start = 100
@@ -58,6 +61,7 @@ def mock_bam_with_flags(tmp_path):
         a = pysam.AlignedSegment()
         a.query_name = "read_indel"
         a.query_sequence = "A" * 100
+        a.query_qualities = pysam.qualitystring_to_array("I" * 100)
         a.flag = 2
         a.reference_id = 0
         a.reference_start = 100
@@ -70,6 +74,7 @@ def mock_bam_with_flags(tmp_path):
         a = pysam.AlignedSegment()
         a.query_name = "read_secondary"
         a.query_sequence = "A" * 100
+        a.query_qualities = pysam.qualitystring_to_array("I" * 100)
         a.flag = 256 | 2
         a.reference_id = 0
         a.reference_start = 100
@@ -227,6 +232,7 @@ def test_supplementary_shared_qname_not_double_counted(tmp_path):
             a = pysam.AlignedSegment()
             a.query_name = "frag1"  # same QNAME → same fragment
             a.query_sequence = "A" * 100
+            a.query_qualities = pysam.qualitystring_to_array("I" * 100)
             a.flag = flag
             a.reference_id = 0
             a.reference_start = 100
@@ -269,6 +275,7 @@ def test_supplementary_only_locus_is_seen_at_fragment_level_when_opted_in(tmp_pa
             a = pysam.AlignedSegment()
             a.query_name = "frag1"
             a.query_sequence = "A" * 100
+            a.query_qualities = pysam.qualitystring_to_array("I" * 100)
             a.flag = flag
             a.reference_id = 0
             a.reference_start = start

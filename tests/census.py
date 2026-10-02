@@ -24,7 +24,8 @@ How a read is judged:
   bases only); for other variants clipped bases are read where they sit.
 - **Fragment end:** a read ends at its fragment end. Bases past it (read-through
   into adapter, when the insert is shorter than the read) are not read, and the
-  read's extent stops at its last aligned base inside the fragment.
+  read's extent stops at its last aligned base inside the fragment, when those
+  bases look like adapter: soft-clipped, or at most two aligned, none inserted.
 
 The tract is the census's own slide of the indel along the reference, not prep's
 `shift_region`, so a prep error cannot move the census with it.
@@ -284,10 +285,33 @@ def fragment_span(read) -> tuple[int, int] | None:
     return min((q for q, r in aligned if r >= frag_start), default=after_q), n
 
 
+ADAPTER_ALIGNED_MAX = 2  # aligned bases past the fragment end that can be adapter
+
+
+def _adapter_like(read, lo: int, hi: int) -> bool:
+    """The read's bases outside `[lo, hi)` look like adapter: soft-clipped, or at
+    most two of them aligned (an aligner's chance extension), none inserted. More
+    are the molecule's: TLEN, a reference distance, leaves out a molecule's
+    inserted bases and a mate's clipped 5' bases."""
+    q = aligned = 0
+    for op, n in read.cigartuples:
+        if op not in (0, 1, 4, 7, 8):
+            continue
+        outside = n - max(0, min(q + n, hi) - max(q, lo))
+        if op == 1 and outside:
+            return False
+        if op in (0, 7, 8):
+            aligned += outside
+        q += n
+    return aligned <= ADAPTER_ALIGNED_MAX
+
+
 def _molecule(read) -> tuple[int, int, dict[int, int]]:
-    """The read's query offsets inside its fragment `[lo, hi)` and its aligned
-    pairs there, reference to query."""
-    lo, hi = fragment_span(read) or (0, len(read.query_sequence))
+    """The read's query offsets inside its fragment `[lo, hi)` (the whole read
+    when its bases past the boundary are not adapter-like) and its aligned pairs
+    there, reference to query."""
+    span = fragment_span(read)
+    lo, hi = span if span and _adapter_like(read, *span) else (0, len(read.query_sequence))
     pairs = {r: q for q, r in read.get_aligned_pairs(matches_only=True) if lo <= q < hi}
     return lo, hi, pairs
 

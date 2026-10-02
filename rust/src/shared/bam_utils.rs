@@ -155,19 +155,48 @@ pub(crate) fn fragment_query_span(record: &Record) -> Option<(usize, usize)> {
     }
 }
 
+/// Most aligned bases past the fragment end that can still be adapter. An aligner
+/// extends a read into adapter by a base or two of chance alignment (BWA-MEM
+/// keeps an end mismatch over a clip): on MSK data one aligned base past the
+/// boundary mismatches the reference 75% of the time, two 30%, ten or more 0.7%.
+const ADAPTER_ALIGNED_MAX: usize = 2;
+
+/// Whether the read's bases outside [lo, hi) look like adapter: soft-clipped, or
+/// at most `ADAPTER_ALIGNED_MAX` of them aligned, and none inserted. More aligned
+/// bases past the boundary, or an insertion there, are the molecule's: TLEN, a
+/// reference distance, leaves out a molecule's inserted bases (a tandem
+/// duplication) and a mate's clipped 5' bases.
+fn adapter_like(record: &Record, lo: usize, hi: usize) -> bool {
+    let (mut q, mut aligned) = (0usize, 0usize);
+    for op in record.cigar().iter() {
+        let n = op.len() as usize;
+        let outside = n - ((q + n).min(hi).saturating_sub(q.max(lo)));
+        match op {
+            Cigar::Match(_) | Cigar::Equal(_) | Cigar::Diff(_) => aligned += outside,
+            Cigar::Ins(_) if outside > 0 => return false,
+            _ => {}
+        }
+        if matches!(op, Cigar::Match(_) | Cigar::Equal(_) | Cigar::Diff(_) | Cigar::Ins(_) | Cigar::SoftClip(_)) {
+            q += n;
+        }
+    }
+    aligned <= ADAPTER_ALIGNED_MAX
+}
+
 /// A read ends at its fragment end: bases past it (read-through into adapter, an
 /// insert shorter than the read) are neither the read's bases nor its reach.
 /// Returns the read with those bases hard-clipped (removed from its sequence and
 /// qualities, as if trimmed: a masked base would still fill a window as a
 /// match), its start moved past any aligned bases it loses there, its tags kept;
-/// the read itself when it has none or no well-defined fragment; None when none
-/// of its aligned bases lies inside its fragment.
+/// the read itself when it has none, no well-defined fragment, or bases past the
+/// boundary that are the molecule's rather than adapter (see `adapter_like`);
+/// None when none of its aligned bases lies inside its fragment.
 pub(crate) fn clip_to_fragment(mut record: Record) -> Option<Record> {
     let Some((lo, hi)) = fragment_query_span(&record) else {
         return Some(record);
     };
     let len = record.seq_len();
-    if lo == 0 && hi == len {
+    if (lo == 0 && hi == len) || !adapter_like(&record, lo, hi) {
         return Some(record);
     }
     let (mut lead_hard, mut tail_hard) = (0u32, 0u32);
@@ -259,7 +288,8 @@ mod tests {
 
     #[test]
     fn a_forward_read_past_its_fragment_end_is_clipped_there() {
-        let out = clip_to_fragment(read(vec![Cigar::Match(100)], 1000, 50, false)).unwrap();
+        // 51M 49S, the fragment 50 bases: one adapter base aligned, the rest clipped.
+        let out = clip_to_fragment(read(vec![Cigar::Match(51), Cigar::SoftClip(49)], 1000, 50, false)).unwrap();
         assert_eq!((out.pos(), cigar(&out)), (1000, "50M50H".into()));
         assert_eq!((out.seq_len(), out.qual().len()), (50, 50));
         assert_eq!(out.seq().as_bytes(), (0..50).map(|i| b"ACGT"[i % 4]).collect::<Vec<u8>>());
@@ -268,9 +298,33 @@ mod tests {
 
     #[test]
     fn a_reverse_read_before_its_fragment_start_is_clipped_and_moved() {
-        let out = clip_to_fragment(read(vec![Cigar::Match(100)], 1000, 40, true)).unwrap();
+        // 58S 42M from 1058, the fragment [1060, 1100): two adapter bases aligned.
+        let out = clip_to_fragment(read(vec![Cigar::SoftClip(58), Cigar::Match(42)], 1058, 40, true)).unwrap();
         assert_eq!((out.pos(), cigar(&out)), (1060, "60H40M".into()));
         assert_eq!(out.seq().as_bytes(), (60..100).map(|i| b"ACGT"[i % 4]).collect::<Vec<u8>>());
+    }
+
+    #[test]
+    fn a_read_aligning_on_past_its_fragment_end_keeps_its_bases() {
+        // Three or more aligned bases past TLEN's end are the molecule's (TLEN
+        // understates it when the mate's 5' end is clipped); two are adapter.
+        for (ops, kept) in [
+            (vec![Cigar::Match(100)], true),
+            (vec![Cigar::Match(53), Cigar::SoftClip(47)], true),
+            (vec![Cigar::Match(52), Cigar::SoftClip(48)], false),
+        ] {
+            let before = cigar(&read(ops.clone(), 1000, 50, false));
+            let out = clip_to_fragment(read(ops, 1000, 50, false)).unwrap();
+            assert_eq!(cigar(&out) == before, kept, "{before} -> {}", cigar(&out));
+        }
+    }
+
+    #[test]
+    fn an_insertion_past_the_boundary_is_the_molecules() {
+        // 40M 5I 55M with the fragment ending after the 40th aligned base: TLEN, a
+        // reference distance, leaves out the molecule's inserted bases.
+        let out = clip_to_fragment(read(vec![Cigar::Match(40), Cigar::Ins(5), Cigar::SoftClip(55)], 1000, 40, false)).unwrap();
+        assert_eq!(cigar(&out), "40M5I55S");
     }
 
     #[test]
@@ -278,36 +332,30 @@ mod tests {
         let out = clip_to_fragment(read(vec![Cigar::Match(100)], 1000, 300, false)).unwrap();
         assert_eq!((out.pos(), cigar(&out)), (1000, "100M".into()));
         let unpaired = {
-            let mut r = read(vec![Cigar::Match(100)], 1000, 50, false);
+            let mut r = read(vec![Cigar::Match(51), Cigar::SoftClip(49)], 1000, 50, false);
             r.set_flags(0);
             r
         };
-        assert_eq!(cigar(&clip_to_fragment(unpaired).unwrap()), "100M");
+        assert_eq!(cigar(&clip_to_fragment(unpaired).unwrap()), "51M49S");
     }
 
     #[test]
     fn an_outward_facing_pair_defines_no_fragment() {
         // The forward read's TLEN is negative (BWA, 5' to 5'): its mate lies
         // behind it, so nothing it reads is past a fragment end.
-        let fwd = read(vec![Cigar::Match(100)], 1000, -13, false);
+        let fwd = read(vec![Cigar::Match(51), Cigar::SoftClip(49)], 1000, -13, false);
         assert_eq!(fragment_query_span(&fwd), None);
-        assert_eq!(cigar(&clip_to_fragment(fwd).unwrap()), "100M");
+        assert_eq!(cigar(&clip_to_fragment(fwd).unwrap()), "51M49S");
         let rev = read(vec![Cigar::Match(100)], 1000, -13, true); // TLEN +13 on the reverse read
         assert_eq!(fragment_query_span(&rev), None);
     }
 
     #[test]
     fn a_boundary_inside_a_deletion_ends_at_the_last_aligned_base_before_it() {
-        // 30M 10D 70M from 1000: the fragment ends at 1035, inside the deletion.
-        let out = clip_to_fragment(read(vec![Cigar::Match(30), Cigar::Del(10), Cigar::Match(70)], 1000, 35, false)).unwrap();
+        // 30M 10D 2M 68S from 1000: the fragment ends at 1035, inside the deletion.
+        let ops = vec![Cigar::Match(30), Cigar::Del(10), Cigar::Match(2), Cigar::SoftClip(68)];
+        let out = clip_to_fragment(read(ops, 1000, 35, false)).unwrap();
         assert_eq!(cigar(&out), "30M70H");
-    }
-
-    #[test]
-    fn an_insertion_beside_the_boundary_lies_outside() {
-        // 40M 5I 55M: the fragment ends after the 40th aligned base.
-        let out = clip_to_fragment(read(vec![Cigar::Match(40), Cigar::Ins(5), Cigar::Match(55)], 1000, 40, false)).unwrap();
-        assert_eq!((cigar(&out), out.seq_len()), ("40M60H".into(), 40));
     }
 
     #[test]
@@ -320,25 +368,26 @@ mod tests {
 
     #[test]
     fn hard_clips_stay_outermost() {
-        let out = clip_to_fragment(read(vec![Cigar::HardClip(5), Cigar::Match(100), Cigar::HardClip(3)], 1000, 50, false)).unwrap();
-        assert_eq!(cigar(&out), "5H50M53H");
-        let out = clip_to_fragment(read(vec![Cigar::HardClip(5), Cigar::SoftClip(4), Cigar::Match(96)], 1000, 40, true)).unwrap();
-        assert_eq!((out.pos(), cigar(&out)), (1056, "65H40M".into()));
+        let ops = vec![Cigar::HardClip(5), Cigar::Match(51), Cigar::SoftClip(49), Cigar::HardClip(3)];
+        assert_eq!(cigar(&clip_to_fragment(read(ops, 1000, 50, false)).unwrap()), "5H50M53H");
+        let ops = vec![Cigar::HardClip(5), Cigar::SoftClip(58), Cigar::Match(42)];
+        let out = clip_to_fragment(read(ops, 1058, 40, true)).unwrap();
+        assert_eq!((out.pos(), cigar(&out)), (1060, "65H40M".into()));
     }
 
     #[test]
     fn a_clipped_read_lies_inside_its_fragment() {
         // Clipping twice changes nothing: every base left is the molecule's.
         let shapes = [
-            (vec![Cigar::Match(100)], 50, false),
-            (vec![Cigar::Match(100)], 40, true),
-            (vec![Cigar::Match(30), Cigar::Del(10), Cigar::Match(70)], 35, false),
-            (vec![Cigar::Match(30), Cigar::Del(10), Cigar::Match(70)], 72, true),
-            (vec![Cigar::SoftClip(10), Cigar::Match(90)], 85, true),
-            (vec![Cigar::Match(80), Cigar::SoftClip(20)], 90, false),
+            (vec![Cigar::Match(51), Cigar::SoftClip(49)], 1000, 50, false),
+            (vec![Cigar::SoftClip(58), Cigar::Match(42)], 1058, 40, true),
+            (vec![Cigar::Match(30), Cigar::Del(10), Cigar::Match(2), Cigar::SoftClip(68)], 1000, 35, false),
+            (vec![Cigar::SoftClip(60), Cigar::Match(1), Cigar::Del(10), Cigar::Match(39)], 1000, 39, true),
+            (vec![Cigar::SoftClip(10), Cigar::Match(90)], 1000, 88, true),
+            (vec![Cigar::Match(80), Cigar::SoftClip(20)], 1000, 90, false),
         ];
-        for (ops, tlen, reverse) in shapes {
-            let once = clip_to_fragment(read(ops, 1000, tlen, reverse)).unwrap();
+        for (ops, pos, tlen, reverse) in shapes {
+            let once = clip_to_fragment(read(ops, pos, tlen, reverse)).unwrap();
             assert_eq!(fragment_query_span(&once), Some((0, once.seq_len())), "{}", cigar(&once));
         }
     }

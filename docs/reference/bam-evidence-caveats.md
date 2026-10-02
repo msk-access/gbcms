@@ -178,7 +178,9 @@ caveat in gbcms's output.
   5' end are adapter.
 - **gbcms now:** a read ends at its fragment end. Bases past it are hard-clipped
   as the read enters counting, as if trimmed, so they are neither bases nor reach,
-  in every rule (RJ-10, C17 #176).
+  in every rule (RJ-10, C17 #176), when they look like adapter (soft-clipped, or
+  at most two aligned). Bases that go on aligning, or an insertion past the
+  boundary, are kept: TLEN understates a molecule carrying an ITD.
 - **Should do:** decided and done.
 - **Community:** GATK hard-clips adapter at the insert-size boundary; fgbio
   ClipBam clips bases past the mate (`--clip-bases-past-mate`). Adapter trimming

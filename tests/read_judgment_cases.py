@@ -63,9 +63,13 @@ COMPLEX = {
 # What a read contributes, at an SNV (C>A at A + 1) and an unprepared Del+SNV
 # (GCT>A at A, which the previous complex classifier judges): read-through bases
 # past the fragment end, absent base qualities, hard clips.
+# The Illumina TruSeq adapter a read runs into past a short insert.
+ADAPTER = "AGATCGGAAGAGCACACGTCTGAACTCCAGTCACAGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT" * 2
+
 READ_INPUTS = {
     "read-through: the base on the SNV is adapter, showing the ALT",
     "read-through: the base on the SNV is adapter, showing REF",
+    "read-through: the read aligns on past its TLEN end (R2's 5' end clipped), showing the ALT",
     "absent base qualities (QUAL '*'), showing the ALT",
     "previous complex classifier: REF read, no clip",
     "previous complex classifier: REF read with a leading hard clip",
@@ -246,16 +250,28 @@ def _read_input_bam(d: Path, shape: str):
     contig = _contig("GCT")
     reads = []
     if shape.startswith("read-through"):
+        # R1's molecule ends just before the SNV and it reads on into adapter: the
+        # adapter's first base is aligned on the SNV by chance (showing the ALT or
+        # REF), the rest soft-clipped. With "aligns on", its bases past TLEN's end
+        # are the genome's instead (R2's 5' end clipped): the molecule goes on.
         base = "A" if "ALT" in shape else contig[A + 1]
+        on = "aligns on" in shape
         for i in range(N_READS):
-            s = A - 60 + i  # R1 forward over the SNV; its fragment is 50 bases
-            r1 = list(contig[s : s + 100])
-            r1[A + 1 - s] = base  # the SNV lies past the fragment end: adapter
-            a = make_read(f"f{i}", "".join(r1), s, ((0, 100),), flag=99)
-            b = make_read(f"f{i}", contig[s - 50 : s + 50], s - 50, ((0, 100),), flag=147)
-            a.template_length, b.template_length = 50, -50
+            s, end = A - 60 + i, (A - 9 if on else A + 1)
+            if on:
+                r1 = list(contig[s : s + 100])
+                r1[A + 1 - s] = base
+                seq, cig = "".join(r1), ((0, 100),)
+                r2, r2_cig = contig[end - 80 : end + 20], ((0, 80), (4, 20))
+            else:
+                tail = ADAPTER[1 : 100 - (A + 2 - s) + 1]
+                seq, cig = contig[s : A + 1] + base + tail, ((0, A + 2 - s), (4, len(tail)))
+                r2, r2_cig = contig[end - 100 : end], ((0, 100),)
+            a = make_read(f"f{i}", seq, s, cig, flag=99)
+            b = make_read(f"f{i}", r2, end - len(r2) + (20 if on else 0), r2_cig, flag=147)
+            a.template_length, b.template_length = end - s, s - end
             a.next_reference_id = b.next_reference_id = 0
-            a.next_reference_start, b.next_reference_start = s - 50, s
+            a.next_reference_start, b.next_reference_start = b.reference_start, s
             reads += [a, b]
         return contig, reads, _rs.Variant("1", A + 1, contig[A + 1], "A", "SNP")
     if shape.startswith("absent"):
@@ -503,6 +519,11 @@ EXPECT = {
     "read inputs | previous complex classifier: REF read, no clip": (4, 0, 0),
     "read inputs | read-through: the base on the SNV is adapter, showing REF": (0, 0, 0),
     "read inputs | read-through: the base on the SNV is adapter, showing the ALT": (0, 0, 0),
+    "read inputs | read-through: the read aligns on past its TLEN end (R2's 5' end clipped), showing the ALT": (
+        0,
+        4,
+        0,
+    ),
 }
 
 
