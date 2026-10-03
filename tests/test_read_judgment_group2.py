@@ -1,11 +1,13 @@
-"""Group 2 read judgment (#201, #202): a read deleting a pure indel's anchor is
-judged by its bases across the discrimination window, the aligner's placement of
-its gap a tie-break (RJ-15); the ALT written across several ops counts ALT
-(RJ-14). See docs/reference/read-judgment.md.
+"""Group 2 read judgment (#201, #202, #174): a read deleting a pure indel's anchor
+is judged by its bases across the discrimination window, the aligner's placement
+of its gap a tie-break (RJ-15); the ALT written across several ops counts ALT
+(RJ-14); an exact-carrier ALT call needs quality-weighted evidence (RJ-16). See
+docs/reference/read-judgment.md.
 """
 
 import random
 
+import pytest
 from census import census
 from helpers import make_read, write_contig
 
@@ -90,3 +92,59 @@ def test_a_deleted_anchor_with_every_window_base_masked_is_not_alt(tmp_path):
     v = _prepared(fa, "GA", "G")
     c = _count(bam, v)
     assert c.ad == 0 and c.rd == 0, (c.rd, c.ad, c.partial_alt)
+
+
+# ── C16: an exact-carrier ALT call needs quality-weighted evidence ───────────
+
+
+def _carrier_reads(contig, seq_at, quals_at):
+    """Four reads over the event at A, the reference except `seq_at` (position ->
+    base), qualities 30 except `quals_at` (position -> quality)."""
+    reads = []
+    for i in range(4):
+        s = A - 50 + i
+        seq = list(contig[s : s + 100])
+        quals = [30] * 100
+        for p, b in seq_at.items():
+            seq[p - s] = b
+        for p, q in quals_at.items():
+            quals[p - s] = q
+        reads.append(make_read(f"c{i}", "".join(seq), s, ((0, 100),), quals=quals))
+    return reads
+
+
+@pytest.mark.xfail(
+    strict=True, reason="C16 #174: masked bases fit the ALT, so one error decides the call"
+)
+def test_a_ref_read_with_one_error_and_a_low_quality_tail_is_not_alt(tmp_path):
+    """TC>GCT in unique sequence. The reads are REF molecules read poorly around
+    the event (Q10) except one clear error at its first base, which happens to be
+    the ALT's G. Masked bases fit anything, so today that one base decides ALT;
+    weighed by quality, the low-quality bases show the reference: not ALT."""
+    contig = _contig("GACTCAGTTCGA")
+    tail = {p: 10 for p in range(A - 8, A + 12) if p != A}
+    fa, bam = write_contig(tmp_path, contig, _carrier_reads(contig, {A: "G"}, tail), "err")
+    v = _prepared(fa, "TC", "GCT")
+    c = _count(bam, v)
+    assert c.ad == 0, (c.rd, c.ad, c.partial_alt)
+
+
+def test_a_carrier_with_one_low_quality_event_base_is_alt(tmp_path):
+    """Guard: ALT carriers of TC>GCT with one event base at Q10 keep their ALT
+    call: their clearly read bases carry the evidence."""
+    contig = _contig("GACTCAGTTCGA")
+    reads = []
+    for i in range(4):
+        s = A - 50 + i
+        seq = contig[s:A] + "GCT" + contig[A + 2 : s + 99]
+        quals = [30] * len(seq)
+        quals[A + 1 - s] = 10
+        reads.append(
+            make_read(
+                f"a{i}", seq, s, ((0, A - s), (1, 1), (0, len(seq) - (A - s) - 1)), quals=quals
+            )
+        )
+    fa, bam = write_contig(tmp_path, contig, reads, "car")
+    v = _prepared(fa, "TC", "GCT")
+    c = _count(bam, v)
+    assert c.ad == 4, (c.rd, c.ad, c.partial_alt)
