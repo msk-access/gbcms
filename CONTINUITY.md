@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-02_
+_Last updated: 2026-10-03_
 
 ## Now
 **6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
@@ -78,11 +78,17 @@ comments):**
 C29 #207):** RJ-10 to RJ-13; C17 clips only adapter-like bases past the TLEN
 fragment end (operator); follow-up C31 #212 (6.7.0). Plan "Group 1 as built".
 
-**In progress — group 2, read judgment (C28 #202, C27 #201, C16 #174; policy for
-C24 #195, C6 #143):** branch `feature/g2-read-judgment`; the spec gains the
-insertion-side and shifted-pair cells (open). Prototypes `proto/c27` and
-`proto/c28` (local, never pushed) measured in `~/test/gbcms/harness/g2/`; the
-C1 splice probes rerun for C16. Decisions with the operator before code.
+**Ready for PR — group 2, read judgment (C28 #202, C27 #201, C16 #174):** branch
+`feature/g2-read-judgment`, not yet pushed. RJ-14 (the ALT across several ops),
+RJ-15 (a read deleting the anchor, judged by its bases across the window), RJ-16
+(exact-carrier ALT calls need quality-weighted evidence, one `--min-baseq` base's
+worth). Final acceptance (develop vs head, 144 files): RC DNA 24 rows (REF +57
+at BRCA2 toward the census, ALT ±0), WES 3 (ALT −3), FORTE probes 7; RJ-16 alone
+changes one WES row. Probes: RNA spurious 70 → 19, IMPACT 7 → 1. The C16
+junction-placement guard is deferred to 6.7.0 (needs reference access in the
+engine). Harness `~/test/gbcms/harness/g2/` (local). `PRODUCTION_READINESS.md`
+holds the production gate (operator scope: DNA ACCESS/IMPACT, FORTE, WES;
+no opt-in features).
 
 Follow-ups filed:
 - C29 #207 (6.6.0): `check_complex`'s inline query walk counts hard clips;
