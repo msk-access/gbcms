@@ -26,3 +26,11 @@ A baseline build of another branch: `git archive <branch> | tar -x` into the
 scratchpad + its own venv (no git state change). For `mkdocs build --strict`,
 the git-revision-date plugin warns in a worktree (.git is a file) — build with
 a temp config minus that plugin. See [[black-version-skew-venv-vs-ci]].
+
+**Without `VIRTUAL_ENV`, maturin develop installs into the nearest `.venv` above
+the cwd** — from a worktree under `.claude/worktrees/` that is the MAIN
+checkout's `.venv`, whose `gbcms.pth` then points at the worktree (2026-10-03,
+a review agent following a prompt that said `.venv-rev/bin/maturin develop`).
+Always set `VIRTUAL_ENV` (and PATH) as above in review-agent prompts; if it
+happens, rerun `maturin develop` from the main checkout root and check
+`gbcms.pth`.
