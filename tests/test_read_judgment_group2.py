@@ -150,9 +150,6 @@ def test_a_carrier_with_one_low_quality_event_base_is_alt(tmp_path):
 # ── Found by the adversarial review of group 2 ───────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RJ-15: a read whose bases are REF, gap at the anchor, counts partial"
-)
 @pytest.mark.parametrize("order", ["DI", "ID"])
 @pytest.mark.parametrize("ref,alt", [("GT", "G"), ("G", "GA")])
 def test_a_ref_read_written_as_a_gap_at_the_anchor_is_ref(tmp_path, order, ref, alt):
@@ -182,9 +179,6 @@ def _unique_contig(ctx, offset):
     return "".join(seq)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RJ-16: REF and ALT readings over different spans skew the evidence"
-)
 def test_one_distinguishing_base_at_min_baseq_is_enough(tmp_path):
     """CTC>G carriers whose one distinguishing base is read at exactly --min-baseq
     (Q20), the event's other bases N: one base at the minimum quality is the
@@ -209,9 +203,6 @@ def test_one_distinguishing_base_at_min_baseq_is_enough(tmp_path):
     assert c.ad == 4, (c.rd, c.ad, c.partial_alt)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RJ-16: the evidence skips a long event's bases past its junction windows"
-)
 def test_a_long_event_carrier_with_low_quality_junction_bases_is_alt(tmp_path):
     """A 61-base delins to TG. The carriers' bases at the junction are low quality,
     but their next 70 bases clearly read the right flank, not the deleted body:

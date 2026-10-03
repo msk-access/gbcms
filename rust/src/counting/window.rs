@@ -383,17 +383,25 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
 /// CIGAR writes the event somewhere it gives another haplotype: compensating
 /// mismatches can make its bases the ALT nonetheless.
 pub(crate) fn read_spells_alt(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
-    read_spells_alt_checked(record, v, quals, min_baseq, true)
+    read_bases_fit(record, v, quals, min_baseq, true, false)
 }
 
 /// `read_spells_alt` without the check that the read says, unmasked, which allele
-/// where its own alignment proposes another haplotype: for a read whose gap covers
-/// the anchor, where the alignment's placement is a tie-break, not evidence.
+/// where its own alignment proposes another haplotype: for a read whose CIGAR
+/// writes the event as a gap at the anchor or across several ops, where the
+/// alignment's placement is a tie-break, not evidence.
 pub(crate) fn read_bases_fit_alt(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
-    read_spells_alt_checked(record, v, quals, min_baseq, false)
+    read_bases_fit(record, v, quals, min_baseq, false, false)
 }
 
-fn read_spells_alt_checked(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, check_claimed: bool) -> bool {
+/// Whether the read's bases between the same flanks are exactly the REF (masked
+/// bases fit; at least one base read): a read whose aligner wrote the reference
+/// as a gap at the anchor and a re-inserted base holds the REF allele.
+pub(crate) fn read_bases_fit_ref(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8) -> bool {
+    read_bases_fit(record, v, quals, min_baseq, false, true)
+}
+
+fn read_bases_fit(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, check_claimed: bool, want_ref: bool) -> bool {
     if !is_pure_indel(&v.ref_allele, &v.alt_allele) {
         return false;
     }
@@ -416,7 +424,9 @@ fn read_spells_alt_checked(record: &Record, v: &Variant, quals: &[u8], min_baseq
         return false;
     };
     let j = (v.pos + r.len().min(a.len()) as i64 - (left + 1)) as usize;
-    let altw: Vec<u8> = if a.len() > r.len() {
+    let altw: Vec<u8> = if want_ref {
+        refw.clone()
+    } else if a.len() > r.len() {
         [&refw[..j], &a[r.len()..].to_ascii_uppercase(), &refw[j..]].concat()
     } else {
         [&refw[..j], &refw[j + r.len() - a.len()..]].concat()

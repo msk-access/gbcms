@@ -59,9 +59,9 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-11 | A record with absent base qualities (QUAL `*`, stored as 0xFF) is dropped by the read filter and warned once per BAM, as a record without bases is. | C19 #182, operator 2026-10-02 |
 | RJ-12 | An unmapped record (flag 0x4) is not an alignment: dropped by the read filter. A mapped read whose mate is unmapped still counts, and mapped MAPQ-0 alignments stay countable (`--min-mapq 0`, pseudogene loci such as PMS2). | O7 #183, operator 2026-10-02 |
 | RJ-13 | Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0. | C15 #173, C7 #144, C18 #177, operator 2026-10-02 |
-| RJ-14 | The ALT written across several insertion or deletion ops in the discrimination window counts ALT when the read's bases between its nearest aligned flanks spell the ALT (an aligner's split of one event): judged by its bases before the wrong-length and one-change rules read its ops. Amends RJ-2 and RJ-7. | C27 #201, operator 2026-10-02 |
-| RJ-15 | A read whose own deletion covers the anchor is judged by its bases between its nearest aligned flanks: ALT when they equal the ALT (masked bases fit; at least one base read), the aligner's placement of its gap only a tie-break; otherwise neither, with partial evidence. Never REF, and never Phase 3's closer haplotype. Deletion and insertion rows alike. | C28 #202, operator 2026-10-02 |
-| RJ-16 | An exact-carrier ALT call needs evidence: its clearly read bases fit the ALT (as before), and its bases across the windows, each weighed by its quality (a base matches with 1 − e and mismatches with e/3), favour ALT over REF by at least what one base read at `--min-baseq` gives (about 2.5 log10 at 20). A low-quality base counts for little instead of fitting either allele. | C16 #174, operator 2026-10-03 |
+| RJ-14 | The ALT written across several insertion or deletion ops in the discrimination window counts ALT when the read's bases between its nearest aligned flanks are the ALT (masked bases fit, at least one base read), the ops' placement only a tie-break as in RJ-15: judged by its bases before the wrong-length and one-change rules read its ops. Amends RJ-2 and RJ-7. | C27 #201, operator 2026-10-02 |
+| RJ-15 | A read whose own deletion covers the anchor is judged by its bases between its nearest aligned flanks: ALT, or REF, when they equal that allele (masked bases fit; at least one base read), the aligner's placement of its gap only a tie-break (a reference written as the anchor deleted and re-inserted is REF); otherwise neither, with partial evidence. Never Phase 3's closer haplotype. Deletion and insertion rows alike. | C28 #202, operator 2026-10-02 |
+| RJ-16 | An exact-carrier ALT call needs evidence: its clearly read bases fit the ALT (as before), and its bases, each weighed by its quality (a base matches with 1 − e and mismatches with e/3), favour ALT over REF by at least what one base read at `--min-baseq` gives (about 2.5 log10 at 20). Bases matching both alleles cancel, so the evidence is the weight of the bases that mismatch REF less those that mismatch ALT, over the windows and, for a long event, the read's bases past them. A low-quality base counts for little instead of fitting either allele. | C16 #174, operator 2026-10-03 |
 
 ### Open
 
@@ -136,6 +136,15 @@ and count a read toward AD only if its best allele leads by 0.2 log10; Strelka2
 (indel posterior ≥ 0.51) and bcftools (per-read indel quality) use per-read
 evidence too; the counting tools use hard base-quality cutoffs; none treats a
 low-quality base as fitting either allele.
+
+An adversarial review of group 2 found three defects, fixed before merge: a read
+whose bases are exactly REF, written as the anchor deleted and re-inserted, had
+counted partial (RJ-15 now counts it REF, as its bases say); the evidence had
+compared REF and ALT readings over different read bases, so a shared flank
+base's quality could flip a call, and had skipped a long event's bases past its
+junction windows (both fixed by the mismatch-weight form above). A pre-existing
+limit remains: a REF molecule with one clear error just outside the window that
+its ALT reading is anchored away from can still count ALT (6.7.0).
 
 Other tools: GATK, Strelka2 and freebayes judge a read by its bases against
 haplotypes, so a split ALT counts ALT; bam-readcount, LoFreq and the original

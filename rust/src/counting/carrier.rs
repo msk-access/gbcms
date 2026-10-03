@@ -138,6 +138,9 @@ struct Reading {
     masked: usize,
     had_n: bool,
     span: (usize, usize),
+    /// The read's evidence against this allele (log10): the weight of every
+    /// base that mismatches it, by its quality, masked bases included.
+    mismatch_weight: f64,
 }
 
 /// Classify a read at a complex variant by the exact-carrier rule, or None when
@@ -187,7 +190,10 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         mm_ref += r.mismatches;
         mm_alt += a.mismatches;
         alt_masked += a.masked;
-        evidence += log10_likelihood(&seq, quals, a.span, &aw.seq) - log10_likelihood(&seq, quals, r.span, &rw.seq);
+        // Bases matching both alleles cancel: the evidence is what mismatches REF
+        // less what mismatches ALT, so the two readings need not cover the same
+        // bases.
+        evidence += r.mismatch_weight - a.mismatch_weight;
         had_n |= r.had_n || a.had_n;
         for (lo, hi) in [r.span, a.span] {
             qual_bases.extend_from_slice(&quals[lo..hi]);
@@ -547,13 +553,17 @@ fn read_window(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: &Win
     let left_read = from_left.map(|(a, b)| {
         let mut r = score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b));
         let k = n_beyond.min(seq.len() - b);
-        r.mismatches += score(&seq[b..b + k], &quals[b..b + k], min_baseq, &w.beyond[..k], (b, b + k)).mismatches;
+        let more = score(&seq[b..b + k], &quals[b..b + k], min_baseq, &w.beyond[..k], (b, b + k));
+        r.mismatches += more.mismatches;
+        r.mismatch_weight += more.mismatch_weight;
         r
     });
     let right_read = to_right.map(|(a, b)| {
         let mut r = score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b));
         let k = n_beyond.min(a);
-        r.mismatches += score(&seq[a - k..a], &quals[a - k..a], min_baseq, &w.beyond[n_beyond - k..], (a - k, a)).mismatches;
+        let more = score(&seq[a - k..a], &quals[a - k..a], min_baseq, &w.beyond[n_beyond - k..], (a - k, a));
+        r.mismatches += more.mismatches;
+        r.mismatch_weight += more.mismatch_weight;
         r
     });
     [left_read, right_read].into_iter().flatten().min_by_key(|r| (r.mismatches, r.masked))
@@ -572,36 +582,24 @@ fn one_base_evidence(q: u8) -> f64 {
     ((1.0 - e) / (e / 3.0)).log10()
 }
 
-/// log10 probability of the read's bases over `span` given the haplotype bases
-/// `hap`: a base matches with 1 - e and mismatches with e / 3, e its error
-/// probability; an N says nothing.
-fn log10_likelihood(seq: &[u8], quals: &[u8], (lo, hi): (usize, usize), hap: &[u8]) -> f64 {
-    let mut ll = 0.0;
-    for (i, q) in (lo..hi).enumerate() {
-        let (b, h) = (seq[q].to_ascii_uppercase(), hap.get(i).copied().unwrap_or(WILD));
-        if b == WILD || h == WILD {
-            continue;
-        }
-        let e = error_probability(quals[q]);
-        ll += if b == h { (1.0 - e).log10() } else { (e / 3.0).log10() };
-    }
-    ll
-}
 
 /// Mismatches of read bases against haplotype bases position by position, masked
 /// bases (below `min_baseq`, or N) matching anything.
 fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, usize)) -> Reading {
-    let (mut mismatches, mut masked, mut had_n) = (0, 0, false);
+    let (mut mismatches, mut masked, mut had_n, mut mismatch_weight) = (0, 0, false, 0.0);
     for ((&b, &q), &h) in bases.iter().zip(quals).zip(hap) {
         let b = b.to_ascii_uppercase();
         had_n |= b == WILD;
+        if b != WILD && h != WILD && b != h {
+            mismatch_weight += one_base_evidence(q);
+        }
         if b == WILD || q < min_baseq {
             masked += 1;
         } else if b != h {
             mismatches += 1;
         }
     }
-    Reading { mismatches, masked, had_n, span }
+    Reading { mismatches, masked, had_n, span, mismatch_weight }
 }
 
 #[cfg(test)]
@@ -661,14 +659,13 @@ mod tests {
     }
 
     #[test]
-    fn low_quality_bases_weigh_little_and_n_nothing() {
-        let seq = b"ACGN";
-        let hap = b"ACTA";
-        let full = log10_likelihood(seq, &[30, 30, 30, 30], (0, 4), hap);
-        let low = log10_likelihood(seq, &[30, 30, 5, 30], (0, 4), hap);
-        // The mismatch at Q5 costs far less than at Q30; the N costs nothing.
-        assert!(low > full + 2.0, "{low} vs {full}");
-        assert_eq!(log10_likelihood(b"N", &[30], (0, 1), b"A"), 0.0);
+    fn low_quality_mismatches_weigh_little_and_n_nothing() {
+        // One mismatch (G vs T): at Q30 it weighs one Q30 base, at Q5 far less; the
+        // N and the matching bases weigh nothing.
+        let full = score(b"ACGN", &[30, 30, 30, 30], 20, b"ACTA", (0, 4)).mismatch_weight;
+        let low = score(b"ACGN", &[30, 30, 5, 30], 20, b"ACTA", (0, 4)).mismatch_weight;
+        assert!((full - one_base_evidence(30)).abs() < 1e-9);
+        assert!(low < 1.0, "{low}");
     }
 
     #[test]

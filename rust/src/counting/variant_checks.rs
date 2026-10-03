@@ -1745,18 +1745,18 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         // the insert is the ALT; a substituted one is another
                         // allele).
                         let qual = quals.get(read_pos).copied().unwrap_or(0);
-                        let spells = window::read_spells_alt(record, variant, quals, min_baseq);
-                        trace!(
-                            "check_insertion: D then I({}) at the junction after {}: the read's \
-                             bases {} → {}",
-                            ins_len_usize,
-                            anchor_pos,
-                            if spells { "spell the ALT" } else { "do not spell the ALT" },
-                            if spells { "ALT (structural)" } else { "neither + partial evidence" },
-                        );
-                        if spells {
+                        // Judged by its bases, the gap's placement a tie-break: ALT or
+                        // REF when they are that allele (the anchor re-inserted alone
+                        // is the reference), otherwise another allele.
+                        if window::read_bases_fit_alt(record, variant, quals, min_baseq) {
+                            trace!("check_insertion: D then I({}) at the junction after {}: the read's bases spell the ALT → ALT", ins_len_usize, anchor_pos);
                             return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural);
                         }
+                        if window::read_bases_fit_ref(record, variant, quals, min_baseq) {
+                            trace!("check_insertion: D then I({}) at the junction after {}: the read's bases are the REF → REF", ins_len_usize, anchor_pos);
+                            return ClassifyResult::is_ref(qual, ClassifyPhase::Structural);
+                        }
+                        trace!("check_insertion: D then I({}) at the junction after {}: the read's bases hold neither allele → neither + partial", ins_len_usize, anchor_pos);
                         return ClassifyResult::neither_with_nearby(qual, ClassifyPhase::Structural);
                     }
                     scan_windowed_insertion_candidate(
@@ -1902,22 +1902,24 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
     }
     if !w.found_ref_coverage {
         if record.pos() <= anchor_pos && ref_end(record) > anchor_pos {
-            // A read whose own deletion covers the anchor holds neither allele there
-            // unless its bases spell the ALT: judged by its bases, never by the
-            // closer of two haplotypes.
+            // A read whose own deletion covers the anchor is judged by its bases
+            // between its aligned flanks, never by the closer of two haplotypes:
+            // ALT or REF when they are that allele (a reference written as a gap
+            // and a re-inserted base is REF), otherwise another allele.
             if let Some(q) = deleted_anchor_query(record, anchor_pos) {
                 let qual = quals.get(q).copied().unwrap_or(0);
-                let spells = window::read_bases_fit_alt(record, variant, quals, min_baseq);
-                trace!(
-                    "check_{}: the read deletes the anchor {}: its bases {} → {}",
-                    w.kind,
-                    anchor_pos,
-                    if spells { "spell the ALT" } else { "do not spell the ALT" },
-                    if spells { "ALT (structural)" } else { "neither + partial evidence" },
-                );
-                if spells {
+                if window::read_bases_fit_alt(record, variant, quals, min_baseq) {
+                    trace!("check_{}: the read deletes the anchor {}: its bases spell the ALT → ALT", w.kind, anchor_pos);
                     return ClassifyResult::is_alt_structural(qual, ClassifyPhase::Structural);
                 }
+                if window::read_bases_fit_ref(record, variant, quals, min_baseq) {
+                    trace!("check_{}: the read deletes the anchor {}: its bases are the REF → REF", w.kind, anchor_pos);
+                    return ClassifyResult::is_ref(qual, ClassifyPhase::Structural);
+                }
+                trace!(
+                    "check_{}: the read deletes the anchor {}: its bases hold neither allele → neither + partial",
+                    w.kind, anchor_pos
+                );
                 return ClassifyResult::neither_with_nearby(qual, ClassifyPhase::Structural);
             }
             trace!(
@@ -1992,7 +1994,7 @@ fn alt_across_ops(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u
             _ => {}
         }
     }
-    if ops < 2 || !window::read_spells_alt(record, variant, quals, min_baseq) {
+    if ops < 2 || !window::read_bases_fit_alt(record, variant, quals, min_baseq) {
         return None;
     }
     let qual = first_q.and_then(|q| quals.get(q).copied()).unwrap_or(0);
