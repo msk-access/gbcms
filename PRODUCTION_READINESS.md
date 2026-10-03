@@ -83,7 +83,8 @@ Each run reports:
 | O6 #180 | No read-orientation evidence for oxoG/FFPE artifacts (IMPACT FFPE) | Strand-skewed ALT at C>T/G>T rows |
 | O5 #179 | No mapping-bias diagnostic | ALT vs REF MAPQ and clipping skew |
 | C24 #195 | Stale scores in the no-reference fallback (partial only) | Rows on that path (unprepared input only) |
-| C16 junction guard | A spliced read whose aligner placed its junction a few bases late (STAR prefers the annotated junction) can show the next exon's bases over an exon-edge event; telling it from a genuine carrier needs the reference at the splice's far end, so the engine needs reference access | Spurious ALT per million reads at exon-edge probes (9 of 68 calls in the C16 trace) |
+| C33 #214 | A REF molecule with one clear error just outside the window its ALT reading is anchored away from can count ALT (pre-existing) | Spurious ALT at the synthetic probes after RJ-16 |
+| C32 #213 | A spliced read whose aligner placed its junction a few bases late (STAR prefers the annotated junction) can show the next exon's bases over an exon-edge event; telling it from a genuine carrier needs the reference at the splice's far end, so the engine needs reference access | Spurious ALT per million reads at exon-edge probes (9 of 68 calls in the C16 trace) |
 
 ## 4. Release and reproducibility
 
