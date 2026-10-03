@@ -152,7 +152,7 @@ Beyond the read-level filters above, gbcms also applies **base-level quality thr
     - **SNP**: Read is rejected if the base at the variant position has quality < threshold
     - **MNP**: Read is rejected if **any** base in the MNP region has quality < threshold
     - **Insertion/Deletion (windowed scan)**: Inserted/deleted bases below threshold are **masked** (treated as wildcards) rather than rejecting the entire read
-    - **Complex (Phase 2)**: Low-quality bases are masked — they cannot vote for either allele
+    - **Complex (exact carriers)**: Bases at or above the threshold must match the allele; every base is also weighed by its quality, and an ALT call needs the read's evidence for ALT over REF to reach at least what one base at the threshold gives (about 2.5 log10 at 20), so a read whose window is mostly low quality cannot be called ALT on one clear base
     - **Complex (Phase 3 SW)**: Low-quality bases are replaced with `N`, which scores 0 against any base
 
 ---

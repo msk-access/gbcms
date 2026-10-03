@@ -47,7 +47,7 @@ marks a ticket with an open PR.
 | C13 | BAQ spares the variant's own indel evidence | H | [counts] [done] | #166 |
 | C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
 | C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] [6.7.0] | #173 |
-| C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] | #174 |
+| C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] [decided] | #174 |
 | T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [in review] | #170 |
 | T2 | Read census as the classification oracle in tests | M | [in review] | #171 |
 | H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | | #204 |

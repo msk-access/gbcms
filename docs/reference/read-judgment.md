@@ -61,13 +61,14 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-13 | Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0. | C15 #173, C7 #144, C18 #177, operator 2026-10-02 |
 | RJ-14 | The ALT written across several insertion or deletion ops in the discrimination window counts ALT when the read's bases between its nearest aligned flanks spell the ALT (an aligner's split of one event): judged by its bases before the wrong-length and one-change rules read its ops. Amends RJ-2 and RJ-7. | C27 #201, operator 2026-10-02 |
 | RJ-15 | A read whose own deletion covers the anchor is judged by its bases between its nearest aligned flanks: ALT when they equal the ALT (masked bases fit; at least one base read), the aligner's placement of its gap only a tie-break; otherwise neither, with partial evidence. Never REF, and never Phase 3's closer haplotype. Deletion and insertion rows alike. | C28 #202, operator 2026-10-02 |
+| RJ-16 | An exact-carrier ALT call needs evidence: its clearly read bases fit the ALT (as before), and its bases across the windows, each weighed by its quality (a base matches with 1 − e and mismatches with e/3), favour ALT over REF by at least what one base read at `--min-baseq` gives (about 2.5 log10 at 20). A low-quality base counts for little instead of fitting either allele. | C16 #174, operator 2026-10-03 |
 
 ### Open
 
-None in read judgment for pure indels. C16 #174 (spurious ALT at RNA exon edges
-and in heavily masked windows) is decided in principle (operator, 2026-10-02):
-a junction-placement guard and a minimum of read evidence in exact-carrier
-windows, each measured before it lands.
+None. The C16 junction-placement guard (a spliced read whose aligner placed its
+junction a few bases late can show the next exon's bases over an exon-edge
+event) is deferred to 6.7.0 with C15 and RJ-13's RNA exon-edge clips: telling
+it from a genuine carrier needs the reference at the splice's far end.
 
 Evidence behind RJ-7 to RJ-9 (2026-10-01): on 105 changed DNA and WES rows the
 read census counts 57,199 REF reads; develop counted 60,619 and the decided rules
@@ -118,6 +119,23 @@ develop and the census on the same inputs:
   census (reads that were a co-annotated row's false ALT now count REF where
   their bases across this row's window are REF). Summed distance to the census
   on the changed indel rows: REF 344 → 251, ALT 40 → 44.
+
+Evidence behind RJ-16 (2026-10-02/03). Synthetic delins probes in covered
+sequence, where no read carries the ALT, found spurious ALT reads in data whose
+reads are not consensus-collapsed: FORTE RNA 2.0 per million reads (70 at the
+exon-edge and mid-exon probes), IMPACT 1.8 per million, one in WES; none in ACCESS
+duplex or simplex. Each was a read whose clearly read bases fit the ALT while most
+of its window was low quality (masked bases fit either allele). Three rules were
+measured on the probes and on every complex DNA/WES row with ALT reads (1,185
+real ALT reads): every event base read (RNA probes 70 → 16, DNA 8 → 0; 46 real
+reads lost), at most one masked event base (RNA 31, DNA 0; 15 lost), and the
+quality-weighted evidence adopted (thresholds 2–3 log10: RNA 15–19, IMPACT 1,
+WES 0; 1–2 real reads lost). A survey: GATK HaplotypeCaller and Mutect2 weigh
+every base by its quality in each read's likelihood (bases below Q18 down to Q6)
+and count a read toward AD only if its best allele leads by 0.2 log10; Strelka2
+(indel posterior ≥ 0.51) and bcftools (per-read indel quality) use per-read
+evidence too; the counting tools use hard base-quality cutoffs; none treats a
+low-quality base as fitting either allele.
 
 Other tools: GATK, Strelka2 and freebayes judge a read by its bases against
 haplotypes, so a split ALT counts ALT; bam-readcount, LoFreq and the original

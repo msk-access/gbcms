@@ -47,6 +47,7 @@
 //!   exon), anchored at the junction. A splice through the bases where the
 //!   alleles differ leaves the read depth only.
 
+use log::trace;
 use rust_htslib::bam::record::{Cigar, Record};
 
 use super::rna;
@@ -173,6 +174,9 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     // Per pair the read holds: (matches REF, matches ALT).
     let mut held: Vec<(bool, bool)> = Vec::with_capacity(win.pairs.len());
     let (mut mm_ref, mut mm_alt, mut alt_masked, mut had_n) = (0usize, 0usize, 0usize, false);
+    // The read's evidence for ALT over REF (log10), every base weighed by its
+    // quality: a low-quality base counts for little instead of fitting anything.
+    let mut evidence = 0.0f64;
     let mut qual_bases: Vec<u8> = Vec::new();
     let mut read_spans: Vec<(usize, usize)> = Vec::new();
     for (rw, aw) in &win.pairs {
@@ -183,6 +187,7 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         mm_ref += r.mismatches;
         mm_alt += a.mismatches;
         alt_masked += a.masked;
+        evidence += log10_likelihood(&seq, quals, a.span, &aw.seq) - log10_likelihood(&seq, quals, r.span, &rw.seq);
         had_n |= r.had_n || a.had_n;
         for (lo, hi) in [r.span, a.span] {
             qual_bases.extend_from_slice(&quals[lo..hi]);
@@ -192,7 +197,13 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     }
     let qual = median_qual(&qual_bases, min_baseq);
     let every = |want: (bool, bool)| !held.is_empty() && held.iter().all(|&h| h == want);
-    let mut result = if every((false, true)) {
+    let mut result = if every((false, true)) && evidence < one_base_evidence(min_baseq) {
+        // Its clearly read bases fit the ALT, but weighed by quality its bases do not
+        // favour ALT over REF by as much as one base read at the minimum quality: a
+        // REF molecule read poorly around the event, with one error fitting the ALT.
+        trace!("carrier: fits the ALT but its evidence {:.2} is below one base's → neither", evidence);
+        ClassifyResult::neither(ClassifyPhase::MaskedCompare)
+    } else if every((false, true)) {
         ClassifyResult::is_alt(qual, ClassifyPhase::MaskedCompare)
     } else if every((true, false)) {
         ClassifyResult::is_ref(qual, ClassifyPhase::MaskedCompare)
@@ -548,6 +559,35 @@ fn read_window(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: &Win
     [left_read, right_read].into_iter().flatten().min_by_key(|r| (r.mismatches, r.masked))
 }
 
+/// A base's error probability from its quality, kept away from 0 and from a
+/// coin flip among four bases.
+fn error_probability(q: u8) -> f64 {
+    10f64.powf(-(q.min(60) as f64) / 10.0).clamp(1e-6, 0.75)
+}
+
+/// The evidence one base read at quality `q` gives for the allele it matches over
+/// one it does not (log10): the least an ALT call must show.
+fn one_base_evidence(q: u8) -> f64 {
+    let e = error_probability(q);
+    ((1.0 - e) / (e / 3.0)).log10()
+}
+
+/// log10 probability of the read's bases over `span` given the haplotype bases
+/// `hap`: a base matches with 1 - e and mismatches with e / 3, e its error
+/// probability; an N says nothing.
+fn log10_likelihood(seq: &[u8], quals: &[u8], (lo, hi): (usize, usize), hap: &[u8]) -> f64 {
+    let mut ll = 0.0;
+    for (i, q) in (lo..hi).enumerate() {
+        let (b, h) = (seq[q].to_ascii_uppercase(), hap.get(i).copied().unwrap_or(WILD));
+        if b == WILD || h == WILD {
+            continue;
+        }
+        let e = error_probability(quals[q]);
+        ll += if b == h { (1.0 - e).log10() } else { (e / 3.0).log10() };
+    }
+    ll
+}
+
 /// Mismatches of read bases against haplotype bases position by position, masked
 /// bases (below `min_baseq`, or N) matching anything.
 fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, usize)) -> Reading {
@@ -610,6 +650,25 @@ mod tests {
         let w = windows(&var("GCGTCAAATACGTGG", 8, "TA", "ACC")).unwrap();
         let (r, _) = only_pair(&w);
         assert_eq!(r.left, Some(3)); // two flank bases before the run (5..)
+    }
+
+    #[test]
+    fn one_base_evidence_moves_with_the_minimum_quality() {
+        // A Q20 base: (0.99 / (0.01 / 3)), about 2.47 log10; Q30 about 3.48; Q0 none.
+        assert!((one_base_evidence(20) - 2.47).abs() < 0.01);
+        assert!((one_base_evidence(30) - 3.48).abs() < 0.01);
+        assert!(one_base_evidence(0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn low_quality_bases_weigh_little_and_n_nothing() {
+        let seq = b"ACGN";
+        let hap = b"ACTA";
+        let full = log10_likelihood(seq, &[30, 30, 30, 30], (0, 4), hap);
+        let low = log10_likelihood(seq, &[30, 30, 5, 30], (0, 4), hap);
+        // The mismatch at Q5 costs far less than at Q30; the N costs nothing.
+        assert!(low > full + 2.0, "{low} vs {full}");
+        assert_eq!(log10_likelihood(b"N", &[30], (0, 1), b"A"), 0.0);
     }
 
     #[test]

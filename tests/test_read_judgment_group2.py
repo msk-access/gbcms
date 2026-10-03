@@ -7,7 +7,6 @@ docs/reference/read-judgment.md.
 
 import random
 
-import pytest
 from census import census
 from helpers import make_read, write_contig
 
@@ -113,9 +112,6 @@ def _carrier_reads(contig, seq_at, quals_at):
     return reads
 
 
-@pytest.mark.xfail(
-    strict=True, reason="C16 #174: masked bases fit the ALT, so one error decides the call"
-)
 def test_a_ref_read_with_one_error_and_a_low_quality_tail_is_not_alt(tmp_path):
     """TC>GCT in unique sequence. The reads are REF molecules read poorly around
     the event (Q10) except one clear error at its first base, which happens to be

@@ -30,7 +30,7 @@ that turns one on must clear its section 5 issues first.
 |:--|:--|:--|:--|:--|
 | C28 #202 | A read deleting a pure indel's anchor is credited REF or ALT by Phase 3's closer haplotype | DNA, WES, RNA | 2 | Decided (RJ-15) and built; final acceptance with group 2 |
 | C27 #201 | A read writing the ALT across several indel ops counts partial, not ALT | all | 2 | Decided (RJ-14) and built; no real-data change |
-| C16 #174 | Spurious single ALT reads at exon edges and in heavily masked windows (about 3 per million reads) | RNA, DNA complex | 2 | Decided: a junction-placement guard and a minimum of read evidence in exact-carrier windows, both in 6.6.0, measured first |
+| C16 #174 | Spurious single ALT reads in heavily masked windows (2.0 per million reads in RNA, 1.8 in IMPACT, none in ACCESS) | RNA, IMPACT, WES | 2 | Decided (RJ-16): quality-weighted evidence, at least one `--min-baseq` base's worth; RNA probes 70 → 15–19, IMPACT 7 → 1, 1–2 of 1,185 real ALT reads lost. Junction guard deferred to 6.7.0 (section 3) |
 | R4 #185 | Strandedness not enforced at intronic loci and opposite-strand overlaps | RNA | 3 | Open |
 | R5 #198 | Reads spliced inside a repeat tract counted as REF coverage | RNA | 3 | Open |
 | O8 #186 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` count a different read set from the counts beside them | RNA | 3 | Open |
@@ -83,6 +83,7 @@ Each run reports:
 | O6 #180 | No read-orientation evidence for oxoG/FFPE artifacts (IMPACT FFPE) | Strand-skewed ALT at C>T/G>T rows |
 | O5 #179 | No mapping-bias diagnostic | ALT vs REF MAPQ and clipping skew |
 | C24 #195 | Stale scores in the no-reference fallback (partial only) | Rows on that path (unprepared input only) |
+| C16 junction guard | A spliced read whose aligner placed its junction a few bases late (STAR prefers the annotated junction) can show the next exon's bases over an exon-edge event; telling it from a genuine carrier needs the reference at the splice's far end, so the engine needs reference access | Spurious ALT per million reads at exon-edge probes (9 of 68 calls in the C16 trace) |
 
 ## 4. Release and reproducibility
 
@@ -109,7 +110,9 @@ Each run reports:
 ## Decisions
 
 1. Opt-in features: none in production (operator, 2026-10-02).
-2. C16: both rules in 6.6.0 (operator, 2026-10-02).
+2. C16: the junction guard is deferred to 6.7.0, with C15 and RJ-13's RNA
+   exon-edge clips, which need the same reference access; the evidence rule is
+   measured in a softer form (operator, 2026-10-02).
 
 Open:
 
