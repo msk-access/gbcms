@@ -17,6 +17,18 @@ regenerating a section.
 
 ---
 
+## [LRN-20261003-001] rule-body | a practice survey includes the literature and the domain's own tools
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** the survey rule named general callers and genotypers only; for an
+  RNA group the relevant practice lives in RNA tools (SplitNCigarReads, ASE
+  counters, RNA variant and editing callers) and in method papers. The operator
+  asked to "also look at literature and other tools of what people have done".
+- **Promotion target:** `docs/reference/read-judgment.md` "How a change to read
+  judgment is made", step 1 — `DONE:` adds the domain's tools and the published
+  literature. Memory `survey-several-tools` updated.
+- **Related:** [[survey-several-tools]].
+
 ## [LRN-20261002-003] environment | a detached harness run is invisible to the operator
 - **Status:** resolved (memory)
 - **Cause:** environment

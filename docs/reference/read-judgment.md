@@ -17,8 +17,10 @@ it shows in review instead of slipping in with an unrelated fix.
    affects, their call today, the proposed call, and the evidence (the read
    census's verdict on each shape, real-data counts adjudicated per read, and
    what other tools do: GATK, samtools/bcftools, fgbio, VarDict, Strelka2,
-   freebayes, bam-readcount, LoFreq and the original GetBaseCounts, saying where
-   a tool's handling is not documented). The census changes in step with a rule
+   freebayes, bam-readcount, LoFreq and the original GetBaseCounts, plus the
+   domain's own tools (for RNA: GATK's RNA practice, STAR, ASE counters, RNA
+   variant and editing callers) and the published literature, saying where a
+   tool's handling is not documented). The census changes in step with a rule
    about read inputs (what a read contributes), so for such a rule it cannot be
    the evidence: check the bases in question themselves and the mates'
    alignments, ITD and indel rows first.
