@@ -34,8 +34,8 @@ that turns one on must clear its section 5 issues first.
 | R4 #185 | Strandedness not enforced at intronic loci and opposite-strand overlaps | RNA | 3 | Decided and built: intronic positions take the spanning transcripts' strand; both strands, no strand (every read counts); exon index off-by-one fixed. Truth 0 rows; final acceptance with group 3 |
 | R5 #198 | Reads spliced inside a repeat tract counted as REF coverage | RNA | 3 | Decided (RJ-17) and built: informative only within one aligned block. Truth 0 rows; final acceptance with group 3 |
 | O8 #186 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` count a different read set from the counts beside them | RNA | 3 | Decided and built: the diagnostic reads the counted reads. Counts unchanged |
-| C32 #213 | A spliced read's windows cut at the exon edge: spurious ALT at exon-edge events (19 per 7,224 splice probes after C16) | RNA | 3 | Decided (RJ-19) and built: windows over the reference spliced at the read's junctions. Splice probes 19 → 4 spurious ALT reads |
-| C15 #173 (RNA) | An RNA read's soft clip (the next exon's bases) read as allele evidence | RNA | 3 | Decided (RJ-18) and built: RNA clips are not evidence |
+| C32 #213 | A spliced read's windows cut at the exon edge: spurious ALT at exon-edge events (19 per 7,224 splice probes after C16) | RNA | 3 | Decided (RJ-19) and built: windows over the reference spliced at the read's junctions (all reached; a junction entering the event spliced at its edge). With C15: splice probes 19 → 2 spurious ALT reads |
+| C15 #173 (RNA) | An RNA read's soft clip (the next exon's bases) read as allele evidence | RNA | 3 | Decided (RJ-18) and built: a clip reaching an exon edge or junction end is not evidence; other clips are read |
 | #123 | A non-sequence ALT (IUPAC `R`) counts 0 with no warning | MAF input | 4 | Open |
 | C30 #208 | Lowercase or unprepared alleles judged inconsistently between two pure-indel paths | all input | 4 | Open |
 | I3 #125 | VCF to MAF: `Tumor_Seq_Allele1` empty (decide REF or empty) | VCF input | 4 | Decision |

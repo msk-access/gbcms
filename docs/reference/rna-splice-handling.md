@@ -101,9 +101,14 @@ per-type classification):
   depth only (the event may sit in the skipped intron), and so is a deletion
   written right after a read's splice (its bases equal REF spliced at an
   acceptor further on).
-- An RNA read's soft-clipped bases are not allele evidence (RJ-18, C15 #173):
-  STAR clips a junction overhang it cannot splice, so the clip holds the next
-  exon's bases.
+- An RNA read's soft clip that reaches an exon edge or a junction end
+  (annotated, or one the variant's reads splice at), or whose aligned bases end
+  within five bases of one, is not allele evidence (RJ-18, C15 #173): STAR clips
+  a junction overhang it cannot splice, so such a clip holds the next exon's
+  bases. Any other clip is the read's own bases, read as in DNA.
+- A junction that starts inside a complex event's differing bases and runs past
+  them (or ends inside them) splices the haplotypes at the event's edge (RJ-19),
+  so a delins carrier counts whether the aligner wrote `X D N` or `X N`.
 
 Reads without `N` ops never enter this triage — DNA-mode classification
 is untouched. Per-variant exclusion counts are logged at debug level in

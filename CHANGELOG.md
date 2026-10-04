@@ -31,15 +31,24 @@ where no read carries the ALT).
 - **Diagnostics read the counted reads (#186).** `OBSERVED_ALLELE` and
   `COEXISTING_ALLELE` take n/m over the reads the counts read: no antisense read
   under enforcement, and the RNA mapping rule's unique mappers. Counts unchanged.
-- **An RNA read's soft clips are not allele evidence (#173, RJ-18).** STAR clips
-  a junction overhang it cannot splice, so the clip holds the next exon's bases.
-  Splice probes: spurious ALT 19 → 16; 0.01–0.02% of REF reads become depth only.
-- **A spliced read is read across its junction (#213, RJ-19).** The exact-carrier
-  windows of a read spliced near the event are built over the reference spliced
-  at its own junctions (the far exon read from the FASTA), not cut at the exon
-  edge. Splice probes: spurious ALT 19 → 4; REF −0.95% at probes 0–1 bp from the
-  exon edge (reads reaching one or two bases past the junction hold no spliced
-  flank), −0.11% at 2–4 bp. Truth and T9: no row changes.
+- **An RNA read's clip at an exon edge is not allele evidence (#173, RJ-18).**
+  STAR clips a junction overhang it cannot splice, so a clip reaching an exon
+  edge or junction end (annotated, or one the reads splice at), or ending within
+  five bases of one, holds the next exon's bases and is not read. Any other clip
+  is the read's own bases and is read as in DNA (a mid-exon MNP carrier with its
+  second base clipped still counts ALT). Splice probes: spurious ALT 19 → 16.
+- **A spliced read is read across its junctions (#213, RJ-19).** The
+  exact-carrier windows of a read spliced near the event are built over the
+  reference spliced at its own junctions (the far exons read from the FASTA,
+  every junction the windows reach followed), not cut at the exon edge; a
+  junction starting inside the event splices the haplotypes at its edge, so a
+  delins carrier counts however the gap is written. Splice probes: spurious ALT
+  19 → 4; REF −0.95% at probes 0–1 bp from the exon edge (reads reaching one or
+  two bases past the junction hold no spliced flank), −0.11% at 2–4 bp.
+- **All five together**, against the branch point: splice probes spurious ALT
+  19 → 2, REF −0.39%; T9 105 rows (REF −24,814, mostly R5); truth: 4 rows'
+  per-transcript columns (the exon-index fix), no count; RC DNA and WES
+  byte-identical (before the review follow-ups; RNA-only changes since).
 - **Survey:** GATK splits RNA reads at N and counts a piece only when its bases
   favour an allele, and runs HaplotypeCaller with `-dont-use-soft-clipped-bases`;
   bcftools never uses spliced reads for indels; phASER, WASP and ASEReadCounter

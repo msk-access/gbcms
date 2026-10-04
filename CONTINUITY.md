@@ -82,13 +82,18 @@ fragment end (operator); follow-up C31 #212 (6.7.0). Plan "Group 1 as built".
 C32 #213):** branch `feature/g3-rna`, not yet pushed. Decided by the operator
 2026-10-04: intronic strand from the spanning transcripts, both strands none
 (plus the exon-index off-by-one); RJ-17 (a splice is not coverage); O8
-(diagnostics read the counted reads); RJ-18 (RNA clips are not evidence); RJ-19
-(spliced reads judged on windows over the reference spliced at their junctions).
-Red tests `9c812cae`, fix `3608f2d1`; two splice-contract tests updated with the
-operator's approval (M-N-D-M carriers depth only). Prototype measurements: truth
-0 rows for every rule; splice probes spurious ALT 19 → 4 (C32), 16 (C15). Final
-acceptance and an adversarial review running; harness `~/test/gbcms/harness/g3/`
-(local; probe regions sliced locally, mount runs serial).
+(diagnostics read the counted reads); RJ-18 (an RNA clip reaching an exon edge
+or junction end is not evidence; refined after review); RJ-19 (spliced reads
+judged on windows over the reference spliced along their junctions; a junction
+entering the event spliced at its edge). Commits: red tests `9c812cae`, fix
+`3608f2d1`, docs `670498e1`, review fixes `33617e0f`, probe `93ec260f`,
+follow-ups `4fc21f49`. Two splice-contract tests updated with the operator's
+approval (M-N-D-M carriers depth only). Acceptance: splice probes spurious ALT
+19 → 2 (final build, local slices); T9 and truth measured on `3608f2d1` (truth:
+4 rows' per-transcript columns only; RC DNA and WES byte-identical). Pending:
+truth/T9 on the final build once the FORTE mount is back (local slices:
+`slice_inputs.py`, then `verify_inputs.py`), the PR and issue comments (ask
+first). Harness `~/test/gbcms/harness/g3/` (local; mount runs serial).
 
 **Merged — group 2, read judgment (C28 #202, C27 #201, C16 #174), #215:** branch
 `feature/g2-read-judgment`. RJ-14 (the ALT across several ops),

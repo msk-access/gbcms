@@ -65,8 +65,8 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-15 | A read whose own deletion covers the anchor is judged by its bases between its nearest aligned flanks: ALT, or REF, when they equal that allele (masked bases fit; at least one base read), the aligner's placement of its gap only a tie-break (a reference written as the anchor deleted and re-inserted is REF); otherwise neither, with partial evidence. Never Phase 3's closer haplotype. Deletion and insertion rows alike. | C28 #202, operator 2026-10-02 |
 | RJ-16 | An exact-carrier ALT call needs evidence: its clearly read bases fit the ALT (as before), and its bases, each weighed by its quality (a base matches with 1 − e and mismatches with e/3), favour ALT over REF by at least what one base read at `--min-baseq` gives (about 2.5 log10 at 20). Bases matching both alleles cancel, so the evidence is the weight of the bases that mismatch REF less those that mismatch ALT, over the windows and, for a long event, the read's bases past them. A low-quality base counts for little instead of fitting either allele. | C16 #174, operator 2026-10-03 |
 | RJ-17 | A splice is not reference coverage: a pure-indel read is informative (RJ-1, RJ-2) only when one of its aligned blocks between splices spans the window, REF and ALT alike. A read spliced inside the change interval shows none of it past the splice (the event may sit in the skipped intron) and is depth only, as a read ending there is; a deletion written right after the read's splice has no aligned flank (its bases equal REF spliced at an acceptor further on) and is depth only. Amends RJ-1 and RJ-2. | R5 #198, operator 2026-10-04 |
-| RJ-18 | An RNA read's soft-clipped bases are not allele evidence: the exact-carrier rule reads only its aligned bases, and a clip admits no RNA read. STAR soft-clips a junction overhang it cannot splice, so the clip holds the next exon's bases. Amends RJ-13 for RNA. | C15 #173, operator 2026-10-04 |
-| RJ-19 | A spliced read is judged against the haplotypes spliced at its own junctions: the exact-carrier windows (event, growth, flank, padding) are built over the reference spliced where the read splices, the far exon's bases read from the reference, so bases a length change pushes past the junction show against the next exon, and the read must hold the spliced flank as any read holds its flank. A splice through the bases where the alleles differ leaves the read depth only. | C32 #213, operator 2026-10-04 |
+| RJ-18 | An RNA read's soft clip that reaches an exon edge or a junction end (annotated, or one the variant's reads splice at), or whose aligned bases end within five bases of one, is not allele evidence: STAR soft-clips a junction overhang it cannot splice, so such a clip holds the next exon's bases. Any other clip is the read's own bases (a local aligner clips a mismatching end) and is read as in DNA. A clip admits no RNA read. Amends RJ-13 for RNA. | C15 #173, operator 2026-10-04 (refined after review, same day) |
+| RJ-19 | A spliced read is judged against the haplotypes spliced at its own junctions: the exact-carrier windows (event, growth, flank, padding) are built over the reference spliced where the read splices, the far exon's bases read from the reference, so bases a length change pushes past the junction show against the next exon, and the read must hold the spliced flank as any read holds its flank. Every junction the windows reach is followed (a short exon between two is read through). A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge, so the bases decide however the aligner wrote the gap; any other splice through those bases leaves the read depth only. | C32 #213, operator 2026-10-04 |
 
 ### Open
 
@@ -158,8 +158,11 @@ to the full BAMs). Each rule was a separate prototype against the same base.
   a 12–60 bp splice-crossing deletion: their bases fit both alleles (the deletion's
   first discriminating base or its margin lies past the splice). `vaf` is
   `alt_count / total_count`, so it does not move.
-- RJ-18 changed no truth row; at the splice probes spurious ALT 19 → 16, and
-  4,290 of 31.6 million REF reads (0.01–0.02% in every stratum) became depth only.
+- RJ-18, first as "an RNA clip is never evidence", changed no truth row; at the
+  splice probes spurious ALT 19 → 16, and 4,290 of 31.6 million REF reads
+  (0.01–0.02% in every stratum) became depth only. Refined (below): a clip is
+  read unless it reaches an exon edge or junction end; the three spurious ALT
+  reads stay removed and 337 of those REF reads come back.
 - RJ-19 changed no truth or T9 row; at the splice probes spurious ALT 19 → 4
   (exon edge 0–1 bp 14 → 2, 2–4 bp 5 → 2). REF −0.95% at edge 0–1 bp probes, from
   reads reaching only one or two bases past the junction, which hold no spliced
@@ -169,6 +172,22 @@ to the full BAMs). Each rule was a separate prototype against the same base.
   window's intronic bases one for one with the next exon's (instead of building
   the windows over the spliced reference) required bases a repeat grew into the
   intron and doubled the REF loss.
+An adversarial review of group 3 found: transcript spans keyed by ID alone (an
+ID reused on another chromosome, as PAR copies or version-stripped RefSeq IDs,
+gave intergenic sites a strand; spans are now per transcript, chromosome and
+strand); spliced windows that spliced only the nearest junction (REF reads
+through a 3 bp exon counted 0; every junction reached is now followed); a
+worker silently falling back when the reference could not be opened (now an
+error); a delins carrier whose aligner wrote its junction starting inside the
+event counted depth only while the same bases written X D N counted ALT (now
+spliced at the event's edge: splice probes 22 rows, REF +7, partial +19, no
+ALT); and RJ-18's first form dropping mid-exon clips, which are a local
+aligner's clipped mismatching ends, the read's own bases (an MNP carrier whose
+second base lies in such a clip counted ALT before group 3 and not after; now
+read again: splice probes 261 rows, REF +337, partial +26, no ALT). With every
+rule, against the branch point: splice probes spurious ALT 19 → 2, REF −0.39%
+(−121,779, almost all at probes 0–1 bp from an exon edge), partial −434.
+
 A survey: GATK's RNA workflow splits reads at N (SplitNCigarReads), so each piece
 ends at its exon edge and HaplotypeCaller counts a piece toward AD only when its
 bases favour an allele (a read partly overlapping a tandem repeat is
