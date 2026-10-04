@@ -18,6 +18,16 @@ With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
     (every read reads as sense, so `antisense_depth` stays 0). Strand-specific counting
     therefore requires `--gtf`, not just `--strandedness`.
 
+    The strand comes from the exons over the variant's position, all stranded
+    exons agreeing. A position no stranded exon covers (intronic, including the
+    donor +1/+2 and acceptor −1/−2 splice sites) takes the strand of the
+    transcripts spanning it, from first exon start to last exon end, all agreeing.
+    Where both strands' genes cover a position (exons, or transcripts at an
+    intronic position) there is no strand: both genes' transcripts carry the
+    allele, so every read counts. REDItools' annotation mode resolves a site the
+    same way and leaves mixed strands undetermined. A run-level WARNING names the
+    variants left without a strand (the first ten, then a count).
+
 !!! tip "Cohort runs: pre-build the GTF cache"
     The GTF is parsed per sample. For a cohort, run `gbcms build-gtf-cache` once and
     point every sample at the same `--gtf-cache-dir` so each per-sample run reuses the
@@ -134,7 +144,8 @@ overlaps multiple transcripts with different exon structures.
 ### Algorithm
 
 1. For each variant, query the `COITree` to find all transcripts whose
-   exons overlap the variant position.
+   exons hold the variant position (an exon's first through last base; the
+   intron bases beside it are not the exon's).
 2. For each overlapping transcript, extract the splice site mask.
 3. During counting, reads are attributed to transcripts based on splice
    junction compatibility:
@@ -218,7 +229,7 @@ counts are **per fragment** (a molecule's R1 and R2 are deduped to one vote):
 | `LOW_REF_JUNC` | `asjd_n_ref_total < 10` | Insufficient REF baseline |
 | `NOVEL_ALT_JUNC` | ALT dominant junction differs from REF and is unannotated | ALT uses an unannotated junction |
 | `NON_CANONICAL_MOTIF` | ALT junction differs from REF and its motif is not GT-AG/GC-AG/AT-AC | Likely mapping artifact |
-| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. A `--no-strandedness` diagnostic: under enforcement (the default) antisense reads never reach the junction tally, wherever the gene strand is resolved (not yet at intronic loci or opposite-strand overlaps: R4 #185). Disabled for `--strandedness unstranded`. |
+| `STRAND_DISCORDANT` | ALT junction differs from REF, `asjd_n_alt_junc ≥ 5`, and minority transcript-strand fraction ≥ 0.30 | Mixed transcript-strand support → alignment artifact. A `--no-strandedness` diagnostic: under enforcement (the default) antisense reads never reach the junction tally wherever the gene strand is resolved, intronic loci included. Where both strands' genes cover the locus (no strand), the tally reads every read; a junction belongs to one gene's intron, so a mixed-strand junction stays suspicious there. Disabled for `--strandedness unstranded`. |
 | `MULTI_JUNCTION` | ALT fragments use > 2 distinct junctions | Complex splicing event |
 | `RETENTION_DOMINANT(n)` | Variant's REF span reaches within 2bp of an annotated intron boundary (a donor/acceptor site of a transcript on the variant's gene strand — transcript termini and antisense genes excluded); `n ≥ 10` fragments splice over the locus (CIGAR `N` spans it — excluded as no-observation) and outnumber the allele-classified fragments, which are mostly junction-free | The reads that genotype this locus are the intron-retaining minority: `vaf` is the VAF *within that population*, not allelic balance. An allele-specific retention shows a very high `vaf` here; a neutral splice-site variant shows roughly the allelic fraction of the unspliced reads. Explains `LOW_REF_JUNC;LOW_ALT_JUNC` at such loci — the junction evidence exists but is on the excluded reads. |
 | `NOVEL_JUNC_AT_SPLICE_LOSS(n@start-end)` | Same splice-site gate; the top unannotated junction on the spliced-over fragments is anchored (±5bp) to an annotated intron boundary on the gene strand, is not the deletion itself written as a splice (same length, at the locus), and is carried by `n ≥ 5` fragments — more than confirm ALT | The mutant allele's splicing outcome (an exon skip or alternative-site junction) is visible while `alt_count` is not — typically a splice-destroying variant whose carriers splice around the locus. `start-end` is a 0-based, half-open intron interval (the `asjd_*_junction` convention). |

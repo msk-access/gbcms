@@ -60,17 +60,17 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-10 | A read ends at its fragment end: bases past it (read-through into adapter, insert shorter than the read) are neither bases nor reach, in every read and rule, the census included. They are hard-clipped as the read enters counting, as if trimmed (a masked base would still fill a window as a match). Only an inward-facing pair defines a fragment (TLEN positive on the forward read), and only adapter-like bases are clipped: soft-clipped, or at most two aligned past the boundary, none inserted. More are the molecule's: TLEN, a reference distance, leaves out an ITD's inserted bases and a mate's clipped 5' bases. | C17 #176, operator 2026-10-02 (adapter-like bases only, same day) |
 | RJ-11 | A record with absent base qualities (QUAL `*`, stored as 0xFF) is dropped by the read filter and warned once per BAM, as a record without bases is. | C19 #182, operator 2026-10-02 |
 | RJ-12 | An unmapped record (flag 0x4) is not an alignment: dropped by the read filter. A mapped read whose mate is unmapped still counts, and mapped MAPQ-0 alignments stay countable (`--min-mapq 0`, pseudogene loci such as PMS2). | O7 #183, operator 2026-10-02 |
-| RJ-13 | Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0. | C15 #173, C7 #144, C18 #177, operator 2026-10-02 |
+| RJ-13 | Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules (an RNA read's clips are not evidence, RJ-18); split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0. | C15 #173, C7 #144, C18 #177, operator 2026-10-02 |
 | RJ-14 | The ALT written across several insertion or deletion ops in the discrimination window counts ALT when the read's bases between its nearest aligned flanks are the ALT (masked bases fit, at least one base read), the ops' placement only a tie-break as in RJ-15: judged by its bases before the wrong-length and one-change rules read its ops. Amends RJ-2 and RJ-7. | C27 #201, operator 2026-10-02 |
 | RJ-15 | A read whose own deletion covers the anchor is judged by its bases between its nearest aligned flanks: ALT, or REF, when they equal that allele (masked bases fit; at least one base read), the aligner's placement of its gap only a tie-break (a reference written as the anchor deleted and re-inserted is REF); otherwise neither, with partial evidence. Never Phase 3's closer haplotype. Deletion and insertion rows alike. | C28 #202, operator 2026-10-02 |
 | RJ-16 | An exact-carrier ALT call needs evidence: its clearly read bases fit the ALT (as before), and its bases, each weighed by its quality (a base matches with 1 − e and mismatches with e/3), favour ALT over REF by at least what one base read at `--min-baseq` gives (about 2.5 log10 at 20). Bases matching both alleles cancel, so the evidence is the weight of the bases that mismatch REF less those that mismatch ALT, over the windows and, for a long event, the read's bases past them. A low-quality base counts for little instead of fitting either allele. | C16 #174, operator 2026-10-03 |
+| RJ-17 | A splice is not reference coverage: a pure-indel read is informative (RJ-1, RJ-2) only when one of its aligned blocks between splices spans the window, REF and ALT alike. A read spliced inside the change interval shows none of it past the splice (the event may sit in the skipped intron) and is depth only, as a read ending there is; a deletion written right after the read's splice has no aligned flank (its bases equal REF spliced at an acceptor further on) and is depth only. Amends RJ-1 and RJ-2. | R5 #198, operator 2026-10-04 |
+| RJ-18 | An RNA read's soft-clipped bases are not allele evidence: the exact-carrier rule reads only its aligned bases, and a clip admits no RNA read. STAR soft-clips a junction overhang it cannot splice, so the clip holds the next exon's bases. Amends RJ-13 for RNA. | C15 #173, operator 2026-10-04 |
+| RJ-19 | A spliced read is judged against the haplotypes spliced at its own junctions: the exact-carrier windows (event, growth, flank, padding) are built over the reference spliced where the read splices, the far exon's bases read from the reference, so bases a length change pushes past the junction show against the next exon, and the read must hold the spliced flank as any read holds its flank. A splice through the bases where the alleles differ leaves the read depth only. | C32 #213, operator 2026-10-04 |
 
 ### Open
 
-None. The C16 junction-placement guard (a spliced read whose aligner placed its
-junction a few bases late can show the next exon's bases over an exon-edge
-event) is deferred to 6.7.0 with C15 and RJ-13's RNA exon-edge clips: telling
-it from a genuine carrier needs the reference at the splice's far end.
+None.
 
 Evidence behind RJ-7 to RJ-9 (2026-10-01): on 105 changed DNA and WES rows the
 read census counts 57,199 REF reads; develop counted 60,619 and the decided rules
@@ -147,6 +147,37 @@ base's quality could flip a call, and had skipped a long event's bases past its
 junction windows (both fixed by the mismatch-weight form above). A pre-existing
 limit remains: a REF molecule with one clear error just outside the window that
 its ALT reading is anchored away from can still count ALT (6.7.0).
+
+Evidence behind RJ-17 to RJ-19 (2026-10-03/04), on FORTE RNA: the truth cohort
+(94 signed-out rows), the T9 exon-edge indel probes (978 rows) and the C1 splice
+probes (7,224 delins rows at exon-edge distances 0–4 and mid-exon controls, where
+no read carries the ALT; run on local slices of the probe regions, byte-identical
+to the full BAMs). Each rule was a separate prototype against the same base.
+- RJ-17 changed no truth row. At the T9 probes it moved 24,703 REF reads to depth
+  on 30 rows, 24,695 of them normally spliced reads ending at the exon edge inside
+  a 12–60 bp splice-crossing deletion: their bases fit both alleles (the deletion's
+  first discriminating base or its margin lies past the splice). `vaf` is
+  `alt_count / total_count`, so it does not move.
+- RJ-18 changed no truth row; at the splice probes spurious ALT 19 → 16, and
+  4,290 of 31.6 million REF reads (0.01–0.02% in every stratum) became depth only.
+- RJ-19 changed no truth or T9 row; at the splice probes spurious ALT 19 → 4
+  (exon edge 0–1 bp 14 → 2, 2–4 bp 5 → 2). REF −0.95% at edge 0–1 bp probes, from
+  reads reaching only one or two bases past the junction, which hold no spliced
+  flank; −0.11% at 2–4 bp, −0.01% at the controls. Re-judging the residual
+  spliced ALT reads' loci against haplotypes spliced at each read's junction,
+  1 of 7,461 reads fit the ALT. A first prototype that replaced the genomic
+  window's intronic bases one for one with the next exon's (instead of building
+  the windows over the spliced reference) required bases a repeat grew into the
+  intron and doubled the REF loss.
+A survey: GATK's RNA workflow splits reads at N (SplitNCigarReads), so each piece
+ends at its exon edge and HaplotypeCaller counts a piece toward AD only when its
+bases favour an allele (a read partly overlapping a tandem repeat is
+uninformative), and runs with `-dont-use-soft-clipped-bases`; its overhang fixer
+compares a short overhang only with the intron's reference. bcftools never uses
+a spliced read for indels. phASER, WASP and ASEReadCounter never read clips.
+JACUSA masks bases within 6 nt of a read's own junction, SNPiR and REDItools drop
+sites within 4 bp of annotated junctions; none confirms a junction-adjacent base
+against the next exon, which RJ-19 does.
 
 Other tools: GATK, Strelka2 and freebayes judge a read by its bases against
 haplotypes, so a split ALT counts ALT; bam-readcount, LoFreq and the original

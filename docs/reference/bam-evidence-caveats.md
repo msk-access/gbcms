@@ -48,8 +48,8 @@ caveat in gbcms's output.
 | OxoG / FFPE orientation artifacts | Strand counts only | To measure (decide) | O6 #180 |
 | Unmarked duplicates; UMI consensus N's | Duplicate flag honoured; N masked | Proposed (warn) | O2 #131 |
 | Overlapping mates | Fragment counts | Decided (done) | — |
-| RNA: splicing at exon edges | Splice-aware windows; ASJD | Decided (done) | — |
-| RNA: STAR clips hold next-exon bases | Clipped-carrier admission off in RNA | To measure | #173 |
+| RNA: splicing at exon edges | Windows built over the reference spliced at each read's junctions; a splice is not coverage; ASJD | Decided (done) | C32 #213, R5 #198 |
+| RNA: STAR clips hold next-exon bases | An RNA read's clips are never allele evidence | Decided (done) | C15 #173 |
 | RNA: editing (A-to-I) inside a window | Flag only | Proposed | R3 #178 |
 | RNA: allele-specific expression and NMD | RNA VAF reported as is | Decided (interpretation) | — |
 | RNA: strandedness | Gating exists; observability open | Decided | R2 #114 |
@@ -83,8 +83,10 @@ caveat in gbcms's output.
   carry the exact allele, inside a well-defined fragment
   ([carriers in soft-clipped bases](counting-metrics.md)).
 - **Should do:** decided. Extend to pure deletions and to clip-borne ITD
-  insertions (#173, #144). In RNA, clipped bases may come from the next exon, so
-  measure before enabling there.
+  insertions (#173, #144). In RNA, clipped bases may come from the next exon
+  (STAR clips a junction overhang it cannot splice), so an RNA read's clips are
+  never allele evidence (RJ-18; measured on FORTE splice probes: 3 of 19
+  spurious ALT reads removed, 0.01–0.02% of REF reads to depth).
 - **Community** (verified in source):
     - GATK HaplotypeCaller and Mutect2 revert clips and realign reads, but only
       with a well-defined fragment;

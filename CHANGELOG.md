@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — RNA: strand at intronic loci, splices are not coverage, clips and junctions (#185, #198, #186, #173, #213)
+
+Five RNA rules (operator, 2026-10-04), each measured on FORTE against the
+previous build: the truth cohort (94 signed-out rows), the T9 exon-edge indel
+probes (978) and the C1 splice probes (7,224 delins at exon edges and mid-exon,
+where no read carries the ALT).
+- **Gene strand at intronic positions (#185).** A position no stranded exon
+  covers (intronic, splice sites included) takes the strand of the transcripts
+  spanning it, all agreeing; where both strands' genes cover a position there is
+  no strand and every read counts (both genes' transcripts carry the allele).
+  The exon index read the first and last intron bases as exonic (an end-inclusive
+  interval tree built from half-open exons): fixed, for the strand and the
+  per-transcript counts. The unresolved-strand warning names the variants.
+  Truth: no row changes; T9: 95 antisense REF reads move to
+  `rna_antisense_depth` on 62 rows.
+- **A splice is not reference coverage (#198, RJ-17).** A pure-indel read is
+  informative only when one aligned block between splices spans the window, REF
+  and ALT alike. Truth: no row changes; T9: 24,703 REF reads at splice-crossing
+  deletions become depth only (their bases fit both alleles); `vaf` is
+  unchanged. A deletion written right after a read's splice (no aligned flank) is
+  depth only.
+- **Diagnostics read the counted reads (#186).** `OBSERVED_ALLELE` and
+  `COEXISTING_ALLELE` take n/m over the reads the counts read: no antisense read
+  under enforcement, and the RNA mapping rule's unique mappers. Counts unchanged.
+- **An RNA read's soft clips are not allele evidence (#173, RJ-18).** STAR clips
+  a junction overhang it cannot splice, so the clip holds the next exon's bases.
+  Splice probes: spurious ALT 19 → 16; 0.01–0.02% of REF reads become depth only.
+- **A spliced read is read across its junction (#213, RJ-19).** The exact-carrier
+  windows of a read spliced near the event are built over the reference spliced
+  at its own junctions (the far exon read from the FASTA), not cut at the exon
+  edge. Splice probes: spurious ALT 19 → 4; REF −0.95% at probes 0–1 bp from the
+  exon edge (reads reaching one or two bases past the junction hold no spliced
+  flank), −0.11% at 2–4 bp. Truth and T9: no row changes.
+- **Survey:** GATK splits RNA reads at N and counts a piece only when its bases
+  favour an allele, and runs HaplotypeCaller with `-dont-use-soft-clipped-bases`;
+  bcftools never uses spliced reads for indels; phASER, WASP and ASEReadCounter
+  never read clips; REDItools resolves a site's strand from the annotation
+  spanning it and leaves mixed strands undetermined; allele counters take every
+  tally over one filtered read set.
+
 ### Documented — why the RNA mapping-quality default is `--min-mapq 1`
 
 No behaviour change. The RNA default keeps reads STAR placed at two to four loci
