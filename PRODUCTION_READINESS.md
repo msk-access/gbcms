@@ -111,9 +111,14 @@ Each run reports:
 ## Decisions
 
 1. Opt-in features: none in production (operator, 2026-10-02).
-2. C16: the junction guard is deferred to 6.7.0, with C15 and RJ-13's RNA
-   exon-edge clips, which need the same reference access; the evidence rule is
-   measured in a softer form (operator, 2026-10-02).
+2. C16: an exact-carrier ALT call needs quality-weighted evidence, one
+   `--min-baseq` base's worth (RJ-16, operator 2026-10-03); the junction guard is
+   deferred to 6.7.0 (C32 #213), with C15 and RJ-13's RNA exon-edge clips.
+3. RNA mapping quality: the default stays `--min-mapq 1` (operator, 2026-10-03).
+   Unique-only (as allele-specific expression pipelines filter) would cost real
+   ALT reads at genes with pseudogenes (PIK3CA E545K: 10 of 159) and 1.6% of
+   junction totals; `--min-mapq 0` stays a deliberate choice for pseudogene-family
+   genes. Measurement in `docs/reference/read-filters.md`.
 
 Open:
 

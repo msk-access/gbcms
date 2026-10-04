@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documented — why the RNA mapping-quality default is `--min-mapq 1`
+
+No behaviour change. The RNA default keeps reads STAR placed at two to four loci
+(MAPQ 3 or 1), counted once at their primary alignment, because junction reads tie
+between a gene and its processed pseudogene. Measured on FORTE: counting unique
+alignments only would cost real ALT reads at genes with pseudogenes (PIK3CA E545K:
+10 of 159; 12 across the truth set) and 1.6% of junction fragments at the probes;
+`--min-mapq 0` would add 6 ALT and 33 REF reads across the truth set. The STAR
+MAPQ scale and the measurement are in `docs/reference/read-filters.md`, which also
+corrects a note that STAR gives novel junctions low MAPQ (its MAPQ depends only on
+the number of loci).
+
 ### Changed — an exact-carrier ALT call needs quality-weighted evidence (#174)
 
 A read's bases across a complex variant's windows are now weighed by their
