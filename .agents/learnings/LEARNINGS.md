@@ -17,6 +17,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20261003-002] rule-body | runs over a network mount go one at a time
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** to speed up group 3's prototype acceptance I ran five builds'
+  comparisons and three base runs in parallel over the same SFTP mount. Each
+  probe sample crawled (about 25 minutes) and one read hit an NFS timeout. The
+  operator: access one file on one mount at a time; serial is more responsive
+  than several connections. The run guidance covered visibility and wedged
+  mounts but not concurrency.
+- **Promotion target:** `DONE:` `.agents/memory/long-runs-visible.md` (runs over a
+  mount go one at a time, grouped by file) and the local mounts memory (the
+  concurrency rule and the measurement); the group 3 harness now runs serially
+  grouped by BAM (`serial_rest.py`).
+- **Related:** [[long-runs-visible]].
+
 ## [LRN-20261003-001] rule-body | a practice survey includes the literature and the domain's own tools
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

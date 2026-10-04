@@ -17,5 +17,7 @@ tracked-task limit) and, in the same step, start a tracked background waiter
 (`until [ -f run.done ]; do sleep 20; done; <print summary>` with
 run_in_background) that ends when the run does. Re-arm the waiter if it times
 out. When a run is slow (e.g. full `--trace` on expressed genes), say why and
-switch to a faster method rather than letting it grind. Related:
+switch to a faster method rather than letting it grind. Runs that read a network
+mount go one at a time, grouped by file, never in parallel (the local mounts
+memory has why). Related:
 [[harness-cleanup-after-merge]].

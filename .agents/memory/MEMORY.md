@@ -33,7 +33,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Worktree tests need an isolated venv](worktree-tests-need-isolated-venv.md) — the shared .venv imports the MAIN checkout's gbcms; in a worktree build a scratch venv + maturin develop or tests exercise the wrong code.
 - [maturin develop: repo root only](maturin-develop-repo-root-only.md) — `-m rust/Cargo.toml` bypasses [tool.maturin] and leaves a stale src/gbcms/_rs.so shadowing every rebuild.
 - [Harness cleanup after merge](harness-cleanup-after-merge.md) — delete the ticket's `src_*` builds (rebuildable from BUILT_FROM; patch prototypes first), gzip traces, `cargo clean` when rust/target bloats.
-- [Long runs visible](long-runs-visible.md) — pair every detached nohup harness run with a tracked background waiter so the operator sees it.
+- [Long runs visible](long-runs-visible.md) — pair every detached nohup harness run with a tracked background waiter; runs over a network mount go one at a time, grouped by file.
 - [No `timeout` on this Mac](macos-no-timeout-command.md) — `timeout N cmd && ok || fail` always says fail; check SFTP mounts with a plain read.
 
 ## Validation / testing
