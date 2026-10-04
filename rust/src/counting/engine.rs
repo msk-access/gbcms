@@ -526,23 +526,31 @@ fn count_bam_binned_core(
         }
     }
     // Strandedness enforcement needs a gene strand per variant; variants left
-    // without one (no GTF, intergenic locus, or a GTF/variant contig mismatch)
-    // pass every read as sense — the antisense artifacts the flag exists to
-    // remove are counted. Say so once, loudly, instead of enforcing nothing
-    // while the run banner claims enforce_strandedness=true.
+    // without one (no GTF, an intergenic locus, genes of both strands over it, or
+    // a GTF/variant contig mismatch) pass every read as sense. Say so once, naming
+    // them, instead of enforcing nothing while the run banner claims
+    // enforce_strandedness=true.
     if enforce_strandedness {
-        let unresolved = variants.iter().filter(|v| v.gene_strand.is_none()).count();
-        if unresolved > 0 {
+        let unresolved: Vec<&Variant> = variants.iter().filter(|v| v.gene_strand.is_none()).collect();
+        if !unresolved.is_empty() {
+            const NAMED: usize = 10;
+            let named: Vec<String> = unresolved
+                .iter()
+                .take(NAMED)
+                .map(|v| format!("{}:{} {}>{}", v.chrom, v.pos + 1, v.ref_allele, v.alt_allele))
+                .collect();
             warn!(
                 "--enforce-strandedness: {}/{} variants have no gene strand ({}) — \
-                 strandedness is NOT enforced for them and antisense reads are counted",
-                unresolved,
+                 strandedness is NOT enforced for them and antisense reads are counted: {}{}",
+                unresolved.len(),
                 variants.len(),
                 if annotation.is_some() {
-                    "locus not covered by the GTF, or contig naming mismatch"
+                    "no transcript spans the locus, transcripts of both strands do, or contig naming mismatch"
                 } else {
                     "no --gtf provided"
                 },
+                named.join(", "),
+                if unresolved.len() > NAMED { format!(" and {} more", unresolved.len() - NAMED) } else { String::new() },
             );
         }
     }
@@ -663,14 +671,21 @@ fn count_bam_binned_core(
                             Ok(reader)
                         })();
                         // Thread-local FASTA reader for splice motif classification
-                        // (only opened when FASTA path is provided; None in DNA mode)
+                        // (opened whenever a FASTA path is provided)
                         let fasta_reader: Option<bio::io::fasta::IndexedReader<std::fs::File>> =
                             fasta_path_owned.as_ref().and_then(|path| {
                                 bio::io::fasta::IndexedReader::from_file(path).ok()
                             });
-                        (bam_reader, fasta_reader)
+                        // RNA: a cached reader for the far exon of a spliced read's
+                        // junctions (the exact-carrier rule reads across them).
+                        let far_reference = if mode == "rna" {
+                            fasta_path_owned.as_deref().and_then(crate::normalize::fasta::CachedFasta::open)
+                        } else {
+                            None
+                        };
+                        (bam_reader, fasta_reader, far_reference)
                     },
-                    |(bam_result, fasta_reader), bin| {
+                    |(bam_result, fasta_reader, far_reference), bin| {
                         let bam = match bam_result {
                             Ok(b) => b,
                             Err(e) => return Err(anyhow::anyhow!("BAM init failed: {}", e)),
@@ -711,6 +726,7 @@ fn count_bam_binned_core(
                             &editing_sites,
                             &annotation,
                             fasta_reader,
+                            far_reference.as_ref(),
                             amplicon_mode,
                             emit_obs,
                         )?)
@@ -1075,9 +1091,17 @@ fn count_bin_shared(
     editing_sites: &Option<HashSet<(String, i64, u8, u8)>>,
     annotation: &Option<std::sync::Arc<AnnotationIndex>>,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
+    far_reference: Option<&crate::normalize::fasta::CachedFasta>,
     amplicon_mode: bool,
     emit_obs: bool,
 ) -> Result<BinOutput> {
+    // How the exact-carrier rule reads past a read's aligned blocks: an RNA read's
+    // soft clips are not evidence, and a spliced read continues into its next exon.
+    let rules = if mode == "rna" {
+        carrier::ReadRules { clips: false, reference: far_reference }
+    } else {
+        carrier::ReadRules::DNA
+    };
 
     // ══════════════════════════════════════════════════════════════════════
     // PHASE 0: Single fetch + universal filtering → read cache
@@ -1179,7 +1203,7 @@ fn count_bin_shared(
             fragment_qual_threshold, backend,
             apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
             editing_sites, annotation, amplicon_mode,
-            emit_obs, vi as u32,
+            emit_obs, vi as u32, &rules,
         )?;
 
         // Dual-count for decomposed variants: run the same classification
@@ -1197,7 +1221,7 @@ fn count_bin_shared(
                 fragment_qual_threshold, backend,
                 apply_baq, umi_tag, mode, enforce_strandedness, strandedness, mfsd,
                 editing_sites, annotation, amplicon_mode,
-                emit_obs, vi as u32,
+                emit_obs, vi as u32, &rules,
             )?;
 
             if counts_decomp.ad > counts_orig.ad {
@@ -1251,7 +1275,7 @@ fn count_bin_shared(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, fragment_qual_threshold,
                 backend, use_baq, umi_tag, enforce_strandedness, strandedness,
-                amplicon_mode,
+                amplicon_mode, &rules,
             );
             final_counts.transcript_read_counts = read_cts;
             final_counts.transcript_fragment_counts = frag_cts;
@@ -1263,7 +1287,7 @@ fn count_bin_shared(
             let asjd = detect_asjd(
                 &read_cache, variant, siblings, annot,
                 min_mapq, min_baseq, backend, use_baq, enforce_strandedness, strandedness,
-                fasta_reader,
+                fasta_reader, &rules,
             );
             final_counts.asjd_flag = asjd.flag;
             final_counts.asjd_pval = asjd.pval;
@@ -1408,6 +1432,7 @@ fn count_variant_from_cache(
     // caller can join back to its input `variants` list.
     emit_obs: bool,
     variant_index: u32,
+    rules: &carrier::ReadRules,
 ) -> Result<(BaseCounts, Vec<Observation>)> {
 
     let mut counts = BaseCounts::default();
@@ -1427,8 +1452,10 @@ fn count_variant_from_cache(
     counts.exon_boundary_dist = exon_boundary_dist;
 
     // The allele the reads carry when it is not the given one: diagnostic only
-    // (OBSERVED_ALLELE); no count below depends on it.
-    if let Some(o) = observed::observed_allele(read_cache, variant, sibling_variants, min_mapq, min_baseq) {
+    // (OBSERVED_ALLELE); no count below depends on it. It reads the reads the
+    // counts read, so its n/m compare with alt_count and ref_count.
+    let counted = |record: &Record| counted_read(record, variant, mode, enforce_strandedness, strandedness, min_mapq);
+    if let Some(o) = observed::observed_allele(read_cache, variant, sibling_variants, &counted, min_baseq) {
         counts.observed_pos = o.pos + 1;
         counts.observed_ref = o.ref_allele;
         counts.observed_alt = o.alt_allele;
@@ -1541,11 +1568,7 @@ fn count_variant_from_cache(
         // ── MAPQ SKIP (Phase 1): MAPQ=0 reads were kept in the cache
         // specifically for MQ0 tracking above. Now skip them for
         // classification — they should not contribute to DP/RD/AD/DPF.
-        if mode == "rna" {
-            if !rna::is_valid_rna_alignment(record, min_mapq) {
-                continue;
-            }
-        } else if record.mapq() < min_mapq {
+        if !mapping_admits(record, mode, min_mapq) {
             continue;
         }
 
@@ -1560,7 +1583,7 @@ fn count_variant_from_cache(
         // ── Allele classification
         let result = check_allele_with_qual(
             record, variant, sibling_variants, effective_quals, min_baseq,
-            &mut alt_aligner, &mut ref_aligner, backend,
+            &mut alt_aligner, &mut ref_aligner, backend, rules,
         );
         // ── SPLICE-SKIP EXCLUSION: covers_locus=false means the read's
         // CIGAR N spans every discriminating position — it observes nothing
@@ -1597,7 +1620,7 @@ fn count_variant_from_cache(
         // RDF drop the same molecules; recorded as partial_alt/any_alt below.
         let ref_claimed_by_sibling = sibling_claims_ref(
             record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
-            &mut alt_aligner, &mut ref_aligner, backend,
+            &mut alt_aligner, &mut ref_aligner, backend, rules,
         );
         let is_ref = result.is_ref && !ref_claimed_by_sibling;
         // One line per classified read, named, so a count can be traced back to
@@ -2056,13 +2079,14 @@ fn sibling_claims_ref<F: Fn(u8, u8) -> i32>(
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
+    rules: &carrier::ReadRules,
 ) -> bool {
     if !result.is_ref && !result.uninformative {
         return false;
     }
     for sib in window_siblings {
         let sib_result = check_allele_with_qual(
-            record, sib, &[], quals, min_baseq, alt_aligner, ref_aligner, backend,
+            record, sib, &[], quals, min_baseq, alt_aligner, ref_aligner, backend, rules,
         );
         if sib_result.is_alt {
             trace!(
@@ -2357,6 +2381,34 @@ fn warn_sw_fallback(variant: &Variant, n: u32) {
     }
 }
 
+/// Whether the mapping rule admits a read to the counts: MAPQ at least
+/// `min_mapq`, or in RNA a unique mapper (`NH:i:1`) below it
+/// (`rna::is_valid_rna_alignment`).
+fn mapping_admits(record: &Record, mode: &str, min_mapq: u8) -> bool {
+    if mode == "rna" {
+        rna::is_valid_rna_alignment(record, min_mapq)
+    } else {
+        record.mapq() >= min_mapq
+    }
+}
+
+/// Whether a read is one the read-level counts read: a first-class record (not
+/// secondary or supplementary) the mapping rule admits and, under RNA
+/// strandedness enforcement, a sense read.
+fn counted_read(
+    record: &Record,
+    variant: &Variant,
+    mode: &str,
+    enforce_strandedness: bool,
+    strandedness: rna::Strandedness,
+    min_mapq: u8,
+) -> bool {
+    let first_class = !(record.is_secondary() || record.is_supplementary());
+    let antisense_excluded =
+        mode == "rna" && enforce_strandedness && !rna::is_sense_strand(record, variant.gene_strand, strandedness);
+    first_class && !antisense_excluded && mapping_admits(record, mode, min_mapq)
+}
+
 /// A REF call on an insertion or deletion stands only when the read is
 /// informative (`window::read_is_informative`). A read that starts or ends
 /// inside the repeat tract matches both alleles (the aligner places no gap
@@ -2365,10 +2417,10 @@ fn warn_sw_fallback(variant: &Variant, n: u32) {
 fn ref_needs_the_window(record: &Record, variant: &Variant, mut result: ClassifyResult) -> ClassifyResult {
     if result.is_ref && !window::read_is_informative(record, variant) {
         trace!(
-            "{}:{} {}>{} read={}: aligned {}-{} spans neither informative window {:?} (0-based) \
+            "{}:{} {}>{} read={}: no aligned block of {:?} spans an informative window {:?} (0-based) \
              — uninformative, not REF",
             variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
-            record.pos() + 1, ref_end(record), window::informative_windows(variant),
+            crate::shared::bam_utils::aligned_blocks(record), window::informative_windows(variant),
         );
         result.is_ref = false;
         result.is_structural = false;
@@ -2420,10 +2472,10 @@ fn alt_needs_the_window(
         None => "the prepared reference ends before the base that would decide",
     };
     trace!(
-        "{}:{} {}>{} read={}: aligned {}-{} spans neither ALT-side window around {:?} (0-based) \
+        "{}:{} {}>{} read={}: no aligned block of {:?} spans an ALT-side window around {:?} (0-based) \
          and {} — uninformative, not ALT",
         variant.chrom, variant.pos + 1, variant.ref_allele, variant.alt_allele, read_name(record),
-        record.pos() + 1, ref_end(record), window::change_interval(variant), why,
+        crate::shared::bam_utils::aligned_blocks(record), window::change_interval(variant), why,
     );
     result.is_alt = false;
     result.is_structural = false;
@@ -2459,6 +2511,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
+    rules: &carrier::ReadRules,
 ) -> ClassifyResult {
     // Splice-skip triage first: a read whose CIGAR N spans every
     // discriminating position observes nothing at this locus and must not
@@ -2492,7 +2545,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
         // write a shifted block as an insertion before it and a deletion after):
         // it counts only if its own bases carry the whole allele (exact-carrier rule).
         let route = "an MNP read with an indel at the block";
-        classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend, rules)
     } else if kind == AlleleKind::Mnp {
         // MNP: selective discriminating-position quality gate with no Phase 3 fallback.
         match check_mnp(record, variant, quals, min_baseq) {
@@ -2539,7 +2592,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
                 // The read carries an indel or clip at the MNP: it counts only if
                 // its own bases carry the whole allele (exact-carrier rule).
                 let route = "an MNP read with an indel or clip at the block";
-                classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+                classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend, rules)
             }
         }
     } else if kind == AlleleKind::Insertion {
@@ -2566,7 +2619,7 @@ fn check_allele_with_qual<F: Fn(u8, u8) -> i32>(
             (_, 1) => "a deletion whose anchor changes",
             _ => "a delins",
         };
-        classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend)
+        classify_complex(record, variant, route, siblings, quals, min_baseq, alt_aligner, ref_aligner, backend, rules)
     }
 }
 
@@ -2589,8 +2642,9 @@ fn classify_complex<F: Fn(u8, u8) -> i32>(
     alt_aligner: &mut Aligner<F>,
     ref_aligner: &mut Aligner<F>,
     backend: &AlignmentBackend,
+    rules: &carrier::ReadRules,
 ) -> ClassifyResult {
-    if let Some(mut result) = carrier::classify(record, variant, quals, min_baseq) {
+    if let Some(mut result) = carrier::classify(record, variant, quals, min_baseq, rules) {
         result.carrier_judged = true;
         trace!(
             "{}:{} {}>{} read={}: exact-carrier rule ({}): ref={} alt={} nearby={} uninformative={} \
@@ -2724,6 +2778,7 @@ fn count_per_transcript(
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
     amplicon_mode: bool,
+    rules: &carrier::ReadRules,
 ) -> (String, String) {
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
     let ref_guard_siblings = window::siblings_in_window(variant, sibling_variants);
@@ -2806,7 +2861,7 @@ fn count_per_transcript(
             // ── Allele classification
             let result = check_allele_with_qual(
                 record, variant, sibling_variants, effective_quals, min_baseq,
-                &mut alt_aligner, &mut ref_aligner, backend,
+                &mut alt_aligner, &mut ref_aligner, backend, rules,
             );
 
             // ── Splice-skip exclusion (same as main counting): a read whose
@@ -2850,7 +2905,7 @@ fn count_per_transcript(
             let is_ref = result.is_ref
                 && !sibling_claims_ref(
                     record, variant, &result, &ref_guard_siblings, effective_quals, min_baseq,
-                    &mut alt_aligner, &mut ref_aligner, backend,
+                    &mut alt_aligner, &mut ref_aligner, backend, rules,
                 );
 
             // Only the resolved call reads this evidence (`resolve`), so whether the
@@ -3341,6 +3396,7 @@ fn detect_asjd(
     enforce_strandedness: bool,
     strandedness: rna::Strandedness,
     fasta_reader: &mut Option<bio::io::fasta::IndexedReader<std::fs::File>>,
+    rules: &carrier::ReadRules,
 ) -> AsjdResult {
     let baq_spare = if use_baq { baq_own_span(variant) } else { None };
     // Bind the normalized key, then borrow it as &str so the junction/motif lookups
@@ -3398,7 +3454,7 @@ fn detect_asjd(
         // Classify allele
         let result = check_allele_with_qual(
             record, variant, sibling_variants, effective_quals, min_baseq,
-            &mut alt_aligner, &mut ref_aligner, backend,
+            &mut alt_aligner, &mut ref_aligner, backend, rules,
         );
 
         let qh = crate::shared::fragment::hash_qname(record.qname());
@@ -4450,12 +4506,12 @@ mod tests {
         let sw_result = check_allele_with_qual(
             record, variant, &[], quals, min_baseq,
             &mut alt_a1, &mut ref_a1,
-            &AlignmentBackend::SmithWaterman,
+            &AlignmentBackend::SmithWaterman, &carrier::ReadRules::DNA,
         );
         let hmm_result = check_allele_with_qual(
             record, variant, &[], quals, min_baseq,
             &mut alt_a1, &mut ref_a1,
-            &AlignmentBackend::pairhmm_default(),
+            &AlignmentBackend::pairhmm_default(), &carrier::ReadRules::DNA,
         );
 
         (sw_result, hmm_result)
@@ -4564,7 +4620,7 @@ mod tests {
 
         let result = check_allele_with_qual(
             &record, &variant, &[], record.qual(), 20,
-            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman, &carrier::ReadRules::DNA,
         );
 
         assert!(!result.is_ref, "N at SNP should not be REF");
@@ -4620,7 +4676,7 @@ mod tests {
 
         let result = check_allele_with_qual(
             &record, &variant, &[], record.qual(), 20,
-            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman, &carrier::ReadRules::DNA,
         );
 
         assert!(result.is_alt, "MNP with N-masked + ALT-matching should be ALT");
@@ -4632,7 +4688,7 @@ mod tests {
         let full = build_record(b"GGCGGGGGGG", qual, &cigar, 0);
         let result = check_allele_with_qual(
             &full, &variant, &[], full.qual(), 20,
-            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman, &carrier::ReadRules::DNA,
         );
         assert!(result.is_alt && result.mnp_confirmed, "fully read MNP ALT → confirmed");
 
@@ -4640,7 +4696,7 @@ mod tests {
         let snv = build_variant_with_context(2, "A", "C", "GGATGGGGGG", 0);
         let result = check_allele_with_qual(
             &full, &snv, &[], full.qual(), 20,
-            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman,
+            &mut alt_a, &mut ref_a, &AlignmentBackend::SmithWaterman, &carrier::ReadRules::DNA,
         );
         assert!(result.is_alt && !result.mnp_confirmed, "SNV ALT → never MNP-confirmed");
     }

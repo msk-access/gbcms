@@ -52,6 +52,27 @@ pub fn ref_end(record: &Record) -> i64 {
     record.cigar().end_pos()
 }
 
+/// The read's aligned blocks `[start, end)` on the reference: its reference
+/// extent split at every splice (N). M, =, X and D extend a block; clips and
+/// insertions add nothing. An unspliced read is one block, `[pos, ref_end)`.
+pub fn aligned_blocks(record: &Record) -> Vec<(i64, i64)> {
+    let mut blocks = Vec::with_capacity(2);
+    let (mut start, mut pos) = (record.pos(), record.pos());
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::RefSkip(n) => {
+                blocks.push((start, pos));
+                pos += *n as i64;
+                start = pos;
+            }
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::Del(n) => pos += *n as i64,
+            _ => {}
+        }
+    }
+    blocks.push((start, pos));
+    blocks
+}
+
 /// Lengths of the read's leading and trailing soft clips, behind any hard clip.
 /// A CIGAR of one (non-hard-clip) op has no trailing clip.
 pub fn soft_clips(record: &Record) -> (u32, u32) {

@@ -1,9 +1,55 @@
 //! FASTA I/O, REF validation, and MAF anchor resolution.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs::File;
 
 use bio::io::fasta;
 use log::warn;
+
+/// A FASTA reader that remembers the regions it has fetched: many reads ask for
+/// the same few places (a spliced read's far exon), so each is read once. One per
+/// worker thread (not `Sync`); the cache is cleared when it grows past
+/// [`CachedFasta::MAX_REGIONS`].
+pub(crate) struct CachedFasta {
+    reader: RefCell<fasta::IndexedReader<File>>,
+    cache: RefCell<FetchedRegions>,
+}
+
+/// Regions fetched: (contig, start, end) → the bases, or None when not held whole.
+type FetchedRegions = HashMap<(String, i64, i64), Option<Vec<u8>>>;
+
+impl CachedFasta {
+    const MAX_REGIONS: usize = 100_000;
+
+    /// Open an indexed FASTA; None when it cannot be opened.
+    pub(crate) fn open(path: &str) -> Option<Self> {
+        let reader = fasta::IndexedReader::from_file(&path).ok()?;
+        Some(Self { reader: RefCell::new(reader), cache: RefCell::new(HashMap::new()) })
+    }
+
+    /// The reference bases `[start, end)` of `chrom` (any naming, as
+    /// [`fetch_region`]), uppercased; None when the region is not held whole.
+    pub(crate) fn bases(&self, chrom: &str, start: i64, end: i64) -> Option<Vec<u8>> {
+        if start < 0 || end <= start {
+            return None;
+        }
+        let key = (chrom.to_string(), start, end);
+        if let Some(hit) = self.cache.borrow().get(&key) {
+            return hit.clone();
+        }
+        let got = fetch_region(&mut self.reader.borrow_mut(), chrom, start as u64, end as u64)
+            .ok()
+            .filter(|b| b.len() == (end - start) as usize)
+            .map(|b| b.iter().map(u8::to_ascii_uppercase).collect::<Vec<u8>>());
+        let mut cache = self.cache.borrow_mut();
+        if cache.len() >= Self::MAX_REGIONS {
+            cache.clear();
+        }
+        cache.insert(key, got.clone());
+        got
+    }
+}
 
 /// Fetch a region from FASTA under any name the contig goes by: as given, with
 /// or without a `chr` prefix, and — for the mitochondrion — each of its

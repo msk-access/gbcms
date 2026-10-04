@@ -21,6 +21,7 @@
 //!           ├── splice_sites: HashMap<u32, Vec<i32>>  (sorted boundary positions)
 //!           ├── transcript_introns: HashMap<String, Vec<(i32, i32)>>
 //!           ├── intron_boundaries: HashMap<u32, Vec<(i32, char)>>  (derived: donor/acceptor sites + strand)
+//!           ├── transcript_trees: HashMap<u32, COITree>  (derived: transcript spans, for strand)
 //!           └── chrom_map: HashMap<String, u32>
 //! ```
 //!
@@ -108,6 +109,12 @@ pub struct AnnotationIndex {
     /// serialized, so the GTF cache format is unaffected.
     intron_boundaries: HashMap<u32, Vec<(i32, char)>>,
 
+    /// Chromosome → COITree of every transcript's span (first exon start to last
+    /// exon end, introns included); metadata is the transcript's strand
+    /// (`transcript_strands`). Derived in `new()` from `exons`, never serialized.
+    transcript_trees: HashMap<u32, COITree<usize, u32>>,
+    transcript_strands: Vec<char>,
+
     /// Chromosome name → numeric ID mapping (e.g., "1" → 0, "X" → 22).
     /// Normalized: no "chr" prefix.
     chrom_map: HashMap<String, u32>,
@@ -123,10 +130,11 @@ pub struct AnnotationIndex {
 pub(crate) fn build_exon_trees(exons: &[ExonRecord]) -> HashMap<u32, COITree<usize, u32>> {
     let mut tree_nodes: HashMap<u32, Vec<IntervalNode<usize, u32>>> = HashMap::new();
     for (i, exon) in exons.iter().enumerate() {
+        // COITree intervals are end-inclusive; exons are half-open.
         tree_nodes
             .entry(exon.chrom_id)
             .or_default()
-            .push(IntervalNode::new(exon.start, exon.end, i));
+            .push(IntervalNode::new(exon.start, exon.end - 1, i));
     }
     tree_nodes
         .into_iter()
@@ -159,6 +167,26 @@ fn derive_intron_boundaries(
     out
 }
 
+/// Per-chromosome trees of transcript spans (first exon start to last exon end,
+/// end-inclusive for COITree), with each span's strand in the returned list.
+fn derive_transcript_trees(exons: &[ExonRecord]) -> (HashMap<u32, COITree<usize, u32>>, Vec<char>) {
+    let mut spans: HashMap<&str, (u32, i32, i32, char)> = HashMap::new();
+    for e in exons {
+        let s = spans.entry(e.transcript_id.as_str()).or_insert((e.chrom_id, e.start, e.end, e.strand));
+        s.1 = s.1.min(e.start);
+        s.2 = s.2.max(e.end);
+    }
+    let mut strands = Vec::with_capacity(spans.len());
+    let mut nodes: HashMap<u32, Vec<IntervalNode<usize, u32>>> = HashMap::new();
+    let mut sorted: Vec<_> = spans.into_iter().collect();
+    sorted.sort_unstable_by(|a, b| a.0.cmp(b.0)); // stable indices across runs
+    for (_, (chrom, start, end, strand)) in sorted {
+        nodes.entry(chrom).or_default().push(IntervalNode::new(start, end - 1, strands.len()));
+        strands.push(strand);
+    }
+    (nodes.into_iter().map(|(c, n)| (c, COITree::new(&n))).collect(), strands)
+}
+
 impl AnnotationIndex {
     /// Create a new AnnotationIndex from pre-parsed components.
     ///
@@ -174,6 +202,7 @@ impl AnnotationIndex {
         let n_exons = exons.len();
         let n_transcripts = transcript_introns.len();
         let intron_boundaries = derive_intron_boundaries(&exons, &transcript_introns);
+        let (transcript_trees, transcript_strands) = derive_transcript_trees(&exons);
         debug!(
             "AnnotationIndex built: {} chromosomes, {} exons, {} transcripts, {} intron boundaries",
             n_chroms,
@@ -187,6 +216,8 @@ impl AnnotationIndex {
             splice_sites,
             transcript_introns,
             intron_boundaries,
+            transcript_trees,
+            transcript_strands,
             chrom_map,
         }
     }
@@ -285,7 +316,7 @@ impl AnnotationIndex {
         let pos_i32 = pos as i32;
         let mut transcript_ids = Vec::new();
 
-        tree.query(pos_i32, pos_i32 + 1, |node| {
+        tree.query(pos_i32, pos_i32, |node| {
             // COITree metadata type varies by SIMD backend:
             //   nosimd: IntervalNode<usize, _> → field is usize
             //   NEON/AVX: Interval<&usize>     → field is &usize
@@ -303,13 +334,16 @@ impl AnnotationIndex {
         transcript_ids
     }
 
-    /// Resolve the gene strand at a position from the exons overlapping it.
+    /// Resolve the gene strand at a position: from the exons overlapping it, or, at
+    /// a position no stranded exon covers (intronic, including splice sites), from
+    /// the transcripts spanning it (first exon start to last exon end).
     ///
-    /// Returns `Some('+')`/`Some('-')` when every stranded exon overlapping the
-    /// position agrees. Returns `None` when the position is unannotated, overlaps
-    /// only unstranded (`.`) exons, or overlaps exons on *both* strands (ambiguous,
-    /// e.g. opposite-strand genes) — callers treat `None` as "do not enforce
-    /// strandedness here" rather than guessing a direction.
+    /// Returns `Some('+')`/`Some('-')` when every stranded exon (else every
+    /// stranded spanning transcript) agrees. Returns `None` when the position is
+    /// unannotated, covered only by unstranded (`.`) features, or covered on *both*
+    /// strands (overlapping opposite-strand genes, whose transcripts both carry the
+    /// allele) — callers treat `None` as "do not enforce strandedness here" rather
+    /// than guessing a direction.
     pub fn strand_at(&self, chrom: &str, pos: i64) -> Option<char> {
         let chrom_id = *self.chrom_map.get(chrom)?;
         let tree = self.exon_trees.get(&chrom_id)?;
@@ -318,7 +352,7 @@ impl AnnotationIndex {
         let mut seen_plus = false;
         let mut seen_minus = false;
 
-        tree.query(pos_i32, pos_i32 + 1, |node| {
+        tree.query(pos_i32, pos_i32, |node| {
             // Metadata is an index into `self.exons` (see `overlapping_transcripts`).
             use std::borrow::Borrow;
             #[allow(noop_method_call)]
@@ -330,6 +364,20 @@ impl AnnotationIndex {
             }
         });
 
+        if !seen_plus && !seen_minus {
+            if let Some(spans) = self.transcript_trees.get(&chrom_id) {
+                spans.query(pos_i32, pos_i32, |node| {
+                    use std::borrow::Borrow;
+                    #[allow(noop_method_call)]
+                    let idx: &usize = node.metadata.borrow();
+                    match self.transcript_strands[*idx] {
+                        '+' => seen_plus = true,
+                        '-' => seen_minus = true,
+                        _ => {}
+                    }
+                });
+            }
+        }
         match (seen_plus, seen_minus) {
             (true, false) => Some('+'),
             (false, true) => Some('-'),
@@ -433,7 +481,6 @@ impl AnnotationIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use coitrees::{IntervalNode, IntervalTree};
 
     /// Build a minimal AnnotationIndex for testing.
     fn build_test_index() -> AnnotationIndex {
@@ -460,15 +507,7 @@ mod tests {
             },
         ];
 
-        let nodes: Vec<IntervalNode<usize, u32>> = exons
-            .iter()
-            .enumerate()
-            .map(|(i, e)| IntervalNode::new(e.start, e.end, i))
-            .collect();
-
-        let tree = COITree::new(&nodes);
-        let mut exon_trees = HashMap::new();
-        exon_trees.insert(0u32, tree);
+        let exon_trees = build_exon_trees(&exons);
 
         let mut splice_sites = HashMap::new();
         splice_sites.insert(0u32, vec![100i32, 200, 300, 400]);
@@ -503,13 +542,7 @@ mod tests {
             ExonRecord { transcript_id: "tb".into(), gene_id: "gb".into(), chrom_id: 0, start: 1050, end: 1150, strand: '-' },
             ExonRecord { transcript_id: "tu".into(), gene_id: "gu".into(), chrom_id: 0, start: 2000, end: 2100, strand: '.' },
         ];
-        let nodes: Vec<IntervalNode<usize, u32>> = exons
-            .iter()
-            .enumerate()
-            .map(|(i, e)| IntervalNode::new(e.start, e.end, i))
-            .collect();
-        let mut exon_trees = HashMap::new();
-        exon_trees.insert(0u32, COITree::new(&nodes));
+        let exon_trees = build_exon_trees(&exons);
         let mut chrom_map = HashMap::new();
         chrom_map.insert("1".to_string(), 0u32);
         let idx = AnnotationIndex::new(exon_trees, exons, HashMap::new(), HashMap::new(), chrom_map);
@@ -520,6 +553,44 @@ mod tests {
         assert_eq!(idx.strand_at("1", 2050), None, "unstranded exon → no enforcement");
         assert_eq!(idx.strand_at("1", 300), None, "intergenic gap → no annotation");
         assert_eq!(idx.strand_at("9", 150), None, "unknown chromosome");
+    }
+
+    #[test]
+    fn strand_at_an_intronic_position_comes_from_the_spanning_transcripts() {
+        // tp '+' exons [100,200) [300,400); tm '-' exons [600,700) [900,1000); tb '-'
+        // exons [250,260) [340,350) spans part of tp's intron and exon.
+        let ex = |t: &str, s: i32, e: i32, st: char| ExonRecord {
+            transcript_id: t.into(), gene_id: t.into(), chrom_id: 0, start: s, end: e, strand: st,
+        };
+        let exons = vec![
+            ex("tp", 100, 200, '+'), ex("tp", 300, 400, '+'),
+            ex("tm", 600, 700, '-'), ex("tm", 900, 1000, '-'),
+            ex("tb", 250, 260, '-'), ex("tb", 340, 350, '-'),
+        ];
+        let exon_trees = build_exon_trees(&exons);
+        let chrom_map = HashMap::from([("1".to_string(), 0u32)]);
+        let idx = AnnotationIndex::new(exon_trees, exons, HashMap::new(), HashMap::new(), chrom_map);
+        assert_eq!(idx.strand_at("1", 200), Some('+'), "donor +1: tp spans it");
+        assert_eq!(idx.strand_at("1", 201), Some('+'), "donor +2");
+        assert_eq!(idx.strand_at("1", 230), Some('+'), "deep intronic, before tb");
+        assert_eq!(idx.strand_at("1", 270), None, "tp and tb both span it");
+        assert_eq!(idx.strand_at("1", 320), Some('+'), "tp's exon wins over tb's span");
+        assert_eq!(idx.strand_at("1", 345), None, "exons of both strands");
+        assert_eq!(idx.strand_at("1", 800), Some('-'), "tm's intron");
+        assert_eq!(idx.strand_at("1", 500), None, "between genes");
+        assert_eq!(idx.strand_at("1", 1000), None, "one past tm's last exon");
+    }
+
+    #[test]
+    fn an_exon_holds_its_edge_bases_and_not_the_bases_beside_it() {
+        // build_test_index: one '+' transcript, exons [100,200) [300,400).
+        let idx = build_test_index();
+        for pos in [100, 199, 300, 399] {
+            assert_eq!(idx.overlapping_transcripts("1", pos), vec!["ENST00000001"], "{pos}");
+        }
+        for pos in [99, 200, 299, 400] {
+            assert!(idx.overlapping_transcripts("1", pos).is_empty(), "{pos}");
+        }
     }
 
     // ── nearest_splice_distance tests ──

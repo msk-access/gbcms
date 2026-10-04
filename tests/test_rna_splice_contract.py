@@ -247,11 +247,14 @@ def test_gap_representation_does_not_flip_the_call(tmp_path):
 def test_indel_across_junction_is_examined(tmp_path):
     """M-N-D-M: the deletion op sits directly after the splice N, at the
     genomic position the variant expects (anchor = last intronic base).
-    Carriers count ALT through the post-N inspection; the REF-side spliced
-    reads observe EVERY deleted-span base aligned (exon2 M), so they count
-    REF — the span, not the spliced-out anchor, is the discriminating
-    fact. (They were pinned neither during the conservative cluster-A
-    phase.)"""
+    The carriers' block holding the deletion starts at the junction, so no
+    aligned base flanks it: their bases (exon 1, then exon 2 from past the
+    deleted bases) equal REF spliced at an acceptor two bases on. A deletion
+    at a splice reads like a shifted splice site, so they are depth only
+    (operator, 2026-10-04: R5's one-block rule), as the shifted-N form of the
+    same reads always was. The REF-side spliced reads observe EVERY
+    deleted-span base aligned (exon2 M), so they count REF — the span, not
+    the spliced-out anchor, is the discriminating fact."""
     ref = _mk_ref()
     intron_start, gap = 280, 40
     anchor = intron_start + gap - 1  # last intronic base, 0-based 319
@@ -274,18 +277,15 @@ def test_indel_across_junction_is_examined(tmp_path):
     )
     r = rows[0]
     assert (
-        int(r["alt_count"]) == 4
-    ), f"junction-adjacent D carriers must count ALT, got ad={r['alt_count']}"
+        int(r["alt_count"]) == 0
+    ), f"junction-adjacent D carriers have no aligned flank: depth only, got ad={r['alt_count']}"
     # REF-side spliced reads observe every deleted-span base aligned:
     # span-aligned REF testimony (the anchor base is spliced out, but the
     # annotated deletion is demonstrably absent from these reads).
     assert (int(r["ref_count"]), int(r["total_count"])) == (5, 9)
     assert int(r["ref_count_fragment"]) == 5
-    # Fragment layer must agree: the carriers' structural evidence survives
-    # consensus even though BAQ zeroes the first exon base after the N+D
-    # (ad>0 with adf=0 was a live divergence before FragmentEvidence::resolve
-    # recognized structural ALT independent of base quality).
-    assert (int(r["alt_count_fragment"]), int(r["total_count_fragment"])) == (4, 9)
+    # The fragment layer agrees: the carriers are depth only there too.
+    assert (int(r["alt_count_fragment"]), int(r["total_count_fragment"])) == (0, 9)
 
 
 def test_splicing_elsewhere_does_not_affect_exonic_calls(tmp_path):
@@ -516,9 +516,10 @@ def test_spliced_over_delins_carries_no_information(tmp_path):
 
 
 def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
-    """N-CIGAR reads: the splice-skip exclusion, the post-N deletion evidence and
-    span-aligned REF testimony count the same with one variant per bin
-    (count_checked compares every field)."""
+    """N-CIGAR reads: the splice-skip exclusion, the post-N deletion reads (depth
+    only: no aligned base flanks a deletion at the junction) and span-aligned REF
+    testimony count the same with one variant per bin (count_checked compares
+    every field)."""
     from helpers import build_bam, count_checked
 
     from gbcms._rs import Variant
@@ -561,7 +562,7 @@ def test_spliced_reads_count_the_same_under_any_bin_geometry(tmp_path):
     assert c.dpf >= c.rdf + c.adf
     assert c.rd == c.rd_fwd + c.rd_rev
     assert c.ad == c.ad_fwd + c.ad_rev
-    assert c.ad == 4, f"M-N-D-M carriers must count ALT, got ad={c.ad}"
+    assert c.ad == 0, f"M-N-D-M carriers have no aligned flank: depth only, got ad={c.ad}"
     assert c.rd == 8, f"pre-mRNA reads AND span-aligned junction reads count REF, got rd={c.rd}"
 
 

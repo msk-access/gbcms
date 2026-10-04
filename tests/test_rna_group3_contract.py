@@ -1,4 +1,4 @@
-"""Group 3 (RNA) contracts, red first.
+"""Group 3 (RNA) contracts.
 
 C15 #173 (RNA part): an RNA read's soft clip is not allele evidence. STAR cannot
 splice an overhang shorter than its minimum (3 nt annotated, 5 nt novel) or one
@@ -75,7 +75,6 @@ def _flags(row, name):
     return [f for f in row["gbcms_diagnostic"].split(";") if f.startswith(name)]
 
 
-@pytest.mark.xfail(strict=True, reason="O8 #186: the diagnostic reads antisense reads")
 def test_observed_alleles_read_no_antisense_read(tmp_path):
     """15 antisense reads carry another allele, 5 sense reads the given ALT and
     10 sense reads REF. Under enforcement the counts exclude the antisense reads,
@@ -92,7 +91,6 @@ def test_observed_alleles_read_no_antisense_read(tmp_path):
     assert _flags(row, "OBSERVED_ALLELE") == _flags(alone, "OBSERVED_ALLELE") == []
 
 
-@pytest.mark.xfail(strict=True, reason="O8 #186: the diagnostic drops NH:1 reads below --min-mapq")
 def test_observed_alleles_read_the_unique_mappers_the_counts_read(tmp_path):
     """15 sense reads at MAPQ 0 with NH:i:1 (unique mappers the RNA counts keep)
     carry another allele; 5 sense reads carry the given ALT. The counts read all
@@ -148,7 +146,6 @@ def _edge_case():
     return "".join(ref), p0, alt
 
 
-@pytest.mark.xfail(strict=True, reason="C15 #173: RNA carrier windows read soft clips")
 def test_an_rna_soft_clip_is_not_allele_evidence(tmp_path):
     """Reads aligned over the MNP's first base (the ALT's) whose next 6+ bases,
     the next exon's, are soft-clipped. Read into the clip they fit the ALT; the
@@ -194,7 +191,6 @@ def _spliced_run(tmp_path, ref, reads, row):
     return out
 
 
-@pytest.mark.xfail(strict=True, reason="C32 #213: windows cut at the exon edge")
 def test_a_spliced_ref_read_with_one_error_is_not_alt(tmp_path):
     """REF reads spliced at 300 -> 500 with one error (the ALT's first base) at
     297. Cut at the exon edge, their bases fit the ALT; read across the junction
@@ -260,24 +256,20 @@ def _depths(row):
     return int(row["ref_count"]), int(row["rna_sense_depth"]), int(row["rna_antisense_depth"])
 
 
-_NO_STRAND = pytest.mark.xfail(strict=True, reason="R4 #185: no gene strand at intronic positions")
-
-
 @pytest.mark.parametrize(
     "pos",
     [
         pytest.param(INTRON1[0], id="donor+1"),
-        pytest.param(INTRON1[0] + 1, id="donor+2", marks=_NO_STRAND),
-        pytest.param(INTRON1[1] - 2, id="acceptor-2", marks=_NO_STRAND),
+        pytest.param(INTRON1[0] + 1, id="donor+2"),
+        pytest.param(INTRON1[1] - 2, id="acceptor-2"),
         pytest.param(INTRON1[1] - 1, id="acceptor-1"),
-        pytest.param(INTRON1[0] + 100, id="deep-intronic", marks=_NO_STRAND),
+        pytest.param(INTRON1[0] + 100, id="deep-intronic"),
     ],
 )
 def test_intronic_positions_take_the_spanning_transcripts_strand(tmp_path, pos):
     """10 sense and 6 antisense unspliced reads over an intronic position of a
     '+' gene: under enforcement the antisense reads count nowhere but in
-    rna_antisense_depth, as at an exonic position. (Donor +1 and acceptor -1
-    pass today only through the exon index's off-by-one, fixed with R4.)"""
+    rna_antisense_depth, as at an exonic position."""
     ref = mk_ref()
     row = _strand_run(tmp_path, ref, pos, _strand_reads(ref, pos, 10, 6))
     assert _depths(row) == (10, 10, 6)
@@ -314,7 +306,6 @@ def test_both_strands_spanning_an_intronic_position_leave_no_strand(tmp_path):
 
 
 @pytest.mark.parametrize("pos", [INTRON1[0], INTRON1[1] - 1], ids=["donor+1", "acceptor-1"])
-@pytest.mark.xfail(strict=True, reason="R4 #185: exon lookups reach one base past each exon edge")
 def test_an_intronic_position_lies_in_no_transcripts_exon(tmp_path, pos):
     """The exon index is end-inclusive (coitrees) but was built from half-open
     exons and queried over two bases, so the first and last intron bases read as
@@ -369,7 +360,6 @@ def _run_row(tmp_path, ref, reads):
     return int(row["ref_count"]), int(row["alt_count"]), int(row["total_count"])
 
 
-@pytest.mark.xfail(strict=True, reason="R5 #198: a splice counts as reference coverage")
 def test_a_read_spliced_inside_the_run_is_not_ref(tmp_path):
     """A +A insertion in an A-run that crosses E1's end: reads spliced at 300
     show 4 of the run's 8 A's and none past the splice (the insertion may sit in

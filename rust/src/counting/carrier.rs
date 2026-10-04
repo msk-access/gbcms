@@ -4,8 +4,10 @@
 //! insertion whose ALT changes the anchor such as C>TA, or an MNP read with an
 //! indel or clip at its block) is REF or ALT for a read only when the read's own
 //! bases carry that allele across the whole event, with [`FLANK`] reference bases
-//! on each side. The read's bases include soft clips; bases below min BQ (and N)
-//! match anything, the one quality rule every backend shares. Nothing else is
+//! on each side. In DNA the read's bases include soft clips; an RNA read's clip
+//! is not evidence (STAR soft-clips a junction overhang it cannot splice, so the
+//! clip holds the next exon's bases). Bases below min BQ (and N) match anything,
+//! the one quality rule every backend shares. Nothing else is
 //! tolerated: a read one confident base off the given allele carries a different
 //! allele, and a read that ends inside the event cannot show either.
 //!
@@ -42,10 +44,12 @@
 //!   depth only, like a pure-indel read ending inside its tract: no allele, no
 //!   partial evidence, no mFSD class. A read holding the windows and matching
 //!   neither carries another allele: partial evidence when closer to ALT.
-//! - **Spliced reads.** A read's splice in a window's flank or padding cuts both
-//!   alleles' windows at the exon edge (the read's next bases come from the next
-//!   exon), anchored at the junction. A splice through the bases where the
-//!   alleles differ leaves the read depth only.
+//! - **Spliced reads.** A read spliced in a window's flank or padding is judged
+//!   on the windows built (event, growth, flank and padding) over the reference
+//!   spliced at its own junctions: its bases past a splice are the next exon's,
+//!   so the alleles' haplotypes continue there, and a length change that pushes
+//!   the exon's bases past the junction shows against them. A splice through the
+//!   bases where the alleles differ leaves the read depth only.
 
 use log::trace;
 use rust_htslib::bam::record::{Cigar, Record};
@@ -53,8 +57,24 @@ use rust_htslib::bam::record::{Cigar, Record};
 use super::rna;
 use super::window::AlleleKind;
 use super::utils::{find_read_pos, median_qual, soft_clips, ClassifyPhase, ClassifyResult};
+use crate::normalize::fasta::CachedFasta;
 use crate::shared::bam_utils::fragment_query_span;
 use crate::types::Variant;
+
+/// How the rule reads a read past its aligned blocks, by library.
+#[derive(Clone, Copy)]
+pub(crate) struct ReadRules<'a> {
+    /// Soft-clipped bases are allele evidence (DNA); an RNA read's clip may hold
+    /// the next exon's bases, so it is not.
+    pub clips: bool,
+    /// The reference, for the far side of a spliced read's junctions (RNA).
+    pub reference: Option<&'a CachedFasta>,
+}
+
+impl ReadRules<'static> {
+    /// DNA: clipped bases are read; no read is spliced.
+    pub(crate) const DNA: ReadRules<'static> = ReadRules { clips: true, reference: None };
+}
 
 /// Reference bases required on each side of the event.
 const FLANK: usize = 2;
@@ -150,7 +170,13 @@ struct Reading {
 /// reference, a reference that does not hold the REF allele, or one that does not
 /// hold the event with its flank (a contig end, or a repeat past prep's 16 kb
 /// fetch cap). The caller then uses the previous classifier.
-pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_baseq: u8) -> Option<ClassifyResult> {
+pub(crate) fn classify(
+    record: &Record,
+    variant: &Variant,
+    quals: &[u8],
+    min_baseq: u8,
+    rules: &ReadRules,
+) -> Option<ClassifyResult> {
     let win = windows(variant)?;
     let seq = record.seq().as_bytes();
     if seq.is_empty() || quals.len() < seq.len() {
@@ -166,12 +192,25 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         r.uninformative = true;
         return Some(r);
     }
-    let cut;
+    let spliced;
+    let mut map = SpliceMap::default();
     let win = if skips.is_empty() {
         &win
+    } else if let Some((w, m)) = rules.reference.and_then(|r| spliced_windows(variant, &skips, win.event, r)) {
+        spliced = w;
+        map = m;
+        &spliced
     } else {
-        cut = win.cut_at(&skips);
-        &cut
+        // The far exon cannot be read, or the spliced reference no longer holds
+        // the REF allele (its shared bases reach across the junction): judge the
+        // read on the windows cut at its exon edges.
+        trace!("carrier: spliced windows unavailable → windows cut at the exon edge");
+        spliced = win.cut_at(&skips);
+        &spliced
+    };
+    let first_last = if rules.clips { Some((0, seq.len())) } else { aligned_query_range(record) };
+    let Some(readable) = first_last else {
+        return Some(ClassifyResult::no_coverage(ClassifyPhase::MaskedCompare));
     };
 
     // Per pair the read holds: (matches REF, matches ALT).
@@ -183,7 +222,8 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     let mut qual_bases: Vec<u8> = Vec::new();
     let mut read_spans: Vec<(usize, usize)> = Vec::new();
     for (rw, aw) in &win.pairs {
-        let (Some(r), Some(a)) = (read_window(record, &seq, quals, min_baseq, rw), read_window(record, &seq, quals, min_baseq, aw))
+        let read = |w: &Window| read_window(record, &seq, quals, min_baseq, w, &map, readable);
+        let (Some(r), Some(a)) = (read(rw), read(aw))
         else {
             continue;
         };
@@ -237,6 +277,59 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         && aligned_query_range(record).is_some_and(|(first, after)| read_spans.iter().any(|&(a, b)| a < first || b > after))
         && fragment_query_span(record).is_some_and(|(lo, hi)| read_spans.iter().all(|&(a, b)| a >= lo && b <= hi));
     Some(result)
+}
+
+/// Positions of a reference spliced at a read's junctions, mapped back to the
+/// genome. Spliced space equals the genome between the junctions; before
+/// `before = (n0, n1)` it continues from the previous exon (`n1 - k` is `n0 - k`),
+/// after `after = (n0, n1)` from the next (`n0 + k` is `n1 + k`).
+#[derive(Default)]
+struct SpliceMap {
+    before: Option<(i64, i64)>,
+    after: Option<(i64, i64)>,
+}
+
+impl SpliceMap {
+    fn to_genome(&self, g: i64) -> i64 {
+        if let Some((n0, n1)) = self.before.filter(|&(_, n1)| g < n1) {
+            return n0 - (n1 - g);
+        }
+        if let Some((n0, n1)) = self.after.filter(|&(n0, _)| g >= n0) {
+            return n1 + (g - n0);
+        }
+        g
+    }
+}
+
+/// The windows a spliced read is judged on: built by [`windows`] over the
+/// variant's reference spliced at the read's junctions nearest the event on each
+/// side (the far exon read from `reference`), with the map from spliced space
+/// back to the genome. None when the far exon cannot be read or the spliced
+/// reference does not hold the REF allele and the event's flank.
+fn spliced_windows(
+    v: &Variant,
+    skips: &[(i64, i64)],
+    (ev_lo, ev_hi): (i64, i64),
+    reference: &CachedFasta,
+) -> Option<(Windows, SpliceMap)> {
+    let (start, context) = prepared_reference(v)?;
+    let end = start + context.len() as i64;
+    let before = skips.iter().filter(|s| s.1 <= ev_lo && s.1 > start).max_by_key(|s| s.1).copied();
+    let after = skips.iter().filter(|s| s.0 >= ev_hi && s.0 < end).min_by_key(|s| s.0).copied();
+    let mut spliced = context;
+    if let Some((n0, n1)) = after {
+        let keep = (n0 - start) as usize;
+        spliced.truncate(keep);
+        spliced.extend(reference.bases(&v.chrom, n1, n1 + (end - n0))?);
+    }
+    if let Some((n0, n1)) = before {
+        let k = n1 - start;
+        spliced.splice(..k as usize, reference.bases(&v.chrom, n0 - k, n0)?);
+    }
+    let mut on_spliced = v.clone();
+    on_spliced.event_ref = Some((start, String::from_utf8(spliced).ok()?));
+    on_spliced.ref_context = None;
+    Some((windows(&on_spliced)?, SpliceMap { before, after }))
 }
 
 /// Query positions [first, after) of the read's aligned bases: its soft clips lie
@@ -537,22 +630,33 @@ fn repeat_end(r: &[u8], b: usize, max_unit: usize) -> usize {
 /// Read `w` from the read at the window's own position: from the query position
 /// of its first reference base, and back from its last. For a read aligned with
 /// the event between the anchors the two readings are the same bases; the closer
-/// one counts. None when the read holds the window from neither anchor.
-fn read_window(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: &Window) -> Option<Reading> {
+/// one counts. None when the read holds the window from neither anchor. Only the
+/// query bases `[first, after)` are read (an RNA read's clips lie outside them),
+/// and a window built in spliced space is placed through `map`.
+fn read_window(
+    record: &Record,
+    seq: &[u8],
+    quals: &[u8],
+    min_baseq: u8,
+    w: &Window,
+    map: &SpliceMap,
+    (first, after): (usize, usize),
+) -> Option<Reading> {
     let n = w.seq.len();
-    let from_left = w.left.and_then(|g| find_read_pos(record, g)).filter(|&q| q + n <= seq.len()).map(|q| (q, q + n));
+    let from_left =
+        w.left.and_then(|g| find_read_pos(record, map.to_genome(g))).filter(|&q| q >= first && q + n <= after).map(|q| (q, q + n));
     let to_right = w
         .right
-        .and_then(|g| find_read_pos(record, g - 1))
+        .and_then(|g| find_read_pos(record, map.to_genome(g - 1)))
         .map(|q| q + 1)
-        .filter(|&e| e >= n && e <= seq.len())
+        .filter(|&e| e >= first + n && e <= after)
         .map(|e| (e - n, e));
     // A junction window's reading continues inward through `beyond`, as far as the
     // read reaches; its mismatches count (the quality and span stay the window's).
     let n_beyond = w.beyond.len();
     let left_read = from_left.map(|(a, b)| {
         let mut r = score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b));
-        let k = n_beyond.min(seq.len() - b);
+        let k = n_beyond.min(after - b);
         let more = score(&seq[b..b + k], &quals[b..b + k], min_baseq, &w.beyond[..k], (b, b + k));
         r.mismatches += more.mismatches;
         r.mismatch_weight += more.mismatch_weight;
@@ -560,7 +664,7 @@ fn read_window(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: &Win
     });
     let right_read = to_right.map(|(a, b)| {
         let mut r = score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b));
-        let k = n_beyond.min(a);
+        let k = n_beyond.min(a - first);
         let more = score(&seq[a - k..a], &quals[a - k..a], min_baseq, &w.beyond[n_beyond - k..], (a - k, a));
         r.mismatches += more.mismatches;
         r.mismatch_weight += more.mismatch_weight;
