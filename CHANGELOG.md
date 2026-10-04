@@ -42,11 +42,13 @@ where no read carries the ALT).
   reference spliced at its own junctions (the far exons read from the FASTA,
   every junction the windows reach followed), not cut at the exon edge; a
   junction starting inside the event splices the haplotypes at its edge, so a
-  delins carrier counts however the gap is written. Splice probes: spurious ALT
+  delins carrier counts however the gap is written; such a read counts ALT only
+  when its bases also beat REF spliced at its own junction (an alternative
+  donor or acceptor), and is otherwise depth only. Splice probes: spurious ALT
   19 → 4; REF −0.95% at probes 0–1 bp from the exon edge (reads reaching one or
   two bases past the junction hold no spliced flank), −0.11% at 2–4 bp.
 - **All five together**, against the branch point: splice probes spurious ALT
-  19 → 2, REF −0.39%; T9 105 rows (REF −24,814, mostly R5); truth: 4 rows'
+  19 → 2, REF −0.39%, partial −453; T9 105 rows (REF −24,814, mostly R5); truth: 4 rows'
   per-transcript columns (the exon-index fix), no count; RC DNA and WES
   byte-identical (before the review follow-ups; RNA-only changes since).
 - **Survey:** GATK splits RNA reads at N and counts a piece only when its bases
