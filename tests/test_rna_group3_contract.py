@@ -543,3 +543,133 @@ def test_a_mid_exon_clip_is_allele_evidence(tmp_path):
         seq = ref[s:p0] + alt + ref[p0 + 2 : end]
         reads.append(make_read(f"a{i}", seq, s, ((0, p0 + 1 - s), (4, end - p0 - 1)), flag=SENSE))
     assert _counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 2], alt)) == (6, 6)
+
+
+# ── Second review (2026-10-04): REF reads whose junction enters the event ──────
+_ENTERING = pytest.mark.xfail(
+    strict=True, reason="gap form: a REF read with its own junction is not ALT"
+)
+
+
+def _q(read, pos0, q):
+    """Set the quality of the read's base aligned at reference `pos0`."""
+    quals = list(read.query_qualities)
+    for qi, ri in read.get_aligned_pairs(matches_only=True):
+        if ri == pos0:
+            quals[qi] = q
+    read.query_qualities = quals
+    return read
+
+
+def _delins_x(ref, p0, n):
+    """A delins of `n` reference bases at p0 to one base unlike its first and last
+    (so prep keeps it complex)."""
+    return _other(ref, (ref[p0], ref[p0 + n - 1]))
+
+
+def _alt_counts(tmp_path, ref, reads, row):
+    out = _spliced_run(tmp_path, ref, reads, row)
+    return int(out["alt_count"]), int(out["partial_alt"])
+
+
+@pytest.mark.parametrize(
+    "masked", [pytest.param(False, marks=_ENTERING), pytest.param(True, marks=_ENTERING)]
+)
+def test_a_ref_read_at_an_alternative_donor_inside_the_event_is_not_alt(tmp_path, masked):
+    """REF reads spliced at a donor three bases early (297 -> 500), inside a delins
+    of E1's last four bases: their bases are REF spliced at their own junction, so
+    neither ALT nor partial, whatever the quality of the base they keep."""
+    ref = mk_ref()
+    p0 = EDGE - 4
+    x = _delins_x(ref, p0, 4)
+    reads = []
+    for i in range(6):
+        s = EDGE - 40 - i
+        m1 = p0 + 1 - s
+        seq = ref[s : p0 + 1] + ref[E2[0] : E2[0] + READ_LEN - m1]
+        r = make_read(
+            f"r{i}", seq, s, ((0, m1), (3, E2[0] - p0 - 1), (0, READ_LEN - m1)), flag=SENSE
+        )
+        reads.append(_q(r, p0, 10) if masked else r)
+    assert _alt_counts(tmp_path, ref, reads, (p0 + 1, ref[p0:EDGE], x)) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "masked", [pytest.param(False, marks=_ENTERING), pytest.param(True, marks=_ENTERING)]
+)
+def test_a_ref_read_at_a_nagnag_acceptor_inside_the_event_is_not_alt(tmp_path, masked):
+    """REF reads spliced to an acceptor three bases late (300 -> 503), inside a
+    delins of E2's first four bases: REF at their own junction, not ALT or partial."""
+    ref = mk_ref()
+    p0 = E2[0]
+    x = _delins_x(ref, p0, 4)
+    reads = []
+    for i in range(6):
+        s = EDGE - 40 - i
+        left = EDGE - s
+        seq = ref[s:EDGE] + ref[p0 + 3 : p0 + 3 + READ_LEN - left]
+        r = make_read(
+            f"r{i}", seq, s, ((0, left), (3, p0 + 3 - EDGE), (0, READ_LEN - left)), flag=SENSE
+        )
+        reads.append(_q(r, p0 + 3, 10) if masked else r)
+    assert _alt_counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 4], x)) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "masked", [pytest.param(False, marks=_ENTERING), pytest.param(True, marks=_ENTERING)]
+)
+def test_ref_reads_at_the_donor_a_delins_straddles_are_not_alt(tmp_path, masked):
+    """A delins GAGTAC > CA across E1's donor (298-303); plain REF reads spliced
+    at the annotated 300 -> 500 junction, which starts inside the event. They
+    are REF molecules: never ALT or partial (a pure-REF sample must not show ALT)."""
+    ref = list(mk_ref())
+    ref[EDGE - 2 : EDGE + 4] = "GAGTAC"  # E1 ...GA | intron GT AC (the planted GT kept)
+    ref = "".join(ref)
+    p0 = EDGE - 2
+    reads = []
+    for i in range(6):
+        r = _spliced_ref_reads(ref, 1, start_back=40 + i)[0]
+        r.query_name = f"r{i}"
+        reads.append(_q(r, p0, 10) if masked else r)
+    assert _alt_counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 6], "CA")) == (0, 0)
+
+
+@pytest.mark.parametrize("form", ["canonical", pytest.param("shifted", marks=_ENTERING)])
+def test_one_ref_read_written_two_ways_is_never_an_allele(tmp_path, form):
+    """E1's last three bases equal the intron's last three, so one REF read can
+    be written spliced 300 -> 500 or 297 -> 497 with identical bases. Neither
+    writing makes it ALT or partial at a delins over E1's last four bases."""
+    ref = list(mk_ref())
+    ref[E2[0] - 3 : E2[0]] = ref[EDGE - 3 : EDGE]
+    ref = "".join(ref)
+    p0 = EDGE - 4
+    x = _delins_x(ref, p0, 4)
+    reads = []
+    for i in range(6):
+        s = EDGE - 40 - i
+        left = EDGE - s
+        seq = ref[s:EDGE] + ref[E2[0] : E2[0] + READ_LEN - left]
+        if form == "canonical":
+            cig = ((0, left), (3, N_LEN), (0, READ_LEN - left))
+        else:
+            cig = ((0, left - 3), (3, N_LEN), (0, READ_LEN - left + 3))
+        reads.append(make_read(f"r{i}", seq, s, cig, flag=SENSE))
+    assert _alt_counts(tmp_path, ref, reads, (p0 + 1, ref[p0:EDGE], x)) == (0, 0)
+
+
+def test_a_delins_carrier_whose_junction_ends_inside_the_event_is_alt(tmp_path):
+    """Guard (the left-hand gap form): E2's first four bases replaced by one base
+    X; carriers spliced 300 -> 503, the junction ending inside the event, read
+    X there: ALT; REF reads spliced at 300 -> 500 are REF."""
+    ref = mk_ref()
+    p0 = E2[0]
+    x = _delins_x(ref, p0, 4)
+    x = _other(ref, (ref[p0], ref[p0 + 3], ref[p0 + 4]))
+    reads = _spliced_ref_reads(ref, 6)
+    for i in range(6):
+        s = EDGE - 40 - i
+        left = EDGE - s
+        seq = ref[s:EDGE] + x + ref[p0 + 4 : p0 + 4 + READ_LEN - left - 1]
+        cig = ((0, left), (3, p0 + 3 - EDGE), (0, READ_LEN - left))
+        reads.append(make_read(f"a{i}", seq, s, cig, flag=SENSE))
+    assert _counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 4], x)) == (6, 6)
