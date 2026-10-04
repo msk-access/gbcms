@@ -529,14 +529,17 @@ def test_a_delins_carrier_counts_however_the_gap_is_written(tmp_path, form):
 
 @pytest.mark.xfail(strict=True, reason="C15: a mid-exon clip is the read's own bases")
 def test_a_mid_exon_clip_is_allele_evidence(tmp_path):
-    """An MNP 150 bases from either exon edge: REF reads align in full; ALT reads
-    have the MNP's second base and the rest soft-clipped (a local aligner clips a
-    mismatching end). No exon edge or junction is within the clip's reach, so it
-    holds the same exon's bases, the read's own: ALT."""
-    ref = mk_ref()
+    """An MNP 50 bases into E1, in sequence with no repeat around it: REF reads
+    align in full; ALT reads have the MNP's second base and the next 11 soft-
+    clipped (a local aligner clips a mismatching end). No exon edge or junction
+    is within the clip's reach, so it holds the same exon's bases, the read's
+    own: ALT, as in DNA."""
+    ref = list(mk_ref())
     p0 = E1[0] + 50
-    alt = _other(ref, (ref[p0],)) + _other(ref, (ref[p0 + 1],))
-    end = p0 + 5
+    ref[p0 - 4 : p0 + 8] = "GATCTGACAGTC"  # no tandem repeat touches 150-151
+    ref = "".join(ref)
+    alt = _other(ref, (ref[p0], ref[p0 - 1])) + _other(ref, (ref[p0 + 1], ref[p0 + 2]))
+    end = p0 + 13
     s = end - READ_LEN
     reads = []
     for i in range(6):
