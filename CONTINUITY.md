@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-02_
+_Last updated: 2026-10-03_
 
 ## Now
 **6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
@@ -74,13 +74,21 @@ comments):**
 - an adversarial review plus a develop-vs-branch fuzz found no count change
   beyond the declared ones (see the plan's H3 "PR B as built").
 
-**In progress — group 1, what a read contributes (#176, #182, #183, #207):**
-- branch `feature/g1-read-inputs`, not yet pushed; RJ-10 to RJ-13 in the spec;
-- C17 final rule (operator): clip only adapter-like bases past the TLEN fragment
-  end; two adversarial reviews; measured at default MAPQ and `--min-mapq 0`
-  (harness `~/test/gbcms/harness/g1/`, local; plan "Group 1 as built");
-- next: push, PR, comments on the issues (ask first); then group 2 (C28, C27,
-  C16).
+**Merged — group 1, what a read contributes, #211 (C17 #176, C19 #182, O7 #183,
+C29 #207):** RJ-10 to RJ-13; C17 clips only adapter-like bases past the TLEN
+fragment end (operator); follow-up C31 #212 (6.7.0). Plan "Group 1 as built".
+
+**Ready for PR — group 2, read judgment (C28 #202, C27 #201, C16 #174):** branch
+`feature/g2-read-judgment`, not yet pushed. RJ-14 (the ALT across several ops),
+RJ-15 (a read deleting the anchor, judged by its bases across the window), RJ-16
+(exact-carrier ALT calls need quality-weighted evidence, one `--min-baseq` base's
+worth). Final acceptance (develop vs head, 144 files): RC DNA 24 rows (REF +57
+at BRCA2 toward the census, ALT ±0), WES 3 (ALT −3), FORTE probes 7; RJ-16 alone
+changes one WES row. Probes: RNA spurious 70 → 19, IMPACT 7 → 1. The C16
+junction-placement guard is deferred to 6.7.0 (needs reference access in the
+engine). Harness `~/test/gbcms/harness/g2/` (local). `PRODUCTION_READINESS.md`
+holds the production gate (operator scope: DNA ACCESS/IMPACT, FORTE, WES;
+no opt-in features).
 
 Follow-ups filed:
 - C29 #207 (6.6.0): `check_complex`'s inline query walk counts hard clips;

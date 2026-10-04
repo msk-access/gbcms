@@ -59,13 +59,16 @@ it shows in review instead of slipping in with an unrelated fix.
 | RJ-11 | A record with absent base qualities (QUAL `*`, stored as 0xFF) is dropped by the read filter and warned once per BAM, as a record without bases is. | C19 #182, operator 2026-10-02 |
 | RJ-12 | An unmapped record (flag 0x4) is not an alignment: dropped by the read filter. A mapped read whose mate is unmapped still counts, and mapped MAPQ-0 alignments stay countable (`--min-mapq 0`, pseudogene loci such as PMS2). | O7 #183, operator 2026-10-02 |
 | RJ-13 | Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0. | C15 #173, C7 #144, C18 #177, operator 2026-10-02 |
+| RJ-14 | The ALT written across several insertion or deletion ops in the discrimination window counts ALT when the read's bases between its nearest aligned flanks are the ALT (masked bases fit, at least one base read), the ops' placement only a tie-break as in RJ-15: judged by its bases before the wrong-length and one-change rules read its ops. Amends RJ-2 and RJ-7. | C27 #201, operator 2026-10-02 |
+| RJ-15 | A read whose own deletion covers the anchor is judged by its bases between its nearest aligned flanks: ALT, or REF, when they equal that allele (masked bases fit; at least one base read), the aligner's placement of its gap only a tie-break (a reference written as the anchor deleted and re-inserted is REF); otherwise neither, with partial evidence. Never Phase 3's closer haplotype. Deletion and insertion rows alike. | C28 #202, operator 2026-10-02 |
+| RJ-16 | An exact-carrier ALT call needs evidence: its clearly read bases fit the ALT (as before), and its bases, each weighed by its quality (a base matches with 1 − e and mismatches with e/3), favour ALT over REF by at least what one base read at `--min-baseq` gives (about 2.5 log10 at 20). Bases matching both alleles cancel, so the evidence is the weight of the bases that mismatch REF less those that mismatch ALT, over the windows and, for a long event, the read's bases past them. A low-quality base counts for little instead of fitting either allele. | C16 #174, operator 2026-10-03 |
 
 ### Open
 
-| ID | Question | Today | Proposal | Evidence |
-|:--|:--|:--|:--|:--|
-| C27 | **The ALT written across several ops** (a deletion split in two). | Partial | ALT (its bases hold the ALT). Adopted in principle (operator, 2026-10-01); lands after a prototype is measured. | Census: ALT on every such shape. |
-| C28 | **A read deleting the anchor.** | Phase 3's closer haplotype: ALT or REF. | Judged by its bases: neither unless they hold an allele. Adopted in principle (operator, 2026-10-01); lands after a prototype is measured. | Census: contradicts both on every such shape. |
+None. The C16 junction-placement guard (a spliced read whose aligner placed its
+junction a few bases late can show the next exon's bases over an exon-edge
+event) is deferred to 6.7.0 with C15 and RJ-13's RNA exon-edge clips: telling
+it from a genuine carrier needs the reference at the splice's far end.
 
 Evidence behind RJ-7 to RJ-9 (2026-10-01): on 105 changed DNA and WES rows the
 read census counts 57,199 REF reads; develop counted 60,619 and the decided rules
@@ -101,6 +104,56 @@ overlapping mates' duplicate bases by quality 0, and bcftools caps base quality 
 max-BQ; bam-readcount filters nothing by default; VarDict, Strelka2, freebayes,
 LoFreq and GetBaseCounts document none of these cases.
 
+Evidence behind RJ-14 and RJ-15 (2026-10-02). RJ-14 changed no row on RC DNA,
+FORTE or WES (144 of 144 files byte-identical); it decides synthetic shapes the
+read census calls ALT. RJ-15 was prototyped three ways and measured against
+develop and the census on the same inputs:
+- strict, as C22 (an unmasked base wherever the alignment's haplotype differs
+  from the ALT): ALT −26, of which 22 are reads with a masked base at the deleted
+  anchor that the census and develop count ALT (the same bases placed one base
+  along take the strict path and count ALT);
+- the pure-indel ALT-by-bases rule, which stops at the first deciding base:
+  false ALT at insertion rows (a BRCA2 row 9 → 35, census 17);
+- the rule adopted: ALT net 0 on RC DNA (±1 read at 6 rows, all masked-base
+  edge cases), −2 on WES; REF +57 at the BRCA2 cluster, every row toward the
+  census (reads that were a co-annotated row's false ALT now count REF where
+  their bases across this row's window are REF). Summed distance to the census
+  on the changed indel rows: REF 344 → 251, ALT 40 → 44.
+
+Evidence behind RJ-16 (2026-10-02/03). Synthetic delins probes in covered
+sequence, where no read carries the ALT, found spurious ALT reads in data whose
+reads are not consensus-collapsed: FORTE RNA 2.0 per million reads (70 at the
+exon-edge and mid-exon probes), IMPACT 1.8 per million, one in WES; none in ACCESS
+duplex or simplex. Each was a read whose clearly read bases fit the ALT while most
+of its window was low quality (masked bases fit either allele). Three rules were
+measured on the probes and on every complex DNA/WES row with ALT reads (1,185
+real ALT reads): every event base read (RNA probes 70 → 16, DNA 8 → 0; 46 real
+reads lost), at most one masked event base (RNA 31, DNA 0; 15 lost), and the
+quality-weighted evidence adopted (thresholds 2–3 log10: RNA 15–19, IMPACT 1,
+WES 0; 1–2 real reads lost). A survey: GATK HaplotypeCaller and Mutect2 weigh
+every base by its quality in each read's likelihood (bases below Q18 down to Q6)
+and count a read toward AD only if its best allele leads by 0.2 log10; Strelka2
+(indel posterior ≥ 0.51) and bcftools (per-read indel quality) use per-read
+evidence too; the counting tools use hard base-quality cutoffs; none treats a
+low-quality base as fitting either allele.
+
+An adversarial review of group 2 found three defects, fixed before merge: a read
+whose bases are exactly REF, written as the anchor deleted and re-inserted, had
+counted partial (RJ-15 now counts it REF, as its bases say); the evidence had
+compared REF and ALT readings over different read bases, so a shared flank
+base's quality could flip a call, and had skipped a long event's bases past its
+junction windows (both fixed by the mismatch-weight form above). A pre-existing
+limit remains: a REF molecule with one clear error just outside the window that
+its ALT reading is anchored away from can still count ALT (6.7.0).
+
+Other tools: GATK, Strelka2 and freebayes judge a read by its bases against
+haplotypes, so a split ALT counts ALT; bam-readcount, LoFreq and the original
+GetBaseCounts count CIGAR ops. A read deleting the anchor goes to GATK's
+spanning-deletion allele or another candidate where one exists, is its own
+haplotype in freebayes, a separate allele in VarDict and depth only in
+GetBaseCounts; a closer-haplotype credit, as Phase 3 gave, appears only in the
+likelihood tools without such a bucket.
+
 ## The cases
 
 Each group below is a set of shapes in `read_judgment_cases.py`, run at pure
@@ -116,9 +169,9 @@ and at anchor-changing events before an A run.
 | Other indels inside the window | D1 or I1 near the anchor, D2 after it | decided (RJ-7) |
 | Other indels outside the window | D1, D5 or I1 past the tract; a carrier with one | decided (RJ-8) |
 | Complex, long events | the same read haplotypes before a 60-A run | decided (RJ-9) |
-| The ALT across ops | a deletion written as two | open (C27) |
+| The ALT across ops | a deletion written as two; a 1-base deletion in a run written D2 + I1 (at the anchor, inside the run); a 1-base insertion written I2 + D1 | decided (RJ-14) |
 | Read inputs | read-through adapter base on an SNV (ALT, REF); absent qualities; a hard-clipped read at the previous complex classifier (with an unclipped control) | decided (RJ-10, RJ-11; C29 #207 is a bug fix) |
-| Anchor deleted | the anchor deleted, with or without an insertion | open (C28) |
+| Anchor deleted | the anchor deleted, with or without an insertion; an insertion row's anchor deleted | decided (RJ-15) |
 
 Run `python tests/read_judgment_cases.py` for the full table: every case's call,
 with the read census's verdict next to each pure-indel case.

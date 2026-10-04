@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — an exact-carrier ALT call needs quality-weighted evidence (#174)
+
+A read's bases across a complex variant's windows are now weighed by their
+quality (a base matches with 1 − e and mismatches with e/3, e its error
+probability), and an ALT call needs them to favour ALT over REF by at least what
+one base read at `--min-baseq` gives (about 2.5 log10 at the default 20). Bases
+matching both alleles cancel: the evidence is the weight of the bases that
+mismatch REF less those that mismatch ALT, including a long event's bases past
+its junction windows.
+Clearly read bases must still match the ALT, as before. A low-quality base now
+counts for little instead of fitting either allele.
+- **Why:** reads whose window was mostly low quality could be called ALT on one
+  clear sequencing error. Synthetic probes where no read carries the ALT found
+  2.0 spurious ALT reads per million in FORTE RNA, 1.8 in IMPACT, one in WES and
+  none in ACCESS duplex or simplex.
+- **Measured:** on the probes, RNA spurious ALT 70 → 15–19, IMPACT 7 → 1, WES
+  1 → 0; on every complex DNA/WES row with ALT reads, 1–2 of 1,185 real ALT
+  reads lost. Two simpler rules were measured and set aside: requiring every
+  event base read (46 real reads lost) or at most one masked (15 lost).
+- **Not in this change:** spliced reads whose junction an aligner placed a few
+  bases late at an exon edge (about 9 of the remaining RNA probe calls), and a
+  REF molecule with one clear error just outside the window its ALT reading is
+  anchored away from; 6.7.0.
+
+### Changed — reads deleting the anchor, and the ALT written across several ops, are judged by their bases (#202, #201)
+
+- **A read whose own deletion covers a pure indel's anchor** (#202) is judged by
+  its bases between its nearest aligned flanks: ALT when they equal the ALT
+  (masked bases fit, at least one base read), with the aligner's placement of
+  its gap only a tie-break; REF when they equal the REF (the reference written
+  as the anchor deleted and re-inserted); otherwise neither, with partial
+  evidence. Before, Phase 3 credited such a read to whichever of REF and ALT was
+  closer, so reads holding another allele counted ALT or REF; at insertion rows
+  they counted REF.
+- **The ALT written across several insertion or deletion ops** (#201), such as a
+  deletion written as two or a 1bp deletion in a run written as D2 + I1, counts
+  ALT when the read's bases spell it. Before, it counted partial.
+- **Measured:** develop vs this branch on RC DNA, FORTE RNA and WES, every MAF
+  cell compared.
+  - The split-op rule changed no row (144 of 144 files byte-identical).
+  - The anchor rule changes 33 rows: ALT net 0 on RC DNA (±1 read at 6 rows),
+    −2 on WES; REF +57 and partial +210 at the BRCA2 cluster, where reads that
+    were a co-annotated deletion's false ALT now count REF where their bases
+    across the row's window are REF.
+  - Against the read census, the changed indel rows move toward it: summed
+    distance REF 344 → 251, ALT 40 → 44 (masked-base edge cases).
+
 ### Changed — what a read contributes: adapter read-through, absent qualities, unmapped records (#176, #182, #183, #207)
 
 The read-judgment spec gains RJ-10 to RJ-12, which decide what a read brings

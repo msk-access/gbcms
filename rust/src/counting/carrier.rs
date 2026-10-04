@@ -47,6 +47,7 @@
 //!   exon), anchored at the junction. A splice through the bases where the
 //!   alleles differ leaves the read depth only.
 
+use log::trace;
 use rust_htslib::bam::record::{Cigar, Record};
 
 use super::rna;
@@ -137,6 +138,9 @@ struct Reading {
     masked: usize,
     had_n: bool,
     span: (usize, usize),
+    /// The read's evidence against this allele (log10): the weight of every
+    /// base that mismatches it, by its quality, masked bases included.
+    mismatch_weight: f64,
 }
 
 /// Classify a read at a complex variant by the exact-carrier rule, or None when
@@ -173,6 +177,9 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     // Per pair the read holds: (matches REF, matches ALT).
     let mut held: Vec<(bool, bool)> = Vec::with_capacity(win.pairs.len());
     let (mut mm_ref, mut mm_alt, mut alt_masked, mut had_n) = (0usize, 0usize, 0usize, false);
+    // The read's evidence for ALT over REF (log10), every base weighed by its
+    // quality: a low-quality base counts for little instead of fitting anything.
+    let mut evidence = 0.0f64;
     let mut qual_bases: Vec<u8> = Vec::new();
     let mut read_spans: Vec<(usize, usize)> = Vec::new();
     for (rw, aw) in &win.pairs {
@@ -183,6 +190,10 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
         mm_ref += r.mismatches;
         mm_alt += a.mismatches;
         alt_masked += a.masked;
+        // Bases matching both alleles cancel: the evidence is what mismatches REF
+        // less what mismatches ALT, so the two readings need not cover the same
+        // bases.
+        evidence += r.mismatch_weight - a.mismatch_weight;
         had_n |= r.had_n || a.had_n;
         for (lo, hi) in [r.span, a.span] {
             qual_bases.extend_from_slice(&quals[lo..hi]);
@@ -192,7 +203,13 @@ pub(crate) fn classify(record: &Record, variant: &Variant, quals: &[u8], min_bas
     }
     let qual = median_qual(&qual_bases, min_baseq);
     let every = |want: (bool, bool)| !held.is_empty() && held.iter().all(|&h| h == want);
-    let mut result = if every((false, true)) {
+    let mut result = if every((false, true)) && evidence < one_base_evidence(min_baseq) {
+        // Its clearly read bases fit the ALT, but weighed by quality its bases do not
+        // favour ALT over REF by as much as one base read at the minimum quality: a
+        // REF molecule read poorly around the event, with one error fitting the ALT.
+        trace!("carrier: fits the ALT but its evidence {:.2} is below one base's → neither", evidence);
+        ClassifyResult::neither(ClassifyPhase::MaskedCompare)
+    } else if every((false, true)) {
         ClassifyResult::is_alt(qual, ClassifyPhase::MaskedCompare)
     } else if every((true, false)) {
         ClassifyResult::is_ref(qual, ClassifyPhase::MaskedCompare)
@@ -536,32 +553,53 @@ fn read_window(record: &Record, seq: &[u8], quals: &[u8], min_baseq: u8, w: &Win
     let left_read = from_left.map(|(a, b)| {
         let mut r = score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b));
         let k = n_beyond.min(seq.len() - b);
-        r.mismatches += score(&seq[b..b + k], &quals[b..b + k], min_baseq, &w.beyond[..k], (b, b + k)).mismatches;
+        let more = score(&seq[b..b + k], &quals[b..b + k], min_baseq, &w.beyond[..k], (b, b + k));
+        r.mismatches += more.mismatches;
+        r.mismatch_weight += more.mismatch_weight;
         r
     });
     let right_read = to_right.map(|(a, b)| {
         let mut r = score(&seq[a..b], &quals[a..b], min_baseq, &w.seq, (a, b));
         let k = n_beyond.min(a);
-        r.mismatches += score(&seq[a - k..a], &quals[a - k..a], min_baseq, &w.beyond[n_beyond - k..], (a - k, a)).mismatches;
+        let more = score(&seq[a - k..a], &quals[a - k..a], min_baseq, &w.beyond[n_beyond - k..], (a - k, a));
+        r.mismatches += more.mismatches;
+        r.mismatch_weight += more.mismatch_weight;
         r
     });
     [left_read, right_read].into_iter().flatten().min_by_key(|r| (r.mismatches, r.masked))
 }
 
+/// A base's error probability from its quality, kept away from 0 and from a
+/// coin flip among four bases.
+fn error_probability(q: u8) -> f64 {
+    10f64.powf(-(q.min(60) as f64) / 10.0).clamp(1e-6, 0.75)
+}
+
+/// The evidence one base read at quality `q` gives for the allele it matches over
+/// one it does not (log10): the least an ALT call must show.
+fn one_base_evidence(q: u8) -> f64 {
+    let e = error_probability(q);
+    ((1.0 - e) / (e / 3.0)).log10()
+}
+
+
 /// Mismatches of read bases against haplotype bases position by position, masked
 /// bases (below `min_baseq`, or N) matching anything.
 fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, usize)) -> Reading {
-    let (mut mismatches, mut masked, mut had_n) = (0, 0, false);
+    let (mut mismatches, mut masked, mut had_n, mut mismatch_weight) = (0, 0, false, 0.0);
     for ((&b, &q), &h) in bases.iter().zip(quals).zip(hap) {
         let b = b.to_ascii_uppercase();
         had_n |= b == WILD;
+        if b != WILD && h != WILD && b != h {
+            mismatch_weight += one_base_evidence(q);
+        }
         if b == WILD || q < min_baseq {
             masked += 1;
         } else if b != h {
             mismatches += 1;
         }
     }
-    Reading { mismatches, masked, had_n, span }
+    Reading { mismatches, masked, had_n, span, mismatch_weight }
 }
 
 #[cfg(test)]
@@ -610,6 +648,24 @@ mod tests {
         let w = windows(&var("GCGTCAAATACGTGG", 8, "TA", "ACC")).unwrap();
         let (r, _) = only_pair(&w);
         assert_eq!(r.left, Some(3)); // two flank bases before the run (5..)
+    }
+
+    #[test]
+    fn one_base_evidence_moves_with_the_minimum_quality() {
+        // A Q20 base: (0.99 / (0.01 / 3)), about 2.47 log10; Q30 about 3.48; Q0 none.
+        assert!((one_base_evidence(20) - 2.47).abs() < 0.01);
+        assert!((one_base_evidence(30) - 3.48).abs() < 0.01);
+        assert!(one_base_evidence(0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn low_quality_mismatches_weigh_little_and_n_nothing() {
+        // One mismatch (G vs T): at Q30 it weighs one Q30 base, at Q5 far less; the
+        // N and the matching bases weigh nothing.
+        let full = score(b"ACGN", &[30, 30, 30, 30], 20, b"ACTA", (0, 4)).mismatch_weight;
+        let low = score(b"ACGN", &[30, 30, 5, 30], 20, b"ACTA", (0, 4)).mismatch_weight;
+        assert!((full - one_base_evidence(30)).abs() < 1e-9);
+        assert!(low < 1.0, "{low}");
     }
 
     #[test]
