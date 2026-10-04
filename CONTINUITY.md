@@ -87,9 +87,11 @@ or junction end is not evidence; refined after review); RJ-19 (spliced reads
 judged on windows over the reference spliced along their junctions; a junction
 entering the event spliced at its edge). Commits: red tests `9c812cae`, fix
 `3608f2d1`, docs `670498e1`, review fixes `33617e0f`, probe `93ec260f`,
-follow-ups `4fc21f49`. Two splice-contract tests updated with the operator's
+follow-ups `4fc21f49`, second-review red tests `a0c2abd3` and fix `2a88ebf9` (a
+read whose junction enters the event counts ALT only over REF at its own
+junction; lazy clip edges; a bin-geometry check), docs `5b051223`, `42024c22`. Two splice-contract tests updated with the operator's
 approval (M-N-D-M carriers depth only). Acceptance: splice probes spurious ALT
-19 → 2 (final build, local slices); T9 and truth measured on `3608f2d1` (truth:
+19 → 2, REF −0.39% (final build `2a88ebf9`, local slices); T9 and truth measured on `3608f2d1` (truth:
 4 rows' per-transcript columns only; RC DNA and WES byte-identical). Pending:
 truth/T9 on the final build once the FORTE mount is back (local slices:
 `slice_inputs.py`, then `verify_inputs.py`), the PR and issue comments (ask
