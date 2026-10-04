@@ -99,8 +99,8 @@ struct Window {
     after: usize,
     /// For a junction window, the rest of the allele's window inward of it (after
     /// a left-anchored one, before a right-anchored one), compared as far as the
-    /// read reaches. Empty for whole windows, and for a spliced read (its bases
-    /// past a splice come from the next exon).
+    /// read reaches. Empty for whole windows, and for windows cut at a read's exon
+    /// edge (`Windows::cut_at`, the fallback when spliced windows cannot be built).
     beyond: Vec<u8>,
 }
 
@@ -109,7 +109,9 @@ struct Window {
 struct Windows {
     pairs: Vec<(Window, Window)>,
     /// Where the alleles differ, genomic [start, end): the trims' union, before
-    /// repeat growth. A spliced read never holds growth past its junction.
+    /// repeat growth. A read spliced through it shows neither allele; a read
+    /// spliced beside it is judged on windows rebuilt around it over the reference
+    /// spliced along the read's junctions.
     event: (i64, i64),
 }
 
@@ -196,7 +198,9 @@ pub(crate) fn classify(
     let mut map = SpliceMap::default();
     let win = if skips.is_empty() {
         &win
-    } else if let Some((w, m)) = rules.reference.and_then(|r| spliced_windows(variant, &skips, win.event, r)) {
+    } else if let Some((w, m)) =
+        rules.reference.and_then(|r| spliced_windows(variant, &rna::extract_splice_junctions(record), win.event, r))
+    {
         spliced = w;
         map = m;
         &spliced
@@ -279,57 +283,92 @@ pub(crate) fn classify(
     Some(result)
 }
 
-/// Positions of a reference spliced at a read's junctions, mapped back to the
-/// genome. Spliced space equals the genome between the junctions; before
-/// `before = (n0, n1)` it continues from the previous exon (`n1 - k` is `n0 - k`),
-/// after `after = (n0, n1)` from the next (`n0 + k` is `n1 + k`).
+/// Positions of a reference spliced along a read's junctions, mapped back to the
+/// genome. Spliced space is a run of genome segments, the read's exons: the event
+/// itself, then on each side the genome up to the read's next junction, the exon
+/// after it, and so on.
 #[derive(Default)]
 struct SpliceMap {
-    before: Option<(i64, i64)>,
-    after: Option<(i64, i64)>,
+    /// (spliced start, genome start, length), in spliced order.
+    segments: Vec<(i64, i64, i64)>,
 }
 
 impl SpliceMap {
     fn to_genome(&self, g: i64) -> i64 {
-        if let Some((n0, n1)) = self.before.filter(|&(_, n1)| g < n1) {
-            return n0 - (n1 - g);
-        }
-        if let Some((n0, n1)) = self.after.filter(|&(n0, _)| g >= n0) {
-            return n1 + (g - n0);
-        }
-        g
+        self.segments
+            .iter()
+            .find(|&&(s, _, len)| g >= s && g < s + len)
+            .map_or(g, |&(s, gs, _)| gs + (g - s))
     }
 }
 
 /// The windows a spliced read is judged on: built by [`windows`] over the
-/// variant's reference spliced at the read's junctions nearest the event on each
-/// side (the far exon read from `reference`), with the map from spliced space
-/// back to the genome. None when the far exon cannot be read or the spliced
+/// variant's reference spliced along the read's junctions on each side of the
+/// event (every junction the windows reach, so a short exon between two is
+/// read through), the far exons read from `reference`, with the map from spliced
+/// space back to the genome. None when a far exon cannot be read or the spliced
 /// reference does not hold the REF allele and the event's flank.
 fn spliced_windows(
     v: &Variant,
-    skips: &[(i64, i64)],
+    junctions: &[(i64, i64)],
     (ev_lo, ev_hi): (i64, i64),
     reference: &CachedFasta,
 ) -> Option<(Windows, SpliceMap)> {
     let (start, context) = prepared_reference(v)?;
     let end = start + context.len() as i64;
-    let before = skips.iter().filter(|s| s.1 <= ev_lo && s.1 > start).max_by_key(|s| s.1).copied();
-    let after = skips.iter().filter(|s| s.0 >= ev_hi && s.0 < end).min_by_key(|s| s.0).copied();
-    let mut spliced = context;
-    if let Some((n0, n1)) = after {
-        let keep = (n0 - start) as usize;
-        spliced.truncate(keep);
-        spliced.extend(reference.bases(&v.chrom, n1, n1 + (end - n0))?);
+    // Right of the event: the genome from ev_hi, jumping each junction past it.
+    let mut right = Vec::new();
+    let (mut sp, mut g) = (ev_hi, ev_hi);
+    let mut after: Vec<(i64, i64)> = junctions.iter().filter(|j| j.0 >= ev_hi).copied().collect();
+    after.sort_unstable();
+    for (n0, n1) in after {
+        if sp >= end {
+            break;
+        }
+        let len = (n0 - g).min(end - sp);
+        if len > 0 {
+            right.push((sp, g, len));
+        }
+        sp += n0 - g;
+        g = n1;
     }
-    if let Some((n0, n1)) = before {
-        let k = n1 - start;
-        spliced.splice(..k as usize, reference.bases(&v.chrom, n0 - k, n0)?);
+    if sp < end {
+        right.push((sp, g, end - sp));
+    }
+    // Left of the event: the genome back from ev_lo, jumping each junction before it.
+    let mut left = Vec::new();
+    let (mut sp, mut g) = (ev_lo, ev_lo);
+    let mut before: Vec<(i64, i64)> = junctions.iter().filter(|j| j.1 <= ev_lo).copied().collect();
+    before.sort_unstable_by(|a, b| b.cmp(a));
+    for (n0, n1) in before {
+        if sp <= start {
+            break;
+        }
+        let len = (g - n1).min(sp - start);
+        if len > 0 {
+            left.push((sp - len, g - len, len));
+        }
+        sp -= g - n1;
+        g = n0;
+    }
+    if sp > start {
+        left.push((start, g - (sp - start), sp - start));
+    }
+    left.reverse();
+    let segments: Vec<(i64, i64, i64)> =
+        left.into_iter().chain(std::iter::once((ev_lo, ev_lo, ev_hi - ev_lo))).chain(right).collect();
+    let mut spliced = Vec::with_capacity(context.len());
+    for &(_, gs, len) in &segments {
+        if gs >= start && gs + len <= end {
+            spliced.extend_from_slice(&context[(gs - start) as usize..(gs - start + len) as usize]);
+        } else {
+            spliced.extend(reference.bases(&v.chrom, gs, gs + len)?);
+        }
     }
     let mut on_spliced = v.clone();
     on_spliced.event_ref = Some((start, String::from_utf8(spliced).ok()?));
     on_spliced.ref_context = None;
-    Some((windows(&on_spliced)?, SpliceMap { before, after }))
+    Some((windows(&on_spliced)?, SpliceMap { segments }))
 }
 
 /// Query positions [first, after) of the read's aligned bases: its soft clips lie

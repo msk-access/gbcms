@@ -169,18 +169,22 @@ fn derive_intron_boundaries(
 
 /// Per-chromosome trees of transcript spans (first exon start to last exon end,
 /// end-inclusive for COITree), with each span's strand in the returned list.
+/// A span is one transcript's exons on one chromosome and strand: an ID the GTF
+/// reuses on another chromosome or strand (PAR copies on X and Y, alternate
+/// loci, version-stripped RefSeq IDs) gives a span per place, not one across
+/// them. Copies on the same chromosome and strand still share one span.
 fn derive_transcript_trees(exons: &[ExonRecord]) -> (HashMap<u32, COITree<usize, u32>>, Vec<char>) {
-    let mut spans: HashMap<&str, (u32, i32, i32, char)> = HashMap::new();
+    let mut spans: HashMap<(&str, u32, char), (i32, i32)> = HashMap::new();
     for e in exons {
-        let s = spans.entry(e.transcript_id.as_str()).or_insert((e.chrom_id, e.start, e.end, e.strand));
-        s.1 = s.1.min(e.start);
-        s.2 = s.2.max(e.end);
+        let s = spans.entry((e.transcript_id.as_str(), e.chrom_id, e.strand)).or_insert((e.start, e.end));
+        s.0 = s.0.min(e.start);
+        s.1 = s.1.max(e.end);
     }
     let mut strands = Vec::with_capacity(spans.len());
     let mut nodes: HashMap<u32, Vec<IntervalNode<usize, u32>>> = HashMap::new();
     let mut sorted: Vec<_> = spans.into_iter().collect();
-    sorted.sort_unstable_by(|a, b| a.0.cmp(b.0)); // stable indices across runs
-    for (_, (chrom, start, end, strand)) in sorted {
+    sorted.sort_unstable(); // stable indices across runs
+    for ((_, chrom, strand), (start, end)) in sorted {
         nodes.entry(chrom).or_default().push(IntervalNode::new(start, end - 1, strands.len()));
         strands.push(strand);
     }
@@ -579,6 +583,23 @@ mod tests {
         assert_eq!(idx.strand_at("1", 800), Some('-'), "tm's intron");
         assert_eq!(idx.strand_at("1", 500), None, "between genes");
         assert_eq!(idx.strand_at("1", 1000), None, "one past tm's last exon");
+    }
+
+    #[test]
+    fn a_transcript_id_reused_on_another_chromosome_spans_neither_gap() {
+        // TD '-' has an exon on chrom 0 at [1100,1150) and, reused (a PAR copy or a
+        // version-stripped ID), one on chrom 1 at [10,30): no span on chrom 0 may
+        // reach back to 10.
+        let ex = |c: u32, s: i32, e: i32| ExonRecord {
+            transcript_id: "TD".into(), gene_id: "GD".into(), chrom_id: c, start: s, end: e, strand: '-',
+        };
+        let exons = vec![ex(0, 1100, 1150), ex(1, 10, 30)];
+        let exon_trees = build_exon_trees(&exons);
+        let chrom_map = HashMap::from([("1".to_string(), 0u32), ("2".to_string(), 1u32)]);
+        let idx = AnnotationIndex::new(exon_trees, exons, HashMap::new(), HashMap::new(), chrom_map);
+        assert_eq!(idx.strand_at("1", 51), None, "intergenic on chrom 1");
+        assert_eq!(idx.strand_at("1", 1120), Some('-'));
+        assert_eq!(idx.strand_at("2", 20), Some('-'));
     }
 
     #[test]

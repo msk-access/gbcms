@@ -423,3 +423,124 @@ def test_a_spliced_ref_read_needs_only_the_spliced_flank(tmp_path):
         reads.append(make_read(f"r{i}", seq, s, ((0, left), (3, E2[0] - EDGE), (0, 3)), flag=SENSE))
     out = _spliced_run(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 2], alt))
     assert (int(out["ref_count"]), int(out["total_count"])) == (6, 6)
+
+
+# ── Review cases (2026-10-04): junction chains, left splices, gap forms, clips ──
+N_LEN = E2[0] - EDGE  # intron 1
+
+
+def _other(ref, avoid):
+    return next(b for b in "ACGT" if b not in avoid)
+
+
+def _spliced_ref_reads(ref, n, start_back=40):
+    reads = []
+    for i in range(n):
+        s = EDGE - start_back - i
+        left = EDGE - s
+        seq = ref[s:EDGE] + ref[E2[0] : E2[0] + READ_LEN - left]
+        cig = ((0, left), (3, N_LEN), (0, READ_LEN - left))
+        reads.append(make_read(f"r{i}", seq, s, cig, flag=SENSE))
+    return reads
+
+
+def _counts(tmp_path, ref, reads, row):
+    out = _spliced_run(tmp_path, ref, reads, row)
+    return int(out["ref_count"]), int(out["alt_count"])
+
+
+@pytest.mark.parametrize("exon_len", [3, 20])
+def test_a_spliced_read_is_read_through_a_short_exon(tmp_path, exon_len):
+    """REF reads spliced 300 -> 500, through a short exon [500, 500 + len), then
+    -> 800, at a delins whose windows reach past the short exon: their bases are
+    the transcript, REF (every junction the windows reach is followed)."""
+    ref = mk_ref()
+    p0 = EDGE - 3
+    alt = "".join(_other(ref, (ref[p0], ref[p0 + 1], ref[p0 - 1], ref[p0 + 2])) for _ in range(9))
+    reads = []
+    for i in range(6):
+        s = EDGE - 40 - i
+        left = EDGE - s
+        rest = READ_LEN - left - exon_len
+        seq = ref[s:EDGE] + ref[E2[0] : E2[0] + exon_len] + ref[800 : 800 + rest]
+        cig = ((0, left), (3, N_LEN), (0, exon_len), (3, 800 - E2[0] - exon_len), (0, rest))
+        reads.append(make_read(f"r{i}", seq, s, cig, flag=SENSE))
+    assert _counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 2], alt))[0] == 6
+
+
+@pytest.mark.parametrize("alt_len", [1, 3, 5])
+def test_spliced_windows_before_the_event(tmp_path, alt_len):
+    """A delins at E2's second and third bases; reads spliced 300 -> 500 start
+    in E1: REF reads are REF and carriers ALT, read across the junction on the
+    left."""
+    ref = mk_ref()
+    p0 = E2[0] + 1
+    alt = "".join(
+        _other(ref, (ref[p0], ref[p0 + 1], ref[p0 - 1], ref[p0 + 2])) for _ in range(alt_len)
+    )
+    reads = _spliced_ref_reads(ref, 6, start_back=30)
+    d = alt_len - 2
+    for i in range(4):
+        s = EDGE - 30 - i
+        left = EDGE - s
+        right = READ_LEN - left
+        body = ref[E2[0] : p0] + alt + ref[p0 + 2 : p0 + 2 + READ_LEN]
+        seq = ref[s:EDGE] + body[:right]
+        if d > 0:
+            cig = ((0, left), (3, N_LEN), (0, 3), (1, d), (0, right - 3 - d))
+        else:
+            cig = ((0, left), (3, N_LEN), (0, 2), (2, -d), (0, right - 2))
+        reads.append(make_read(f"a{i}", seq, s, cig, flag=SENSE))
+    assert _counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 2], alt)) == (6, 4)
+
+
+@pytest.mark.parametrize(
+    "form",
+    [
+        "D+N",
+        pytest.param(
+            "shifted-N",
+            marks=pytest.mark.xfail(
+                strict=True, reason="gap form: a junction starting inside the event"
+            ),
+        ),
+    ],
+)
+def test_a_delins_carrier_counts_however_the_gap_is_written(tmp_path, form):
+    """E1's last four bases replaced by one base X. The carriers' bases are
+    ...X then the next exon, written as X 3D N or as X with the junction starting
+    inside the event (a donor three bases up); REF reads are spliced at the
+    annotated donor. The call follows the bases, not the gap's placement: ALT."""
+    ref = mk_ref()
+    p0 = EDGE - 4
+    x = _other(ref, (ref[p0], ref[E2[0]], ref[EDGE - 1]))
+    reads = _spliced_ref_reads(ref, 6)
+    for i in range(6):
+        s = EDGE - 40 - i
+        m1 = p0 + 1 - s
+        seq = ref[s:p0] + x + ref[E2[0] : E2[0] + READ_LEN - m1]
+        if form == "D+N":
+            cig = ((0, m1), (2, 3), (3, N_LEN), (0, READ_LEN - m1))
+        else:
+            cig = ((0, m1), (3, N_LEN + 3), (0, READ_LEN - m1))
+        reads.append(make_read(f"a{i}", seq, s, cig, flag=SENSE))
+    assert _counts(tmp_path, ref, reads, (p0 + 1, ref[p0:EDGE], x)) == (6, 6)
+
+
+@pytest.mark.xfail(strict=True, reason="C15: a mid-exon clip is the read's own bases")
+def test_a_mid_exon_clip_is_allele_evidence(tmp_path):
+    """An MNP 150 bases from either exon edge: REF reads align in full; ALT reads
+    have the MNP's second base and the rest soft-clipped (a local aligner clips a
+    mismatching end). No exon edge or junction is within the clip's reach, so it
+    holds the same exon's bases, the read's own: ALT."""
+    ref = mk_ref()
+    p0 = E1[0] + 50
+    alt = _other(ref, (ref[p0],)) + _other(ref, (ref[p0 + 1],))
+    end = p0 + 5
+    s = end - READ_LEN
+    reads = []
+    for i in range(6):
+        reads.append(make_read(f"r{i}", ref[s:end], s, ((0, READ_LEN),), flag=SENSE))
+        seq = ref[s:p0] + alt + ref[p0 + 2 : end]
+        reads.append(make_read(f"a{i}", seq, s, ((0, p0 + 1 - s), (4, end - p0 - 1)), flag=SENSE))
+    assert _counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 2], alt)) == (6, 6)

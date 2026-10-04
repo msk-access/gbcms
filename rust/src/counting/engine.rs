@@ -677,18 +677,26 @@ fn count_bam_binned_core(
                                 bio::io::fasta::IndexedReader::from_file(path).ok()
                             });
                         // RNA: a cached reader for the far exon of a spliced read's
-                        // junctions (the exact-carrier rule reads across them).
-                        let far_reference = if mode == "rna" {
-                            fasta_path_owned.as_deref().and_then(crate::normalize::fasta::CachedFasta::open)
-                        } else {
-                            None
-                        };
+                        // junctions (the exact-carrier rule reads across them). A
+                        // worker that cannot open it fails the run: judging its bins
+                        // differently from the others' would be silent.
+                        let far_reference: Result<Option<crate::normalize::fasta::CachedFasta>, String> =
+                            match (mode == "rna", fasta_path_owned.as_deref()) {
+                                (true, Some(path)) => crate::normalize::fasta::CachedFasta::open(path)
+                                    .map(Some)
+                                    .ok_or_else(|| format!("cannot open the reference FASTA {path}")),
+                                _ => Ok(None),
+                            };
                         (bam_reader, fasta_reader, far_reference)
                     },
                     |(bam_result, fasta_reader, far_reference), bin| {
                         let bam = match bam_result {
                             Ok(b) => b,
                             Err(e) => return Err(anyhow::anyhow!("BAM init failed: {}", e)),
+                        };
+                        let far_reference = match far_reference {
+                            Ok(r) => r.as_ref(),
+                            Err(e) => return Err(anyhow::anyhow!("reference init failed: {}", e)),
                         };
 
                         debug!(
@@ -726,7 +734,7 @@ fn count_bam_binned_core(
                             &editing_sites,
                             &annotation,
                             fasta_reader,
-                            far_reference.as_ref(),
+                            far_reference,
                             amplicon_mode,
                             emit_obs,
                         )?)
