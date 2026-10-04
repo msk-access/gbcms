@@ -75,7 +75,7 @@ pub(crate) struct ReadRules<'a> {
     /// reference reach crosses one, or whose aligned bases end within
     /// [`EDGE_SLACK`] of one, may hold the next exon's bases and is not read; any
     /// other clip is the read's own bases. None (DNA): every clip is read.
-    pub clip_edges: Option<&'a [i64]>,
+    pub clip_edges: Option<&'a ClipEdges<'a>>,
     /// The reference, for the far side of a spliced read's junctions (RNA).
     pub reference: Option<&'a CachedFasta>,
     /// Spliced windows already built for this variant's reads (RNA).
@@ -85,6 +85,23 @@ pub(crate) struct ReadRules<'a> {
 impl ReadRules<'static> {
     /// DNA: clipped bases are read; no read is spliced.
     pub(crate) const DNA: ReadRules<'static> = ReadRules { clip_edges: None, reference: None, spliced: None };
+}
+
+/// The exon edges and junction ends near a variant, found on first use: only the
+/// exact-carrier rule reads them, so an SNV or pure-indel row never pays for them.
+pub(crate) struct ClipEdges<'a> {
+    edges: std::cell::OnceCell<Vec<i64>>,
+    find: Box<dyn Fn() -> Vec<i64> + 'a>,
+}
+
+impl<'a> ClipEdges<'a> {
+    pub(crate) fn new(find: impl Fn() -> Vec<i64> + 'a) -> Self {
+        Self { edges: std::cell::OnceCell::new(), find: Box::new(find) }
+    }
+
+    fn get(&self) -> &[i64] {
+        self.edges.get_or_init(|| (self.find)())
+    }
 }
 
 /// How far an RNA read's aligned bases may run past an exon edge before a clip:
@@ -108,7 +125,7 @@ type SplicedWindows = (Windows, SpliceMap);
 /// end in `edges` (or the aligned bases end within [`EDGE_SLACK`] of one).
 fn readable_range(record: &Record, rules: &ReadRules) -> Option<(usize, usize)> {
     let len = record.seq_len();
-    let Some(edges) = rules.clip_edges else {
+    let Some(edges) = rules.clip_edges.map(ClipEdges::get) else {
         return Some((0, len));
     };
     let (first, after) = aligned_query_range(record)?;
@@ -247,6 +264,10 @@ pub(crate) fn classify(
         r.uninformative = true;
         return Some(r);
     }
+    // Such a read is also REF spliced at its own junction (an alternative donor or
+    // acceptor, or a splice site the event straddles): it can count only ALT, and
+    // only when its bases favour ALT over that reading too.
+    let entering = skips.iter().any(enters);
     let spliced: Rc<SplicedWindows>;
     let cut;
     let identity = SpliceMap::default();
@@ -259,6 +280,12 @@ pub(crate) fn classify(
         spliced = sw;
         map = &spliced.1;
         &spliced.0
+    } else if entering {
+        // No spliced windows to judge a junction entering the event on: depth only.
+        trace!("carrier: spliced windows unavailable for a junction entering the event → depth only");
+        let mut r = ClassifyResult::neither(ClassifyPhase::CigarRecon);
+        r.uninformative = true;
+        return Some(r);
     } else {
         // The far exon cannot be read, or the spliced reference no longer holds
         // the REF allele (its shared bases reach across the junction): judge the
@@ -277,6 +304,8 @@ pub(crate) fn classify(
     // The read's evidence for ALT over REF (log10), every base weighed by its
     // quality: a low-quality base counts for little instead of fitting anything.
     let mut evidence = 0.0f64;
+    let mut alt_weight = 0.0f64;
+    let mut alt_spans: Vec<(usize, usize)> = Vec::new();
     let mut qual_bases: Vec<u8> = Vec::new();
     let mut read_spans: Vec<(usize, usize)> = Vec::new();
     for (rw, aw) in &win.pairs {
@@ -292,6 +321,8 @@ pub(crate) fn classify(
         // less what mismatches ALT, so the two readings need not cover the same
         // bases.
         evidence += r.mismatch_weight - a.mismatch_weight;
+        alt_weight += a.mismatch_weight;
+        alt_spans.push(a.span);
         had_n |= r.had_n || a.had_n;
         for (lo, hi) in [r.span, a.span] {
             qual_bases.extend_from_slice(&quals[lo..hi]);
@@ -320,6 +351,20 @@ pub(crate) fn classify(
     // A read holding no pair cannot show the allele: depth only (as a pure-indel
     // read that ends inside its tract), and no mFSD class.
     result.uninformative = held.is_empty();
+    if entering && !result.uninformative {
+        // Against REF spliced where the read splices (its own alignment), over the
+        // bases its ALT reading read: ALT needs one minimum-quality base's evidence
+        // there too; anything else is depth only.
+        let own = rules
+            .reference
+            .and_then(|r| own_alignment_weight(record, &seq, quals, min_baseq, &alt_spans, &variant.chrom, r));
+        let alt_stands = result.is_alt && own.is_some_and(|w| w - alt_weight >= one_base_evidence(min_baseq));
+        if !alt_stands {
+            trace!("carrier: junction entering the event, bases fit REF spliced there ({:?}) → depth only", own);
+            result = ClassifyResult::neither(ClassifyPhase::MaskedCompare);
+            result.uninformative = true;
+        }
+    }
     result.has_n_base = had_n;
     // An MNP ALT read with every window base read unmasked shows the whole
     // haplotype, as a fully read block does on the base-by-base path.
@@ -335,6 +380,61 @@ pub(crate) fn classify(
         && aligned_query_range(record).is_some_and(|(first, after)| read_spans.iter().any(|&(a, b)| a < first || b > after))
         && fragment_query_span(record).is_some_and(|(lo, hi)| read_spans.iter().all(|&(a, b)| a >= lo && b <= hi));
     Some(result)
+}
+
+/// The read's evidence against REF as it is aligned (spliced at its own
+/// junctions), over the query `spans`: the weight of every base aligned to a
+/// different reference base (by its quality, N excepted), of every inserted base,
+/// and of one minimum-quality base per deletion. None when the reference cannot
+/// be read there.
+fn own_alignment_weight(
+    record: &Record,
+    seq: &[u8],
+    quals: &[u8],
+    min_baseq: u8,
+    spans: &[(usize, usize)],
+    chrom: &str,
+    reference: &CachedFasta,
+) -> Option<f64> {
+    let in_span = |q: usize| spans.iter().any(|&(a, b)| q >= a && q < b);
+    let (mut qp, mut rp, mut weight) = (0usize, record.pos(), 0.0f64);
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) => {
+                let n = *n as usize;
+                let (lo, hi) = (qp.max(spans.iter().map(|s| s.0).min()?), (qp + n).min(spans.iter().map(|s| s.1).max()?));
+                if lo < hi {
+                    let bases = reference.bases(chrom, rp + (lo - qp) as i64, rp + (hi - qp) as i64)?;
+                    for (k, q) in (lo..hi).enumerate() {
+                        let b = seq[q].to_ascii_uppercase();
+                        if in_span(q) && b != WILD && b != bases[k] {
+                            weight += one_base_evidence(quals[q]);
+                        }
+                    }
+                }
+                qp += n;
+                rp += n as i64;
+            }
+            Cigar::Ins(n) => {
+                for q in qp..qp + *n as usize {
+                    if in_span(q) && seq[q].to_ascii_uppercase() != WILD {
+                        weight += one_base_evidence(quals[q]);
+                    }
+                }
+                qp += *n as usize;
+            }
+            Cigar::Del(n) => {
+                if in_span(qp) && qp > 0 && in_span(qp - 1) {
+                    weight += one_base_evidence(min_baseq);
+                }
+                rp += *n as i64;
+            }
+            Cigar::RefSkip(n) => rp += *n as i64,
+            Cigar::SoftClip(n) => qp += *n as usize,
+            Cigar::HardClip(_) | Cigar::Pad(_) => {}
+        }
+    }
+    Some(weight)
 }
 
 /// Positions of a reference spliced along a read's junctions, mapped back to the
@@ -833,6 +933,49 @@ fn score(bases: &[u8], quals: &[u8], min_baseq: u8, hap: &[u8], span: (usize, us
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_htslib::bam::record::CigarString;
+
+    /// An unpaired read of `cigar` at `pos`.
+    fn clipped(cigar: Vec<Cigar>, pos: i64) -> Record {
+        let cigar = CigarString(cigar);
+        let len: usize = cigar
+            .iter()
+            .filter(|op| matches!(op, Cigar::Match(_) | Cigar::Ins(_) | Cigar::SoftClip(_)))
+            .map(|op| op.len() as usize)
+            .sum();
+        let mut rec = Record::new();
+        let seq: Vec<u8> = (0..len).map(|i| b"ACGT"[i % 4]).collect();
+        rec.set(b"r", Some(&cigar), &seq, &vec![30; len]);
+        rec.set_pos(pos);
+        rec
+    }
+
+    fn readable(rec: &Record, edges: Option<Vec<i64>>) -> Option<(usize, usize)> {
+        let found = edges.map(|e| ClipEdges::new(move || e.clone()));
+        readable_range(rec, &ReadRules { clip_edges: found.as_ref(), reference: None, spliced: None })
+    }
+
+    #[test]
+    fn an_rna_clip_is_read_unless_it_reaches_an_exon_edge() {
+        // 90M10S at 200: aligned [200, 290), the clip reaching [290, 300).
+        let rec = clipped(vec![Cigar::Match(90), Cigar::SoftClip(10)], 200);
+        assert_eq!(readable(&rec, None), Some((0, 100)), "DNA reads every clip");
+        assert_eq!(readable(&rec, Some(vec![])), Some((0, 100)), "no edge near");
+        assert_eq!(readable(&rec, Some(vec![295])), Some((0, 90)), "an edge inside the clip's reach");
+        assert_eq!(readable(&rec, Some(vec![290])), Some((0, 90)), "the clip starts at the edge");
+        assert_eq!(readable(&rec, Some(vec![286])), Some((0, 90)), "aligned four bases past an edge");
+        assert_eq!(readable(&rec, Some(vec![285])), Some((0, 90)), "aligned five bases past an edge");
+        assert_eq!(readable(&rec, Some(vec![284])), Some((0, 100)), "six bases past: the read's own clip");
+        assert_eq!(readable(&rec, Some(vec![301])), Some((0, 100)), "past the clip's reach");
+        // 8S92M at 508: a leading clip reaching [500, 508), an acceptor at 500.
+        let lead = clipped(vec![Cigar::SoftClip(8), Cigar::Match(92)], 508);
+        assert_eq!(readable(&lead, Some(vec![500])), Some((8, 100)), "acceptor inside the leading clip's reach");
+        assert_eq!(readable(&lead, Some(vec![513])), Some((8, 100)), "aligned five bases into the exon");
+        assert_eq!(readable(&lead, Some(vec![514])), Some((0, 100)), "six bases in: the read's own clip");
+        // Each clip on its own.
+        let both = clipped(vec![Cigar::SoftClip(5), Cigar::Match(90), Cigar::SoftClip(5)], 205);
+        assert_eq!(readable(&both, Some(vec![297])), Some((0, 95)), "only the trailing clip reaches the edge");
+    }
 
     fn var(ctx: &str, pos: i64, r: &str, a: &str) -> Variant {
         Variant::new(

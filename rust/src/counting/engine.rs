@@ -1199,7 +1199,7 @@ fn count_bin_shared(
         // How the exact-carrier rule reads past a read's aligned blocks: in RNA a
         // soft clip reaching an exon edge or junction end is not evidence, and a
         // spliced read continues into its next exon.
-        let edges = if mode == "rna" { clip_edges(variant, &read_cache, annotation) } else { Vec::new() };
+        let edges = carrier::ClipEdges::new(|| clip_edges(variant, &read_cache, annotation));
         let spliced = carrier::SplicedCache::default();
         let rules = if mode == "rna" {
             carrier::ReadRules { clip_edges: Some(&edges), reference: far_reference, spliced: Some(&spliced) }

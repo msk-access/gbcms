@@ -467,7 +467,8 @@ def test_a_spliced_read_is_read_through_a_short_exon(tmp_path, exon_len):
         seq = ref[s:EDGE] + ref[E2[0] : E2[0] + exon_len] + ref[800 : 800 + rest]
         cig = ((0, left), (3, N_LEN), (0, exon_len), (3, 800 - E2[0] - exon_len), (0, rest))
         reads.append(make_read(f"r{i}", seq, s, cig, flag=SENSE))
-    assert _counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 2], alt))[0] == 6
+    out = _spliced_run(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 2], alt))
+    assert (int(out["ref_count"]), int(out["alt_count"]), int(out["total_count"])) == (6, 0, 6)
 
 
 @pytest.mark.parametrize("alt_len", [1, 3, 5])
@@ -546,9 +547,6 @@ def test_a_mid_exon_clip_is_allele_evidence(tmp_path):
 
 
 # ── Second review (2026-10-04): REF reads whose junction enters the event ──────
-_ENTERING = pytest.mark.xfail(
-    strict=True, reason="gap form: a REF read with its own junction is not ALT"
-)
 
 
 def _q(read, pos0, q):
@@ -572,9 +570,7 @@ def _alt_counts(tmp_path, ref, reads, row):
     return int(out["alt_count"]), int(out["partial_alt"])
 
 
-@pytest.mark.parametrize(
-    "masked", [pytest.param(False, marks=_ENTERING), pytest.param(True, marks=_ENTERING)]
-)
+@pytest.mark.parametrize("masked", [False, True])
 def test_a_ref_read_at_an_alternative_donor_inside_the_event_is_not_alt(tmp_path, masked):
     """REF reads spliced at a donor three bases early (297 -> 500), inside a delins
     of E1's last four bases: their bases are REF spliced at their own junction, so
@@ -594,9 +590,7 @@ def test_a_ref_read_at_an_alternative_donor_inside_the_event_is_not_alt(tmp_path
     assert _alt_counts(tmp_path, ref, reads, (p0 + 1, ref[p0:EDGE], x)) == (0, 0)
 
 
-@pytest.mark.parametrize(
-    "masked", [pytest.param(False, marks=_ENTERING), pytest.param(True, marks=_ENTERING)]
-)
+@pytest.mark.parametrize("masked", [False, True])
 def test_a_ref_read_at_a_nagnag_acceptor_inside_the_event_is_not_alt(tmp_path, masked):
     """REF reads spliced to an acceptor three bases late (300 -> 503), inside a
     delins of E2's first four bases: REF at their own junction, not ALT or partial."""
@@ -615,9 +609,7 @@ def test_a_ref_read_at_a_nagnag_acceptor_inside_the_event_is_not_alt(tmp_path, m
     assert _alt_counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 4], x)) == (0, 0)
 
 
-@pytest.mark.parametrize(
-    "masked", [pytest.param(False, marks=_ENTERING), pytest.param(True, marks=_ENTERING)]
-)
+@pytest.mark.parametrize("masked", [False, True])
 def test_ref_reads_at_the_donor_a_delins_straddles_are_not_alt(tmp_path, masked):
     """A delins GAGTAC > CA across E1's donor (298-303); plain REF reads spliced
     at the annotated 300 -> 500 junction, which starts inside the event. They
@@ -634,7 +626,7 @@ def test_ref_reads_at_the_donor_a_delins_straddles_are_not_alt(tmp_path, masked)
     assert _alt_counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 6], "CA")) == (0, 0)
 
 
-@pytest.mark.parametrize("form", ["canonical", pytest.param("shifted", marks=_ENTERING)])
+@pytest.mark.parametrize("form", ["canonical", "shifted"])
 def test_one_ref_read_written_two_ways_is_never_an_allele(tmp_path, form):
     """E1's last three bases equal the intron's last three, so one REF read can
     be written spliced 300 -> 500 or 297 -> 497 with identical bases. Neither
@@ -673,3 +665,59 @@ def test_a_delins_carrier_whose_junction_ends_inside_the_event_is_alt(tmp_path):
         cig = ((0, left), (3, p0 + 3 - EDGE), (0, READ_LEN - left))
         reads.append(make_read(f"a{i}", seq, s, cig, flag=SENSE))
     assert _counts(tmp_path, ref, reads, (p0 + 1, ref[p0 : p0 + 4], x)) == (6, 6)
+
+
+def test_group3_read_shapes_count_the_same_under_any_bin_geometry(tmp_path):
+    """Spliced windows, junction chains, a junction entering the event and clips
+    near and away from exon edges count the same with one variant per bin
+    (count_checked compares every field), in RNA with the GTF."""
+    from helpers import count_checked
+
+    from gbcms import _rs
+
+    ref = list(mk_ref())
+    ref[E1[0] + 46 : E1[0] + 58] = "GATCTGACAGTC"
+    ref = "".join(ref)
+    p_edge, p_mid = EDGE - 4, E1[0] + 50
+    x = _delins_x(ref, p_edge, 4)
+    mnp = _other(ref, (ref[p_mid], ref[p_mid - 1])) + _other(ref, (ref[p_mid + 1], ref[p_mid + 2]))
+    reads = _spliced_ref_reads(ref, 6)
+    for i in range(6):  # X N carriers, X D N carriers, a short exon, clipped mid-exon carriers
+        s = EDGE - 40 - i
+        m1 = p_edge + 1 - s
+        seq = ref[s:p_edge] + x + ref[E2[0] : E2[0] + READ_LEN - m1]
+        reads.append(
+            make_read(f"xn{i}", seq, s, ((0, m1), (3, N_LEN + 3), (0, READ_LEN - m1)), flag=SENSE)
+        )
+        reads.append(
+            make_read(
+                f"xd{i}", seq, s, ((0, m1), (2, 3), (3, N_LEN), (0, READ_LEN - m1)), flag=SENSE
+            )
+        )
+        left = EDGE - s
+        rest = READ_LEN - left - 3
+        seq = ref[s:EDGE] + ref[E2[0] : E2[0] + 3] + ref[800 : 800 + rest]
+        cig = ((0, left), (3, N_LEN), (0, 3), (3, 800 - E2[0] - 3), (0, rest))
+        reads.append(make_read(f"me{i}", seq, s, cig, flag=SENSE))
+        end = p_mid + 13
+        s2 = end - READ_LEN
+        seq = ref[s2:p_mid] + mnp + ref[p_mid + 2 : end]
+        reads.append(
+            make_read(f"cl{i}", seq, s2, ((0, p_mid + 1 - s2), (4, end - p_mid - 1)), flag=SENSE)
+        )
+    fa, gtf, bam = write_fasta(tmp_path, ref), write_gtf(tmp_path), write_bam(tmp_path, ref, reads)
+    rows = [(p_edge, ref[p_edge:EDGE], x), (p_mid, ref[p_mid : p_mid + 2], mnp)]
+    pvs = _rs.prepare_variants(
+        [_rs.Variant("chr1", p, r, a, "X") for p, r, a in rows], str(fa), 5, False, 1, True
+    )
+    variants = [pv.variant for pv in pvs]
+    counts = count_checked(
+        str(bam),
+        variants,
+        min_mapq=1,
+        mode="rna",
+        enforce_strandedness=True,
+        gtf_path=str(gtf),
+        reference_fasta=str(fa),
+    )
+    assert counts[0].ad == 12 and counts[1].ad == 6
