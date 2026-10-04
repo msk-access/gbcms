@@ -2083,36 +2083,28 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0.</td>
 <td style="text-align: left;">C15 #173, C7 #144, C18 #177, operator 2026-10-02</td>
 </tr>
+<tr>
+<td style="text-align: left;">RJ-14</td>
+<td style="text-align: left;">The ALT written across several insertion or deletion ops in the discrimination window counts ALT when the read's bases between its nearest aligned flanks are the ALT (masked bases fit, at least one base read), the ops' placement only a tie-break as in RJ-15: judged by its bases before the wrong-length and one-change rules read its ops. Amends RJ-2 and RJ-7.</td>
+<td style="text-align: left;">C27 #201, operator 2026-10-02</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-15</td>
+<td style="text-align: left;">A read whose own deletion covers the anchor is judged by its bases between its nearest aligned flanks: ALT, or REF, when they equal that allele (masked bases fit; at least one base read), the aligner's placement of its gap only a tie-break (a reference written as the anchor deleted and re-inserted is REF); otherwise neither, with partial evidence. Never Phase 3's closer haplotype. Deletion and insertion rows alike.</td>
+<td style="text-align: left;">C28 #202, operator 2026-10-02</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-16</td>
+<td style="text-align: left;">An exact-carrier ALT call needs evidence: its clearly read bases fit the ALT (as before), and its bases, each weighed by its quality (a base matches with 1 − e and mismatches with e/3), favour ALT over REF by at least what one base read at <code>--min-baseq</code> gives (about 2.5 log10 at 20). Bases matching both alleles cancel, so the evidence is the weight of the bases that mismatch REF less those that mismatch ALT, over the windows and, for a long event, the read's bases past them. A low-quality base counts for little instead of fitting either allele.</td>
+<td style="text-align: left;">C16 #174, operator 2026-10-03</td>
+</tr>
 </tbody>
 </table>
 <h3 id="open">Open<a class="headerlink" href="#open" title="Permanent link">¶</a></h3>
-<table>
-<thead>
-<tr>
-<th style="text-align: left;">ID</th>
-<th style="text-align: left;">Question</th>
-<th style="text-align: left;">Today</th>
-<th style="text-align: left;">Proposal</th>
-<th style="text-align: left;">Evidence</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: left;">C27</td>
-<td style="text-align: left;"><strong>The ALT written across several ops</strong> (a deletion split in two).</td>
-<td style="text-align: left;">Partial</td>
-<td style="text-align: left;">ALT (its bases hold the ALT). Adopted in principle (operator, 2026-10-01); lands after a prototype is measured.</td>
-<td style="text-align: left;">Census: ALT on every such shape.</td>
-</tr>
-<tr>
-<td style="text-align: left;">C28</td>
-<td style="text-align: left;"><strong>A read deleting the anchor.</strong></td>
-<td style="text-align: left;">Phase 3's closer haplotype: ALT or REF.</td>
-<td style="text-align: left;">Judged by its bases: neither unless they hold an allele. Adopted in principle (operator, 2026-10-01); lands after a prototype is measured.</td>
-<td style="text-align: left;">Census: contradicts both on every such shape.</td>
-</tr>
-</tbody>
-</table>
+<p>None. The C16 junction-placement guard (a spliced read whose aligner placed its
+junction a few bases late can show the next exon's bases over an exon-edge
+event) is deferred to 6.7.0 with C15 and RJ-13's RNA exon-edge clips: telling
+it from a genuine carrier needs the reference at the splice's far end.</p>
 <p>Evidence behind RJ-7 to RJ-9 (2026-10-01): on 105 changed DNA and WES rows the
 read census counts 57,199 REF reads; develop counted 60,619 and the decided rules
 57,218. The largest moves are deep slippage loci (a BRCA2 cluster where an
@@ -2145,6 +2137,52 @@ mask, or hard); samtools and bcftools mpileup always discard unmapped reads, nul
 overlapping mates' duplicate bases by quality 0, and bcftools caps base quality at
 max-BQ; bam-readcount filters nothing by default; VarDict, Strelka2, freebayes,
 LoFreq and GetBaseCounts document none of these cases.</p>
+<p>Evidence behind RJ-14 and RJ-15 (2026-10-02). RJ-14 changed no row on RC DNA,
+FORTE or WES (144 of 144 files byte-identical); it decides synthetic shapes the
+read census calls ALT. RJ-15 was prototyped three ways and measured against
+develop and the census on the same inputs:
+- strict, as C22 (an unmasked base wherever the alignment's haplotype differs
+  from the ALT): ALT −26, of which 22 are reads with a masked base at the deleted
+  anchor that the census and develop count ALT (the same bases placed one base
+  along take the strict path and count ALT);
+- the pure-indel ALT-by-bases rule, which stops at the first deciding base:
+  false ALT at insertion rows (a BRCA2 row 9 → 35, census 17);
+- the rule adopted: ALT net 0 on RC DNA (±1 read at 6 rows, all masked-base
+  edge cases), −2 on WES; REF +57 at the BRCA2 cluster, every row toward the
+  census (reads that were a co-annotated row's false ALT now count REF where
+  their bases across this row's window are REF). Summed distance to the census
+  on the changed indel rows: REF 344 → 251, ALT 40 → 44.</p>
+<p>Evidence behind RJ-16 (2026-10-02/03). Synthetic delins probes in covered
+sequence, where no read carries the ALT, found spurious ALT reads in data whose
+reads are not consensus-collapsed: FORTE RNA 2.0 per million reads (70 at the
+exon-edge and mid-exon probes), IMPACT 1.8 per million, one in WES; none in ACCESS
+duplex or simplex. Each was a read whose clearly read bases fit the ALT while most
+of its window was low quality (masked bases fit either allele). Three rules were
+measured on the probes and on every complex DNA/WES row with ALT reads (1,185
+real ALT reads): every event base read (RNA probes 70 → 16, DNA 8 → 0; 46 real
+reads lost), at most one masked event base (RNA 31, DNA 0; 15 lost), and the
+quality-weighted evidence adopted (thresholds 2–3 log10: RNA 15–19, IMPACT 1,
+WES 0; 1–2 real reads lost). A survey: GATK HaplotypeCaller and Mutect2 weigh
+every base by its quality in each read's likelihood (bases below Q18 down to Q6)
+and count a read toward <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> only if its best allele leads by 0.2 log10; Strelka2
+(indel posterior ≥ 0.51) and bcftools (per-read indel quality) use per-read
+evidence too; the counting tools use hard base-quality cutoffs; none treats a
+low-quality base as fitting either allele.</p>
+<p>An adversarial review of group 2 found three defects, fixed before merge: a read
+whose bases are exactly REF, written as the anchor deleted and re-inserted, had
+counted partial (RJ-15 now counts it REF, as its bases say); the evidence had
+compared REF and ALT readings over different read bases, so a shared flank
+base's quality could flip a call, and had skipped a long event's bases past its
+junction windows (both fixed by the mismatch-weight form above). A pre-existing
+limit remains: a REF molecule with one clear error just outside the window that
+its ALT reading is anchored away from can still count ALT (6.7.0).</p>
+<p>Other tools: GATK, Strelka2 and freebayes judge a read by its bases against
+haplotypes, so a split ALT counts ALT; bam-readcount, LoFreq and the original
+GetBaseCounts count <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> ops. A read deleting the anchor goes to GATK's
+spanning-deletion allele or another candidate where one exists, is its own
+haplotype in freebayes, a separate allele in VarDict and depth only in
+GetBaseCounts; a closer-haplotype credit, as Phase 3 gave, appears only in the
+likelihood tools without such a bucket.</p>
 <h2 id="the-cases">The cases<a class="headerlink" href="#the-cases" title="Permanent link">¶</a></h2>
 <p>Each group below is a set of shapes in <code>read_judgment_cases.py</code>, run at pure
 indels in homopolymers, dinucleotide repeats, duplications and unique sequence,
@@ -2195,8 +2233,8 @@ and at anchor-changing events before an A run.</p>
 </tr>
 <tr>
 <td style="text-align: left;">The ALT across ops</td>
-<td style="text-align: left;">a deletion written as two</td>
-<td style="text-align: left;">open (C27)</td>
+<td style="text-align: left;">a deletion written as two; a 1-base deletion in a run written D2 + I1 (at the anchor, inside the run); a 1-base insertion written I2 + D1</td>
+<td style="text-align: left;">decided (RJ-14)</td>
 </tr>
 <tr>
 <td style="text-align: left;">Read inputs</td>
@@ -2205,8 +2243,8 @@ and at anchor-changing events before an A run.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Anchor deleted</td>
-<td style="text-align: left;">the anchor deleted, with or without an insertion</td>
-<td style="text-align: left;">open (C28)</td>
+<td style="text-align: left;">the anchor deleted, with or without an insertion; an insertion row's anchor deleted</td>
+<td style="text-align: left;">decided (RJ-15)</td>
 </tr>
 </tbody>
 </table>
@@ -2237,7 +2275,7 @@ with the read census's verdict next to each pure-indel case.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 2, 2026 15:31:12 UTC"><span class="timeago" datetime="2026-10-02T15:31:12+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 2, 2026 15:31:12 UTC">2026-10-02</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 3, 2026 20:56:34 UTC"><span class="timeago" datetime="2026-10-03T20:56:34+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 3, 2026 20:56:34 UTC">2026-10-03</span>
   </span>
 
     
