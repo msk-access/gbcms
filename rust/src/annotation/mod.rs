@@ -274,6 +274,20 @@ impl AnnotationIndex {
         right.into_iter().chain(left).min()
     }
 
+    /// Every annotated intron boundary (an intron's first base or its exclusive
+    /// end, either strand) in `[lo, hi]`, ascending.
+    pub fn intron_boundaries_in(&self, chrom: &str, lo: i64, hi: i64) -> Vec<i64> {
+        let Some(sites) = self.chrom_map.get(chrom).and_then(|id| self.intron_boundaries.get(id)) else {
+            return Vec::new();
+        };
+        let lo = lo.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let hi = hi.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let idx = sites.partition_point(|&(p, _)| p < lo);
+        let mut out: Vec<i64> = sites[idx..].iter().take_while(|&&(p, _)| p <= hi).map(|&(p, _)| p as i64).collect();
+        out.dedup();
+        out
+    }
+
     /// Whether an annotated intron boundary (a true donor/acceptor site —
     /// transcript termini excluded) lies in `[lo, hi]` (inclusive, 0-based:
     /// an intron's first base or its exclusive end). With `strand` given,

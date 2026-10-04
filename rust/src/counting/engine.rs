@@ -1103,13 +1103,6 @@ fn count_bin_shared(
     amplicon_mode: bool,
     emit_obs: bool,
 ) -> Result<BinOutput> {
-    // How the exact-carrier rule reads past a read's aligned blocks: an RNA read's
-    // soft clips are not evidence, and a spliced read continues into its next exon.
-    let rules = if mode == "rna" {
-        carrier::ReadRules { clips: false, reference: far_reference }
-    } else {
-        carrier::ReadRules::DNA
-    };
 
     // ══════════════════════════════════════════════════════════════════════
     // PHASE 0: Single fetch + universal filtering → read cache
@@ -1203,6 +1196,16 @@ fn count_bin_shared(
     for &vi in &bin.variant_indices {
         let variant = &variants[vi];
         let siblings = &sibling_variants[vi];
+        // How the exact-carrier rule reads past a read's aligned blocks: in RNA a
+        // soft clip reaching an exon edge or junction end is not evidence, and a
+        // spliced read continues into its next exon.
+        let edges = if mode == "rna" { clip_edges(variant, &read_cache, annotation) } else { Vec::new() };
+        let spliced = carrier::SplicedCache::default();
+        let rules = if mode == "rna" {
+            carrier::ReadRules { clip_edges: Some(&edges), reference: far_reference, spliced: Some(&spliced) }
+        } else {
+            carrier::ReadRules::DNA
+        };
 
         let (counts_orig, obs_orig) = count_variant_from_cache(
             &read_cache, variant, siblings,
@@ -2387,6 +2390,31 @@ fn warn_sw_fallback(variant: &Variant, n: u32) {
             n, super::pangenome::matrix_failure_reason(variant), outcome, n,
         );
     }
+}
+
+/// The exon edges and junction ends near a variant, ascending: the annotated
+/// intron boundaries and the junctions the reads over its window splice at (an
+/// unannotated junction the data show is an edge too).
+fn clip_edges(variant: &Variant, read_cache: &[Record], annotation: &Option<std::sync::Arc<AnnotationIndex>>) -> Vec<i64> {
+    // Annotated boundaries this far from the read window cannot meet a clip.
+    const REACH: i64 = 1000;
+    let (v_start, v_end) = window::read_window(variant);
+    let mut edges = annotation.as_ref().map_or_else(Vec::new, |a| {
+        let chrom = crate::shared::contig::normalize_contig(&variant.chrom);
+        a.intron_boundaries_in(&chrom, v_start - REACH, v_end + REACH)
+    });
+    for record in read_cache {
+        if record.pos() >= v_end || ref_end(record) <= v_start {
+            continue;
+        }
+        for (n0, n1) in rna::extract_splice_junctions(record) {
+            edges.push(n0);
+            edges.push(n1);
+        }
+    }
+    edges.sort_unstable();
+    edges.dedup();
+    edges
 }
 
 /// Whether the mapping rule admits a read to the counts: MAPQ at least

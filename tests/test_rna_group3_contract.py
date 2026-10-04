@@ -1,10 +1,12 @@
 """Group 3 (RNA) contracts.
 
-C15 #173 (RNA part): an RNA read's soft clip is not allele evidence. STAR cannot
-splice an overhang shorter than its minimum (3 nt annotated, 5 nt novel) or one
-with mismatches; it soft-clips it, and the clip holds the next exon's bases
-(GATK's RNA workflow runs HaplotypeCaller with ``-dont-use-soft-clipped-bases``;
-phASER, WASP and ASEReadCounter never read clips).
+C15 #173 (RNA part): an RNA read's soft clip that reaches an exon edge or a
+junction end is not allele evidence. STAR cannot splice an overhang shorter than
+its minimum (3 nt annotated, 5 nt novel) or one with mismatches; it soft-clips
+it, and the clip holds the next exon's bases (GATK's RNA workflow runs
+HaplotypeCaller with ``-dont-use-soft-clipped-bases``; phASER, WASP and
+ASEReadCounter never read clips). A clip elsewhere is the read's own bases (a
+local aligner clips a mismatching end), read as in DNA.
 
 C32 #213: a spliced read is judged against the haplotypes spliced at its own
 junction. Cutting its windows at the exon edge drops the bases past the junction,
@@ -498,12 +500,7 @@ def test_spliced_windows_before_the_event(tmp_path, alt_len):
     "form",
     [
         "D+N",
-        pytest.param(
-            "shifted-N",
-            marks=pytest.mark.xfail(
-                strict=True, reason="gap form: a junction starting inside the event"
-            ),
-        ),
+        "shifted-N",
     ],
 )
 def test_a_delins_carrier_counts_however_the_gap_is_written(tmp_path, form):
@@ -527,7 +524,6 @@ def test_a_delins_carrier_counts_however_the_gap_is_written(tmp_path, form):
     assert _counts(tmp_path, ref, reads, (p0 + 1, ref[p0:EDGE], x)) == (6, 6)
 
 
-@pytest.mark.xfail(strict=True, reason="C15: a mid-exon clip is the read's own bases")
 def test_a_mid_exon_clip_is_allele_evidence(tmp_path):
     """An MNP 50 bases into E1, in sequence with no repeat around it: REF reads
     align in full; ALT reads have the MNP's second base and the next 11 soft-
