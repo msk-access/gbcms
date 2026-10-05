@@ -13,6 +13,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Holistic effects map](holistic-effects-map.md) — before any fix/decision, map every place it lands (both counting paths, per-transcript/ASJD/mFSD/observations, rescue/clusters/merge, writers/flags, docs/tests/Nextflow).
 - [Test changes need operator notice](test-changes-need-operator-notice.md) — never edit a failing test's expectation without first telling the operator what it asserts, why it's wrong, and the evidence; wait.
 - [Survey several tools](survey-several-tools.md) — community practice means GATK, samtools/bcftools, fgbio, VarDict, Strelka2, freebayes, bam-readcount, LoFreq, GetBaseCounts, plus the literature and domain tools (RNA: SplitNCigarReads, STAR, ASE counters, RNA callers); say where handling isn't documented.
+- [Better than the standard](better-than-standard.md) — the survey is a floor, not a ceiling: where no tool sets a standard or a measured rule beats the field's, adopt it and say why.
 
 ## References
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.

@@ -23,7 +23,9 @@ it shows in review instead of slipping in with an unrelated fix.
    tool's handling is not documented). The census changes in step with a rule
    about read inputs (what a read contributes), so for such a rule it cannot be
    the evidence: check the bases in question themselves and the mates'
-   alignments, ITD and indel rows first.
+   alignments, ITD and indel rows first. Other tools' practice is a floor, not
+   a ceiling: where none sets a standard, or the measurements support a better
+   rule, propose that rule and say where and why it departs from practice.
 2. **Decide.** The operator decides; the decision gets an entry in the register
    below, naming any earlier decision it amends.
 3. **Then code.** The implementation turns the case table's open cells into
