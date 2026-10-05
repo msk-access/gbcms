@@ -23,6 +23,7 @@ Operator decisions (2026-09-25 for I1, I3, I4; 2026-10-05 for the rest):
   longer one is a caller error.
 """
 
+import csv
 import glob
 import random
 
@@ -499,3 +500,178 @@ def test_maf_origin_values_are_percent_encoded(tmp_path):
     assert "MAF_ALT=A%3BB%3DC%2C%20D" in line
     (rec,) = _vcf_records(str(out))
     assert rec.alts == ("<NON_SEQUENCE>",)
+
+
+def _convert_line(tmp_path, rows, header=None):
+    fa, _ = _files(tmp_path, [])
+    out = tmp_path / "o.vcf"
+    res = runner.invoke(
+        app, ["convert", "-v", str(_maf(tmp_path, rows, header)), "-f", str(fa), "-o", str(out)]
+    )
+    assert res.exit_code == 0, res.output
+    return [x for x in open(out) if not x.startswith("#")], out
+
+
+_STRICT_REVIEW = pytest.mark.xfail(strict=True, reason="group 4 review finding")
+
+
+@_STRICT_REVIEW
+def test_maf_origin_writes_the_rows_own_placeholder_alleles(tmp_path):
+    """MAF_REF / MAF_ALT are the row's values as written, so the record can be
+    looked up by its input: a placeholder REF ('0', '--') is not rewritten as
+    the '-' preparation reads it as."""
+    lines, _ = _convert_line(tmp_path, [_row(P + 1, "0", "T"), _row(P + 11, "--", "GG")])
+    assert "MAF_REF=0;" in lines[0], lines[0]
+    assert "MAF_REF=--;" in lines[1], lines[1]
+
+
+@_STRICT_REVIEW
+def test_an_empty_maf_allele_is_missing_in_the_maf_origin(tmp_path):
+    """An empty allele (FAIL EMPTY_ALLELE) is written as the VCF missing value
+    '.', and a literal '.' allele is encoded, so '.' only ever means missing.
+    The symbolic record's header names no single reason (GSR has it)."""
+    lines, out = _convert_line(tmp_path, [_row(P + 1, "", "A"), _row(P + 21, REF[P + 20], ".")])
+    assert "MAF_REF=.;" in lines[0], lines[0]
+    assert "MAF_ALT=%2E" in lines[1], lines[1]
+    with pysam.VariantFile(str(out)) as fh:
+        assert "GSR" in fh.header.alts["NON_SEQUENCE"].description
+
+
+@_STRICT_REVIEW
+@pytest.mark.parametrize("ref_len", [1, 2])
+def test_a_dash_allele_is_not_a_base_outside_maf_input(tmp_path, ref_len):
+    """'-' is a MAF dash allele only: given as non-MAF input (the observations
+    API) it is FAIL NON_SEQUENCE_ALLELE, not a PASS row that counts 0."""
+    fa, _ = _files(tmp_path, [])
+    v = _rs.Variant("1", P, REF[P : P + ref_len], "-", "SNP")
+    (pv,) = _rs.prepare_variants([v], str(fa), 5, False)
+    assert (pv.gbcms_status, pv.gbcms_status_reason) == ("FAIL", "NON_SEQUENCE_ALLELE")
+
+
+@_STRICT_REVIEW
+def test_merge_pairs_rows_of_one_input_that_differ_only_in_end_position(tmp_path, caplog):
+    """When an input has rows that share contig, Start and alleles but not
+    End_Position, merge joins on End_Position too (every input has it), so the
+    rows pair with their own counterparts instead of every combination."""
+    merged = _merge(
+        tmp_path,
+        {
+            "duplex": (
+                _MERGE_COLS,
+                [
+                    ["1", "100", "100", "A", "T", "20", "10"],
+                    ["1", "100", "101", "A", "T", "3", "1"],
+                ],
+            ),
+            "simplex": (
+                _MERGE_COLS,
+                [["1", "100", "100", "A", "T", "5", "2"], ["1", "100", "101", "A", "T", "7", "1"]],
+            ),
+        },
+        caplog,
+    )
+    assert [(r["End_Position"], r["duplex_ref_count"], r["simplex_ref_count"]) for r in merged] == [
+        ("100", "20", "5"),
+        ("101", "3", "7"),
+    ]
+    assert any("End_Position" in r.message for r in caplog.records)
+
+
+# ── REF_MISMATCH: where the given REF does sit ───────────────────────────────
+
+_STRICT_B = pytest.mark.xfail(strict=True, reason="REF_MISMATCH names no offset")
+
+
+def _shifted(offset, n=6):
+    """(1-based Start, REF): a REF of n bases that matches the reference
+    exactly at Start+offset and nowhere else within 3 bases, and under 90% at
+    Start (a REF_MISMATCH)."""
+    for q in range(P + 60, len(REF) - 60):
+        ref = REF[q : q + n]
+        s = q - offset
+        at = REF[s : s + n]
+        exact = [o for o in range(-3, 4) if REF[s + o : s + o + n] == ref]
+        if exact == [offset] and sum(a == b for a, b in zip(at, ref, strict=True)) / n < 0.9:
+            return s + 1, ref
+    raise AssertionError("no such locus in the test reference")
+
+
+@_STRICT_B
+@pytest.mark.parametrize("offset", [-1, 2, -3])
+def test_ref_mismatch_names_where_the_given_ref_sits(tmp_path, offset):
+    """The row stays FAIL REF_MISMATCH with zero counts; gbcms_diagnostic says
+    the given REF matches the reference exactly `offset` bases from Start."""
+    start, ref = _shifted(offset)
+    out = _maf_rows(_run(tmp_path, _maf(tmp_path, [_row(start, ref, ref[0])]), _ref_reads()))
+    row = out[0]
+    assert (row["gbcms_status"], row["gbcms_status_reason"]) == ("FAIL", "REF_MISMATCH")
+    assert row["gbcms_diagnostic"] == f"REF_AT_OFFSET({offset:+d})"
+    assert (row["ref_count"], row["alt_count"]) == ("0", "0")
+
+
+@_STRICT_B
+def test_ref_mismatch_offset_of_a_maf_dash_deletion_is_the_given_bases(tmp_path):
+    """A MAF '-' deletion: the deleted bases as given, from Start (the anchor is
+    the reference's own base and is not part of what the row gives)."""
+    start, ref = _shifted(1)
+    (row,) = _maf_rows(_run(tmp_path, _maf(tmp_path, [_row(start, ref, "-")]), _ref_reads()))
+    assert (row["gbcms_status_reason"], row["gbcms_diagnostic"]) == (
+        "REF_MISMATCH",
+        "REF_AT_OFFSET(+1)",
+    )
+
+
+@_STRICT_B
+def test_ref_mismatch_offset_in_vcf_output_and_normalize(tmp_path):
+    """The diagnostic reaches VCF output (GD) and gbcms normalize's TSV."""
+    start, ref = _shifted(-1)
+    maf = _maf(tmp_path, [_row(start, ref, ref[0])])
+    (rec,) = _vcf_records(_run(tmp_path, maf, _ref_reads(), fmt="vcf"))
+    assert (rec.info["GSR"], rec.info["GD"]) == ("REF_MISMATCH", "REF_AT_OFFSET(-1)")
+    fa = tmp_path / "ref.fa"
+    tsv = tmp_path / "n.tsv"
+    res = runner.invoke(app, ["normalize", "-v", str(maf), "-f", str(fa), "-o", str(tsv)])
+    assert res.exit_code == 0, res.output
+    (norm,) = list(csv.DictReader(open(tsv), delimiter="\t"))
+    assert norm["gbcms_diagnostic"] == "REF_AT_OFFSET(-1)"
+
+
+@_STRICT_B
+def test_ref_mismatch_lists_every_offset_in_a_repeat(tmp_path):
+    """In a repeat the given REF can sit at several offsets: all within 3 bases
+    are listed, nearest first (the left one first at equal distance)."""
+    fa = tmp_path / "rep.fa"
+    seq = REF[:300] + "AC" * 20 + REF[340:]
+    fa.write_text(f">1\n{seq}\n")
+    pysam.faidx(str(fa))
+    # The repeat starts at 0-based 300 (an A); 311 is inside it, a C, so the REF
+    # "ACACAC" mismatches there and sits at 310, 312, 308 and 314.
+    v = _rs.Variant("1", 311, "ACACAC", "A", "COMPLEX")
+    (pv,) = _rs.prepare_variants([v], str(fa), 5, False)
+    assert pv.gbcms_status_reason == "REF_MISMATCH"
+    assert pv.gbcms_diagnostic == "REF_AT_OFFSET(-1/+1/-3/+3)"
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["nowhere near", "two bases"],
+)
+def test_ref_mismatch_without_a_nearby_exact_ref_names_nothing(tmp_path, case):
+    """Guard: no offset when the REF matches nowhere within 3 bases, nor for a
+    REF under 3 bases (a nearby match is then often chance)."""
+    fa, _ = _files(tmp_path, [])
+    if case == "two bases":
+        start, ref = next(
+            (q + 2, REF[q : q + 2])
+            for q in range(P + 60, len(REF) - 60)
+            if REF[q + 1 : q + 3] != REF[q : q + 2] and REF[q + 1] != REF[q]
+        )
+    else:
+        ref = "".join({"A": "C", "C": "G", "G": "T", "T": "A"}[b] for b in REF[P : P + 8])
+        start = P + 1
+        assert all(REF[P + o : P + o + 8] != ref for o in range(-3, 4))
+    (pv,) = _rs.prepare_variants(
+        [_rs.Variant("1", start - 1, ref, ref[0], "COMPLEX")], str(fa), 5, False
+    )
+    assert pv.gbcms_status_reason == "REF_MISMATCH"
+    assert pv.gbcms_diagnostic == ""
