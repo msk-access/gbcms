@@ -90,6 +90,7 @@ marks a ticket with an open PR.
 | M2 | Merge inputs from different gbcms versions | M | | #129 |
 | M3 | Decomposed-allele hardening (observations, list length) | M | | #147; #146 [6.7.0] (#112) |
 | M4 | Merge sums NA/nan count cells as 0 silently (the documented warning was never implemented) | M | [decided] | #194 |
+| M5 | Merge leaves the annotation columns of a row only a later input has empty | L | [decided] | #221 |
 | O1 | UMI and no-bases warnings repeated by the rescue recount | L | | #130 |
 | O2 | Run-start summary of enabled options | L | | #131 |
 | O3 | Rescue in fillouts without the MNP | L | [6.7.0] | #132 |
@@ -1807,7 +1808,7 @@ changes in step whenever the read inputs do.
    2026-10-03. Policy for 6.7.0: R3 #178 (editing sites in windows).
 4. **Input and representation:** C9 #122, I1 #123, I2 #124, I3 #125, I4 #126,
    #147, H2 #149, C30 #208 (lowercase or unprepared alleles).
-5. **Merge, outputs, observability:** M4 #194, M2 #129, H1 #148, O1 #130, O2
+5. **Merge, outputs, observability:** M4 #194, M5 #221, M2 #129, H1 #148, O1 #130, O2
    #131, D6 #156. Policy for 6.7.0: M1 #128, #146.
 6. **Statistics:** S1 #153 (decided), S2 #154.
 7. **Release:** D1 #136, D2 #137, D4 #139 before the cut, P3 #152, D5 #155 last.

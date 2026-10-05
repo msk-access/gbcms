@@ -42,6 +42,7 @@ that turns one on must clear its section 5 issues first.
 | I3 #125 | VCF to MAF: `Tumor_Seq_Allele1` empty (decide REF or empty) | VCF input | 4 | Built: the reference allele |
 | I4 #126 | A maf2vcf second ALT: one allele per row (documented) or genotype both | MAF from VCF | 4 | Built: one row, one allele (documented, tested; 0 sign-out rows) |
 | M4 #194 | `gbcms merge` sums NA count cells as 0 silently | ACCESS merged fillouts | 5 | Open |
+| M5 #221 | `gbcms merge`: a row only a later input has gets empty annotation columns (not in the pipeline: 0 of 40 ACCESS pairs) | hand-made merges | 5 | Decided (fill from the later input) |
 | M2 #129 | Merging outputs of different gbcms versions or representations without a warning | merged fillouts | 5 | Open |
 | H1 #148 | Writers (and the reference handle) not closed when a write fails: partial files | all | 5 | Open |
 | D6 #156 | No single reference for status reasons, diagnostics, ASJD and rescue flags | all | 5 | Open (docs) |
