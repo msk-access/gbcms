@@ -25,9 +25,11 @@ where no read carries the ALT).
 - **A splice is not reference coverage (#198, RJ-17).** A pure-indel read is
   informative only when one aligned block between splices spans the window, REF
   and ALT alike. Truth: no row changes; T9: 24,703 REF reads at splice-crossing
-  deletions become depth only (their bases fit both alleles); `vaf` is
-  unchanged. A deletion written right after a read's splice (no aligned flank) is
-  depth only.
+  deletions become depth only (their bases fit both alleles). `vaf` (alt over
+  REF plus ALT) at such a deletion with carriers rises to the VAF among the
+  reads that show the event; no measured row's `vaf` moved (the T9 rows have no
+  carriers). A deletion written right after a read's splice (no aligned flank)
+  is depth only.
 - **Diagnostics read the counted reads (#186).** `OBSERVED_ALLELE` and
   `COEXISTING_ALLELE` take n/m over the reads the counts read: no antisense read
   under enforcement, and the RNA mapping rule's unique mappers. Counts unchanged.

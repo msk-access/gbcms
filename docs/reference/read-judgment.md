@@ -159,7 +159,10 @@ to the full BAMs). Each rule was a separate prototype against the same base.
   on 30 rows, 24,695 of them normally spliced reads ending at the exon edge inside
   a 12–60 bp splice-crossing deletion: their bases fit both alleles (the deletion's
   first discriminating base or its margin lies past the splice). `vaf` is
-  `alt_count / total_count`, so it does not move.
+  `alt_count / (ref_count + alt_count)`, so at such a deletion with carriers it
+  rises to the VAF among the reads that show the event (unspliced ones), as
+  `RETENTION_DOMINANT` describes; the T9 rows have no carriers and the truth set
+  has no such row, so no measured `vaf` moved.
 - RJ-18, first as "an RNA clip is never evidence", changed no truth row; at the
   splice probes spurious ALT 19 → 16, and 4,290 of 31.6 million REF reads
   (0.01–0.02% in every stratum) became depth only. Refined (below): a clip is
