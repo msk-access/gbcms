@@ -207,3 +207,101 @@ def test_the_architecture_page_says_the_bin_window_is_a_floor():
     row = next(ln for ln in page.splitlines() if ln.startswith("| `BIN_WINDOW`"))
     assert "Maximum span" not in row and "floor" in row.lower(), row
     assert "Parity testing" not in page
+
+
+# ── review round ────────────────────────────────────────────────────────────
+
+_R = pytest.mark.xfail(strict=True, reason="review: release tooling gaps found in 59e19a1f")
+
+
+@_R
+def test_develop_cannot_point_the_pipeline_at_an_unpublished_image(tmp_path):
+    # 6.6.0 is newer than 6.6.0-dev.0: that image does not exist until the release.
+    problems = _release().check(_tree(tmp_path, cargo="6.6.0-dev.0", manifest="6.6.0"))
+    assert any("nextflow.config" in p for p in problems), problems
+
+
+def test_a_develop_tree_on_the_last_released_image_passes(tmp_path):
+    assert _release().check(_tree(tmp_path, cargo="6.6.0-dev.0", manifest="6.5.0")) == []
+
+
+@_R
+def test_develop_must_move_to_the_next_dev_version_after_a_release(tmp_path):
+    # After the back-merge, develop at a released 6.6.0 would stamp every dev build
+    # "gbcms v6.6.0". A release branch at 6.6.0 is fine.
+    rel = _release()
+    tree = _tree(tmp_path, cargo="6.6.0", manifest="6.6.0")
+    assert any("develop" in p for p in rel.check(tree, branch="develop"))
+    assert rel.check(tree, branch="release/6.6.0") == []
+
+
+def test_the_release_check_refuses_a_prerelease_tag_even_when_cargo_matches(tmp_path):
+    problems = _release().check(_tree(tmp_path, cargo="6.6.0-rc.1"), tag="6.6.0-rc.1")
+    assert any("bare X.Y.Z" in p for p in problems), problems
+
+
+@_R
+def test_container_options_and_comments_are_not_version_locations(tmp_path):
+    module = (
+        "// gbcms v6.5.0 changed the merge columns\n"
+        "process GBCMS_DNA {\n"
+        '    container "ghcr.io/msk-access/gbcms:${workflow.manifest.version}"\n'
+        '    containerOptions "--user root"\n'
+        "}\n"
+    )
+    assert _release().check(_tree(tmp_path, module=module), tag="6.6.0") == []
+
+
+@_R
+def test_notes_stop_at_any_heading_and_drop_trailing_link_references(tmp_path):
+    rel = _release()
+    root = _tree(
+        tmp_path,
+        changelog="## [6.6.0] - 2026-10-20 — graded evidence\n\n- x\n\n"
+        "## [2.1.1] - 2025-11-25 [YANKED]\n\n- old\n\n[6.6.0]: https://example.org/6.6.0\n",
+    )
+    _, body = rel.notes(root, "6.6.0")
+    assert body.strip() == "- x", body
+    root2 = _tree(
+        tmp_path / "b", changelog="## [6.6.0] - 2026-10-20\n\n- x\n\n[6.6.0]: https://example.org\n"
+    )
+    assert rel.notes(root2, "6.6.0")[1].strip() == "- x"
+
+
+@_R
+def test_long_notes_are_cut_at_a_section_with_a_link_to_the_changelog(tmp_path):
+    rel = _release()
+    long = "\n".join(f"### Part {k}\n" + "- line\n" * 400 for k in range(60))
+    root = _tree(tmp_path, changelog=f"## [6.6.0] - 2026-10-20\n\n{long}\n")
+    _, body = rel.notes(root, "6.6.0")
+    assert len(body) <= rel.NOTES_LIMIT and "CHANGELOG.md" in body.splitlines()[-1]
+
+
+def test_every_listed_location_exists():
+    for loc, _ in _release().LOCATIONS:
+        assert list(ROOT.glob(loc)), loc
+
+
+@_R
+def test_no_workflow_pastes_a_ref_name_into_a_shell_script():
+    for wf in ("release.yml", "test.yml", "nextflow-lint.yml"):
+        for job in _jobs(wf).values():
+            for step in job.get("steps", []):
+                assert "github.ref_name" not in str(step.get("run", "")), (wf, step.get("name"))
+
+
+@_R
+def test_only_a_tag_push_publishes_and_the_default_token_is_read_only():
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "release.yml").read_text())
+    assert wf.get("permissions") == {"contents": "read"}
+    jobs = wf["jobs"]
+    for job in ("release", "github-release"):
+        assert "github.event_name == 'push'" in str(jobs[job].get("if", "")), job
+    push = next(s for s in jobs["docker"]["steps"] if "build-push-action" in str(s.get("uses", "")))
+    assert "github.event_name == 'push'" in str(push["with"]["push"])
+
+
+@_R
+def test_ci_installs_what_the_tests_import():
+    install = "\n".join(_runs(j) for j in _jobs("test.yml").values())
+    assert "pyyaml" in install.lower()
