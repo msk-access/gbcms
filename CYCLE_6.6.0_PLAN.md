@@ -1641,10 +1641,13 @@ Measured:
   fragment-size likelihood-ratio test for CH vs cancer — for the operator's
   tech-transfer office.
 
-Running: the held-out validation pairs (calls in the CH-associated genes at 2–5
-duplex ALT fragments, buffy evidence strong vs none within the same genes: TP53,
-ATM, TET2, DNMT3A; 203 patients, the tumor curve frozen from the pilot). They now
-feed the separate CH model (below), not the gbcms decisions.
+Held-out validation pairs (2026-10-05; feed the separate CH model, not the gbcms
+decisions): calls in the CH-associated genes at native 2–5 duplex ALT fragments, 199
+patients not in the pilot, 128 CH vs 87 not CH, the tumor curve frozen from the pilot.
+CH fragments sit like REF (deciles 0.68–1.28; no CH shortening); not-CH fragments 2.75x
+in the shortest decile. Tails test p < 0.05: CH 5%, not CH 29%; curve LR leans somatic
+5% vs 33%, leans CH 16% vs 3%; AUC 0.76. Within TP53 (36 vs 48): leans somatic 3% vs
+31%, leans CH 17% vs 0%. The 6.5 report called 18 of 87 not-CH calls CH-LIKE.
 
 **Decided (2026-10-05, operator): keep mFSD in gbcms lean; the CH-vs-tumor
 prediction is a separate model.** gbcms group 6 builds:
