@@ -28,8 +28,15 @@ from functools import partial
 from pathlib import Path
 
 from . import __version__
-from .core.kernel import CoordinateKernel
-from .io.output import MafWriter, declared_contigs, vcf_contig_lines
+from .io.output import (
+    MAF_ORIGIN_HEADERS,
+    NON_SEQUENCE_HEADER,
+    MafWriter,
+    declared_contigs,
+    maf_origin_info,
+    maf_vcf_record,
+    vcf_contig_lines,
+)
 from .io.reference import ReferenceBases
 from .pipeline import read_variant_file
 
@@ -68,14 +75,15 @@ def maf_to_vcf_file(
         header.append(f"##reference=file://{reference}")
         # Contigs in the MAF's own naming, as gbcms's VCF output declares them.
         header.extend(vcf_contig_lines(declared_contigs(bases.contigs, variants)))
+        header.append(NON_SEQUENCE_HEADER)
+        header.extend(MAF_ORIGIN_HEADERS)
         header.append("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")
         with open(output, "w") as fh:
             fh.write("\n".join(header) + "\n")
             for v in variants:
-                pos, ref, alt = CoordinateKernel.maf_to_vcf(
-                    v.pos + 1, v.ref, v.alt, partial(bases.base, v.chrom)
-                )
-                fh.write("\t".join([v.output_chrom, str(pos), ".", ref, alt, ".", ".", "."]))
+                pos, ref, alt = maf_vcf_record(v, partial(bases.base, v.chrom))
+                info = ";".join(maf_origin_info(v))
+                fh.write("\t".join([v.output_chrom, str(pos), ".", ref, alt, ".", ".", info]))
                 fh.write("\n")
     finally:
         bases.close()

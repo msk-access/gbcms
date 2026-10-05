@@ -223,12 +223,50 @@ pub(crate) fn validate_ref(
     }
 }
 
+/// How far from the given position [`ref_offsets`] looks. Measured on 1.13M
+/// sign-out rows: of the `REF_MISMATCH` rows whose REF (3+ bases) matches the
+/// reference exactly within 10 bases, 91% do so within 3, and further out a
+/// short REF matches by chance more often.
+const REF_OFFSET_REACH: i64 = 3;
+/// The shortest REF [`ref_offsets`] places: a 2-base REF matches the reference
+/// within 3 bases by chance about one time in three.
+const REF_OFFSET_MIN_LEN: usize = 3;
+
+/// Offsets from `pos_0based`, within ±[`REF_OFFSET_REACH`], at which a REF
+/// that failed validation matches the reference exactly (case-insensitive),
+/// nearest first and the left one first at equal distance. Empty for a REF
+/// shorter than [`REF_OFFSET_MIN_LEN`] (a MAF `-` included). It explains a
+/// `REF_MISMATCH` row, typically a REF written at the wrong coordinate; the row
+/// is neither moved nor counted (the input is taken as given).
+pub(crate) fn ref_offsets(
+    reader: &mut fasta::IndexedReader<File>,
+    chrom: &str,
+    pos_0based: i64,
+    ref_allele: &str,
+) -> Vec<i64> {
+    if ref_allele.len() < REF_OFFSET_MIN_LEN {
+        return Vec::new();
+    }
+    let len = ref_allele.len() as i64;
+    let mut offsets: Vec<i64> = (1..=REF_OFFSET_REACH).flat_map(|d| [-d, d]).collect();
+    offsets.retain(|&o| {
+        let start = pos_0based + o;
+        start >= 0
+            && fetch_region(reader, chrom, start as u64, (start + len) as u64)
+                .is_ok_and(|seq| seq.eq_ignore_ascii_case(ref_allele.as_bytes()))
+    });
+    offsets
+}
+
 /// Convert a MAF `-` allele to VCF style by fetching the anchor base.
 ///
 /// - `ref = "-"` (insertion): MAF Start is the base before the insertion; that
 ///   base is the anchor, prepended to ALT (and it is the REF).
 /// - `alt = "-"` (deletion): MAF Start is the first deleted base; the base
-///   before it is the anchor, prepended to REF (and it is the ALT).
+///   before it is the anchor, prepended to REF (and it is the ALT). A deletion
+///   at Start 1 has no base before it: the base after it is appended instead
+///   (the VCF spec's form at position 1, as the VCF writer writes it), so it is
+///   counted as the same event given as VCF is.
 ///
 /// Called only for rows with a `-` allele; sequence alleles are used as
 /// written. The prepared label is derived from the result's alleles.
@@ -243,6 +281,11 @@ pub(crate) fn resolve_maf_anchor(
     alt_allele: &str,
 ) -> anyhow::Result<(i64, String, String)> {
     let is_insertion = ref_allele == "-";
+    if !is_insertion && start_pos == 1 {
+        let after = fetch_single_base(reader, chrom, ref_allele.len() as i64)?;
+        let after = (after as char).to_uppercase().to_string();
+        return Ok((0, format!("{ref_allele}{after}"), after));
+    }
     // Insertion: anchor at Start (1-based) -> Start - 1 (0-based).
     // Deletion: anchor one base before Start -> Start - 2 (0-based).
     let anchor_pos_0based = if is_insertion { start_pos - 1 } else { start_pos - 2 };
@@ -265,8 +308,8 @@ mod tests {
 
     #[test]
     fn test_fetch_single_base_before_contig_start_is_an_error() {
-        // A MAF deletion at Start 1 asks for the anchor at 0-based -1: an
-        // error (FETCH_FAILED), never a u64 wrap.
+        // A base before the contig start (0-based -1) is an error, never a u64
+        // wrap. (A MAF deletion at Start 1 takes the base after it instead.)
         let dir = std::env::temp_dir();
         let fa = dir.join(format!("gbcms-fetch-neg-{}.fa", std::process::id()));
         std::fs::write(&fa, ">1\nACGT\n").unwrap();

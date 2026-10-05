@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — input and representation (#122, #123, #124, #125, #126, #147, #208, #149, #218)
+
+Measured on the MSK sign-out dump (1,133,044 rows; operator decisions 2026-09-25
+and 2026-10-05).
+- **Non-sequence MAF alleles are FAIL rows (#123).** An allele that is not a base
+  sequence (an IUPAC code such as `R`, `.`, a stray character from a hand edit)
+  made the row count 0 silently; it is now a FAIL row, `NON_SEQUENCE_ALLELE`,
+  kept in MAF output. Lowercase bases are bases; `-` is a MAF dash allele, so a
+  `-` given as non-MAF input (the observations API) is one too. VCF output,
+  which cannot carry such an allele (nor an empty one), writes the symbolic
+  record `<NON_SEQUENCE>` (REF the reference base at POS, declared in the
+  header), in counting runs and in `gbcms convert`. 7 such rows in the sign-out
+  data.
+- **A `REF_MISMATCH` row says where the given REF sits (#218).** The row stays
+  FAIL and uncounted; `gbcms_diagnostic` (VCF `GD`, and `gbcms normalize`'s
+  new `gbcms_diagnostic` column) gives `REF_AT_OFFSET(k)` when the REF (3+
+  bases) matches the reference exactly within 3 bases of its position, every
+  such offset listed nearest first. In the sign-out data 87 of 154
+  `REF_MISMATCH` rows sit 1–3 bases off, mostly legacy ANNOVAR-annotated
+  indels at Start−1 whose alleles still carry the VCF anchor base. No tool
+  surveyed moves or explains such a row (`bcftools norm --check-ref` exits,
+  warns, excludes or fixes REF in place; maf2vcf skips it).
+- **VCF output of MAF input names its MAF row.** Every record carries
+  `MAF_START`, `MAF_REF` and `MAF_ALT`: the row's Start and alleles as
+  written (a placeholder such as `0` too; percent-encoded, `.` when empty), so
+  a result can be looked up by its input, as VCF input's MAF output carries
+  `vcf_pos`, `vcf_ref` and `vcf_alt`. Also in `gbcms convert`.
+- **A MAF deletion at Start 1 is counted (#122).** It has no base before it; it
+  is resolved to the VCF spec's position-1 form (the base after it), as gbcms's
+  VCF output already wrote it, and counts as the same event given as VCF does
+  (it was `FETCH_FAILED`). None in the sign-out data.
+- **`End_Position` is optional (#124).** gbcms places a variant by
+  `Start_Position` and its alleles; rows without an integer `End_Position` were
+  skipped and are now read (maf2vcf converts them). `gbcms merge` no longer
+  joins on it: inputs that write it differently for one variant join into one
+  row (the first input's `End_Position`, the difference logged), and a row only
+  a later input has keeps that input's. Where an input lists one variant twice
+  with different `End_Position`, it joins on `End_Position` too, so each row
+  pairs with its own counterpart. The sign-out data has it, consistent
+  with Start and REF, on every row but one; no two of its rows differ only in
+  `End_Position`.
+- **VCF input's MAF output fills `Tumor_Seq_Allele1` (#125)** with the reference
+  allele: MSK's sign-out convention on every row, and maf2vcf's reading of an
+  empty one. Previously empty.
+- **One row, one allele (#126):** a `Tumor_Seq_Allele1` that differs from both
+  REF and Allele2 is not a second allele (vcf2maf's reading; cBioPortal picks
+  Allele1). Documented and tested; no such rows in the sign-out data.
+- **Engine API (#147):** a `decomposed` or `sibling_variants` list shorter than
+  the variants is padded; a longer one raises `ValueError` (a short decomposed
+  list panicked; a long list was cut silently).
+- **One allele-kind rule (#208):** the AD-claiming guard's pure-indel test and
+  the pure-indel windows use `allele_kind` (case-insensitive anchor; a
+  multi-base shared prefix is complex, as the dispatcher counts it). No prepared
+  sign-out row changes; it reaches only lowercase or unprepared engine input.
+- `is_indel` in preparation is `ref_len != alt_len` (#149; no change).
+
+
 ### Changed — RNA: strand at intronic loci, splices are not coverage, clips and junctions (#185, #198, #186, #173, #213)
 
 Five RNA rules (operator, 2026-10-04), each measured on FORTE against the
@@ -25,9 +82,11 @@ where no read carries the ALT).
 - **A splice is not reference coverage (#198, RJ-17).** A pure-indel read is
   informative only when one aligned block between splices spans the window, REF
   and ALT alike. Truth: no row changes; T9: 24,703 REF reads at splice-crossing
-  deletions become depth only (their bases fit both alleles); `vaf` is
-  unchanged. A deletion written right after a read's splice (no aligned flank) is
-  depth only.
+  deletions become depth only (their bases fit both alleles). `vaf` (alt over
+  REF plus ALT) at such a deletion with carriers rises to the VAF among the
+  reads that show the event; no measured row's `vaf` moved (the T9 rows have no
+  carriers). A deletion written right after a read's splice (no aligned flank)
+  is depth only.
 - **Diagnostics read the counted reads (#186).** `OBSERVED_ALLELE` and
   `COEXISTING_ALLELE` take n/m over the reads the counts read: no antisense read
   under enforcement, and the RNA mapping rule's unique mappers. Counts unchanged.

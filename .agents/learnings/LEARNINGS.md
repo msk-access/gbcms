@@ -17,6 +17,22 @@ regenerating a section.
 
 ---
 
+## [LRN-20261005-001] rule-body | a derived output's behaviour is checked where each writer computes it
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-body
+- **Summary:** for group 3 I wrote in the docs, the changelog, the PR and an
+  issue comment that R5 leaves `vaf` unchanged "because vaf is alt / total",
+  read from `gbcms merge`'s formula without its inputs (merge's total is
+  REF + ALT). Every writer computes vaf as alt / (REF + ALT), so R5 raises it at
+  a splice-crossing deletion with carriers (no measured row moved: the affected
+  rows had none). Found while mapping group 4; corrected in `3d44d240`. A
+  follow-on claim that merge's VAF differs from the writers' was wrong for the
+  same reason and was withdrawn before anything was filed.
+- **Promotion target:** `DONE:` `.agents/memory/holistic-effects-map.md` — a
+  derived output is checked at every place it is computed before stating how a
+  change moves it.
+- **Related:** [[holistic-effects-map]].
+
 ## [LRN-20261003-002] rule-body | runs over a network mount go one at a time
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

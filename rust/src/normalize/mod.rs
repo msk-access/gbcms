@@ -1,7 +1,7 @@
 //! Variant normalization: left-alignment, MAF anchor resolution, REF validation.
 //!
 //! Consolidates all FASTA-dependent variant preparation into a single pass:
-//! 1. Malformed-allele rejection (EMPTY_ALLELE, ALT_EQUALS_REF)
+//! 1. Malformed-allele rejection (EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF)
 //! 2. MAF→VCF anchor base fetch (if `is_maf`)
 //! 3. REF allele validation against reference, and ALT N-base rejection
 //! 4. bcftools-style left-alignment (`realign_left`)

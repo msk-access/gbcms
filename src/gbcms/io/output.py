@@ -15,7 +15,14 @@ from ..core.kernel import CoordinateKernel
 from ..models.core import Variant
 from .reference import ReferenceBases
 
-__all__ = ["OutputWriter", "MafWriter", "VcfWriter"]
+__all__ = [
+    "OutputWriter",
+    "MafWriter",
+    "VcfWriter",
+    "maf_vcf_record",
+    "maf_origin_info",
+    "is_sequence_allele",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +141,74 @@ def vcf_contig_lines(contigs: list[tuple[str, int | None]]) -> list[str]:
     ]
 
 
+#: The VCF ALT written for a MAF allele that is not a base sequence; the record's
+#: REF is then the reference base at POS, as for any symbolic allele.
+NON_SEQUENCE_ALT = "<NON_SEQUENCE>"
+NON_SEQUENCE_HEADER = (
+    '##ALT=<ID=NON_SEQUENCE,Description="The MAF allele is not a base sequence (empty, an '
+    'IUPAC code or another character): the row is FAIL, the reason in GSR, and is not counted">'
+)
+#: The MAF row a VCF record of MAF input came from, so a result can be looked up
+#: by its input (as VCF input's MAF output carries vcf_pos, vcf_ref and vcf_alt).
+MAF_ORIGIN_HEADERS = [
+    '##INFO=<ID=MAF_START,Number=1,Type=Integer,Description="Start_Position of the MAF row '
+    'this record came from">',
+    '##INFO=<ID=MAF_REF,Number=1,Type=String,Description="Reference_Allele of the MAF row this '
+    "record came from, as written (percent-encoded; '.' when empty)\">",
+    "##INFO=<ID=MAF_ALT,Number=1,Type=String,Description=\"The MAF row's variant allele as "
+    "written: Tumor_Seq_Allele2, or Tumor_Seq_Allele1 when Allele2 is empty or the reference "
+    "(percent-encoded; '.' when empty)\">",
+]
+# Characters a VCF INFO value cannot hold as written (VCF 4.3 percent-encoding),
+# plus whitespace, which no INFO value may contain.
+_INFO_ESCAPES = {c: f"%{ord(c):02X}" for c in "%:;=,\t\n\r "}
+
+
+def is_sequence_allele(allele: str) -> bool:
+    """A base sequence (A, C, G, T, N in either case) or a MAF ``-`` allele: the
+    alleles preparation counts (anything else is FAIL NON_SEQUENCE_ALLELE)."""
+    return allele == "-" or (bool(allele) and set(allele) <= set("ACGTNacgtn"))
+
+
+def _info_value(text: str) -> str:
+    """``text`` as a VCF INFO value: percent-encoded, the missing value ``.`` when
+    empty, and a literal ``.`` encoded so that ``.`` only ever means missing."""
+    if not text:
+        return "."
+    if text == ".":
+        return "%2E"
+    return "".join(_INFO_ESCAPES.get(c, c) for c in text)
+
+
+def maf_vcf_record(variant: Variant, base: Any) -> tuple[int, str, str]:
+    """(POS, REF, ALT) for a MAF-input row: maf2vcf's record, or, for an allele
+    that is not a base sequence, the symbolic ``<NON_SEQUENCE>`` record at Start
+    (REF the reference base there), which keeps the VCF valid. ``base(pos)``
+    returns the reference base at a 1-based position."""
+    if not (is_sequence_allele(variant.ref) and is_sequence_allele(variant.alt)):
+        pos = variant.pos + 1
+        return pos, base(pos), NON_SEQUENCE_ALT
+    return CoordinateKernel.maf_to_vcf(variant.pos + 1, variant.ref, variant.alt, base)
+
+
+def maf_origin_info(variant: Variant) -> list[str]:
+    """INFO entries naming the MAF row a VCF record came from: its Start and its
+    alleles as the row writes them (a placeholder such as ``0`` or ``--`` too,
+    which preparation reads as ``-``), so a record can be looked up by its row."""
+    row = variant.metadata or {}
+    ref = row.get("Reference_Allele", variant.ref)
+    allele1, allele2 = row.get("Tumor_Seq_Allele1") or "", row.get("Tumor_Seq_Allele2", variant.alt)
+    # The row's variant allele is Allele1 when MafReader read it from there.
+    from_allele1 = CoordinateKernel.maf_alleles(ref, allele1, allele2) != (
+        CoordinateKernel.maf_alleles(ref, "", allele2)
+    )
+    return [
+        f"MAF_START={variant.pos + 1}",
+        f"MAF_REF={_info_value(ref)}",
+        f"MAF_ALT={_info_value(allele1 if from_allele1 else allele2)}",
+    ]
+
+
 class OutputWriter:
     """Abstract base class for output writers."""
 
@@ -194,6 +269,9 @@ class MafWriter(OutputWriter):
         Variant_Type, plus the VCF record it came from."""
         vcf_pos = variant.pos + 1
         fields = CoordinateKernel.vcf_to_maf(vcf_pos, variant.ref, variant.alt)
+        # The heterozygous convention (MSK's sign-out sets it on every row; maf2vcf
+        # reads an empty Allele1 as the reference): gbcms genotypes no sample GT.
+        fields["Tumor_Seq_Allele1"] = fields["Reference_Allele"]
         fields.update(
             Chromosome=variant.output_chrom,
             vcf_id=variant.original_id or "",
@@ -821,8 +899,9 @@ class VcfWriter(OutputWriter):
             has_gtf,
         )
 
-    def _write_header(self):
-        """Write VCF header lines.
+    def _write_header(self, maf_input: bool = False):
+        """Write VCF header lines (with the MAF-origin INFO fields and the
+        ``<NON_SEQUENCE>`` ALT for MAF input).
 
         Includes provenance (version, command), reference, contig, and FILTER
         headers per VCF 4.2 spec. mFSD ##INFO fields (7 lines) are only
@@ -845,6 +924,9 @@ class VcfWriter(OutputWriter):
         headers.extend(vcf_contig_lines(self.contigs))
         # FILTER header — required by VCF 4.2 spec even when only PASS is used
         headers.append('##FILTER=<ID=PASS,Description="All filters passed">')
+        if maf_input:
+            headers.append(NON_SEQUENCE_HEADER)
+            headers.extend(MAF_ORIGIN_HEADERS)
         # INFO fields
         headers.extend(
             [
@@ -984,12 +1066,7 @@ class VcfWriter(OutputWriter):
         record for MAF input."""
         if not variant.metadata:
             return variant.pos + 1, variant.ref, variant.alt
-        return CoordinateKernel.maf_to_vcf(
-            variant.pos + 1,
-            variant.ref,
-            variant.alt,
-            lambda pos: self._anchor_base(variant.chrom, pos),
-        )
+        return maf_vcf_record(variant, lambda pos: self._anchor_base(variant.chrom, pos))
 
     def write(
         self,
@@ -1003,7 +1080,7 @@ class VcfWriter(OutputWriter):
         norm_variant: Variant | None = None,
     ):
         if not self._headers_written:
-            self._write_header()
+            self._write_header(maf_input=bool(variant.metadata))
 
         pos, ref, alt = self._record(variant)
 
@@ -1036,6 +1113,8 @@ class VcfWriter(OutputWriter):
                 f"FSB_OR={_fmt_vcf(counts.fsb_or)}",
             ]
         )
+        if variant.metadata:
+            info_parts.extend(maf_origin_info(variant))
         if self.mfsd:
             # mFSD primary diagnostic INFO fields (7 values).
             # Only populated when --mfsd is set; '.' for NaN per VCF spec.

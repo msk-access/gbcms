@@ -8,8 +8,9 @@ WGS-scale performance.
 Architecture:
     1. Scan each input MAF lazily via ``io.batch.scan_maf``
     2. Detect whether columns are already prefixed or need renaming
-    3. Progressive outer join on the 5-column variant key (plus the VCF
-       record — vcf_pos / vcf_ref / vcf_alt — when every input carries it)
+    3. Progressive outer join on the variant — contig, Start and alleles
+       (plus the VCF record — vcf_pos / vcf_ref / vcf_alt — when every input
+       carries it); End_Position is filled from the inputs that have each row
     4. Optionally compute additive ``simplex_duplex_*`` combined columns
     5. Materialize and write via ``io.batch.write_maf``
 
@@ -40,7 +41,8 @@ logger = logging.getLogger(__name__)
 
 # ── Constants (single source of truth — canonical basenames from output.py) ──
 
-# 5-column variant key used for outer joins.
+# The MAF variant columns. Every input needs all but End_Position, which
+# follows from Start and REF and is optional in a MAF.
 VARIANT_KEY: list[str] = [
     "Chromosome",
     "Start_Position",
@@ -52,7 +54,13 @@ VARIANT_KEY: list[str] = [
 # Naming-independent contig key the joins use in place of Chromosome, so MAFs
 # whose inputs name contigs differently (chr1 vs 1, chrM vs MT) still join.
 _CONTIG_KEY = "_contig_key"
-JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
+# A variant is its contig, Start and alleles. End_Position is not joined on:
+# inputs that write it differently for one variant still join, and each row's
+# End_Position is filled from the inputs that have the row.
+JOIN_KEY: list[str] = [
+    _CONTIG_KEY,
+    *(k for k in VARIANT_KEY[1:] if k != "End_Position"),
+]
 # VCF-input MAFs also carry the VCF record each row came from. It is unique per
 # record ALT, whereas two records can trim to one MAF record (TCT>TCG and T>G at
 # the changed base), so the joins add it whenever every input has it. The MAF
@@ -61,8 +69,9 @@ JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
 # columns, so a row only a later input has keeps its coordinates and alleles.
 VCF_RECORD_KEY: list[str] = [*JOIN_KEY, "vcf_pos", "vcf_ref", "vcf_alt"]
 # Prefixes of the other per-input join helpers (row numbers, each later
-# input's own contig names). Input columns with these names are rejected.
-_HELPER_PREFIXES = ("_row_", "_chrom_")
+# input's own contig names and End_Position). Input columns with these names
+# are rejected.
+_HELPER_PREFIXES = ("_row_", "_chrom_", "_end_")
 
 
 def _row_col(bam_type: str) -> str:
@@ -190,10 +199,11 @@ COMBINED_ADDITIVE_ALL: list[str] = (
 def merge_mafs(config: MergeConfig) -> None:
     """Merge per-BAM-type genotyped MAFs into a single type-prefixed output.
 
-    Performs an outer join on the 5-column variant key (on the VCF record —
-    vcf_pos / vcf_ref / vcf_alt — when every input is VCF-derived), prefixes
-    gbcms count columns with the BAM type label, optionally computes combined
-    simplex_duplex columns, and writes the merged result.
+    Performs an outer join on the variant (contig, Start and alleles; plus the
+    VCF record — vcf_pos / vcf_ref / vcf_alt — when every input is
+    VCF-derived), prefixes gbcms count columns with the BAM type label,
+    optionally computes combined simplex_duplex columns, and writes the merged
+    result.
 
     Args:
         config: Validated MergeConfig with inputs, output path, and options.
@@ -237,7 +247,7 @@ def merge_mafs(config: MergeConfig) -> None:
         input_columns[bam_type] = schema_names
 
     # ── 2. Progressive outer join ─────────────────────────────────────────────
-    join_key = _join_key(input_columns)
+    join_key = _join_key(frames, input_columns)
     for bam_type, lf in frames.items():
         _warn_duplicate_keys(lf, join_key, bam_type)
     types = list(frames.keys())
@@ -246,17 +256,17 @@ def merge_mafs(config: MergeConfig) -> None:
     for join_type in types[1:]:
         # Select only variant key + gbcms columns from the joining frame
         # to avoid duplicating annotation columns across inputs.
-        # The joining frame's own Chromosome is kept aside (not a join key) so
-        # rows only it has keep their name, and naming differences can be
-        # reported after materialization.
+        # The joining frame's own Chromosome and End_Position are kept aside
+        # (not join keys) so rows only it has keep them, and differences can
+        # be reported after materialization.
         join_frame = frames[join_type]
-        count_cols = [
-            c for c in join_frame.collect_schema().names() if _is_prefixed_gbcms_col(c, join_type)
-        ]
+        join_names = join_frame.collect_schema().names()
+        count_cols = [c for c in join_names if _is_prefixed_gbcms_col(c, join_type)]
+        aside = {"Chromosome": f"_chrom_{join_type}"}
+        if "End_Position" in join_names and "End_Position" not in join_key:
+            aside["End_Position"] = f"_end_{join_type}"
         merged = merged.join(
-            join_frame.select([*join_key, "Chromosome", _row_col(join_type), *count_cols]).rename(
-                {"Chromosome": f"_chrom_{join_type}"}
-            ),
+            join_frame.select([*join_key, *aside, _row_col(join_type), *count_cols]).rename(aside),
             on=join_key,
             how="full",
             coalesce=True,
@@ -288,7 +298,9 @@ def merge_mafs(config: MergeConfig) -> None:
         logger.info("  Added simplex_duplex combined columns")
 
     # ── 5. Materialize and write ──────────────────────────────────────────────
-    result = _in_input_order(_resolve_contig_names(merged.collect(), types), types)
+    result = _in_input_order(
+        _resolve_end_positions(_resolve_contig_names(merged.collect(), types), types), types
+    )
     logger.info(
         "Merged result: %d rows × %d columns",
         result.height,
@@ -331,13 +343,33 @@ def merge_mafs(config: MergeConfig) -> None:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _join_key(input_columns: dict[str, list[str]]) -> list[str]:
+def _join_key(frames: dict[str, pl.LazyFrame], input_columns: dict[str, list[str]]) -> list[str]:
     """The VCF record key when every input carries it (all VCF-derived), else
-    the MAF variant key."""
+    the MAF variant key. End_Position joins too when every input has it and one
+    lists a variant (contig, Start, alleles) more than once with different
+    End_Position, so each such row pairs with its own counterpart rather than
+    with every one of them."""
+    key = JOIN_KEY
+    if all("End_Position" in cols for cols in input_columns.values()):
+        split = [t for t, lf in frames.items() if _end_splits_a_variant(lf)]
+        if split:
+            logger.info(
+                "  Joining on End_Position too: %s list(s) a variant more than once with "
+                "different End_Position",
+                ", ".join(f"'{t}'" for t in split),
+            )
+            key = [*JOIN_KEY, "End_Position"]
     if all(set(VCF_RECORD_KEY[len(JOIN_KEY) :]) <= set(cols) for cols in input_columns.values()):
         logger.info("  Joining on the VCF record (vcf_pos, vcf_ref, vcf_alt): every input has it")
-        return VCF_RECORD_KEY
-    return JOIN_KEY
+        return [*key, *VCF_RECORD_KEY[len(JOIN_KEY) :]]
+    return key
+
+
+def _end_splits_a_variant(lf: pl.LazyFrame) -> bool:
+    """Whether an input lists one variant (the join key) with more than one
+    End_Position."""
+    split = lf.group_by(JOIN_KEY).agg(pl.col("End_Position").n_unique().alias("ends"))
+    return bool(split.filter(pl.col("ends") > 1).select(pl.len()).collect().item())
 
 
 def _warn_duplicate_keys(lf: pl.LazyFrame, join_key: list[str], bam_type: str) -> None:
@@ -392,6 +424,40 @@ def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFram
     return result.drop([_CONTIG_KEY, *later])
 
 
+def _resolve_end_positions(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
+    """Fill End_Position from the inputs that have each row and drop the helpers.
+
+    End_Position is not a join key, so a row only a later input has would
+    otherwise lose it. A row the first input has keeps its End_Position as
+    written. One INFO line per later input that writes it differently for
+    rows it shares with the output. No-op on the column set when the first
+    input has no End_Position (the output's columns are the first input's).
+    """
+    later = [f"_end_{t}" for t in types[1:] if f"_end_{t}" in result.columns]
+    if not later:
+        return result
+    if "End_Position" in result.columns:
+        result = result.with_columns(pl.coalesce("End_Position", *later).alias("End_Position"))
+        for col in later:
+            differ = result.filter(
+                pl.col(col).is_not_null() & (pl.col(col) != pl.col("End_Position"))
+            )
+            if differ.height:
+                row = differ.row(0, named=True)
+                logger.info(
+                    "  '%s' writes End_Position differently from the merged output ('%s' vs "
+                    "'%s' at %s:%s, %d row(s)): joined on Start and alleles; the output keeps "
+                    "the earliest input's",
+                    col.removeprefix("_end_"),
+                    row[col],
+                    row["End_Position"],
+                    row["Chromosome"],
+                    row["Start_Position"],
+                    differ.height,
+                )
+    return result.drop(later)
+
+
 def _in_input_order(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
     """Merged rows in the inputs' order, then the row numbers dropped.
 
@@ -432,7 +498,8 @@ def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
             other,
         )
     mixed = 0
-    for row in result.select([*VARIANT_KEY, *present]).iter_rows(named=True):
+    key = [k for k in VARIANT_KEY if k in result.columns]
+    for row in result.select([*key, *present]).iter_rows(named=True):
         d_comp = rescued_component(row.get(d) or "")
         s_comp = rescued_component(row.get(s) or "")
         if d_comp == s_comp:
@@ -466,11 +533,12 @@ def _validate_variant_key(
     Raises:
         ValueError: If any key column is missing, with actionable message.
     """
-    missing = [k for k in VARIANT_KEY if k not in columns]
+    missing = [k for k in VARIANT_KEY if k not in columns and k != "End_Position"]
     if missing:
         raise ValueError(
             f"Input MAF for '{bam_type}' ({path}) is missing variant key "
-            f"columns: {missing}. Expected all of: {VARIANT_KEY}"
+            f"columns: {missing}. Expected all of: "
+            f"{[k for k in VARIANT_KEY if k != 'End_Position']} (End_Position is optional)"
         )
 
 

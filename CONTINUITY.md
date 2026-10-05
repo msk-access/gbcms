@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-04_
+_Last updated: 2026-10-05_
 
 ## Now
 **6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
@@ -78,25 +78,17 @@ comments):**
 C29 #207):** RJ-10 to RJ-13; C17 clips only adapter-like bases past the TLEN
 fragment end (operator); follow-up C31 #212 (6.7.0). Plan "Group 1 as built".
 
-**In progress — group 3, RNA (R4 #185, R5 #198, O8 #186, C15 #173 RNA part,
-C32 #213):** branch `feature/g3-rna`, not yet pushed. Decided by the operator
-2026-10-04: intronic strand from the spanning transcripts, both strands none
-(plus the exon-index off-by-one); RJ-17 (a splice is not coverage); O8
-(diagnostics read the counted reads); RJ-18 (an RNA clip reaching an exon edge
-or junction end is not evidence; refined after review); RJ-19 (spliced reads
-judged on windows over the reference spliced along their junctions; a junction
-entering the event spliced at its edge). Commits: red tests `9c812cae`, fix
-`3608f2d1`, docs `670498e1`, review fixes `33617e0f`, probe `93ec260f`,
-follow-ups `4fc21f49`, second-review red tests `a0c2abd3` and fix `2a88ebf9` (a
-read whose junction enters the event counts ALT only over REF at its own
-junction; lazy clip edges; a bin-geometry check), docs `5b051223`, `42024c22`. Two splice-contract tests updated with the operator's
-approval (M-N-D-M carriers depth only). Acceptance: splice probes spurious ALT
-19 → 2, REF −0.39%; T9 106 rows (REF −24,813); truth 4 rows' per-transcript
-columns only (final build `2a88ebf9`, all on local slices checked
-byte-identical to the full BAMs); RC DNA and WES byte-identical on `3608f2d1`
-(RNA-only changes since). Follow-up filed: C34 #216 (GTF transcripts keyed by
-ID alone; 0 such IDs in Ensembl 111). Pending: the PR and issue comments (ask
-first). Harness `~/test/gbcms/harness/g3/` (local; mount runs serial).
+**Merged — group 3, RNA, #217 (R4 #185, R5 #198, O8 #186, C32 #213 closed;
+C15 #173's RNA part, its DNA parts open for 6.7.0):** intronic strand from the
+spanning transcripts (both strands none; exon-index off-by-one fixed); RJ-17 (a
+splice is not coverage); O8 (diagnostics read the counted reads); RJ-18 (an RNA
+clip reaching an exon edge or junction end is not evidence); RJ-19 (spliced
+reads judged on windows over the reference spliced along their junctions; a
+junction entering the event counts ALT only over REF at its own junction). Two
+adversarial reviews, every finding fixed red-first. FORTE: splice probes
+spurious ALT 19 → 2, REF −0.39%; T9 106 rows (REF −24,813); truth 4 rows'
+per-transcript columns only; RC DNA and WES byte-identical. Follow-up C34 #216.
+Harness cleaned (`REMOVED_BUILDS.md`).
 
 **Merged — group 2, read judgment (C28 #202, C27 #201, C16 #174), #215:** branch
 `feature/g2-read-judgment`. RJ-14 (the ALT across several ops),
@@ -135,16 +127,43 @@ RNA, public reference data), not one assay. See the plan's "Validation standard"
 Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
+**In progress — group 4, input and representation (C9 #122, I1 #123, I2 #124,
+I3 #125, I4 #126, I6 #218, #147, H2 #149, C30 #208):** branch `feature/g4-input`.
+Decided (2026-09-25 I1/I3/I4; 2026-10-05 the rest): non-sequence MAF alleles FAIL
+`NON_SEQUENCE_ALLELE` (VCF output `<NON_SEQUENCE>`); VCF output of MAF input
+carries MAF_START/MAF_REF/MAF_ALT (the row's alleles as written); a MAF deletion
+at Start 1 counts in the base-after form; End_Position optional (merge joins on
+contig, Start and alleles, fills End_Position from the inputs that have each
+row, and joins on it too only when an input splits a variant by it); VCF-input
+MAF output fills Tumor_Seq_Allele1 with REF; one row, one allele;
+decomposed/sibling lists padded short, rejected long; one allele-kind rule;
+I6: a REF_MISMATCH row stays FAIL and gets `REF_AT_OFFSET(k)` in
+gbcms_diagnostic (REF of 3+ bases exact within ±3 bp). Commits: red `766f8e7c`,
+fix `03563479`, merge key `d928c9af`, review + I6 red `0925f636` and fix.
+Measured on the sign-out dump (1.13M rows): 7 non-sequence alleles, 0 Start-1
+deletions, 0 missing End_Position, 0 differing Allele1, 0 prepared rows hit by
+C30, 154 REF_MISMATCH (87 sit 1–3 bp off; 109 from 134 legacy ANNOVAR rows).
+Adversarial review done (findings fixed; I7 #219 and O9 #220 filed for 6.7.0).
+Group 3's "vaf unchanged" corrected on #198 and the #217 description (2026-10-05).
+Acceptance (base develop 5fb7e79a vs 90942daa): RC DNA, WES, truth identical; VCF-input
+probe sets (T9, splice, masked) change only Tumor_Seq_Allele1 (REF); VCF output adds only
+the MAF origin (each record names one input row); sign-out normalize: 87 REF_AT_OFFSET.
+Pending: PR. Harness `~/test/gbcms/harness/g4/`.
+
 ## Next (in order; the plan's "Suggested order" is canonical)
-1. T1 #170 (retire the legacy path; binning invariance) with T2 #171 (census
-   oracle): design note first. Then a code-quality sweep of the cycle's code
-   (duplication, unused code, silent failures, comments, logging, monitoring) as
-   its own PR, H3 #204 (operator request, 2026-10-01).
-2. C25 #199 (moved into 6.6.0), C26 #200 (measure first, decide), C28 #202 (measure first) and C29 #207 (measure first); C17 #176
-   (measure first); R4 #185 with O8 #186; C16 #174 (trace first).
-3. Small batches (any order): C19+O7; I1+I2+C9; I3+I4; hygiene (H1, H2, #147,
-   mkdocs pin, P3); O1+O2; S1+S2; M2+M4.
-4. Release: D1, D2; D4 before the cut; D6 late; D5 last.
+Groups 1–3 are merged (#211, #215, #217). `PRODUCTION_READINESS.md` holds the
+production gate.
+1. Group 4, input and representation: C9 #122, I1 #123, I2 #124, I3 #125, I4 #126,
+   #147, H2 #149, C30 #208 (the production blockers among them: #123, C30, I3, I4).
+2. Group 5, merge, outputs, observability: M4 #194, M5 #221, M2 #129, H1 #148, O1 #130,
+   O2 #131, D6 #156.
+3. Group 6, statistics: S1 #153 (decided), S2 #154 (mFSD; not production-gating).
+4. Group 7, release: D1 #136, D2 #137, D4 #139 before the cut, P3 #152, then the
+   D5 panel #155 on HPC as the gate run.
+Working rules for every group: measure first, red-first tests, an adversarial
+review, real-data acceptance per read, mount runs one at a time (slice locally
+when several builds read the same BAMs), and community practice as a floor, not
+a ceiling.
 
 
 ### Previous: 6.5.0 release

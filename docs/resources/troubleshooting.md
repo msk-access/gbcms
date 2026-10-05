@@ -99,7 +99,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     1. **`gbcms_status`** column — if `FAIL`, the variant was excluded from counting;
        `gbcms_status_reason` says why (`REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`,
-       `ALT_EQUALS_REF`, `ALT_CONTAINS_N`). See [Normalization Issues](#normalization-issues).
+       `NON_SEQUENCE_ALLELE`, `ALT_EQUALS_REF`, `ALT_CONTAINS_N`). See [Normalization Issues](#normalization-issues).
 
     2. **Complex variants count exact carriers only** — a delins, or a deletion whose anchor
        also changes (e.g., `GC→T`, `AG→T`), counts a read as ALT only when its bases carry the
@@ -220,11 +220,15 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
     - Wrong reference genome build (GRCh37 data with GRCh38 reference or vice versa)
     - Chromosome naming mismatch (`chr1` vs `1`)
     - Trailing-base error in MAF annotation (fixed by tolerant validation if ≥90% match)
+    - The REF written a few bases off (e.g. VCF alleles that keep the anchor base,
+      with Start advanced as if it were trimmed): `gbcms_diagnostic` then says
+      `REF_AT_OFFSET(k)`, where the given REF matches exactly. The row is not moved
+      or counted; correct the input's coordinates.
 
     Diagnose with:
     ```bash
     gbcms normalize --variants variants.maf --fasta ref.fa --output /tmp/norm/normalized.tsv
-    grep "REF_MISMATCH" /tmp/norm/normalized.tsv | head -5   # matches the gbcms_status_reason column
+    grep "REF_MISMATCH" /tmp/norm/normalized.tsv | head -5   # gbcms_status_reason; REF_AT_OFFSET in gbcms_diagnostic
     ```
 
 ??? question "`WARN_REF_CORRECTED` reason (verdict `PASS`) — is this a problem?"

@@ -159,7 +159,10 @@ class MafReader(VariantReader):
                 try:
                     chrom = row["Chromosome"]
                     start_pos = int(row["Start_Position"])
-                    end_pos = int(row["End_Position"])
+                    # End_Position is not used: read when it is an integer, not
+                    # required (maf2vcf converts rows without one).
+                    end_raw = (row.get("End_Position") or "").strip()
+                    end_pos = int(end_raw) if end_raw.lstrip("-").isdigit() else start_pos
                     allele2 = row["Tumor_Seq_Allele2"]
                     ref, alt = CoordinateKernel.maf_alleles(
                         row["Reference_Allele"], row.get("Tumor_Seq_Allele1") or "", allele2
