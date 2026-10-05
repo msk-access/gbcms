@@ -3314,7 +3314,7 @@ short-fragment enrichment associated with tumor-derived <abbr title="Cell-free D
 <tr>
 <td style="text-align: left;"><code>--mfsd-report</code></td>
 <td style="text-align: left;"><code>false</code></td>
-<td style="text-align: left;">Generate an interactive HTML report (<code>&lt;sample&gt;.mfsd_report.html</code>) with per-variant fragment size distributions, dual-axis histograms, and Fragment Origin Signal classification. <strong>Implies <code>--mfsd</code> and <code>--mfsd-parquet</code></strong> (both are auto-enabled). See <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>.</td>
+<td style="text-align: left;">Generate an interactive HTML report (<code>&lt;sample&gt;.mfsd_report.html</code>) with per-variant fragment size distributions, dual-axis histograms, and graded fragment-size evidence (leans somatic, no size evidence, insufficient). <strong>Implies <code>--mfsd</code> and <code>--mfsd-parquet</code></strong> (both are auto-enabled). See <a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--mfsd-report-min-alt</code></td>
@@ -7566,12 +7566,12 @@ writes these records without counting.</p>
 <tr>
 <td style="text-align: left;"><code>MFSD_ALT_LLR</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model</td>
+<td style="text-align: left;">Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model, mean per fragment</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MFSD_REF_LLR</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Log-likelihood ratio for REF fragments</td>
+<td style="text-align: left;">Log-likelihood ratio for REF fragments, mean per fragment</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MFSD_ALT_COUNT</code></td>
@@ -8618,32 +8618,32 @@ without the flag (not NA-filled):</p>
 <tr>
 <td style="text-align: left;"><code>mfsd_alt_llr</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Log-likelihood ratio (ALT fragments; positive = tumor-like)</td>
+<td style="text-align: left;">Log-likelihood ratio, mean per fragment (ALT fragments; positive = tumor-like)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_ref_llr</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Log-likelihood ratio (REF fragments)</td>
+<td style="text-align: left;">Log-likelihood ratio, mean per fragment (REF fragments)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_ref_mean</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Mean fragment size for REF class (bp)</td>
+<td style="text-align: left;">Mean fragment size for REF class (bp); <code>NA</code> when the class is empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_alt_mean</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Mean fragment size for ALT class (bp)</td>
+<td style="text-align: left;">Mean fragment size for ALT class (bp); <code>NA</code> when the class is empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_nonref_mean</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Mean fragment size for non-REF class (bp)</td>
+<td style="text-align: left;">Mean fragment size for non-REF class (bp); <code>NA</code> when the class is empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_n_mean</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Mean fragment size for N class (bp)</td>
+<td style="text-align: left;">Mean fragment size for N class (bp); <code>NA</code> when the class is empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_delta_alt_ref</code></td>
@@ -9435,21 +9435,27 @@ only the ASJD-2 markers report.</p>
 <tr>
 <td style="text-align: left;"><code>mfsd_alt_confidence</code></td>
 <td style="text-align: left;"><code>--mfsd</code></td>
-<td style="text-align: left;"><code>HIGH</code> with ≥ 5 ALT fragments in the size window, <code>LOW</code> with 1–4, <code>NONE</code> with none</td>
-<td style="text-align: left;">Weigh the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> statistics by it</td>
+<td style="text-align: left;">How much ALT data there is: <code>TESTABLE</code> with ≥ 5 ALT fragments in the size window (the KS minimum), <code>SPARSE</code> with 1–4, <code>NONE</code> with none</td>
+<td style="text-align: left;">Not a reliability grade: at 5 fragments a real size shift is detected only about 8% of the time</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_ch_flag</code></td>
 <td style="text-align: left;"><code>--mfsd</code></td>
 <td style="text-align: left;"><code>True</code> when the variant falls in a clonal-hematopoiesis (CH) gene (from <code>Hugo_Symbol</code>)</td>
-<td style="text-align: left;">Read with the CH-LIKE class</td>
+<td style="text-align: left;">A prior, not fragment evidence; matched-normal data decide CH</td>
 </tr>
 </tbody>
 </table>
 <h2 id="reference-qc-flags-mfsd-report-classes"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classes<a class="headerlink" href="#reference-qc-flags-mfsd-report-classes" title="Permanent link">¶</a></h2>
-<p>The <code>--mfsd-report</code> HTML classifies each variant's fragment sizes (see
-<a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>). The KS threshold is on the BH-FDR q-value across
-the sample's variants (<code>mfsd_qval_alt_ref</code>), not the raw p-value.</p>
+<p>The <code>--mfsd-report</code> HTML grades each variant's fragment-size evidence (see
+<a href="#reference-mfsd-report"><abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> Report</a>): the ALT fragments against the REF fragments at the
+same locus in the same plasma sample. It is graded evidence, never an origin call;
+the KS threshold is on the BH-FDR q-value across the sample's variants
+(<code>mfsd_qval_alt_ref</code>), not the raw p-value. Nothing leans toward CH: at the fragment
+counts a targeted <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> panel produces, a tumor variant usually looks like REF too
+(on labeled ACCESS plasma, about 30% of tumor variants below 50 ALT fragments did),
+so similar sizes are no evidence for clonal hematopoiesis. Matched-normal (buffy
+coat) data decide CH; a CH-associated gene is shown as a note and changes nothing.</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -9476,15 +9482,12 @@ the sample's variants (<code>mfsd_qval_alt_ref</code>), not the raw p-value.</p>
     AltCheck --&gt;|"No"| Insufficient(["INSUFFICIENT"]):::grey
     AltCheck --&gt;|"Yes"| KSValid{"KS test ran?<br>(mfsd_ks_valid)"}
     KSValid --&gt;|"No"| Insufficient
-    KSValid --&gt;|"Yes"| TumorCheck{"Enrichment &gt; 1.3 (or ALT short<br>fragments where REF has none),<br>KS q &lt; 0.05, not a CH gene?"}
-    TumorCheck --&gt;|"Yes"| Tumor(["TUMOR-LIKE"]):::green
-    TumorCheck --&gt;|"No"| CHCheck{"CH gene, enrichment &lt; 1.2,<br>KS q &gt; 0.05?"}
-    CHCheck --&gt;|"Yes"| CH(["CH-LIKE"]):::amber
-    CHCheck --&gt;|"No"| Ambiguous(["AMBIGUOUS"]):::blue
+    KSValid --&gt;|"Yes"| Shorter{"KS q &lt; 0.05, ALT shorter<br>where the size distributions<br>differ most?"}
+    Shorter --&gt;|"Yes"| Somatic(["LEANS-SOMATIC"]):::green
+    Shorter --&gt;|"No"| None(["NO-SIZE-EVIDENCE"]):::blue
 
     classDef green fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef amber fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
-    classDef blue fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef blue fill:#7f8c8d,color:#fff,stroke:#616a6b,stroke-width:2px;
     classDef grey fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
@@ -9496,32 +9499,29 @@ Use mouse to pan and zoom
 <tr>
 <th style="text-align: left;">Class</th>
 <th style="text-align: left;">Rule</th>
-<th style="text-align: left;">Interpretation</th>
+<th style="text-align: left;">What it means</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>TUMOR-LIKE</code></td>
-<td style="text-align: left;">Sub-nucleosomal enrichment &gt; 1.3 (or ALT has short fragments while REF has none), KS q &lt; 0.05, and the gene is not in the CH set</td>
-<td style="text-align: left;">ALT fragments significantly shorter than REF: a <abbr title="Circulating tumor DNA - Tumor-derived cfDNA fragments">ctDNA</abbr> signal</td>
+<td style="text-align: left;"><code>LEANS-SOMATIC</code></td>
+<td style="text-align: left;">KS q &lt; 0.05 and the ALT fragments shorter where the two size distributions differ most (the ALT ECDF above the REF ECDF at the KS statistic)</td>
+<td style="text-align: left;">ALT fragments significantly shorter than REF: increased confidence the variant is tumor-derived (on labeled ACCESS plasma, duplex fragments: 22 of 97 tumor variants, 0 of 39 white-cell variants)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>CH-LIKE</code></td>
-<td style="text-align: left;">A CH gene, enrichment &lt; 1.2, and KS q &gt; 0.05</td>
-<td style="text-align: left;">ALT sizes mirror REF: consistent with clonal hematopoiesis</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>AMBIGUOUS</code></td>
-<td style="text-align: left;">Neither</td>
-<td style="text-align: left;">Mixed signals; may need clinical context or paired WBC sequencing</td>
+<td style="text-align: left;"><code>NO-SIZE-EVIDENCE</code></td>
+<td style="text-align: left;">The KS test ran and the ALT fragments are not significantly shorter (including a significantly longer ALT)</td>
+<td style="text-align: left;">The sizes do not separate ALT from REF; not evidence for clonal hematopoiesis</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>INSUFFICIENT</code></td>
-<td style="text-align: left;">ALT fragments below <code>--mfsd-report-min-alt</code>, or the KS test did not run (<code>mfsd_ks_valid</code> False: a class has fewer than 5 fragments)</td>
-<td style="text-align: left;">Not enough fragments to classify</td>
+<td style="text-align: left;">The KS test did not run (<code>mfsd_ks_valid</code> False: a class has fewer than 5 fragments)</td>
+<td style="text-align: left;">Too few fragments for the size test</td>
 </tr>
 </tbody>
 </table>
+<p>Variants with fewer ALT fragments than <code>--mfsd-report-min-alt</code> are left out of the
+report.</p>
 <p>In <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> summary is in INFO: <code>MFSD_REF_COUNT</code>, <code>MFSD_ALT_COUNT</code>,
 <code>MFSD_REF_LLR</code>, <code>MFSD_ALT_LLR</code>, <code>MFSD_DELTA_ALT_REF</code>, <code>MFSD_KS_ALT_REF</code>,
 <code>MFSD_PVAL_ALT_REF</code>, <code>MFSD_QVAL_ALT_REF</code>, <code>MFSD_SUB_NUC_REF_FRAC</code>,
@@ -14138,11 +14138,11 @@ It counts in fragment depth but in none of the four classes.</p>
 <tbody>
 <tr>
 <td style="text-align: left;"><code>mfsd_alt_llr</code></td>
-<td style="text-align: left;"><abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> for ALT fragments: Σ log(P_tumor/P_healthy). Positive = tumor-like (short fragments).</td>
+<td style="text-align: left;">Fragment-size <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> for ALT fragments, the mean per fragment of log(P_tumor/P_healthy) (n is <code>mfsd_alt_count</code>). Positive = tumor-like (short fragments). <code>NA</code> when the class is empty.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_ref_llr</code></td>
-<td style="text-align: left;"><abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> for REF fragments</td>
+<td style="text-align: left;">Fragment-size <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> for REF fragments, mean per fragment. <code>NA</code> when the class is empty.</td>
 </tr>
 </tbody>
 </table>
@@ -14161,28 +14161,35 @@ It counts in fragment depth but in none of the four classes.</p>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_alt_mean</code></td>
-<td style="text-align: left;">Mean insert size (bp) for ALT fragments</td>
+<td style="text-align: left;">Mean insert size (bp) for ALT fragments. <code>NA</code> when class is empty.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_nonref_mean</code></td>
-<td style="text-align: left;">Mean insert size (bp) for NonREF fragments</td>
+<td style="text-align: left;">Mean insert size (bp) for NonREF fragments. <code>NA</code> when class is empty.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_n_mean</code></td>
-<td style="text-align: left;">Mean insert size (bp) for N fragments</td>
+<td style="text-align: left;">Mean insert size (bp) for N fragments. <code>NA</code> when class is empty.</td>
 </tr>
 </tbody>
 </table>
 <h4 id="reference-counting-metrics-pairwise-ks-statistics-6-pairs-3-values-18-columns-1-fdr-q-value">Pairwise KS Statistics (6 pairs × 3 values = 18 columns, + 1 FDR q-value)<a class="headerlink" href="#reference-counting-metrics-pairwise-ks-statistics-6-pairs-3-values-18-columns-1-fdr-q-value" title="Permanent link">¶</a></h4>
 <p>Each pair yields: <code>delta</code> (mean difference in bp), <code>ks</code> (KS D-statistic), <code>pval</code> (KS p-value).
-Values are <code>NA</code> when either class has fewer than 5 fragments (<code>mfsd_ks_valid = False</code>).</p>
+When either class has fewer than 5 fragments the test does not run
+(<code>mfsd_ks_valid = False</code>): <code>ks</code> is <code>NA</code> and <code>pval</code> is <code>1.0000</code>, a placeholder;
+<code>delta</code> is still the mean difference when both classes have fragments. Read
+<code>mfsd_ks_valid</code> before the KS columns.</p>
 <blockquote>
-<p>The <code>pval</code> is the <strong>exact</strong> two-sample KS p-value for small samples (the
-low-input <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> regime), falling back to the asymptotic Kolmogorov series only
-for large fragment counts. The exact value matters because at small N the KS
-statistic is highly discrete — the asymptotic approximation mis-estimates the
-p-value, and below a handful of fragments the test has essentially no power
-(e.g. n=m=3 cannot reach p &lt; 0.05 even when fully separated).</p>
+<p>The <code>pval</code> is the <strong>exact</strong> two-sample KS p-value whenever the two classes span at
+most 10⁷ lattice cells (n·m) — every class pair a targeted panel produces — and
+the asymptotic Kolmogorov series with Stephens' finite-sample correction above.
+Exact matters where <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> decides: a few ALT fragments against thousands of REF
+fragments, where the uncorrected series overstates p (about 1.7x at 5 ALT
+fragments near p = 0.05, and up to 45x for a strong shift). Fragment sizes are
+integers, so ties are common; the exact p-value treats sizes as continuous, which
+is conservative with ties. Below a handful of fragments the test has little power
+(about 8% at 5 ALT fragments on real <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>), so a non-significant p is not
+evidence of "no shift".</p>
 </blockquote>
 <table>
 <thead>
@@ -14213,9 +14220,10 @@ p-value, and below a handful of fragments the test has essentially no power
 </table>
 <p>An additional column, <code>mfsd_qval_alt_ref</code>, carries the Benjamini-Hochberg FDR
 q-value for the ALT-vs-REF KS p-value, corrected across all variants with a valid
-ALT-vs-REF test in the sample. The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report classifies TUMOR-LIKE / CH-LIKE on
-this q-value, not the raw p-value. It is <code>NA</code> when the KS test was invalid, and
-equals the p-value until the post-counting BH pass runs.</p>
+ALT-vs-REF test in the sample. The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report's LEANS-SOMATIC class uses this
+q-value, not the raw p-value. When the KS test did not run it stays the p-value
+placeholder (<code>1.0000</code>) and is left out of the correction; a variant on a contig
+absent from the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> is likewise left out.</p>
 <h4 id="reference-counting-metrics-derived-metrics">Derived Metrics<a class="headerlink" href="#reference-counting-metrics-derived-metrics" title="Permanent link">¶</a></h4>
 <table>
 <thead>
@@ -14331,12 +14339,12 @@ equals the p-value until the post-counting BH pass runs.</p>
 <tr>
 <td style="text-align: left;"><code>MFSD_ALT_LLR</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;"><abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> for ALT fragments</td>
+<td style="text-align: left;">Fragment-size <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> for ALT fragments, mean per fragment</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MFSD_REF_LLR</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;"><abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> for REF fragments</td>
+<td style="text-align: left;">Fragment-size <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> for REF fragments, mean per fragment</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MFSD_ALT_COUNT</code></td>
@@ -14683,15 +14691,15 @@ This produces three outputs: a <abbr title="Mutation Annotation Format - Standar
 <h3 id="reference-mfsd-report-1-header-sample-info">1. Header &amp; Sample Info<a class="headerlink" href="#reference-mfsd-report-1-header-sample-info" title="Permanent link">¶</a></h3>
 <p>The report title displays the sample name (from <code>--bam sample_id:path</code> or derived from the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> filename). A theme toggle (☀/🌙) switches between light and dark modes.</p>
 <h3 id="reference-mfsd-report-2-summary-dashboard">2. Summary Dashboard<a class="headerlink" href="#reference-mfsd-report-2-summary-dashboard" title="Permanent link">¶</a></h3>
-<p>Four metric cards provide an at-a-glance overview of fragment origin signal classification:</p>
-<p>Each card counts the variants in one class: TUMOR-LIKE, CH-LIKE, AMBIGUOUS and INSUFFICIENT (<a href="#reference-qc-flags-mfsd-report-classes">defined in QC Flags</a>, shown below).</p>
+<p>Three metric cards give an at-a-glance overview of the fragment-size evidence:</p>
+<p>Each card counts the variants in one class: LEANS-SOMATIC, NO-SIZE-EVIDENCE and INSUFFICIENT (<a href="#reference-qc-flags-mfsd-report-classes">defined in QC Flags</a>, shown below).</p>
 <h3 id="reference-mfsd-report-3-caveat-banner">3. Caveat Banner<a class="headerlink" href="#reference-mfsd-report-3-caveat-banner" title="Permanent link">¶</a></h3>
-<p>A clinical disclaimer noting that fragment origin signal is an experimental diagnostic tool and should not be used as the sole basis for clinical decisions.</p>
+<p>A clinical disclaimer noting that the fragment-size evidence is graded, not diagnostic, and should not be used as the sole basis for clinical decisions; matched-normal (buffy coat) sequencing decides CH.</p>
 <h3 id="reference-mfsd-report-4-per-variant-analysis-cards">4. Per-Variant Analysis Cards<a class="headerlink" href="#reference-mfsd-report-4-per-variant-analysis-cards" title="Permanent link">¶</a></h3>
 <p>Each qualifying variant gets a dedicated card containing:</p>
 <ul>
 <li><strong>Variant identity</strong>: Gene symbol, genomic coordinates, allele change</li>
-<li><strong>Fragment Origin Signal</strong>: Classification badge (<a href="#reference-qc-flags-mfsd-report-classes">TUMOR-LIKE / CH-LIKE / AMBIGUOUS / INSUFFICIENT</a>) with confidence explanation</li>
+<li><strong>Fragment-size evidence</strong>: Class badge (<a href="#reference-qc-flags-mfsd-report-classes">LEANS-SOMATIC / NO-SIZE-EVIDENCE / INSUFFICIENT</a>) with its explanation, and a note when the gene is CH-associated</li>
 <li><strong>Key statistics table</strong>: Subnucleosomal enrichment, KS p-value, mean fragment sizes (REF vs ALT), delta, log-likelihood ratio</li>
 <li><strong>Dual-axis histogram</strong>: Interactive Plotly chart showing:<ul>
 <li><strong>Bar chart</strong> (left y-axis): Fragment count per size bin (REF in blue, ALT in red)</li>
@@ -14700,8 +14708,8 @@ This produces three outputs: a <abbr title="Mutation Annotation Format - Standar
 </li>
 </ul>
 <hr>
-<h2 id="reference-mfsd-report-fragment-origin-signal-classification">Fragment Origin Signal Classification<a class="headerlink" href="#reference-mfsd-report-fragment-origin-signal-classification" title="Permanent link">¶</a></h2>
-<p>The report classifies each variant into one of four classes from its sub-nucleosomal enrichment, the KS test's FDR q-value across the sample's variants (<code>mfsd_qval_alt_ref</code>, not the raw p-value), and whether the gene is a clonal-hematopoiesis gene:</p>
+<h2 id="reference-mfsd-report-fragment-size-evidence">Fragment-size Evidence<a class="headerlink" href="#reference-mfsd-report-fragment-size-evidence" title="Permanent link">¶</a></h2>
+<p>The report grades each variant's fragment-size evidence from the ALT and REF fragments at the same locus: the KS test's FDR q-value across the sample's variants (<code>mfsd_qval_alt_ref</code>, not the raw p-value) and the sub-nucleosomal shares. It is graded evidence, never an origin call; a CH-associated gene is shown as a note:</p>
 <!-- Defined once, in QC Flags; this includes the flowchart and table. -->
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
@@ -14729,15 +14737,12 @@ This produces three outputs: a <abbr title="Mutation Annotation Format - Standar
     AltCheck --&gt;|"No"| Insufficient(["INSUFFICIENT"]):::grey
     AltCheck --&gt;|"Yes"| KSValid{"KS test ran?<br>(mfsd_ks_valid)"}
     KSValid --&gt;|"No"| Insufficient
-    KSValid --&gt;|"Yes"| TumorCheck{"Enrichment &gt; 1.3 (or ALT short<br>fragments where REF has none),<br>KS q &lt; 0.05, not a CH gene?"}
-    TumorCheck --&gt;|"Yes"| Tumor(["TUMOR-LIKE"]):::green
-    TumorCheck --&gt;|"No"| CHCheck{"CH gene, enrichment &lt; 1.2,<br>KS q &gt; 0.05?"}
-    CHCheck --&gt;|"Yes"| CH(["CH-LIKE"]):::amber
-    CHCheck --&gt;|"No"| Ambiguous(["AMBIGUOUS"]):::blue
+    KSValid --&gt;|"Yes"| Shorter{"KS q &lt; 0.05, ALT shorter<br>where the size distributions<br>differ most?"}
+    Shorter --&gt;|"Yes"| Somatic(["LEANS-SOMATIC"]):::green
+    Shorter --&gt;|"No"| None(["NO-SIZE-EVIDENCE"]):::blue
 
     classDef green fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef amber fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
-    classDef blue fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef blue fill:#7f8c8d,color:#fff,stroke:#616a6b,stroke-width:2px;
     classDef grey fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
 </code></pre> 
     <div class="panzoom-info-box panzoom-info-box-bottom panzoom-hidden">
@@ -14749,32 +14754,29 @@ Use mouse to pan and zoom
 <tr>
 <th style="text-align: left;">Class</th>
 <th style="text-align: left;">Rule</th>
-<th style="text-align: left;">Interpretation</th>
+<th style="text-align: left;">What it means</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>TUMOR-LIKE</code></td>
-<td style="text-align: left;">Sub-nucleosomal enrichment &gt; 1.3 (or ALT has short fragments while REF has none), KS q &lt; 0.05, and the gene is not in the CH set</td>
-<td style="text-align: left;">ALT fragments significantly shorter than REF: a <abbr title="Circulating tumor DNA - Tumor-derived cfDNA fragments">ctDNA</abbr> signal</td>
+<td style="text-align: left;"><code>LEANS-SOMATIC</code></td>
+<td style="text-align: left;">KS q &lt; 0.05 and the ALT fragments shorter where the two size distributions differ most (the ALT ECDF above the REF ECDF at the KS statistic)</td>
+<td style="text-align: left;">ALT fragments significantly shorter than REF: increased confidence the variant is tumor-derived (on labeled ACCESS plasma, duplex fragments: 22 of 97 tumor variants, 0 of 39 white-cell variants)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>CH-LIKE</code></td>
-<td style="text-align: left;">A CH gene, enrichment &lt; 1.2, and KS q &gt; 0.05</td>
-<td style="text-align: left;">ALT sizes mirror REF: consistent with clonal hematopoiesis</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>AMBIGUOUS</code></td>
-<td style="text-align: left;">Neither</td>
-<td style="text-align: left;">Mixed signals; may need clinical context or paired WBC sequencing</td>
+<td style="text-align: left;"><code>NO-SIZE-EVIDENCE</code></td>
+<td style="text-align: left;">The KS test ran and the ALT fragments are not significantly shorter (including a significantly longer ALT)</td>
+<td style="text-align: left;">The sizes do not separate ALT from REF; not evidence for clonal hematopoiesis</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>INSUFFICIENT</code></td>
-<td style="text-align: left;">ALT fragments below <code>--mfsd-report-min-alt</code>, or the KS test did not run (<code>mfsd_ks_valid</code> False: a class has fewer than 5 fragments)</td>
-<td style="text-align: left;">Not enough fragments to classify</td>
+<td style="text-align: left;">The KS test did not run (<code>mfsd_ks_valid</code> False: a class has fewer than 5 fragments)</td>
+<td style="text-align: left;">Too few fragments for the size test</td>
 </tr>
 </tbody>
 </table>
+<p>Variants with fewer ALT fragments than <code>--mfsd-report-min-alt</code> are left out of the
+report.</p>
 <h3 id="reference-mfsd-report-sub-nucleosomal-enrichment">Sub-nucleosomal Enrichment<a class="headerlink" href="#reference-mfsd-report-sub-nucleosomal-enrichment" title="Permanent link">¶</a></h3>
 <p>Defined as:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#reference-mfsd-report-__codelineno-1-1"></a>enrichment = fraction_subnucleosomal_ALT / fraction_subnucleosomal_REF
@@ -17887,6 +17889,47 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-mfsd-statistics-153-154">Changed — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> statistics (#153, #154)<a class="headerlink" href="#development-changelog-changed-mfsd-statistics-153-154" title="Permanent link">¶</a></h3>
+<p>Measured first on ACCESS plasma labeled by the patient's buffy coat (operator
+decisions 2026-09-25, refined 2026-10-05): <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> is graded, plasma-only evidence,
+never an origin call; the CH-vs-tumor prediction belongs to a separate model that
+reads <code>&lt;sample&gt;.fsd.parquet</code>. Only <code>--mfsd</code> output changes.
+- <strong>The fragment-size <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> is the mean per fragment (#153).</strong> <code>mfsd_alt_llr</code> and
+  <code>mfsd_ref_llr</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>MFSD_ALT_LLR</code>, <code>MFSD_REF_LLR</code>) were sums, which grew about
+  22x with depth on real <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr>; the mean stays comparable, with n in
+  <code>mfsd_*_count</code>. An empty fragment class writes <code>NA</code> for its mean size and <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> (it
+  wrote 0, where the docs already said <code>NA</code>; the N class is empty on most rows).
+- <strong>The <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report grades the evidence (#154).</strong> Its classes are <code>LEANS-SOMATIC</code>
+  (ALT fragments significantly shorter than REF: KS q &lt; 0.05 with the ALT ECDF
+  above the REF ECDF where they differ most), <code>NO-SIZE-EVIDENCE</code> and
+  <code>INSUFFICIENT</code>, replacing <code>TUMOR-LIKE</code> / <code>CH-LIKE</code> / <code>AMBIGUOUS</code>. <code>CH-LIKE</code> rested
+  on a non-significant KS, which is also the usual result for tumor variants at
+  these fragment counts: on 39 labeled samples it called 3 of 17 tumor variants in
+  CH-associated genes CH-LIKE, and about 30% of tumor variants below 50 ALT
+  fragments looked REF-like. Nothing leans CH now. Gene membership is a note, not
+  a gate (a tumor TP53 variant could never be <code>TUMOR-LIKE</code>), and the enrichment</p>
+<blockquote>
+<p>1.3 gate is gone: on duplex fragments the new rule leans somatic on 22 of 97
+  tumor variants and 0 of 39 white-cell variants (the old rule found 16). The
+  direction is read from the KS gap, not from the sub-nucleosomal share, which
+  missed an ALT 31 bp shorter with no fragment under 150 bp. A significantly
+  longer ALT is not somatic evidence. Variants below <code>--mfsd-report-min-alt</code> are
+  left out of the report, as before.
+- <strong>The KS p-value is exact</strong> up to 10⁷ lattice cells, with Stephens' corrected
+  asymptotic series above. The switch at <code>n·m</code> 10,000 sent most real ALT-vs-REF
+  pairs (348 of 512) to the uncorrected series, which overstated p 1.7–2.3x at 5
+  ALT fragments near p = 0.05 and up to 45x for a strong shift. The exact value
+  compares lattice points with the observed deviation in integers (a float band
+  could count the observed point as not reaching D near the cap), computes p
+  directly as the share of paths leaving the band (a tiny p keeps its digits), and
+  visits only the cells inside the band.
+- <strong>A variant on a contig absent from the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> stays out of the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> q-values.</strong>
+  With <code>--mfsd</code> its fields held 0.0, which read as a KS test with p = 0 and
+  deflated every real variant's BH q-value; it now reads as no test (<code>NA</code>).
+- <strong><code>mfsd_alt_confidence</code> is <code>TESTABLE</code> / <code>SPARSE</code> / <code>NONE</code></strong> (was <code>HIGH</code> / <code>LOW</code> /
+  <code>NONE</code>): it names how much ALT data there is (≥ 5, 1–4, 0 fragments); at 5
+  fragments a real size shift is detected only about 8% of the time.</p>
+</blockquote>
 <h3 id="development-changelog-changed-merge-outputs-and-observability-194-221-223-224-129-148-130-131-156-220-225">Changed — merge, outputs and observability (#194, #221, #223, #224, #129, #148, #130, #131, #156, #220, #225)<a class="headerlink" href="#development-changelog-changed-merge-outputs-and-observability-194-221-223-224-129-148-130-131-156-220-225" title="Permanent link">¶</a></h3>
 <p>Measured first (operator decisions 2026-09-30 for #194, 2026-10-05 for the rest);
 community practice surveyed (bcftools, Picard/htsjdk, GATK, samtools/htslib,

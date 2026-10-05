@@ -1715,12 +1715,12 @@ writes these records without counting.</p>
 <tr>
 <td style="text-align: left;"><code>MFSD_ALT_LLR</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model</td>
+<td style="text-align: left;">Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model, mean per fragment</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MFSD_REF_LLR</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Log-likelihood ratio for REF fragments</td>
+<td style="text-align: left;">Log-likelihood ratio for REF fragments, mean per fragment</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MFSD_ALT_COUNT</code></td>
@@ -2767,32 +2767,32 @@ without the flag (not NA-filled):</p>
 <tr>
 <td style="text-align: left;"><code>mfsd_alt_llr</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Log-likelihood ratio (ALT fragments; positive = tumor-like)</td>
+<td style="text-align: left;">Log-likelihood ratio, mean per fragment (ALT fragments; positive = tumor-like)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_ref_llr</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Log-likelihood ratio (REF fragments)</td>
+<td style="text-align: left;">Log-likelihood ratio, mean per fragment (REF fragments)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_ref_mean</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Mean fragment size for REF class (bp)</td>
+<td style="text-align: left;">Mean fragment size for REF class (bp); <code>NA</code> when the class is empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_alt_mean</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Mean fragment size for ALT class (bp)</td>
+<td style="text-align: left;">Mean fragment size for ALT class (bp); <code>NA</code> when the class is empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_nonref_mean</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Mean fragment size for non-REF class (bp)</td>
+<td style="text-align: left;">Mean fragment size for non-REF class (bp); <code>NA</code> when the class is empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_n_mean</code></td>
 <td style="text-align: left;">Float</td>
-<td style="text-align: left;">Mean fragment size for N class (bp)</td>
+<td style="text-align: left;">Mean fragment size for N class (bp); <code>NA</code> when the class is empty</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_delta_alt_ref</code></td>
@@ -3201,7 +3201,7 @@ or <code>0.0</code> (incorrect p-value due to floating-point underflow).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 17:39:08 UTC"><span class="timeago" datetime="2026-10-05T17:39:08+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 17:39:08 UTC">2026-10-05</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 22:21:42 UTC"><span class="timeago" datetime="2026-10-05T22:21:42+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 22:21:42 UTC">2026-10-05</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
