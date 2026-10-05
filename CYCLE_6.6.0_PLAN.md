@@ -1641,11 +1641,42 @@ Measured:
   fragment-size likelihood-ratio test for CH vs cancer — for the operator's
   tech-transfer office.
 
-Pending: the held-out validation pairs (calls in the CH-associated genes at 2–5
+Running: the held-out validation pairs (calls in the CH-associated genes at 2–5
 duplex ALT fragments, buffy evidence strong vs none within the same genes: TP53,
-ATM, TET2, DNMT3A; 203 patients, the tumor curve frozen from the pilot); then the
-decisions (the evidence measure, where it lives — `mfsd_alt_llr` vs report only —
-KS exact at any depth, S1's empty-class NA, the `mfsd_alt_confidence` tiers).
+ATM, TET2, DNMT3A; 203 patients, the tumor curve frozen from the pilot). They now
+feed the separate CH model (below), not the gbcms decisions.
+
+**Decided (2026-10-05, operator): keep mFSD in gbcms lean; the CH-vs-tumor
+prediction is a separate model.** gbcms group 6 builds:
+1. S1 as decided: `mfsd_alt_llr` / `mfsd_ref_llr` are the mean per fragment (n is
+   `mfsd_*_count`); an empty class writes NA for its mean size and LLR (the docs
+   already say so).
+2. S2: the report no longer calls CH-LIKE from a non-significant test, and gene
+   membership no longer gates the somatic direction (a tumor TP53 variant can lean
+   somatic). Classes: **leans somatic** (significant ALT shortening) / **no size
+   evidence** / **insufficient**; the CH-gene flag shown as a note beside them.
+3. The KS p-value exact at any depth (shares of in-band lattice paths, by
+   anti-diagonal; no overflow), replacing the asymptotic branch above n·m 10,000.
+4. `mfsd_alt_confidence` tiers renamed so a 5-fragment class is not "HIGH".
+5. `<sample>.fsd.parquet` (each variant's REF and ALT sizes) stays the interface for
+   models; no new evidence columns in gbcms.
+
+The CH model lives in its own private repository (operator, 2026-10-05): inputs the
+gbcms MAF + `fsd.parquet`; features such as each fragment's REF percentile and size,
+the exact tails/shorter tests, a tumor-curve likelihood ratio (cohort or per-sample
+adapted; +0.02–0.03 AUC on the pilot), VAF, gene and fragment counts; trained on
+buffy-labeled ACCESS (about 760 strong vs 4,400 none in the CH genes), cross-fitted by
+patient; evaluated forensic-style (Tippett plots, Cllr, calibration); output a graded
+likelihood ratio or posterior, never a hard call. The validation pairs are its first
+held-out set. The repository is local only for now (no remote; operator, 2026-10-05).
+CMO-CH (white-blood-cell genomic DNA, UMI, ACCESS methodology; 596 targets, 0.14 Mb,
+full TP53/TET2/ASXL1/DNMT3A/PPM1D/CHEK2/ATM/SF3B1/SRSF2/U2AF1/U2AF2; standard
+~1,000x or high sensitivity >10,000x raw; calls to 0.1% VAF; many false positives from
+the small, deep panel) is sheared gDNA, so its fragment sizes are not cfDNA and cannot
+train the size model. It is the deep blood truth for patients who also have ACCESS
+plasma: it resolves the calls the ACCESS buffy coat (~1,000x) cannot (1–2 reads, or too
+shallow). Its own false-positive problem (real CH vs artifact, read-level features) is a
+possible later task for the same repository.
 
 Later (6.7.0, idea, not filed — operator 2026-10-05): an optional matched-normal BAM
 for mFSD, read for depth-aware counts only (0 ALT counts against CH only when the
