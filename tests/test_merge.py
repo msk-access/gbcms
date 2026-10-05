@@ -585,12 +585,13 @@ def test_merge_combined_with_unmatched(tmp_path):
 # ── Test 18: Annotation columns on right-only variants ───────────────────────
 
 
-def test_merge_annotation_nulls_right_only(tmp_path):
-    """Simplex-only variants have null annotation columns (by design).
+def test_merge_annotation_fills_right_only(tmp_path):
+    """Simplex-only variants take their annotation columns from simplex (M5 #221).
 
-    Annotations come from the left (first) frame. Variants that exist only
-    in the right (joining) frame will have NULL annotations because only
-    variant key + gbcms columns are selected from the right frame.
+    Annotations come from the left (first) frame. A variant only the right
+    (joining) frame has takes them from that frame, so it is not left with an
+    empty gene or sample barcode (operator decision 2026-10-05; until then it
+    was null by design).
     """
     duplex = tmp_path / "duplex.maf"
     simplex = tmp_path / "simplex.maf"
@@ -612,12 +613,9 @@ def test_merge_annotation_nulls_right_only(tmp_path):
     left_row = result.filter(pl.col("Start_Position") == "100")
     assert left_row["Hugo_Symbol"].to_list() == ["TP53"]
 
-    # Simplex-only row (right): Hugo_Symbol is null (annotations not carried from right)
+    # Simplex-only row (right): Hugo_Symbol comes from simplex
     right_row = result.filter(pl.col("Start_Position") == "200")
-    hugo = right_row["Hugo_Symbol"].to_list()[0]
-    assert (
-        hugo is None or hugo == ""
-    ), f"Expected null/empty for right-only annotation, got: {hugo!r}"
+    assert right_row["Hugo_Symbol"].to_list() == ["TP53"]
 
 
 # ── Test 19: Meta column null-fill ───────────────────────────────────────────
