@@ -1,6 +1,7 @@
 [project]
 name = "gbcms"
-version = "6.6.0.dev0"
+# The version is rust/Cargo.toml's (maturin converts it to PEP 440); see the release guide.
+dynamic = ["version"]
 description = "Python implementation of GetBaseCountsMultiSample (gbcms) for calculating base counts in BAM files"
 authors = [
     {name = "MSK-ACCESS", email = "shahr2@mskcc.org"}
@@ -43,6 +44,8 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.5.0",
     "types-pyyaml>=6.0.0",
+    # the workflow-contract tests parse .github/workflows/*.yml
+    "pyyaml>=6.0",
     # MkDocs 2.0 is incompatible with Material and this site's config (anchor
     # validation, exclude_docs, snippets); the migration is D3 #138.
     "mkdocs>=1.6,<2",

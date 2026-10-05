@@ -1698,6 +1698,44 @@ would catch it.
 6.4.0 has a tag and published artifacts but no GitHub Release page. Create the
 page from the CHANGELOG section in the release workflow.
 
+### Group 7 — measured and decided (2026-10-05, operator)
+- **D1 #136: single source + check.** Measured: 11 hand-edited references in two
+  formats (`6.6.0.dev0` / `6.6.0-dev.0`); Nextflow trails on purpose at the last
+  released image (images publish only on tags); nothing checks the tag against the
+  version before PyPI/Docker publish (a `6.6.0` tag on `6.6.0.dev0` would publish a
+  dev wheel; `skip-existing` hides a re-tag). Decided: Python takes the Cargo
+  version through maturin (`dynamic = ["version"]`, `__version__` from the
+  package metadata); the Nextflow modules and banner read
+  `workflow.manifest.version`; hand edits drop to `rust/Cargo.toml`, the Nextflow
+  manifest and the CHANGELOG (`Cargo.lock` follows `cargo check`). A check script
+  runs on every PR (single source intact, lock = manifest) and gates the release
+  workflow before anything publishes (tag = Cargo = Nextflow manifest, a dated
+  CHANGELOG section); a test keeps the release guide's table equal to the checked
+  locations. `gbcms --version` and the Nextflow lint must stay identical.
+- **D2 #137: automatic Release page.** Measured: the 6.4.0 / 6.5.0 pages were made by
+  hand (body = the CHANGELOG section, title `X.Y.Z — summary`, no assets). Decided:
+  the release workflow creates the page after PyPI and Docker succeed, body from the
+  CHANGELOG section, title from its heading (`## [X.Y.Z] - YYYY-MM-DD — summary`),
+  wheels + sdist + SHA256 sums attached, with GitHub build-provenance attestations.
+- **D4 #139: floors + weekly latest + Docker lock.** Re-surveyed 2026-10-05: Python
+  majors rich 15, pytest 9, mypy 2.4, black 26.10 (CI pins 26.5); Rust majors pyo3
+  0.29, rust-htslib 1.0.1, bio 4.2, arrow/parquet 60, noodles-gtf 0.58, statrs 0.19,
+  bincode 3 (GTF cache format + `CACHE_FORMAT_VERSION`). The dev venv lacks
+  `pytest-mock` and `types-pyyaml`. Decided: keep floors; a weekly CI job on the
+  latest releases; Docker built from a lock. PR A: Python, CI, Docker lock. PR B: the
+  Rust majors one at a time, the RC set byte-identical after each (isolated builds).
+- **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
+  is a floor, not a maximum — each member extends the end by its span plus half a
+  window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
+  (141,845 samples, 1.04M bins): median 10 kb, p99 11.6 kb, max 29 kb (1.6% past the
+  window, 0 cap splits); one input holding the ACCESS cohort union (14,296 variants):
+  p99 36 kb, max 47 kb (4.7x; 19 cap splits); the IMPACT union (424,572): p99 23 kb,
+  max 44 kb (1,458 cap splits). The architecture page also still cites the retired
+  parity suite.
+- **D5 #155:** built last, against the release candidate (after D4).
+- 6.7.0 overlap: D3 #138 stays (D3a pins below MkDocs 2); P1 #150 stays (P3's spans
+  inform it).
+
 ### D3 — mkdocs-material 2.0 (#138) · L
 The docs build prints mkdocs-material's MkDocs 2.0 incompatibility notice. Pin
 `mkdocs-material<2`, or plan the migration.

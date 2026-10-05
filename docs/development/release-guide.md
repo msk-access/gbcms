@@ -14,39 +14,35 @@ Before starting a release, ensure:
 
 ## Version Locations
 
-All these files must be updated with the new version (11 references total):
+One version source per ecosystem: **`rust/Cargo.toml`** for the Python package and the
+extension (maturin converts `X.Y.Z-dev.N` to PEP 440 `X.Y.Z.devN`), and the **Nextflow
+manifest** for the pipeline's container image and banner. A release edits three
+files; the lock follows, and the rest is derived:
 
-| File | Line | Format |
-|:-----|:-----|:-------|
-| `pyproject.toml` | 3 | `version = "X.Y.Z"` |
-| `src/gbcms/__init__.py` | 11 | `__version__ = "X.Y.Z"` |
-| `rust/Cargo.toml` | 3 | `version = "X.Y.Z"` |
-| `rust/Cargo.lock` | `gbcms_rs` entry | `version = "X.Y.Z"` — **not edited by hand**; run `cargo check` after bumping `Cargo.toml` and commit the result |
-| `nextflow/modules/local/gbcms/dna/main.nf` | 9 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
-| `nextflow/modules/local/gbcms/build_gtf_cache/main.nf` | 4 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
-| `nextflow/modules/local/gbcms/rna/main.nf` | 9 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
-| `nextflow/modules/local/gbcms/normalize/main.nf` | 18 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
-| `nextflow/modules/local/gbcms/merge/main.nf` | 9 | `container "ghcr.io/msk-access/gbcms:X.Y.Z"` |
-| `nextflow/main.nf` | 51 | `gbcms vX.Y.Z — Nextflow Pipeline` |
-| `nextflow/nextflow.config` | manifest | `version = 'X.Y.Z'` |
-| `CHANGELOG.md` | Top section | `## [X.Y.Z] - YYYY-MM-DD` (new entry) |
+| Location | Role |
+|:---------|:-----|
+| `rust/Cargo.toml` | **edit**: `version` under `[package]`, the Python package and the extension |
+| `rust/Cargo.lock` | **follows**: run `cargo check` after editing Cargo.toml, commit the lock |
+| `nextflow/nextflow.config` | **edit**: `manifest.version`, the pipeline's image tag and banner |
+| `CHANGELOG.md` | **edit**: the dated section `## [X.Y.Z] - YYYY-MM-DD — summary` (the summary becomes the GitHub Release title) |
+| `pyproject.toml` | derived: `dynamic = ["version"]`, maturin reads Cargo.toml |
+| `src/gbcms/__init__.py` | derived: `__version__` from the installed package metadata |
+| `nextflow/modules/local/gbcms/*/main.nf` | derived: `container "ghcr.io/msk-access/gbcms:${workflow.manifest.version}"` |
+| `nextflow/main.nf` | derived: the banner reads `workflow.manifest.version` |
 
-!!! tip "Doc versions are now templated"
-    Installation, quickstart, troubleshooting, and developer-guide docs use generic `X.Y.Z` notation. **No doc version bumps needed during release.**
+On `develop` the manifest names the last **released** image (images publish only on
+tags), so it trails the package version; at a release both equal `X.Y.Z`.
 
-!!! tip "Verify all references"
-    After updating, run this to ensure no stale versions remain:
+!!! tip "Check the sources"
+    `python scripts/release.py check` runs on every PR (the derived locations still read
+    their source, the lock matches Cargo.toml, the manifest is a released version no
+    newer than the package). With `--tag X.Y.Z` it is the release workflow's first job:
+    the tag must be a bare `X.Y.Z` and Cargo.toml, the lock and the manifest must all
+    equal it, with a dated CHANGELOG section, or nothing builds or publishes.
+
     ```bash
-    grep -rn "OLD_VERSION" --include="*.py" --include="*.toml" --include="*.nf" --include="*.md" \
-      --include="*.config" --include="Cargo.lock" . \
-      | grep -v ".git/" | grep -v "site/" | grep -v "CHANGELOG" | grep -v "docs/proposals/"
+    python scripts/release.py check --tag X.Y.Z
     ```
-
-    The `*.config` and `Cargo.lock` patterns matter: `nextflow/nextflow.config` and
-    `rust/Cargo.lock` both pin the version but match none of the extension globs above them,
-    so an earlier form of this command reported "clean" while two files were still stale.
-    `docs/proposals/` is excluded because proposal documents cite the version they *shipped
-    in* — those references are history and must not be bumped.
 
 ---
 
@@ -56,7 +52,7 @@ All these files must be updated with the new version (11 references total):
 gitGraph LR:
    commit id: "ongoing develop work"
    branch release/X.Y.Z
-   commit id: "bump versions (11 refs)"
+   commit id: "bump the version (Cargo.toml, manifest)"
    commit id: "update CHANGELOG.md"
    checkout main
    merge release/X.Y.Z id: "PR merged" tag: "X.Y.Z"
@@ -69,11 +65,13 @@ gitGraph LR:
     `[0-9]+.[0-9]+.[0-9]+`. A `v`-prefixed tag (`v6.0.0`) **does not match** and will
     **silently fail to publish** — no PyPI, no Docker/GHCR, no docs deploy. Every existing
     release tag is bare (`5.3.0`, `5.2.0`, …); keep it that way. The `v` you see in
-    `nextflow/main.nf`'s banner (`gbcms v6.0.0 — …`) is display text only, not the tag.
+    `nextflow/main.nf`'s banner (`gbcms vX.Y.Z — …`, from the manifest) is display text only, not the tag.
 
 !!! info "Tag triggers CI"
-    Pushing the bare tag `X.Y.Z` automatically triggers the CI pipeline which publishes to
-    **PyPI**, **Docker/GHCR**, and deploys **gh-pages** docs.
+    Pushing the bare tag `X.Y.Z` triggers `release.yml`, which verifies the version
+    sources and publishes to **PyPI** and **Docker/GHCR** and creates the **GitHub Release**.
+    The docs deploy separately (`deploy-docs.yml`, on pushes to `main`/`develop` that touch
+    `docs/`). Only a tag push publishes: a manual run builds and checks but publishes nothing.
 
 ---
 
@@ -90,22 +88,23 @@ git pull origin develop
 git checkout -b release/X.Y.Z
 ```
 
-### 2. Update Version Numbers
+### 2. Update the Version
 
-Update all version locations listed above. Use this command to verify:
+Edit `version` in `rust/Cargo.toml` and `manifest.version` in
+`nextflow/nextflow.config` to `X.Y.Z`, refresh the lock, and check:
 
 ```bash
-# Check current versions
-grep -E "^version|^__version__" pyproject.toml src/gbcms/__init__.py rust/Cargo.toml
-grep "container\|gbcms v" nextflow/modules/local/gbcms/*/main.nf nextflow/main.nf
+cd rust && cargo check && cd ..        # updates the gbcms_rs entry in Cargo.lock
+python scripts/release.py check --tag X.Y.Z
 ```
 
 ### 3. Update CHANGELOG.md
 
-Add new section at top:
+Add new section at top. The text after the em dash becomes the GitHub Release title
+(`X.Y.Z — summary`), and the section body its notes:
 
 ```markdown
-## [X.Y.Z] - YYYY-MM-DD
+## [X.Y.Z] - YYYY-MM-DD — short summary
 
 ### ✨ Added
 - New feature description
@@ -201,11 +200,22 @@ After PR approval:
 
 The tag triggers `.github/workflows/release.yml`:
 
+0. **Verify** — `scripts/release.py check --tag X.Y.Z`; every other job waits for it
 1. **Build one wheel** — `cp311`, `manylinux_2_34_x86_64` — plus an **sdist** (jobs `linux`
    and `sdist`)
 2. **Publish to PyPI** (via maturin)
 3. **Build Docker image** → push to `ghcr.io/msk-access/gbcms:X.Y.Z`
-4. **Deploy docs** → GitHub Pages (versioned via `mike` as `X.Y.Z` / `stable`)
+4. **Create the GitHub Release** — title and notes from the CHANGELOG section, the
+   wheel and sdist attached with `SHA256SUMS`, and a build-provenance attestation for
+   each artifact (verify with `gh attestation verify <file> --repo msk-access/gbcms`)
+
+The docs are not part of this workflow: `deploy-docs.yml` publishes them (via `mike`, as
+`X.Y.Z` / `stable`) when the release merge reaches `main`.
+
+!!! warning "Re-run only the failed jobs"
+    "Re-run all jobs" rebuilds the wheel, which is not bit-reproducible: PyPI keeps the
+    file it already has (`skip-existing`), while the release page would get the new
+    build, so its checksums and attestations would no longer match what PyPI serves.
 
 !!! warning "One wheel, not a matrix"
     This list previously claimed Linux x86_64 + aarch64, macOS x86_64 + arm64, and Windows.
@@ -218,25 +228,18 @@ The tag triggers `.github/workflows/release.yml`:
     3.11. Broadening the matrix is a real change to `release.yml`, not a docs fix — until
     then, this list should describe what actually ships.
 
-### 9. Create the GitHub Release
+### 9. Check the GitHub Release
 
-!!! danger "The workflow does NOT create the GitHub Release"
-    `release.yml` only publishes to PyPI / Docker / docs. The **Releases page** entry
-    (with notes and the **Latest** badge) is a *separate* object you must create by hand,
-    or the Releases page will keep showing the *previous* version even though the new tag
-    exists and the packages published.
-
-Create it from the CHANGELOG section on the (already-pushed) bare tag and mark it latest:
+The `github-release` job creates the Releases page entry once PyPI and the image are
+published (or updates it, re-uploading the assets, if one already exists). Verify with
+`gh release list`: the new version should show **Latest**. If the job failed, re-run it
+from the Actions tab (failed jobs only). By hand, the page alone (without the assets,
+checksums and attestations, which only the job adds) is:
 
 ```bash
-# Extract the [X.Y.Z] section from CHANGELOG.md into notes.md, then:
-gh release create X.Y.Z \
-  --title "X.Y.Z — <short summary>" \
-  --notes-file notes.md \
-  --latest --verify-tag
+python scripts/release.py notes --tag X.Y.Z --title-out title.txt --notes-out notes.md
+gh release create X.Y.Z --title "$(cat title.txt)" --notes-file notes.md --latest --verify-tag
 ```
-
-Verify with `gh release list` — the new version should show **Latest**.
 
 ### 10. Merge main back to develop
 
@@ -245,6 +248,20 @@ git checkout develop
 git pull origin develop
 git merge main
 git push origin develop
+```
+
+### 10b. Move develop to the next dev version
+
+Right after the back-merge, bump `rust/Cargo.toml` on `develop` to the next dev version
+(`X.Y+1.0-dev.0`), run `cargo check`, and add an empty `## [Unreleased]` section. Leave
+the Nextflow manifest at `X.Y.Z`: it names the newest published image. Without the bump
+every dev build stamps the released version in its provenance line; the version check
+on `develop` fails until it is done.
+
+```bash
+# rust/Cargo.toml: version = "X.Y+1.0-dev.0"
+cd rust && cargo check && cd ..
+python scripts/release.py check --branch develop
 ```
 
 ### 11. Cleanup
@@ -268,12 +285,14 @@ For critical production fixes:
 git checkout main
 git checkout -b hotfix/X.Y.Z
 
-# Fix, commit, push
+# Fix, commit; then set the version to X.Y.Z in rust/Cargo.toml (cargo check) and the
+# Nextflow manifest, add a dated CHANGELOG section, and check
+python scripts/release.py check --tag X.Y.Z
 git add -A
 git commit -m "fix: critical issue description"
 git push origin hotfix/X.Y.Z
 
-# PR to main, then merge back to develop
+# PR to main, tag X.Y.Z, then merge back to develop (keeping develop's dev version)
 ```
 
 ---
@@ -313,7 +332,8 @@ Interactive helper for git-flow operations:
 | Workflow | Trigger | Purpose |
 |:---------|:--------|:--------|
 | `test.yml` | Push to develop/main, PR | Run tests |
-| `release.yml` | Tag push `X.Y.Z` | Build wheels, publish PyPI, Docker |
+| `release.yml` | Tag push `X.Y.Z` | Verify the version sources, build the wheel and sdist, publish PyPI and Docker, create the GitHub Release |
+| `nextflow-lint.yml` | Push/PR touching `nextflow/` | Strict-syntax lint; every process `nextflow inspect` resolves runs the manifest's image |
 | `deploy-docs.yml` | Push to main or develop (docs/) | Deploy versioned docs via `mike` (`stable` from main, `dev` from develop) |
 
 ---
@@ -328,7 +348,7 @@ Interactive helper for git-flow operations:
 ### Docker Build Fails
 
 - Check `Dockerfile` paths match the new folder structure
-- Verify rust/Cargo.toml version matches
+- Run `python scripts/release.py check --tag X.Y.Z` (the release workflow's first job)
 
 ### Docs Build Fails
 

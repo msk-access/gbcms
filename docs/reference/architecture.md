@@ -110,17 +110,29 @@ flowchart LR
 
 | Parameter | Value | Notes |
 |:----------|:------|:-------|
-| `BIN_WINDOW` | **10,000 bp** | Maximum span of a single bin. Variants beyond this distance start a new bin. |
-| `BIN_MAX_VARIANTS` | **200** | Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop. |
+| `BIN_WINDOW` | **10,000 bp** | A floor, not a maximum. A bin covers at least this span from its first variant (and that variant's whole REF span); each variant added extends its end to the variant's span plus half a window, so variants closer than that chain the bin further. A variant at or past the end starts a new bin. |
+| `BIN_MAX_VARIANTS` | **200** | Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop; in dense inputs it, not the span, ends a bin. |
 | Bin padding | `max(repeat_span + 2, 5)` bp | Ensures reads overlapping bin edges are captured. Uses each variant's detected tandem-repeat span. |
 | Parallelism | Rayon `par_iter()` over bins | Each thread owns its own `BamReader` handle; no locking required across bins. |
 | Output order | Preserved | Variants are sorted by index internally; results are written back in original input order. |
 
 !!! tip "Performance Implication"
-    For a MAF with 500 variants on *TP53* (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual `bam.fetch()` calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.
+    For a MAF with 500 variants on *TP53* (a 19kb gene), the engine produces 3 bins (the 200-variant cap) instead of 500 individual `bam.fetch()` calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.
+
+!!! info "The bin span is a soft floor; it is never capped"
+    Measured by replaying the rule on real inputs (2026-10-05): per-sample variant lists
+    (141,845 samples, 1.04M bins) have a median span of 10 kb, p99 11.6 kb and a maximum
+    of 29 kb (1.6% of bins past the window, none split at the variant cap). One input
+    holding a whole cohort's variants chains further: the ACCESS union (14,296 variants)
+    reaches p99 36 kb, max 47 kb (4.7x the window); the IMPACT union (424,572 variants)
+    p99 23 kb, max 44 kb, where the 200-variant cap ends 1,458 bins first.
+
+    The span only sets how much one fetch reads. It is not capped: a bin's fetch must
+    hold every member's full read window, the anchor variant's included (a cap that cut
+    the end short dropped reads aligned past a long deletion).
 
 !!! info "Not a CLI flag"
-    `BIN_WINDOW` and `BIN_MAX_VARIANTS` are internal performance constants — they do not affect output values. Parity testing (`D1` regression suite) validates that binned and per-variant paths produce identical `BaseCounts`.
+    `BIN_WINDOW` and `BIN_MAX_VARIANTS` are internal performance constants — they do not affect output values. Binning invariance holds them to that: every count is identical under any bin window or cap, one variant per bin, or one variant per call (`tests/test_binning_invariance.py`, a Rust property test, and the per-variant check in every counting test).
 
 ---
 

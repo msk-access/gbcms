@@ -145,12 +145,25 @@ counts unchanged everywhere (merge VAF/strand-bias formatting only). Follow-on
 for pointing users at flags: O10 #227 (6.7.0, decisions recorded). Group 5
 builds, slices and the review worktree removed (REMOVED_BUILDS.md).
 
+**Group 6 merged (#228, develop 35634af2, 2026-10-05):** S1 #153, S2 #154; issues
+commented and closed. mFSD is graded, plasma-only evidence: the LLR is the mean per
+fragment; empty classes write NA; the report grades LEANS-SOMATIC / NO-SIZE-EVIDENCE /
+INSUFFICIENT (direction from the KS gap; nothing leans CH; gene membership a note);
+the KS p-value is exact up to 1e7 lattice cells (integer comparison, direct p, band
+walk), Stephens-corrected above; skipped contigs stay out of the BH family;
+`mfsd_alt_confidence` is TESTABLE / SPARSE / NONE. Measured on ACCESS plasma labeled
+by the buffy coat (pilot 39 samples; held-out pairs at 2–5 duplex fragments, 128 CH
+vs 87 not CH). The pre-commit hook allows synthetic fixtures under tests/testdata,
+scanned for identifiers. The CH-vs-tumor model lives in its own local repo
+(`~/Documents/Github/ch-fragmentomics`); CMO-CH (WBC gDNA) is its deep blood truth.
+Harness `~/test/gbcms/harness/g6/` keeps the run outputs (builds removed). Known,
+accepted (operator): the integration-test BAMs in tests/testdata are slices of a real
+ACCESS sample carrying one CMO ID (since 2025-11-21).
+
 ## Next (in order; the plan's "Suggested order" is canonical)
-Groups 1–5 are merged (#211, #215, #217, #222, #226). `PRODUCTION_READINESS.md` holds
-the production gate.
-1. Group 6, statistics: S1 #153 (decided), S2 #154 (mFSD; not production-gating);
-   branch `feature/g6-statistics`.
-2. Group 7, release: D1 #136, D2 #137, D4 #139 before the cut, P3 #152, then the
+Groups 1–6 are merged (#211, #215, #217, #222, #226, #228). `PRODUCTION_READINESS.md`
+holds the production gate.
+1. Group 7, release (branch `feature/g7-release`): D1 #136, D2 #137, D4 #139 before the cut, P3 #152, then the
    D5 panel #155 on HPC as the gate run.
 Working rules for every group: measure first, red-first tests, an adversarial
 review, real-data acceptance per read, mount runs one at a time (slice locally
