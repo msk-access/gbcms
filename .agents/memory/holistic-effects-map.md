@@ -22,4 +22,7 @@ the recurring failure mode. See [[engine-output-aware]].
 
 **How to apply:** trace the fields the change touches (e.g. `is_ref`/`is_alt`,
 `has_nearby_evidence`, `qual`) to every consumer (grep them), then verify the
-"unchanged" claims on real data as well as the "changes" ones.
+"unchanged" claims on real data as well as the "changes" ones. A derived output
+(`vaf`, a flag) is checked at every place it is computed before saying how a
+change moves it: the per-sample writers compute `vaf` as alt / (REF + ALT),
+`gbcms merge` as alt / total — a group 3 claim read from one site was wrong.
