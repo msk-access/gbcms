@@ -1344,12 +1344,12 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;"><code>BIN_WINDOW</code></td>
 <td style="text-align: left;"><strong>10,000 bp</strong></td>
-<td style="text-align: left;">Maximum span of a single bin. Variants beyond this distance start a new bin.</td>
+<td style="text-align: left;">A floor, not a maximum. A bin covers at least this span from its first variant (and that variant's whole REF span); each variant added extends its end to the variant's span plus half a window, so variants closer than that chain the bin further. A variant at or past the end starts a new bin.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>BIN_MAX_VARIANTS</code></td>
 <td style="text-align: left;"><strong>200</strong></td>
-<td style="text-align: left;">Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop.</td>
+<td style="text-align: left;">Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop; in dense inputs it, not the span, ends a bin.</td>
 </tr>
 <tr>
 <td style="text-align: left;">Bin padding</td>
@@ -1370,11 +1370,23 @@ Use mouse to pan and zoom
 </table>
 <div class="admonition tip">
 <p class="admonition-title">Performance Implication</p>
-<p>For a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 500 variants on <em>TP53</em> (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual <code>bam.fetch()</code> calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.</p>
+<p>For a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 500 variants on <em>TP53</em> (a 19kb gene), the engine produces 3 bins (the 200-variant cap) instead of 500 individual <code>bam.fetch()</code> calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">The bin span is a soft floor; it is never capped</p>
+<p>Measured by replaying the rule on real inputs (2026-10-05): per-sample variant lists
+(141,845 samples, 1.04M bins) have a median span of 10 kb, p99 11.6 kb and a maximum
+of 29 kb (1.6% of bins past the window, none split at the variant cap). One input
+holding a whole cohort's variants chains further: the ACCESS union (14,296 variants)
+reaches p99 36 kb, max 47 kb (4.7x the window); the IMPACT union (424,572 variants)
+p99 23 kb, max 44 kb, where the 200-variant cap ends 1,458 bins first.</p>
+<p>The span only sets how much one fetch reads. It is not capped: a bin's fetch must
+hold every member's full read window, the anchor variant's included (a cap that cut
+the end short dropped reads aligned past a long deletion).</p>
 </div>
 <div class="admonition info">
 <p class="admonition-title">Not a <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</p>
-<p><code>BIN_WINDOW</code> and <code>BIN_MAX_VARIANTS</code> are internal performance constants — they do not affect output values. Parity testing (<code>D1</code> regression suite) validates that binned and per-variant paths produce identical <code>BaseCounts</code>.</p>
+<p><code>BIN_WINDOW</code> and <code>BIN_MAX_VARIANTS</code> are internal performance constants — they do not affect output values. Binning invariance holds them to that: every count is identical under any bin window or cap, one variant per bin, or one variant per call (<code>tests/test_binning_invariance.py</code>, a Rust property test, and the per-variant check in every counting test).</p>
 </div>
 <hr>
 <h2 id="coordinate-system">Coordinate System<a class="headerlink" href="#coordinate-system" title="Permanent link">¶</a></h2>
@@ -2015,7 +2027,7 @@ column and the <abbr title="Variant Call Format - Standard variant call file for
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 17:20:22 UTC"><span class="timeago" datetime="2026-10-05T17:20:22+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 17:20:22 UTC">2026-10-05</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 23:32:16 UTC"><span class="timeago" datetime="2026-10-05T23:32:16+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 23:32:16 UTC">2026-10-05</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

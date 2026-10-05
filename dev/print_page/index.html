@@ -6215,12 +6215,12 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;"><code>BIN_WINDOW</code></td>
 <td style="text-align: left;"><strong>10,000 bp</strong></td>
-<td style="text-align: left;">Maximum span of a single bin. Variants beyond this distance start a new bin.</td>
+<td style="text-align: left;">A floor, not a maximum. A bin covers at least this span from its first variant (and that variant's whole REF span); each variant added extends its end to the variant's span plus half a window, so variants closer than that chain the bin further. A variant at or past the end starts a new bin.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>BIN_MAX_VARIANTS</code></td>
 <td style="text-align: left;"><strong>200</strong></td>
-<td style="text-align: left;">Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop.</td>
+<td style="text-align: left;">Maximum variants per bin. Split enforced to prevent O(V × R) blowup in the shared-read classification loop; in dense inputs it, not the span, ends a bin.</td>
 </tr>
 <tr>
 <td style="text-align: left;">Bin padding</td>
@@ -6241,11 +6241,23 @@ Use mouse to pan and zoom
 </table>
 <div class="admonition tip">
 <p class="admonition-title">Performance Implication</p>
-<p>For a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 500 variants on <em>TP53</em> (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual <code>bam.fetch()</code> calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.</p>
+<p>For a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> with 500 variants on <em>TP53</em> (a 19kb gene), the engine produces 3 bins (the 200-variant cap) instead of 500 individual <code>bam.fetch()</code> calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">The bin span is a soft floor; it is never capped</p>
+<p>Measured by replaying the rule on real inputs (2026-10-05): per-sample variant lists
+(141,845 samples, 1.04M bins) have a median span of 10 kb, p99 11.6 kb and a maximum
+of 29 kb (1.6% of bins past the window, none split at the variant cap). One input
+holding a whole cohort's variants chains further: the ACCESS union (14,296 variants)
+reaches p99 36 kb, max 47 kb (4.7x the window); the IMPACT union (424,572 variants)
+p99 23 kb, max 44 kb, where the 200-variant cap ends 1,458 bins first.</p>
+<p>The span only sets how much one fetch reads. It is not capped: a bin's fetch must
+hold every member's full read window, the anchor variant's included (a cap that cut
+the end short dropped reads aligned past a long deletion).</p>
 </div>
 <div class="admonition info">
 <p class="admonition-title">Not a <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flag</p>
-<p><code>BIN_WINDOW</code> and <code>BIN_MAX_VARIANTS</code> are internal performance constants — they do not affect output values. Parity testing (<code>D1</code> regression suite) validates that binned and per-variant paths produce identical <code>BaseCounts</code>.</p>
+<p><code>BIN_WINDOW</code> and <code>BIN_MAX_VARIANTS</code> are internal performance constants — they do not affect output values. Binning invariance holds them to that: every count is identical under any bin window or cap, one variant per bin, or one variant per call (<code>tests/test_binning_invariance.py</code>, a Rust property test, and the per-variant check in every counting test).</p>
 </div>
 <hr>
 <h2 id="reference-architecture-coordinate-system">Coordinate System<a class="headerlink" href="#reference-architecture-coordinate-system" title="Permanent link">¶</a></h2>
@@ -17477,94 +17489,63 @@ varies it further. For pure indels, <code>tests/census.py</code> judges each rea
 </ul>
 <hr>
 <h2 id="development-release-guide-version-locations">Version Locations<a class="headerlink" href="#development-release-guide-version-locations" title="Permanent link">¶</a></h2>
-<p>All these files must be updated with the new version (11 references total):</p>
+<p>One version source per ecosystem: <strong><code>rust/Cargo.toml</code></strong> for the Python package and the
+extension (maturin converts <code>X.Y.Z-dev.N</code> to PEP 440 <code>X.Y.Z.devN</code>), and the <strong>Nextflow
+manifest</strong> for the pipeline's container image and banner. A release edits three
+files; the lock follows, and the rest is derived:</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">File</th>
-<th style="text-align: left;">Line</th>
-<th style="text-align: left;">Format</th>
+<th style="text-align: left;">Location</th>
+<th style="text-align: left;">Role</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>pyproject.toml</code></td>
-<td style="text-align: left;">3</td>
-<td style="text-align: left;"><code>version = "X.Y.Z"</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>src/gbcms/__init__.py</code></td>
-<td style="text-align: left;">11</td>
-<td style="text-align: left;"><code>__version__ = "X.Y.Z"</code></td>
-</tr>
-<tr>
 <td style="text-align: left;"><code>rust/Cargo.toml</code></td>
-<td style="text-align: left;">3</td>
-<td style="text-align: left;"><code>version = "X.Y.Z"</code></td>
+<td style="text-align: left;"><strong>edit</strong>: <code>version</code> under <code>[package]</code>, the Python package and the extension</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rust/Cargo.lock</code></td>
-<td style="text-align: left;"><code>gbcms_rs</code> entry</td>
-<td style="text-align: left;"><code>version = "X.Y.Z"</code> — <strong>not edited by hand</strong>; run <code>cargo check</code> after bumping <code>Cargo.toml</code> and commit the result</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>nextflow/modules/local/gbcms/dna/main.nf</code></td>
-<td style="text-align: left;">9</td>
-<td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>nextflow/modules/local/gbcms/build_gtf_cache/main.nf</code></td>
-<td style="text-align: left;">4</td>
-<td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>nextflow/modules/local/gbcms/rna/main.nf</code></td>
-<td style="text-align: left;">9</td>
-<td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>nextflow/modules/local/gbcms/normalize/main.nf</code></td>
-<td style="text-align: left;">18</td>
-<td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>nextflow/modules/local/gbcms/merge/main.nf</code></td>
-<td style="text-align: left;">9</td>
-<td style="text-align: left;"><code>container "ghcr.io/msk-access/gbcms:X.Y.Z"</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>nextflow/main.nf</code></td>
-<td style="text-align: left;">51</td>
-<td style="text-align: left;"><code>gbcms vX.Y.Z — Nextflow Pipeline</code></td>
+<td style="text-align: left;"><strong>follows</strong>: run <code>cargo check</code> after editing Cargo.toml, commit the lock</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>nextflow/nextflow.config</code></td>
-<td style="text-align: left;">manifest</td>
-<td style="text-align: left;"><code>version = 'X.Y.Z'</code></td>
+<td style="text-align: left;"><strong>edit</strong>: <code>manifest.version</code>, the pipeline's image tag and banner</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>CHANGELOG.md</code></td>
-<td style="text-align: left;">Top section</td>
-<td style="text-align: left;"><code>## [X.Y.Z] - YYYY-MM-DD</code> (new entry)</td>
+<td style="text-align: left;"><strong>edit</strong>: the dated section <code>## [X.Y.Z] - YYYY-MM-DD — summary</code> (the summary becomes the GitHub Release title)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>pyproject.toml</code></td>
+<td style="text-align: left;">derived: <code>dynamic = ["version"]</code>, maturin reads Cargo.toml</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>src/gbcms/__init__.py</code></td>
+<td style="text-align: left;">derived: <code>__version__</code> from the installed package metadata</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>nextflow/modules/local/gbcms/*/main.nf</code></td>
+<td style="text-align: left;">derived: <code>container "ghcr.io/msk-access/gbcms:${workflow.manifest.version}"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>nextflow/main.nf</code></td>
+<td style="text-align: left;">derived: the banner reads <code>workflow.manifest.version</code></td>
 </tr>
 </tbody>
 </table>
+<p>On <code>develop</code> the manifest names the last <strong>released</strong> image (images publish only on
+tags), so it trails the package version; at a release both equal <code>X.Y.Z</code>.</p>
 <div class="admonition tip">
-<p class="admonition-title">Doc versions are now templated</p>
-<p>Installation, quickstart, troubleshooting, and developer-guide docs use generic <code>X.Y.Z</code> notation. <strong>No doc version bumps needed during release.</strong></p>
-</div>
-<div class="admonition tip">
-<p class="admonition-title">Verify all references</p>
-<p>After updating, run this to ensure no stale versions remain:
-</p><div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#development-release-guide-__codelineno-0-1"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">"OLD_VERSION"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.py"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.toml"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.nf"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.md"</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#development-release-guide-__codelineno-0-2"></a><span class="w">  </span>--include<span class="o">=</span><span class="s2">"*.config"</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"Cargo.lock"</span><span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#development-release-guide-__codelineno-0-3"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">".git/"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">"site/"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">"CHANGELOG"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s2">"docs/proposals/"</span>
+<p class="admonition-title">Check the sources</p>
+<p><code>python scripts/release.py check</code> runs on every PR (the derived locations still read
+their source, the lock matches Cargo.toml, the manifest is a released version no
+newer than the package). With <code>--tag X.Y.Z</code> it is the release workflow's first job:
+the tag must be a bare <code>X.Y.Z</code> and Cargo.toml, the lock and the manifest must all
+equal it, with a dated CHANGELOG section, or nothing builds or publishes.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#development-release-guide-__codelineno-0-1"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>check<span class="w"> </span>--tag<span class="w"> </span>X.Y.Z
 </code></pre></div>
-<p>The <code>*.config</code> and <code>Cargo.lock</code> patterns matter: <code>nextflow/nextflow.config</code> and
-<code>rust/Cargo.lock</code> both pin the version but match none of the extension globs above them,
-so an earlier form of this command reported "clean" while two files were still stale.
-<code>docs/proposals/</code> is excluded because proposal documents cite the version they <em>shipped
-in</em> — those references are history and must not be bumped.</p>
 </div>
 <hr>
 <h2 id="development-release-guide-release-workflow">Release Workflow<a class="headerlink" href="#development-release-guide-release-workflow" title="Permanent link">¶</a></h2>
@@ -17592,7 +17573,7 @@ in</em> — those references are history and must not be bumped.</p>
     <pre class="mermaid"><code>gitGraph LR:
    commit id: "ongoing develop work"
    branch release/X.Y.Z
-   commit id: "bump versions (11 refs)"
+   commit id: "bump the version (Cargo.toml, manifest)"
    commit id: "update CHANGELOG.md"
    checkout main
    merge release/X.Y.Z id: "PR merged" tag: "X.Y.Z"
@@ -17609,12 +17590,14 @@ Use mouse to pan and zoom
 <code>[0-9]+.[0-9]+.[0-9]+</code>. A <code>v</code>-prefixed tag (<code>v6.0.0</code>) <strong>does not match</strong> and will
 <strong>silently fail to publish</strong> — no PyPI, no Docker/GHCR, no docs deploy. Every existing
 release tag is bare (<code>5.3.0</code>, <code>5.2.0</code>, …); keep it that way. The <code>v</code> you see in
-<code>nextflow/main.nf</code>'s banner (<code>gbcms v6.0.0 — …</code>) is display text only, not the tag.</p>
+<code>nextflow/main.nf</code>'s banner (<code>gbcms vX.Y.Z — …</code>, from the manifest) is display text only, not the tag.</p>
 </div>
 <div class="admonition info">
 <p class="admonition-title">Tag triggers <abbr title="Continuous Integration - Automated build and test system">CI</abbr></p>
-<p>Pushing the bare tag <code>X.Y.Z</code> automatically triggers the <abbr title="Continuous Integration - Automated build and test system">CI</abbr> pipeline which publishes to
-<strong>PyPI</strong>, <strong>Docker/GHCR</strong>, and deploys <strong>gh-pages</strong> docs.</p>
+<p>Pushing the bare tag <code>X.Y.Z</code> triggers <code>release.yml</code>, which verifies the version
+sources and publishes to <strong>PyPI</strong> and <strong>Docker/GHCR</strong> and creates the <strong>GitHub Release</strong>.
+The docs deploy separately (<code>deploy-docs.yml</code>, on pushes to <code>main</code>/<code>develop</code> that touch
+<code>docs/</code>). Only a tag push publishes: a manual run builds and checks but publishes nothing.</p>
 </div>
 <hr>
 <h2 id="development-release-guide-step-by-step-instructions">Step-by-Step Instructions<a class="headerlink" href="#development-release-guide-step-by-step-instructions" title="Permanent link">¶</a></h2>
@@ -17626,15 +17609,16 @@ release tag is bare (<code>5.3.0</code>, <code>5.2.0</code>, …); keep it that 
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#development-release-guide-__codelineno-1-5"></a><span class="c1"># Create release branch</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#development-release-guide-__codelineno-1-6"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/X.Y.Z
 </code></pre></div>
-<h3 id="development-release-guide-2-update-version-numbers">2. Update Version Numbers<a class="headerlink" href="#development-release-guide-2-update-version-numbers" title="Permanent link">¶</a></h3>
-<p>Update all version locations listed above. Use this command to verify:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#development-release-guide-__codelineno-2-1"></a><span class="c1"># Check current versions</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#development-release-guide-__codelineno-2-2"></a>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"^version|^__version__"</span><span class="w"> </span>pyproject.toml<span class="w"> </span>src/gbcms/__init__.py<span class="w"> </span>rust/Cargo.toml
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#development-release-guide-__codelineno-2-3"></a>grep<span class="w"> </span><span class="s2">"container\|gbcms v"</span><span class="w"> </span>nextflow/modules/local/gbcms/*/main.nf<span class="w"> </span>nextflow/main.nf
+<h3 id="development-release-guide-2-update-the-version">2. Update the Version<a class="headerlink" href="#development-release-guide-2-update-the-version" title="Permanent link">¶</a></h3>
+<p>Edit <code>version</code> in <code>rust/Cargo.toml</code> and <code>manifest.version</code> in
+<code>nextflow/nextflow.config</code> to <code>X.Y.Z</code>, refresh the lock, and check:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#development-release-guide-__codelineno-2-1"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>check<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..<span class="w">        </span><span class="c1"># updates the gbcms_rs entry in Cargo.lock</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#development-release-guide-__codelineno-2-2"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>check<span class="w"> </span>--tag<span class="w"> </span>X.Y.Z
 </code></pre></div>
 <h3 id="development-release-guide-3-update-changelogmd">3. Update CHANGELOG.md<a class="headerlink" href="#development-release-guide-3-update-changelogmd" title="Permanent link">¶</a></h3>
-<p>Add new section at top:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#development-release-guide-__codelineno-3-1"></a><span class="gu">## [X.Y.Z] - YYYY-MM-DD</span>
+<p>Add new section at top. The text after the em dash becomes the GitHub Release title
+(<code>X.Y.Z — summary</code>), and the section body its notes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#development-release-guide-__codelineno-3-1"></a><span class="gu">## [X.Y.Z] - YYYY-MM-DD — short summary</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#development-release-guide-__codelineno-3-2"></a>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#development-release-guide-__codelineno-3-3"></a><span class="gu">### ✨ Added</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#development-release-guide-__codelineno-3-4"></a><span class="k">-</span><span class="w"> </span>New feature description
@@ -17711,12 +17695,23 @@ commit history and makes the back-merge conflict-free.</p>
 <h3 id="development-release-guide-8-ci-release-pipeline">8. <abbr title="Continuous Integration - Automated build and test system">CI</abbr> Release Pipeline<a class="headerlink" href="#development-release-guide-8-ci-release-pipeline" title="Permanent link">¶</a></h3>
 <p>The tag triggers <code>.github/workflows/release.yml</code>:</p>
 <ol>
+<li><strong>Verify</strong> — <code>scripts/release.py check --tag X.Y.Z</code>; every other job waits for it</li>
 <li><strong>Build one wheel</strong> — <code>cp311</code>, <code>manylinux_2_34_x86_64</code> — plus an <strong>sdist</strong> (jobs <code>linux</code>
    and <code>sdist</code>)</li>
 <li><strong>Publish to PyPI</strong> (via maturin)</li>
 <li><strong>Build Docker image</strong> → push to <code>ghcr.io/msk-access/gbcms:X.Y.Z</code></li>
-<li><strong>Deploy docs</strong> → GitHub Pages (versioned via <code>mike</code> as <code>X.Y.Z</code> / <code>stable</code>)</li>
+<li><strong>Create the GitHub Release</strong> — title and notes from the CHANGELOG section, the
+   wheel and sdist attached with <code>SHA256SUMS</code>, and a build-provenance attestation for
+   each artifact (verify with <code>gh attestation verify &lt;file&gt; --repo msk-access/gbcms</code>)</li>
 </ol>
+<p>The docs are not part of this workflow: <code>deploy-docs.yml</code> publishes them (via <code>mike</code>, as
+<code>X.Y.Z</code> / <code>stable</code>) when the release merge reaches <code>main</code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Re-run only the failed jobs</p>
+<p>"Re-run all jobs" rebuilds the wheel, which is not bit-reproducible: PyPI keeps the
+file it already has (<code>skip-existing</code>), while the release page would get the new
+build, so its checksums and attestations would no longer match what PyPI serves.</p>
+</div>
 <div class="admonition warning">
 <p class="admonition-title">One wheel, not a matrix</p>
 <p>This list previously claimed Linux x86_64 + aarch64, macOS x86_64 + arm64, and Windows.
@@ -17728,59 +17723,64 @@ toolchain. That includes macOS (Intel and Apple Silicon) and every Python other 
 3.11. Broadening the matrix is a real change to <code>release.yml</code>, not a docs fix — until
 then, this list should describe what actually ships.</p>
 </div>
-<h3 id="development-release-guide-9-create-the-github-release">9. Create the GitHub Release<a class="headerlink" href="#development-release-guide-9-create-the-github-release" title="Permanent link">¶</a></h3>
-<div class="admonition danger">
-<p class="admonition-title">The workflow does NOT create the GitHub Release</p>
-<p><code>release.yml</code> only publishes to PyPI / Docker / docs. The <strong>Releases page</strong> entry
-(with notes and the <strong>Latest</strong> badge) is a <em>separate</em> object you must create by hand,
-or the Releases page will keep showing the <em>previous</em> version even though the new tag
-exists and the packages published.</p>
-</div>
-<p>Create it from the CHANGELOG section on the (already-pushed) bare tag and mark it latest:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-release-guide-__codelineno-9-1"></a><span class="c1"># Extract the [X.Y.Z] section from CHANGELOG.md into notes.md, then:</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#development-release-guide-__codelineno-9-2"></a>gh<span class="w"> </span>release<span class="w"> </span>create<span class="w"> </span>X.Y.Z<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#development-release-guide-__codelineno-9-3"></a><span class="w">  </span>--title<span class="w"> </span><span class="s2">"X.Y.Z — &lt;short summary&gt;"</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#development-release-guide-__codelineno-9-4"></a><span class="w">  </span>--notes-file<span class="w"> </span>notes.md<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#development-release-guide-__codelineno-9-5"></a><span class="w">  </span>--latest<span class="w"> </span>--verify-tag
+<h3 id="development-release-guide-9-check-the-github-release">9. Check the GitHub Release<a class="headerlink" href="#development-release-guide-9-check-the-github-release" title="Permanent link">¶</a></h3>
+<p>The <code>github-release</code> job creates the Releases page entry once PyPI and the image are
+published (or updates it, re-uploading the assets, if one already exists). Verify with
+<code>gh release list</code>: the new version should show <strong>Latest</strong>. If the job failed, re-run it
+from the Actions tab (failed jobs only). By hand, the page alone (without the assets,
+checksums and attestations, which only the job adds) is:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-release-guide-__codelineno-9-1"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>notes<span class="w"> </span>--tag<span class="w"> </span>X.Y.Z<span class="w"> </span>--title-out<span class="w"> </span>title.txt<span class="w"> </span>--notes-out<span class="w"> </span>notes.md
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#development-release-guide-__codelineno-9-2"></a>gh<span class="w"> </span>release<span class="w"> </span>create<span class="w"> </span>X.Y.Z<span class="w"> </span>--title<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>cat<span class="w"> </span>title.txt<span class="k">)</span><span class="s2">"</span><span class="w"> </span>--notes-file<span class="w"> </span>notes.md<span class="w"> </span>--latest<span class="w"> </span>--verify-tag
 </code></pre></div>
-<p>Verify with <code>gh release list</code> — the new version should show <strong>Latest</strong>.</p>
 <h3 id="development-release-guide-10-merge-main-back-to-develop">10. Merge main back to develop<a class="headerlink" href="#development-release-guide-10-merge-main-back-to-develop" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#development-release-guide-__codelineno-10-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#development-release-guide-__codelineno-10-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#development-release-guide-__codelineno-10-3"></a>git<span class="w"> </span>merge<span class="w"> </span>main
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#development-release-guide-__codelineno-10-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
 </code></pre></div>
+<h3 id="development-release-guide-10b-move-develop-to-the-next-dev-version">10b. Move develop to the next dev version<a class="headerlink" href="#development-release-guide-10b-move-develop-to-the-next-dev-version" title="Permanent link">¶</a></h3>
+<p>Right after the back-merge, bump <code>rust/Cargo.toml</code> on <code>develop</code> to the next dev version
+(<code>X.Y+1.0-dev.0</code>), run <code>cargo check</code>, and add an empty <code>## [Unreleased]</code> section. Leave
+the Nextflow manifest at <code>X.Y.Z</code>: it names the newest published image. Without the bump
+every dev build stamps the released version in its provenance line; the version check
+on <code>develop</code> fails until it is done.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#development-release-guide-__codelineno-11-1"></a><span class="c1"># rust/Cargo.toml: version = "X.Y+1.0-dev.0"</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#development-release-guide-__codelineno-11-2"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>check<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#development-release-guide-__codelineno-11-3"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>check<span class="w"> </span>--branch<span class="w"> </span>develop
+</code></pre></div>
 <h3 id="development-release-guide-11-cleanup">11. Cleanup<a class="headerlink" href="#development-release-guide-11-cleanup" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#development-release-guide-__codelineno-11-1"></a><span class="c1"># Delete local release branch</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#development-release-guide-__codelineno-11-2"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/X.Y.Z
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#development-release-guide-__codelineno-11-3"></a>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#development-release-guide-__codelineno-11-4"></a><span class="c1"># Delete remote release branch (optional)</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#development-release-guide-__codelineno-11-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/X.Y.Z
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#development-release-guide-__codelineno-12-1"></a><span class="c1"># Delete local release branch</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#development-release-guide-__codelineno-12-2"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/X.Y.Z
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#development-release-guide-__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#development-release-guide-__codelineno-12-4"></a><span class="c1"># Delete remote release branch (optional)</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#development-release-guide-__codelineno-12-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/X.Y.Z
 </code></pre></div>
 <hr>
 <h2 id="development-release-guide-hotfix-workflow">Hotfix Workflow<a class="headerlink" href="#development-release-guide-hotfix-workflow" title="Permanent link">¶</a></h2>
 <p>For critical production fixes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#development-release-guide-__codelineno-12-1"></a><span class="c1"># Create hotfix from main</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#development-release-guide-__codelineno-12-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#development-release-guide-__codelineno-12-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>hotfix/X.Y.Z
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#development-release-guide-__codelineno-12-4"></a>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#development-release-guide-__codelineno-12-5"></a><span class="c1"># Fix, commit, push</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#development-release-guide-__codelineno-12-6"></a>git<span class="w"> </span>add<span class="w"> </span>-A
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#development-release-guide-__codelineno-12-7"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix: critical issue description"</span>
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#development-release-guide-__codelineno-12-8"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>hotfix/X.Y.Z
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#development-release-guide-__codelineno-12-9"></a>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#development-release-guide-__codelineno-12-10"></a><span class="c1"># PR to main, then merge back to develop</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#development-release-guide-__codelineno-13-1"></a><span class="c1"># Create hotfix from main</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#development-release-guide-__codelineno-13-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#development-release-guide-__codelineno-13-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>hotfix/X.Y.Z
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#development-release-guide-__codelineno-13-4"></a>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#development-release-guide-__codelineno-13-5"></a><span class="c1"># Fix, commit; then set the version to X.Y.Z in rust/Cargo.toml (cargo check) and the</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#development-release-guide-__codelineno-13-6"></a><span class="c1"># Nextflow manifest, add a dated CHANGELOG section, and check</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#development-release-guide-__codelineno-13-7"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>check<span class="w"> </span>--tag<span class="w"> </span>X.Y.Z
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#development-release-guide-__codelineno-13-8"></a>git<span class="w"> </span>add<span class="w"> </span>-A
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#development-release-guide-__codelineno-13-9"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix: critical issue description"</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#development-release-guide-__codelineno-13-10"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>hotfix/X.Y.Z
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#development-release-guide-__codelineno-13-11"></a>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#development-release-guide-__codelineno-13-12"></a><span class="c1"># PR to main, tag X.Y.Z, then merge back to develop (keeping develop's dev version)</span>
 </code></pre></div>
 <hr>
 <h2 id="development-release-guide-automation-scripts">Automation Scripts<a class="headerlink" href="#development-release-guide-automation-scripts" title="Permanent link">¶</a></h2>
 <h3 id="development-release-guide-git-flow-helpersh">git-flow-helper.sh<a class="headerlink" href="#development-release-guide-git-flow-helpersh" title="Permanent link">¶</a></h3>
 <p>Interactive helper for git-flow operations:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#development-release-guide-__codelineno-13-1"></a>./git-flow-helper.sh
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#development-release-guide-__codelineno-13-2"></a><span class="c1"># Options:</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#development-release-guide-__codelineno-13-3"></a><span class="c1"># 1) Create feature branch</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#development-release-guide-__codelineno-13-4"></a><span class="c1"># 2) Create release branch</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#development-release-guide-__codelineno-13-5"></a><span class="c1"># 3) Show git status</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#development-release-guide-__codelineno-13-6"></a><span class="c1"># 4) Cleanup merged branches</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#development-release-guide-__codelineno-14-1"></a>./git-flow-helper.sh
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#development-release-guide-__codelineno-14-2"></a><span class="c1"># Options:</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#development-release-guide-__codelineno-14-3"></a><span class="c1"># 1) Create feature branch</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#development-release-guide-__codelineno-14-4"></a><span class="c1"># 2) Create release branch</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#development-release-guide-__codelineno-14-5"></a><span class="c1"># 3) Show git status</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#development-release-guide-__codelineno-14-6"></a><span class="c1"># 4) Cleanup merged branches</span>
 </code></pre></div>
 <h3 id="development-release-guide-makefile-targets">Makefile Targets<a class="headerlink" href="#development-release-guide-makefile-targets" title="Permanent link">¶</a></h3>
 <table>
@@ -17836,7 +17836,12 @@ exists and the packages published.</p>
 <tr>
 <td style="text-align: left;"><code>release.yml</code></td>
 <td style="text-align: left;">Tag push <code>X.Y.Z</code></td>
-<td style="text-align: left;">Build wheels, publish PyPI, Docker</td>
+<td style="text-align: left;">Verify the version sources, build the wheel and sdist, publish PyPI and Docker, create the GitHub Release</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>nextflow-lint.yml</code></td>
+<td style="text-align: left;">Push/PR touching <code>nextflow/</code></td>
+<td style="text-align: left;">Strict-syntax lint; every process <code>nextflow inspect</code> resolves runs the manifest's image</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>deploy-docs.yml</code></td>
@@ -17855,7 +17860,7 @@ exists and the packages published.</p>
 <h3 id="development-release-guide-docker-build-fails">Docker Build Fails<a class="headerlink" href="#development-release-guide-docker-build-fails" title="Permanent link">¶</a></h3>
 <ul>
 <li>Check <code>Dockerfile</code> paths match the new folder structure</li>
-<li>Verify rust/Cargo.toml version matches</li>
+<li>Run <code>python scripts/release.py check --tag X.Y.Z</code> (the release workflow's first job)</li>
 </ul>
 <h3 id="development-release-guide-docs-build-fails">Docs Build Fails<a class="headerlink" href="#development-release-guide-docs-build-fails" title="Permanent link">¶</a></h3>
 <ul>
@@ -17889,6 +17894,32 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-release-infrastructure-136-137-152">Changed — release infrastructure (#136, #137, #152)<a class="headerlink" href="#development-changelog-changed-release-infrastructure-136-137-152" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>One version source per ecosystem (#136).</strong> The Python package takes its version
+  from <code>rust/Cargo.toml</code> (maturin, <code>dynamic = ["version"]</code>; <code>gbcms.__version__</code> reads the
+  installed metadata), and the Nextflow modules and banner read <code>manifest.version</code>. A
+  release edits <code>rust/Cargo.toml</code>, the Nextflow manifest and the CHANGELOG instead of
+  11 places in two formats. <code>scripts/release.py check</code> runs on every PR, and with
+  <code>--tag</code> it is the release workflow's first job: nothing builds or publishes unless
+  the tag is a bare <code>X.Y.Z</code> equal to Cargo.toml, its lock and the manifest, with a
+  dated CHANGELOG section (a tag on a dev version would have published a dev wheel
+  under the release). On <code>develop</code> the manifest must name a published image older
+  than the dev package, and the package must move to the next dev version after a
+  release. Only a tag push publishes (a manual run builds and checks), the tag reaches
+  shell steps through <code>env:</code>, and the workflow's default token reads only. The
+  Nextflow lint job checks every process <code>nextflow inspect</code> resolves runs the
+  manifest's image; <code>gbcms --version</code> and the resolved images are unchanged.</li>
+<li><strong>The release workflow creates the GitHub Release (#137).</strong> After PyPI and the image
+  are published, it creates (or updates) the Releases entry: the title and notes from
+  the tag's CHANGELOG section (<code>## [X.Y.Z] - YYYY-MM-DD — summary</code>; cut at a section,
+  with a link to the full file, past GitHub's body limit), the wheel and sdist attached
+  with <code>SHA256SUMS</code>, and a build-provenance attestation for each artifact.</li>
+<li><strong>The bin window is documented as the floor it is (#152).</strong> <code>BIN_WINDOW</code> (10 kb) is a
+  minimum span that dense variants chain past, bounded by the 200-variant cap; measured
+  on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
+  47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
+</ul>
 <h3 id="development-changelog-changed-mfsd-statistics-153-154">Changed — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> statistics (#153, #154)<a class="headerlink" href="#development-changelog-changed-mfsd-statistics-153-154" title="Permanent link">¶</a></h3>
 <p>Measured first on ACCESS plasma labeled by the patient's buffy coat (operator
 decisions 2026-09-25, refined 2026-10-05): <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> is graded, plasma-only evidence,

@@ -768,6 +768,32 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-release-infrastructure-136-137-152">Changed — release infrastructure (#136, #137, #152)<a class="headerlink" href="#changed-release-infrastructure-136-137-152" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>One version source per ecosystem (#136).</strong> The Python package takes its version
+  from <code>rust/Cargo.toml</code> (maturin, <code>dynamic = ["version"]</code>; <code>gbcms.__version__</code> reads the
+  installed metadata), and the Nextflow modules and banner read <code>manifest.version</code>. A
+  release edits <code>rust/Cargo.toml</code>, the Nextflow manifest and the CHANGELOG instead of
+  11 places in two formats. <code>scripts/release.py check</code> runs on every PR, and with
+  <code>--tag</code> it is the release workflow's first job: nothing builds or publishes unless
+  the tag is a bare <code>X.Y.Z</code> equal to Cargo.toml, its lock and the manifest, with a
+  dated CHANGELOG section (a tag on a dev version would have published a dev wheel
+  under the release). On <code>develop</code> the manifest must name a published image older
+  than the dev package, and the package must move to the next dev version after a
+  release. Only a tag push publishes (a manual run builds and checks), the tag reaches
+  shell steps through <code>env:</code>, and the workflow's default token reads only. The
+  Nextflow lint job checks every process <code>nextflow inspect</code> resolves runs the
+  manifest's image; <code>gbcms --version</code> and the resolved images are unchanged.</li>
+<li><strong>The release workflow creates the GitHub Release (#137).</strong> After PyPI and the image
+  are published, it creates (or updates) the Releases entry: the title and notes from
+  the tag's CHANGELOG section (<code>## [X.Y.Z] - YYYY-MM-DD — summary</code>; cut at a section,
+  with a link to the full file, past GitHub's body limit), the wheel and sdist attached
+  with <code>SHA256SUMS</code>, and a build-provenance attestation for each artifact.</li>
+<li><strong>The bin window is documented as the floor it is (#152).</strong> <code>BIN_WINDOW</code> (10 kb) is a
+  minimum span that dense variants chain past, bounded by the 200-variant cap; measured
+  on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
+  47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
+</ul>
 <h3 id="changed-mfsd-statistics-153-154">Changed — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> statistics (#153, #154)<a class="headerlink" href="#changed-mfsd-statistics-153-154" title="Permanent link">¶</a></h3>
 <p>Measured first on ACCESS plasma labeled by the patient's buffy coat (operator
 decisions 2026-09-25, refined 2026-10-05): <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> is graded, plasma-only evidence,
