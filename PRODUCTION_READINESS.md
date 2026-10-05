@@ -36,10 +36,10 @@ that turns one on must clear its section 5 issues first.
 | O8 #186 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` count a different read set from the counts beside them | RNA | 3 | Decided and built: the diagnostic reads the counted reads. Counts unchanged |
 | C32 #213 | A spliced read's windows cut at the exon edge: spurious ALT at exon-edge events (19 per 7,224 splice probes after C16) | RNA | 3 | Decided (RJ-19) and built: windows over the reference spliced at the read's junctions (all reached; a junction entering the event spliced at its edge). With C15: splice probes 19 → 2 spurious ALT reads |
 | C15 #173 (RNA) | An RNA read's soft clip (the next exon's bases) read as allele evidence | RNA | 3 | Decided (RJ-18) and built: a clip reaching an exon edge or junction end is not evidence; other clips are read |
-| #123 | A non-sequence ALT (IUPAC `R`) counts 0 with no warning | MAF input | 4 | Open |
-| C30 #208 | Lowercase or unprepared alleles judged inconsistently between two pure-indel paths | all input | 4 | Open |
-| I3 #125 | VCF to MAF: `Tumor_Seq_Allele1` empty (decide REF or empty) | VCF input | 4 | Decision |
-| I4 #126 | A maf2vcf second ALT: one allele per row (documented) or genotype both | MAF from VCF | 4 | Decision |
+| #123 | A non-sequence ALT (IUPAC `R`) counts 0 with no warning | MAF input | 4 | Built: FAIL `NON_SEQUENCE_ALLELE`, kept in MAF output; `<NON_SEQUENCE>` in VCF output (7 sign-out rows) |
+| C30 #208 | Lowercase or unprepared alleles judged inconsistently between two pure-indel paths | all input | 4 | Built: both use `allele_kind`; 0 prepared sign-out rows affected |
+| I3 #125 | VCF to MAF: `Tumor_Seq_Allele1` empty (decide REF or empty) | VCF input | 4 | Built: the reference allele |
+| I4 #126 | A maf2vcf second ALT: one allele per row (documented) or genotype both | MAF from VCF | 4 | Built: one row, one allele (documented, tested; 0 sign-out rows) |
 | M4 #194 | `gbcms merge` sums NA count cells as 0 silently | ACCESS merged fillouts | 5 | Open |
 | M2 #129 | Merging outputs of different gbcms versions or representations without a warning | merged fillouts | 5 | Open |
 | H1 #148 | Writers (and the reference handle) not closed when a write fails: partial files | all | 5 | Open |
@@ -137,7 +137,7 @@ Open:
 ## Order
 
 The remaining 6.6.0 groups already hold every section 1 and section 4 item:
-group 2 (C28, C27, C16; merged), group 3 (R4, R5, O8, C15 RNA, C32), group 4 (#123, C30, #125, #126),
+group 2 (C28, C27, C16; merged), group 3 (R4, R5, O8, C15 RNA, C32; merged), group 4 (#123, C30, #125, #126; built),
 group 5 (M4, M2, H1, D6), group 7 (D1, D2, D4, then the D5 panel on HPC as the
 gate run). Group 6 (S1, S2) stays in 6.6.0 but does not gate production (mFSD is
 off).

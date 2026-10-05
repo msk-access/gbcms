@@ -54,7 +54,7 @@ KRAS         chr12       25398284        25398284      G                 A
 |:-------|:------------|
 | `Chromosome` | Chromosome name |
 | `Start_Position` | 1-based start position |
-| `End_Position` | 1-based end position (an integer; rows without one are skipped with a WARNING) |
+| `End_Position` | 1-based end position (optional: gbcms places a variant by `Start_Position` and its alleles; MAF output keeps the input's value) |
 | `Reference_Allele` | Reference allele |
 | `Tumor_Seq_Allele2` | Alternate allele |
 
@@ -71,6 +71,13 @@ Alleles are read as maf2vcf reads them:
   and is read as `-`.
 - A row whose variant allele still equals its reference describes no change;
   preparation reports it as a `FAIL` row (`ALT_EQUALS_REF`) rather than counting it.
+- An allele that is not a base sequence (anything but `A`, `C`, `G`, `T` and `N`
+  in either case, or `-`), such as an IUPAC code or a stray character from a
+  hand edit, makes the row a `FAIL` row (`NON_SEQUENCE_ALLELE`): kept in MAF
+  output, not counted. Lowercase bases are bases.
+- A `Tumor_Seq_Allele1` that differs from both the reference and Allele2 is not
+  a second allele: one row, one allele (vcf2maf's reading). cBioPortal picks
+  Allele1 for such rows.
 
 ### MAF Indel Normalization
 
@@ -117,7 +124,7 @@ Delete `CG` at chr1:101–102 (where the reference base at position 100 is `A`):
 | ALT | `-` | `A` (anchor only) |
 
 !!! note "Position Shift for Deletions"
-    For insertions, `Start_Position` already points to the anchor base. For deletions, `Start_Position` points to the *first deleted base*, so gbcms shifts back by one position to find the anchor.
+    For insertions, `Start_Position` already points to the anchor base. For deletions, `Start_Position` points to the *first deleted base*, so gbcms shifts back by one position to find the anchor. A deletion at `Start_Position` 1 has no base before it: the base after it is appended instead (the VCF spec's form at position 1, as gbcms's VCF output writes it), and the row is counted as the same event given as VCF is.
 
 A MAF row whose alleles are both sequences (an SNP, an MNP, or a delins such as
 `TTAC>A`) is used as written, at `Start_Position`, with no anchor base.

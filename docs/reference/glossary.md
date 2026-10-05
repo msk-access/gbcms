@@ -71,6 +71,7 @@ Status is two fields: `gbcms_status` (verdict `PASS`/`FAIL`) and `gbcms_status_r
 | **FAIL** | **REF_MISMATCH** | REF allele does not match the reference genome at the stated position |
 | **FAIL** | **FETCH_FAILED** | Could not fetch the reference region (chromosome not found, etc.) |
 | **FAIL** | **EMPTY_ALLELE** | Empty REF or ALT (malformed indel) |
+| **FAIL** | **NON_SEQUENCE_ALLELE** | An allele is not a base sequence (an IUPAC code or another character); kept in MAF output, written as `<NON_SEQUENCE>` in VCF output |
 | **FAIL** | **ALT_EQUALS_REF** | ALT equals REF (any case; `-` for both in a MAF): no change to count |
 | **FAIL** | **ALT_CONTAINS_N** | ALT allele contains an `N` base |
 

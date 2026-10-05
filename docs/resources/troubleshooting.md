@@ -99,7 +99,7 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
     1. **`gbcms_status`** column — if `FAIL`, the variant was excluded from counting;
        `gbcms_status_reason` says why (`REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`,
-       `ALT_EQUALS_REF`, `ALT_CONTAINS_N`). See [Normalization Issues](#normalization-issues).
+       `NON_SEQUENCE_ALLELE`, `ALT_EQUALS_REF`, `ALT_CONTAINS_N`). See [Normalization Issues](#normalization-issues).
 
     2. **Complex variants count exact carriers only** — a delins, or a deletion whose anchor
        also changes (e.g., `GC→T`, `AG→T`), counts a read as ALT only when its bases carry the

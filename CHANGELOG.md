@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — input and representation (#122, #123, #124, #125, #126, #147, #208, #149)
+
+Measured on the MSK sign-out dump (1,133,044 rows; operator decisions 2026-09-25
+and 2026-10-05).
+- **Non-sequence MAF alleles are FAIL rows (#123).** An allele that is not a base
+  sequence (an IUPAC code such as `R`, `.`, a stray character from a hand edit)
+  made the row count 0 silently; it is now a FAIL row, `NON_SEQUENCE_ALLELE`,
+  kept in MAF output. Lowercase bases are bases. VCF output, which cannot carry
+  such an allele, writes the symbolic record `<NON_SEQUENCE>` (REF the reference
+  base at POS, declared in the header), in counting runs and in `gbcms convert`.
+  7 such rows in the sign-out data.
+- **VCF output of MAF input names its MAF row.** Every record carries
+  `MAF_START`, `MAF_REF` and `MAF_ALT` (percent-encoded), so a result can be
+  looked up by its input, as VCF input's MAF output carries `vcf_pos`,
+  `vcf_ref` and `vcf_alt`. Also in `gbcms convert`.
+- **A MAF deletion at Start 1 is counted (#122).** It has no base before it; it
+  is resolved to the VCF spec's position-1 form (the base after it), as gbcms's
+  VCF output already wrote it, and counts as the same event given as VCF does
+  (it was `FETCH_FAILED`). None in the sign-out data.
+- **`End_Position` is optional (#124).** gbcms places a variant by
+  `Start_Position` and its alleles; rows without an integer `End_Position` were
+  skipped and are now read (maf2vcf converts them). `gbcms merge` joins on it
+  only when every input has it. The sign-out data has it, consistent with Start
+  and REF, on every row but one.
+- **VCF input's MAF output fills `Tumor_Seq_Allele1` (#125)** with the reference
+  allele: MSK's sign-out convention on every row, and maf2vcf's reading of an
+  empty one. Previously empty.
+- **One row, one allele (#126):** a `Tumor_Seq_Allele1` that differs from both
+  REF and Allele2 is not a second allele (vcf2maf's reading; cBioPortal picks
+  Allele1). Documented and tested; no such rows in the sign-out data.
+- **Engine API (#147):** a `decomposed` or `sibling_variants` list shorter than
+  the variants is padded; a longer one raises `ValueError` (a short decomposed
+  list panicked; a long list was cut silently).
+- **One allele-kind rule (#208):** the AD-claiming guard's pure-indel test and
+  the pure-indel windows use `allele_kind` (case-insensitive anchor; a
+  multi-base shared prefix is complex, as the dispatcher counts it). No prepared
+  sign-out row changes; it reaches only lowercase or unprepared engine input.
+- `is_indel` in preparation is `ref_len != alt_len` (#149; no change).
+
+
 ### Changed — RNA: strand at intronic loci, splices are not coverage, clips and junctions (#185, #198, #186, #173, #213)
 
 Five RNA rules (operator, 2026-10-04), each measured on FORTE against the

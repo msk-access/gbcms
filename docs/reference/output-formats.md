@@ -185,7 +185,11 @@ self-describing.
     base comes from `--fasta`; one the reference cannot supply is written as `N`
     and counted in a WARNING. The MAF alleles are read as maf2vcf reads them
     (see [Input Formats](input-formats.md#maf-alleles)); unlike maf2vcf, a
-    differing `Tumor_Seq_Allele1` is not written as a second ALT.
+    differing `Tumor_Seq_Allele1` is not written as a second ALT. A row whose
+    allele is not a base sequence (FAIL `NON_SEQUENCE_ALLELE`) is written as the
+    symbolic record `<NON_SEQUENCE>` at `Start_Position`, REF the reference base
+    there (declared in a `##ALT` header line), so the VCF stays valid. A MAF
+    deletion at `Start_Position` 1 is counted in that base-after form.
 
     | MAF `Start` `Ref` > `Alt` | VCF `POS` `REF` > `ALT` |
     |:--------------------------|:------------------------|
@@ -278,6 +282,19 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `NORM_POS` | Integer | Left-aligned VCF position (1-based) after normalization |
     | `NORM_REF` | String | Left-aligned REF allele |
     | `NORM_ALT` | String | Left-aligned ALT allele |
+
+=== "MAF input"
+
+    Each record of MAF input names the MAF row it came from, so a result can be
+    looked up by its input (VCF input's MAF output carries `vcf_pos`, `vcf_ref`
+    and `vcf_alt` the same way). Values are percent-encoded where an INFO value
+    cannot hold a character as written (`;`, `=`, `,`, `%`, `:`, whitespace).
+
+    | Field | Type | Description |
+    |:------|:-----|:------------|
+    | `MAF_START` | Integer | `Start_Position` of the MAF row |
+    | `MAF_REF` | String | `Reference_Allele` of the MAF row |
+    | `MAF_ALT` | String | The MAF row's variant allele (`Tumor_Seq_Allele2`, or `Tumor_Seq_Allele1` when Allele2 is empty or the reference) |
 
 ---
 
@@ -387,7 +404,7 @@ The set of columns in the first row of the header depends on whether the
     | `Variant_Classification` | Empty — gbcms does not annotate effects |
     | `Variant_Type` | `SNP`, `DNP`, `TNP`, `ONP`, `INS` or `DEL`, from the trimmed alleles |
     | `Reference_Allele` | MAF REF: shared leading bases trimmed, `-` when nothing is left |
-    | `Tumor_Seq_Allele1` | Empty |
+    | `Tumor_Seq_Allele1` | The MAF reference allele (as `Reference_Allele`): the heterozygous convention MSK's sign-out uses on every row, and maf2vcf's reading of an empty Allele1; gbcms genotypes no sample GT |
     | `Tumor_Seq_Allele2` | MAF ALT: shared leading bases trimmed, `-` when nothing is left |
     | `Tumor_Sample_Barcode` | BAM sample name (from `--bam name:path`) |
     | `Matched_Norm_Sample_Barcode` | Empty |
@@ -461,7 +478,7 @@ These columns are **always** appended regardless of input format.
     | Column | Type | Description |
     |:-------|:-----|:------------|
     | `gbcms_status` | String | Verdict: exactly `PASS` or `FAIL`. |
-    | `gbcms_status_reason` | String | Reason tag(s), `\|`-separated; empty for a clean PASS. PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`, `TRACT_CLUSTER`. FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `ALT_EQUALS_REF`, `ALT_CONTAINS_N`. Reasons stack, e.g. `WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP`. Identical string in the VCF `GSR` INFO. |
+    | `gbcms_status_reason` | String | Reason tag(s), `\|`-separated; empty for a clean PASS. PASS reasons: `WARN_REF_CORRECTED`, `WARN_HOMOPOLYMER_DECOMP`, `MULTI_ALLELIC`, `TRACT_CLUSTER`. FAIL reasons: `REF_MISMATCH`, `FETCH_FAILED`, `EMPTY_ALLELE`, `NON_SEQUENCE_ALLELE`, `ALT_EQUALS_REF`, `ALT_CONTAINS_N`. Reasons stack, e.g. `WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP`. Identical string in the VCF `GSR` INFO. |
     | `gbcms_diagnostic` | String | Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: `ZERO_ALT`, `PARTIAL_DOMINANT`, `MNP_DISC_RATIO(n/m)`, `MNP_RESCUE_ELIGIBLE`, `HIGH_N_FRACTION(f)`, `CLIP_CANDIDATES(n)` — an insertion locus with no confirmed ALT where n (≥ 2) reads carry a soft clip ≥ 8bp whose boundary lies within the insert's duplication reach (anchor ± insert length + 10): carriers the aligner may have represented as clips rather than insertions (inspect in IGV) — ``OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)` — no read carries the given allele exactly, and n reads carry this allele (canonical VCF form, 1-based POS): the input is likely mis-described — `COEXISTING_ALLELE(chrom:pos:REF>ALT:n/m)` — the given allele is present (m reads carry it exactly), but more reads (n) carry a different allele in the same stretch, e.g. a germline indel or stutter in a repeat: a caveat for reading the VAF. Both need n ≥ 3, n > m, n ≥ 5% of the scanned reads, and an allele not already an input row; n and m are taken over the reads the counts read (first-class reads the mapping rule admits — in RNA a unique mapper, `NH:i:1`, below `--min-mapq` — and, under strandedness enforcement, sense reads only), so they compare with `alt_count` and `ref_count`; the counts stay the given allele's — SW_FALLBACK(n)` — under the default `pairhmm` backend, n depth-contributing reads could not be evaluated by the pangenomic haplotype matrix because the variant's reference context is missing (prep's fetch failed) or does not contain it; they were scored by the Smith-Waterman fallback where SW can run, otherwise left NEITHER (one WARN per variant names the reason and outcome), so the row's counts came partly from a different scorer or are missing reads — `SPLICE_SKIP_DOMINANT(n)` — a deletion-type locus where more reads asserted splicing over the deleted span (CIGAR `N`, excluded from DP as no-observation) than confirmed ALT; RNA aligners write large deletions as splices (STAR: ≥ `alignIntronMin`, default 21bp), so `alt_count`=0 here may mean the carriers exist as junction reads — and `NON_DISCRIMINATING_LOCUS` — the last (PairHMM backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed `ref_count`/`alt_count` at a covered locus rather than leaving it silent. With `--rescue-mnp`, a rescued row also carries `RESCUED_COMPONENT(chrom:pos:REF>ALT)`: its counts are that component SNV's, not the annotated MNP's. Examples: `ZERO_ALT`, `PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`. |
     | `gbcms_rescue` | String | **Conditional** — only present when `--rescue-mnp` is enabled. MNP rescue audit trail, empty for non-candidates. Format: `method=decomposed;outcome=<o>;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R>A)][;positions=chr:pos(R>A):<ad\|ref_fail>+...]` (positions joined with `+` so the VCF `GR` value parses as one string). Outcomes: `rescued` (the row's counts are the adopted component SNV's), `skipped_grouped`, `haplotype_confirmed`, `no_improvement`, `ref_validation_failed` (counts stay the MNP's). `original_*` are always the MNP's own counts; `original_confirmed` counts reads that showed the whole haplotype. See [Architecture → MNP Rescue Pass](architecture.md#mnp-rescue-pass-rescue-mnp-v430). |
     | `ref_count` | Integer | REF read depth. For an indel, only reads that can tell the alleles apart count ([informative reads](allele-classification.md#informative-reads-for-indels)); reads ending inside its repeat tract count in `total_count` only |
@@ -681,7 +698,10 @@ Each input MAF's gbcms count columns are prefixed with the BAM type label:
 | `simplex` | `simplex_ref_count`, `simplex_alt_count`, `simplex_vaf`, ... |
 
 Annotation columns (e.g., `Hugo_Symbol`, `Chromosome`) are taken from the first
-input and **not** duplicated.
+input and **not** duplicated. Rows are joined on `Chromosome` (in any naming),
+`Start_Position`, `End_Position`, `Reference_Allele` and `Tumor_Seq_Allele2`;
+`End_Position` joins only when every input has it (it is optional in a MAF and
+follows from Start and REF), and VCF-input MAFs also join on the VCF record.
 
 ### Combined `simplex_duplex_*` Columns
 

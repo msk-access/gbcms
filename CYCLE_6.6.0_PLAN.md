@@ -40,7 +40,7 @@ marks a ticket with an open PR.
 | C6 | Error-tolerant exact-length insertion matching | L | [counts] [6.7.0] | #143 (#92) |
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] [6.7.0] | #144 (#92) |
 | C8 | One-base-REF delins without a shared anchor | L | [counts] [done] | #121 |
-| C9 | Count a MAF deletion at Start 1 | L | [counts] | #122 |
+| C9 | Count a MAF deletion at Start 1 | L | [counts] group 4 (built) | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] [done] | #157 |
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] [closed] | #159 |
 | C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [done] | #167 |
@@ -64,7 +64,7 @@ marks a ticket with an open PR.
 | C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [decided] | #201 |
 | C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] [decided] | #202 |
 | C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] [done] | #207 |
-| C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] [6.7.0] | #208 |
+| C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] group 4 (built) | #208 |
 | C31 | Measure the fragment end from the mate's unclipped 5' end (MC tag), so a mate's clipped 5' end does not clip molecule bases as adapter | L | [counts] [6.7.0] | #212 |
 | C32 | Junction-placement guard for spliced reads at exon-edge events (needs reference access in the engine) | M | [counts] group 3 (RJ-19, built) | #213 |
 | C34 | GTF transcripts keyed by ID alone: an ID reused on another chromosome merges (introns, per-transcript counts, ASJD); 0 such IDs in Ensembl 111 | S | [6.7.0] | #216 |
@@ -78,10 +78,10 @@ marks a ticket with an open PR.
 | O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | group 3 (built) | #186 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] [done] | #114 |
-| I1 | MAF allele base check | M | [decided] | #123 |
-| I2 | `End_Position` optional | L | | #124 |
-| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] | #125 |
-| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] | #126 |
+| I1 | MAF allele base check | M | [decided] group 4 (built) | #123 |
+| I2 | `End_Position` optional | L | group 4 (built) | #124 |
+| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] group 4 (built) | #125 |
+| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] group 4 (built) | #126 |
 | I5 | Nextflow `convert` module | L | [6.7.0] | #127 |
 | M1 | Merge rows whose flavors report different alleles | M | [6.7.0] | #128 |
 | M2 | Merge inputs from different gbcms versions | M | | #129 |
@@ -91,7 +91,7 @@ marks a ticket with an open PR.
 | O2 | Run-start summary of enabled options | L | | #131 |
 | O3 | Rescue in fillouts without the MNP | L | [6.7.0] | #132 |
 | H1 | Writers closed when a write fails | L | | #148 |
-| H2 | `is_indel` in preparation | L | | #149 |
+| H2 | `is_indel` in preparation | L | group 4 (built) | #149 |
 | P1 | Deep-bin fetch reduction (M5b) | L | [6.7.0] | #150 |
 | P2 | Bin cost-sort (PF-2) | L | [closed] | #151 |
 | P3 | Document the bin-span soft floor (LO-3) | L | | #152 |
@@ -520,6 +520,13 @@ base before it), so the row is `FETCH_FAILED`. The VCF writer writes the VCF-spe
 form with the base after the event instead.
 **Direction.** Resolve such rows to the same base-after form in preparation
 and count them. Telomere-only.
+
+**Decision (2026-10-05, operator).** Base-after form by default (no flag): the
+MAF output keeps the input row, so a result is looked up by it, and the row
+counts as the same event given as VCF already does (REF reads; ALT cannot show at
+a contig start). With it: VCF output of MAF input carries the MAF row
+(`MAF_START`, `MAF_REF`, `MAF_ALT`) on every record. 0 such rows in the
+sign-out dump (1.13M rows).
 
 ### C10 — Reads ending inside an indel's repeat tract are counted REF (#157) · H [counts]
 **Finding** (while measuring C2). A read that starts or ends inside an indel's
@@ -1210,11 +1217,20 @@ with a WARN like VCF.
 
 **Decision (2026-09-25, operator).** A visible `FAIL` row with a reason, so MAF→MAF output keeps every row. Lowercase bases are valid. Evidence on #123: the automated pipeline's 19.8M calls have 0 invalid alleles; the 9 in the 1.13M curated sign-out rows come from hand edits.
 
+**Decision (2026-10-05, operator).** VCF output writes such a row as the
+symbolic record `<NON_SEQUENCE>` (REF the reference base at POS, declared in a
+`##ALT` line): it keeps every row and stays valid VCF. Re-measured: 7 invalid
+alleles in the current dump.
+
 ### I2 — `End_Position` optional (#124) · L
 **Finding.** `MafReader` requires an integer `End_Position` but nothing uses
 it; rows without one are skipped with a WARN. maf2vcf converts them.
 **Direction.** Parse it when present; don't require it. Update the
 required-columns table.
+
+**Decision (2026-10-05, operator).** Accept rows without it (as maf2vcf does);
+`gbcms merge` joins on it only when every input has it. The sign-out dump has it,
+consistent with Start and REF, on all but one of 1.13M rows.
 
 ### I3 — VCF→MAF `Tumor_Seq_Allele1` (#125) · L [decided]
 **Finding.** For VCF input, `Tumor_Seq_Allele1`, `Strand` and
