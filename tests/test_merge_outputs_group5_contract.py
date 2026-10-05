@@ -940,7 +940,7 @@ def test_an_output_symlink_and_mode_survive_a_rewrite(tmp_path):
 def test_the_qc_flags_page_has_the_mfsd_confidence_classes():
     text = (ROOT / "docs" / "reference" / "qc-flags.md").read_text()
     assert "mfsd_alt_confidence" in text
-    assert all(v in text for v in ("HIGH", "LOW", "NONE"))
+    assert all(v in text for v in ("TESTABLE", "SPARSE", "NONE"))
 
 
 # ── D6: each flag is defined once (QC Flags), included or linked elsewhere ────
@@ -979,7 +979,7 @@ def test_the_qc_flags_page_defines_every_family():
         "rescued",
         "LOW_ALT_JUNC",
         "mfsd_ks_valid",
-        "TUMOR-LIKE",
+        "LEANS-SOMATIC",
     ):
         assert expected in flags, expected
 

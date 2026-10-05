@@ -9,7 +9,8 @@
 //! - Healthy cfDNA peaks near 167 bp (mono-nucleosome protection)
 //! - Tumor-derived cfDNA is enriched in shorter fragments (~120–145 bp)
 //! - The KS test detects distributional shifts between allele classes
-//! - The LLR scores each fragment class relative to a Gaussian tumor/healthy model
+//! - The LLR scores each fragment class relative to a Gaussian tumor/healthy model,
+//!   reported as the mean per fragment (comparable across classes of any size)
 //!
 //! All functions operate on raw, unweighted fragment size slices. GC correction
 //! is not applied here — GC bias affects count depth, not fragment length, so
@@ -19,7 +20,7 @@
 //! ```ignore
 //! let physical = mfsd::calc_physical_insert_size(&record);
 //! let (ks_d, ks_p) = mfsd::ks_test(&alt_sizes, &ref_sizes);
-//! let llr = mfsd::calc_llr(&alt_sizes);
+//! let llr = mfsd::calc_llr_mean(&alt_sizes);
 //! let mean = mfsd::calc_mean(&alt_sizes);
 //! ```
 
@@ -31,6 +32,12 @@ use rust_htslib::bam::Record;
 /// Below this threshold, `ks_test` returns `(f64::NAN, 1.0)` to signal
 /// insufficient data rather than a spurious result.
 pub const MIN_FOR_KS: usize = 5;
+
+/// Largest lattice (n·m cells) for which the KS p-value is computed exactly. Every
+/// class pair a targeted cfDNA panel produces fits (a few thousand fragments a
+/// side); beyond it both classes are large and the corrected asymptotic series is
+/// accurate (within a few percent once the smaller class has a few hundred).
+const KS_EXACT_MAX_CELLS: u64 = 10_000_000;
 
 // ── Model Parameters ──────────────────────────────────────────────────────────
 
@@ -148,6 +155,17 @@ pub fn calc_llr_with_params(lengths: &[f64], params: &LlrModelParams) -> f64 {
         .sum()
 }
 
+/// Mean per-fragment log-likelihood ratio: [`calc_llr`] divided by the number of
+/// fragments, so it does not grow with depth (the sum grows about 22x from n < 20
+/// to n >= 100 on real cfDNA, while the mean stays flat). NaN for an empty class:
+/// with no fragments there is no ratio to report.
+pub fn calc_llr_mean(lengths: &[f64]) -> f64 {
+    if lengths.is_empty() {
+        return f64::NAN;
+    }
+    calc_llr(lengths) / lengths.len() as f64
+}
+
 // ── Physical Fragment Sizing ─────────────────────────────────────────────────
 
 /// Compute the physical fragment insert size from CIGAR, correcting TLEN for indels.
@@ -223,7 +241,9 @@ pub fn calc_physical_insert_size(record: &Record) -> i32 {
 /// Two-sample Kolmogorov-Smirnov test.
 ///
 /// Computes the KS D-statistic (maximum absolute difference between empirical
-/// CDFs) and an approximate p-value using the Kolmogorov distribution series.
+/// CDFs, evaluated after each block of tied values) and its p-value: exact up to
+/// `KS_EXACT_MAX_CELLS` lattice cells, else the finite-sample-corrected asymptotic
+/// series (see [`ks_p_value`]).
 ///
 /// Returns `(f64::NAN, 1.0)` if either slice has fewer than [`MIN_FOR_KS`]
 /// fragments — callers should check `mfsd_ks_valid` before interpreting results.
@@ -275,72 +295,70 @@ pub fn ks_test(a: &[f64], b: &[f64]) -> (f64, f64) {
 
 /// Two-sample KS p-value: P(D ≥ d) under the null.
 ///
-/// Exact for small `n·m` (the low-input cfDNA regime, where the asymptotic
-/// Kolmogorov approximation over/under-covers because D is highly discrete), and
-/// the asymptotic series for large `n·m` where it is accurate and the exact O(n·m)
-/// lattice DP would be wasteful. The `n·m` threshold follows R's `ks.test` (exact
-/// when `n·m < 10_000`); SciPy's `ks_2samp` instead switches on each sample's size.
+/// Exact whenever the lattice has at most `KS_EXACT_MAX_CELLS` cells. A cfDNA
+/// variant usually pairs a few ALT fragments with thousands of REF fragments; the
+/// asymptotic Kolmogorov series overstates p there (about 1.7x at 5 ALT fragments
+/// near p = 0.05, and 45x for a strong shift), and the old switch on `n·m` (R's
+/// `ks.test` rule) sent most real ALT-vs-REF pairs to it. Beyond the limit both
+/// classes are large, and the series with Stephens' correction is used.
+///
+/// The exact p-value treats the sizes as continuous; with tied (integer) sizes it
+/// is conservative (measured on real cfDNA: 3.7–4.7% of null draws below 0.05).
 fn ks_p_value(d: f64, n: usize, m: usize) -> f64 {
-    if (n as u64) * (m as u64) <= 10_000 {
+    if (n as u64) * (m as u64) <= KS_EXACT_MAX_CELLS {
         ks_p_value_exact(d, n, m)
     } else {
         ks_p_value_asymptotic(d, n as f64, m as f64)
     }
 }
 
-/// Exact two-sample KS p-value via the lattice-path count (Hodges 1957).
+/// Exact two-sample KS p-value from the monotone lattice paths (Hodges 1957).
 ///
-/// Counts monotone merge-paths from (0,0) to (n,m) whose CDF deviation stays
-/// strictly below the observed D, then `p = 1 − within / C(n+m, n)`. Exact at any
-/// N, including the small n (5–20) typical of cfDNA ALT fragments. The deviation
-/// is compared in integers scaled by n·m (`|i·m − j·n| < d·n·m`) to avoid float
-/// drift; a tiny epsilon makes a deviation exactly equal to D count as *reaching*
-/// it, matching `P(D ≥ d_obs)`.
+/// A path from (0,0) to (n,m) takes one step per sorted observation; under the null
+/// every path is equally likely. `u(i, j)` is the share of the paths reaching (i, j)
+/// that stayed strictly inside the band `|i·m − j·n| < d·n·m` (deviation compared in
+/// integers scaled by n·m to avoid float drift; a tiny epsilon makes a deviation
+/// exactly equal to D count as reaching it, matching `P(D ≥ d)`). Because the share
+/// splits as `u(i,j) = u(i−1,j)·i/(i+j) + u(i,j−1)·j/(i+j)`, every value stays in
+/// [0, 1] and no path count or binomial coefficient can overflow at any n, m. The
+/// p-value is `1 − u(n, m)`.
 fn ks_p_value_exact(d: f64, n: usize, m: usize) -> f64 {
     if d <= 0.0 {
         return 1.0;
     }
+    // Walk rows over the larger class and columns over the smaller: the band is
+    // symmetric in (n, m), and the working row is the smaller one.
+    let (n, m) = if n >= m { (n, m) } else { (m, n) };
     let band = d * n as f64 * m as f64 - 1e-9;
-    let ni = n as i64;
-    let mi = m as i64;
+    let (ni, mi) = (n as i64, m as i64);
+    let inside = |i: usize, j: usize| ((i as i64 * mi - j as i64 * ni).abs() as f64) < band;
 
-    // i = 0 edge: reachable along the top while inside the band.
-    let mut prev = vec![0f64; m + 1];
-    for (j, slot) in prev.iter_mut().enumerate() {
-        if (j as i64 * ni) as f64 >= band {
-            break; // outside band → rest of the edge is unreachable inside-band
-        }
-        *slot = 1.0;
+    let mut row = vec![0f64; m + 1];
+    row[0] = 1.0;
+    for j in 1..=m {
+        row[j] = if inside(0, j) { row[j - 1] } else { 0.0 };
     }
-
     for i in 1..=n {
-        let mut cur = vec![0f64; m + 1];
-        cur[0] = if ((i as i64 * mi) as f64) < band { prev[0] } else { 0.0 };
+        row[0] = if inside(i, 0) { row[0] } else { 0.0 };
         for j in 1..=m {
-            let dev = (i as i64 * mi - j as i64 * ni).abs() as f64;
-            cur[j] = if dev < band { cur[j - 1] + prev[j] } else { 0.0 };
+            row[j] = if inside(i, j) {
+                let k = (i + j) as f64;
+                row[j] * i as f64 / k + row[j - 1] * j as f64 / k
+            } else {
+                0.0
+            };
         }
-        prev = cur;
     }
-
-    (1.0 - prev[m] / binomial(n + m, n)).clamp(0.0, 1.0)
+    (1.0 - row[m]).clamp(0.0, 1.0)
 }
 
-/// C(n, k) as f64. Exact for the n+m ≤ ~140 range reached under the exact-KS
-/// threshold; the multiplicative form keeps intermediate values bounded.
-fn binomial(n: usize, k: usize) -> f64 {
-    let k = k.min(n - k);
-    let mut result = 1.0;
-    for i in 0..k {
-        result = result * (n - i) as f64 / (i + 1) as f64;
-    }
-    result
-}
-
-/// Asymptotic KS p-value via the Kolmogorov series Q_KS(λ) = 2 Σ (−1)^(k−1) e^(−2k²λ²),
-/// λ = D·√(n·m/(n+m)). Accurate for large n·m; used only above the exact threshold.
+/// Asymptotic KS p-value via the Kolmogorov series Q_KS(λ) = 2 Σ (−1)^(k−1) e^(−2k²λ²)
+/// with Stephens' finite-sample correction, λ = (√Nₑ + 0.12 + 0.11/√Nₑ)·D,
+/// Nₑ = n·m/(n+m). Used only above `KS_EXACT_MAX_CELLS`, where both classes are
+/// large.
 fn ks_p_value_asymptotic(d: f64, n: f64, m: f64) -> f64 {
-    let lambda = d * (n * m / (n + m)).sqrt();
+    let ne = (n * m / (n + m)).sqrt();
+    let lambda = (ne + 0.12 + 0.11 / ne) * d;
     if lambda < f64::EPSILON {
         return 1.0;
     }
@@ -467,6 +485,51 @@ mod tests {
         let (d, p) = ks_test(&a, &b);
         assert!((d - 0.375).abs() < 1e-9, "D={d}");
         assert!((p - 0.660140).abs() < 1e-5, "exact p={p}, want 0.660140");
+    }
+
+    // ─── mean LLR + exact KS at any depth ─────────────────────────────────────
+
+    #[test]
+    fn test_llr_mean_is_the_sum_over_n() {
+        let sizes = [118.0, 126.0, 133.0, 141.0, 152.0];
+        assert!((calc_llr_mean(&sizes) - calc_llr(&sizes) / 5.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_llr_mean_of_an_empty_class_is_nan() {
+        assert!(calc_llr_mean(&[]).is_nan());
+    }
+
+    // Few ALT fragments against a deep REF class: 5 x 2,400 = 12,000 lattice cells,
+    // past R's exact limit. Reference: the share-of-paths recursion in exact Python
+    // arithmetic (tests/test_statistics_group6_contract.py::_ks_exact); the
+    // asymptotic series gave 0.0346 here.
+    #[test]
+    fn test_ks_exact_few_alt_deep_ref() {
+        let b: Vec<f64> = (0..2400).map(|k| (140 + (k * 37) % 80) as f64).collect();
+        let a = vec![143.0, 150.0, 156.0, 161.0, 168.0];
+        let (d, p) = ks_test(&a, &b);
+        assert!((d - 0.6375).abs() < 1e-12, "D={d}");
+        assert!((p - 0.017188813774322798).abs() < 1e-9, "exact p={p}");
+    }
+
+    #[test]
+    fn test_ks_exact_is_symmetric_in_the_classes() {
+        let a: Vec<f64> = (0..7).map(|k| (120 + 9 * k) as f64).collect();
+        let b: Vec<f64> = (0..300).map(|k| (130 + (k * 13) % 70) as f64).collect();
+        let (d1, p1) = ks_test(&a, &b);
+        let (d2, p2) = ks_test(&b, &a);
+        assert!((d1 - d2).abs() < 1e-12 && (p1 - p2).abs() < 1e-12, "{p1} vs {p2}");
+    }
+
+    #[test]
+    fn test_ks_large_classes_use_the_corrected_series() {
+        // 4,000 x 4,000 cells is past the exact limit; the corrected series stays a
+        // probability and is small for a clear shift.
+        let a: Vec<f64> = (0..4000).map(|k| (120 + k % 80) as f64).collect();
+        let b: Vec<f64> = (0..4000).map(|k| (130 + k % 80) as f64).collect();
+        let (_, p) = ks_test(&a, &b);
+        assert!((0.0..1e-6).contains(&p), "p={p}");
     }
 
     // ─── calc_physical_insert_size ────────────────────────────────────────────

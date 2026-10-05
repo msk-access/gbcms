@@ -307,17 +307,17 @@ It counts in fragment depth but in none of the four classes.
 
 | Column | Description |
 |:-------|:------------|
-| `mfsd_alt_llr` | LLR for ALT fragments: Σ log(P_tumor/P_healthy). Positive = tumor-like (short fragments). |
-| `mfsd_ref_llr` | LLR for REF fragments |
+| `mfsd_alt_llr` | Fragment-size LLR for ALT fragments, the mean per fragment of log(P_tumor/P_healthy) (n is `mfsd_alt_count`). Positive = tumor-like (short fragments). `NA` when the class is empty. |
+| `mfsd_ref_llr` | Fragment-size LLR for REF fragments, mean per fragment. `NA` when the class is empty. |
 
 #### Mean Fragment Sizes
 
 | Column | Description |
 |:-------|:------------|
 | `mfsd_ref_mean` | Mean insert size (bp) for REF fragments. `NA` when class is empty. |
-| `mfsd_alt_mean` | Mean insert size (bp) for ALT fragments |
-| `mfsd_nonref_mean` | Mean insert size (bp) for NonREF fragments |
-| `mfsd_n_mean` | Mean insert size (bp) for N fragments |
+| `mfsd_alt_mean` | Mean insert size (bp) for ALT fragments. `NA` when class is empty. |
+| `mfsd_nonref_mean` | Mean insert size (bp) for NonREF fragments. `NA` when class is empty. |
+| `mfsd_n_mean` | Mean insert size (bp) for N fragments. `NA` when class is empty. |
 
 #### Pairwise KS Statistics (6 pairs × 3 values = 18 columns, + 1 FDR q-value)
 
@@ -342,8 +342,8 @@ Values are `NA` when either class has fewer than 5 fragments (`mfsd_ks_valid = F
 
 An additional column, `mfsd_qval_alt_ref`, carries the Benjamini-Hochberg FDR
 q-value for the ALT-vs-REF KS p-value, corrected across all variants with a valid
-ALT-vs-REF test in the sample. The mFSD report classifies TUMOR-LIKE / CH-LIKE on
-this q-value, not the raw p-value. It is `NA` when the KS test was invalid, and
+ALT-vs-REF test in the sample. The mFSD report's LEANS-SOMATIC class uses this
+q-value, not the raw p-value. It is `NA` when the KS test was invalid, and
 equals the p-value until the post-counting BH pass runs.
 
 #### Derived Metrics
@@ -383,8 +383,8 @@ Added to `##INFO` header and per-variant INFO column when `--mfsd` is set.
 | `MFSD_KS_ALT_REF` | Float | KS D-statistic (ALT vs REF) |
 | `MFSD_PVAL_ALT_REF` | Float | KS p-value (ALT vs REF) |
 | `MFSD_QVAL_ALT_REF` | Float | Benjamini-Hochberg FDR q-value for the ALT-vs-REF KS p-value |
-| `MFSD_ALT_LLR` | Float | LLR for ALT fragments |
-| `MFSD_REF_LLR` | Float | LLR for REF fragments |
+| `MFSD_ALT_LLR` | Float | Fragment-size LLR for ALT fragments, mean per fragment |
+| `MFSD_REF_LLR` | Float | Fragment-size LLR for REF fragments, mean per fragment |
 | `MFSD_ALT_COUNT` | Integer | ALT-classified fragment count |
 | `MFSD_REF_COUNT` | Integer | REF-classified fragment count |
 | `MFSD_SUB_NUC_REF_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |

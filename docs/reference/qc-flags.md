@@ -129,15 +129,21 @@ Columns whose value is itself a flag. Each column's place in the output is in
 | `rna_editing_site` (VCF `RED`) | RNA, `--rna-editing-db` | `True` when the locus overlaps a known A-to-I editing site | An A>G / T>C call there is likely editing, not a somatic mutation |
 | `asjd_flag` | RNA, `--gtf` | `True` when REF and ALT junction usage differ (Fisher p < 0.05; `asjd_qval` is BH-corrected across variants) | Candidate allele-specific splicing; read `asjd_diagnostic` |
 | `mfsd_ks_valid` | `--mfsd` | `True` when both ALT and REF have ≥ 5 fragments in the size window (50–1000 bp), so the KS test ran; when `False` the KS statistics are NA | Do not read the KS columns when `False` |
-| `mfsd_alt_confidence` | `--mfsd` | `HIGH` with ≥ 5 ALT fragments in the size window, `LOW` with 1–4, `NONE` with none | Weigh the mFSD statistics by it |
-| `mfsd_ch_flag` | `--mfsd` | `True` when the variant falls in a clonal-hematopoiesis (CH) gene (from `Hugo_Symbol`) | Read with the CH-LIKE class |
+| `mfsd_alt_confidence` | `--mfsd` | How much ALT data there is: `TESTABLE` with ≥ 5 ALT fragments in the size window (the KS minimum), `SPARSE` with 1–4, `NONE` with none | Not a reliability grade: at 5 fragments a real size shift is detected only about 8% of the time |
+| `mfsd_ch_flag` | `--mfsd` | `True` when the variant falls in a clonal-hematopoiesis (CH) gene (from `Hugo_Symbol`) | A prior, not fragment evidence; matched-normal data decide CH |
 <!-- --8<-- [end:qc-columns] -->
 
 ## mFSD report classes
 
-The `--mfsd-report` HTML classifies each variant's fragment sizes (see
-[mFSD Report](mfsd-report.md)). The KS threshold is on the BH-FDR q-value across
-the sample's variants (`mfsd_qval_alt_ref`), not the raw p-value.
+The `--mfsd-report` HTML grades each variant's fragment-size evidence (see
+[mFSD Report](mfsd-report.md)): the ALT fragments against the REF fragments at the
+same locus in the same plasma sample. It is graded evidence, never an origin call;
+the KS threshold is on the BH-FDR q-value across the sample's variants
+(`mfsd_qval_alt_ref`), not the raw p-value. Nothing leans toward CH: at the fragment
+counts a targeted cfDNA panel produces, a tumor variant usually looks like REF too
+(on labeled ACCESS plasma, about 30% of tumor variants below 50 ALT fragments did),
+so similar sizes are no evidence for clonal hematopoiesis. Matched-normal (buffy
+coat) data decide CH; a CH-associated gene is shown as a note and changes nothing.
 
 <!-- --8<-- [start:mfsd-classes] -->
 ```mermaid
@@ -146,24 +152,20 @@ flowchart TD
     AltCheck -->|"No"| Insufficient(["INSUFFICIENT"]):::grey
     AltCheck -->|"Yes"| KSValid{"KS test ran?<br/>(mfsd_ks_valid)"}
     KSValid -->|"No"| Insufficient
-    KSValid -->|"Yes"| TumorCheck{"Enrichment > 1.3 (or ALT short<br/>fragments where REF has none),<br/>KS q < 0.05, not a CH gene?"}
-    TumorCheck -->|"Yes"| Tumor(["TUMOR-LIKE"]):::green
-    TumorCheck -->|"No"| CHCheck{"CH gene, enrichment < 1.2,<br/>KS q > 0.05?"}
-    CHCheck -->|"Yes"| CH(["CH-LIKE"]):::amber
-    CHCheck -->|"No"| Ambiguous(["AMBIGUOUS"]):::blue
+    KSValid -->|"Yes"| Shorter{"KS q < 0.05 and a larger<br/>sub-nucleosomal share<br/>among ALT than REF?"}
+    Shorter -->|"Yes"| Somatic(["LEANS-SOMATIC"]):::green
+    Shorter -->|"No"| None(["NO-SIZE-EVIDENCE"]):::blue
 
     classDef green fill:#27ae60,color:#fff,stroke:#1e8449,stroke-width:2px;
-    classDef amber fill:#e67e22,color:#fff,stroke:#bf6516,stroke-width:2px;
-    classDef blue fill:#3498db,color:#fff,stroke:#2471a3,stroke-width:2px;
+    classDef blue fill:#7f8c8d,color:#fff,stroke:#616a6b,stroke-width:2px;
     classDef grey fill:#95a5a6,color:#fff,stroke:#7f8c8d,stroke-width:2px;
 ```
 
-| Class | Rule | Interpretation |
-|:------|:-----|:---------------|
-| `TUMOR-LIKE` | Sub-nucleosomal enrichment > 1.3 (or ALT has short fragments while REF has none), KS q < 0.05, and the gene is not in the CH set | ALT fragments significantly shorter than REF: a ctDNA signal |
-| `CH-LIKE` | A CH gene, enrichment < 1.2, and KS q > 0.05 | ALT sizes mirror REF: consistent with clonal hematopoiesis |
-| `AMBIGUOUS` | Neither | Mixed signals; may need clinical context or paired WBC sequencing |
-| `INSUFFICIENT` | ALT fragments below `--mfsd-report-min-alt`, or the KS test did not run (`mfsd_ks_valid` False: a class has fewer than 5 fragments) | Not enough fragments to classify |
+| Class | Rule | What it means |
+|:------|:-----|:--------------|
+| `LEANS-SOMATIC` | KS q < 0.05 and a larger sub-nucleosomal (< 150 bp) share among ALT than REF fragments | ALT fragments significantly shorter than REF: increased confidence the variant is tumor-derived (on labeled ACCESS plasma: 0 of 39 white-cell variants, 44% of tumor variants) |
+| `NO-SIZE-EVIDENCE` | The KS test ran and the ALT fragments are not significantly shorter (including a significantly longer ALT) | The sizes do not separate ALT from REF; not evidence for clonal hematopoiesis |
+| `INSUFFICIENT` | ALT fragments below `--mfsd-report-min-alt`, or the KS test did not run (`mfsd_ks_valid` False: a class has fewer than 5 fragments) | Too few fragments for the size test |
 <!-- --8<-- [end:mfsd-classes] -->
 
 In VCF, the mFSD summary is in INFO: `MFSD_REF_COUNT`, `MFSD_ALT_COUNT`,

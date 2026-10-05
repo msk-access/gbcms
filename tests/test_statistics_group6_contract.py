@@ -1,4 +1,4 @@
-"""Group 6 statistics contracts (S1 #153, S2 #154), red first.
+"""Group 6 statistics contracts (S1 #153, S2 #154).
 
 Operator decisions 2026-09-25 (S1: the LLR as a mean per fragment; S2: CH-LIKE must
 not rest on a non-significant KS), refined 2026-10-05: mFSD is graded evidence
@@ -20,16 +20,6 @@ from gbcms.io.output import MafWriter, VcfWriter
 from gbcms.report.mfsd_report import _classify_origin
 
 ROOT = Path(__file__).resolve().parent.parent
-
-_S1 = pytest.mark.xfail(strict=True, reason="S1: the LLR is a sum; an empty class writes 0")
-_KS = pytest.mark.xfail(strict=True, reason="S2: the KS p-value is asymptotic above n*m 10,000")
-_TIER = pytest.mark.xfail(strict=True, reason="S2: mfsd_alt_confidence says HIGH from 5 fragments")
-_CLS = pytest.mark.xfail(
-    strict=True,
-    reason="S2: CH-LIKE from a non-significant KS; gene membership gates the somatic call",
-)
-_DOC = pytest.mark.xfail(strict=True, reason="S1/S2: docs describe the sum LLR and CH-LIKE")
-
 
 # ── a synthetic locus with chosen fragment sizes ────────────────────────────────
 
@@ -112,7 +102,6 @@ _REF = [150 + (k * 7) % 60 for k in range(40)]  # 150-209 bp, a mono-nucleosome-
 # ── S1: the LLR is a mean per fragment; an empty class has no mean ──────────────
 
 
-@_S1
 def test_the_alt_and_ref_llr_are_the_mean_per_fragment(tmp_path):
     alt = [118, 126, 133, 141, 152]
     c = _count(_bam(tmp_path, _REF, alt))
@@ -121,7 +110,6 @@ def test_the_alt_and_ref_llr_are_the_mean_per_fragment(tmp_path):
     assert c.mfsd_ref_llr == pytest.approx(sum(map(_llr_term, _REF)) / len(_REF), rel=1e-12)
 
 
-@_S1
 def test_an_empty_class_has_no_mean_size_or_llr(tmp_path):
     c = _count(_bam(tmp_path, _REF, []))
     assert c.mfsd_alt_count == 0
@@ -132,7 +120,6 @@ def test_an_empty_class_has_no_mean_size_or_llr(tmp_path):
     assert c.mfsd_ref_mean == pytest.approx(sum(_REF) / len(_REF))
 
 
-@_S1
 def test_the_vcf_header_describes_the_llr_as_a_mean(tmp_path):
     path = tmp_path / "out.vcf"
     writer = VcfWriter(path, sample_name="TUMOR", mfsd=True)
@@ -158,7 +145,6 @@ def test_the_ks_p_value_is_exact_where_it_already_was(tmp_path):
     assert c.mfsd_pval_alt_ref == pytest.approx(p, rel=1e-9)
 
 
-@_KS
 def test_the_ks_p_value_is_exact_for_few_alt_fragments_against_a_deep_ref(tmp_path):
     # 5 ALT vs 2,400 REF fragments: 12,000 lattice cells, past the old exact limit,
     # where the asymptotic series overstated p about 1.7-2.3x (measured).
@@ -178,9 +164,9 @@ def test_the_ks_p_value_is_exact_for_few_alt_fragments_against_a_deep_ref(tmp_pa
     "alt_count,tier",
     [
         (0, "NONE"),
-        pytest.param(1, "SPARSE", marks=_TIER),
-        pytest.param(4, "SPARSE", marks=_TIER),
-        pytest.param(5, "TESTABLE", marks=_TIER),
+        (1, "SPARSE"),
+        (4, "SPARSE"),
+        (5, "TESTABLE"),
     ],
 )
 def test_alt_confidence_names_the_data_not_a_verdict(tmp_path, alt_count, tier):
@@ -203,7 +189,6 @@ def test_alt_confidence_names_the_data_not_a_verdict(tmp_path, alt_count, tier):
 _NAN = float("nan")
 
 
-@_CLS
 def test_a_tumor_tp53_variant_with_shorter_fragments_leans_somatic():
     # TP53 is in the CH gene set; that no longer blocks the somatic direction.
     signal, reason = _classify_origin("TP53", 2.0, 0.2, 0.4, 0.001, True, 20, 3)
@@ -211,7 +196,6 @@ def test_a_tumor_tp53_variant_with_shorter_fragments_leans_somatic():
     assert "CH-associated gene" in reason
 
 
-@_CLS
 def test_a_ch_gene_without_a_size_shift_has_no_size_evidence():
     # Today's CH-LIKE: a CH gene, low enrichment, a non-significant KS. Absence of a
     # shift is not evidence for CH (about 30% of tumor variants look REF-like below
@@ -221,20 +205,17 @@ def test_a_ch_gene_without_a_size_shift_has_no_size_evidence():
     assert "CH-associated gene" in reason
 
 
-@_CLS
 def test_a_significant_shortening_leans_somatic_without_a_further_enrichment_gate():
     signal, _ = _classify_origin("NOTACHGENE", 1.15, 0.20, 0.23, 0.01, True, 30, 3)
     assert signal == "LEANS-SOMATIC"
 
 
-@_CLS
 def test_a_significantly_longer_alt_is_not_somatic_evidence():
     signal, reason = _classify_origin("NOTACHGENE", 0.5, 0.30, 0.15, 0.001, True, 30, 3)
     assert signal == "NO-SIZE-EVIDENCE"
     assert "longer" in reason
 
 
-@_CLS
 def test_no_report_class_is_named_ch_like(tmp_path):
     from gbcms.report import generate_mfsd_report
 
@@ -251,7 +232,6 @@ def test_no_report_class_is_named_ch_like(tmp_path):
 # ── docs follow the code ───────────────────────────────────────────────────────
 
 
-@_DOC
 def test_the_docs_describe_the_graded_classes_and_the_mean_llr():
     qc = (ROOT / "docs" / "reference" / "qc-flags.md").read_text()
     for term in ("LEANS-SOMATIC", "NO-SIZE-EVIDENCE", "INSUFFICIENT", "TESTABLE", "SPARSE"):

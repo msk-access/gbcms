@@ -221,26 +221,27 @@ pub struct BaseCounts {
     pub mfsd_n_count: u32,
 
     // ── mFSD: Mean fragment sizes ─────────────────────────────────────────────
-    /// Mean fragment size (bp) for REF-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for REF-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_ref_mean: f64,
-    /// Mean fragment size (bp) for ALT-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for ALT-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_alt_mean: f64,
-    /// Mean fragment size (bp) for NonREF-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for NonREF-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_nonref_mean: f64,
-    /// Mean fragment size (bp) for N-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for N-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_n_mean: f64,
 
     // ── mFSD: Log-Likelihood Ratios ───────────────────────────────────────────
-    // LLR = Σ log(P_tumor(size) / P_healthy(size)) over all fragments in class.
-    // Positive = tumor-like (short fragments); negative = healthy-like (long).
-    /// LLR for ALT-classified fragments.
+    // LLR = mean over the class's fragments of log(P_tumor(size) / P_healthy(size)).
+    // Positive = tumor-like (short fragments); negative = healthy-like (long). NaN
+    // for an empty class.
+    /// Mean per-fragment LLR for ALT-classified fragments (n = `mfsd_alt_count`).
     #[pyo3(get)]
     pub mfsd_alt_llr: f64,
-    /// LLR for REF-classified fragments.
+    /// Mean per-fragment LLR for REF-classified fragments (n = `mfsd_ref_count`).
     #[pyo3(get)]
     pub mfsd_ref_llr: f64,
 

@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — mFSD statistics (#153, #154)
+
+Measured first on ACCESS plasma labeled by the patient's buffy coat (operator
+decisions 2026-09-25, refined 2026-10-05): mFSD is graded, plasma-only evidence,
+never an origin call; the CH-vs-tumor prediction belongs to a separate model that
+reads `<sample>.fsd.parquet`. Only `--mfsd` output changes.
+- **The fragment-size LLR is the mean per fragment (#153).** `mfsd_alt_llr` and
+  `mfsd_ref_llr` (VCF `MFSD_ALT_LLR`, `MFSD_REF_LLR`) were sums, which grew about
+  22x with depth on real cfDNA; the mean stays comparable, with n in
+  `mfsd_*_count`. An empty fragment class writes `NA` for its mean size and LLR (it
+  wrote 0, where the docs already said `NA`; the N class is empty on most rows).
+- **The mFSD report grades the evidence (#154).** Its classes are `LEANS-SOMATIC`
+  (ALT fragments significantly shorter than REF: KS q < 0.05 with a larger
+  sub-nucleosomal share), `NO-SIZE-EVIDENCE` and `INSUFFICIENT`, replacing
+  `TUMOR-LIKE` / `CH-LIKE` / `AMBIGUOUS`. `CH-LIKE` rested on a non-significant KS,
+  which is also the usual result for tumor variants at these fragment counts: on 39
+  labeled samples it called 3 of 17 tumor variants in CH-associated genes CH-LIKE,
+  and about 30% of tumor variants below 50 ALT fragments looked REF-like. Nothing
+  leans CH now. Gene membership is a note, not a gate (a tumor TP53 variant could
+  never be `TUMOR-LIKE`), and the extra enrichment > 1.3 gate is gone (significant
+  shortening found 35 of 97 tumor variants, 0 of 39 white-cell variants; the gate
+  kept 22). A significantly longer ALT is not somatic evidence.
+- **The KS p-value is exact** up to 10⁷ lattice cells, computed as shares of
+  in-band paths (no overflow), with Stephens' corrected asymptotic series above.
+  The switch at `n·m` 10,000 sent most real ALT-vs-REF pairs (348 of 512) to the
+  uncorrected series, which overstated p 1.7–2.3x at 5 ALT fragments near
+  p = 0.05 and up to 45x for a strong shift.
+- **`mfsd_alt_confidence` is `TESTABLE` / `SPARSE` / `NONE`** (was `HIGH` / `LOW` /
+  `NONE`): it names how much ALT data there is (≥ 5, 1–4, 0 fragments); at 5
+  fragments a real size shift is detected only about 8% of the time.
+
 ### Changed — merge, outputs and observability (#194, #221, #223, #224, #129, #148, #130, #131, #156, #220, #225)
 
 Measured first (operator decisions 2026-09-30 for #194, 2026-10-05 for the rest);

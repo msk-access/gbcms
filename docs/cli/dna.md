@@ -55,7 +55,7 @@ short-fragment enrichment associated with tumor-derived cfDNA
 |:-------|:--------|:------------|
 | `--mfsd` | `false` | Enable mFSD analysis. Adds 41 mFSD columns (KS test, LLR, mean sizes, pairwise comparisons, derived metrics) to MAF output and 13 `MFSD_*` INFO fields to VCF. |
 | `--mfsd-parquet` | `false` | Write a companion `<sample>.fsd.parquet` with per-variant raw fragment size arrays (`ref_sizes`, `alt_sizes`). Enables downstream visualizations. **Requires `--mfsd`**. |
-| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and Fragment Origin Signal classification. **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). See [mFSD Report](../reference/mfsd-report.md). |
+| `--mfsd-report` | `false` | Generate an interactive HTML report (`<sample>.mfsd_report.html`) with per-variant fragment size distributions, dual-axis histograms, and graded fragment-size evidence (leans somatic, no size evidence, insufficient). **Implies `--mfsd` and `--mfsd-parquet`** (both are auto-enabled). See [mFSD Report](../reference/mfsd-report.md). |
 | `--mfsd-report-min-alt` | `3` | Minimum ALT fragment count to include a variant in the HTML report. |
 | `--mfsd-report-max-variants` | `20` | Maximum variants in the HTML report (selected by highest ALT count). Use `-1` for no limit. |
 

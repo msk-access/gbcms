@@ -36,9 +36,9 @@ The report title displays the sample name (from `--bam sample_id:path` or derive
 
 ### 2. Summary Dashboard
 
-Four metric cards provide an at-a-glance overview of fragment origin signal classification:
+Three metric cards give an at-a-glance overview of the fragment-size evidence:
 
-Each card counts the variants in one class: TUMOR-LIKE, CH-LIKE, AMBIGUOUS and INSUFFICIENT ([defined in QC Flags](qc-flags.md#mfsd-report-classes), shown below).
+Each card counts the variants in one class: LEANS-SOMATIC, NO-SIZE-EVIDENCE and INSUFFICIENT ([defined in QC Flags](qc-flags.md#mfsd-report-classes), shown below).
 
 ### 3. Caveat Banner
 
@@ -49,7 +49,7 @@ A clinical disclaimer noting that fragment origin signal is an experimental diag
 Each qualifying variant gets a dedicated card containing:
 
 - **Variant identity**: Gene symbol, genomic coordinates, allele change
-- **Fragment Origin Signal**: Classification badge ([TUMOR-LIKE / CH-LIKE / AMBIGUOUS / INSUFFICIENT](qc-flags.md#mfsd-report-classes)) with confidence explanation
+- **Fragment-size evidence**: Class badge ([LEANS-SOMATIC / NO-SIZE-EVIDENCE / INSUFFICIENT](qc-flags.md#mfsd-report-classes)) with its explanation, and a note when the gene is CH-associated
 - **Key statistics table**: Subnucleosomal enrichment, KS p-value, mean fragment sizes (REF vs ALT), delta, log-likelihood ratio
 - **Dual-axis histogram**: Interactive Plotly chart showing:
     - **Bar chart** (left y-axis): Fragment count per size bin (REF in blue, ALT in red)
@@ -57,9 +57,9 @@ Each qualifying variant gets a dedicated card containing:
 
 ---
 
-## Fragment Origin Signal Classification
+## Fragment-size Evidence
 
-The report classifies each variant into one of four classes from its sub-nucleosomal enrichment, the KS test's FDR q-value across the sample's variants (`mfsd_qval_alt_ref`, not the raw p-value), and whether the gene is a clonal-hematopoiesis gene:
+The report grades each variant's fragment-size evidence from the ALT and REF fragments at the same locus: the KS test's FDR q-value across the sample's variants (`mfsd_qval_alt_ref`, not the raw p-value) and the sub-nucleosomal shares. It is graded evidence, never an origin call; a CH-associated gene is shown as a note:
 
 <!-- Defined once, in QC Flags; this includes the flowchart and table. -->
 --8<-- "reference/qc-flags.md:mfsd-classes"

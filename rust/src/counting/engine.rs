@@ -1376,13 +1376,16 @@ fn compute_mfsd_stats(
     counts.mfsd_nonref_count = nonref_sizes.len() as u32;
     counts.mfsd_n_count      = n_sizes.len()      as u32;
 
-    counts.mfsd_ref_mean    = mfsd::calc_mean(&ref_sizes);
-    counts.mfsd_alt_mean    = mfsd::calc_mean(&alt_sizes);
-    counts.mfsd_nonref_mean = mfsd::calc_mean(&nonref_sizes);
-    counts.mfsd_n_mean      = mfsd::calc_mean(&n_sizes);
+    // An empty class has no mean size (NaN, written NA), not a mean of 0 bp.
+    let mean = |v: &[f64]| if v.is_empty() { f64::NAN } else { mfsd::calc_mean(v) };
+    counts.mfsd_ref_mean    = mean(&ref_sizes);
+    counts.mfsd_alt_mean    = mean(&alt_sizes);
+    counts.mfsd_nonref_mean = mean(&nonref_sizes);
+    counts.mfsd_n_mean      = mean(&n_sizes);
 
-    counts.mfsd_alt_llr = mfsd::calc_llr(&alt_sizes);
-    counts.mfsd_ref_llr = mfsd::calc_llr(&ref_sizes);
+    // Mean per fragment, so the value does not grow with depth; n is mfsd_*_count.
+    counts.mfsd_alt_llr = mfsd::calc_llr_mean(&alt_sizes);
+    counts.mfsd_ref_llr = mfsd::calc_llr_mean(&ref_sizes);
 
     // KS helper: pairwise delta + D-statistic + p-value.
     // delta = mean(a) - mean(b); ks_test returns (NaN, 1.0) when either class < MIN_FOR_KS.
