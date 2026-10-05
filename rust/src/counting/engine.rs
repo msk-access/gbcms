@@ -96,9 +96,11 @@ fn compute_median_u32(v: &mut [u32]) -> f64 {
 // overhead significantly when variants are clustered (e.g., MAF files with
 // thousands of variants on the same gene).
 //
-// Bins are split when either the genomic distance or variant count exceeds
-// the limits. This matches the original C++ GBCMS architecture which used
-// --max_block_size=200 and --max_block_dist=10000.
+// A bin spans at least BIN_WINDOW from its first variant; each variant added
+// extends its end to that variant's REF span plus half a window, so close variants
+// chain it further (a floor, never capped: every member's full read window must be
+// fetched). It closes at a variant past its end or at BIN_MAX_VARIANTS. The C++
+// GBCMS used --max_block_size=200 and --max_block_dist=10000.
 
 /// Default bin window size in base pairs.
 const BIN_WINDOW: i64 = 10_000;
@@ -162,10 +164,10 @@ fn resolve_tid(bam_header: &bam::HeaderView, chrom: &str) -> Option<u32> {
 
 /// Build genomic bins from a list of variants.
 ///
-/// Variants are grouped by chromosome and position into `BIN_WINDOW`-sized
-/// bins. The algorithm is O(n) — a single pass over sorted variants.
-/// Bins are padded by the maximum `repeat_span` + 5bp to ensure reads
-/// at bin edges are captured.
+/// Variants are grouped by chromosome and position into bins of at least
+/// `BIN_WINDOW` (a floor that close variants chain past; see the module comment).
+/// The algorithm is O(n) — a single pass over sorted variants. Bins are padded by
+/// the widest member's read window, `max(5, repeat_span + 2)` (`window::pad_for_repeat_span`).
 ///
 /// # Arguments
 /// * `variants` — Variants (need not be sorted; sorting is internal)

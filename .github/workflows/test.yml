@@ -82,7 +82,8 @@ jobs:
           uv pip install --system dist/*.whl
           
           # Install dev dependencies  
-          uv pip install --system pytest pytest-cov pytest-mock pyarrow
+          # pyyaml: the workflow-contract tests parse .github/workflows/*.yml
+          uv pip install --system pytest pytest-cov pytest-mock pyarrow pyyaml
           gbcms --help
 
       - name: Run tests with coverage
@@ -125,7 +126,9 @@ jobs:
       # One version source per ecosystem (rust/Cargo.toml for the package, the
       # Nextflow manifest for the pipeline); the release guide lists the locations.
       - name: Check version sources
-        run: python scripts/release.py check
+        env:
+          BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: python scripts/release.py check --branch "$BRANCH"
 
       - name: Install uv
         run: |

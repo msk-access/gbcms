@@ -10,10 +10,16 @@ env:
   PYTHON_VERSION: '3.11'
   REGISTRY: ghcr.io
 
+# The default token reads only; each job that writes asks for its own permissions.
+permissions:
+  contents: read
+
 jobs:
   # Nothing builds or publishes until the version sources agree with the tag:
   # rust/Cargo.toml (the package), Cargo.lock, the Nextflow manifest (the pipeline's
-  # image) and a dated CHANGELOG section. A manual run checks the sources only.
+  # image) and a dated CHANGELOG section. Publishing runs only on a tag push; a manual
+  # run (workflow_dispatch) builds and checks but publishes nothing. The ref name
+  # reaches the shell through env, never pasted into the script.
   verify:
     runs-on: ubuntu-latest
     steps:
@@ -23,7 +29,9 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Check version sources against the tag
         if: startsWith(github.ref, 'refs/tags/')
-        run: python scripts/release.py check --tag "${{ github.ref_name }}"
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python scripts/release.py check --tag "$TAG"
       - name: Check version sources
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: python scripts/release.py check
@@ -95,7 +103,7 @@ jobs:
     name: Release to PyPI
     runs-on: ubuntu-latest
     needs: [linux, sdist]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     permissions:
       id-token: write  # Required for PyPI Trusted Publisher OIDC
     steps:
@@ -140,13 +148,13 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}
           tags: |
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
       
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          push: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: GBCMS_BUILD_COMMIT=${{ github.sha }}
@@ -158,7 +166,7 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [release, docker]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write           # create the release and upload assets
       id-token: write           # sign the attestations (OIDC)
@@ -181,7 +189,9 @@ jobs:
         with:
           subject-path: 'dist/*.whl, dist/*.tar.gz'
       - name: Release notes from the CHANGELOG
-        run: python scripts/release.py notes --tag "${{ github.ref_name }}" --title-out title.txt --notes-out notes.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python scripts/release.py notes --tag "$TAG" --title-out title.txt --notes-out notes.md
       - name: Create or update the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -195,15 +205,27 @@ jobs:
             gh release create "$TAG" dist/* --title "$title" --notes-file notes.md --verify-tag
           fi
 
-  # Summary
+  # Summary: what each publishing job did (re-run only the failed jobs: re-running all
+  # rebuilds the wheel, whose checksums would no longer match the file PyPI kept).
   summary:
     runs-on: ubuntu-latest
     needs: [release, docker, github-release]
-    if: always() && startsWith(github.ref, 'refs/tags/')
+    if: always() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Show release summary
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          PYPI: ${{ needs.release.result }}
+          DOCKER: ${{ needs.docker.result }}
+          PAGE: ${{ needs.github-release.result }}
         run: |
-          echo "✅ Release completed!"
-          echo "📦 PyPI: https://pypi.org/project/gbcms/${{ github.ref_name }}/"
-          echo "🐳 Docker: ${{ env.REGISTRY }}/${{ github.repository }}:${{ github.ref_name }}"
-          echo "🏷️  Release: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          echo "PyPI:           $PYPI  https://pypi.org/project/gbcms/$TAG/"
+          echo "Docker:         $DOCKER  ghcr.io/$REPO:$TAG"
+          echo "GitHub Release: $PAGE  https://github.com/$REPO/releases/tag/$TAG"
+          if [ "$PYPI $DOCKER $PAGE" = "success success success" ]; then
+            echo "Release $TAG completed."
+          else
+            echo "Release $TAG incomplete: re-run the failed jobs."
+            exit 1
+          fi

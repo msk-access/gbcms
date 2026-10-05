@@ -65,11 +65,13 @@ gitGraph LR:
     `[0-9]+.[0-9]+.[0-9]+`. A `v`-prefixed tag (`v6.0.0`) **does not match** and will
     **silently fail to publish** — no PyPI, no Docker/GHCR, no docs deploy. Every existing
     release tag is bare (`5.3.0`, `5.2.0`, …); keep it that way. The `v` you see in
-    `nextflow/main.nf`'s banner (`gbcms v6.0.0 — …`) is display text only, not the tag.
+    `nextflow/main.nf`'s banner (`gbcms vX.Y.Z — …`, from the manifest) is display text only, not the tag.
 
 !!! info "Tag triggers CI"
-    Pushing the bare tag `X.Y.Z` automatically triggers the CI pipeline which publishes to
-    **PyPI**, **Docker/GHCR**, and deploys **gh-pages** docs.
+    Pushing the bare tag `X.Y.Z` triggers `release.yml`, which verifies the version
+    sources and publishes to **PyPI** and **Docker/GHCR** and creates the **GitHub Release**.
+    The docs deploy separately (`deploy-docs.yml`, on pushes to `main`/`develop` that touch
+    `docs/`). Only a tag push publishes: a manual run builds and checks but publishes nothing.
 
 ---
 
@@ -203,10 +205,17 @@ The tag triggers `.github/workflows/release.yml`:
    and `sdist`)
 2. **Publish to PyPI** (via maturin)
 3. **Build Docker image** → push to `ghcr.io/msk-access/gbcms:X.Y.Z`
-4. **Deploy docs** → GitHub Pages (versioned via `mike` as `X.Y.Z` / `stable`)
-5. **Create the GitHub Release** — title and notes from the CHANGELOG section, the
+4. **Create the GitHub Release** — title and notes from the CHANGELOG section, the
    wheel and sdist attached with `SHA256SUMS`, and a build-provenance attestation for
    each artifact (verify with `gh attestation verify <file> --repo msk-access/gbcms`)
+
+The docs are not part of this workflow: `deploy-docs.yml` publishes them (via `mike`, as
+`X.Y.Z` / `stable`) when the release merge reaches `main`.
+
+!!! warning "Re-run only the failed jobs"
+    "Re-run all jobs" rebuilds the wheel, which is not bit-reproducible: PyPI keeps the
+    file it already has (`skip-existing`), while the release page would get the new
+    build, so its checksums and attestations would no longer match what PyPI serves.
 
 !!! warning "One wheel, not a matrix"
     This list previously claimed Linux x86_64 + aarch64, macOS x86_64 + arm64, and Windows.
@@ -224,7 +233,8 @@ The tag triggers `.github/workflows/release.yml`:
 The `github-release` job creates the Releases page entry once PyPI and the image are
 published (or updates it, re-uploading the assets, if one already exists). Verify with
 `gh release list`: the new version should show **Latest**. If the job failed, re-run it
-from the Actions tab; by hand, the equivalent is:
+from the Actions tab (failed jobs only). By hand, the page alone (without the assets,
+checksums and attestations, which only the job adds) is:
 
 ```bash
 python scripts/release.py notes --tag X.Y.Z --title-out title.txt --notes-out notes.md
@@ -238,6 +248,20 @@ git checkout develop
 git pull origin develop
 git merge main
 git push origin develop
+```
+
+### 10b. Move develop to the next dev version
+
+Right after the back-merge, bump `rust/Cargo.toml` on `develop` to the next dev version
+(`X.Y+1.0-dev.0`), run `cargo check`, and add an empty `## [Unreleased]` section. Leave
+the Nextflow manifest at `X.Y.Z`: it names the newest published image. Without the bump
+every dev build stamps the released version in its provenance line; the version check
+on `develop` fails until it is done.
+
+```bash
+# rust/Cargo.toml: version = "X.Y+1.0-dev.0"
+cd rust && cargo check && cd ..
+python scripts/release.py check --branch develop
 ```
 
 ### 11. Cleanup
@@ -261,12 +285,14 @@ For critical production fixes:
 git checkout main
 git checkout -b hotfix/X.Y.Z
 
-# Fix, commit, push
+# Fix, commit; then set the version to X.Y.Z in rust/Cargo.toml (cargo check) and the
+# Nextflow manifest, add a dated CHANGELOG section, and check
+python scripts/release.py check --tag X.Y.Z
 git add -A
 git commit -m "fix: critical issue description"
 git push origin hotfix/X.Y.Z
 
-# PR to main, then merge back to develop
+# PR to main, tag X.Y.Z, then merge back to develop (keeping develop's dev version)
 ```
 
 ---
@@ -307,7 +333,7 @@ Interactive helper for git-flow operations:
 |:---------|:--------|:--------|
 | `test.yml` | Push to develop/main, PR | Run tests |
 | `release.yml` | Tag push `X.Y.Z` | Verify the version sources, build the wheel and sdist, publish PyPI and Docker, create the GitHub Release |
-| `nextflow-lint.yml` | Push/PR touching `nextflow/` | Strict-syntax lint; every process resolves to the manifest's image |
+| `nextflow-lint.yml` | Push/PR touching `nextflow/` | Strict-syntax lint; every process `nextflow inspect` resolves runs the manifest's image |
 | `deploy-docs.yml` | Push to main or develop (docs/) | Deploy versioned docs via `mike` (`stable` from main, `dev` from develop) |
 
 ---

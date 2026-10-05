@@ -117,7 +117,7 @@ flowchart LR
 | Output order | Preserved | Variants are sorted by index internally; results are written back in original input order. |
 
 !!! tip "Performance Implication"
-    For a MAF with 500 variants on *TP53* (a 19kb gene), the engine produces ~2-3 bins instead of 500 individual `bam.fetch()` calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.
+    For a MAF with 500 variants on *TP53* (a 19kb gene), the engine produces 3 bins (the 200-variant cap) instead of 500 individual `bam.fetch()` calls. On high-depth targeted panels this can reduce wall-clock counting time by 5-20×.
 
 !!! info "The bin span is a soft floor; it is never capped"
     Measured by replaying the rule on real inputs (2026-10-05): per-sample variant lists

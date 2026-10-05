@@ -37,7 +37,8 @@ jobs:
         run: nextflow lint nextflow/
 
       # The modules and banner read workflow.manifest.version (one source for the
-      # pipeline's image): every process must resolve to the manifest's image.
+      # pipeline's image): every process nextflow inspect resolves must run the
+      # manifest's image (the version read by the same parser the release check uses).
       - name: Every process runs the manifest's image
         run: |
           set -euo pipefail
@@ -45,7 +46,7 @@ jobs:
           printf 'sample,bam,bai\ns1,%s/s1.bam,%s/s1.bam.bai\n' "$tmp" "$tmp" > "$tmp/ss.csv"
           touch "$tmp/s1.bam" "$tmp/s1.bam.bai" "$tmp/ref.fa" "$tmp/ref.fa.fai"
           printf 'Hugo_Symbol\tChromosome\tStart_Position\tEnd_Position\tReference_Allele\tTumor_Seq_Allele2\tTumor_Sample_Barcode\nG\t1\t100\t100\tA\tT\ts1\n' > "$tmp/v.maf"
-          manifest="$(sed -n "/^manifest/,/^}/s/^ *version *= *'\(.*\)'.*/\1/p" nextflow/nextflow.config)"
+          manifest="$(python3 scripts/release.py manifest-version)"
           want="ghcr.io/msk-access/gbcms:${manifest}"
           (cd "$tmp" && nextflow inspect "$GITHUB_WORKSPACE/nextflow/main.nf" --input ss.csv \
               --variants v.maf --fasta ref.fa --mode dna --outdir out -format json) > inspect.json

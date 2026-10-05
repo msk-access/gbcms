@@ -44,6 +44,8 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.5.0",
     "types-pyyaml>=6.0.0",
+    # the workflow-contract tests parse .github/workflows/*.yml
+    "pyyaml>=6.0",
     # MkDocs 2.0 is incompatible with Material and this site's config (anchor
     # validation, exclude_docs, snippets); the migration is D3 #138.
     "mkdocs>=1.6,<2",
