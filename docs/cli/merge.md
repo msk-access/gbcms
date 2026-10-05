@@ -132,12 +132,12 @@ columns are computed (assuming all strand-level counts are present in the input)
     With inputs genotyped using `--rescue-mnp`, a row can be rescued in one flavor
     (its counts are then a component SNV's) but not the other (the MNP's own
     counts), or rescued to different components. The two flavors' columns then
-    describe different alleles in one row, and with `--add-combined` the combined
-    columns add them. `gbcms merge` names every such row in a WARNING (with or
-    without `--add-combined`; the combined-column note is added only when those
-    columns are written) and logs a per-run count; the counts themselves are left
-    unchanged. If only one flavor was genotyped with `--rescue-mnp`, merge logs
-    that once and names every row rescued in that flavor, since the other flavor
+    describe different alleles in one row, so the row's combined `simplex_duplex_*`
+    cells are `NA` (summing them would add two alleles). `gbcms merge` names every
+    such row in a WARNING (with or without `--add-combined`) and logs a per-run
+    count; the per-flavor counts are left unchanged. A row one flavor lacks is not
+    mixed. If only one flavor was genotyped with `--rescue-mnp`, merge logs that once
+    and treats every row rescued in that flavor as mixed, since the other flavor
     reports the MNP there.
     Check `duplex_gbcms_rescue` / `simplex_gbcms_rescue` for those rows.
 

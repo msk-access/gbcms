@@ -176,6 +176,6 @@ In VCF, the mFSD summary is in INFO: `MFSD_REF_COUNT`, `MFSD_ALT_COUNT`,
 
 | Field | Set when | Meaning |
 |:------|:---------|:--------|
-| ALT `<NON_SEQUENCE>` | MAF input, a row whose allele is not a base sequence (or empty) | The row is FAIL (reason in `GSR`); REF is the reference base at POS |
+| ALT `<NON_SEQUENCE>` | MAF input, a row with no VCF allele: an allele that is not a base sequence (or empty), or a deletion spanning its whole contig | The row is FAIL (reason in `GSR`); REF is the reference base at POS |
 | INFO `MAF_START`, `MAF_REF`, `MAF_ALT` | MAF input | The MAF row the record came from, as written: look a result up by its input |
 | INFO `NORM_POS`, `NORM_REF`, `NORM_ALT` | `--show-normalization` | The left-aligned record gbcms counted |

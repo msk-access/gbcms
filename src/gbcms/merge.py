@@ -337,7 +337,7 @@ def merge_mafs(config: MergeConfig) -> None:
         )
 
     if "duplex" in frames and "simplex" in frames:
-        _warn_mixed_rescue(result, combined=config.add_combined)
+        result = _mixed_rescue(result, combined=config.add_combined)
 
     # Legacy naming pass (rename {type}_{metric} → t_{metric}_{type})
     if config.legacy_naming:
@@ -614,24 +614,25 @@ def _in_input_order(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
     return result.sort(rows, nulls_last=True).drop(rows)
 
 
-def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
-    """Warn on rows whose duplex and simplex MNP rescue outcomes differ.
+def _mixed_rescue(result: pl.DataFrame, combined: bool) -> pl.DataFrame:
+    """Rows whose duplex and simplex MNP rescue outcomes differ: warned, and
+    their combined columns NA.
 
     A rescued row reports a component SNV's counts under the MNP's coordinates.
     When only one flavor was rescued — or the two adopted different components —
-    the two flavors' counts describe different alleles in one row: anyone
-    comparing or summing the duplex and simplex columns would be misled, with
-    or without ``--add-combined``. With it, the ``simplex_duplex_*`` columns
-    add them outright, and the per-row message says so. Counts are left as
-    they are; the rows are named in the log. No-op when rescue was run on
-    neither flavor (no ``gbcms_rescue`` column). When it was run on only one,
-    that is logged once and the other flavor is treated as reporting the MNP on
-    every row, so each row rescued in the rescue-on flavor is named.
+    the two flavors' counts describe different alleles in one row, so summing
+    them in ``simplex_duplex_*`` would add two alleles: those cells are NA (a
+    missing value, as for a missing count), and each row is named in the log.
+    The per-flavor columns stay as they are. A row one flavor lacks is not mixed:
+    nothing is summed across alleles there. No-op when rescue was run on neither
+    flavor (no ``gbcms_rescue`` column). When it was run on only one, that is
+    logged once and the other flavor is treated as reporting the MNP on every
+    row, so each row rescued in the rescue-on flavor is mixed.
     """
     d, s = "duplex_gbcms_rescue", "simplex_gbcms_rescue"
     present = [col for col in (d, s) if col in result.columns]
     if not present:
-        return
+        return result
     if len(present) == 1:
         ran, other = ("duplex", "simplex") if present[0] == d else ("simplex", "duplex")
         logger.warning(
@@ -642,14 +643,18 @@ def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
             ran,
             other,
         )
-    mixed = 0
+    statuses = [c for c in ("duplex_gbcms_status", "simplex_gbcms_status") if c in result.columns]
     key = [k for k in VARIANT_KEY if k in result.columns]
-    for row in result.select([*key, *present]).iter_rows(named=True):
+    mixed: list[int] = []
+    for i, row in enumerate(result.select([*key, *present, *statuses]).iter_rows(named=True)):
+        # A flavor that lacks the row has an empty status: nothing is mixed.
+        if any(not row.get(c) for c in statuses):
+            continue
         d_comp = rescued_component(row.get(d) or "")
         s_comp = rescued_component(row.get(s) or "")
         if d_comp == s_comp:
             continue
-        mixed += 1
+        mixed.append(i)
         logger.warning(
             "Mixed MNP rescue at %s:%s %s>%s — duplex %s, simplex %s%s",
             row["Chromosome"],
@@ -658,14 +663,30 @@ def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
             row["Tumor_Seq_Allele2"],
             f"reports component {d_comp}" if d_comp else "reports the MNP",
             f"reports component {s_comp}" if s_comp else "reports the MNP",
-            "; the simplex_duplex_* columns add counts of different alleles" if combined else "",
+            (
+                "; its simplex_duplex_* columns are NA (they would add different alleles)"
+                if combined
+                else ""
+            ),
         )
-    if mixed:
-        logger.warning(
-            "Mixed MNP rescue: %d row(s) where duplex and simplex rescue outcomes differ "
-            "(see gbcms_rescue per flavor)",
-            mixed,
-        )
+    if not mixed:
+        return result
+    logger.warning(
+        "Mixed MNP rescue: %d row(s) where duplex and simplex rescue outcomes differ "
+        "(see gbcms_rescue per flavor)%s",
+        len(mixed),
+        "; their simplex_duplex_* columns are NA" if combined else "",
+    )
+    combined_cols = [c for c in result.columns if c.startswith("simplex_duplex_")]
+    if not combined_cols:
+        return result
+    is_mixed = pl.int_range(0, result.height).is_in(mixed)
+    return result.with_columns(
+        [
+            pl.when(is_mixed).then(pl.lit("NA")).otherwise(pl.col(c).cast(pl.Utf8)).alias(c)
+            for c in combined_cols
+        ]
+    )
 
 
 def _validate_variant_key(

@@ -1041,7 +1041,6 @@ def test_every_qc_flags_include_names_a_section():
 
 # ── Pulled in from 6.7.0: M1 #128 (rescue half), O9 #220, D3 #138 (pin) ──────
 
-_PULLED = pytest.mark.xfail(strict=True, reason="pulled in from 6.7.0")
 _RCOLS = [*_MCOLS, "gbcms_status", "gbcms_rescue"]
 _RESCUED = (
     "method=decomposed;outcome=rescued;original_ref=9;original_alt=0;original_partial=4;"
@@ -1059,7 +1058,6 @@ _SD = (
 )
 
 
-@_PULLED
 def test_combined_columns_are_na_where_the_flavors_rescue_differently(tmp_path, caplog):
     """Duplex reports a rescued component, simplex the MNP: their counts describe
     different alleles, so the row's combined cells are NA (the warning stays)."""
@@ -1084,7 +1082,7 @@ def test_combined_columns_are_na_where_the_flavors_rescue_differently(tmp_path, 
         caplog,
     )
     assert all(merged[0][c] == "NA" for c in _SD), {c: merged[0][c] for c in _SD}
-    assert merged[0]["simplex_duplex_strand_bias_p_value"] in ("NA", "")
+    assert merged[0].get("simplex_duplex_strand_bias_p_value", "NA") == "NA"
     assert (merged[1]["simplex_duplex_ref_count"], merged[1]["simplex_duplex_alt_count"]) == (
         "12",
         "2",
@@ -1092,7 +1090,6 @@ def test_combined_columns_are_na_where_the_flavors_rescue_differently(tmp_path, 
     assert any("Mixed MNP rescue" in r.message and "NA" in r.message for r in caplog.records)
 
 
-@_PULLED
 def test_rescue_on_one_flavor_only_makes_its_rescued_rows_na(tmp_path):
     merged = _merge(
         tmp_path,
@@ -1145,7 +1142,6 @@ def _tiny_contig(tmp_path):
     return fa, bam
 
 
-@_PULLED
 @pytest.mark.parametrize("command", ["dna", "convert"])
 def test_vcf_output_of_a_whole_contig_deletion_is_a_valid_record(tmp_path, command):
     """A MAF deletion at Start 1 spanning its whole contig has no reference base
@@ -1165,7 +1161,6 @@ def test_vcf_output_of_a_whole_contig_deletion_is_a_valid_record(tmp_path, comma
     assert (rec.contig, rec.pos, rec.ref, rec.alts) == ("1", 1, "A", ("<NON_SEQUENCE>",))
 
 
-@_PULLED
 def test_the_docs_toolchain_is_pinned_below_mkdocs_2():
     """MkDocs 2.0 is incompatible with Material and with this site's config
     (anchor validation, exclude_docs, snippets): every install pins mkdocs < 2."""

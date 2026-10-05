@@ -76,7 +76,7 @@ marks a ticket with an open PR.
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] [6.7.0] | #180 |
 | O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | [decided] [done] | #183 |
 | O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | group 3 (built) | #186 |
-| O9 | VCF output of a whole-contig MAF deletion at Start 1 writes REF past the contig end | L | [6.7.0] | #220 |
+| O9 | VCF output of a whole-contig MAF deletion at Start 1 writes REF past the contig end | L | [decided] group 5 (built; from 6.7.0) | #220 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] [done] | #114 |
 | I1 | MAF allele base check | M | [decided] group 4 (built) | #123 |
@@ -92,6 +92,7 @@ marks a ticket with an open PR.
 | M4 | Merge sums NA/nan count cells as 0 silently (the documented warning was never implemented) | M | [decided] group 5 (built) | #194 |
 | M5 | Merge leaves the annotation columns of a row only a later input has empty | L | [decided] group 5 (built) | #221 |
 | M6 | Merge takes mFSD and RNA columns from the first input only | M | [decided] group 5 (built) | #223 |
+| M1a | Merge: combined columns NA where the flavors' MNP rescue outcomes differ (rescue half of M1, from 6.7.0) | L | [decided] group 5 (built) | #224 |
 | O1 | UMI and no-bases warnings repeated by the rescue recount | L | [decided] group 5 (built) | #130 |
 | O2 | Run-start summary of enabled options | L | [decided] group 5 (built) | #131 |
 | O3 | Rescue in fillouts without the MNP | L | [6.7.0] | #132 |
@@ -104,7 +105,8 @@ marks a ticket with an open PR.
 | S2 | `MIN_FOR_KS` floor (ME-9) | L | [decided] | #154 |
 | D1 | CI version-consistency check | M | | #136 |
 | D2 | Release workflow creates the GitHub Release | M | | #137 |
-| D3 | mkdocs-material 2.0 | L | [6.7.0] | #138 |
+| D3 | mkdocs-material 2.0 | L | [6.7.0] (pin: D3a #225, group 5) | #138 |
+| D3a | Pin the docs toolchain below MkDocs 2.0 | L | [decided] group 5 (built) | #225 |
 | D4 | Dependency upgrade audit: does anything break on current releases? | M | | #139 |
 | D5 | Coverage-driven regression panel (replaces the 56-sample matrix) | M | | #155 |
 | D6 | One QC-flags reference page | M | [decided] group 5 (built) | #156 |
@@ -1858,7 +1860,7 @@ changes in step whenever the read inputs do.
    2026-10-03. Policy for 6.7.0: R3 #178 (editing sites in windows).
 4. **Input and representation:** C9 #122, I1 #123, I2 #124, I3 #125, I4 #126,
    #147, H2 #149, C30 #208 (lowercase or unprepared alleles).
-5. **Merge, outputs, observability:** M4 #194, M5 #221, M6 #223, M2 #129, H1 #148, O1 #130, O2
+5. **Merge, outputs, observability:** M4 #194, M5 #221, M6 #223, M1a #224, O9 #220, D3a #225, M2 #129, H1 #148, O1 #130, O2
    #131, D6 #156. Policy for 6.7.0: M1 #128, #146.
 6. **Statistics:** S1 #153 (decided), S2 #154.
 7. **Release:** D1 #136, D2 #137, D4 #139 before the cut, P3 #152, D5 #155 last.

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed — merge, outputs and observability (#194, #221, #223, #129, #148, #130, #131, #156)
+### Changed — merge, outputs and observability (#194, #221, #223, #224, #129, #148, #130, #131, #156, #220, #225)
 
 Measured first (operator decisions 2026-09-30 for #194, 2026-10-05 for the rest);
 community practice surveyed (bcftools, Picard/htsjdk, GATK, samtools/htslib,
@@ -51,11 +51,23 @@ DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
   that claimed "n/m variants have no <type> counts" counted rows whose REF count
   was 0; it now counts the rows each input lacks. No surveyed merger compares
   producer versions.
+- **Merge no longer sums two alleles where the flavors' MNP rescue differs
+  (#224, the rescue half of #128, pulled in from 6.7.0).** When one flavor
+  reports a rescued component and the other the MNP (or rescue ran on one flavor
+  only), the row's combined `simplex_duplex_*` cells are `NA`; they added the two
+  alleles' counts, with only a warning. A row one flavor lacks is not mixed. 20
+  real ACCESS pairs had none; the warning names each such row.
 - **Builds name their commit.** Provenance lines (`#gbcms`, VCF `##source`, run
   logs, `gbcms --version`) read `gbcms v6.6.0.dev0 (9c371263)`; develop now
   carries a `.devN` version, since every development build since 6.5.0 reported
   6.5.0. The commit comes from git, or from `GBCMS_BUILD_COMMIT` (set by the
   Dockerfile and the release workflow).
+- **VCF output of a whole-contig deletion is valid (#220, pulled in from
+  6.7.0).** A MAF deletion at Start 1 spanning its whole contig has no reference
+  base before or after it; it was written with a REF padded past the contig end
+  with `N` (`ACGTACN > N`). It is now the symbolic `<NON_SEQUENCE>` record (REF
+  the base at POS), in counting runs and `gbcms convert`; the row was already FAIL
+  (`FETCH_FAILED`). None in real data.
 - **No partial output files (#148).** Every output (MAF, VCF, the merged MAF,
   `convert` and `normalize` files, both Parquet files, the mFSD report) is
   written to `.<name>.partial`, fsynced, and renamed into place; a failed run,
@@ -84,6 +96,10 @@ DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
   RNA run's are RNA's), RNA amplicon and strandedness settings included; turning
   off the secondary or supplementary filter lets those alignments join fragment
   evidence, never read counts. A BAM the facts cannot read is left to counting.
+- **The docs toolchain is pinned below MkDocs 2.0 (#225, the pin half of #138,
+  pulled in from 6.7.0):** `mkdocs>=1.6,<2` and `mkdocs-material>=9.5,<10` in the
+  dev extras and the docs workflow (both installed unpinned), with a test; the
+  MkDocs 2.0 migration stays in 6.7.0.
 - **One page for every QC flag, each defined once (#156):**
   `docs/reference/qc-flags.md`, a table per family (status reasons, diagnostics,
   rescue outcomes, ASJD, QC columns, mFSD classes, VCF record shapes) with mode,

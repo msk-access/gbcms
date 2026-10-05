@@ -83,7 +83,9 @@ def maf_to_vcf_file(
         with atomic_output(output, "w") as fh:
             fh.write("\n".join(header) + "\n")
             for v in variants:
-                pos, ref, alt = maf_vcf_record(v, partial(bases.base, v.chrom))
+                pos, ref, alt = maf_vcf_record(
+                    v, partial(bases.base, v.chrom), bases.length(v.chrom)
+                )
                 info = ";".join(maf_origin_info(v))
                 fh.write("\t".join([v.output_chrom, str(pos), ".", ref, alt, ".", ".", info]))
                 fh.write("\n")

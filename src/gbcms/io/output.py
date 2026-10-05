@@ -151,8 +151,9 @@ def vcf_contig_lines(contigs: list[tuple[str, int | None]]) -> list[str]:
 #: REF is then the reference base at POS, as for any symbolic allele.
 NON_SEQUENCE_ALT = "<NON_SEQUENCE>"
 NON_SEQUENCE_HEADER = (
-    '##ALT=<ID=NON_SEQUENCE,Description="The MAF allele is not a base sequence (empty, an '
-    'IUPAC code or another character): the row is FAIL, the reason in GSR, and is not counted">'
+    '##ALT=<ID=NON_SEQUENCE,Description="The MAF row has no VCF allele (an allele that is not '
+    "a base sequence, or a deletion spanning its whole contig): the row is FAIL, the reason in "
+    'GSR, and is not counted">'
 )
 #: The MAF row a VCF record of MAF input came from, so a result can be looked up
 #: by its input (as VCF input's MAF output carries vcf_pos, vcf_ref and vcf_alt).
@@ -186,15 +187,30 @@ def _info_value(text: str) -> str:
     return "".join(_INFO_ESCAPES.get(c, c) for c in text)
 
 
-def maf_vcf_record(variant: Variant, base: Any) -> tuple[int, str, str]:
-    """(POS, REF, ALT) for a MAF-input row: maf2vcf's record, or, for an allele
-    that is not a base sequence, the symbolic ``<NON_SEQUENCE>`` record at Start
-    (REF the reference base there), which keeps the VCF valid. ``base(pos)``
-    returns the reference base at a 1-based position."""
+class _NoBase(LookupError):
+    """A record needs a reference base past its contig's end."""
+
+
+def maf_vcf_record(variant: Variant, base: Any, length: int | None = None) -> tuple[int, str, str]:
+    """(POS, REF, ALT) for a MAF-input row: maf2vcf's record, or the symbolic
+    ``<NON_SEQUENCE>`` record at Start (REF the reference base there), which keeps
+    the VCF valid, for a row with no VCF allele: an allele that is not a base
+    sequence, or a deletion spanning its whole contig (no base before or after
+    it to anchor the record). ``base(pos)`` returns the reference base at a
+    1-based position; ``length`` is the contig's length, when known."""
+    pos = variant.pos + 1
     if not (is_sequence_allele(variant.ref) and is_sequence_allele(variant.alt)):
-        pos = variant.pos + 1
         return pos, base(pos), NON_SEQUENCE_ALT
-    return CoordinateKernel.maf_to_vcf(variant.pos + 1, variant.ref, variant.alt, base)
+
+    def bounded(at: int) -> str:
+        if length is not None and at > length:
+            raise _NoBase(at)
+        return str(base(at))
+
+    try:
+        return CoordinateKernel.maf_to_vcf(pos, variant.ref, variant.alt, bounded)
+    except _NoBase:
+        return pos, base(pos), NON_SEQUENCE_ALT
 
 
 def maf_origin_info(variant: Variant) -> list[str]:
@@ -1181,7 +1197,12 @@ class VcfWriter(OutputWriter):
         record for MAF input."""
         if not variant.metadata:
             return variant.pos + 1, variant.ref, variant.alt
-        return maf_vcf_record(variant, lambda pos: self._anchor_base(variant.chrom, pos))
+        # The contig's length bounds the anchor lookup (a whole-contig deletion has
+        # no base after it); without a FASTA, SNVs and MNPs still need none.
+        if self._reference is None and self.reference_fasta:
+            self._reference = ReferenceBases(self.reference_fasta)
+        length = self._reference.length(variant.chrom) if self._reference is not None else None
+        return maf_vcf_record(variant, lambda pos: self._anchor_base(variant.chrom, pos), length)
 
     def write(
         self,

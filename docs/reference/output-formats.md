@@ -192,9 +192,11 @@ self-describing.
     (see [Input Formats](input-formats.md#maf-alleles)); unlike maf2vcf, a
     differing `Tumor_Seq_Allele1` is not written as a second ALT. A row whose
     allele is not a base sequence (FAIL `NON_SEQUENCE_ALLELE`, or an empty
-    allele, FAIL `EMPTY_ALLELE`) is written as the symbolic record `<NON_SEQUENCE>` at `Start_Position`, REF the reference base
+    allele, FAIL `EMPTY_ALLELE`), or a deletion spanning its whole contig (no base
+    before or after it to anchor a record; FAIL `FETCH_FAILED`), is written as the
+    symbolic record `<NON_SEQUENCE>` at `Start_Position`, REF the reference base
     there (declared in a `##ALT` header line), so the VCF stays valid. A MAF
-    deletion at `Start_Position` 1 is counted in that base-after form.
+    deletion at `Start_Position` 1 is otherwise counted in the base-after form.
 
     | MAF `Start` `Ref` > `Alt` | VCF `POS` `REF` > `ALT` |
     |:--------------------------|:------------------------|
@@ -707,7 +709,8 @@ earliest later input that has the row (the column set stays the first input's;
 a row the first input has keeps its own values). For an input that lacks a row,
 the row's read and fragment counts are 0, its status columns empty, and its
 other per-input columns (mFSD, RNA) empty; the log counts the rows each input
-lacks. An input written with `--column-prefix` (`duplex_` as the pipeline runs
+lacks; a row whose flavors' MNP rescue outcomes differ has NA combined cells
+(they would add different alleles). An input written with `--column-prefix` (`duplex_` as the pipeline runs
 it, or `t_`) has its counts under that name and its status, strand-bias, mFSD and
 RNA columns unprefixed: merge finds each and keeps it per input. Rows are joined on `Chromosome` (in any naming),
 `Start_Position`, `Reference_Allele` and `Tumor_Seq_Allele2`, and VCF-input MAFs
