@@ -92,6 +92,10 @@ jobs:
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
         uses: codecov/codecov-action@v4
+        # A Codecov outage must not fail the tests' job: fail_ci_if_error covers
+        # upload errors, but the action can crash before it applies (a TLS
+        # handshake failure to Codecov, 2026-10-05).
+        continue-on-error: true
         with:
           file: ./coverage.xml
           flags: unittests
