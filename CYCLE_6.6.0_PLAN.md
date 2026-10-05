@@ -91,6 +91,7 @@ marks a ticket with an open PR.
 | M3 | Decomposed-allele hardening (observations, list length) | M | | #147; #146 [6.7.0] (#112) |
 | M4 | Merge sums NA/nan count cells as 0 silently (the documented warning was never implemented) | M | [decided] | #194 |
 | M5 | Merge leaves the annotation columns of a row only a later input has empty | L | [decided] | #221 |
+| M6 | Merge takes mFSD and RNA columns from the first input only | M | [decided] | #223 |
 | O1 | UMI and no-bases warnings repeated by the rescue recount | L | | #130 |
 | O2 | Run-start summary of enabled options | L | | #131 |
 | O3 | Rescue in fillouts without the MNP | L | [6.7.0] | #132 |
@@ -1306,6 +1307,20 @@ rows. The same happens when some inputs carry `vcf_pos` / `vcf_ref` /
 **Direction.** WARN when the inputs' `#gbcms vX` provenance lines disagree
 across the 6.5.0 representation boundary, or when the VCF-record columns are
 present in only some inputs.
+**Measured (2026-10-05).** The same 102k-record VCF genotyped by 6.4.0 and by
+develop: 6.3% of rows change their variant key; merge exits 0 with 12,771
+half-empty rows; its "n/m variants have no <type> counts" INFO counts rows with
+REF count 0, not rows an input lacks. 6.5.0 vs develop join fully, but every dev
+build since 6.5.0 says `#gbcms v6.5.0` while counts differ. The merged MAF has no
+provenance line. No surveyed merger compares producer versions (bcftools, Picard
+and htsjdk keep the first `##source` silently); structural mismatches (samples,
+contigs) are errors.
+**Decision (2026-10-05, operator): B.** (1) The merged MAF carries its own
+version and command lines and one line per input with that input's version line.
+(2) WARN when the inputs' version lines differ. (3) Refuse the merge when an input
+has the pre-6.5.0 VCF-input shape (`vcf_pos` without `vcf_ref`/`vcf_alt`) and
+another does not. (4) The INFO line counts the rows each input lacks. (5) Develop
+builds say their own version: `6.6.0.dev0` plus the commit.
 
 ### M3 — Decomposed-allele hardening (#112 items 3–4: #146, #147) · M
 **Finding.** The observations export cannot tell that a variant's per-molecule
@@ -1323,10 +1338,31 @@ the same `--umi-tag`, so the "tag never seen" WARN can repeat for one BAM.
 C14 (#172) added a second per-pass warning (records stored without bases), which
 repeats the same way with a smaller number. Suppress both in the recount; the
 main pass's warnings stand for the BAM.
+**Measured.** Reproduced (synthetic): the no-bases and `--umi-tag` warnings print
+twice per BAM under `--rescue-mnp`; the no-bases count is an upper bound
+(overlapping bins). Field: warn once per type (GATK OneShotLogger, htslib,
+bcftools); end-of-run counts (GATK, LoFreq); none scopes per input file.
+**Decision (2026-10-05, operator): B.** The recount runs quiet (intent across the
+FFI), so each BAM warns once, from the main pass; records without bases or
+qualities are counted once each (exact, not an upper bound).
 
 ### O2 — Run-start summary of enabled options (#131) · L
 One INFO block at run start naming the enabled options and what they imply
 (e.g. `--rescue-mnp` replaces counts on rescued rows). A 6.5.0 T7 follow-up.
+**Measured.** The run start logs the command, version, mode, BAM count and four
+settings. Ten real BAMs (IMPACT 4, ACCESS 4, FORTE 2; first 200k records):
+duplicates flagged 12–25% in IMPACT, none in ACCESS consensus or FORTE (both
+legitimate); binned BQ in FORTE (2/9/24/40) and one ACCESS simplex; bases below
+Q20 0.8–2.1%, below a threshold between bins up to 12% (IMPACT Q30) or ~100%
+(IMPACT Q40); no ALT contigs, hard-clipped primaries or records without bases;
+the proper-pair flag absent on every IMPACT read, but the engine never reads it.
+Field: GATK and fgbio log every resolved argument; no tool warns on unmarked
+duplicates, BQ binning or hard clips.
+**Decision (2026-10-05, operator): B.** One INFO block with every resolved option
+(grouped) and a one-line implication for options that change counts or columns;
+one INFO facts line per BAM from its first records; WARN only when `--min-baseq`
+removes more than 10% of sampled bases, the header has ALT contigs, or more than
+1% of primaries are hard-clipped. No duplicate or proper-pair warning.
 
 ### O3 — Rescue in fillouts without the MNP (#132) · L
 In a fillout of other timepoints or normals, where the MNP itself is absent,
@@ -1375,6 +1411,14 @@ allele, each checked read by read. C1's mis-described variant is flagged.
 ### H1 — Writers closed when a write fails (#148, under #133) · L
 `_write_output` does not close the writer (or its reference handle) when a
 write raises. Use context managers.
+**Measured.** A write failure exits 1 but leaves the output at its final path
+(truncated) and an unclosed handle. Nine output kinds; the GTF cache already
+writes temp-then-rename. Field: htslib tools check close and exit non-zero but
+leave the partial file; GATK/Picard write in place; only workflow managers clean
+up (Snakemake, Nextflow).
+**Decision (2026-10-05, operator): B.** Every output is written to a temp file
+beside it, flushed, fsynced, closed with errors checked, and renamed over the
+final name; on failure the temp is removed and the final path untouched.
 
 ### H2 — `is_indel` in preparation (#149, under #133) · L
 `is_indel` reduces to `ref_len != alt_len`; its second clause is exactly
@@ -1663,6 +1707,12 @@ columns; mFSD classes). Each row says when the flag is set, the mode (DNA, RNA,
 opt-in), its MAF column and VCF field, and what to do about it.
 `output-formats.md` and the glossary link to it. A test asserts that every flag
 string the code emits appears on the page, so the page stays complete.
+**Measured.** All 50 flag strings the code emits are documented, across 6+ pages,
+the diagnostics in one large table cell; no completeness test. Field: GATK's
+header registry throws on an undocumented key; Picard and nf-core lint test
+completeness; no variant tool tests flag values against its user docs.
+**Decision (2026-10-05, operator): A** as directed, with the test scanning the
+flag strings Rust and Python emit.
 
 ## Reviewed, no action
 
@@ -1808,7 +1858,7 @@ changes in step whenever the read inputs do.
    2026-10-03. Policy for 6.7.0: R3 #178 (editing sites in windows).
 4. **Input and representation:** C9 #122, I1 #123, I2 #124, I3 #125, I4 #126,
    #147, H2 #149, C30 #208 (lowercase or unprepared alleles).
-5. **Merge, outputs, observability:** M4 #194, M5 #221, M2 #129, H1 #148, O1 #130, O2
+5. **Merge, outputs, observability:** M4 #194, M5 #221, M6 #223, M2 #129, H1 #148, O1 #130, O2
    #131, D6 #156. Policy for 6.7.0: M1 #128, #146.
 6. **Statistics:** S1 #153 (decided), S2 #154.
 7. **Release:** D1 #136, D2 #137, D4 #139 before the cut, P3 #152, D5 #155 last.
