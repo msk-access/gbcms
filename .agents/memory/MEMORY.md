@@ -14,10 +14,11 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Test changes need operator notice](test-changes-need-operator-notice.md) — never edit a failing test's expectation without first telling the operator what it asserts, why it's wrong, and the evidence; wait.
 - [Survey several tools](survey-several-tools.md) — community practice means GATK, samtools/bcftools, fgbio, VarDict, Strelka2, freebayes, bam-readcount, LoFreq, GetBaseCounts, plus the literature and domain tools (RNA: SplitNCigarReads, STAR, ASE counters, RNA callers); say where handling isn't documented.
 - [Better than the standard](better-than-standard.md) — the survey is a floor, not a ceiling: where no tool sets a standard or a measured rule beats the field's, adopt it and say why.
+- [mFSD is graded evidence](mfsd-graded-evidence.md) — fragment size gives increased confidence toward CH or toward somatic (or none), never a hard origin call; don't over-interpret.
 
 ## References
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.
-- [Fragmentomics (Tsui et al., MSK)](fragmentomics-reference.md) — the prior for mFSD and CH-LIKE; cite for S1 #153 / S2 #154 thresholds.
+- [Fragmentomics (Tsui et al., MSK)](fragmentomics-reference.md) — the prior for mFSD and the CH-vs-tumor question; cite for S1 #153 / S2 #154.
 
 ## Project facts (from the 2026-06-26 code review)
 - [Bin fetch-end must cover the anchor variant](bin-anchor-coverage.md) — CR-1; pinned by the bin property test and binning-invariance tests.
@@ -36,6 +37,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Harness cleanup after merge](harness-cleanup-after-merge.md) — delete the ticket's `src_*` builds (rebuildable from BUILT_FROM; patch prototypes first), gzip traces, `cargo clean` when rust/target bloats.
 - [Long runs visible](long-runs-visible.md) — pair every detached nohup harness run with a tracked background waiter; runs over a network mount go one at a time, grouped by file.
 - [No `timeout` on this Mac](macos-no-timeout-command.md) — `timeout N cmd && ok || fail` always says fail; check SFTP mounts with a plain read.
+- [Pipes mask gate exit codes](pipe-masks-gate-exit.md) — `pytest | tail && git commit` commits on failure; capture `$?` or use pipefail.
 
 ## Validation / testing
 - [QC-fail flag absent from MSK data](qcfail-flag-absent-msk-data.md) — no pipeline stage sets 0x200; filter verified correct but inert in practice (contract test pins it).

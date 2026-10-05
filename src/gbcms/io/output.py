@@ -820,11 +820,13 @@ class MafWriter(OutputWriter):
                 if not (mfsd_n_rate != mfsd_n_rate or mfsd_error_rate != mfsd_error_rate)
                 else _nan
             )
-            # Categorical confidence based on ALT fragment count
+            # How much ALT data there is, not how reliable a call is: TESTABLE once the
+            # class reaches the KS minimum (5), SPARSE below, NONE without fragments.
+            # At 5 fragments a real size shift is detected only about 8% of the time.
             if counts.mfsd_alt_count >= 5:
-                mfsd_alt_confidence = "HIGH"
+                mfsd_alt_confidence = "TESTABLE"
             elif counts.mfsd_alt_count >= 1:
-                mfsd_alt_confidence = "LOW"
+                mfsd_alt_confidence = "SPARSE"
             else:
                 mfsd_alt_confidence = "NONE"
             # KS test validity: the Rust D-statistic (mfsd_ks_alt_ref) is NaN exactly
@@ -1092,9 +1094,9 @@ class VcfWriter(OutputWriter):
                     '##INFO=<ID=MFSD_DELTA_ALT_REF,Number=1,Type=Float,Description="mFSD mean(ALT) − mean(REF) fragment size delta (bp)">',
                     '##INFO=<ID=MFSD_KS_ALT_REF,Number=1,Type=Float,Description="mFSD 2-sample KS D-statistic (ALT vs REF)">',
                     '##INFO=<ID=MFSD_PVAL_ALT_REF,Number=1,Type=Float,Description="mFSD KS p-value (ALT vs REF)">',
-                    '##INFO=<ID=MFSD_QVAL_ALT_REF,Number=1,Type=Float,Description="mFSD KS q-value (Benjamini-Hochberg FDR across variants, ALT vs REF; drives TUMOR-LIKE/CH-LIKE)">',
-                    '##INFO=<ID=MFSD_ALT_LLR,Number=1,Type=Float,Description="mFSD LLR for ALT fragments: Σ log(P_tumor/P_healthy); positive=tumor-like">',
-                    '##INFO=<ID=MFSD_REF_LLR,Number=1,Type=Float,Description="mFSD LLR for REF fragments">',
+                    '##INFO=<ID=MFSD_QVAL_ALT_REF,Number=1,Type=Float,Description="mFSD KS q-value (Benjamini-Hochberg FDR across variants, ALT vs REF; drives the LEANS-SOMATIC class in the mFSD report)">',
+                    '##INFO=<ID=MFSD_ALT_LLR,Number=1,Type=Float,Description="mFSD log-likelihood ratio for ALT fragments, mean per fragment: log(P_tumor/P_healthy) under fixed cfDNA size models; positive=shorter, tumor-like">',
+                    '##INFO=<ID=MFSD_REF_LLR,Number=1,Type=Float,Description="mFSD log-likelihood ratio for REF fragments, mean per fragment">',
                     '##INFO=<ID=MFSD_ALT_COUNT,Number=1,Type=Integer,Description="ALT-classified fragments in mFSD window (50–1000 bp)">',
                     '##INFO=<ID=MFSD_REF_COUNT,Number=1,Type=Integer,Description="REF-classified fragments in mFSD window (50–1000 bp)">',
                     # Sub/mono-nucleosomal fractions, declared as in MAF so the VCF mFSD

@@ -658,6 +658,16 @@ fn count_bam_binned_core(
 
     // Result array: one BaseCounts per variant, initialized to default
     let mut all_counts: Vec<BaseCounts> = (0..n).map(|_| BaseCounts::default()).collect();
+    // With mFSD on, every row starts as a variant with no fragments: NaN means, LLR
+    // and KS statistic. A row the bins never reach (its contig is absent from the
+    // BAM) keeps that state, so it reads as "no test" and stays out of the BH family
+    // below; the 0.0 defaults would pass for a test with p = 0 and deflate every
+    // real variant's q-value. Counted rows overwrite it.
+    if mfsd {
+        for (c, v) in all_counts.iter_mut().zip(variants.iter()) {
+            compute_mfsd_stats(c, Vec::new(), Vec::new(), Vec::new(), Vec::new(), v);
+        }
+    }
 
     // The Parquet rows echo (chrom, pos, ref, alt) so the file is self-describing — a bare
     // variant_index means nothing once the data outlives the call. `variants` is moved into
@@ -895,7 +905,7 @@ fn count_bam_binned_core(
             }
 
             // ── BH-FDR correction for the mFSD alt-vs-REF KS p-values ──
-            // This p-value drives the report's TUMOR-LIKE/CH-LIKE call, so correct
+            // This p-value drives the report's LEANS-SOMATIC class, so correct
             // it for multiplicity across the sample. BH runs ONLY over variants whose
             // KS test actually RAN — a variant with too few fragments returns
             // (D = NaN, p = 1.0) from ks_test, so the *D-statistic* (not the p-value)
@@ -1376,13 +1386,16 @@ fn compute_mfsd_stats(
     counts.mfsd_nonref_count = nonref_sizes.len() as u32;
     counts.mfsd_n_count      = n_sizes.len()      as u32;
 
-    counts.mfsd_ref_mean    = mfsd::calc_mean(&ref_sizes);
-    counts.mfsd_alt_mean    = mfsd::calc_mean(&alt_sizes);
-    counts.mfsd_nonref_mean = mfsd::calc_mean(&nonref_sizes);
-    counts.mfsd_n_mean      = mfsd::calc_mean(&n_sizes);
+    // An empty class has no mean size (NaN, written NA), not a mean of 0 bp.
+    let mean = |v: &[f64]| if v.is_empty() { f64::NAN } else { mfsd::calc_mean(v) };
+    counts.mfsd_ref_mean    = mean(&ref_sizes);
+    counts.mfsd_alt_mean    = mean(&alt_sizes);
+    counts.mfsd_nonref_mean = mean(&nonref_sizes);
+    counts.mfsd_n_mean      = mean(&n_sizes);
 
-    counts.mfsd_alt_llr = mfsd::calc_llr(&alt_sizes);
-    counts.mfsd_ref_llr = mfsd::calc_llr(&ref_sizes);
+    // Mean per fragment, so the value does not grow with depth; n is mfsd_*_count.
+    counts.mfsd_alt_llr = mfsd::calc_llr_mean(&alt_sizes);
+    counts.mfsd_ref_llr = mfsd::calc_llr_mean(&ref_sizes);
 
     // KS helper: pairwise delta + D-statistic + p-value.
     // delta = mean(a) - mean(b); ks_test returns (NaN, 1.0) when either class < MIN_FOR_KS.

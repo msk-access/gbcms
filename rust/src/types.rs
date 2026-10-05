@@ -221,33 +221,36 @@ pub struct BaseCounts {
     pub mfsd_n_count: u32,
 
     // ── mFSD: Mean fragment sizes ─────────────────────────────────────────────
-    /// Mean fragment size (bp) for REF-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for REF-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_ref_mean: f64,
-    /// Mean fragment size (bp) for ALT-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for ALT-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_alt_mean: f64,
-    /// Mean fragment size (bp) for NonREF-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for NonREF-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_nonref_mean: f64,
-    /// Mean fragment size (bp) for N-classified fragments. 0.0 when empty.
+    /// Mean fragment size (bp) for N-classified fragments. NaN when the class is empty (0.0, unset, when mFSD is off).
     #[pyo3(get)]
     pub mfsd_n_mean: f64,
 
     // ── mFSD: Log-Likelihood Ratios ───────────────────────────────────────────
-    // LLR = Σ log(P_tumor(size) / P_healthy(size)) over all fragments in class.
-    // Positive = tumor-like (short fragments); negative = healthy-like (long).
-    /// LLR for ALT-classified fragments.
+    // LLR = mean over the class's fragments of log(P_tumor(size) / P_healthy(size)).
+    // Positive = tumor-like (short fragments); negative = healthy-like (long). NaN
+    // for an empty class.
+    /// Mean per-fragment LLR for ALT-classified fragments (n = `mfsd_alt_count`).
     #[pyo3(get)]
     pub mfsd_alt_llr: f64,
-    /// LLR for REF-classified fragments.
+    /// Mean per-fragment LLR for REF-classified fragments (n = `mfsd_ref_count`).
     #[pyo3(get)]
     pub mfsd_ref_llr: f64,
 
     // ── mFSD: Pairwise KS comparisons (6 pairs × 3 values = 18 fields) ───────
     // Each triad: (delta = mean_A - mean_B, KS D-statistic, KS p-value).
-    // NaN when either class has fewer than mfsd::MIN_FOR_KS (5) fragments.
-    // Check mfsd_ks_valid (Python-derived) before interpreting these values.
+    // The D-statistic is NaN when either class has fewer than mfsd::MIN_FOR_KS (5)
+    // fragments; the p-value is then 1.0, a placeholder (delta is still the mean
+    // difference when both classes have fragments). Check mfsd_ks_valid
+    // (Python-derived, D not NaN) before interpreting these values.
 
     /// ALT vs REF: mean(ALT) − mean(REF)
     #[pyo3(get)]
@@ -260,9 +263,10 @@ pub struct BaseCounts {
     pub mfsd_pval_alt_ref: f64,
     /// ALT vs REF: Benjamini-Hochberg FDR q-value for `mfsd_pval_alt_ref`,
     /// corrected across all variants with a valid alt-vs-REF KS test in the
-    /// sample. The report classifies TUMOR-LIKE/CH-LIKE on this q-value,
-    /// not the raw p-value. NaN when the KS test was invalid (too few fragments);
-    /// equals the p-value until the post-counting BH pass runs.
+    /// sample. The report's LEANS-SOMATIC class uses this q-value, not the raw
+    /// p-value. When the KS test did not run (too few fragments) it stays the
+    /// p-value placeholder, 1.0, outside the BH family; it equals the p-value until
+    /// the post-counting BH pass runs.
     #[pyo3(get)]
     pub mfsd_qval_alt_ref: f64,
 
@@ -330,7 +334,8 @@ pub struct BaseCounts {
     pub mfsd_sub_nuc_alt_frac: f64,
     /// Sub-nucleosomal enrichment ratio: ALT frac / REF frac.
     /// Values > 1.0 suggest ALT fragments are enriched in short sizes (ctDNA-like).
-    /// Values ≈ 1.0 suggest ALT mirrors REF distribution (CH-like).
+    /// Values ≈ 1.0: ALT mirrors the REF distribution (no size evidence; not
+    /// evidence for clonal hematopoiesis).
     #[pyo3(get)]
     pub mfsd_sub_nuc_enrichment: f64,
     /// Fraction of REF fragments in 150–200bp range (mono-nucleosomal).

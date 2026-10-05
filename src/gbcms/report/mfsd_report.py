@@ -2,7 +2,7 @@
 mFSD Per-Variant HTML Report Generator.
 
 Generates a standalone, interactive HTML report with per-variant fragment size
-distributions, CH-vs-ctDNA fragment origin signals, and summary statistics.
+distributions, graded fragment-size evidence, and summary statistics.
 Uses Plotly.js for interactive histograms with normalized KDE density overlays
 and a STRiDE-inspired design system.
 """
@@ -42,54 +42,51 @@ TOOLTIPS: dict[str, str] = {
     ),
     "KS p": (
         "Kolmogorov-Smirnov test p-value comparing the ALT vs REF fragment "
-        "size distributions. Values <0.05 indicate statistically significant "
-        "differences between the two distributions."
+        "size distributions (exact). The class uses the BH-FDR-corrected q-value "
+        "across the sample's variants."
     ),
     "LLR": (
         "Fragment-size log-likelihood ratio comparing a tumor-derived vs healthy "
-        "cfDNA fragment-size model, summed over fragments. Positive = shorter, "
-        "tumor-like fragments; negative = longer, healthy-like. (This is the "
-        "fragment-size LLR, not the PairHMM read-classification LLR.)"
+        "cfDNA fragment-size model, mean per fragment (comparable across depths). "
+        "Positive = shorter, tumor-like fragments; negative = longer, healthy-like. "
+        "Descriptive only; it does not set the class. (This is the fragment-size "
+        "LLR, not the PairHMM read-classification LLR.)"
     ),
     "Sub-nuc enrich.": (
         "Sub-nucleosomal enrichment: ratio of ALT fragments <150 bp to REF "
         "fragments <150 bp. Values >1.0 indicate ALT fragments are enriched "
         "for short, sub-nucleosomal sizes — a hallmark of ctDNA."
     ),
-    # Fragment Origin Signal classifications
-    "TUMOR-LIKE": (
-        "Sub-nucleosomal enrichment >1.3, KS q<0.05 (FDR-corrected), and gene is NOT in the "
-        "CH gene set. Suggests tumor-derived cfDNA origin."
+    # Fragment-size evidence (graded; never an origin call)
+    "LEANS-SOMATIC": (
+        "ALT fragments are significantly shorter than the REF fragments at this "
+        "locus (KS q<0.05, FDR-corrected, with more sub-nucleosomal ALT fragments). "
+        "Increased confidence that the variant is tumor-derived."
     ),
-    "CH-LIKE": (
-        "Known CH gene, sub-nucleosomal enrichment <1.2, and KS q>0.05 (FDR-corrected). "
-        "ALT fragment sizes mirror REF, consistent with clonal hematopoiesis."
-    ),
-    "AMBIGUOUS": (
-        "Mixed signals — does not clearly meet TUMOR-LIKE or CH-LIKE criteria. "
-        "May require additional clinical context or paired WBC sequencing."
+    "NO-SIZE-EVIDENCE": (
+        "The fragment sizes do not separate ALT from REF. This is not evidence for "
+        "clonal hematopoiesis: at these fragment counts most tumor variants look the "
+        "same. Matched-normal (buffy coat) data decide CH."
     ),
     "INSUFFICIENT": (
-        "ALT fragment count is below the minimum threshold. Not enough data "
-        "for reliable fragment size distribution comparison."
+        "Too few fragments for the size test (a class below 5, or ALT below the " "report minimum)."
     ),
     # Summary dashboard
-    "Tumor-like": "Count of variants classified as TUMOR-LIKE (ctDNA-derived signal).",
-    "CH-like": "Count of variants classified as CH-LIKE (clonal hematopoiesis signal).",
-    "Ambiguous": "Count of variants with mixed or unclear fragment origin signals.",
-    "Insufficient": "Count of variants with too few ALT fragments for classification.",
+    "Leans somatic": "Variants whose ALT fragments are significantly shorter than REF.",
+    "No size evidence": "Variants whose fragment sizes do not separate ALT from REF.",
+    "Insufficient": "Variants with too few fragments for the size test.",
     # Other UI elements
     "CH Gene": (
         "This gene is in the Clonal Hematopoiesis (CH) driver gene set "
-        "(20 genes). CH variants typically show REF-like fragment size "
-        "distributions, unlike tumor-derived cfDNA."
+        "(20 genes). Shown as a note: gene membership is a prior, not fragment "
+        "evidence, and does not change the class."
     ),
     "variants": "Total variants included in this report after filtering.",
     "min ALT": "Minimum ALT fragment count required for a variant to be included.",
 }
 
 
-# ── Fragment Origin Signal Classification ────────────────────────────────────
+# ── Fragment-size evidence ──────────────────────────────────────────────────
 def _classify_origin(
     hugo: str,
     sub_nuc_enrichment: float,
@@ -99,55 +96,84 @@ def _classify_origin(
     ks_valid: bool,
     alt_count: int,
     min_alt: int,
+    alt_shorter: bool | None = None,
 ) -> tuple[str, str]:
-    """Classify variant as TUMOR-LIKE, CH-LIKE, AMBIGUOUS, or INSUFFICIENT.
+    """Graded fragment-size evidence: LEANS-SOMATIC, NO-SIZE-EVIDENCE or INSUFFICIENT.
 
-    Thresholds on the BH-FDR-corrected KS q-value (``mfsd_qval_alt_ref``),
-    not the raw p-value, so multiplicity across the sample's variants is accounted
-    for. A variant whose KS test did not actually run — a REF/ALT fragment class
-    below MIN_FOR_KS, so ``mfsd_ks_valid`` is False and the q-value is a 1.0
-    placeholder — is INSUFFICIENT rather than classified on that placeholder.
-    Returns (signal_label, explanation).
+    Plasma only: the ALT fragments against the REF fragments at the same locus.
+    LEANS-SOMATIC when the ALT fragments are significantly shorter: the
+    BH-FDR-corrected KS q-value (``mfsd_qval_alt_ref``) below 0.05 with the KS gap on
+    the short side (``alt_shorter``: the ALT ECDF above the REF ECDF where they differ
+    most, from :func:`_alt_shorter`). Without the size arrays a larger
+    sub-nucleosomal (<150 bp) share among ALT than REF fragments stands in. On
+    labeled ACCESS plasma this never fired on a white-cell (CH) variant. Nothing
+    leans CH: a non-significant test is also the usual result for tumor variants at
+    these fragment counts (about 30% look REF-like below 50 fragments), so it is
+    reported as no size evidence. A significantly longer ALT is not somatic evidence
+    either. Gene membership is a note, never a gate. A KS test that did not run (a
+    class below MIN_FOR_KS, so ``mfsd_ks_valid`` is False and the q-value a 1.0
+    placeholder) is INSUFFICIENT. Returns (label, explanation).
     """
+    note = f" Note: {hugo} is a CH-associated gene." if hugo and hugo.upper() in CH_GENES else ""
     if alt_count < min_alt:
-        return "INSUFFICIENT", f"ALT fragment count ({alt_count}) below threshold ({min_alt})."
+        return (
+            "INSUFFICIENT",
+            f"ALT fragment count ({alt_count}) below threshold ({min_alt}).{note}",
+        )
     if not ks_valid:
         return "INSUFFICIENT", (
             "Fragment-size KS test could not run (a REF or ALT fragment class has "
-            "fewer than 5 fragments), so there is no size-distribution evidence for "
-            "a TUMOR-LIKE or CH-LIKE call."
+            f"fewer than 5 fragments), so there is no size-distribution evidence.{note}"
         )
 
-    is_ch_gene = hugo.upper() in CH_GENES if hugo else False
-    # Enrichment is NaN when a sub-nucleosomal fraction is zero (the
-    # ALT/REF <150bp ratio is undefined). Disambiguate "ALT has short fragments
-    # but REF has none" — a clear, maximal ctDNA-like signal that would otherwise
-    # be lost as AMBIGUOUS — from genuinely undefined (no short fragments either
-    # side). low_enrich requires a defined ratio, so a NaN enrichment is never CH-LIKE.
-    enrichment_nan = math.isnan(sub_nuc_enrichment)
-    alt_short = not math.isnan(sub_nuc_alt) and sub_nuc_alt > 0.0
-    ref_short = not math.isnan(sub_nuc_ref) and sub_nuc_ref > 0.0
-    max_enriched = enrichment_nan and alt_short and not ref_short
-    enriched = (not enrichment_nan and sub_nuc_enrichment > 1.3) or max_enriched
-    sig_ks = not math.isnan(ks_qval) and ks_qval < 0.05
-    low_enrich = not enrichment_nan and sub_nuc_enrichment < 1.2
-    nonsig_ks = math.isnan(ks_qval) or ks_qval > 0.05
+    q = "NA" if math.isnan(ks_qval) else f"{ks_qval:.2e}"
+    significant = not math.isnan(ks_qval) and ks_qval < 0.05
+    shares_known = not (math.isnan(sub_nuc_alt) or math.isnan(sub_nuc_ref))
+    if alt_shorter is None:
+        alt_shorter = shares_known and sub_nuc_alt > sub_nuc_ref
+    share = (
+        f"sub-nucleosomal share ALT {sub_nuc_alt:.2f} vs REF {sub_nuc_ref:.2f}"
+        if shares_known
+        else "sub-nucleosomal share undefined"
+    )
+    if not math.isnan(sub_nuc_enrichment):
+        share += f", enrichment {sub_nuc_enrichment:.2f}"
+    if significant and alt_shorter:
+        return "LEANS-SOMATIC", (
+            f"ALT fragments shorter than REF: KS q={q} (<0.05, FDR-corrected), {share}.{note}"
+        )
+    if significant:
+        return "NO-SIZE-EVIDENCE", (
+            f"ALT and REF sizes differ (KS q={q}) with ALT longer than REF ({share}); a "
+            f"longer ALT is not somatic evidence.{note}"
+        )
+    return "NO-SIZE-EVIDENCE", (
+        f"Fragment sizes do not separate ALT from REF (KS q={q}); this is not evidence "
+        f"for CH.{note}"
+    )
 
-    if enriched and sig_ks and not is_ch_gene:
-        enrich_str = (
-            "ALT enriched for sub-nucleosomal fragments while REF has none"
-            if max_enriched
-            else f"sub-nucleosomal enrichment={sub_nuc_enrichment:.2f} (>1.3)"
-        )
-        return "TUMOR-LIKE", (
-            f"{enrich_str}, KS q={ks_qval:.2e} (<0.05, FDR-corrected), non-CH gene."
-        )
-    if is_ch_gene and low_enrich and nonsig_ks:
-        return "CH-LIKE", (
-            f"Known CH gene ({hugo}), enrichment={sub_nuc_enrichment:.2f} (<1.2), "
-            f"KS q={'NA' if math.isnan(ks_qval) else f'{ks_qval:.2e}'} (>0.05, FDR-corrected)."
-        )
-    return "AMBIGUOUS", "Mixed signals — does not clearly fit TUMOR-LIKE or CH-LIKE criteria."
+
+def _alt_shorter(alt_sizes: list[int], ref_sizes: list[int]) -> bool | None:
+    """Whether the ALT fragments are shorter where the two size distributions differ
+    most: the sign of ECDF(ALT) - ECDF(REF) at the KS statistic (the largest gap, read
+    after each block of tied sizes, as the engine's KS walk reads it). None when a
+    class is empty or the distributions do not differ."""
+    if not alt_sizes or not ref_sizes:
+        return None
+    a, r = sorted(alt_sizes), sorted(ref_sizes)
+    n, m = len(a), len(r)
+    i = j = 0
+    best, sign = 0, 0
+    while i < n and j < m:
+        v = min(a[i], r[j])
+        while i < n and a[i] <= v:
+            i += 1
+        while j < m and r[j] <= v:
+            j += 1
+        gap = i * m - j * n  # ECDF(ALT) - ECDF(REF), scaled by n*m
+        if abs(gap) > best:
+            best, sign = abs(gap), gap
+    return None if sign == 0 else sign > 0
 
 
 def _safe_float(v: Any) -> float:
@@ -338,6 +364,7 @@ def generate_mfsd_report(
             ks_valid,
             alt_count,
             min_alt,
+            alt_shorter=_alt_shorter(alt_sizes, ref_sizes),
         )
 
         variants.append(
@@ -408,9 +435,8 @@ def _fmt_pval(v: float) -> str:
 def _signal_badge(signal: str) -> str:
     """HTML badge for fragment origin signal with hover tooltip."""
     colors = {
-        "TUMOR-LIKE": ("#e74c3c", "#fff"),
-        "CH-LIKE": ("#3498db", "#fff"),
-        "AMBIGUOUS": ("#f39c12", "#000"),
+        "LEANS-SOMATIC": ("#e74c3c", "#fff"),
+        "NO-SIZE-EVIDENCE": ("#7f8c8d", "#fff"),
         "INSUFFICIENT": ("#95a5a6", "#fff"),
     }
     bg, fg = colors.get(signal, ("#95a5a6", "#fff"))
@@ -485,7 +511,7 @@ def _build_html(variants: list[dict], sample_name: str, parquet_name: str, min_a
       </div>
       <div class="plot-container" id="{div_id}"></div>
       <div class="interpretation">
-        <strong>Fragment Origin Signal:</strong> {v['signal']} — {v['explanation']}
+        <strong>Fragment-size evidence:</strong> {v['signal']} — {v['explanation']}
       </div>
     </div>"""
         cards_html.append(card)
@@ -545,9 +571,8 @@ def _build_html(variants: list[dict], sample_name: str, parquet_name: str, min_a
     }}, {{responsive: true}});""")
 
     # Summary stats
-    n_tumor = sum(1 for v in variants if v["signal"] == "TUMOR-LIKE")
-    n_ch = sum(1 for v in variants if v["signal"] == "CH-LIKE")
-    n_ambig = sum(1 for v in variants if v["signal"] == "AMBIGUOUS")
+    n_somatic = sum(1 for v in variants if v["signal"] == "LEANS-SOMATIC")
+    n_none = sum(1 for v in variants if v["signal"] == "NO-SIZE-EVIDENCE")
     n_insuff = sum(1 for v in variants if v["signal"] == "INSUFFICIENT")
 
     ch_gene_list = ", ".join(sorted(CH_GENES))
@@ -738,9 +763,8 @@ body {{ font-family: 'Inter', sans-serif; background: var(--bg-page); color: var
   <div class="subtitle">{sample_name or parquet_name} — Fragment Size Distribution Analysis</div>
   <div class="badges">
     <span class="metric-badge has-tooltip" title="{TOOLTIPS['variants']}"><strong>{len(variants)}</strong> variants</span>
-    <span class="metric-badge has-tooltip" title="{TOOLTIPS['TUMOR-LIKE']}"><strong>{n_tumor}</strong> tumor-like</span>
-    <span class="metric-badge has-tooltip" title="{TOOLTIPS['CH-LIKE']}"><strong>{n_ch}</strong> CH-like</span>
-    <span class="metric-badge has-tooltip" title="{TOOLTIPS['AMBIGUOUS']}"><strong>{n_ambig}</strong> ambiguous</span>
+    <span class="metric-badge has-tooltip" title="{TOOLTIPS['LEANS-SOMATIC']}"><strong>{n_somatic}</strong> leans somatic</span>
+    <span class="metric-badge has-tooltip" title="{TOOLTIPS['NO-SIZE-EVIDENCE']}"><strong>{n_none}</strong> no size evidence</span>
     <span class="metric-badge has-tooltip" title="{TOOLTIPS['INSUFFICIENT']}"><strong>{n_insuff}</strong> insufficient</span>
     <span class="metric-badge has-tooltip" title="{TOOLTIPS['min ALT']}">min ALT ≥ <strong>{min_alt}</strong></span>
   </div>
@@ -754,16 +778,15 @@ body {{ font-family: 'Inter', sans-serif; background: var(--bg-page); color: var
 <div class="container">
 
   <div class="summary-grid">
-    <div class="summary-card has-tooltip" title="{TOOLTIPS['Tumor-like']}"><div class="big" style="color:#e74c3c">{n_tumor}</div><div class="label">Tumor-like</div></div>
-    <div class="summary-card has-tooltip" title="{TOOLTIPS['CH-like']}"><div class="big" style="color:#3498db">{n_ch}</div><div class="label">CH-like</div></div>
-    <div class="summary-card has-tooltip" title="{TOOLTIPS['Ambiguous']}"><div class="big" style="color:#f39c12">{n_ambig}</div><div class="label">Ambiguous</div></div>
+    <div class="summary-card has-tooltip" title="{TOOLTIPS['Leans somatic']}"><div class="big" style="color:#e74c3c">{n_somatic}</div><div class="label">Leans somatic</div></div>
+    <div class="summary-card has-tooltip" title="{TOOLTIPS['No size evidence']}"><div class="big" style="color:#7f8c8d">{n_none}</div><div class="label">No size evidence</div></div>
     <div class="summary-card has-tooltip" title="{TOOLTIPS['Insufficient']}"><div class="big" style="color:#95a5a6">{n_insuff}</div><div class="label">Insufficient</div></div>
   </div>
 
   <div class="caveat">
     <strong>⚠️ Important:</strong> Fragment size alone cannot definitively distinguish CH from ctDNA.
     Some genes (e.g., TP53) can be both CH-driven and tumor-driven. Paired WBC sequencing remains
-    the gold standard for CH exclusion. The Fragment Origin Signal is <strong>suggestive, not diagnostic</strong>,
+    the gold standard for CH exclusion. The fragment-size evidence is <strong>graded, not diagnostic</strong>,
     and should be interpreted in clinical context.
   </div>
 
@@ -774,17 +797,18 @@ body {{ font-family: 'Inter', sans-serif; background: var(--bg-page); color: var
 
   <h2 class="section-title">Methodology</h2>
   <div class="methodology">
-    <h3>Fragment Origin Signal Classification</h3>
-    <p>Each variant is classified based on three signals:</p>
+    <h3>Fragment-size evidence</h3>
+    <p>Graded evidence from the ALT vs REF fragments at the same locus in this plasma sample; never an origin call:</p>
     <ul style="margin:8px 0 8px 20px">
-      <li><strong>TUMOR-LIKE:</strong> Sub-nucleosomal enrichment &gt;1.3, KS p&lt;0.05, and <em>not</em> in the CH gene set.</li>
-      <li><strong>CH-LIKE:</strong> Known CH gene, enrichment &lt;1.2, and KS p&gt;0.05 (ALT distribution mirrors REF).</li>
-      <li><strong>AMBIGUOUS:</strong> Mixed criteria — does not clearly fit either category.</li>
-      <li><strong>INSUFFICIENT:</strong> ALT fragment count below threshold (<code>min_alt={min_alt}</code>).</li>
+      <li><strong>LEANS-SOMATIC:</strong> ALT fragments significantly shorter than REF (KS q&lt;0.05, FDR-corrected, with a larger sub-nucleosomal share).</li>
+      <li><strong>NO-SIZE-EVIDENCE:</strong> the sizes do not separate ALT from REF (or ALT is longer). Not evidence for CH: most tumor variants look the same at these fragment counts.</li>
+      <li><strong>INSUFFICIENT:</strong> a fragment class below 5, or ALT below <code>min_alt={min_alt}</code>.</li>
     </ul>
+    <p>A CH-associated gene is shown as a note; it never changes the class. Matched-normal (buffy coat) data decide CH.</p>
     <h3>Sub-nucleosomal Enrichment</h3>
     <p>Ratio of ALT fragments &lt;150bp to REF fragments &lt;150bp. ctDNA tends to show enrichment
-    (ratio &gt;1.0) due to tumor-derived fragments being shorter. CH mirrors background cfDNA.</p>
+    (ratio &gt;1.0) due to tumor-derived fragments being shorter. Variants carried by blood cells (CH) are expected
+    to mirror the REF sizes, but so do many tumor variants at low fragment counts: similar sizes are not evidence for CH.</p>
     <h3>CH Gene Set ({len(CH_GENES)} genes)</h3>
     <p class="gene-list">{ch_gene_list}</p>
     <p style="margin-top:8px;font-size:0.82rem;color:var(--text-secondary)">

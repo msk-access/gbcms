@@ -251,8 +251,8 @@ The `INFO` column is a semicolon-separated list of `KEY=VALUE` pairs.
     | `MFSD_DELTA_ALT_REF` | Float | mean(ALT) − mean(REF) fragment size delta (bp) |
     | `MFSD_KS_ALT_REF` | Float | 2-sample KS D-statistic (ALT vs REF fragments) |
     | `MFSD_PVAL_ALT_REF` | Float | KS test p-value (ALT vs REF) |
-    | `MFSD_ALT_LLR` | Float | Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model |
-    | `MFSD_REF_LLR` | Float | Log-likelihood ratio for REF fragments |
+    | `MFSD_ALT_LLR` | Float | Log-likelihood ratio for ALT fragments vs healthy/tumor Gaussian model, mean per fragment |
+    | `MFSD_REF_LLR` | Float | Log-likelihood ratio for REF fragments, mean per fragment |
     | `MFSD_ALT_COUNT` | Integer | ALT-classified fragments in 50–1000 bp size window |
     | `MFSD_REF_COUNT` | Integer | REF-classified fragments in 50–1000 bp size window |
     | `MFSD_SUB_NUC_REF_FRAC` | Float | Sub-nucleosomal (<150 bp) fraction of REF fragments |
@@ -634,12 +634,12 @@ All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one
     | `mfsd_alt_count` | Integer | ALT-classified fragments |
     | `mfsd_nonref_count` | Integer | Non-REF, non-ALT fragments |
     | `mfsd_n_count` | Integer | Fragments with no valid insert size |
-    | `mfsd_alt_llr` | Float | Log-likelihood ratio (ALT fragments; positive = tumor-like) |
-    | `mfsd_ref_llr` | Float | Log-likelihood ratio (REF fragments) |
-    | `mfsd_ref_mean` | Float | Mean fragment size for REF class (bp) |
-    | `mfsd_alt_mean` | Float | Mean fragment size for ALT class (bp) |
-    | `mfsd_nonref_mean` | Float | Mean fragment size for non-REF class (bp) |
-    | `mfsd_n_mean` | Float | Mean fragment size for N class (bp) |
+    | `mfsd_alt_llr` | Float | Log-likelihood ratio, mean per fragment (ALT fragments; positive = tumor-like) |
+    | `mfsd_ref_llr` | Float | Log-likelihood ratio, mean per fragment (REF fragments) |
+    | `mfsd_ref_mean` | Float | Mean fragment size for REF class (bp); `NA` when the class is empty |
+    | `mfsd_alt_mean` | Float | Mean fragment size for ALT class (bp); `NA` when the class is empty |
+    | `mfsd_nonref_mean` | Float | Mean fragment size for non-REF class (bp); `NA` when the class is empty |
+    | `mfsd_n_mean` | Float | Mean fragment size for N class (bp); `NA` when the class is empty |
     | `mfsd_delta_alt_ref` | Float | mean(ALT) − mean(REF) delta (bp) |
     | `mfsd_ks_alt_ref` | Float | KS D-stat (ALT vs REF) |
     | `mfsd_pval_alt_ref` | Float | KS p-value (ALT vs REF) |

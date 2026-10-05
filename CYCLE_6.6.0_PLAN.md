@@ -1574,6 +1574,119 @@ small-N KS and the `ks_valid` gate, 5 is defensible.
 
 **Decision (2026-09-25, operator).** Keep `MIN_FOR_KS` at 5: the exact test is calibrated at every n measured (false-positive rate about 0.05). Change the report so **CH-LIKE no longer rests on a non-significant KS at low power**. It requires an ALT-fragment count at which the test has useful power, derived from the real-data power curve (about 10% at 5–10 fragments). Evidence on #154.
 
+### Group 6 — measured (2026-10-05; decisions pending)
+Operator direction (2026-10-05): mFSD is **graded evidence** (increased confidence
+toward CH or toward somatic, or none), never a hard origin call; the fragment test
+is **plasma-only** (ALT vs REF at the same locus, same sample); the buffy coat is
+the answer key for validation, never an input; the regime that matters is **2–5
+duplex ALT fragments** (where CH lives); production runs mFSD on the duplex BAM.
+Harness `~/test/gbcms/harness/g6/` (local; PHI stays there).
+
+Data and labels:
+- ACCESS plasma calls from the signed-out cBioPortal dump, labeled by the
+  patient's buffy coat: CH when the buffy coat has ≥ 3 ALT reads (VAF ≥ 0.2× the
+  plasma VAF); not CH when it has 0 where it could have seen the variant (≥ 5
+  expected ALT reads at the plasma VAF; ACCESS buffy coats run at about half the
+  plasma depth, median 1,013 vs 2,106 fragments). Germline excluded everywhere
+  (`Mutation_Status` not SOMATIC, buffy VAF ≥ 0.25, gnomAD AF ≥ 1%, or tagged
+  GERMLINE in the patient's IMPACT samples). The dump's plasma counts are duplex +
+  simplex fragments, its normal counts the buffy coat's `unfilter` BAM (both
+  matched our own genotyping on 211 and 195 of 214 pilot rows). The dump's
+  `COMMENTS` and `SO_COMMENTS` are empty, so no sign-out CH annotation is used.
+- Pilot: 39 patients, a CH call (DNMT3A/TET2/ATM/PPM1D) plus tumor calls in the
+  same plasma sample; 136 concordant labels (97 tumor, 39 CH, 3 of them TI-CH).
+
+Measured:
+- KS p-value: conservative, never over-calling (null false-positive rate
+  3.2–4.6% at 5–20 ALT fragments vs a permutation test's 4.1–5.2%); most real
+  rows use the asymptotic branch (348 of 512), which overstates p 1.7–5× at small
+  n (survey simulation). Exact at any depth is cheap without overflow (shares of
+  in-band lattice paths, computed by anti-diagonal).
+- Today's classes (pilot, pooled flavors): CH rows CH-LIKE 29/39; tumor rows
+  TUMOR-LIKE 22/97, CH-LIKE 3/97 — 3 of 17 tumor variants in CH-associated genes
+  (12 TP53) are CH-LIKE, and a tumor TP53 variant can never be TUMOR-LIKE (gene
+  membership gates the size evidence). At 2–5 fragments the report says
+  INSUFFICIENT.
+- Significant shortening (KS or short-fragment excess, BH q < 0.05) never fired on
+  a CH row (0/39) and found 44% of tumor rows (16% at 5–19 ALT fragments, 75% at
+  ≥ 50). "REF-like sizes" fired on about 30% of tumor rows below 50 fragments: no
+  basis for a CH lean from a non-significant test.
+- Where ALT fragments fall within their locus's REF density (mid-rank percentile;
+  1.0 = same as REF), duplex: tumor 2.0× in the shortest decile, 0.6–0.8× through
+  the mono-nucleosome core, about 1.1× in the longest; CH flat (about 0.8–1.3).
+  Tumor fragments avoid the REF core in both directions.
+- Exact percentile tests (Irwin–Hall null, valid from one fragment, no model):
+  "tails" (sum |2u − 1|) flags tumor 12/15/16/20% at 2/3/4/5 duplex fragments vs
+  CH 4/4/4/3% (chance); "shorter" (sum u) 13–16% vs 4%. A likelihood ratio from a
+  tumor percentile curve learned leaving the patient out (an e-value under "ALT
+  like REF") leans at 3:1 in 5–20% of draws at 2–5 fragments, right about 3–7×
+  as often as wrong; AUC 0.65–0.72 vs 0.60–0.63 for today's fixed-Gaussian LLR.
+  Size carries about 0.07–0.10 nats per fragment, so 2–5 fragments give weak
+  evidence (expected likelihood ratio about 1.5 at 5): "no evidence" is the usual
+  honest answer.
+- Within the CH-associated genes (pilot, duplex): buffy evidence strong → REF-like
+  fragments (tails 3%); weak (1–2 buffy reads) 41%; none 48% — a gene confound
+  remains (strong mostly DNMT3A/TET2/PPM1D/ATM, none mostly TP53).
+- Pooling duplex + simplex fragments detects more (44% vs 25–29% per flavor), but
+  per-fragment information is the same in duplex alone.
+- C31 #212 (fragment end from the mate's unclipped 5' end): 0.01–0.39% of
+  fragments have a clipped 5' end and ≤ 0.026% cross 150 bp; 3 of 7 local ACCESS
+  BAMs carry no MC tags. Negligible for mFSD genome-wide; indel loci not yet checked.
+- Empty fragment classes write mean size 0 and LLR 0 where the docs say NA (the N
+  class is empty on every row measured).
+- Survey (2026-10-05): no published method makes a validated per-variant call from
+  1–5 fragments on fragment features alone (plasmaCHORD reaches AUC 0.84 at 3–5
+  reads mostly from gene, VAF and age); end motifs and nucleosome positions show no
+  documented per-fragment gain; a patent (Illumina US12054712B2) claims a
+  fragment-size likelihood-ratio test for CH vs cancer — for the operator's
+  tech-transfer office.
+
+Held-out validation pairs (2026-10-05; feed the separate CH model, not the gbcms
+decisions): calls in the CH-associated genes at native 2–5 duplex ALT fragments, 199
+patients not in the pilot, 128 CH vs 87 not CH, the tumor curve frozen from the pilot.
+CH fragments sit like REF (deciles 0.68–1.28; no CH shortening); not-CH fragments 2.75x
+in the shortest decile. Tails test p < 0.05: CH 5%, not CH 29%; curve LR leans somatic
+5% vs 33%, leans CH 16% vs 3%; AUC 0.76. Within TP53 (36 vs 48): leans somatic 3% vs
+31%, leans CH 17% vs 0%. The 6.5 report called 18 of 87 not-CH calls CH-LIKE.
+
+**Decided (2026-10-05, operator): keep mFSD in gbcms lean; the CH-vs-tumor
+prediction is a separate model.** gbcms group 6 builds:
+1. S1 as decided: `mfsd_alt_llr` / `mfsd_ref_llr` are the mean per fragment (n is
+   `mfsd_*_count`); an empty class writes NA for its mean size and LLR (the docs
+   already say so).
+2. S2: the report no longer calls CH-LIKE from a non-significant test, and gene
+   membership no longer gates the somatic direction (a tumor TP53 variant can lean
+   somatic). Classes: **leans somatic** (significant ALT shortening) / **no size
+   evidence** / **insufficient**; the CH-gene flag shown as a note beside them.
+3. The KS p-value exact at any depth (shares of in-band lattice paths, by
+   anti-diagonal; no overflow), replacing the asymptotic branch above n·m 10,000.
+4. `mfsd_alt_confidence` tiers renamed so a 5-fragment class is not "HIGH".
+5. `<sample>.fsd.parquet` (each variant's REF and ALT sizes) stays the interface for
+   models; no new evidence columns in gbcms.
+
+The CH model lives in its own private repository (operator, 2026-10-05): inputs the
+gbcms MAF + `fsd.parquet`; features such as each fragment's REF percentile and size,
+the exact tails/shorter tests, a tumor-curve likelihood ratio (cohort or per-sample
+adapted; +0.02–0.03 AUC on the pilot), VAF, gene and fragment counts; trained on
+buffy-labeled ACCESS (about 760 strong vs 4,400 none in the CH genes), cross-fitted by
+patient; evaluated forensic-style (Tippett plots, Cllr, calibration); output a graded
+likelihood ratio or posterior, never a hard call. The validation pairs are its first
+held-out set. The repository is local only for now (no remote; operator, 2026-10-05).
+CMO-CH (white-blood-cell genomic DNA, UMI, ACCESS methodology; 596 targets, 0.14 Mb,
+full TP53/TET2/ASXL1/DNMT3A/PPM1D/CHEK2/ATM/SF3B1/SRSF2/U2AF1/U2AF2; standard
+~1,000x or high sensitivity >10,000x raw; calls to 0.1% VAF; many false positives from
+the small, deep panel) is sheared gDNA, so its fragment sizes are not cfDNA and cannot
+train the size model. It is the deep blood truth for patients who also have ACCESS
+plasma: it resolves the calls the ACCESS buffy coat (~1,000x) cannot (1–2 reads, or too
+shallow). Its own false-positive problem (real CH vs artifact, read-level features) is a
+possible later task for the same repository.
+
+Later (6.7.0, idea, not filed — operator 2026-10-05): an optional matched-normal BAM
+for mFSD, read for depth-aware counts only (0 ALT counts against CH only when the
+normal could have seen it), shown beside the plasma fragment evidence, not merged
+into it; never the normal's fragment sizes (sheared genomic DNA, not cfDNA).
+Pooling duplex + simplex fragments at merge time is a second candidate.
+
 ## Release and docs infrastructure
 
 ### D1 — CI version-consistency check (#136) · M

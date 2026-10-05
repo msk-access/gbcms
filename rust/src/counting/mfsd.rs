@@ -9,7 +9,8 @@
 //! - Healthy cfDNA peaks near 167 bp (mono-nucleosome protection)
 //! - Tumor-derived cfDNA is enriched in shorter fragments (~120–145 bp)
 //! - The KS test detects distributional shifts between allele classes
-//! - The LLR scores each fragment class relative to a Gaussian tumor/healthy model
+//! - The LLR scores each fragment class relative to a Gaussian tumor/healthy model,
+//!   reported as the mean per fragment (comparable across classes of any size)
 //!
 //! All functions operate on raw, unweighted fragment size slices. GC correction
 //! is not applied here — GC bias affects count depth, not fragment length, so
@@ -19,7 +20,7 @@
 //! ```ignore
 //! let physical = mfsd::calc_physical_insert_size(&record);
 //! let (ks_d, ks_p) = mfsd::ks_test(&alt_sizes, &ref_sizes);
-//! let llr = mfsd::calc_llr(&alt_sizes);
+//! let llr = mfsd::calc_llr_mean(&alt_sizes);
 //! let mean = mfsd::calc_mean(&alt_sizes);
 //! ```
 
@@ -31,6 +32,12 @@ use rust_htslib::bam::Record;
 /// Below this threshold, `ks_test` returns `(f64::NAN, 1.0)` to signal
 /// insufficient data rather than a spurious result.
 pub const MIN_FOR_KS: usize = 5;
+
+/// Largest lattice (n·m cells) for which the KS p-value is computed exactly. Every
+/// class pair a targeted cfDNA panel produces fits (a few thousand fragments a
+/// side); beyond it both classes are large and the corrected asymptotic series is
+/// accurate (within a few percent once the smaller class has a few hundred).
+const KS_EXACT_MAX_CELLS: u64 = 10_000_000;
 
 // ── Model Parameters ──────────────────────────────────────────────────────────
 
@@ -148,6 +155,17 @@ pub fn calc_llr_with_params(lengths: &[f64], params: &LlrModelParams) -> f64 {
         .sum()
 }
 
+/// Mean per-fragment log-likelihood ratio: [`calc_llr`] divided by the number of
+/// fragments, so it does not grow with depth (the sum grows about 22x from n < 20
+/// to n >= 100 on real cfDNA, while the mean stays flat). NaN for an empty class:
+/// with no fragments there is no ratio to report.
+pub fn calc_llr_mean(lengths: &[f64]) -> f64 {
+    if lengths.is_empty() {
+        return f64::NAN;
+    }
+    calc_llr(lengths) / lengths.len() as f64
+}
+
 // ── Physical Fragment Sizing ─────────────────────────────────────────────────
 
 /// Compute the physical fragment insert size from CIGAR, correcting TLEN for indels.
@@ -223,7 +241,9 @@ pub fn calc_physical_insert_size(record: &Record) -> i32 {
 /// Two-sample Kolmogorov-Smirnov test.
 ///
 /// Computes the KS D-statistic (maximum absolute difference between empirical
-/// CDFs) and an approximate p-value using the Kolmogorov distribution series.
+/// CDFs, evaluated after each block of tied values) and its p-value: exact up to
+/// `KS_EXACT_MAX_CELLS` lattice cells, else the finite-sample-corrected asymptotic
+/// series (see [`ks_p_value`]).
 ///
 /// Returns `(f64::NAN, 1.0)` if either slice has fewer than [`MIN_FOR_KS`]
 /// fragments — callers should check `mfsd_ks_valid` before interpreting results.
@@ -244,103 +264,110 @@ pub fn ks_test(a: &[f64], b: &[f64]) -> (f64, f64) {
     let mut b_sorted = b.to_vec();
     a_sorted.sort_unstable_by(|x, y| x.partial_cmp(y).unwrap());
     b_sorted.sort_unstable_by(|x, y| x.partial_cmp(y).unwrap());
+    let (n, m) = (a_sorted.len(), b_sorted.len());
 
-    let n = a_sorted.len() as f64;
-    let m = b_sorted.len() as f64;
-
-    // Walk merged sorted values computing CDF difference at each step
-    let mut d: f64 = 0.0;
-    let mut i = 0usize;
-    let mut j = 0usize;
-
-    // Merge-walk to track CDF of each sample
-    while i < a_sorted.len() && j < b_sorted.len() {
-        let val = if a_sorted[i] <= b_sorted[j] {
-            a_sorted[i]
-        } else {
-            b_sorted[j]
-        };
+    // Merge-walk the two ECDFs, taking the gap after each block of tied values. The
+    // gap is kept in integers scaled by n·m (|i·m − j·n|), so the exact p-value can
+    // compare lattice points against the observed deviation without float error.
+    let mut dev: i64 = 0;
+    let (mut i, mut j) = (0usize, 0usize);
+    while i < n && j < m {
+        let val = if a_sorted[i] <= b_sorted[j] { a_sorted[i] } else { b_sorted[j] };
         // Advance all entries equal to `val` in both arrays
-        while i < a_sorted.len() && a_sorted[i] <= val { i += 1; }
-        while j < b_sorted.len() && b_sorted[j] <= val { j += 1; }
-
-        let cdf_a = i as f64 / n;
-        let cdf_b = j as f64 / m;
-        d = d.max((cdf_a - cdf_b).abs());
+        while i < n && a_sorted[i] <= val { i += 1; }
+        while j < m && b_sorted[j] <= val { j += 1; }
+        dev = dev.max((i as i64 * m as i64 - j as i64 * n as i64).abs());
     }
 
-    let p = ks_p_value(d, a_sorted.len(), b_sorted.len());
-    (d, p)
+    let d = dev as f64 / (n as f64 * m as f64);
+    (d, ks_p_value(dev, d, n, m))
 }
 
-/// Two-sample KS p-value: P(D ≥ d) under the null.
+/// Two-sample KS p-value: P(D ≥ d) under the null, for an observed deviation `dev`
+/// = D·n·m (an integer; `d` is the same value as a fraction).
 ///
-/// Exact for small `n·m` (the low-input cfDNA regime, where the asymptotic
-/// Kolmogorov approximation over/under-covers because D is highly discrete), and
-/// the asymptotic series for large `n·m` where it is accurate and the exact O(n·m)
-/// lattice DP would be wasteful. The `n·m` threshold follows R's `ks.test` (exact
-/// when `n·m < 10_000`); SciPy's `ks_2samp` instead switches on each sample's size.
-fn ks_p_value(d: f64, n: usize, m: usize) -> f64 {
-    if (n as u64) * (m as u64) <= 10_000 {
-        ks_p_value_exact(d, n, m)
+/// Exact whenever the lattice has at most `KS_EXACT_MAX_CELLS` cells. A cfDNA
+/// variant usually pairs a few ALT fragments with thousands of REF fragments; the
+/// asymptotic Kolmogorov series overstates p there (about 1.7x at 5 ALT fragments
+/// near p = 0.05, and 45x for a strong shift), and the old switch on `n·m` (R's
+/// `ks.test` rule) sent most real ALT-vs-REF pairs to it. Beyond the limit the
+/// lattice is large (for realistic shapes, both classes are), and the series with
+/// Stephens' correction is used.
+///
+/// The exact p-value treats the sizes as continuous; with tied (integer) sizes it
+/// is conservative (measured on real cfDNA: 3.7–4.7% of null draws below 0.05).
+fn ks_p_value(dev: i64, d: f64, n: usize, m: usize) -> f64 {
+    if (n as u64) * (m as u64) <= KS_EXACT_MAX_CELLS {
+        ks_p_value_exact(dev, n, m)
     } else {
         ks_p_value_asymptotic(d, n as f64, m as f64)
     }
 }
 
-/// Exact two-sample KS p-value via the lattice-path count (Hodges 1957).
+/// Exact two-sample KS p-value from the monotone lattice paths (Hodges 1957).
 ///
-/// Counts monotone merge-paths from (0,0) to (n,m) whose CDF deviation stays
-/// strictly below the observed D, then `p = 1 − within / C(n+m, n)`. Exact at any
-/// N, including the small n (5–20) typical of cfDNA ALT fragments. The deviation
-/// is compared in integers scaled by n·m (`|i·m − j·n| < d·n·m`) to avoid float
-/// drift; a tiny epsilon makes a deviation exactly equal to D count as *reaching*
-/// it, matching `P(D ≥ d_obs)`.
-fn ks_p_value_exact(d: f64, n: usize, m: usize) -> f64 {
-    if d <= 0.0 {
+/// A path from (0,0) to (n,m) takes one step per sorted observation; under the null
+/// every path is equally likely. A lattice point is inside the band when its
+/// deviation |i·m − j·n| is below the observed `dev` (integers, so a point exactly
+/// at the observed deviation counts as reaching D: `P(D ≥ d)`). `v(i, j)` is the
+/// share of the paths reaching (i, j) that have already left the band — 1 at a point
+/// outside it, and inside it `v(i,j) = v(i−1,j)·i/(i+j) + v(i,j−1)·j/(i+j)`, since
+/// those are the shares of paths arriving from each neighbour. The p-value is
+/// `v(n, m)`, computed directly (no `1 − u` cancellation, so a tiny p keeps its
+/// digits), with every value in [0, 1] (no path count or binomial can overflow).
+/// Only the cells inside the band are visited; the rest stay at 1.
+fn ks_p_value_exact(dev: i64, n: usize, m: usize) -> f64 {
+    if dev <= 0 {
         return 1.0;
     }
-    let band = d * n as f64 * m as f64 - 1e-9;
-    let ni = n as i64;
-    let mi = m as i64;
+    // Rows over the larger class, columns over the smaller: the band is symmetric in
+    // (n, m), and the working row is the smaller one.
+    let (n, m) = if n >= m { (n, m) } else { (m, n) };
+    let (ni, mi) = (n as i64, m as i64);
+    // Columns j inside the band on row i: |i·m − j·n| < dev, i.e.
+    // (i·m − dev)/n < j < (i·m + dev)/n.
+    let band = |i: usize| -> (usize, usize) {
+        let c = i as i64 * mi;
+        let lo = (c - dev).div_euclid(ni) + 1;
+        let hi = (c + dev - 1).div_euclid(ni);
+        (lo.max(0) as usize, hi.min(mi) as usize)
+    };
 
-    // i = 0 edge: reachable along the top while inside the band.
-    let mut prev = vec![0f64; m + 1];
-    for (j, slot) in prev.iter_mut().enumerate() {
-        if (j as i64 * ni) as f64 >= band {
-            break; // outside band → rest of the edge is unreachable inside-band
-        }
-        *slot = 1.0;
+    let mut row = vec![1.0f64; m + 1]; // outside the band: every path has left it
+    let (lo0, hi0) = band(0);
+    for v in row.iter_mut().take(hi0 + 1).skip(lo0) {
+        *v = 0.0; // row 0 inside the band: reached only along the edge, never outside
     }
-
+    let mut prev_lo = lo0;
     for i in 1..=n {
-        let mut cur = vec![0f64; m + 1];
-        cur[0] = if ((i as i64 * mi) as f64) < band { prev[0] } else { 0.0 };
-        for j in 1..=m {
-            let dev = (i as i64 * mi - j as i64 * ni).abs() as f64;
-            cur[j] = if dev < band { cur[j - 1] + prev[j] } else { 0.0 };
+        let (lo, hi) = band(i);
+        // Cells that left the band on the left since the previous row read as 1.
+        for v in row.iter_mut().take(lo.min(m + 1)).skip(prev_lo) {
+            *v = 1.0;
         }
-        prev = cur;
+        if lo <= hi {
+            let fi = i as f64;
+            for j in lo..=hi {
+                let up = row[j]; // v(i−1, j): 1 if it was outside the previous band
+                row[j] = if j == 0 {
+                    up
+                } else {
+                    let k = fi + j as f64;
+                    (up * fi + row[j - 1] * j as f64) / k
+                };
+            }
+        }
+        prev_lo = lo;
     }
-
-    (1.0 - prev[m] / binomial(n + m, n)).clamp(0.0, 1.0)
+    row[m].clamp(0.0, 1.0)
 }
 
-/// C(n, k) as f64. Exact for the n+m ≤ ~140 range reached under the exact-KS
-/// threshold; the multiplicative form keeps intermediate values bounded.
-fn binomial(n: usize, k: usize) -> f64 {
-    let k = k.min(n - k);
-    let mut result = 1.0;
-    for i in 0..k {
-        result = result * (n - i) as f64 / (i + 1) as f64;
-    }
-    result
-}
-
-/// Asymptotic KS p-value via the Kolmogorov series Q_KS(λ) = 2 Σ (−1)^(k−1) e^(−2k²λ²),
-/// λ = D·√(n·m/(n+m)). Accurate for large n·m; used only above the exact threshold.
+/// Asymptotic KS p-value via the Kolmogorov series Q_KS(λ) = 2 Σ (−1)^(k−1) e^(−2k²λ²)
+/// with Stephens' finite-sample correction, λ = (√Nₑ + 0.12 + 0.11/√Nₑ)·D,
+/// Nₑ = n·m/(n+m). Used only above `KS_EXACT_MAX_CELLS`.
 fn ks_p_value_asymptotic(d: f64, n: f64, m: f64) -> f64 {
-    let lambda = d * (n * m / (n + m)).sqrt();
+    let sqrt_ne = (n * m / (n + m)).sqrt();
+    let lambda = (sqrt_ne + 0.12 + 0.11 / sqrt_ne) * d;
     if lambda < f64::EPSILON {
         return 1.0;
     }
@@ -467,6 +494,189 @@ mod tests {
         let (d, p) = ks_test(&a, &b);
         assert!((d - 0.375).abs() < 1e-9, "D={d}");
         assert!((p - 0.660140).abs() < 1e-5, "exact p={p}, want 0.660140");
+    }
+
+    // ─── mean LLR + exact KS at any depth ─────────────────────────────────────
+
+    #[test]
+    fn test_llr_mean_is_the_sum_over_n() {
+        let sizes = [118.0, 126.0, 133.0, 141.0, 152.0];
+        assert!((calc_llr_mean(&sizes) - calc_llr(&sizes) / 5.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_llr_mean_of_an_empty_class_is_nan() {
+        assert!(calc_llr_mean(&[]).is_nan());
+    }
+
+    // Few ALT fragments against a deep REF class: 5 x 2,400 = 12,000 lattice cells,
+    // past R's exact limit. Reference: the share-of-paths recursion in exact Python
+    // arithmetic (tests/test_statistics_group6_contract.py::_ks_exact); the
+    // asymptotic series gave 0.0346 here.
+    #[test]
+    fn test_ks_exact_few_alt_deep_ref() {
+        let b: Vec<f64> = (0..2400).map(|k| (140 + (k * 37) % 80) as f64).collect();
+        let a = vec![143.0, 150.0, 156.0, 161.0, 168.0];
+        let (d, p) = ks_test(&a, &b);
+        assert!((d - 0.6375).abs() < 1e-12, "D={d}");
+        assert!((p - 0.017188813774322798).abs() < 1e-9, "exact p={p}");
+    }
+
+    #[test]
+    fn test_ks_exact_is_symmetric_in_the_classes() {
+        let a: Vec<f64> = (0..7).map(|k| (120 + 9 * k) as f64).collect();
+        let b: Vec<f64> = (0..300).map(|k| (130 + (k * 13) % 70) as f64).collect();
+        let (d1, p1) = ks_test(&a, &b);
+        let (d2, p2) = ks_test(&b, &a);
+        assert!((d1 - d2).abs() < 1e-12 && (p1 - p2).abs() < 1e-12, "{p1} vs {p2}");
+    }
+
+    #[test]
+    fn test_ks_large_classes_use_the_corrected_series() {
+        // 4,000 x 4,000 cells is past the exact limit: the p-value is the Kolmogorov
+        // series at Stephens' corrected lambda (the uncorrected lambda gives another value).
+        let a: Vec<f64> = (0..4000).map(|k| (120 + (k * 7) % 90) as f64).collect();
+        let b: Vec<f64> = (0..4000).map(|k| (123 + (k * 11) % 90) as f64).collect();
+        let (d, p) = ks_test(&a, &b);
+        let series = |lambda: f64| -> f64 {
+            let s: f64 = (1..=100i64)
+                .map(|k| { let t = (-2.0 * (k as f64 * lambda).powi(2)).exp(); if k % 2 == 0 { -t } else { t } })
+                .sum();
+            (2.0 * s).clamp(0.0, 1.0)
+        };
+        let sqrt_ne = (4000.0f64 * 4000.0 / 8000.0).sqrt();
+        let corrected = series((sqrt_ne + 0.12 + 0.11 / sqrt_ne) * d);
+        let uncorrected = series(sqrt_ne * d);
+        assert!(p > 1e-4 && p < 0.9, "pick data with a mid-range p: {p}");
+        assert!((p - corrected).abs() < 1e-12, "p={p} corrected={corrected}");
+        assert!((corrected - uncorrected).abs() > 1e-6);
+    }
+
+    /// Sizes from a 32-bit LCG (Numerical Recipes constants), reproducible in tests.
+    fn lcg_sizes(seed: u32, k: usize, lo: u32, span: u32) -> Vec<f64> {
+        let mut x = seed;
+        (0..k)
+            .map(|_| {
+                x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (lo + (x >> 16) % span) as f64
+            })
+            .collect()
+    }
+
+    /// Independent reference: P(D ≥ d_obs) over every placement of the a-values among
+    /// the pooled sorted values (tie-free data; the continuous null), by enumeration.
+    fn brute_force_p(a: &[f64], b: &[f64]) -> f64 {
+        let (n, m) = (a.len(), b.len());
+        let (d_obs, _) = ks_test(a, b);
+        let mut pooled: Vec<f64> = a.iter().chain(b.iter()).copied().collect();
+        pooled.sort_by(f64::total_cmp);
+        let (mut hit, mut total) = (0u64, 0u64);
+        for mask in 0u32..(1 << (n + m)) {
+            if mask.count_ones() as usize != n {
+                continue;
+            }
+            total += 1;
+            let (mut i, mut j, mut d) = (0usize, 0usize, 0f64);
+            for k in 0..n + m {
+                if mask >> k & 1 == 1 { i += 1 } else { j += 1 }
+                d = d.max((i as f64 / n as f64 - j as f64 / m as f64).abs());
+            }
+            let _ = &pooled;
+            if d >= d_obs - 1e-12 {
+                hit += 1;
+            }
+        }
+        hit as f64 / total as f64
+    }
+
+    #[test]
+    fn test_ks_exact_matches_brute_force_enumeration() {
+        for (n, m) in [(5usize, 5usize), (5, 7), (6, 5), (5, 9)] {
+            for seed in 1..6u32 {
+                // distinct values (no ties), so enumeration and the lattice agree exactly
+                let mut a: Vec<f64> = lcg_sizes(seed, n, 100, 1000);
+                let mut b: Vec<f64> = lcg_sizes(seed + 77, m, 100, 1000);
+                for (k, v) in a.iter_mut().enumerate() { *v += 0.001 * k as f64; }
+                for (k, v) in b.iter_mut().enumerate() { *v += 0.0005 + 0.001 * k as f64; }
+                let (_, p) = ks_test(&a, &b);
+                let want = brute_force_p(&a, &b);
+                assert!((p - want).abs() < 1e-12, "n={n} m={m} seed={seed}: p={p} want={want}");
+            }
+        }
+    }
+
+    /// Reference p-value over the full lattice: the observed deviation from the ECDF
+    /// walk in integers, every cell visited, p = 1 − (share of paths kept inside).
+    fn full_grid_p(a: &[f64], b: &[f64]) -> f64 {
+        let (mut sa, mut sb) = (a.to_vec(), b.to_vec());
+        sa.sort_by(f64::total_cmp);
+        sb.sort_by(f64::total_cmp);
+        let (n, m) = (sa.len() as i64, sb.len() as i64);
+        let (mut i, mut j, mut dev) = (0usize, 0usize, 0i64);
+        while i < sa.len() && j < sb.len() {
+            let v = sa[i].min(sb[j]);
+            while i < sa.len() && sa[i] <= v { i += 1; }
+            while j < sb.len() && sb[j] <= v { j += 1; }
+            dev = dev.max((i as i64 * m - j as i64 * n).abs());
+        }
+        let inside = |i: usize, j: usize| (i as i64 * m - j as i64 * n).abs() < dev;
+        let mut row = vec![0f64; sb.len() + 1];
+        row[0] = 1.0;
+        for jj in 1..=sb.len() {
+            row[jj] = if inside(0, jj) { row[jj - 1] } else { 0.0 };
+        }
+        for ii in 1..=sa.len() {
+            row[0] = if inside(ii, 0) { row[0] } else { 0.0 };
+            for jj in 1..=sb.len() {
+                row[jj] = if inside(ii, jj) {
+                    let k = (ii + jj) as f64;
+                    row[jj] * ii as f64 / k + row[jj - 1] * jj as f64 / k
+                } else {
+                    0.0
+                };
+            }
+        }
+        (1.0 - row[sb.len()]).clamp(0.0, 1.0)
+    }
+
+    // The observed deviation must count as reaching D (P(D >= d), not P(D > d)) at any
+    // lattice size. Here (2,583 x 3,871, just under the exact cap) a float band
+    // d*n*m - 1e-9 lands above the integer deviation; the reference compares integers.
+    #[test]
+    fn test_ks_exact_counts_the_observed_point_in_integers() {
+        let a = lcg_sizes(3369, 2583, 100, 161);
+        let b = lcg_sizes(103_369, 3871, 104, 161);
+        let (_, p) = ks_test(&a, &b);
+        let want = full_grid_p(&a, &b);
+        assert!((p - want).abs() <= 1e-12, "p={p} want={want}");
+    }
+
+    // The banded walk visits only cells inside the band; it must equal the full lattice
+    // for any shape and either class order (rows run over the larger class).
+    #[test]
+    fn test_ks_banded_walk_equals_the_full_lattice() {
+        for seed in 1..40u32 {
+            let n = 5 + (seed as usize * 37) % 300;
+            let m = 5 + (seed as usize * 53) % 400;
+            let a = lcg_sizes(seed, n, 120, 40 + seed % 60);
+            let b = lcg_sizes(seed + 500, m, 118 + seed % 9, 50);
+            let (_, p) = ks_test(&a, &b);
+            let want = full_grid_p(&a, &b);
+            assert!((p - want).abs() <= 1e-11, "seed={seed} n={n} m={m}: p={p} want={want}");
+        }
+    }
+
+    // Disjoint classes: P(D >= 1) = 2 / C(n+m, n) (all ALT below, or all above, all REF).
+    // About 3e-15 here; computing p as 1 - u loses it to cancellation.
+    #[test]
+    fn test_ks_tiny_p_is_accurate() {
+        let a: Vec<f64> = (0..5).map(|k| 100.0 + k as f64).collect();
+        let b: Vec<f64> = (0..2400).map(|k| 200.0 + (k % 300) as f64).collect();
+        let (d, p) = ks_test(&a, &b);
+        assert!((d - 1.0).abs() < 1e-12);
+        let comb: f64 = (0..5).map(|k| (2405 - k) as f64 / (k + 1) as f64).product();
+        let want = 2.0 / comb;
+        assert!(((p - want) / want).abs() < 1e-6, "p={p} want={want}");
     }
 
     // ─── calc_physical_insert_size ────────────────────────────────────────────
