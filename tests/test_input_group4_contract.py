@@ -12,7 +12,8 @@ Operator decisions (2026-09-25 for I1, I3, I4; 2026-10-05 for the rest):
 - C9 #122: a MAF deletion at Start_Position 1 (no base before it) is resolved to
   the VCF spec's form at position 1, the base after the event, and counted, as
   the same event given as VCF already is.
-- I2 #124: End_Position is optional.
+- I2 #124: End_Position is optional. gbcms merge joins on contig, Start and
+  alleles, not End_Position, and fills it from the inputs that have each row.
 - I3 #125: VCF input's MAF output fills Tumor_Seq_Allele1 with the reference
   allele (MSK's convention on every sign-out row; maf2vcf reads an empty one as
   the reference).
@@ -385,6 +386,81 @@ def test_merge_joins_outputs_of_mafs_without_end_position(tmp_path):
         (str(r["Start_Position"]), r["Reference_Allele"]) for r in rows
     ]
     assert merged[0]["simplex_duplex_ref_count"] == "12"
+
+
+_MERGE_COLS = [
+    "Chromosome",
+    "Start_Position",
+    "End_Position",
+    "Reference_Allele",
+    "Tumor_Seq_Allele2",
+    "ref_count",
+    "alt_count",
+]
+
+
+def _merge(tmp_path, inputs, caplog=None):
+    """Merge hand-written gbcms MAFs ({type: (columns, rows)}); the merged rows."""
+    import logging
+
+    from gbcms.merge import merge_mafs
+    from gbcms.models.core import MergeConfig
+
+    paths = {}
+    for name, (cols, rows) in inputs.items():
+        paths[name] = tmp_path / f"{name}.maf"
+        paths[name].write_text("\n".join(["\t".join(cols), *("\t".join(r) for r in rows)]) + "\n")
+    out = tmp_path / "merged.maf"
+    config = MergeConfig(inputs=paths, output=out, add_combined=False)
+    if caplog is None:
+        merge_mafs(config)
+    else:
+        with caplog.at_level(logging.INFO, logger="gbcms.merge"):
+            merge_mafs(config)
+    return list(read_maf_output(out))
+
+
+def test_merge_joins_inputs_that_disagree_on_end_position(tmp_path, caplog):
+    """End_Position follows from Start and REF and is not part of a variant's
+    identity: inputs that write it differently for one variant join into one
+    row, which keeps the first input's End_Position; the difference is logged."""
+    merged = _merge(
+        tmp_path,
+        {
+            "duplex": (_MERGE_COLS, [["1", "100", "100", "A", "T", "20", "10"]]),
+            "simplex": (_MERGE_COLS, [["1", "100", "101", "A", "T", "5", "2"]]),
+        },
+        caplog,
+    )
+    assert len(merged) == 1, merged
+    row = merged[0]
+    assert row["End_Position"] == "100"
+    assert (row["duplex_ref_count"], row["simplex_ref_count"]) == ("20", "5")
+    assert not any(c.startswith("_") for c in row), list(row)
+    logged = [r.message for r in caplog.records if "End_Position" in r.message]
+    assert any("simplex" in m for m in logged), [r.message for r in caplog.records]
+
+
+@pytest.mark.parametrize("second_has_end", [True, False])
+def test_merge_keeps_end_position_of_a_row_only_a_later_input_has(tmp_path, second_has_end):
+    """Guard (green now, green after): a row only a later input has keeps the
+    End_Position that input gives; an input without the column gives none."""
+    cols = _MERGE_COLS if second_has_end else [c for c in _MERGE_COLS if c != "End_Position"]
+    later = [["1", "100", "100", "A", "T", "5", "2"], ["1", "200", "202", "GCA", "-", "7", "1"]]
+    if not second_has_end:
+        later = [[v for c, v in zip(_MERGE_COLS, r, strict=True) if c in cols] for r in later]
+    merged = _merge(
+        tmp_path,
+        {
+            "duplex": (_MERGE_COLS, [["1", "100", "100", "A", "T", "20", "10"]]),
+            "simplex": (cols, later),
+        },
+    )
+    assert [(r["Start_Position"], r["End_Position"]) for r in merged] == [
+        ("100", "100"),
+        ("200", "202" if second_has_end else ""),
+    ]
+    assert [r["simplex_ref_count"] for r in merged] == ["5", "7"]
 
 
 def test_convert_maf_to_vcf_carries_the_maf_row(tmp_path):

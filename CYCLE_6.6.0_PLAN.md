@@ -1228,9 +1228,17 @@ it; rows without one are skipped with a WARN. maf2vcf converts them.
 **Direction.** Parse it when present; don't require it. Update the
 required-columns table.
 
-**Decision (2026-10-05, operator).** Accept rows without it (as maf2vcf does);
-`gbcms merge` joins on it only when every input has it. The sign-out dump has it,
-consistent with Start and REF, on all but one of 1.13M rows.
+**Decision (2026-10-05, operator).** Accept rows without it (as maf2vcf does).
+The sign-out dump has it, consistent with Start and REF, on all but one of 1.13M
+rows.
+
+**Merge (2026-10-05, operator).** End_Position is not part of a variant's
+identity (genotyping never reads it), so `gbcms merge` joins on contig, Start and
+alleles, fills End_Position from the inputs that have each row (a later-only row
+would otherwise lose it), and logs an input that writes it differently. No effect
+on binning or counts (merge runs on outputs); lookup by the input is kept (each
+row keeps its End_Position). Measured: no two sign-out rows (per sample) differ
+only in End_Position.
 
 ### I3 — VCF→MAF `Tumor_Seq_Allele1` (#125) · L [decided]
 **Finding.** For VCF input, `Tumor_Seq_Allele1`, `Strand` and

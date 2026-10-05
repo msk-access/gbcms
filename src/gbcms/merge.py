@@ -40,7 +40,8 @@ logger = logging.getLogger(__name__)
 
 # ── Constants (single source of truth — canonical basenames from output.py) ──
 
-# 5-column variant key used for outer joins.
+# The MAF variant columns. Every input needs all but End_Position, which
+# follows from Start and REF and is optional in a MAF.
 VARIANT_KEY: list[str] = [
     "Chromosome",
     "Start_Position",
@@ -52,7 +53,13 @@ VARIANT_KEY: list[str] = [
 # Naming-independent contig key the joins use in place of Chromosome, so MAFs
 # whose inputs name contigs differently (chr1 vs 1, chrM vs MT) still join.
 _CONTIG_KEY = "_contig_key"
-JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
+# A variant is its contig, Start and alleles. End_Position is not joined on:
+# inputs that write it differently for one variant still join, and each row's
+# End_Position is filled from the inputs that have the row.
+JOIN_KEY: list[str] = [
+    _CONTIG_KEY,
+    *(k for k in VARIANT_KEY[1:] if k != "End_Position"),
+]
 # VCF-input MAFs also carry the VCF record each row came from. It is unique per
 # record ALT, whereas two records can trim to one MAF record (TCT>TCG and T>G at
 # the changed base), so the joins add it whenever every input has it. The MAF
@@ -61,8 +68,9 @@ JOIN_KEY: list[str] = [_CONTIG_KEY, *VARIANT_KEY[1:]]
 # columns, so a row only a later input has keeps its coordinates and alleles.
 VCF_RECORD_KEY: list[str] = [*JOIN_KEY, "vcf_pos", "vcf_ref", "vcf_alt"]
 # Prefixes of the other per-input join helpers (row numbers, each later
-# input's own contig names). Input columns with these names are rejected.
-_HELPER_PREFIXES = ("_row_", "_chrom_")
+# input's own contig names and End_Position). Input columns with these names
+# are rejected.
+_HELPER_PREFIXES = ("_row_", "_chrom_", "_end_")
 
 
 def _row_col(bam_type: str) -> str:
@@ -190,10 +198,11 @@ COMBINED_ADDITIVE_ALL: list[str] = (
 def merge_mafs(config: MergeConfig) -> None:
     """Merge per-BAM-type genotyped MAFs into a single type-prefixed output.
 
-    Performs an outer join on the 5-column variant key (on the VCF record —
-    vcf_pos / vcf_ref / vcf_alt — when every input is VCF-derived), prefixes
-    gbcms count columns with the BAM type label, optionally computes combined
-    simplex_duplex columns, and writes the merged result.
+    Performs an outer join on the variant (contig, Start and alleles; plus the
+    VCF record — vcf_pos / vcf_ref / vcf_alt — when every input is
+    VCF-derived), prefixes gbcms count columns with the BAM type label,
+    optionally computes combined simplex_duplex columns, and writes the merged
+    result.
 
     Args:
         config: Validated MergeConfig with inputs, output path, and options.
@@ -246,17 +255,17 @@ def merge_mafs(config: MergeConfig) -> None:
     for join_type in types[1:]:
         # Select only variant key + gbcms columns from the joining frame
         # to avoid duplicating annotation columns across inputs.
-        # The joining frame's own Chromosome is kept aside (not a join key) so
-        # rows only it has keep their name, and naming differences can be
-        # reported after materialization.
+        # The joining frame's own Chromosome and End_Position are kept aside
+        # (not join keys) so rows only it has keep them, and differences can
+        # be reported after materialization.
         join_frame = frames[join_type]
-        count_cols = [
-            c for c in join_frame.collect_schema().names() if _is_prefixed_gbcms_col(c, join_type)
-        ]
+        join_names = join_frame.collect_schema().names()
+        count_cols = [c for c in join_names if _is_prefixed_gbcms_col(c, join_type)]
+        aside = {"Chromosome": f"_chrom_{join_type}"}
+        if "End_Position" in join_names:
+            aside["End_Position"] = f"_end_{join_type}"
         merged = merged.join(
-            join_frame.select([*join_key, "Chromosome", _row_col(join_type), *count_cols]).rename(
-                {"Chromosome": f"_chrom_{join_type}"}
-            ),
+            join_frame.select([*join_key, *aside, _row_col(join_type), *count_cols]).rename(aside),
             on=join_key,
             how="full",
             coalesce=True,
@@ -288,7 +297,9 @@ def merge_mafs(config: MergeConfig) -> None:
         logger.info("  Added simplex_duplex combined columns")
 
     # ── 5. Materialize and write ──────────────────────────────────────────────
-    result = _in_input_order(_resolve_contig_names(merged.collect(), types), types)
+    result = _in_input_order(
+        _resolve_end_positions(_resolve_contig_names(merged.collect(), types), types), types
+    )
     logger.info(
         "Merged result: %d rows × %d columns",
         result.height,
@@ -333,16 +344,11 @@ def merge_mafs(config: MergeConfig) -> None:
 
 def _join_key(input_columns: dict[str, list[str]]) -> list[str]:
     """The VCF record key when every input carries it (all VCF-derived), else
-    the MAF variant key. End_Position, which follows from Start and REF and is
-    optional in a MAF, joins only when every input has it."""
-    base = JOIN_KEY
-    if not all("End_Position" in cols for cols in input_columns.values()):
-        base = [k for k in JOIN_KEY if k != "End_Position"]
-        logger.info("  Joining without End_Position: not every input has it")
+    the MAF variant key."""
     if all(set(VCF_RECORD_KEY[len(JOIN_KEY) :]) <= set(cols) for cols in input_columns.values()):
         logger.info("  Joining on the VCF record (vcf_pos, vcf_ref, vcf_alt): every input has it")
-        return [*base, *VCF_RECORD_KEY[len(JOIN_KEY) :]]
-    return base
+        return VCF_RECORD_KEY
+    return JOIN_KEY
 
 
 def _warn_duplicate_keys(lf: pl.LazyFrame, join_key: list[str], bam_type: str) -> None:
@@ -395,6 +401,40 @@ def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFram
                 differ.height,
             )
     return result.drop([_CONTIG_KEY, *later])
+
+
+def _resolve_end_positions(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
+    """Fill End_Position from the inputs that have each row and drop the helpers.
+
+    End_Position is not a join key, so a row only a later input has would
+    otherwise lose it. A row the first input has keeps its End_Position as
+    written. One INFO line per later input that writes it differently for
+    rows it shares with the output. No-op on the column set when the first
+    input has no End_Position (the output's columns are the first input's).
+    """
+    later = [f"_end_{t}" for t in types[1:] if f"_end_{t}" in result.columns]
+    if not later:
+        return result
+    if "End_Position" in result.columns:
+        result = result.with_columns(pl.coalesce("End_Position", *later).alias("End_Position"))
+        for col in later:
+            differ = result.filter(
+                pl.col(col).is_not_null() & (pl.col(col) != pl.col("End_Position"))
+            )
+            if differ.height:
+                row = differ.row(0, named=True)
+                logger.info(
+                    "  '%s' writes End_Position differently from the merged output ('%s' vs "
+                    "'%s' at %s:%s, %d row(s)): joined on Start and alleles; the output keeps "
+                    "the earliest input's",
+                    col.removeprefix("_end_"),
+                    row[col],
+                    row["End_Position"],
+                    row["Chromosome"],
+                    row["Start_Position"],
+                    differ.height,
+                )
+    return result.drop(later)
 
 
 def _in_input_order(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:

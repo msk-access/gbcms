@@ -699,9 +699,10 @@ Each input MAF's gbcms count columns are prefixed with the BAM type label:
 
 Annotation columns (e.g., `Hugo_Symbol`, `Chromosome`) are taken from the first
 input and **not** duplicated. Rows are joined on `Chromosome` (in any naming),
-`Start_Position`, `End_Position`, `Reference_Allele` and `Tumor_Seq_Allele2`;
-`End_Position` joins only when every input has it (it is optional in a MAF and
-follows from Start and REF), and VCF-input MAFs also join on the VCF record.
+`Start_Position`, `Reference_Allele` and `Tumor_Seq_Allele2`, and VCF-input MAFs
+also on the VCF record. `End_Position` follows from Start and REF and is not
+joined on: a row keeps the first input's, or that of the earliest input that has
+the row, and an input that writes it differently is logged.
 
 ### Combined `simplex_duplex_*` Columns
 

@@ -28,9 +28,12 @@ and 2026-10-05).
   (it was `FETCH_FAILED`). None in the sign-out data.
 - **`End_Position` is optional (#124).** gbcms places a variant by
   `Start_Position` and its alleles; rows without an integer `End_Position` were
-  skipped and are now read (maf2vcf converts them). `gbcms merge` joins on it
-  only when every input has it. The sign-out data has it, consistent with Start
-  and REF, on every row but one.
+  skipped and are now read (maf2vcf converts them). `gbcms merge` no longer
+  joins on it: inputs that write it differently for one variant join into one
+  row (the first input's `End_Position`, the difference logged), and a row only
+  a later input has keeps that input's. The sign-out data has it, consistent
+  with Start and REF, on every row but one; no two of its rows differ only in
+  `End_Position`.
 - **VCF input's MAF output fills `Tumor_Seq_Allele1` (#125)** with the reference
   allele: MSK's sign-out convention on every row, and maf2vcf's reading of an
   empty one. Previously empty.

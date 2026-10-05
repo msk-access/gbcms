@@ -132,8 +132,8 @@ I3 #125, I4 #126, #147, H2 #149, C30 #208):** branch `feature/g4-input`. Decided
 (2026-09-25 I1/I3/I4; 2026-10-05 the rest): non-sequence MAF alleles FAIL
 `NON_SEQUENCE_ALLELE` (VCF output `<NON_SEQUENCE>`); VCF output of MAF input
 carries MAF_START/MAF_REF/MAF_ALT; a MAF deletion at Start 1 counts in the
-base-after form; End_Position optional (merge joins on it only when all inputs
-have it); VCF-input MAF output fills Tumor_Seq_Allele1 with REF; one row, one
+base-after form; End_Position optional (merge no longer joins on it; fills it
+from the inputs that have each row); VCF-input MAF output fills Tumor_Seq_Allele1 with REF; one row, one
 allele; decomposed/sibling lists padded short, rejected long; one allele-kind
 rule. Red tests `766f8e7c`, fix `03563479`. Measured on the sign-out dump (1.13M
 rows): 7 non-sequence alleles, 0 Start-1 deletions, 0 missing End_Position, 0
