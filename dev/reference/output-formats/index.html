@@ -5,7 +5,7 @@
 <meta content="MSK-ACCESS" name="author">
 <link href="https://msk-access.github.io/gbcms/dev/reference/output-formats/" rel="canonical">
 <link href="../input-formats/" rel="prev">
-<link href="../variant-normalization/" rel="next">
+<link href="../qc-flags/" rel="next">
 <link href="../../assets/images/favicon.png" rel="icon">
 <meta content="mkdocs-1.6.1, mkdocs-material-9.7.7" name="generator">
 <title>Output Formats - gbcms</title>
@@ -660,6 +660,15 @@
     </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#provenance-and-versions">
+<span class="md-ellipsis">
+      
+        Provenance and versions
+      
+    </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -692,6 +701,18 @@
 </li>
 </ul>
 </nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../qc-flags/">
+<span class="md-ellipsis">
+    
+  
+    QC Flags
+  
+
+    
+  </span>
+</a>
 </li>
 <li class="md-nav__item">
 <a class="md-nav__link" href="../variant-normalization/">
@@ -1205,6 +1226,15 @@
     </span>
 </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#provenance-and-versions">
+<span class="md-ellipsis">
+      
+        Provenance and versions
+      
+    </span>
+</a>
+</li>
 </ul>
 </nav>
 </li>
@@ -1271,6 +1301,10 @@ or falls back to the <abbr title="Binary Alignment Map - Compressed sequence ali
 </div>
 <hr>
 <h2 id="how-the-output-path-is-decided">How the Output Path Is Decided<a class="headerlink" href="#how-the-output-path-is-decided" title="Permanent link">¶</a></h2>
+<p>Every output (<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>, the merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, <code>gbcms convert</code> and <code>gbcms normalize</code>
+files, the Parquet files and the <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> report) is written to a temp file beside
+it (<code>.&lt;name&gt;.partial</code>) and renamed into place once complete. A run that fails
+leaves nothing at the output path and removes its temp file.</p>
 <p>The diagram below shows every decision point from <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> flags to the final
 output column set. Follow your input type and desired output format to see
 exactly what you get.</p>
@@ -1497,9 +1531,11 @@ and counted in a WARNING. The <abbr title="Mutation Annotation Format - Standard
 (see <a href="../input-formats/#maf-alleles">Input Formats</a>); unlike maf2vcf, a
 differing <code>Tumor_Seq_Allele1</code> is not written as a second ALT. A row whose
 allele is not a base sequence (FAIL <code>NON_SEQUENCE_ALLELE</code>, or an empty
-allele, FAIL <code>EMPTY_ALLELE</code>) is written as the symbolic record <code>&lt;NON_SEQUENCE&gt;</code> at <code>Start_Position</code>, REF the reference base
+allele, FAIL <code>EMPTY_ALLELE</code>), or a deletion spanning its whole contig (no base
+before or after it to anchor a record; FAIL <code>FETCH_FAILED</code>), is written as the
+symbolic record <code>&lt;NON_SEQUENCE&gt;</code> at <code>Start_Position</code>, REF the reference base
 there (declared in a <code>##ALT</code> header line), so the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> stays valid. A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>
-deletion at <code>Start_Position</code> 1 is counted in that base-after form.</p>
+deletion at <code>Start_Position</code> 1 is otherwise counted in the base-after form.</p>
 <table>
 <thead>
 <tr>
@@ -1558,17 +1594,22 @@ writes these records without counting.</p>
 <tr>
 <td style="text-align: left;"><code>GS</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">gbcms normalization/counting status. Pipe-separated multi-value in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (e.g., <code>PASS\|WARN_REF_CORRECTED</code>). Semicolons in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>.</td>
+<td style="text-align: left;">gbcms verdict: <code>PASS</code> or <code>FAIL</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GSR</code></td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Status reason tags, <code>\|</code>-separated (the <code>gbcms_status_reason</code> value); <code>.</code> when none. Each reason: <a href="../qc-flags/#verdict-and-status-reasons">QC Flags → Verdict and status reasons</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>GD</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Diagnostic flags (the <code>gbcms_diagnostic</code> flags below): post-counting on a PASS row, <code>REF_AT_OFFSET(k)</code> on a <code>REF_MISMATCH</code> row. Pipe-separated in <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> (e.g., <code>ZERO_ALT\|PARTIAL_DOMINANT</code>). Semicolons in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>. <code>.</code> if none.</td>
+<td style="text-align: left;">Diagnostic flags (the <code>gbcms_diagnostic</code> value), <code>\|</code>-separated; <code>.</code> when none. Each flag: <a href="../qc-flags/#diagnostics">QC Flags → Diagnostics</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>GR</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Rescue audit trail — the <code>gbcms_rescue</code> value with <code>;</code> written as <code>\|</code>. <code>.</code> for non-candidates.</td>
+<td style="text-align: left;">Rescue audit trail (the <code>gbcms_rescue</code> value with <code>;</code> written as <code>\|</code>); <code>.</code> for non-candidates. Outcomes: <a href="../qc-flags/#mnp-rescue">QC Flags → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>AAD</code></td>
@@ -2011,13 +2052,13 @@ metadata for reproducibility:</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="" id="__tabbed_4_1" name="__tabbed_4" type="radio"><input id="__tabbed_4_2" name="__tabbed_4" type="radio"><div class="tabbed-labels"><label for="__tabbed_4_1">DNA mode</label><label for="__tabbed_4_2">RNA mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>#gbcms v5.3.0
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>#gbcms v6.6.0 (9c371263)
 <a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a>#command gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
 <a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a>Hugo_Symbol Chromosome  Start_Position  ...
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>#gbcms v5.3.0
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>#gbcms v6.6.0 (9c371263)
 <a href="#__codelineno-4-2" id="__codelineno-4-2" name="__codelineno-4-2"></a>#command gbcms rna --bam rna_sample:star.bam --fasta ref.fa --gtf genes.gtf
 <a href="#__codelineno-4-3" id="__codelineno-4-3" name="__codelineno-4-3"></a>Hugo_Symbol Chromosome  Start_Position  ...
 </code></pre></div>
@@ -2033,8 +2074,8 @@ metadata for reproducibility:</p>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>#gbcms vX.Y.Z</code></td>
-<td style="text-align: left;">gbcms version that produced this file</td>
+<td style="text-align: left;"><code>#gbcms vX.Y.Z (commit)</code></td>
+<td style="text-align: left;">gbcms version and the commit of the build that produced this file (the commit is absent when the build had neither git nor <code>GBCMS_BUILD_COMMIT</code>). Development builds carry a <code>.devN</code> version, so two builds of one version are told apart. <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output's <code>##source</code> carries the same.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>#command ...</code></td>
@@ -2244,6 +2285,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 </table>
 <hr>
 <h3 id="gbcms-count-columns">gbcms Count Columns<a class="headerlink" href="#gbcms-count-columns" title="Permanent link">¶</a></h3>
+<p>Every flag these columns can carry, with what to do about it, is on one page: <a href="../qc-flags/">QC Flags</a>.</p>
 <p>These columns are <strong>always</strong> appended regardless of input format.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="6:3"><input checked="" id="__tabbed_6_1" name="__tabbed_6" type="radio"><input id="__tabbed_6_2" name="__tabbed_6" type="radio"><input id="__tabbed_6_3" name="__tabbed_6" type="radio"><div class="tabbed-labels"><label for="__tabbed_6_1">Default (no prefix)</label><label for="__tabbed_6_2">With <code>--column-prefix t_</code></label><label for="__tabbed_6_3">With custom prefix</label></div>
 <div class="tabbed-content">
@@ -2265,17 +2307,17 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>gbcms_status_reason</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Reason tag(s), <code>\|</code>-separated; empty for a clean PASS. PASS reasons: <code>WARN_REF_CORRECTED</code>, <code>WARN_HOMOPOLYMER_DECOMP</code>, <code>MULTI_ALLELIC</code>, <code>TRACT_CLUSTER</code>. FAIL reasons: <code>REF_MISMATCH</code>, <code>FETCH_FAILED</code>, <code>EMPTY_ALLELE</code>, <code>NON_SEQUENCE_ALLELE</code>, <code>ALT_EQUALS_REF</code>, <code>ALT_CONTAINS_N</code>. Reasons stack, e.g. <code>WARN_REF_CORRECTED\|WARN_HOMOPOLYMER_DECOMP</code>. Identical string in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GSR</code> INFO.</td>
+<td style="text-align: left;">Reason tag(s), <code>\|</code>-separated; empty for a clean PASS; reasons stack. Identical string in the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GSR</code> INFO. Each reason: <a href="../qc-flags/#verdict-and-status-reasons">QC Flags → Verdict and status reasons</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_diagnostic</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. On a FAIL row only <code>REF_AT_OFFSET(k)</code>: a <code>REF_MISMATCH</code> row's REF (3+ bases) matches the reference exactly k bases from its position (every such offset within 3, nearest first, <code>/</code>-separated; the row is not moved or counted). Flags on a PASS row: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT</code>, <code>MNP_DISC_RATIO(n/m)</code>, <code>MNP_RESCUE_ELIGIBLE</code>, <code>HIGH_N_FRACTION(f)</code>, <code>CLIP_CANDIDATES(n)</code> — an insertion locus with no confirmed ALT where n (≥ 2) reads carry a soft clip ≥ 8bp whose boundary lies within the insert's duplication reach (anchor ± insert length + 10): carriers the aligner may have represented as clips rather than insertions (inspect in IGV) — <code>`OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code> — no read carries the given allele exactly, and n reads carry this allele (canonical <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> form, 1-based POS): the input is likely mis-described — <code>COEXISTING_ALLELE(chrom:pos:REF&gt;ALT:n/m)</code> — the given allele is present (m reads carry it exactly), but more reads (n) carry a different allele in the same stretch, e.g. a germline indel or stutter in a repeat: a caveat for reading the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. Both need n ≥ 3, n &gt; m, n ≥ 5% of the scanned reads, and an allele not already an input row; n and m are taken over the reads the counts read (first-class reads the mapping rule admits — in RNA a unique mapper, <code>NH:i:1</code>, below <code>--min-mapq</code> — and, under strandedness enforcement, sense reads only), so they compare with <code>alt_count</code> and <code>ref_count</code>; the counts stay the given allele's — SW_FALLBACK(n)<code>— under the default</code>pairhmm<code>backend, n depth-contributing reads could not be evaluated by the pangenomic haplotype matrix because the variant's reference context is missing (prep's fetch failed) or does not contain it; they were scored by the Smith-Waterman fallback where SW can run, otherwise left NEITHER (one WARN per variant names the reason and outcome), so the row's counts came partly from a different scorer or are missing reads —</code>SPLICE_SKIP_DOMINANT(n)<code>— a deletion-type locus where more reads asserted splicing over the deleted span (CIGAR</code>N<code>, excluded from DP as no-observation) than confirmed ALT; RNA aligners write large deletions as splices (STAR: ≥</code>alignIntronMin<code>, default 21bp), so</code>alt_count<code>=0 here may mean the carriers exist as junction reads — and</code>NON_DISCRIMINATING_LOCUS<code>— the last (PairHMM backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed</code>ref_count<code>/</code>alt_count<code>at a covered locus rather than leaving it silent. With</code>--rescue-mnp<code>, a rescued row also carries</code>RESCUED_COMPONENT(chrom:pos:REF&gt;ALT)<code>: its counts are that component SNV's, not the annotated MNP's. Examples:</code>ZERO_ALT<code>,</code>PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`.</td>
+<td style="text-align: left;">Diagnostic flags, semicolon-separated; empty when none. Set after counting on a PASS row; on a FAIL row only <code>REF_AT_OFFSET</code>. Each flag: <a href="../qc-flags/#diagnostics">QC Flags → Diagnostics</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_rescue</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;"><strong>Conditional</strong> — only present when <code>--rescue-mnp</code> is enabled. <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue audit trail, empty for non-candidates. Format: <code>method=decomposed;outcome=&lt;o&gt;;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R&gt;A)][;positions=chr:pos(R&gt;A):&lt;ad\|ref_fail&gt;+...]</code> (positions joined with <code>+</code> so the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GR</code> value parses as one string). Outcomes: <code>rescued</code> (the row's counts are the adopted component SNV's), <code>skipped_grouped</code>, <code>haplotype_confirmed</code>, <code>no_improvement</code>, <code>ref_validation_failed</code> (counts stay the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s). <code>original_*</code> are always the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s own counts; <code>original_confirmed</code> counts reads that showed the whole haplotype. See <a href="../architecture/#mnp-rescue-pass-rescue-mnp-v430">Architecture → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Pass</a>.</td>
+<td style="text-align: left;"><strong>Conditional</strong> — only present when <code>--rescue-mnp</code> is enabled. <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue audit trail, empty for non-candidates. Format: <code>method=decomposed;outcome=&lt;o&gt;;original_ref=R;original_alt=A;original_partial=P;original_confirmed=C[;adopted=chr:pos(R&gt;A)][;positions=chr:pos(R&gt;A):&lt;ad\|ref_fail&gt;+...]</code> (positions joined with <code>+</code> so the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GR</code> value parses as one string). <code>original_*</code> are always the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s own counts; <code>original_confirmed</code> counts reads that showed the whole haplotype. Outcomes: <a href="../qc-flags/#mnp-rescue">QC Flags → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue</a>; the pass: <a href="../architecture/#mnp-rescue-pass-rescue-mnp-v430">Architecture → <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> Rescue Pass</a>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>ref_count</code></td>
@@ -2482,7 +2524,7 @@ appear at all in DNA mode output.</p>
 <tr>
 <td style="text-align: left;"><code>rna_editing_site</code></td>
 <td style="text-align: left;">Boolean</td>
-<td style="text-align: left;"><code>True</code> if the locus overlaps a known A-to-I editing site (requires <code>--rna-editing-db</code>)</td>
+<td style="text-align: left;">QC flag (requires <code>--rna-editing-db</code>): <a href="../qc-flags/#qc-columns">definition</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_splice_spanning</code></td>
@@ -2550,7 +2592,7 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>asjd_flag</code></td>
 <td style="text-align: left;">Boolean</td>
-<td style="text-align: left;"><code>True</code> when allele-specific junction divergence is detected (Fisher p &lt; 0.05)</td>
+<td style="text-align: left;">QC flag: <a href="../qc-flags/#qc-columns">definition</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>asjd_pval</code></td>
@@ -2615,12 +2657,13 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>asjd_diagnostic</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Semicolon-separated QC flags (see <a href="#asjd-diagnostic-flags">Diagnostic Flags</a>)</td>
+<td style="text-align: left;">Semicolon-separated QC flags (see <a href="#asjd-diagnostic-flags">ASJD Diagnostic Flags</a>)</td>
 </tr>
 </tbody>
 </table>
 <h5 id="asjd-diagnostic-flags">ASJD Diagnostic Flags<a class="headerlink" href="#asjd-diagnostic-flags" title="Permanent link">¶</a></h5>
 <p>All counts below are <strong>per fragment</strong> (a molecule's R1 and R2 are deduped to one vote).</p>
+<!-- Defined once, in QC Flags; this includes that table. -->
 <table>
 <thead>
 <tr>
@@ -2653,7 +2696,7 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 <tr>
 <td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
 <td style="text-align: left;">ALT junction differs from REF, <code>asjd_n_alt_junc ≥ 5</code>, and minority transcript-strand fraction ≥ 0.30</td>
-<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. A <code>--no-strandedness</code> diagnostic: with strandedness enforced (the RNA default), antisense reads are filtered before the junction tally, so it does not fire where the gene strand is resolved (it can at intronic loci and opposite-strand exon overlaps, which have none: R4 #185). Disabled for <code>--strandedness unstranded</code> (no transcript strand).</td>
+<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. A <code>--no-strandedness</code> diagnostic: under enforcement (the default) antisense reads never reach the junction tally wherever the gene strand is resolved, intronic loci included. Where both strands' genes cover the locus (no strand), the tally reads every read; a junction belongs to one gene's intron, so a mixed-strand junction stays suspicious there. Disabled for <code>--strandedness unstranded</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
@@ -2672,7 +2715,12 @@ completely absent without the <code>--gtf</code> flag — no empty/NA placeholde
 </tr>
 </tbody>
 </table>
-<p>The floors are ASJD's own junction-evidence minimums (<code>LOW_REF_JUNC</code> / <code>LOW_ALT_JUNC</code>). When <code>RETENTION_DOMINANT</code> is present, any junction flags alongside it (<code>NOVEL_ALT_JUNC</code>, <code>MULTI_JUNCTION</code>, …) describe the allele-classified reads — by the marker's own condition the junction-bearing minority of an intron-retaining population — not the spliced majority, which only the ASJD-2 markers report.</p>
+<p>The floors are ASJD's own junction-evidence minimums (<code>LOW_REF_JUNC</code> /
+<code>LOW_ALT_JUNC</code>). When <code>RETENTION_DOMINANT</code> is present, any junction flags
+alongside it (<code>NOVEL_ALT_JUNC</code>, <code>MULTI_JUNCTION</code>, …) describe the
+allele-classified reads — by the marker's own condition the junction-bearing
+minority of an intron-retaining population — not the spliced majority, which
+only the ASJD-2 markers report.</p>
 <hr>
 <h3 id="library-type-behavioral-note-v500">Library Type Behavioral Note (v5.0.0)<a class="headerlink" href="#library-type-behavioral-note-v500" title="Permanent link">¶</a></h3>
 <div class="admonition warning">
@@ -2864,12 +2912,12 @@ without the flag (not NA-filled):</p>
 <tr>
 <td style="text-align: left;"><code>mfsd_alt_confidence</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;"><code>HIGH</code> (≥5 ALT fragments), <code>LOW</code> (1–4), or <code>NONE</code></td>
+<td style="text-align: left;">QC flag: <a href="../qc-flags/#qc-columns">definition</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_ks_valid</code></td>
 <td style="text-align: left;">Boolean</td>
-<td style="text-align: left;"><code>True</code> when both ALT and REF have ≥5 fragments for reliable KS test</td>
+<td style="text-align: left;">QC flag: <a href="../qc-flags/#qc-columns">definition</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>mfsd_sub_nuc_ref_frac</code></td>
@@ -2899,7 +2947,7 @@ without the flag (not NA-filled):</p>
 <tr>
 <td style="text-align: left;"><code>mfsd_ch_flag</code></td>
 <td style="text-align: left;">Boolean</td>
-<td style="text-align: left;"><code>True</code> when the variant falls in a clonal-hematopoiesis (CH) gene</td>
+<td style="text-align: left;">QC flag: <a href="../qc-flags/#qc-columns">definition</a></td>
 </tr>
 </tbody>
 </table>
@@ -2945,7 +2993,10 @@ without the flag (not NA-filled):</p>
 via <code>gbcms merge</code>, the output <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> contains type-prefixed columns plus optional
 combined metrics.</p>
 <h3 id="type-prefixed-columns">Type-Prefixed Columns<a class="headerlink" href="#type-prefixed-columns" title="Permanent link">¶</a></h3>
-<p>Each input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s gbcms count columns are prefixed with the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> type label:</p>
+<p>Each input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>'s gbcms columns are prefixed with the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> type label. That is
+every column gbcms writes, in any mode: counts, status, diagnostics, and the
+<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> and RNA columns (<code>duplex_mfsd_ref_mean</code>); merge takes the set from the
+writer itself:</p>
 <table>
 <thead>
 <tr>
@@ -2965,7 +3016,15 @@ combined metrics.</p>
 </tbody>
 </table>
 <p>Annotation columns (e.g., <code>Hugo_Symbol</code>, <code>Chromosome</code>) are taken from the first
-input and <strong>not</strong> duplicated. Rows are joined on <code>Chromosome</code> (in any naming),
+input and <strong>not</strong> duplicated. A row only a later input has takes them from the
+earliest later input that has the row (the column set stays the first input's;
+a row the first input has keeps its own values). For an input that lacks a row,
+the row's read and fragment counts are 0, its status columns empty, and its
+other per-input columns (<abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, RNA) empty; the log counts the rows each input
+lacks; a row whose flavors' <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue outcomes differ has NA combined cells
+(they would add different alleles). An input written with <code>--column-prefix</code> (<code>duplex_</code> as the pipeline runs
+it, or <code>t_</code>) has its counts under that name and its status, strand-bias, <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> and
+RNA columns unprefixed: merge finds each and keeps it per input. Rows are joined on <code>Chromosome</code> (in any naming),
 <code>Start_Position</code>, <code>Reference_Allele</code> and <code>Tumor_Seq_Allele2</code>, and <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input MAFs
 also on the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> record. <code>End_Position</code> follows from Start and REF and is not
 joined on: a row keeps the first input's, or that of the earliest input that has
@@ -3003,7 +3062,7 @@ are distinct — counts are <strong>additive</strong> across <abbr title="Binary
 <td style="text-align: left;"><strong>Derived VAFs</strong></td>
 <td style="text-align: left;"><code>vaf</code>, <code>vaf_fragment</code></td>
 <td style="text-align: left;">2</td>
-<td style="text-align: left;"><code>alt / total</code> (0/0 → 0.0)</td>
+<td style="text-align: left;"><code>alt / total</code> (0/0 → 0.0), four decimals as the writers write them</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Strand bias</strong></td>
@@ -3013,12 +3072,25 @@ are distinct — counts are <strong>additive</strong> across <abbr title="Binary
 </tr>
 </tbody>
 </table>
+<p>A missing count is not a zero: when either flavor's cell is missing or not a
+finite number (empty, <code>NA</code>, <code>nan</code>, <code>inf</code>, text) in a row it has, the combined
+cell is <code>NA</code>, as are the totals, VAFs and strand bias built from it, and merge
+warns once per column with the number of rows. (A row an input lacks counts 0
+for it.)</p>
 <div class="admonition note">
 <p class="admonition-title">Schema-Aware</p>
 <p>If strand-level columns are absent from the input MAFs (e.g., older gbcms versions),
 only the available metrics are computed. Missing columns are logged and skipped —
 the pipeline does not fail.</p>
 </div>
+<h3 id="provenance-and-versions">Provenance and versions<a class="headerlink" href="#provenance-and-versions" title="Permanent link">¶</a></h3>
+<p>The merged <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> starts with its own provenance (<code>#gbcms v…</code>, <code>#command …</code>) and one
+line per input with that input's version line: <code>#input duplex: gbcms v6.6.0
+(9c371263) (/path/to/duplex.maf)</code>. Merge warns when the inputs come from
+different gbcms versions or builds (their counts may follow different rules),
+and stops when one input is a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> from before 6.5.0 (<code>vcf_pos</code> without
+<code>vcf_ref</code>/<code>vcf_alt</code>) and another is not: 6.5.0 changed the coordinates and
+alleles of <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input rows, so their rows would not join.</p>
 <hr>
 <h2 id="per-sample-file-naming">Per-Sample File Naming<a class="headerlink" href="#per-sample-file-naming" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a>{--output-dir}/{sample_name}{--suffix}.{vcf|maf}
@@ -3129,7 +3201,7 @@ or <code>0.0</code> (incorrect p-value due to floating-point underflow).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 12:52:28 UTC"><span class="timeago" datetime="2026-10-05T12:52:28+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 12:52:28 UTC">2026-10-05</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 17:39:08 UTC"><span class="timeago" datetime="2026-10-05T17:39:08+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 17:39:08 UTC">2026-10-05</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

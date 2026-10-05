@@ -73,10 +73,6 @@
          <lastmod>2026-10-05</lastmod>
     </url>
     <url>
-         <loc>https://msk-access.github.io/gbcms/dev/includes/abbreviations/</loc>
-         <lastmod>2026-10-05</lastmod>
-    </url>
-    <url>
          <loc>https://msk-access.github.io/gbcms/dev/nextflow/</loc>
          <lastmod>2026-10-05</lastmod>
     </url>
@@ -134,6 +130,10 @@
     </url>
     <url>
          <loc>https://msk-access.github.io/gbcms/dev/reference/output-formats/</loc>
+         <lastmod>2026-10-05</lastmod>
+    </url>
+    <url>
+         <loc>https://msk-access.github.io/gbcms/dev/reference/qc-flags/</loc>
          <lastmod>2026-10-05</lastmod>
     </url>
     <url>

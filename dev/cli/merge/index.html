@@ -538,6 +538,18 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/qc-flags/">
+<span class="md-ellipsis">
+    
+  
+    QC Flags
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="../../reference/variant-normalization/">
 <span class="md-ellipsis">
     
@@ -1070,17 +1082,17 @@ Use mouse to pan and zoom
 <h3 id="step-by-step">Step-by-Step<a class="headerlink" href="#step-by-step" title="Permanent link">¶</a></h3>
 <ol>
 <li><strong>Scan</strong> — Each input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> is lazily scanned with all columns as strings</li>
-<li><strong>Prefix Detection</strong> — Columns are checked for existing type prefixes; unprefixed gbcms columns are renamed (e.g., <code>ref_count</code> → <code>duplex_ref_count</code>)</li>
-<li><strong>Outer Join</strong> — Progressive full outer join on the variant: <code>Chromosome</code>, <code>Start_Position</code>, <code>Reference_Allele</code>, <code>Tumor_Seq_Allele2</code>. <code>End_Position</code> follows from Start and REF and is not joined on, so inputs that write it differently for one variant still join (the output keeps the first input's, and the log names each input that differs); a variant only a later input has takes its <code>End_Position</code> from that input. When an input lists one variant twice with different <code>End_Position</code>, it joins on <code>End_Position</code> too, so each row pairs with its own counterpart. The output's columns are the first input's: without <code>End_Position</code> there, the output has none. When every input is <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-derived (carries <code>vcf_pos</code> / <code>vcf_ref</code> / <code>vcf_alt</code>), the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> record is added to the key: two <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> records can describe one <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> record (<code>TCT&gt;TCG</code> and <code>T&gt;G</code> at the changed base), and each should stay its own row. The <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns stay in the key, so a variant only a later input has keeps its coordinates and alleles. An input that lists one join key more than once gets a WARN, since each such row pairs with every matching row of the other inputs. Merge MAFs genotyped by the same gbcms version: <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> coordinates changed in 6.5.0. <code>Chromosome</code> is compared by the same rule counting uses to reconcile contigs (<code>chr1</code> ~ <code>1</code>, <code>chrM</code> ~ <code>MT</code>), so inputs counted from differently named variant files still join. Each contig is written one way. That is the first input's name for it, or, for a contig the first input lacks, the name used by the earliest input that has it. When a later input names contigs differently, the log says so (one INFO line per input). An input column named <code>_contig_key</code>, or starting with <code>_row_</code>, <code>_chrom_</code> or <code>_end_</code>, is rejected: those names are reserved for the join. If one input names a contig two ways (e.g. <code>chrM</code> and <code>MT</code>), a variant listed under both joins once per name, and merge logs a WARN.</li>
-<li><strong>Null Fill</strong> — Missing counts → <code>"0"</code>, missing meta → <code>""</code></li>
+<li><strong>Per-input names</strong> — Every gbcms column (counts, status, diagnostics, strand bias, <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>, RNA; the set is the writer's) is renamed to <code>{type}_{name}</code> (e.g., <code>ref_count</code> → <code>duplex_ref_count</code>). Counts written with <code>--column-prefix</code> (<code>duplex_</code> as the pipeline runs it, <code>t_</code>) are found under that prefix; the other columns are written unprefixed and found as they are.</li>
+<li><strong>Outer Join</strong> — Progressive full outer join on the variant: <code>Chromosome</code>, <code>Start_Position</code>, <code>Reference_Allele</code>, <code>Tumor_Seq_Allele2</code>. <code>End_Position</code> follows from Start and REF and is not joined on, so inputs that write it differently for one variant still join (the output keeps the first input's, and the log names each input that differs); a variant only a later input has takes its <code>End_Position</code> from that input. When an input lists one variant twice with different <code>End_Position</code>, it joins on <code>End_Position</code> too, so each row pairs with its own counterpart. The output's columns are the first input's: without <code>End_Position</code> there, the output has none. When every input is <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-derived (carries <code>vcf_pos</code> / <code>vcf_ref</code> / <code>vcf_alt</code>), the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> record is added to the key: two <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> records can describe one <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> record (<code>TCT&gt;TCG</code> and <code>T&gt;G</code> at the changed base), and each should stay its own row. The <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> columns stay in the key, so a variant only a later input has keeps its coordinates and alleles. An input that lists one join key more than once gets a WARN, since each such row pairs with every matching row of the other inputs. Merge MAFs genotyped by the same gbcms version: merge warns when the inputs' version lines differ, and stops when one input is a <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> from before 6.5.0 (<code>vcf_pos</code> without <code>vcf_ref</code>/<code>vcf_alt</code>) and another is not, since 6.5.0 changed <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-input coordinates and their rows would not join. A row only a later input has takes the first input's annotation columns from the earliest later input that has it. <code>Chromosome</code> is compared by the same rule counting uses to reconcile contigs (<code>chr1</code> ~ <code>1</code>, <code>chrM</code> ~ <code>MT</code>), so inputs counted from differently named variant files still join. Each contig is written one way. That is the first input's name for it, or, for a contig the first input lacks, the name used by the earliest input that has it. When a later input names contigs differently, the log says so (one INFO line per input). An input column named <code>_contig_key</code>, or starting with <code>_row_</code>, <code>_chrom_</code>, <code>_end_</code> or <code>_ann_</code>, is rejected: those names are reserved for the join. If one input names a contig two ways (e.g. <code>chrM</code> and <code>MT</code>), a variant listed under both joins once per name, and merge logs a WARN.</li>
+<li><strong>Absent rows</strong> — A row an input lacks gets <code>"0"</code> for that input's read and fragment counts, <code>""</code> for its status columns, and empty <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr>/RNA columns; the log counts the rows each input lacks. A row an input has keeps its cells as written: a missing count stays missing.</li>
 <li><strong>Combined Columns</strong> — If both <code>simplex</code> and <code>duplex</code> are present and <code>--no-combined</code> is not set:<ul>
-<li><strong>Phase 1</strong>: Additive sums (12 columns: read + fragment + strand counts)</li>
+<li><strong>Phase 1</strong>: Additive sums (12 columns: read + fragment + strand counts); <code>NA</code> where either flavor's cell is missing or non-numeric, warned once per column</li>
 <li><strong>Phase 2a</strong>: Derived totals (<code>total_count</code>, <code>total_count_fragment</code>)</li>
 <li><strong>Phase 2b</strong>: Derived VAFs (<code>vaf</code>, <code>vaf_fragment</code>)</li>
 <li><strong>Phase 3</strong>: Fisher's exact test for strand bias (read + fragment level, via Rust)</li>
 </ul>
 </li>
-<li><strong>Write</strong> — Materialized DataFrame written as tab-separated <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>. Rows follow the inputs: the first input's rows in its order, then rows only a later input has, in that input's order. The output is identical on every run.</li>
+<li><strong>Write</strong> — Materialized DataFrame written as tab-separated <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>, after provenance lines (its own <code>#gbcms</code>/<code>#command</code>, and one <code>#input</code> line per input with that input's version line), atomically (a temp file renamed into place). Rows follow the inputs: the first input's rows in its order, then rows only a later input has, in that input's order. The output is identical on every run.</li>
 </ol>
 <div class="admonition info">
 <p class="admonition-title">Provenance Comment Lines (v5.3.0+)</p>
@@ -1215,12 +1227,12 @@ logged at INFO level and skipped — the pipeline does not fail.</p>
 <p>With inputs genotyped using <code>--rescue-mnp</code>, a row can be rescued in one flavor
 (its counts are then a component SNV's) but not the other (the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>'s own
 counts), or rescued to different components. The two flavors' columns then
-describe different alleles in one row, and with <code>--add-combined</code> the combined
-columns add them. <code>gbcms merge</code> names every such row in a WARNING (with or
-without <code>--add-combined</code>; the combined-column note is added only when those
-columns are written) and logs a per-run count; the counts themselves are left
-unchanged. If only one flavor was genotyped with <code>--rescue-mnp</code>, merge logs
-that once and names every row rescued in that flavor, since the other flavor
+describe different alleles in one row, so the row's combined <code>simplex_duplex_*</code>
+cells are <code>NA</code> (summing them would add two alleles). <code>gbcms merge</code> names every
+such row in a WARNING (with or without <code>--add-combined</code>) and logs a per-run
+count; the per-flavor counts are left unchanged. A row one flavor lacks is not
+mixed. If only one flavor was genotyped with <code>--rescue-mnp</code>, merge logs that once
+and treats every row rescued in that flavor as mixed, since the other flavor
 reports the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> there.
 Check <code>duplex_gbcms_rescue</code> / <code>simplex_gbcms_rescue</code> for those rows.</p>
 </div>
@@ -1257,7 +1269,7 @@ from the type label, so counts are pre-prefixed in the per-<abbr title="Binary A
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 12:52:28 UTC"><span class="timeago" datetime="2026-10-05T12:52:28+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 12:52:28 UTC">2026-10-05</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 17:39:08 UTC"><span class="timeago" datetime="2026-10-05T17:39:08+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 17:39:08 UTC">2026-10-05</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

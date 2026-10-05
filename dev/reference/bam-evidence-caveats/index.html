@@ -875,6 +875,8 @@
       
         
       
+        
+      
     
     
     
@@ -991,6 +993,34 @@
     
   
     Output Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qc-flags/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QC Flags
   
 
     
@@ -2347,8 +2377,8 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Aligner settings change clipping; hard clips drop bases</td>
-<td style="text-align: left;">Clips read; hard-clipped bases lost</td>
-<td style="text-align: left;">Decided; warn on hard clips</td>
+<td style="text-align: left;">Clips read; hard-clipped bases lost; warned at run start</td>
+<td style="text-align: left;">Decided (done: warn)</td>
 <td style="text-align: left;">O2 #131, D5 #155</td>
 </tr>
 <tr>
@@ -2365,14 +2395,14 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Alt contigs and decoys split coverage</td>
-<td style="text-align: left;">Contig naming handled</td>
-<td style="text-align: left;">Proposed (warn)</td>
+<td style="text-align: left;">Contig naming handled; ALT contigs warned at run start</td>
+<td style="text-align: left;">Decided (done: warn)</td>
 <td style="text-align: left;">O2 #131</td>
 </tr>
 <tr>
 <td style="text-align: left;">Base-quality calibration: binned, <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>, <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr></td>
-<td style="text-align: left;">One masking rule; <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> spares the variant's own indel</td>
-<td style="text-align: left;">Decided (done); warn on bins</td>
+<td style="text-align: left;">One masking rule; <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> spares the variant's own indel; run start reports the share below <code>--min-baseq</code></td>
+<td style="text-align: left;">Decided (done: warn above 10%)</td>
 <td style="text-align: left;">O2 #131</td>
 </tr>
 <tr>
@@ -2395,8 +2425,8 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">Unmarked duplicates; <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> consensus N's</td>
-<td style="text-align: left;">Duplicate flag honoured; N masked</td>
-<td style="text-align: left;">Proposed (warn)</td>
+<td style="text-align: left;">Duplicate flag honoured; N masked; run start reports the flagged share</td>
+<td style="text-align: left;">Decided (done: report, no warning)</td>
 <td style="text-align: left;">O2 #131</td>
 </tr>
 <tr>
@@ -2515,7 +2545,8 @@ caveat in gbcms's output.</p>
 <li>a realigner converts clips into indels, and can force a placement;</li>
 <li>aligner settings change clipping (a lower mismatch penalty, <code>-Y</code> soft-clipped
   supplementaries);</li>
-<li>hard clips drop bases entirely.</li>
+<li>hard clips drop bases entirely; the run start warns when more than 1% of a
+  <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>'s sampled primary alignments are hard-clipped (none in 10 MSK BAMs).</li>
 </ul>
 </li>
 <li><strong>gbcms now:</strong> judgements rest on bases, not placement, so they are invariant by
@@ -2563,8 +2594,10 @@ caveat in gbcms's output.</p>
 <li><strong>In the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>:</strong> alt-aware GRCh38 alignment can move reads onto alt haplotype
   contigs, and decoys absorb reads, so coverage at the primary locus drops.</li>
 <li><strong>gbcms now:</strong> contig naming is reconciled; nothing else.</li>
-<li><strong>Should do:</strong> proposed. Warn at run start when the reference has alt contigs
-  (O2 #131).</li>
+<li><strong>Should do:</strong> done (O2 #131): the run start warns when a <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>'s header has ALT
+  contigs (<code>*_alt</code>, <code>HLA-*</code>): without ALT-aware alignment, reads where ALT
+  haplotypes exist get low <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> and <code>--min-mapq</code> drops them. None of 10 sampled
+  MSK BAMs (IMPACT, ACCESS, FORTE) has any.</li>
 <li><strong>Community:</strong> alt-aware aligners (bwa's <code>.alt</code> handling) and GATK's GRCh38
   guidance. To survey.</li>
 </ul>
@@ -2578,8 +2611,11 @@ caveat in gbcms's output.</p>
 <li><abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> spares the variant's own indel (#166).</li>
 </ul>
 </li>
-<li><strong>Should do:</strong> decided and done. Warn when qualities look binned and
-  <code>--min-baseq</code> falls between bins (O2 #131).</li>
+<li><strong>Should do:</strong> done (O2 #131): the run start reports each <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>'s base-quality
+  values (binned when 8 or fewer) and the share of sampled bases below
+  <code>--min-baseq</code>, and warns above 10%. Measured on 10 MSK BAMs: 0.8–2.1% at the
+  default Q20; a threshold between bins removes more (FORTE's 2/9/24/40 at Q25:
+  4%; IMPACT at Q30: 5–12%; IMPACT at Q40: nearly all).</li>
 <li><strong>Community:</strong> GATK <abbr title="Base Quality Score Recalibration - GATK quality recalibration tool">BQSR</abbr>; bcftools and samtools <abbr title="Base Alignment Quality - Heuristic quality downgrade near indels and splice junctions">BAQ</abbr> (<code>-B</code>/<code>-E</code>).</li>
 <li><strong>See it:</strong> <code>n_count</code>; the per-read trace.</li>
 </ul>
@@ -2621,7 +2657,10 @@ caveat in gbcms's output.</p>
   disagreeing bases as N.</li>
 <li><strong>gbcms now:</strong> the duplicate flag is honoured; N matches anything; <abbr title="Unique Molecular Identifier - Molecular barcode for deduplication">UMI</abbr> families
   are supported.</li>
-<li><strong>Should do:</strong> proposed. Warn when duplicates appear unmarked (O2 #131).</li>
+<li><strong>Should do:</strong> decided (O2 #131): report, don't warn. Each <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr>'s run-start line
+  gives the share of its first records flagged duplicate. ACCESS consensus and
+  FORTE RNA BAMs carry no duplicate flags by design (0 in 6 sampled; IMPACT
+  12–25%), so a warning would fire on every such run.</li>
 <li><strong>Community:</strong> Picard MarkDuplicates; fgbio consensus calling.</li>
 </ul>
 <h3 id="overlapping-mates">Overlapping mates<a class="headerlink" href="#overlapping-mates" title="Permanent link">¶</a></h3>
@@ -2686,7 +2725,7 @@ caveat in gbcms's output.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 4, 2026 19:39:58 UTC"><span class="timeago" datetime="2026-10-04T19:39:58+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 4, 2026 19:39:58 UTC">2026-10-04</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 16:09:31 UTC"><span class="timeago" datetime="2026-10-05T16:09:31+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 16:09:31 UTC">2026-10-05</span>
   </span>
 
     
