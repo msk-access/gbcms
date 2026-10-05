@@ -1101,7 +1101,7 @@ Counting does not read it: reads are classified by the alleles themselves.</p>
 </tr>
 <tr>
 <td style="text-align: left;"><code>End_Position</code></td>
-<td style="text-align: left;">1-based end position (an integer; rows without one are skipped with a WARNING)</td>
+<td style="text-align: left;">1-based end position (optional: gbcms places a variant by <code>Start_Position</code> and its alleles; <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output keeps the input's value)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Reference_Allele</code></td>
@@ -1124,6 +1124,13 @@ Counting does not read it: reads are classified by the alleles themselves.</p>
   and is read as <code>-</code>.</li>
 <li>A row whose variant allele still equals its reference describes no change;
   preparation reports it as a <code>FAIL</code> row (<code>ALT_EQUALS_REF</code>) rather than counting it.</li>
+<li>An allele that is not a base sequence (anything but <code>A</code>, <code>C</code>, <code>G</code>, <code>T</code> and <code>N</code>
+  in either case, or <code>-</code>), such as an IUPAC code or a stray character from a
+  hand edit, makes the row a <code>FAIL</code> row (<code>NON_SEQUENCE_ALLELE</code>): kept in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr>
+  output, not counted. Lowercase bases are bases.</li>
+<li>A <code>Tumor_Seq_Allele1</code> that differs from both the reference and Allele2 is not
+  a second allele: one row, one allele (vcf2maf's reading). cBioPortal picks
+  Allele1 for such rows.</li>
 </ul>
 <h3 id="maf-indel-normalization"><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> Indel Normalization<a class="headerlink" href="#maf-indel-normalization" title="Permanent link">¶</a></h3>
 <p><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> represents indels using <code>-</code> dashes, while gbcms internally uses <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr>-style <strong>anchor-based</strong> coordinates. When a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> file contains insertions (<code>Reference_Allele = -</code>) or deletions (<code>Tumor_Seq_Allele2 = -</code>), gbcms automatically converts them at input time.</p>
@@ -1228,7 +1235,7 @@ Use mouse to pan and zoom
 </table>
 <div class="admonition note">
 <p class="admonition-title">Position Shift for Deletions</p>
-<p>For insertions, <code>Start_Position</code> already points to the anchor base. For deletions, <code>Start_Position</code> points to the <em>first deleted base</em>, so gbcms shifts back by one position to find the anchor.</p>
+<p>For insertions, <code>Start_Position</code> already points to the anchor base. For deletions, <code>Start_Position</code> points to the <em>first deleted base</em>, so gbcms shifts back by one position to find the anchor. A deletion at <code>Start_Position</code> 1 has no base before it: the base after it is appended instead (the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec's form at position 1, as gbcms's <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output writes it), and the row is counted as the same event given as <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> is.</p>
 </div>
 <p>A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row whose alleles are both sequences (an <abbr title="Single Nucleotide Polymorphism - Single base substitution">SNP</abbr>, an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, or a delins such as
 <code>TTAC&gt;A</code>) is used as written, at <code>Start_Position</code>, with no anchor base.</p>
@@ -1288,7 +1295,7 @@ Index discovery is automatic — see <a href="../../nextflow/samplesheet/#index-
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="September 25, 2026 03:48:59 UTC"><span class="timeago" datetime="2026-09-25T03:48:59+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="September 25, 2026 03:48:59 UTC">2026-09-25</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 12:02:06 UTC"><span class="timeago" datetime="2026-10-05T12:02:06+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 12:02:06 UTC">2026-10-05</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

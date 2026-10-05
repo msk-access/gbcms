@@ -756,6 +756,60 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">¶</a></h2>
+<h3 id="changed-input-and-representation-122-123-124-125-126-147-208-149-218">Changed — input and representation (#122, #123, #124, #125, #126, #147, #208, #149, #218)<a class="headerlink" href="#changed-input-and-representation-122-123-124-125-126-147-208-149-218" title="Permanent link">¶</a></h3>
+<p>Measured on the MSK sign-out dump (1,133,044 rows; operator decisions 2026-09-25
+and 2026-10-05).
+- <strong>Non-sequence <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> alleles are FAIL rows (#123).</strong> An allele that is not a base
+  sequence (an IUPAC code such as <code>R</code>, <code>.</code>, a stray character from a hand edit)
+  made the row count 0 silently; it is now a FAIL row, <code>NON_SEQUENCE_ALLELE</code>,
+  kept in <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output. Lowercase bases are bases; <code>-</code> is a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> dash allele, so a
+  <code>-</code> given as non-<abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input (the observations API) is one too. <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output,
+  which cannot carry such an allele (nor an empty one), writes the symbolic
+  record <code>&lt;NON_SEQUENCE&gt;</code> (REF the reference base at POS, declared in the
+  header), in counting runs and in <code>gbcms convert</code>. 7 such rows in the sign-out
+  data.
+- <strong>A <code>REF_MISMATCH</code> row says where the given REF sits (#218).</strong> The row stays
+  FAIL and uncounted; <code>gbcms_diagnostic</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>GD</code>, and <code>gbcms normalize</code>'s
+  new <code>gbcms_diagnostic</code> column) gives <code>REF_AT_OFFSET(k)</code> when the REF (3+
+  bases) matches the reference exactly within 3 bases of its position, every
+  such offset listed nearest first. In the sign-out data 87 of 154
+  <code>REF_MISMATCH</code> rows sit 1–3 bases off, mostly legacy ANNOVAR-annotated
+  indels at Start−1 whose alleles still carry the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> anchor base. No tool
+  surveyed moves or explains such a row (<code>bcftools norm --check-ref</code> exits,
+  warns, excludes or fixes REF in place; maf2vcf skips it).
+- <strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output of <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> input names its <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> row.</strong> Every record carries
+  <code>MAF_START</code>, <code>MAF_REF</code> and <code>MAF_ALT</code>: the row's Start and alleles as
+  written (a placeholder such as <code>0</code> too; percent-encoded, <code>.</code> when empty), so
+  a result can be looked up by its input, as <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input's <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output carries
+  <code>vcf_pos</code>, <code>vcf_ref</code> and <code>vcf_alt</code>. Also in <code>gbcms convert</code>.
+- <strong>A <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> deletion at Start 1 is counted (#122).</strong> It has no base before it; it
+  is resolved to the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> spec's position-1 form (the base after it), as gbcms's
+  <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> output already wrote it, and counts as the same event given as <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> does
+  (it was <code>FETCH_FAILED</code>). None in the sign-out data.
+- <strong><code>End_Position</code> is optional (#124).</strong> gbcms places a variant by
+  <code>Start_Position</code> and its alleles; rows without an integer <code>End_Position</code> were
+  skipped and are now read (maf2vcf converts them). <code>gbcms merge</code> no longer
+  joins on it: inputs that write it differently for one variant join into one
+  row (the first input's <code>End_Position</code>, the difference logged), and a row only
+  a later input has keeps that input's. Where an input lists one variant twice
+  with different <code>End_Position</code>, it joins on <code>End_Position</code> too, so each row
+  pairs with its own counterpart. The sign-out data has it, consistent
+  with Start and REF, on every row but one; no two of its rows differ only in
+  <code>End_Position</code>.
+- <strong><abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> input's <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> output fills <code>Tumor_Seq_Allele1</code> (#125)</strong> with the reference
+  allele: MSK's sign-out convention on every row, and maf2vcf's reading of an
+  empty one. Previously empty.
+- <strong>One row, one allele (#126):</strong> a <code>Tumor_Seq_Allele1</code> that differs from both
+  REF and Allele2 is not a second allele (vcf2maf's reading; cBioPortal picks
+  Allele1). Documented and tested; no such rows in the sign-out data.
+- <strong>Engine API (#147):</strong> a <code>decomposed</code> or <code>sibling_variants</code> list shorter than
+  the variants is padded; a longer one raises <code>ValueError</code> (a short decomposed
+  list panicked; a long list was cut silently).
+- <strong>One allele-kind rule (#208):</strong> the <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>-claiming guard's pure-indel test and
+  the pure-indel windows use <code>allele_kind</code> (case-insensitive anchor; a
+  multi-base shared prefix is complex, as the dispatcher counts it). No prepared
+  sign-out row changes; it reaches only lowercase or unprepared engine input.
+- <code>is_indel</code> in preparation is <code>ref_len != alt_len</code> (#149; no change).</p>
 <h3 id="changed-rna-strand-at-intronic-loci-splices-are-not-coverage-clips-and-junctions-185-198-186-173-213">Changed — RNA: strand at intronic loci, splices are not coverage, clips and junctions (#185, #198, #186, #173, #213)<a class="headerlink" href="#changed-rna-strand-at-intronic-loci-splices-are-not-coverage-clips-and-junctions-185-198-186-173-213" title="Permanent link">¶</a></h3>
 <p>Five RNA rules (operator, 2026-10-04), each measured on FORTE against the
 previous build: the truth cohort (94 signed-out rows), the T9 exon-edge indel
@@ -773,9 +827,11 @@ where no read carries the ALT).
 - <strong>A splice is not reference coverage (#198, RJ-17).</strong> A pure-indel read is
   informative only when one aligned block between splices spans the window, REF
   and ALT alike. Truth: no row changes; T9: 24,703 REF reads at splice-crossing
-  deletions become depth only (their bases fit both alleles); <code>vaf</code> is
-  unchanged. A deletion written right after a read's splice (no aligned flank) is
-  depth only.
+  deletions become depth only (their bases fit both alleles). <code>vaf</code> (alt over
+  REF plus ALT) at such a deletion with carriers rises to the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr> among the
+  reads that show the event; no measured row's <code>vaf</code> moved (the T9 rows have no
+  carriers). A deletion written right after a read's splice (no aligned flank)
+  is depth only.
 - <strong>Diagnostics read the counted reads (#186).</strong> <code>OBSERVED_ALLELE</code> and
   <code>COEXISTING_ALLELE</code> take n/m over the reads the counts read: no antisense read
   under enforcement, and the RNA mapping rule's unique mappers. Counts unchanged.

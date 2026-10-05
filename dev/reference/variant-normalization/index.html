@@ -1222,6 +1222,19 @@ Use mouse to pan and zoom
 <li><abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> annotation artifact (trailing base error) — now handled by tolerant validation</li>
 </ul>
 </div>
+<div class="admonition note">
+<p class="admonition-title">A REF written a few bases off: <code>REF_AT_OFFSET(k)</code></p>
+<p>REF validation compares only at the stated position. When a <code>REF_MISMATCH</code>
+row's REF (3 or more bases, as the row gives it) matches the reference
+exactly within 3 bases of its position, <code>gbcms_diagnostic</code> says where:
+<code>REF_AT_OFFSET(-1)</code> means one base before. In a repeat every such offset is
+listed, nearest first (<code>REF_AT_OFFSET(-1/+1)</code>). The row stays FAIL and is not
+counted: gbcms counts the allele as given and does not move it. A shorter
+REF is not placed, since a 2-base REF matches within 3 bases by chance
+about one time in three. In the MSK sign-out data, 87 of 154 <code>REF_MISMATCH</code>
+rows sit 1–3 bases off, most of them legacy indels at Start−1 whose alleles
+still carry the <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> anchor base (Start advanced as if it were trimmed).</p>
+</div>
 <hr>
 <h2 id="step-3-left-alignment">Step 3: Left-Alignment<a class="headerlink" href="#step-3-left-alignment" title="Permanent link">¶</a></h2>
 <p>For indels and complex variants, gbcms applies <strong>bcftools-style left-alignment</strong> to ensure consistent positioning in repetitive regions.</p>
@@ -1266,7 +1279,8 @@ past the end fails validation.</p>
 <p>Every variant that reaches REF validation gets a <strong>type label derived from its
 final alleles</strong> (after anchor resolution, REF correction and alignment), with the
 same rule the readers use. A row rejected before that (<code>EMPTY_ALLELE</code>,
-<code>ALT_EQUALS_REF</code>, a failed <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> anchor fetch) keeps the reader's label.</p>
+<code>NON_SEQUENCE_ALLELE</code>, <code>ALT_EQUALS_REF</code>, a failed <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> anchor fetch) keeps the
+reader's label.</p>
 <table>
 <thead>
 <tr>
@@ -1589,7 +1603,7 @@ string is byte-identical in the <abbr title="Mutation Annotation Format - Standa
 <tr>
 <td style="text-align: left;"><code>FAIL</code></td>
 <td style="text-align: left;"><code>REF_MISMATCH</code></td>
-<td style="text-align: left;">REF allele &lt;90% match against reference genome</td>
+<td style="text-align: left;">REF allele &lt;90% match against reference genome; <code>gbcms_diagnostic</code> gives <code>REF_AT_OFFSET(k)</code> when the REF sits exactly a few bases off</td>
 <td style="text-align: center;">❌</td>
 </tr>
 <tr>
@@ -1602,6 +1616,12 @@ string is byte-identical in the <abbr title="Mutation Annotation Format - Standa
 <td style="text-align: left;"><code>FAIL</code></td>
 <td style="text-align: left;"><code>EMPTY_ALLELE</code></td>
 <td style="text-align: left;">Empty REF or ALT (malformed / non-left-anchored indel)</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FAIL</code></td>
+<td style="text-align: left;"><code>NON_SEQUENCE_ALLELE</code></td>
+<td style="text-align: left;">An allele is not a base sequence (anything but A, C, G, T, N in either case, or a <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> <code>-</code>)</td>
 <td style="text-align: center;">❌</td>
 </tr>
 <tr>
@@ -1648,7 +1668,7 @@ counting but still <strong>written to the output</strong> with their <code>FAIL<
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 1, 2026 22:24:14 UTC"><span class="timeago" datetime="2026-10-01T22:24:14+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 1, 2026 22:24:14 UTC">2026-10-01</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 12:52:28 UTC"><span class="timeago" datetime="2026-10-05T12:52:28+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 12:52:28 UTC">2026-10-05</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
