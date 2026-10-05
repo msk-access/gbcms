@@ -534,6 +534,15 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#why-the-rna-default-is-min-mapq-1">
+<span class="md-ellipsis">
+      
+        Why the RNA default is --min-mapq 1
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#strandedness-filter">
 <span class="md-ellipsis">
       
@@ -944,6 +953,15 @@
 </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#why-the-rna-default-is-min-mapq-1">
+<span class="md-ellipsis">
+      
+        Why the RNA default is --min-mapq 1
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#strandedness-filter">
 <span class="md-ellipsis">
       
@@ -1342,7 +1360,10 @@ to off for that reason.</p>
 <h2 id="rna-specific-filters">RNA-Specific Filters<a class="headerlink" href="#rna-specific-filters" title="Permanent link">¶</a></h2>
 <p>RNA mode (<code>gbcms rna</code>) extends the standard filter cascade with two additional checks.</p>
 <h3 id="nhi1-mapq-rescue"><abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> Rescue<a class="headerlink" href="#nhi1-mapq-rescue" title="Permanent link">¶</a></h3>
-<p><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> assigns <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=255 to uniquely mapped reads and <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=0–3 to multi-mappers. When <code>--min-mapq 1</code> (RNA default), reads that fail the <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> threshold are checked for the <code>NH:i:1</code> tag (Number of Hits = 1). If present, the read is uniquely aligned and rescued.</p>
+<p><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>'s <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> depends only on how many loci a read aligns to equally well: 255 for
+one, 3 for two, 1 for three or four, 0 for five or more. When <code>--min-mapq 1</code> (RNA
+default), reads that fail the <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> threshold are checked for the <code>NH:i:1</code> tag
+(Number of Hits = 1). If present, the read is uniquely aligned and rescued.</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
 <nav class="panzoom-nav">
 <button class="panzoom-info panzoom-button">
@@ -1380,9 +1401,51 @@ Use mouse to pan and zoom
 </div>
 </div>
 <div class="admonition info">
-<p class="admonition-title">Biological Context</p>
-<p>Novel splice junctions often receive low <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> because <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> hasn't observed the junction in its first-pass database. The <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 rescue ensures these uniquely mapped reads contribute to allele counts rather than being silently discarded.</p>
+<p class="admonition-title">When the rescue applies</p>
+<p>For <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> an <code>NH:i:1</code> read is always <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 255, so the rescue matters for
+aligners whose <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> can be low for a uniquely aligned read; it keeps those
+reads in the counts rather than silently discarding them.</p>
 </div>
+<h3 id="why-the-rna-default-is-min-mapq-1">Why the RNA default is <code>--min-mapq 1</code><a class="headerlink" href="#why-the-rna-default-is-min-mapq-1" title="Permanent link">¶</a></h3>
+<p>The RNA default keeps reads <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> placed at two to four loci (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 3 or 1), each
+counted once, at its primary alignment (secondary alignments are filtered). This
+is deliberate (operator, 2026-10-03), because junction reads tie between a gene
+and its processed pseudogene: a spliced read from the parent gene aligns equally
+well, unspliced, to the intronless retrocopy.</p>
+<p>Measured on the FORTE truth set (33 samples, 94 rows) and the <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> probes (3
+samples, 978 rows), with the counts at the default as the reference:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Threshold</th>
+<th style="text-align: left;">What it keeps</th>
+<th style="text-align: left;">Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--min-mapq 255</code> (unique only)</td>
+<td style="text-align: left;">one locus</td>
+<td style="text-align: left;">Truth: ALT −12, REF −25, depth −83. PIK3CA E545K (exon 9, which has a pseudogene copy on chr22) loses 10 of 159 ALT reads. Probes: depth −2.2%, ASJD junction fragments −1.6%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--min-mapq 1</code> (default)</td>
+<td style="text-align: left;">up to four loci</td>
+<td style="text-align: left;">Keeps 122 of the truth set's 143 multimapping junction reads; spliced reads are 80% of the two-locus reads against 53% of unique ones, gathered at PTEN (PTENP1), B2M and TP53</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--min-mapq 0</code></td>
+<td style="text-align: left;">five or more loci too</td>
+<td style="text-align: left;">Truth: ALT +6 and REF +33, all at rows consistent with the samples' alleles; probes: depth +0.3%. No ASJD call changes</td>
+</tr>
+</tbody>
+</table>
+<p>Allele-specific expression pipelines (GTEx v8, phASER, ASEReadCounter as used
+there) count only unique <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> alignments and pair that with a remapping test for
+allele bias (WASP). For a genotyper counting given alleles, that filter would cost
+real carriers at genes with pseudogenes. Use <code>--min-mapq 0</code> deliberately for
+pseudogene-family genes, as for PMS2 in DNA; it admits reads with five or more
+equally good placements, so it is not the default.</p>
 <h3 id="strandedness-filter">Strandedness Filter<a class="headerlink" href="#strandedness-filter" title="Permanent link">¶</a></h3>
 <p>For <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense REF and ALT reads are <strong>counted</strong> (they contribute to <code>rna_sense_depth</code> and <code>rna_antisense_depth</code> respectively), but only sense-strand reads contribute to the primary <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>/<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> counts when <code>--enforce-strandedness</code> is enabled.</p>
 <p>With the default <code>--strandedness reverse</code> (<abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>, featureCounts <code>-s 2</code>), R1 and
@@ -1523,7 +1586,7 @@ same strand (<code>forward</code> swaps them):</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 3, 2026 16:29:49 UTC"><span class="timeago" datetime="2026-10-03T16:29:49+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 3, 2026 16:29:49 UTC">2026-10-03</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 4, 2026 01:59:14 UTC"><span class="timeago" datetime="2026-10-04T01:59:14+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 4, 2026 01:59:14 UTC">2026-10-04</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">

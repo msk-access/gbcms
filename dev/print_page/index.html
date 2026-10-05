@@ -8060,7 +8060,7 @@ likely cause is that your <strong>input <abbr title="Mutation Annotation Format 
 <tr>
 <td style="text-align: left;"><code>gbcms_diagnostic</code></td>
 <td style="text-align: left;">String</td>
-<td style="text-align: left;">Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT</code>, <code>MNP_DISC_RATIO(n/m)</code>, <code>MNP_RESCUE_ELIGIBLE</code>, <code>HIGH_N_FRACTION(f)</code>, <code>CLIP_CANDIDATES(n)</code> — an insertion locus with no confirmed ALT where n (≥ 2) reads carry a soft clip ≥ 8bp whose boundary lies within the insert's duplication reach (anchor ± insert length + 10): carriers the aligner may have represented as clips rather than insertions (inspect in IGV) — <code>`OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code> — no read carries the given allele exactly, and n reads carry this allele (canonical <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> form, 1-based POS): the input is likely mis-described — <code>COEXISTING_ALLELE(chrom:pos:REF&gt;ALT:n/m)</code> — the given allele is present (m reads carry it exactly), but more reads (n) carry a different allele in the same stretch, e.g. a germline indel or stutter in a repeat: a caveat for reading the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. Both need n ≥ 3, n &gt; m, n ≥ 5% of the scanned reads, and an allele not already an input row; the counts stay the given allele's — SW_FALLBACK(n)<code>— under the default</code>pairhmm<code>backend, n depth-contributing reads could not be evaluated by the pangenomic haplotype matrix because the variant's reference context is missing (prep's fetch failed) or does not contain it; they were scored by the Smith-Waterman fallback where SW can run, otherwise left NEITHER (one WARN per variant names the reason and outcome), so the row's counts came partly from a different scorer or are missing reads —</code>SPLICE_SKIP_DOMINANT(n)<code>— a deletion-type locus where more reads asserted splicing over the deleted span (CIGAR</code>N<code>, excluded from DP as no-observation) than confirmed ALT; RNA aligners write large deletions as splices (STAR: ≥</code>alignIntronMin<code>, default 21bp), so</code>alt_count<code>=0 here may mean the carriers exist as junction reads — and</code>NON_DISCRIMINATING_LOCUS<code>— the last (PairHMM backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed</code>ref_count<code>/</code>alt_count<code>at a covered locus rather than leaving it silent. With</code>--rescue-mnp<code>, a rescued row also carries</code>RESCUED_COMPONENT(chrom:pos:REF&gt;ALT)<code>: its counts are that component SNV's, not the annotated MNP's. Examples:</code>ZERO_ALT<code>,</code>PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`.</td>
+<td style="text-align: left;">Post-counting diagnostic flags. Semicolon-separated. Empty string when no diagnostics. Flags: <code>ZERO_ALT</code>, <code>PARTIAL_DOMINANT</code>, <code>MNP_DISC_RATIO(n/m)</code>, <code>MNP_RESCUE_ELIGIBLE</code>, <code>HIGH_N_FRACTION(f)</code>, <code>CLIP_CANDIDATES(n)</code> — an insertion locus with no confirmed ALT where n (≥ 2) reads carry a soft clip ≥ 8bp whose boundary lies within the insert's duplication reach (anchor ± insert length + 10): carriers the aligner may have represented as clips rather than insertions (inspect in IGV) — <code>`OBSERVED_ALLELE(chrom:pos:REF&gt;ALT:n/0)</code> — no read carries the given allele exactly, and n reads carry this allele (canonical <abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> form, 1-based POS): the input is likely mis-described — <code>COEXISTING_ALLELE(chrom:pos:REF&gt;ALT:n/m)</code> — the given allele is present (m reads carry it exactly), but more reads (n) carry a different allele in the same stretch, e.g. a germline indel or stutter in a repeat: a caveat for reading the <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>. Both need n ≥ 3, n &gt; m, n ≥ 5% of the scanned reads, and an allele not already an input row; n and m are taken over the reads the counts read (first-class reads the mapping rule admits — in RNA a unique mapper, <code>NH:i:1</code>, below <code>--min-mapq</code> — and, under strandedness enforcement, sense reads only), so they compare with <code>alt_count</code> and <code>ref_count</code>; the counts stay the given allele's — SW_FALLBACK(n)<code>— under the default</code>pairhmm<code>backend, n depth-contributing reads could not be evaluated by the pangenomic haplotype matrix because the variant's reference context is missing (prep's fetch failed) or does not contain it; they were scored by the Smith-Waterman fallback where SW can run, otherwise left NEITHER (one WARN per variant names the reason and outcome), so the row's counts came partly from a different scorer or are missing reads —</code>SPLICE_SKIP_DOMINANT(n)<code>— a deletion-type locus where more reads asserted splicing over the deleted span (CIGAR</code>N<code>, excluded from DP as no-observation) than confirmed ALT; RNA aligners write large deletions as splices (STAR: ≥</code>alignIntronMin<code>, default 21bp), so</code>alt_count<code>=0 here may mean the carriers exist as junction reads — and</code>NON_DISCRIMINATING_LOCUS<code>— the last (PairHMM backend) marks a locus where a nearby germline sibling combination reconstructs the reference haplotype (e.g. a homopolymer deletion cancelled by an adjacent insertion of the same base), so REF and ALT are sequence-indistinguishable and reads tie to NEITHER; it explains a zeroed</code>ref_count<code>/</code>alt_count<code>at a covered locus rather than leaving it silent. With</code>--rescue-mnp<code>, a rescued row also carries</code>RESCUED_COMPONENT(chrom:pos:REF&gt;ALT)<code>: its counts are that component SNV's, not the annotated MNP's. Examples:</code>ZERO_ALT<code>,</code>PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE`.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>gbcms_rescue</code></td>
@@ -8262,7 +8262,7 @@ appear at all in DNA mode output.</p>
 <tr>
 <td style="text-align: left;"><code>rna_antisense_depth</code></td>
 <td style="text-align: left;">Integer</td>
-<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: the <code>OBSERVED_ALLELE</code>/<code>COEXISTING_ALLELE</code> diagnostic still reads them (O8 #186); <code>--rescue-homopolymer</code> and <code>--rescue-mnp</code> choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a resolved gene strand report 0 (R4 #185).</td>
+<td style="text-align: left;">REF and ALT reads on the antisense strand (first-class, over the anchor). Under <code>--enforce-strandedness</code> (the RNA default) these reads are kept out of REF, ALT, depth, fragments and the other counts, but are still classified and tallied here, so the column is the same with <code>--no-strandedness</code>. Exceptions: <code>--rescue-homopolymer</code> and <code>--rescue-mnp</code> choose between counts by ALT depth, so the adopted form (and this column) can differ between the modes; loci without a gene strand (intergenic, or genes of both strands over the locus) report 0, as every read there counts as sense.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>rna_alt_sense_count</code></td>
@@ -9788,7 +9788,10 @@ to off for that reason.</p>
 <h2 id="reference-read-filters-rna-specific-filters">RNA-Specific Filters<a class="headerlink" href="#reference-read-filters-rna-specific-filters" title="Permanent link">¶</a></h2>
 <p>RNA mode (<code>gbcms rna</code>) extends the standard filter cascade with two additional checks.</p>
 <h3 id="reference-read-filters-nhi1-mapq-rescue"><abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> Rescue<a class="headerlink" href="#reference-read-filters-nhi1-mapq-rescue" title="Permanent link">¶</a></h3>
-<p><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> assigns <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=255 to uniquely mapped reads and <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=0–3 to multi-mappers. When <code>--min-mapq 1</code> (RNA default), reads that fail the <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> threshold are checked for the <code>NH:i:1</code> tag (Number of Hits = 1). If present, the read is uniquely aligned and rescued.</p>
+<p><abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>'s <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> depends only on how many loci a read aligns to equally well: 255 for
+one, 3 for two, 1 for three or four, 0 for five or more. When <code>--min-mapq 1</code> (RNA
+default), reads that fail the <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> threshold are checked for the <code>NH:i:1</code> tag
+(Number of Hits = 1). If present, the read is uniquely aligned and rescued.</p>
 <div class="panzoom-box" data-key="none" id="panzoom0" oncontextmenu="return false;">
     
     <nav class="panzoom-nav">
@@ -9827,9 +9830,51 @@ Use mouse to pan and zoom
 </div>
 </div>
 <div class="admonition info">
-<p class="admonition-title">Biological Context</p>
-<p>Novel splice junctions often receive low <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> because <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> hasn't observed the junction in its first-pass database. The <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 rescue ensures these uniquely mapped reads contribute to allele counts rather than being silently discarded.</p>
+<p class="admonition-title">When the rescue applies</p>
+<p>For <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> an <code>NH:i:1</code> read is always <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 255, so the rescue matters for
+aligners whose <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> can be low for a uniquely aligned read; it keeps those
+reads in the counts rather than silently discarding them.</p>
 </div>
+<h3 id="reference-read-filters-why-the-rna-default-is-min-mapq-1">Why the RNA default is <code>--min-mapq 1</code><a class="headerlink" href="#reference-read-filters-why-the-rna-default-is-min-mapq-1" title="Permanent link">¶</a></h3>
+<p>The RNA default keeps reads <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> placed at two to four loci (<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 3 or 1), each
+counted once, at its primary alignment (secondary alignments are filtered). This
+is deliberate (operator, 2026-10-03), because junction reads tie between a gene
+and its processed pseudogene: a spliced read from the parent gene aligns equally
+well, unspliced, to the intronless retrocopy.</p>
+<p>Measured on the FORTE truth set (33 samples, 94 rows) and the <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> probes (3
+samples, 978 rows), with the counts at the default as the reference:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Threshold</th>
+<th style="text-align: left;">What it keeps</th>
+<th style="text-align: left;">Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--min-mapq 255</code> (unique only)</td>
+<td style="text-align: left;">one locus</td>
+<td style="text-align: left;">Truth: ALT −12, REF −25, depth −83. PIK3CA E545K (exon 9, which has a pseudogene copy on chr22) loses 10 of 159 ALT reads. Probes: depth −2.2%, ASJD junction fragments −1.6%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--min-mapq 1</code> (default)</td>
+<td style="text-align: left;">up to four loci</td>
+<td style="text-align: left;">Keeps 122 of the truth set's 143 multimapping junction reads; spliced reads are 80% of the two-locus reads against 53% of unique ones, gathered at PTEN (PTENP1), B2M and TP53</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--min-mapq 0</code></td>
+<td style="text-align: left;">five or more loci too</td>
+<td style="text-align: left;">Truth: ALT +6 and REF +33, all at rows consistent with the samples' alleles; probes: depth +0.3%. No ASJD call changes</td>
+</tr>
+</tbody>
+</table>
+<p>Allele-specific expression pipelines (GTEx v8, phASER, ASEReadCounter as used
+there) count only unique <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> alignments and pair that with a remapping test for
+allele bias (WASP). For a genotyper counting given alleles, that filter would cost
+real carriers at genes with pseudogenes. Use <code>--min-mapq 0</code> deliberately for
+pseudogene-family genes, as for PMS2 in DNA; it admits reads with five or more
+equally good placements, so it is not the default.</p>
 <h3 id="reference-read-filters-strandedness-filter">Strandedness Filter<a class="headerlink" href="#reference-read-filters-strandedness-filter" title="Permanent link">¶</a></h3>
 <p>For <abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>-stranded RNA-seq libraries, reads are classified by their orientation relative to the gene strand annotation. Both sense and antisense REF and ALT reads are <strong>counted</strong> (they contribute to <code>rna_sense_depth</code> and <code>rna_antisense_depth</code> respectively), but only sense-strand reads contribute to the primary <abbr title="Total Depth - All mapped reads overlapping the variant position">DP</abbr>/<abbr title="Reference Depth - Reads supporting the reference allele">RD</abbr>/<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> counts when <code>--enforce-strandedness</code> is enabled.</p>
 <p>With the default <code>--strandedness reverse</code> (<abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>, featureCounts <code>-s 2</code>), R1 and
@@ -10048,14 +10093,32 @@ per-type classification):</p>
   refuses windows that an <code>N</code> overlaps (a contiguous slice would stitch
   the exon arms into a junction-chimeric sequence in which the missing
   intron reads as deletion evidence).</li>
-<li>A complex variant's exact-carrier windows are cut at a read's own
-  junction: a splice in the window's flank or padding ends the window at
-  the exon edge on that side, for both alleles, and the read is anchored at
-  the junction. So a delins at an exon's last or first bases counts spliced
-  reads (on FORTE probes 0–1 bp from an exon edge the uncut windows kept
-  1.7% of REF reads). A read spliced through the bases where the alleles
-  differ shows neither and counts toward depth only. Repeat growth never
-  reaches across a read's junction.</li>
+<li>A complex variant's exact-carrier windows for a read spliced in their
+  flank or padding are built over the reference spliced at the read's own
+  junctions (RJ-19, C32 #213): the read's bases past a splice are the next
+  exon's, so both alleles' haplotypes continue there (the far exon read from
+  the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>), and repeat growth and flank are measured on that spliced
+  sequence. A length change that pushes an exon's last bases past the
+  junction shows against the next exon instead of fitting a window cut at the
+  exon edge (on FORTE splice probes, spurious ALT 19 → 4), and the read must
+  hold the spliced flank as any read holds its flank (reads reaching one or
+  two bases past the junction hold none: −0.95% of REF at probes 0–1 bp from
+  the edge). A read spliced through the bases where the alleles differ shows
+  neither and counts toward depth only.</li>
+<li>A splice is not reference coverage (RJ-17, R5 #198): a pure-indel read is
+  informative only when one aligned block between splices spans the window,
+  REF and ALT alike. A read spliced inside an indel's change interval is
+  depth only (the event may sit in the skipped intron), and so is a deletion
+  written right after a read's splice (its bases equal REF spliced at an
+  acceptor further on).</li>
+<li>An RNA read's soft clip that reaches an exon edge or a junction end
+  (annotated, or one the variant's reads splice at), or whose aligned bases end
+  within five bases of one, is not allele evidence (RJ-18, C15 #173): <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips
+  a junction overhang it cannot splice, so such a clip holds the next exon's
+  bases. Any other clip is the read's own bases, read as in DNA.</li>
+<li>A junction that starts inside a complex event's differing bases and runs past
+  them (or ends inside them) splices the haplotypes at the event's edge (RJ-19),
+  so a delins carrier counts whether the aligner wrote <code>X D N</code> or <code>X N</code>.</li>
 </ul>
 <p>Reads without <code>N</code> ops never enter this triage — DNA-mode classification
 is untouched. Per-variant exclusion counts are logged at debug level in
@@ -10297,6 +10360,15 @@ operates identically to v4.2.0 — no annotation columns are added.</p>
 <code>--enforce_strandedness</code> and the ASJD strand-discordance test are silent no-ops
 (every read reads as sense, so <code>antisense_depth</code> stays 0). Strand-specific counting
 therefore requires <code>--gtf</code>, not just <code>--strandedness</code>.</p>
+<p>The strand comes from the exons over the variant's position, all stranded
+exons agreeing. A position no stranded exon covers (intronic, including the
+donor +1/+2 and acceptor −1/−2 splice sites) takes the strand of the
+transcripts spanning it, from first exon start to last exon end, all agreeing.
+Where both strands' genes cover a position (exons, or transcripts at an
+intronic position) there is no strand: both genes' transcripts carry the
+allele, so every read counts. REDItools' annotation mode resolves a site the
+same way and leaves mixed strands undetermined. A run-level WARNING names the
+variants left without a strand (the first ten, then a count).</p>
 </div>
 <div class="admonition tip">
 <p class="admonition-title">Cohort runs: pre-build the GTF cache</p>
@@ -10471,7 +10543,8 @@ overlaps multiple transcripts with different exon structures.</p>
 <h3 id="reference-rna-annotation-algorithm">Algorithm<a class="headerlink" href="#reference-rna-annotation-algorithm" title="Permanent link">¶</a></h3>
 <ol>
 <li>For each variant, query the <code>COITree</code> to find all transcripts whose
-   exons overlap the variant position.</li>
+   exons hold the variant position (an exon's first through last base; the
+   intron bases beside it are not the exon's).</li>
 <li>For each overlapping transcript, extract the splice site mask.</li>
 <li>During counting, reads are attributed to transcripts based on splice
    junction compatibility:</li>
@@ -10612,7 +10685,7 @@ counts are <strong>per fragment</strong> (a molecule's R1 and R2 are deduped to 
 <tr>
 <td style="text-align: left;"><code>STRAND_DISCORDANT</code></td>
 <td style="text-align: left;">ALT junction differs from REF, <code>asjd_n_alt_junc ≥ 5</code>, and minority transcript-strand fraction ≥ 0.30</td>
-<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. A <code>--no-strandedness</code> diagnostic: under enforcement (the default) antisense reads never reach the junction tally, wherever the gene strand is resolved (not yet at intronic loci or opposite-strand overlaps: R4 #185). Disabled for <code>--strandedness unstranded</code>.</td>
+<td style="text-align: left;">Mixed transcript-strand support → alignment artifact. A <code>--no-strandedness</code> diagnostic: under enforcement (the default) antisense reads never reach the junction tally wherever the gene strand is resolved, intronic loci included. Where both strands' genes cover the locus (no strand), the tally reads every read; a junction belongs to one gene's intron, so a mixed-strand junction stays suspicious there. Disabled for <code>--strandedness unstranded</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MULTI_JUNCTION</code></td>
@@ -11727,7 +11800,7 @@ confidence about positions the quality mask rejected.</p>
 - <strong>Long events.</strong> When the windows exceed 50 bases, no read can hold them whole. Both alleles are then judged by equal-length junction windows at each end, read inward from the flank: through one base past the first base where the alleles differ, and through the shorter allele when it fits in 50 bases, so a short ALT is read base by base. The left junction reads it from the left flank; the right one from just before its first difference, so repeat growth on the left does not favour the longer allele's reads. A read must match the same allele at every junction it holds; a mismatch at one rules it out.
 - <strong><abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads with an indel.</strong> An <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> read with an insertion or deletion in the block or right beside it, or a clip in it, is judged by this rule; an aligner may write a block shifted by one base as an insertion before it and a deletion after. Its ALT calls with every window base read count toward <code>mnp_confirmed_alt</code>. Other <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> reads, including those with an indel further off (a germline one nearby), are compared base by base.
 - <strong>Carriers in soft-clipped bases (DNA).</strong> A read the rule decides from its own bases, with a window that reads its soft-clipped bases, counts even when its aligned span stops short of the variant position, provided every base read lies inside a well-defined fragment (past the fragment end a clip is adapter). Undecided clipped reads stay out of depth. See <a href="#reference-counting-metrics">counting metrics</a>.
-- <strong>Spliced reads (RNA).</strong> A splice in a window's flank or padding ends the window at the exon edge, for both alleles, and the read is anchored at its junction: the read's next bases come from the next exon. A read spliced through the bases where the alleles differ counts toward depth only.
+- <strong>Spliced reads (RNA).</strong> A read spliced in a window's flank or padding is judged on windows built over the reference spliced at its own junctions (the far exon read from the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>): its next bases come from the next exon, so both alleles continue there, and growth and flank are measured on the spliced sequence. A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge; any other splice through those bases leaves the read depth only. An RNA read's soft clip that reaches an exon edge or junction end is not read (it may hold the next exon's bases); other clips are.
 - <strong>Same on both backends.</strong> The rule uses no alignment scoring, so <code>pairhmm</code> and <code>sw</code> give identical counts for complex variants.
 - <strong>When the rule cannot run.</strong> <code>prepare_variants</code> fetches reference until it holds the event, grown through any repeat, with its flank and padding (up to 16,384 bases each side, clamped at a contig end: the window holds the bases that exist). A variant without that reference (one built without <code>prepare_variants</code>, or an event whose two flank bases would pass a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ <code>*</code>) is not read.</p>
 <div class="admonition info">
@@ -12240,6 +12313,9 @@ than the gap or the clip.</p>
 the event (<code>Variant.shift_region</code>). A tandem duplication (an ITD, for example)
 slides over its whole duplicated segment, which can be far longer than the
 repeat context kept for alignment.</p>
+<p>A read spans a window with one aligned block, between its splices (RJ-17,
+6.6.0): a splice is not reference coverage, so an RNA read spliced inside the
+window shows none of it past the splice, as a read ending there shows none.</p>
 <p>Reads that fail the rule count toward <code>DP</code> and <code>DPF</code> but are neither REF nor ALT,
 the same as GATK's <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr>, which counts only informative reads. The rule does not
 apply to substitution-bearing events (SNV, <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr>, delins): they have no shift
@@ -12383,11 +12459,15 @@ it shows in review instead of slipping in with an unrelated fix.</p>
    affects, their call today, the proposed call, and the evidence (the read
    census's verdict on each shape, real-data counts adjudicated per read, and
    what other tools do: GATK, samtools/bcftools, fgbio, VarDict, Strelka2,
-   freebayes, bam-readcount, LoFreq and the original GetBaseCounts, saying where
-   a tool's handling is not documented). The census changes in step with a rule
+   freebayes, bam-readcount, LoFreq and the original GetBaseCounts, plus the
+   domain's own tools (for RNA: GATK's RNA practice, <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>, ASE counters, RNA
+   variant and editing callers) and the published literature, saying where a
+   tool's handling is not documented). The census changes in step with a rule
    about read inputs (what a read contributes), so for such a rule it cannot be
    the evidence: check the bases in question themselves and the mates'
-   alignments, ITD and indel rows first.</li>
+   alignments, ITD and indel rows first. Other tools' practice is a floor, not
+   a ceiling: where none sets a standard, or the measurements support a better
+   rule, propose that rule and say where and why it departs from practice.</li>
 <li><strong>Decide.</strong> The operator decides; the decision gets an entry in the register
    below, naming any earlier decision it amends.</li>
 <li><strong>Then code.</strong> The implementation turns the case table's open cells into
@@ -12479,7 +12559,7 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 </tr>
 <tr>
 <td style="text-align: left;">RJ-13</td>
-<td style="text-align: left;">Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules; RNA exon-edge clips are excluded until measured; split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0.</td>
+<td style="text-align: left;">Soft-clipped bases inside the fragment are the read's own bases, judged by the same rules (an RNA read's clips are not evidence, RJ-18); split reads (SA) join their molecule and count once across the given breakpoints. Policy adopted now, built in 6.7.0.</td>
 <td style="text-align: left;">C15 #173, C7 #144, C18 #177, operator 2026-10-02</td>
 </tr>
 <tr>
@@ -12497,13 +12577,25 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">An exact-carrier ALT call needs evidence: its clearly read bases fit the ALT (as before), and its bases, each weighed by its quality (a base matches with 1 − e and mismatches with e/3), favour ALT over REF by at least what one base read at <code>--min-baseq</code> gives (about 2.5 log10 at 20). Bases matching both alleles cancel, so the evidence is the weight of the bases that mismatch REF less those that mismatch ALT, over the windows and, for a long event, the read's bases past them. A low-quality base counts for little instead of fitting either allele.</td>
 <td style="text-align: left;">C16 #174, operator 2026-10-03</td>
 </tr>
+<tr>
+<td style="text-align: left;">RJ-17</td>
+<td style="text-align: left;">A splice is not reference coverage: a pure-indel read is informative (RJ-1, RJ-2) only when one of its aligned blocks between splices spans the window, REF and ALT alike. A read spliced inside the change interval shows none of it past the splice (the event may sit in the skipped intron) and is depth only, as a read ending there is; a deletion written right after the read's splice has no aligned flank (its bases equal REF spliced at an acceptor further on) and is depth only. Amends RJ-1 and RJ-2.</td>
+<td style="text-align: left;">R5 #198, operator 2026-10-04</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-18</td>
+<td style="text-align: left;">An RNA read's soft clip that reaches an exon edge or a junction end (annotated, or one the variant's reads splice at), or whose aligned bases end within five bases of one, is not allele evidence: <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> soft-clips a junction overhang it cannot splice, so such a clip holds the next exon's bases. Any other clip is the read's own bases (a local aligner clips a mismatching end) and is read as in DNA. A clip admits no RNA read. Amends RJ-13 for RNA.</td>
+<td style="text-align: left;">C15 #173, operator 2026-10-04 (refined after review, same day)</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-19</td>
+<td style="text-align: left;">A spliced read is judged against the haplotypes spliced at its own junctions: the exact-carrier windows (event, growth, flank, padding) are built over the reference spliced where the read splices, the far exon's bases read from the reference, so bases a length change pushes past the junction show against the next exon, and the read must hold the spliced flank as any read holds its flank. Every junction the windows reach is followed (a short exon between two is read through). A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge, so the bases decide however the aligner wrote the gap; such a read is also REF spliced where it splices (an alternative donor or acceptor, or a splice site the event straddles), so it counts ALT only when its bases favour ALT over that reading too, by one <code>--min-baseq</code> base's evidence, and is otherwise depth only. Any other splice through those bases leaves the read depth only.</td>
+<td style="text-align: left;">C32 #213, operator 2026-10-04</td>
+</tr>
 </tbody>
 </table>
 <h3 id="reference-read-judgment-open">Open<a class="headerlink" href="#reference-read-judgment-open" title="Permanent link">¶</a></h3>
-<p>None. The C16 junction-placement guard (a spliced read whose aligner placed its
-junction a few bases late can show the next exon's bases over an exon-edge
-event) is deferred to 6.7.0 with C15 and RJ-13's RNA exon-edge clips: telling
-it from a genuine carrier needs the reference at the splice's far end.</p>
+<p>None.</p>
 <p>Evidence behind RJ-7 to RJ-9 (2026-10-01): on 105 changed DNA and WES rows the
 read census counts 57,199 REF reads; develop counted 60,619 and the decided rules
 57,218. The largest moves are deep slippage loci (a BRCA2 cluster where an
@@ -12575,6 +12667,61 @@ base's quality could flip a call, and had skipped a long event's bases past its
 junction windows (both fixed by the mismatch-weight form above). A pre-existing
 limit remains: a REF molecule with one clear error just outside the window that
 its ALT reading is anchored away from can still count ALT (6.7.0).</p>
+<p>Evidence behind RJ-17 to RJ-19 (2026-10-03/04), on FORTE RNA: the truth cohort
+(94 signed-out rows), the T9 exon-edge indel probes (978 rows) and the C1 splice
+probes (7,224 delins rows at exon-edge distances 0–4 and mid-exon controls, where
+no read carries the ALT; run on local slices of the probe regions, byte-identical
+to the full BAMs). Each rule was a separate prototype against the same base.
+- RJ-17 changed no truth row. At the T9 probes it moved 24,703 REF reads to depth
+  on 30 rows, 24,695 of them normally spliced reads ending at the exon edge inside
+  a 12–60 bp splice-crossing deletion: their bases fit both alleles (the deletion's
+  first discriminating base or its margin lies past the splice). <code>vaf</code> is
+  <code>alt_count / total_count</code>, so it does not move.
+- RJ-18, first as "an RNA clip is never evidence", changed no truth row; at the
+  splice probes spurious ALT 19 → 16, and 4,290 of 31.6 million REF reads
+  (0.01–0.02% in every stratum) became depth only. Refined (below): a clip is
+  read unless it reaches an exon edge or junction end; the three spurious ALT
+  reads stay removed and 337 of those REF reads come back.
+- RJ-19 changed no truth or T9 row; at the splice probes spurious ALT 19 → 4
+  (exon edge 0–1 bp 14 → 2, 2–4 bp 5 → 2). REF −0.95% at edge 0–1 bp probes, from
+  reads reaching only one or two bases past the junction, which hold no spliced
+  flank; −0.11% at 2–4 bp, −0.01% at the controls. Re-judging the residual
+  spliced ALT reads' loci against haplotypes spliced at each read's junction,
+  1 of 7,461 reads fit the ALT. A first prototype that replaced the genomic
+  window's intronic bases one for one with the next exon's (instead of building
+  the windows over the spliced reference) required bases a repeat grew into the
+  intron and doubled the REF loss.
+An adversarial review of group 3 found: transcript spans keyed by ID alone (an
+ID reused on another chromosome, as PAR copies or version-stripped RefSeq IDs,
+gave intergenic sites a strand; spans are now per transcript, chromosome and
+strand); spliced windows that spliced only the nearest junction (REF reads
+through a 3 bp exon counted 0; every junction reached is now followed); a
+worker silently falling back when the reference could not be opened (now an
+error); a delins carrier whose aligner wrote its junction starting inside the
+event counted depth only while the same bases written X D N counted ALT (now
+spliced at the event's edge); and RJ-18's first form dropping mid-exon clips, which are a local
+aligner's clipped mismatching ends, the read's own bases (an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> carrier whose
+second base lies in such a clip counted ALT before group 3 and not after; now
+read again: splice probes 261 rows, REF +337, partial +26, no ALT). A second
+review of those follow-ups found the gap form calling REF molecules ALT or
+partial: a read spliced at an alternative donor or acceptor inside the event,
+or at a splice site the event straddles, skips the event's bases and so fits
+the shorter ALT spliced at the event's edge (a pure-REF probe showed 50% <abbr title="Variant Allele Frequency - Fraction of reads supporting the variant allele">VAF</abbr>
+with its kept base masked). Such a read is REF as aligned at its own junction;
+it now counts ALT only over that reading too, else depth only (the 22 splice-
+probe rows the gap form had first changed, REF +7 and partial +19, were such
+molecules and are back to depth only; the probes hold no carriers). With every
+rule, against the branch point: splice probes spurious ALT 19 → 2, REF −0.39%
+(−121,786, almost all at probes 0–1 bp from an exon edge), partial −453.</p>
+<p>A survey: GATK's RNA workflow splits reads at N (SplitNCigarReads), so each piece
+ends at its exon edge and HaplotypeCaller counts a piece toward <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> only when its
+bases favour an allele (a read partly overlapping a tandem repeat is
+uninformative), and runs with <code>-dont-use-soft-clipped-bases</code>; its overhang fixer
+compares a short overhang only with the intron's reference. bcftools never uses
+a spliced read for indels. phASER, WASP and ASEReadCounter never read clips.
+JACUSA masks bases within 6 nt of a read's own junction, SNPiR and REDItools drop
+sites within 4 bp of annotated junctions; none confirms a junction-adjacent base
+against the next exon, which RJ-19 does.</p>
 <p>Other tools: GATK, Strelka2 and freebayes judge a read by its bases against
 haplotypes, so a split ALT counts ALT; bam-readcount, LoFreq and the original
 GetBaseCounts count <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> ops. A read deleting the anchor goes to GATK's
@@ -15011,15 +15158,15 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;">RNA: splicing at exon edges</td>
-<td style="text-align: left;">Splice-aware windows; ASJD</td>
+<td style="text-align: left;">Windows built over the reference spliced at each read's junctions; a splice is not coverage; ASJD</td>
 <td style="text-align: left;">Decided (done)</td>
-<td style="text-align: left;">—</td>
+<td style="text-align: left;">C32 #213, R5 #198</td>
 </tr>
 <tr>
 <td style="text-align: left;">RNA: <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips hold next-exon bases</td>
-<td style="text-align: left;">Clipped-carrier admission off in RNA</td>
-<td style="text-align: left;">To measure</td>
-<td style="text-align: left;">#173</td>
+<td style="text-align: left;">A clip reaching an exon edge or junction end is not evidence; other clips are read</td>
+<td style="text-align: left;">Decided (done)</td>
+<td style="text-align: left;">C15 #173</td>
 </tr>
 <tr>
 <td style="text-align: left;">RNA: editing (A-to-I) inside a window</td>
@@ -15082,8 +15229,11 @@ caveat in gbcms's output.</p>
   carry the exact allele, inside a well-defined fragment
   (<a href="#reference-counting-metrics">carriers in soft-clipped bases</a>).</li>
 <li><strong>Should do:</strong> decided. Extend to pure deletions and to clip-borne ITD
-  insertions (#173, #144). In RNA, clipped bases may come from the next exon, so
-  measure before enabling there.</li>
+  insertions (#173, #144). In RNA, clipped bases may come from the next exon
+  (<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips a junction overhang it cannot splice), so an RNA read's clip that
+  reaches an exon edge or junction end is not allele evidence; other clips are
+  the read's own bases (RJ-18; measured on FORTE splice probes: 3 of 19 spurious
+  ALT reads removed).</li>
 <li><strong>Community</strong> (verified in source):<ul>
 <li>GATK HaplotypeCaller and Mutect2 revert clips and realign reads, but only
   with a well-defined fragment;</li>
@@ -17128,6 +17278,65 @@ exists and the packages published.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="development-changelog-unreleased">[Unreleased]<a class="headerlink" href="#development-changelog-unreleased" title="Permanent link">¶</a></h2>
+<h3 id="development-changelog-changed-rna-strand-at-intronic-loci-splices-are-not-coverage-clips-and-junctions-185-198-186-173-213">Changed — RNA: strand at intronic loci, splices are not coverage, clips and junctions (#185, #198, #186, #173, #213)<a class="headerlink" href="#development-changelog-changed-rna-strand-at-intronic-loci-splices-are-not-coverage-clips-and-junctions-185-198-186-173-213" title="Permanent link">¶</a></h3>
+<p>Five RNA rules (operator, 2026-10-04), each measured on FORTE against the
+previous build: the truth cohort (94 signed-out rows), the T9 exon-edge indel
+probes (978) and the C1 splice probes (7,224 delins at exon edges and mid-exon,
+where no read carries the ALT).
+- <strong>Gene strand at intronic positions (#185).</strong> A position no stranded exon
+  covers (intronic, splice sites included) takes the strand of the transcripts
+  spanning it, all agreeing; where both strands' genes cover a position there is
+  no strand and every read counts (both genes' transcripts carry the allele).
+  The exon index read the first and last intron bases as exonic (an end-inclusive
+  interval tree built from half-open exons): fixed, for the strand and the
+  per-transcript counts. The unresolved-strand warning names the variants.
+  Truth: no row changes; T9: 95 antisense REF reads move to
+  <code>rna_antisense_depth</code> on 62 rows.
+- <strong>A splice is not reference coverage (#198, RJ-17).</strong> A pure-indel read is
+  informative only when one aligned block between splices spans the window, REF
+  and ALT alike. Truth: no row changes; T9: 24,703 REF reads at splice-crossing
+  deletions become depth only (their bases fit both alleles); <code>vaf</code> is
+  unchanged. A deletion written right after a read's splice (no aligned flank) is
+  depth only.
+- <strong>Diagnostics read the counted reads (#186).</strong> <code>OBSERVED_ALLELE</code> and
+  <code>COEXISTING_ALLELE</code> take n/m over the reads the counts read: no antisense read
+  under enforcement, and the RNA mapping rule's unique mappers. Counts unchanged.
+- <strong>An RNA read's clip at an exon edge is not allele evidence (#173, RJ-18).</strong>
+  <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> clips a junction overhang it cannot splice, so a clip reaching an exon
+  edge or junction end (annotated, or one the reads splice at), or ending within
+  five bases of one, holds the next exon's bases and is not read. Any other clip
+  is the read's own bases and is read as in DNA (a mid-exon <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> carrier with its
+  second base clipped still counts ALT). Splice probes: spurious ALT 19 → 16.
+- <strong>A spliced read is read across its junctions (#213, RJ-19).</strong> The
+  exact-carrier windows of a read spliced near the event are built over the
+  reference spliced at its own junctions (the far exons read from the <abbr title="FASTA format - Reference genome sequence file">FASTA</abbr>,
+  every junction the windows reach followed), not cut at the exon edge; a
+  junction starting inside the event splices the haplotypes at its edge, so a
+  delins carrier counts however the gap is written; such a read counts ALT only
+  when its bases also beat REF spliced at its own junction (an alternative
+  donor or acceptor), and is otherwise depth only. Splice probes: spurious ALT
+  19 → 4; REF −0.95% at probes 0–1 bp from the exon edge (reads reaching one or
+  two bases past the junction hold no spliced flank), −0.11% at 2–4 bp.
+- <strong>All five together</strong>, against the branch point: splice probes spurious ALT
+  19 → 2, REF −0.39%, partial −453; T9 106 rows (REF −24,813, mostly R5); truth: 4 rows'
+  per-transcript columns (the exon-index fix), no count; RC DNA and WES
+  byte-identical (before the review follow-ups; RNA-only changes since).
+- <strong>Survey:</strong> GATK splits RNA reads at N and counts a piece only when its bases
+  favour an allele, and runs HaplotypeCaller with <code>-dont-use-soft-clipped-bases</code>;
+  bcftools never uses spliced reads for indels; phASER, WASP and ASEReadCounter
+  never read clips; REDItools resolves a site's strand from the annotation
+  spanning it and leaves mixed strands undetermined; allele counters take every
+  tally over one filtered read set.</p>
+<h3 id="development-changelog-documented-why-the-rna-mapping-quality-default-is-min-mapq-1">Documented — why the RNA mapping-quality default is <code>--min-mapq 1</code><a class="headerlink" href="#development-changelog-documented-why-the-rna-mapping-quality-default-is-min-mapq-1" title="Permanent link">¶</a></h3>
+<p>No behaviour change. The RNA default keeps reads <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> placed at two to four loci
+(<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> 3 or 1), counted once at their primary alignment, because junction reads tie
+between a gene and its processed pseudogene. Measured on FORTE: counting unique
+alignments only would cost real ALT reads at genes with pseudogenes (PIK3CA E545K:
+10 of 159; 12 across the truth set) and 1.6% of junction fragments at the probes;
+<code>--min-mapq 0</code> would add 6 ALT and 33 REF reads across the truth set. The <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>
+<abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> scale and the measurement are in <code>docs/reference/read-filters.md</code>, which also
+corrects a note that <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr> gives novel junctions low <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> (its <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> depends only on
+the number of loci).</p>
 <h3 id="development-changelog-changed-an-exact-carrier-alt-call-needs-quality-weighted-evidence-174">Changed — an exact-carrier ALT call needs quality-weighted evidence (#174)<a class="headerlink" href="#development-changelog-changed-an-exact-carrier-alt-call-needs-quality-weighted-evidence-174" title="Permanent link">¶</a></h3>
 <p>A read's bases across a complex variant's windows are now weighed by their
 quality (a base matches with 1 − e and mismatches with e/3, e its error
@@ -20177,9 +20386,10 @@ by reason. They get no output row. See <a href="#reference-input-formats-alt-all
 <summary>All counts are 0 in RNA mode</summary>
 <ol>
 <li>
-<p><strong>Strandedness filter with missing gene annotation</strong> — if your <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> lacks a <code>gene_strand</code>
-   column, all reads fail the strandedness filter (defaulted to on).
-   Disable with <code>--no-strandedness</code> for unstranded libraries or MAFs without strand annotation.</p>
+<p><strong>Strandedness filter with the wrong protocol</strong> — under the default
+   <code>--strandedness reverse</code> (<abbr title="Deoxyuridine Triphosphate - Used in strand-specific RNA-seq protocols">dUTP</abbr>), a forward-stranded or unstranded library's sense
+   reads read as antisense and are excluded. Set <code>--strandedness forward</code> or
+   <code>unstranded</code> to match the library.</p>
 </li>
 <li>
 <p><strong><abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr> filter too strict</strong> — default <abbr title="Mapping Quality - Confidence score for read alignment">MAPQ</abbr>=1 with <abbr title="Number of Hits - BAM tag indicating number of reported alignments">NH</abbr>:i:1 rescue is correct for <abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>.
@@ -20196,12 +20406,14 @@ by reason. They get no output row. See <a href="#reference-input-formats-alt-all
 <details class="question">
 <summary><code>rna_antisense_depth</code> is 0 and every read counts as sense</summary>
 <p>The variant has no gene strand. gbcms resolves it from the <code>--gtf</code> exons at the
-variant's position. Without one, every read passes as sense, strandedness is not
-enforced, and a run-level WARNING gives the number of such variants. Causes:</p>
+variant's position, or at an intronic position from the transcripts spanning it.
+Without one, every read passes as sense, strandedness is not enforced, and a
+run-level WARNING names such variants. Causes:</p>
 <ul>
 <li>no <code>--gtf</code>, or a GTF that does not annotate the variant's contig;</li>
-<li>an intronic position (for example a splice-site variant) or a position where
-  exons of both strands overlap: the strand is left unresolved there (R4 #185).</li>
+<li>an intergenic position (no transcript spans it);</li>
+<li>genes of both strands over the position (overlapping antisense genes): both
+  genes' transcripts carry the allele, so every read counts by design.</li>
 </ul>
 <p>Solutions:
 - Pass <code>--gtf</code> with the annotation the <abbr title="Binary Alignment Map - Compressed sequence alignment file format">BAM</abbr> was aligned against.
