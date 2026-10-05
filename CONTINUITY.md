@@ -136,11 +136,24 @@ output fills Tumor_Seq_Allele1 with REF; REF_MISMATCH rows get `REF_AT_OFFSET(k)
 Acceptance: counts unchanged everywhere. Follow-ups: I7 #219, O9 #220 (6.7.0), M5
 #221 (group 5). Group 4 builds and slices removed (REMOVED_BUILDS.md).
 
+**In progress — group 5, merge, outputs, observability (M4 #194, M5 #221, M6 #223,
+M2 #129, H1 #148, O1 #130, O2 #131, D6 #156):** branch `feature/g5-merge-outputs`.
+Decided 2026-10-05 (M4 2026-09-30), measured first, survey in the plan: combined
+NA for missing counts (warned); every gbcms column per input (set from the
+writer); later-only rows keep annotations; merged MAF provenance, version
+warning, pre-6.5.0 VCF shape refused, builds name their commit (6.6.0.dev0);
+atomic outputs; per-BAM warnings once with exact counts; run-start settings
+block, implications and per-BAM facts with three measured warnings; one
+QC-flags page with a completeness test. Commits: plan `1048c6de`, red
+`3a5baf5b`, fix `b317121f`, M5 test (operator-approved) `4f46d4fb`. Pending:
+adversarial review, acceptance (base 9c371263), PR. Harness
+`~/test/gbcms/harness/g5/`.
+
 ## Next (in order; the plan's "Suggested order" is canonical)
 Groups 1–4 are merged (#211, #215, #217, #222). `PRODUCTION_READINESS.md` holds the
 production gate.
-1. Group 5, merge, outputs, observability: M4 #194, M5 #221, M2 #129, H1 #148, O1 #130,
-   O2 #131, D6 #156 (branch `feature/g5-merge-outputs`).
+1. Group 5, merge, outputs, observability: M4 #194, M5 #221, M6 #223, M2 #129, H1 #148,
+   O1 #130, O2 #131, D6 #156 (branch `feature/g5-merge-outputs`; built).
 2. Group 6, statistics: S1 #153 (decided), S2 #154 (mFSD; not production-gating).
 3. Group 7, release: D1 #136, D2 #137, D4 #139 before the cut, P3 #152, then the
    D5 panel #155 on HPC as the gate run.
