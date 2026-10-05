@@ -48,7 +48,7 @@ where no read carries the ALT).
   19 → 4; REF −0.95% at probes 0–1 bp from the exon edge (reads reaching one or
   two bases past the junction hold no spliced flank), −0.11% at 2–4 bp.
 - **All five together**, against the branch point: splice probes spurious ALT
-  19 → 2, REF −0.39%, partial −453; T9 105 rows (REF −24,814, mostly R5); truth: 4 rows'
+  19 → 2, REF −0.39%, partial −453; T9 106 rows (REF −24,813, mostly R5); truth: 4 rows'
   per-transcript columns (the exon-index fix), no count; RC DNA and WES
   byte-identical (before the review follow-ups; RNA-only changes since).
 - **Survey:** GATK splits RNA reads at N and counts a piece only when its bases
