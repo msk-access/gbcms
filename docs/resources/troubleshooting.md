@@ -277,9 +277,10 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 
 ??? question "All counts are 0 in RNA mode"
 
-    1. **Strandedness filter with missing gene annotation** — if your MAF lacks a `gene_strand`
-       column, all reads fail the strandedness filter (defaulted to on).
-       Disable with `--no-strandedness` for unstranded libraries or MAFs without strand annotation.
+    1. **Strandedness filter with the wrong protocol** — under the default
+       `--strandedness reverse` (dUTP), a forward-stranded or unstranded library's sense
+       reads read as antisense and are excluded. Set `--strandedness forward` or
+       `unstranded` to match the library.
 
     2. **MAPQ filter too strict** — default MAPQ=1 with NH:i:1 rescue is correct for STAR.
        If your aligner assigns MAPQ differently, check `--min-mapq`.
@@ -293,12 +294,14 @@ Common issues and solutions for gbcms. Issues are grouped by phase — work top-
 ??? question "`rna_antisense_depth` is 0 and every read counts as sense"
 
     The variant has no gene strand. gbcms resolves it from the `--gtf` exons at the
-    variant's position. Without one, every read passes as sense, strandedness is not
-    enforced, and a run-level WARNING gives the number of such variants. Causes:
+    variant's position, or at an intronic position from the transcripts spanning it.
+    Without one, every read passes as sense, strandedness is not enforced, and a
+    run-level WARNING names such variants. Causes:
 
     - no `--gtf`, or a GTF that does not annotate the variant's contig;
-    - an intronic position (for example a splice-site variant) or a position where
-      exons of both strands overlap: the strand is left unresolved there (R4 #185).
+    - an intergenic position (no transcript spans it);
+    - genes of both strands over the position (overlapping antisense genes): both
+      genes' transcripts carry the allele, so every read counts by design.
 
     Solutions:
     - Pass `--gtf` with the annotation the BAM was aligned against.

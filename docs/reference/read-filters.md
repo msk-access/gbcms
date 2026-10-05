@@ -201,7 +201,10 @@ RNA mode (`gbcms rna`) extends the standard filter cascade with two additional c
 
 ### NH:i:1 MAPQ Rescue
 
-STAR assigns MAPQ=255 to uniquely mapped reads and MAPQ=0–3 to multi-mappers. When `--min-mapq 1` (RNA default), reads that fail the MAPQ threshold are checked for the `NH:i:1` tag (Number of Hits = 1). If present, the read is uniquely aligned and rescued.
+STAR's MAPQ depends only on how many loci a read aligns to equally well: 255 for
+one, 3 for two, 1 for three or four, 0 for five or more. When `--min-mapq 1` (RNA
+default), reads that fail the MAPQ threshold are checked for the `NH:i:1` tag
+(Number of Hits = 1). If present, the read is uniquely aligned and rescued.
 
 ```mermaid
 flowchart TD
@@ -217,8 +220,34 @@ flowchart TD
     classDef drop fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px;
 ```
 
-!!! info "Biological Context"
-    Novel splice junctions often receive low MAPQ because STAR hasn't observed the junction in its first-pass database. The NH:i:1 rescue ensures these uniquely mapped reads contribute to allele counts rather than being silently discarded.
+!!! info "When the rescue applies"
+    For STAR an `NH:i:1` read is always MAPQ 255, so the rescue matters for
+    aligners whose MAPQ can be low for a uniquely aligned read; it keeps those
+    reads in the counts rather than silently discarding them.
+
+### Why the RNA default is `--min-mapq 1`
+
+The RNA default keeps reads STAR placed at two to four loci (MAPQ 3 or 1), each
+counted once, at its primary alignment (secondary alignments are filtered). This
+is deliberate (operator, 2026-10-03), because junction reads tie between a gene
+and its processed pseudogene: a spliced read from the parent gene aligns equally
+well, unspliced, to the intronless retrocopy.
+
+Measured on the FORTE truth set (33 samples, 94 rows) and the STAR probes (3
+samples, 978 rows), with the counts at the default as the reference:
+
+| Threshold | What it keeps | Effect |
+|:--|:--|:--|
+| `--min-mapq 255` (unique only) | one locus | Truth: ALT −12, REF −25, depth −83. PIK3CA E545K (exon 9, which has a pseudogene copy on chr22) loses 10 of 159 ALT reads. Probes: depth −2.2%, ASJD junction fragments −1.6% |
+| `--min-mapq 1` (default) | up to four loci | Keeps 122 of the truth set's 143 multimapping junction reads; spliced reads are 80% of the two-locus reads against 53% of unique ones, gathered at PTEN (PTENP1), B2M and TP53 |
+| `--min-mapq 0` | five or more loci too | Truth: ALT +6 and REF +33, all at rows consistent with the samples' alleles; probes: depth +0.3%. No ASJD call changes |
+
+Allele-specific expression pipelines (GTEx v8, phASER, ASEReadCounter as used
+there) count only unique STAR alignments and pair that with a remapping test for
+allele bias (WASP). For a genotyper counting given alleles, that filter would cost
+real carriers at genes with pseudogenes. Use `--min-mapq 0` deliberately for
+pseudogene-family genes, as for PMS2 in DNA; it admits reads with five or more
+equally good placements, so it is not the default.
 
 ### Strandedness Filter
 

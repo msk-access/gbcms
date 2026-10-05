@@ -83,14 +83,32 @@ per-type classification):
   refuses windows that an `N` overlaps (a contiguous slice would stitch
   the exon arms into a junction-chimeric sequence in which the missing
   intron reads as deletion evidence).
-- A complex variant's exact-carrier windows are cut at a read's own
-  junction: a splice in the window's flank or padding ends the window at
-  the exon edge on that side, for both alleles, and the read is anchored at
-  the junction. So a delins at an exon's last or first bases counts spliced
-  reads (on FORTE probes 0–1 bp from an exon edge the uncut windows kept
-  1.7% of REF reads). A read spliced through the bases where the alleles
-  differ shows neither and counts toward depth only. Repeat growth never
-  reaches across a read's junction.
+- A complex variant's exact-carrier windows for a read spliced in their
+  flank or padding are built over the reference spliced at the read's own
+  junctions (RJ-19, C32 #213): the read's bases past a splice are the next
+  exon's, so both alleles' haplotypes continue there (the far exon read from
+  the FASTA), and repeat growth and flank are measured on that spliced
+  sequence. A length change that pushes an exon's last bases past the
+  junction shows against the next exon instead of fitting a window cut at the
+  exon edge (on FORTE splice probes, spurious ALT 19 → 4), and the read must
+  hold the spliced flank as any read holds its flank (reads reaching one or
+  two bases past the junction hold none: −0.95% of REF at probes 0–1 bp from
+  the edge). A read spliced through the bases where the alleles differ shows
+  neither and counts toward depth only.
+- A splice is not reference coverage (RJ-17, R5 #198): a pure-indel read is
+  informative only when one aligned block between splices spans the window,
+  REF and ALT alike. A read spliced inside an indel's change interval is
+  depth only (the event may sit in the skipped intron), and so is a deletion
+  written right after a read's splice (its bases equal REF spliced at an
+  acceptor further on).
+- An RNA read's soft clip that reaches an exon edge or a junction end
+  (annotated, or one the variant's reads splice at), or whose aligned bases end
+  within five bases of one, is not allele evidence (RJ-18, C15 #173): STAR clips
+  a junction overhang it cannot splice, so such a clip holds the next exon's
+  bases. Any other clip is the read's own bases, read as in DNA.
+- A junction that starts inside a complex event's differing bases and runs past
+  them (or ends inside them) splices the haplotypes at the event's edge (RJ-19),
+  so a delins carrier counts whether the aligner wrote `X D N` or `X N`.
 
 Reads without `N` ops never enter this triage — DNA-mode classification
 is untouched. Per-variant exclusion counts are logged at debug level in

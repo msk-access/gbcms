@@ -25,7 +25,7 @@
 use rust_htslib::bam::record::{Cigar, Record};
 
 use crate::normalize::repeat::first_change_offset;
-use crate::shared::bam_utils::{find_read_pos, ref_end};
+use crate::shared::bam_utils::{aligned_blocks, find_read_pos};
 use crate::types::Variant;
 
 /// Reference interval `[lo, hi)` (0-based, half-open) holding every base at
@@ -520,19 +520,22 @@ pub(crate) fn informative_windows(v: &Variant) -> Option<[(i64, i64); 2]> {
     }
 }
 
-/// Whether the read is informative for a pure indel: its aligned reference
-/// extent (M/=/X/D/N; clips excluded) spans either [`informative_windows`]
-/// interval. Always true for other variants, which this rule does not cover.
+/// Whether the read is informative for a pure indel: one of its aligned blocks
+/// (M/=/X/D between splices; clips excluded) spans either
+/// [`informative_windows`] interval. A splice is not reference coverage: a read
+/// spliced inside the window shows none of it past the splice (the event may sit
+/// in the skipped intron), as a read ending there shows none. Always true for
+/// other variants, which this rule does not cover.
 pub(crate) fn read_is_informative(record: &Record, v: &Variant) -> bool {
     let Some(windows) = informative_windows(v) else {
         return true;
     };
-    let (start, end) = (record.pos(), ref_end(record));
-    windows.iter().any(|&(lo, hi)| start <= lo && end >= hi)
+    let blocks = aligned_blocks(record);
+    windows.iter().any(|&(lo, hi)| blocks.iter().any(|&(start, end)| start <= lo && end >= hi))
 }
 
-/// Whether an ALT read's CIGAR alone settles a pure indel: its aligned reference
-/// extent spans one of the informative windows as seen from the ALT haplotype,
+/// Whether an ALT read's CIGAR alone settles a pure indel: one of its aligned
+/// blocks spans one of the informative windows as seen from the ALT haplotype,
 /// `[lo - 1, hi + 2)` or `[lo - 2, hi + 1)`. An insertion's are its REF windows (its
 /// carrier's extent leaves out the inserted bases, so spanning them it reads more,
 /// not less). A deletion's carrier's extent counts its own gap, so spanning the
@@ -546,7 +549,6 @@ pub(crate) fn alt_read_is_informative(record: &Record, v: &Variant, quals: &[u8]
         return true;
     }
     let (lo, hi) = change_interval(v);
-    let (start, end) = (record.pos(), ref_end(record));
     // A window that starts (or ends) on the read's own first (or last) base needs
     // that flank base read: for a deletion sliding through a repeat, it is all that
     // tells the read from REF placed one base along the run. Unverifiable without a
@@ -558,10 +560,13 @@ pub(crate) fn alt_read_is_informative(record: &Record, v: &Variant, quals: &[u8]
         b != b'N' && quals.get(q).is_some_and(|&x| x >= min_baseq) && b == r[0]
     };
     // [lo - 1, hi + 2): from the left flank; [lo - 2, hi + 1): to the right flank
-    // (`end` is exclusive, so a read whose last base is the flank ends at hi + 1).
-    let from_left = start < lo && end >= hi + 2 && (start < lo - 1 || flank_read(lo - 1));
-    let to_right = start < lo - 1 && end > hi && (end > hi + 1 || flank_read(hi));
-    from_left || to_right
+    // (`end` is exclusive, so a block whose last base is the flank ends at hi + 1).
+    // A block starting or ending at a splice is held to the same flank as a read end.
+    aligned_blocks(record).into_iter().any(|(start, end)| {
+        let from_left = start < lo && end >= hi + 2 && (start < lo - 1 || flank_read(lo - 1));
+        let to_right = start < lo - 1 && end > hi && (end > hi + 1 || flank_read(hi));
+        from_left || to_right
+    })
 }
 
 /// The siblings whose change lies inside `variant`'s discrimination window:

@@ -3,7 +3,7 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-03_
+_Last updated: 2026-10-04_
 
 ## Now
 **6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
@@ -78,8 +78,28 @@ comments):**
 C29 #207):** RJ-10 to RJ-13; C17 clips only adapter-like bases past the TLEN
 fragment end (operator); follow-up C31 #212 (6.7.0). Plan "Group 1 as built".
 
-**Ready for PR — group 2, read judgment (C28 #202, C27 #201, C16 #174):** branch
-`feature/g2-read-judgment`, not yet pushed. RJ-14 (the ALT across several ops),
+**In progress — group 3, RNA (R4 #185, R5 #198, O8 #186, C15 #173 RNA part,
+C32 #213):** branch `feature/g3-rna`, not yet pushed. Decided by the operator
+2026-10-04: intronic strand from the spanning transcripts, both strands none
+(plus the exon-index off-by-one); RJ-17 (a splice is not coverage); O8
+(diagnostics read the counted reads); RJ-18 (an RNA clip reaching an exon edge
+or junction end is not evidence; refined after review); RJ-19 (spliced reads
+judged on windows over the reference spliced along their junctions; a junction
+entering the event spliced at its edge). Commits: red tests `9c812cae`, fix
+`3608f2d1`, docs `670498e1`, review fixes `33617e0f`, probe `93ec260f`,
+follow-ups `4fc21f49`, second-review red tests `a0c2abd3` and fix `2a88ebf9` (a
+read whose junction enters the event counts ALT only over REF at its own
+junction; lazy clip edges; a bin-geometry check), docs `5b051223`, `42024c22`. Two splice-contract tests updated with the operator's
+approval (M-N-D-M carriers depth only). Acceptance: splice probes spurious ALT
+19 → 2, REF −0.39%; T9 106 rows (REF −24,813); truth 4 rows' per-transcript
+columns only (final build `2a88ebf9`, all on local slices checked
+byte-identical to the full BAMs); RC DNA and WES byte-identical on `3608f2d1`
+(RNA-only changes since). Follow-up filed: C34 #216 (GTF transcripts keyed by
+ID alone; 0 such IDs in Ensembl 111). Pending: the PR and issue comments (ask
+first). Harness `~/test/gbcms/harness/g3/` (local; mount runs serial).
+
+**Merged — group 2, read judgment (C28 #202, C27 #201, C16 #174), #215:** branch
+`feature/g2-read-judgment`. RJ-14 (the ALT across several ops),
 RJ-15 (a read deleting the anchor, judged by its bases across the window), RJ-16
 (exact-carrier ALT calls need quality-weighted evidence, one `--min-baseq` base's
 worth). Final acceptance (develop vs head, 144 files): RC DNA 24 rows (REF +57

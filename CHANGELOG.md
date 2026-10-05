@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — RNA: strand at intronic loci, splices are not coverage, clips and junctions (#185, #198, #186, #173, #213)
+
+Five RNA rules (operator, 2026-10-04), each measured on FORTE against the
+previous build: the truth cohort (94 signed-out rows), the T9 exon-edge indel
+probes (978) and the C1 splice probes (7,224 delins at exon edges and mid-exon,
+where no read carries the ALT).
+- **Gene strand at intronic positions (#185).** A position no stranded exon
+  covers (intronic, splice sites included) takes the strand of the transcripts
+  spanning it, all agreeing; where both strands' genes cover a position there is
+  no strand and every read counts (both genes' transcripts carry the allele).
+  The exon index read the first and last intron bases as exonic (an end-inclusive
+  interval tree built from half-open exons): fixed, for the strand and the
+  per-transcript counts. The unresolved-strand warning names the variants.
+  Truth: no row changes; T9: 95 antisense REF reads move to
+  `rna_antisense_depth` on 62 rows.
+- **A splice is not reference coverage (#198, RJ-17).** A pure-indel read is
+  informative only when one aligned block between splices spans the window, REF
+  and ALT alike. Truth: no row changes; T9: 24,703 REF reads at splice-crossing
+  deletions become depth only (their bases fit both alleles); `vaf` is
+  unchanged. A deletion written right after a read's splice (no aligned flank) is
+  depth only.
+- **Diagnostics read the counted reads (#186).** `OBSERVED_ALLELE` and
+  `COEXISTING_ALLELE` take n/m over the reads the counts read: no antisense read
+  under enforcement, and the RNA mapping rule's unique mappers. Counts unchanged.
+- **An RNA read's clip at an exon edge is not allele evidence (#173, RJ-18).**
+  STAR clips a junction overhang it cannot splice, so a clip reaching an exon
+  edge or junction end (annotated, or one the reads splice at), or ending within
+  five bases of one, holds the next exon's bases and is not read. Any other clip
+  is the read's own bases and is read as in DNA (a mid-exon MNP carrier with its
+  second base clipped still counts ALT). Splice probes: spurious ALT 19 → 16.
+- **A spliced read is read across its junctions (#213, RJ-19).** The
+  exact-carrier windows of a read spliced near the event are built over the
+  reference spliced at its own junctions (the far exons read from the FASTA,
+  every junction the windows reach followed), not cut at the exon edge; a
+  junction starting inside the event splices the haplotypes at its edge, so a
+  delins carrier counts however the gap is written; such a read counts ALT only
+  when its bases also beat REF spliced at its own junction (an alternative
+  donor or acceptor), and is otherwise depth only. Splice probes: spurious ALT
+  19 → 4; REF −0.95% at probes 0–1 bp from the exon edge (reads reaching one or
+  two bases past the junction hold no spliced flank), −0.11% at 2–4 bp.
+- **All five together**, against the branch point: splice probes spurious ALT
+  19 → 2, REF −0.39%, partial −453; T9 106 rows (REF −24,813, mostly R5); truth: 4 rows'
+  per-transcript columns (the exon-index fix), no count; RC DNA and WES
+  byte-identical (before the review follow-ups; RNA-only changes since).
+- **Survey:** GATK splits RNA reads at N and counts a piece only when its bases
+  favour an allele, and runs HaplotypeCaller with `-dont-use-soft-clipped-bases`;
+  bcftools never uses spliced reads for indels; phASER, WASP and ASEReadCounter
+  never read clips; REDItools resolves a site's strand from the annotation
+  spanning it and leaves mixed strands undetermined; allele counters take every
+  tally over one filtered read set.
+
+### Documented — why the RNA mapping-quality default is `--min-mapq 1`
+
+No behaviour change. The RNA default keeps reads STAR placed at two to four loci
+(MAPQ 3 or 1), counted once at their primary alignment, because junction reads tie
+between a gene and its processed pseudogene. Measured on FORTE: counting unique
+alignments only would cost real ALT reads at genes with pseudogenes (PIK3CA E545K:
+10 of 159; 12 across the truth set) and 1.6% of junction fragments at the probes;
+`--min-mapq 0` would add 6 ALT and 33 REF reads across the truth set. The STAR
+MAPQ scale and the measurement are in `docs/reference/read-filters.md`, which also
+corrects a note that STAR gives novel junctions low MAPQ (its MAPQ depends only on
+the number of loci).
+
 ### Changed — an exact-carrier ALT call needs quality-weighted evidence (#174)
 
 A read's bases across a complex variant's windows are now weighed by their

@@ -50,11 +50,13 @@ type Allele = (i64, Vec<u8>, Vec<u8>);
 /// the given allele, nor a co-annotated sibling's, if at least [`MIN_CARRIERS`]
 /// reads carry it exactly, more than carry the given allele, and at least
 /// [`MIN_FRACTION`] of the scanned reads. None without prep's `event_ref`.
+/// `counted` says which reads the row's counts read (strand and mapping rules),
+/// so n/m are taken over the same reads as `alt_count` and `ref_count`.
 pub(crate) fn observed_allele(
     read_cache: &[Record],
     variant: &Variant,
     siblings: &[Variant],
-    min_mapq: u8,
+    counted: &dyn Fn(&Record) -> bool,
     min_baseq: u8,
 ) -> Option<ObservedAllele> {
     let (ev_start, ev_seq) = variant.event_ref.as_ref()?;
@@ -80,7 +82,7 @@ pub(crate) fn observed_allele(
     let mut seen: HashMap<Allele, u32> = HashMap::new();
     let mut scanned: u32 = 0;
     for record in read_cache {
-        if record.is_secondary() || record.is_supplementary() || record.mapq() < min_mapq {
+        if !counted(record) {
             continue;
         }
         let read_end = ref_end(record);

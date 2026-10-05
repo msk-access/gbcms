@@ -688,7 +688,7 @@ A read is REF or ALT for a complex variant only when **its own bases carry that 
 - **Long events.** When the windows exceed 50 bases, no read can hold them whole. Both alleles are then judged by equal-length junction windows at each end, read inward from the flank: through one base past the first base where the alleles differ, and through the shorter allele when it fits in 50 bases, so a short ALT is read base by base. The left junction reads it from the left flank; the right one from just before its first difference, so repeat growth on the left does not favour the longer allele's reads. A read must match the same allele at every junction it holds; a mismatch at one rules it out.
 - **MNP reads with an indel.** An MNP read with an insertion or deletion in the block or right beside it, or a clip in it, is judged by this rule; an aligner may write a block shifted by one base as an insertion before it and a deletion after. Its ALT calls with every window base read count toward `mnp_confirmed_alt`. Other MNP reads, including those with an indel further off (a germline one nearby), are compared base by base.
 - **Carriers in soft-clipped bases (DNA).** A read the rule decides from its own bases, with a window that reads its soft-clipped bases, counts even when its aligned span stops short of the variant position, provided every base read lies inside a well-defined fragment (past the fragment end a clip is adapter). Undecided clipped reads stay out of depth. See [counting metrics](counting-metrics.md).
-- **Spliced reads (RNA).** A splice in a window's flank or padding ends the window at the exon edge, for both alleles, and the read is anchored at its junction: the read's next bases come from the next exon. A read spliced through the bases where the alleles differ counts toward depth only.
+- **Spliced reads (RNA).** A read spliced in a window's flank or padding is judged on windows built over the reference spliced at its own junctions (the far exon read from the FASTA): its next bases come from the next exon, so both alleles continue there, and growth and flank are measured on the spliced sequence. A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge; any other splice through those bases leaves the read depth only. An RNA read's soft clip that reaches an exon edge or junction end is not read (it may hold the next exon's bases); other clips are.
 - **Same on both backends.** The rule uses no alignment scoring, so `pairhmm` and `sw` give identical counts for complex variants.
 - **When the rule cannot run.** `prepare_variants` fetches reference until it holds the event, grown through any repeat, with its flank and padding (up to 16,384 bases each side, clamped at a contig end: the window holds the bases that exist). A variant without that reference (one built without `prepare_variants`, or an event whose two flank bases would pass a contig end) keeps the previous classifier below. Every variant of a normal run is prepared. A record stored without its bases (SEQ `*`) is not read.
 
@@ -994,6 +994,10 @@ Prep measures each pure indel's region over its own reference fetch, sized to
 the event (`Variant.shift_region`). A tandem duplication (an ITD, for example)
 slides over its whole duplicated segment, which can be far longer than the
 repeat context kept for alignment.
+
+A read spans a window with one aligned block, between its splices (RJ-17,
+6.6.0): a splice is not reference coverage, so an RNA read spliced inside the
+window shows none of it past the splice, as a read ending there shows none.
 
 Reads that fail the rule count toward `DP` and `DPF` but are neither REF nor ALT,
 the same as GATK's AD, which counts only informative reads. The rule does not

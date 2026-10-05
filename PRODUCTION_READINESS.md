@@ -30,10 +30,12 @@ that turns one on must clear its section 5 issues first.
 |:--|:--|:--|:--|:--|
 | C28 #202 | A read deleting a pure indel's anchor is credited REF or ALT by Phase 3's closer haplotype | DNA, WES, RNA | 2 | Decided (RJ-15) and built; final acceptance with group 2 |
 | C27 #201 | A read writing the ALT across several indel ops counts partial, not ALT | all | 2 | Decided (RJ-14) and built; no real-data change |
-| C16 #174 | Spurious single ALT reads in heavily masked windows (2.0 per million reads in RNA, 1.8 in IMPACT, none in ACCESS) | RNA, IMPACT, WES | 2 | Decided (RJ-16): quality-weighted evidence, at least one `--min-baseq` base's worth; RNA probes 70 → 15–19, IMPACT 7 → 1, 1–2 of 1,185 real ALT reads lost. Junction guard deferred to 6.7.0 (section 3) |
-| R4 #185 | Strandedness not enforced at intronic loci and opposite-strand overlaps | RNA | 3 | Open |
-| R5 #198 | Reads spliced inside a repeat tract counted as REF coverage | RNA | 3 | Open |
-| O8 #186 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` count a different read set from the counts beside them | RNA | 3 | Open |
+| C16 #174 | Spurious single ALT reads in heavily masked windows (2.0 per million reads in RNA, 1.8 in IMPACT, none in ACCESS) | RNA, IMPACT, WES | 2 | Decided (RJ-16): quality-weighted evidence, at least one `--min-baseq` base's worth; RNA probes 70 → 15–19, IMPACT 7 → 1, 1–2 of 1,185 real ALT reads lost. The residual RNA junction cases are C32 (group 3) |
+| R4 #185 | Strandedness not enforced at intronic loci and opposite-strand overlaps | RNA | 3 | Decided and built: intronic positions take the spanning transcripts' strand; both strands, no strand (every read counts); exon index off-by-one fixed. Truth 0 rows; final acceptance with group 3 |
+| R5 #198 | Reads spliced inside a repeat tract counted as REF coverage | RNA | 3 | Decided (RJ-17) and built: informative only within one aligned block. Truth 0 rows; final acceptance with group 3 |
+| O8 #186 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` count a different read set from the counts beside them | RNA | 3 | Decided and built: the diagnostic reads the counted reads. Counts unchanged |
+| C32 #213 | A spliced read's windows cut at the exon edge: spurious ALT at exon-edge events (19 per 7,224 splice probes after C16) | RNA | 3 | Decided (RJ-19) and built: windows over the reference spliced at the read's junctions (all reached; a junction entering the event spliced at its edge). With C15: splice probes 19 → 2 spurious ALT reads |
+| C15 #173 (RNA) | An RNA read's soft clip (the next exon's bases) read as allele evidence | RNA | 3 | Decided (RJ-18) and built: a clip reaching an exon edge or junction end is not evidence; other clips are read |
 | #123 | A non-sequence ALT (IUPAC `R`) counts 0 with no warning | MAF input | 4 | Open |
 | C30 #208 | Lowercase or unprepared alleles judged inconsistently between two pure-indel paths | all input | 4 | Open |
 | I3 #125 | VCF to MAF: `Tumor_Seq_Allele1` empty (decide REF or empty) | VCF input | 4 | Decision |
@@ -44,8 +46,9 @@ that turns one on must clear its section 5 issues first.
 | D6 #156 | No single reference for status reasons, diagnostics, ASJD and rescue flags | all | 5 | Open (docs) |
 
 Done in 6.6.0 so far, each with real-data acceptance: read inputs (adapter
-read-through, absent qualities, unmapped records; #211), C25/C26 (#210), the
-pure-indel read-judgment cluster (#203), C10/C2, C1, C12, C13, C14, C21, R1, R2.
+read-through, absent qualities, unmapped records; #211), read judgment (C27,
+C28, C16; #215), C25/C26 (#210), the pure-indel read-judgment cluster (#203),
+C10/C2, C1, C12, C13, C14, C21, R1, R2.
 
 ## 2. Validation evidence: the release gate
 
@@ -76,7 +79,7 @@ Each run reports:
 |:--|:--|:--|
 | C7 #144 | Clip-borne ITD carriers are not rescued | FLT3-ITD ALT reads recovered by an orthogonal count |
 | C18 #177 | Long events split across alignments (supplementary reads) are not joined | ALT reads lost at 50+ bp events |
-| C15 #173 | Clipped carriers of pure deletions; RNA exon-edge clips excluded | Clip-only carriers outside counts, by stratum |
+| C15 #173 | Clipped carriers of pure deletions (DNA; an RNA read's clips are not evidence, RJ-18) | Clip-only carriers outside counts, by stratum |
 | C31 #212 | A mate's clipped 5' end makes TLEN short (soft clips past it are clipped) | Rows changed (none in the group 1 data) |
 | C6 #143 | Exact-length insertions with a sequencing error count partial | Carriers at long-insertion loci |
 | R3 #178 | Catalogued RNA editing positions inside carrier windows | Rows whose window holds an editing site |
@@ -84,7 +87,7 @@ Each run reports:
 | O5 #179 | No mapping-bias diagnostic | ALT vs REF MAPQ and clipping skew |
 | C24 #195 | Stale scores in the no-reference fallback (partial only) | Rows on that path (unprepared input only) |
 | C33 #214 | A REF molecule with one clear error just outside the window its ALT reading is anchored away from can count ALT (pre-existing) | Spurious ALT at the synthetic probes after RJ-16 |
-| C32 #213 | A spliced read whose aligner placed its junction a few bases late (STAR prefers the annotated junction) can show the next exon's bases over an exon-edge event; telling it from a genuine carrier needs the reference at the splice's far end, so the engine needs reference access | Spurious ALT per million reads at exon-edge probes (9 of 68 calls in the C16 trace) |
+| C34 #216 | A GTF that reuses a transcript ID on another chromosome merges its introns (per-transcript counts, ASJD, exon-edge rules) | Transcript IDs reused across chromosomes or strands in the production GTF (Ensembl 111: 0) |
 
 ## 4. Release and reproducibility
 
@@ -111,9 +114,19 @@ Each run reports:
 ## Decisions
 
 1. Opt-in features: none in production (operator, 2026-10-02).
-2. C16: the junction guard is deferred to 6.7.0, with C15 and RJ-13's RNA
-   exon-edge clips, which need the same reference access; the evidence rule is
-   measured in a softer form (operator, 2026-10-02).
+2. C16: an exact-carrier ALT call needs quality-weighted evidence, one
+   `--min-baseq` base's worth (RJ-16, operator 2026-10-03); the junction cases
+   moved to group 3 (C32 #213, decision 4).
+3. RNA mapping quality: the default stays `--min-mapq 1` (operator, 2026-10-03).
+   Unique-only (as allele-specific expression pipelines filter) would cost real
+   ALT reads at genes with pseudogenes (PIK3CA E545K: 10 of 159) and 1.6% of
+   junction totals; `--min-mapq 0` stays a deliberate choice for pseudogene-family
+   genes. Measurement in `docs/reference/read-filters.md`.
+4. Group 3, RNA (operator, 2026-10-04): intronic positions take the spanning
+   transcripts' strand and both-strand positions none (R4); a splice is not
+   reference coverage (R5, RJ-17); diagnostics read the counted reads (O8); an
+   RNA read's clips are not evidence (C15, RJ-18); a spliced read is judged on
+   windows over the reference spliced at its junctions (C32, RJ-19).
 
 Open:
 
@@ -124,7 +137,7 @@ Open:
 ## Order
 
 The remaining 6.6.0 groups already hold every section 1 and section 4 item:
-group 2 (C28, C27, C16), group 3 (R4, R5, O8), group 4 (#123, C30, #125, #126),
+group 2 (C28, C27, C16; merged), group 3 (R4, R5, O8, C15 RNA, C32), group 4 (#123, C30, #125, #126),
 group 5 (M4, M2, H1, D6), group 7 (D1, D2, D4, then the D5 panel on HPC as the
 gate run). Group 6 (S1, S2) stays in 6.6.0 but does not gate production (mFSD is
 off).

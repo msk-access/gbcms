@@ -46,7 +46,7 @@ marks a ticket with an open PR.
 | C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [done] | #167 |
 | C13 | BAQ spares the variant's own indel evidence | H | [counts] [done] | #166 |
 | C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
-| C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] [6.7.0] | #173 |
+| C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] RNA part group 3 (RJ-18, built); the rest [6.7.0] | #173 |
 | C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] [decided] | #174 |
 | T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [in review] | #170 |
 | T2 | Read census as the classification oracle in tests | M | [in review] | #171 |
@@ -66,15 +66,16 @@ marks a ticket with an open PR.
 | C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] [done] | #207 |
 | C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] [6.7.0] | #208 |
 | C31 | Measure the fragment end from the mate's unclipped 5' end (MC tag), so a mate's clipped 5' end does not clip molecule bases as adapter | L | [counts] [6.7.0] | #212 |
-| C32 | Junction-placement guard for spliced reads at exon-edge events (needs reference access in the engine) | M | [counts] [6.7.0] | #213 |
+| C32 | Junction-placement guard for spliced reads at exon-edge events (needs reference access in the engine) | M | [counts] group 3 (RJ-19, built) | #213 |
+| C34 | GTF transcripts keyed by ID alone: an ID reused on another chromosome merges (introns, per-transcript counts, ASJD); 0 such IDs in Ensembl 111 | S | [6.7.0] | #216 |
 | C33 | Exact-carrier REF and ALT windows read from different anchors can miss a contradicting base | L | [counts] [6.7.0] | #214 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
-| R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] [decide] | #185 |
-| R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] [6.7.0] | #198 |
+| R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] group 3 (decided, built) | #185 |
+| R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] group 3 (RJ-17, built) | #198 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | [6.7.0] | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] [6.7.0] | #180 |
 | O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | [decided] [done] | #183 |
-| O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | | #186 |
+| O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | group 3 (built) | #186 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] [done] | #114 |
 | I1 | MAF allele base check | M | [decided] | #123 |
@@ -1756,7 +1757,9 @@ changes in step whenever the read inputs do.
    judge their bases), C16 #174 (stray ALT at RNA exon edges; traced first).
    Policy for 6.7.0: C24 #195 (Phase-3 fallback tail), C6 #143 (identity band).
 3. **RNA strand and splices:** R4 #185 with O8 #186, R5 #198 (splices counted as
-   REF coverage). Policy for 6.7.0: R3 #178 (editing sites in windows).
+   REF coverage), C15 #173's RNA part (clips are not evidence) and C32 #213
+   (spliced reads read across their junction), brought in by the operator
+   2026-10-03. Policy for 6.7.0: R3 #178 (editing sites in windows).
 4. **Input and representation:** C9 #122, I1 #123, I2 #124, I3 #125, I4 #126,
    #147, H2 #149, C30 #208 (lowercase or unprepared alleles).
 5. **Merge, outputs, observability:** M4 #194, M2 #129, H1 #148, O1 #130, O2
