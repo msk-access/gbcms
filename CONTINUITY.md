@@ -66,13 +66,10 @@ pure-indel classification; the open decisions C26/C27/C28 are strict xfails ther
 - reference windows are upper case, and mFSD is deterministic;
 - acceptance: 140 of 144 files byte-identical, 4 rows adjudicated per read.
 
-**In progress — H3 #204 PR B (refactors, dead code, logging, monitoring,
-comments):**
-- branch `feature/h3-pr-b-cleanup`, not yet pushed;
-- byte-identity acceptance against PR A's build: 144 of 144 files identical
-  (`~/test/gbcms/harness/h3/`, `accept.py h3c h3pb`);
-- an adversarial review plus a develop-vs-branch fuzz found no count change
-  beyond the declared ones (see the plan's H3 "PR B as built").
+**Merged — H3 #204 PR B, #209 (refactors, dead code, logging, monitoring,
+comments):** byte-identical to PR A's build (144 of 144 files); an adversarial
+review plus a develop-vs-branch fuzz found no count change beyond the declared
+ones (the plan's H3 "PR B as built").
 
 **Merged — group 1, what a read contributes, #211 (C17 #176, C19 #182, O7 #183,
 C29 #207):** RJ-10 to RJ-13; C17 clips only adapter-like bases past the TLEN
@@ -107,10 +104,8 @@ Follow-ups filed:
 - C30 #208 (6.7.0): two pure-indel tests disagree with the allele kind on
   lowercase or unprepared input.
 
-**In progress — C25 #199 + C26 #200 (read judgment):** branch
-`feature/c25-c26-read-judgment`, not yet pushed. Decided spec-first from
-`docs/reference/read-judgment.md` (RJ-7, RJ-8, RJ-9; C27/C28 adopted in
-principle, measure first). Harness `~/test/gbcms/harness/c2526/` (local).
+**Merged — C25 #199 + C26 #200, #210 (read judgment):** decided spec-first from
+`docs/reference/read-judgment.md` (RJ-7, RJ-8, RJ-9).
 
 **Triage (2026-09-30):** every open issue was gone through by cluster with the
 operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
@@ -136,32 +131,26 @@ output fills Tumor_Seq_Allele1 with REF; REF_MISMATCH rows get `REF_AT_OFFSET(k)
 Acceptance: counts unchanged everywhere. Follow-ups: I7 #219, O9 #220 (6.7.0), M5
 #221 (group 5). Group 4 builds and slices removed (REMOVED_BUILDS.md).
 
-**In progress — group 5, merge, outputs, observability (M4 #194, M5 #221, M6 #223,
-M2 #129, H1 #148, O1 #130, O2 #131, D6 #156; pulled in from 6.7.0: M1a #224,
-O9 #220, D3a #225):** branch `feature/g5-merge-outputs`. Decided 2026-10-05 (M4
-2026-09-30), measured first, surveyed: combined NA for missing counts and for
-rows whose flavors' rescue differs; every gbcms column per input (set from the
-writer, found under the writer's --column-prefix); later-only rows keep
-annotations (by their own row); merged MAF provenance, version warning,
-pre-6.5.0 VCF shape refused (version-gated), builds name their commit
-(6.6.0.dev0); atomic outputs; per-BAM warnings once, exact counts; run-start
-settings block, implications and per-BAM facts with three measured warnings;
-QC flags defined once in qc-flags.md sections (included or linked; tests and
-the docs build guard it); whole-contig deletion VCF record valid; docs
-toolchain pinned below MkDocs 2. Commits: plan `1048c6de`, red `3a5baf5b`, fix
-`b317121f`, review red `8b1d7022` + fix `64bafc72`, docs single-source
-`941defbe`, pull-ins red `5a26e990` + fix `4cf49bc4`; two test expectations
-updated with the operator's approval (`4f46d4fb`, `6bd7da0d`). Pending:
-acceptance (base 9c371263; finals 64bafc72 and 6bd7da0d), PR. Harness
-`~/test/gbcms/harness/g5/`.
+**Group 5 merged (#226, develop 39c362fe, 2026-10-05):** M4 #194, M5 #221, M6 #223,
+M2 #129, H1 #148, O1 #130, O2 #131, D6 #156, and from 6.7.0 M1a #224, O9 #220,
+D3a #225; issues commented and closed by hand (#128 and #138 stay open for their
+6.7.0 halves). Combined NA for missing counts and for rows whose flavors' rescue
+differs; every gbcms column per input, read under the writer's --column-prefix;
+later-only rows keep annotations; merged MAF provenance, version warning,
+pre-6.5.0 VCF shape refused; builds name their commit (6.6.0.dev0); atomic
+outputs; per-BAM warnings once; run-start settings block and per-BAM facts; QC
+flags defined once in `docs/reference/qc-flags.md` sections; whole-contig
+deletion VCF record valid; docs toolchain pinned below MkDocs 2. Acceptance:
+counts unchanged everywhere (merge VAF/strand-bias formatting only). Follow-on
+for pointing users at flags: O10 #227 (6.7.0, decisions recorded). Group 5
+builds, slices and the review worktree removed (REMOVED_BUILDS.md).
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-Groups 1–4 are merged (#211, #215, #217, #222). `PRODUCTION_READINESS.md` holds the
-production gate.
-1. Group 5, merge, outputs, observability: M4 #194, M5 #221, M6 #223, M2 #129, H1 #148,
-   O1 #130, O2 #131, D6 #156 (branch `feature/g5-merge-outputs`; built).
-2. Group 6, statistics: S1 #153 (decided), S2 #154 (mFSD; not production-gating).
-3. Group 7, release: D1 #136, D2 #137, D4 #139 before the cut, P3 #152, then the
+Groups 1–5 are merged (#211, #215, #217, #222, #226). `PRODUCTION_READINESS.md` holds
+the production gate.
+1. Group 6, statistics: S1 #153 (decided), S2 #154 (mFSD; not production-gating);
+   branch `feature/g6-statistics`.
+2. Group 7, release: D1 #136, D2 #137, D4 #139 before the cut, P3 #152, then the
    D5 panel #155 on HPC as the gate run.
 Working rules for every group: measure first, red-first tests, an adversarial
 review, real-data acceptance per read, mount runs one at a time (slice locally
