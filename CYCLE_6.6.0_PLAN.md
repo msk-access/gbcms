@@ -67,6 +67,7 @@ marks a ticket with an open PR.
 | C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] [6.7.0] | #208 |
 | C31 | Measure the fragment end from the mate's unclipped 5' end (MC tag), so a mate's clipped 5' end does not clip molecule bases as adapter | L | [counts] [6.7.0] | #212 |
 | C32 | Junction-placement guard for spliced reads at exon-edge events (needs reference access in the engine) | M | [counts] group 3 (RJ-19, built) | #213 |
+| C34 | GTF transcripts keyed by ID alone: an ID reused on another chromosome merges (introns, per-transcript counts, ASJD); 0 such IDs in Ensembl 111 | S | [6.7.0] | #216 |
 | C33 | Exact-carrier REF and ALT windows read from different anchors can miss a contradicting base | L | [counts] [6.7.0] | #214 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
 | R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] group 3 (decided, built) | #185 |

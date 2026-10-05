@@ -87,6 +87,7 @@ Each run reports:
 | O5 #179 | No mapping-bias diagnostic | ALT vs REF MAPQ and clipping skew |
 | C24 #195 | Stale scores in the no-reference fallback (partial only) | Rows on that path (unprepared input only) |
 | C33 #214 | A REF molecule with one clear error just outside the window its ALT reading is anchored away from can count ALT (pre-existing) | Spurious ALT at the synthetic probes after RJ-16 |
+| C34 #216 | A GTF that reuses a transcript ID on another chromosome merges its introns (per-transcript counts, ASJD, exon-edge rules) | Transcript IDs reused across chromosomes or strands in the production GTF (Ensembl 111: 0) |
 
 ## 4. Release and reproducibility
 
