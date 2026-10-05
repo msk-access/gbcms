@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — release infrastructure (#136, #137, #152)
+
+- **One version source per ecosystem (#136).** The Python package takes its version
+  from `rust/Cargo.toml` (maturin, `dynamic = ["version"]`; `gbcms.__version__` reads the
+  installed metadata), and the Nextflow modules and banner read `manifest.version`. A
+  release edits `rust/Cargo.toml`, the Nextflow manifest and the CHANGELOG instead of
+  11 places in two formats. `scripts/release.py check` runs on every PR, and with
+  `--tag` it is the release workflow's first job: nothing builds or publishes unless
+  the tag is a bare `X.Y.Z` equal to Cargo.toml, its lock and the manifest, with a
+  dated CHANGELOG section (a tag on a dev version would have published a dev wheel
+  under the release). The Nextflow lint job checks every process resolves to the
+  manifest's image; `gbcms --version` and the resolved images are unchanged.
+- **The release workflow creates the GitHub Release (#137).** After PyPI and the image
+  are published, it creates (or updates) the Releases entry: the title and notes from
+  the tag's CHANGELOG section (`## [X.Y.Z] - YYYY-MM-DD — summary`), the wheel and sdist
+  attached with `SHA256SUMS`, and a build-provenance attestation for each artifact.
+- **The bin window is documented as the floor it is (#152).** `BIN_WINDOW` (10 kb) is a
+  minimum span that dense variants chain past, bounded by the 200-variant cap; measured
+  on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
+  47 kb) and never capped by span. The page no longer cites the retired parity suite.
+
 ### Changed — mFSD statistics (#153, #154)
 
 Measured first on ACCESS plasma labeled by the patient's buffy coat (operator

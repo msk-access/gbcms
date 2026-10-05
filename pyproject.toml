@@ -1,6 +1,7 @@
 [project]
 name = "gbcms"
-version = "6.6.0.dev0"
+# The version is rust/Cargo.toml's (maturin converts it to PEP 440); see the release guide.
+dynamic = ["version"]
 description = "Python implementation of GetBaseCountsMultiSample (gbcms) for calculating base counts in BAM files"
 authors = [
     {name = "MSK-ACCESS", email = "shahr2@mskcc.org"}

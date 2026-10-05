@@ -122,6 +122,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      # One version source per ecosystem (rust/Cargo.toml for the package, the
+      # Nextflow manifest for the pipeline); the release guide lists the locations.
+      - name: Check version sources
+        run: python scripts/release.py check
+
       - name: Install uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh

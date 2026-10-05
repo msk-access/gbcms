@@ -8,7 +8,15 @@ Example usage:
     $ gbcms dna -v variants.vcf -b sample.bam -f reference.fa -o output/
 """
 
-__version__ = "6.6.0.dev0"
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _package_version
+
+# The installed package's version, which maturin takes from rust/Cargo.toml: one
+# source for the package, the extension and every output's provenance line.
+try:
+    __version__ = _package_version("gbcms")
+except PackageNotFoundError:  # a source tree that was never installed
+    __version__ = "unknown"
 
 from .merge import merge_mafs
 from .models.core import (

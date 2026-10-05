@@ -1,4 +1,4 @@
-"""Group 7 release-infrastructure contracts (D1 #136, D2 #137, P3 #152), red first.
+"""Group 7 release-infrastructure contracts (D1 #136, D2 #137, P3 #152).
 
 Operator decisions 2026-10-05: one version source per ecosystem (Cargo for the
 Python package and the extension, the Nextflow manifest for the pipeline) with a
@@ -19,10 +19,6 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "release.py"
 
-_D1 = pytest.mark.xfail(strict=True, reason="D1: versions are hand-edited in 11 places, unchecked")
-_D2 = pytest.mark.xfail(strict=True, reason="D2: the Release page is made by hand")
-_P3 = pytest.mark.xfail(strict=True, reason="P3: the docs call the bin window a maximum")
-
 
 def _release():
     spec = importlib.util.spec_from_file_location("release_tools", SCRIPT)
@@ -35,7 +31,6 @@ def _release():
 # ── D1: one source per ecosystem ────────────────────────────────────────────
 
 
-@_D1
 def test_the_python_package_takes_its_version_from_cargo():
     text = (ROOT / "pyproject.toml").read_text()
     project = text[text.index("[project]") : text.index("\n[", text.index("[project]") + 1)]
@@ -43,7 +38,6 @@ def test_the_python_package_takes_its_version_from_cargo():
     assert not re.search(r"^version\s*=", project, re.M), "no static version in [project]"
 
 
-@_D1
 def test_the_module_version_is_the_installed_package_version():
     import gbcms
 
@@ -52,7 +46,6 @@ def test_the_module_version_is_the_installed_package_version():
     assert not re.search(r'__version__\s*=\s*["\']\d', source), "no version literal in __init__"
 
 
-@_D1
 def test_nextflow_reads_its_image_tag_and_banner_from_the_manifest():
     modules = sorted((ROOT / "nextflow" / "modules" / "local" / "gbcms").glob("*/main.nf"))
     containers = [m for m in modules if "container" in m.read_text()]
@@ -66,7 +59,6 @@ def test_nextflow_reads_its_image_tag_and_banner_from_the_manifest():
     assert not stale, stale
 
 
-@_D1
 def test_the_version_check_passes_on_this_tree():
     assert _release().check(ROOT) == []
 
@@ -107,12 +99,10 @@ def _tree(tmp_path, cargo="6.6.0", lock=None, manifest="6.6.0", changelog=None, 
     return tmp_path
 
 
-@_D1
 def test_the_release_check_passes_when_every_source_agrees_with_the_tag(tmp_path):
     assert _release().check(_tree(tmp_path), tag="6.6.0") == []
 
 
-@_D1
 @pytest.mark.parametrize(
     "kwargs,needle",
     [
@@ -128,12 +118,10 @@ def test_the_release_check_names_what_disagrees(tmp_path, kwargs, needle):
     assert problems and any(needle in p for p in problems), problems
 
 
-@_D1
 def test_the_release_check_refuses_a_tag_that_is_not_a_plain_version(tmp_path):
     assert _release().check(_tree(tmp_path), tag="v6.6.0")
 
 
-@_D1
 def test_the_release_guide_lists_exactly_the_checked_locations():
     guide = (ROOT / "docs" / "development" / "release-guide.md").read_text()
     section = guide[
@@ -148,7 +136,6 @@ def test_the_release_guide_lists_exactly_the_checked_locations():
 # ── D2: the Release page comes from the CHANGELOG ───────────────────────────
 
 
-@_D2
 def test_release_notes_and_title_come_from_the_changelog_section(tmp_path):
     rel = _release()
     root = _tree(tmp_path)
@@ -183,7 +170,6 @@ def _runs(job):
     return "\n".join(str(s.get("run", "")) + str(s.get("uses", "")) for s in job.get("steps", []))
 
 
-@_D1
 def test_the_release_workflow_publishes_nothing_before_the_version_check():
     jobs = _jobs("release.yml")
     assert "scripts/release.py check --tag" in _runs(jobs["verify"])
@@ -191,18 +177,15 @@ def test_the_release_workflow_publishes_nothing_before_the_version_check():
         assert "verify" in _ancestors(jobs, job), job
 
 
-@_D1
 def test_every_pr_runs_the_version_check():
     assert any("scripts/release.py check" in _runs(j) for j in _jobs("test.yml").values())
 
 
-@_D1
 def test_the_nextflow_lint_job_inspects_the_resolved_containers():
     runs = "\n".join(_runs(j) for j in _jobs("nextflow-lint.yml").values())
     assert "nextflow inspect" in runs and "manifest" in runs
 
 
-@_D2
 def test_the_release_workflow_creates_the_release_page_with_attested_artifacts():
     jobs = _jobs("release.yml")
     job = jobs["github-release"]
@@ -219,7 +202,6 @@ def test_the_release_workflow_creates_the_release_page_with_attested_artifacts()
 # ── P3: the bin window is a floor ───────────────────────────────────────────
 
 
-@_P3
 def test_the_architecture_page_says_the_bin_window_is_a_floor():
     page = (ROOT / "docs" / "reference" / "architecture.md").read_text()
     row = next(ln for ln in page.splitlines() if ln.startswith("| `BIN_WINDOW`"))
