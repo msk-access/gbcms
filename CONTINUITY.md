@@ -127,38 +127,41 @@ RNA, public reference data), not one assay. See the plan's "Validation standard"
 Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
-**In progress — group 4, input and representation (C9 #122, I1 #123, I2 #124,
-I3 #125, I4 #126, I6 #218, #147, H2 #149, C30 #208):** branch `feature/g4-input`.
-Decided (2026-09-25 I1/I3/I4; 2026-10-05 the rest): non-sequence MAF alleles FAIL
-`NON_SEQUENCE_ALLELE` (VCF output `<NON_SEQUENCE>`); VCF output of MAF input
-carries MAF_START/MAF_REF/MAF_ALT (the row's alleles as written); a MAF deletion
-at Start 1 counts in the base-after form; End_Position optional (merge joins on
-contig, Start and alleles, fills End_Position from the inputs that have each
-row, and joins on it too only when an input splits a variant by it); VCF-input
-MAF output fills Tumor_Seq_Allele1 with REF; one row, one allele;
-decomposed/sibling lists padded short, rejected long; one allele-kind rule;
-I6: a REF_MISMATCH row stays FAIL and gets `REF_AT_OFFSET(k)` in
-gbcms_diagnostic (REF of 3+ bases exact within ±3 bp). Commits: red `766f8e7c`,
-fix `03563479`, merge key `d928c9af`, review + I6 red `0925f636` and fix.
-Measured on the sign-out dump (1.13M rows): 7 non-sequence alleles, 0 Start-1
-deletions, 0 missing End_Position, 0 differing Allele1, 0 prepared rows hit by
-C30, 154 REF_MISMATCH (87 sit 1–3 bp off; 109 from 134 legacy ANNOVAR rows).
-Adversarial review done (findings fixed; I7 #219 and O9 #220 filed for 6.7.0).
-Group 3's "vaf unchanged" corrected on #198 and the #217 description (2026-10-05).
-Acceptance (base develop 5fb7e79a vs 90942daa): RC DNA, WES, truth identical; VCF-input
-probe sets (T9, splice, masked) change only Tumor_Seq_Allele1 (REF); VCF output adds only
-the MAF origin (each record names one input row); sign-out normalize: 87 REF_AT_OFFSET.
-Pending: PR. Harness `~/test/gbcms/harness/g4/`.
+**Group 4 merged (#222, develop 9c371263, 2026-10-05):** C9 #122, I1 #123, I2 #124,
+I3 #125, I4 #126, I6 #218, #147, H2 #149, C30 #208; issues commented and closed by
+hand. Non-sequence alleles FAIL `NON_SEQUENCE_ALLELE` (`<NON_SEQUENCE>` in VCF);
+VCF output of MAF input carries the MAF row; Start-1 MAF deletions counted;
+End_Position optional (merge joins on contig, Start, alleles); VCF-input MAF
+output fills Tumor_Seq_Allele1 with REF; REF_MISMATCH rows get `REF_AT_OFFSET(k)`.
+Acceptance: counts unchanged everywhere. Follow-ups: I7 #219, O9 #220 (6.7.0), M5
+#221 (group 5). Group 4 builds and slices removed (REMOVED_BUILDS.md).
+
+**In progress — group 5, merge, outputs, observability (M4 #194, M5 #221, M6 #223,
+M2 #129, H1 #148, O1 #130, O2 #131, D6 #156; pulled in from 6.7.0: M1a #224,
+O9 #220, D3a #225):** branch `feature/g5-merge-outputs`. Decided 2026-10-05 (M4
+2026-09-30), measured first, surveyed: combined NA for missing counts and for
+rows whose flavors' rescue differs; every gbcms column per input (set from the
+writer, found under the writer's --column-prefix); later-only rows keep
+annotations (by their own row); merged MAF provenance, version warning,
+pre-6.5.0 VCF shape refused (version-gated), builds name their commit
+(6.6.0.dev0); atomic outputs; per-BAM warnings once, exact counts; run-start
+settings block, implications and per-BAM facts with three measured warnings;
+QC flags defined once in qc-flags.md sections (included or linked; tests and
+the docs build guard it); whole-contig deletion VCF record valid; docs
+toolchain pinned below MkDocs 2. Commits: plan `1048c6de`, red `3a5baf5b`, fix
+`b317121f`, review red `8b1d7022` + fix `64bafc72`, docs single-source
+`941defbe`, pull-ins red `5a26e990` + fix `4cf49bc4`; two test expectations
+updated with the operator's approval (`4f46d4fb`, `6bd7da0d`). Pending:
+acceptance (base 9c371263; finals 64bafc72 and 6bd7da0d), PR. Harness
+`~/test/gbcms/harness/g5/`.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
-Groups 1–3 are merged (#211, #215, #217). `PRODUCTION_READINESS.md` holds the
+Groups 1–4 are merged (#211, #215, #217, #222). `PRODUCTION_READINESS.md` holds the
 production gate.
-1. Group 4, input and representation: C9 #122, I1 #123, I2 #124, I3 #125, I4 #126,
-   #147, H2 #149, C30 #208 (the production blockers among them: #123, C30, I3, I4).
-2. Group 5, merge, outputs, observability: M4 #194, M5 #221, M2 #129, H1 #148, O1 #130,
-   O2 #131, D6 #156.
-3. Group 6, statistics: S1 #153 (decided), S2 #154 (mFSD; not production-gating).
-4. Group 7, release: D1 #136, D2 #137, D4 #139 before the cut, P3 #152, then the
+1. Group 5, merge, outputs, observability: M4 #194, M5 #221, M6 #223, M2 #129, H1 #148,
+   O1 #130, O2 #131, D6 #156 (branch `feature/g5-merge-outputs`; built).
+2. Group 6, statistics: S1 #153 (decided), S2 #154 (mFSD; not production-gating).
+3. Group 7, release: D1 #136, D2 #137, D4 #139 before the cut, P3 #152, then the
    D5 panel #155 on HPC as the gate run.
 Working rules for every group: measure first, red-first tests, an adversarial
 review, real-data acceptance per read, mount runs one at a time (slice locally

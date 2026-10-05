@@ -457,15 +457,10 @@ Consequences to keep in mind when reading a rescued row:
 `gbcms_rescue` is empty for non-candidates and is reset for every sample (the prepared
 variant list is shared across the BAMs of a run). For candidates:
 
-| Outcome | Meaning | Counts written |
-|:--------|:--------|:---------------|
-| `rescued` | Best component beats the MNP's `ad`; `gbcms_diagnostic` gains `RESCUED_COMPONENT(chrom:pos:REF>ALT)` and a warning is logged | Adopted component's |
-| `skipped_grouped` | MNP is in a co-annotated group | MNP's |
-| `haplotype_confirmed` | At least one read shows the whole haplotype (`mnp_confirmed_alt > 0`, gate row 5) — the BAM shows the annotated allele | MNP's |
-| `no_improvement` | No component beats the MNP's `ad`: the partial evidence was not component carriers — e.g. reads with an indel inside the block, which the complex path counts as REF with nearby-indel evidence and no single-base count calls ALT. Rescue correctly declines | MNP's |
-| `ref_validation_failed` | No component SNV survived preparation — an anomaly (the MNP itself passed REF validation); logged as a warning | MNP's |
+<!-- Defined once, in QC Flags; this includes that table. -->
+--8<-- "reference/qc-flags.md:rescue"
 
-`MNP_DISC_RATIO(n/m)` and `MNP_RESCUE_ELIGIBLE` describe the annotated MNP's *shape*, so a rescued row keeps them next to `RESCUED_COMPONENT(...)`: rows still awaiting review after a rescue run are those with `MNP_RESCUE_ELIGIBLE` and **without** `RESCUED_COMPONENT` (equivalently, `gbcms_rescue` `outcome` other than `rescued`).
+`MNP_DISC_RATIO(n/m)` and `MNP_RESCUE_ELIGIBLE` describe the annotated MNP's *shape*, so a rescued row keeps them next to `RESCUED_COMPONENT(...)`: rows still awaiting review after a rescue run are those with `MNP_RESCUE_ELIGIBLE` and **without** `RESCUED_COMPONENT` (equivalently, `gbcms_rescue` `outcome` other than `rescued`). The flags: [QC Flags → Diagnostics](qc-flags.md#diagnostics).
 
 `original_ref` / `original_alt` / `original_partial` / `original_confirmed` always carry the
 MNP's own counts (`original_confirmed` is its `mnp_confirmed_alt`).

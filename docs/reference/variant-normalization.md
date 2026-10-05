@@ -287,19 +287,8 @@ PASS). Both appear in the MAF (two columns) and the VCF INFO (`GS` = verdict,
 `GSR` = reasons). `|` is used (never `;`/`,`, which are VCF-unsafe), so the reason
 string is byte-identical in the MAF and the VCF.
 
-| `gbcms_status` | `gbcms_status_reason` | Meaning | Counted? |
-|:-------|:--------|:--------|:--------:|
-| `PASS` | *(empty)* | REF matches FASTA exactly | ✅ |
-| `PASS` | `WARN_REF_CORRECTED` | REF ≥90% match; corrected to FASTA REF | ✅ |
-| `PASS` | `WARN_HOMOPOLYMER_DECOMP` | Passed, but the corrected allele was used (`--rescue-homopolymer` only) | ✅ |
-| `PASS` | `MULTI_ALLELIC` | Passed; overlaps a sibling variant at the same locus (sibling-ALT exclusion active) | ✅ |
-| `PASS` | `TRACT_CLUSTER` | Passed; shares a repeat-tract scan window with a co-annotated length-changing variant (exclusive AD assignment active) | ✅ |
-| `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome; `gbcms_diagnostic` gives `REF_AT_OFFSET(k)` when the REF sits exactly a few bases off | ❌ |
-| `FAIL` | `FETCH_FAILED` | Could not fetch the reference region | ❌ |
-| `FAIL` | `EMPTY_ALLELE` | Empty REF or ALT (malformed / non-left-anchored indel) | ❌ |
-| `FAIL` | `NON_SEQUENCE_ALLELE` | An allele is not a base sequence (anything but A, C, G, T, N in either case, or a MAF `-`) | ❌ |
-| `FAIL` | `ALT_EQUALS_REF` | ALT equals REF (any case; `-` for both in a MAF): no change to count | ❌ |
-| `FAIL` | `ALT_CONTAINS_N` | ALT allele contains an `N` base | ❌ |
+<!-- The reasons are defined once, in QC Flags; this includes that table. -->
+--8<-- "reference/qc-flags.md:status"
 
 Reasons **stack**: a PASS variant can carry `WARN_REF_CORRECTED|WARN_HOMOPOLYMER_DECOMP`.
 

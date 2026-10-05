@@ -41,7 +41,15 @@ use rayon::prelude::*;
 /// What one genomic bin produces: `(vi, counts)` pairs, the per-molecule rows for
 /// those variants (empty unless observations were requested), and how many fetched
 /// records the read filter dropped for having no bases (warned once per BAM).
-type BinOutput = (Vec<(usize, BaseCounts)>, Vec<Observation>, (u64, u64));
+/// Per bin: (variant index, counts) pairs, observations, and the identities of the
+/// records dropped for having no bases / no base qualities. Overlapping bins fetch
+/// a record more than once, so the identities are merged as sets: each record is
+/// counted once in the per-BAM warning.
+type BinOutput = (
+    Vec<(usize, BaseCounts)>,
+    Vec<Observation>,
+    (HashSet<u64>, HashSet<u64>),
+);
 
 use anyhow::{Context, Result};
 use log::{debug, info, trace, warn};
@@ -433,6 +441,7 @@ fn count_bam_binned_core(
     library_type: &str,
     bin_window: Option<i64>,
     bin_max_variants: Option<i64>,
+    warn_per_bam: bool,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     let (window, max_variants) = bin_geometry(bin_window, bin_max_variants)?;
     // The decomposed and sibling lists run parallel to the variants: a shorter
@@ -759,12 +768,12 @@ fn count_bam_binned_core(
                 // sort below fixes comes from `HashMap` iteration *within* a variant, not
                 // from here.)
                 .try_reduce(
-                    || (Vec::new(), Vec::new(), (0, 0)),
+                    || (Vec::new(), Vec::new(), (HashSet::new(), HashSet::new())),
                     |mut acc: BinOutput, batch| {
                         acc.0.extend(batch.0);
                         acc.1.extend(batch.1);
-                        acc.2 .0 += batch.2 .0;
-                        acc.2 .1 += batch.2 .1;
+                        acc.2 .0.extend(batch.2 .0);
+                        acc.2 .1.extend(batch.2 .1);
                         Ok(acc)
                     },
                 )
@@ -795,23 +804,23 @@ fn count_bam_binned_core(
             );
 
             // Records stored without bases (SEQ '*') show no allele, so the read
-            // filter drops them. Say so once per counting pass: a BAM stripped of its
-            // sequences would otherwise count nothing with no word above DEBUG. The
-            // tally is per bin fetch, and bin windows overlap, so it is an upper bound.
-            if no_bases > 0 {
+            // filter drops them. Say so once per BAM: a BAM stripped of its sequences
+            // would otherwise count nothing with no word above DEBUG. Each record is
+            // counted once, however many overlapping bins fetched it. A second pass
+            // over the same BAM (the --rescue-mnp recount) runs with warn_per_bam off,
+            // so the main pass's warnings stand for the BAM.
+            if warn_per_bam && !no_bases.is_empty() {
                 warn!(
-                    "{}: skipped {} record(s) stored without bases (SEQ '*') (an upper bound: \
-                     a record fetched by overlapping bins counts once per bin); they show no \
+                    "{}: skipped {} record(s) stored without bases (SEQ '*'); they show no \
                      allele and are not counted",
-                    bam_label, no_bases,
+                    bam_label, no_bases.len(),
                 );
             }
-            if no_quals > 0 {
+            if warn_per_bam && !no_quals.is_empty() {
                 warn!(
-                    "{}: skipped {} record(s) stored without base qualities (QUAL '*') (an upper \
-                     bound: a record fetched by overlapping bins counts once per bin); their bases \
-                     have no stated quality and are not counted",
-                    bam_label, no_quals,
+                    "{}: skipped {} record(s) stored without base qualities (QUAL '*'); their \
+                     bases have no stated quality and are not counted",
+                    bam_label, no_quals.len(),
                 );
             }
 
@@ -822,7 +831,7 @@ fn count_bam_binned_core(
             if let (Some(tag), Some(tag_bytes)) = (umi_tag, umi_tag_owned) {
                 let tagged: u64 = all_counts.iter().map(|c| c.umi_tagged_reads as u64).sum();
                 let depth: u64 = all_counts.iter().map(|c| c.dp as u64).sum();
-                if tagged == 0 && depth > 0 {
+                if warn_per_bam && tagged == 0 && depth > 0 {
                     warn!(
                         "--umi-tag {}: no processed read in {} carries the {} tag; fragment \
                          grouping fell back to read names (QNAME) for this BAM",
@@ -932,7 +941,7 @@ fn count_bam_binned_core(
 /// arguments (production passes neither): counts must not depend on them.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None, warn_per_bam=true))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -968,6 +977,7 @@ pub fn count_bam_binned(
     library_type: &str,
     bin_window: Option<i64>,
     bin_max_variants: Option<i64>,
+    warn_per_bam: bool,
 ) -> PyResult<Vec<BaseCounts>> {
     let (counts, _observations) = count_bam_binned_core(
         py, false, None, bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates,
@@ -976,7 +986,7 @@ pub fn count_bam_binned(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
-        bin_window, bin_max_variants,
+        bin_window, bin_max_variants, warn_per_bam,
     )?;
     Ok(counts)
 }
@@ -1038,7 +1048,7 @@ pub fn count_bam_binned_observations(
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
         mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
-        bin_window, bin_max_variants,
+        bin_window, bin_max_variants, true,
     )
 }
 
@@ -1139,12 +1149,19 @@ fn count_bin_shared(
         filter_indel,
     };
     let mut filter_counts = crate::shared::filters::FilterCounts::default();
+    let (mut no_bases_seen, mut no_quals_seen) = (HashSet::new(), HashSet::new());
 
     for result in bam.records() {
         let record = result.context("count_bin_shared: error reading BAM record")?;
 
         // Universal flag filters (delegated to shared::filters::ReadFilter).
+        let (no_bases_before, no_quals_before) = (filter_counts.no_bases, filter_counts.no_quals);
         if !read_filter.passes(&record, &mut filter_counts) {
+            if filter_counts.no_bases != no_bases_before {
+                no_bases_seen.insert(record_identity(&record));
+            } else if filter_counts.no_quals != no_quals_before {
+                no_quals_seen.insert(record_identity(&record));
+            }
             continue;
         }
 
@@ -1330,7 +1347,7 @@ fn count_bin_shared(
         results.push((vi, final_counts));
     }
 
-    Ok((results, bin_observations, (filter_counts.no_bases, filter_counts.no_quals)))
+    Ok((results, bin_observations, (no_bases_seen, no_quals_seen)))
 }
 
 
@@ -2721,6 +2738,15 @@ fn effective_quals(record: &Record, use_baq: bool, baq_spare: Option<(i64, i64)>
         Some(adjusted) => std::borrow::Cow::Owned(adjusted),
         None => std::borrow::Cow::Borrowed(record.qual()),
     }
+}
+
+/// One record's identity across the bins that fetch it: name, flags, contig and
+/// position (a read and its mate, or its supplementary pieces, differ in flags or
+/// position).
+fn record_identity(record: &Record) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    std::hash::Hash::hash(&(record.qname(), record.flags(), record.tid(), record.pos()), &mut h);
+    std::hash::Hasher::finish(&h)
 }
 
 /// The read's molecule key, and whether it carried the UMI: a hash of its QNAME,

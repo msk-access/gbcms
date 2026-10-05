@@ -16,6 +16,8 @@ from typing import Any
 from gbcms.core.kernel import CoordinateKernel
 from gbcms.io.output import CH_GENES
 
+from ..io.atomic import atomic_output
+
 logger = logging.getLogger(__name__)
 
 # ── Tooltip definitions (single source of truth for hover-over explanations) ──
@@ -56,11 +58,11 @@ TOOLTIPS: dict[str, str] = {
     ),
     # Fragment Origin Signal classifications
     "TUMOR-LIKE": (
-        "Sub-nucleosomal enrichment >1.3, KS p<0.05, and gene is NOT in the "
+        "Sub-nucleosomal enrichment >1.3, KS q<0.05 (FDR-corrected), and gene is NOT in the "
         "CH gene set. Suggests tumor-derived cfDNA origin."
     ),
     "CH-LIKE": (
-        "Known CH gene, sub-nucleosomal enrichment <1.2, and KS p>0.05. "
+        "Known CH gene, sub-nucleosomal enrichment <1.2, and KS q>0.05 (FDR-corrected). "
         "ALT fragment sizes mirror REF, consistent with clonal hematopoiesis."
     ),
     "AMBIGUOUS": (
@@ -381,7 +383,8 @@ def generate_mfsd_report(
 
     # ── Generate HTML ────────────────────────────────────────────────────────
     html = _build_html(variants, sample_name, parquet_path.name, min_alt)
-    output_path.write_text(html, encoding="utf-8")
+    with atomic_output(output_path, "w", encoding="utf-8") as fh:
+        fh.write(html)
     logger.info("mFSD report written: %s (%d variants)", output_path, len(variants))
     return output_path
 

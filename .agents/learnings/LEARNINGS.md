@@ -17,6 +17,21 @@ regenerating a section.
 
 ---
 
+## [LRN-20261005-002] rule-trigger | a review-agent prompt names the venv maturin installs into
+- **Status:** resolved (rule promoted)
+- **Cause:** rule-trigger
+- **Summary:** the group 5 review agent ran `.rv/bin/maturin develop` from its
+  worktree, which sits under `.claude/worktrees/` inside the main checkout; with
+  no `VIRTUAL_ENV`, maturin installed into the main checkout's `.venv`, whose
+  `gbcms.pth` then pointed at the worktree. My prompt gave that command. The same
+  failure was recorded on 2026-10-03 in the memory file, but its index line (the
+  part loaded every session) did not carry the rule, so it was not in view when I
+  wrote the prompt. Repaired by `maturin develop` from the main root.
+- **Promotion target:** `DONE:` `.agents/memory/MEMORY.md` — the
+  worktree-venv index line now says every review-agent prompt sets
+  `VIRTUAL_ENV=<scratch venv>` for `maturin develop`.
+- **Related:** [[worktree-tests-need-isolated-venv]], [[maturin-develop-repo-root-only]].
+
 ## [LRN-20261005-001] rule-body | a derived output's behaviour is checked where each writer computes it
 - **Status:** resolved (rule promoted)
 - **Cause:** rule-body

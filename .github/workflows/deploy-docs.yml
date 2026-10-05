@@ -42,7 +42,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install mkdocs-material mkdocs-mermaid2-plugin \
+          # MkDocs 2.0 is incompatible with Material and this site's config
+          # (D3 #138): pinned below it, as in pyproject's dev extras.
+          pip install "mkdocs>=1.6,<2" "mkdocs-material>=9.5,<10" mkdocs-mermaid2-plugin \
             mkdocs-glightbox mkdocs-git-revision-date-localized-plugin \
             mkdocs-panzoom-plugin pillow cairosvg mike mkdocs-pdf \
             mkdocs-print-site-plugin

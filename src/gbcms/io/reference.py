@@ -40,6 +40,11 @@ class ReferenceBases:
         """(name, length) of every FASTA contig, in FASTA order."""
         return list(zip(self._fasta.references, self._fasta.lengths, strict=True))
 
+    def length(self, chrom: str) -> int | None:
+        """The length of ``chrom`` in the FASTA (any naming), or None if absent."""
+        name = self._names.get(CoordinateKernel.contig_key(chrom))
+        return self._fasta.get_reference_length(name) if name is not None else None
+
     def base(self, chrom: str, pos: int) -> str:
         """The upper-case base at 1-based ``pos`` of ``chrom``, or ``N``."""
         name = self._names.get(CoordinateKernel.contig_key(chrom))

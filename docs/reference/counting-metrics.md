@@ -354,8 +354,8 @@ equals the p-value until the post-counting BH pass runs.
 | `mfsd_n_rate` | N / total_mFSD fragments. `NA` when total = 0. |
 | `mfsd_size_ratio` | mean(ALT) / mean(REF). `NA` when REF mean = 0 or ALT count = 0. |
 | `mfsd_quality_score` | 1 − error_rate − n_rate. `NA` when either rate is `NA`. |
-| `mfsd_alt_confidence` | `HIGH` (≥5 ALT frags), `LOW` (1–4), `NONE` (0) |
-| `mfsd_ks_valid` | `True` when both ALT and REF have ≥5 fragments |
+| `mfsd_alt_confidence` | QC flag: [definition](qc-flags.md#qc-columns) |
+| `mfsd_ks_valid` | QC flag: [definition](qc-flags.md#qc-columns) |
 
 #### Nucleosomal Fractions
 
@@ -371,7 +371,7 @@ equals the p-value until the post-counting BH pass runs.
 
 | Column | Description |
 |:-------|:------------|
-| `mfsd_ch_flag` | `True` when the variant falls in a clonal-hematopoiesis (CH) gene |
+| `mfsd_ch_flag` | QC flag: [definition](qc-flags.md#qc-columns) |
 
 ### VCF INFO Fields (13 total)
 
@@ -425,7 +425,7 @@ RNA-seq reads exhibit orientation biases (dUTP strandedness), splice junctions (
 | `rna_sense_depth` | u32 | REF and ALT reads aligning to the gene **sense** strand |
 | `rna_antisense_depth` | u32 | REF and ALT reads aligning to the gene **antisense** strand |
 | `rna_alt_sense_count` | u32 | ALT-classified reads on the sense strand |
-| `rna_editing_site` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
+| `rna_editing_site` | bool | QC flag (`--rna-editing-db`): [definition](qc-flags.md#qc-columns) |
 | `rna_splice_spanning` | u32 | ALT-classified reads containing splice junctions (CIGAR `N`) spanning the variant |
 
 ### VCF Fields

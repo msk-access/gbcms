@@ -670,6 +670,10 @@ class MergeConfig(BaseModel):
             "with genotype_variants merge output."
         ),
     )
+    command_line: str = Field(
+        default="",
+        description="The merge command, written to the merged MAF's provenance.",
+    )
 
     @field_validator("inputs")
     @classmethod

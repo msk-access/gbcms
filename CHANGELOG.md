@@ -7,6 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — merge, outputs and observability (#194, #221, #223, #224, #129, #148, #130, #131, #156, #220, #225)
+
+Measured first (operator decisions 2026-09-30 for #194, 2026-10-05 for the rest);
+community practice surveyed (bcftools, Picard/htsjdk, GATK, samtools/htslib,
+maftools, genotype_variants, Snakemake, Nextflow, bam-readcount, LoFreq, fgbio,
+DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
+- **A missing count is not a zero in `gbcms merge` (#194).** When either flavor's
+  count cell is missing or not a finite number (empty, `NA`, `nan`, `inf`, text)
+  in a row it has, the combined `simplex_duplex_*` cell is `NA`, as are the
+  totals, VAFs and strand bias built from it, and merge warns once per column
+  with the number of rows (it summed them as 0, silently). A row an input lacks
+  still counts 0 for it. Combined VAFs are written with four decimals, as the
+  writers write theirs (`f"{v:.4f}"`), and the combined strand-bias p-values and
+  odds ratios as theirs (`1.7045e-01`, `3.0000`). No real output carries such cells (0 of 180,348 count
+  cells measured); they come from edited files or other tools.
+- **Merge keeps every gbcms column per input (#223).** The mFSD and RNA columns
+  (63 of the 89 columns the writers can emit) were taken from the first input
+  only, unprefixed, and every later input's were dropped: with `--mfsd`, which
+  the pipeline allows alongside merge, a merged ACCESS output showed the duplex
+  BAM's fragment sizes as the sample's. They are prefixed per input
+  (`duplex_mfsd_ref_mean`), the set taken from the writer, with a test that it
+  matches in every mode. Inputs written with `--column-prefix` (`duplex_` as the
+  pipeline runs it, `t_`) carry their counts under that prefix and their status,
+  strand-bias, mFSD and RNA columns unprefixed: merge renamed nothing for them, so
+  the second input's status and strand bias were dropped too, and `t_` counts were
+  never combined. Every column is now found under the writer's name.
+- **A row only a later input has keeps its annotations (#221):** its first-input
+  columns (gene, sample barcode, classification...) come from the earliest
+  later input that has the row (matched by that input's own row, so one variant
+  listed for two samples keeps each sample's); they were empty. No work when
+  every row is in the first input, as in the pipeline.
+- **Merge reads its inputs' provenance (#129).** The merged MAF starts with its
+  own `#gbcms`/`#command` lines and one `#input` line per input with that
+  input's version line (it had none). Merge warns when the inputs come from
+  different versions or builds (builds differ only when both name a commit), or
+  when only some say which version wrote them, and stops when one is a VCF-input
+  MAF from before 6.5.0 (`vcf_pos` without `vcf_ref`/`vcf_alt`, its version line
+  missing or older than 6.5.0; a later output can carry vcf2maf's `vcf_pos`) and
+  another is not: the
+  same 102k VCF records genotyped by 6.4.0 and by this version differ in 6.3% of
+  their rows, which merged into 12,771 half-empty rows with exit 0. The INFO line
+  that claimed "n/m variants have no <type> counts" counted rows whose REF count
+  was 0; it now counts the rows each input lacks. No surveyed merger compares
+  producer versions.
+- **Merge no longer sums two alleles where the flavors' MNP rescue differs
+  (#224, the rescue half of #128, pulled in from 6.7.0).** When one flavor
+  reports a rescued component and the other the MNP (or rescue ran on one flavor
+  only), the row's combined `simplex_duplex_*` cells are `NA`; they added the two
+  alleles' counts, with only a warning. A row one flavor lacks is not mixed. 20
+  real ACCESS pairs had none; the warning names each such row.
+- **Builds name their commit.** Provenance lines (`#gbcms`, VCF `##source`, run
+  logs, `gbcms --version`) read `gbcms v6.6.0.dev0 (9c371263)`; develop now
+  carries a `.devN` version, since every development build since 6.5.0 reported
+  6.5.0. The commit comes from git, or from `GBCMS_BUILD_COMMIT` (set by the
+  Dockerfile and the release workflow).
+- **VCF output of a whole-contig deletion is valid (#220, pulled in from
+  6.7.0).** A MAF deletion at Start 1 spanning its whole contig has no reference
+  base before or after it; it was written with a REF padded past the contig end
+  with `N` (`ACGTACN > N`). It is now the symbolic `<NON_SEQUENCE>` record (REF
+  the base at POS), in counting runs and `gbcms convert`; the row was already FAIL
+  (`FETCH_FAILED`). None in real data.
+- **No partial output files (#148).** Every output (MAF, VCF, the merged MAF,
+  `convert` and `normalize` files, both Parquet files, the mFSD report) is
+  written to `.<name>.partial`, fsynced, and renamed into place; a failed run,
+  including a failure while closing (a full disk), leaves nothing at the output
+  path and no temp file, and the observations Parquet goes into place only after
+  the MAF/VCF. A symlinked output keeps its link (its target is replaced), a
+  replaced file keeps its permission bits, and a device or FIFO (`/dev/stdout`)
+  is written in place. It left a truncated file
+  under the final name (htslib tools, GATK and Picard do too; only workflow
+  managers clean up).
+- **Per-BAM warnings once (#130).** The `--rescue-mnp` re-count no longer repeats
+  the records-without-bases, records-without-qualities and absent `--umi-tag`
+  warnings, and those records are counted once each (the count was an upper
+  bound: overlapping bins fetched a record more than once).
+- **The run start says what the run does (#131).** One INFO block lists every
+  resolved option (generated from the configuration, so none is left out) and
+  what each count- or column-changing option implies; one INFO line per BAM
+  gives facts from its first 20,000 records (duplicates flagged, base-quality
+  values, the share below `--min-baseq`, ALT contigs, hard-clipped primaries). It
+  warns only when `--min-baseq` removes more than 10% of sampled bases, the
+  header has ALT contigs, or more than 1% of primaries are hard-clipped: on 10
+  MSK BAMs the default removes 0.8–2.1% and none has ALT contigs or hard-clipped
+  primaries. Unmarked duplicates are reported, not warned: ACCESS consensus and
+  FORTE RNA BAMs carry none by design. The CLI's four-setting `Config:` line is
+  replaced by the block. Implications are stated against the mode's defaults (an
+  RNA run's are RNA's), RNA amplicon and strandedness settings included; turning
+  off the secondary or supplementary filter lets those alignments join fragment
+  evidence, never read counts. A BAM the facts cannot read is left to counting.
+- **The docs toolchain is pinned below MkDocs 2.0 (#225, the pin half of #138,
+  pulled in from 6.7.0):** `mkdocs>=1.6,<2` and `mkdocs-material>=9.5,<10` in the
+  dev extras and the docs workflow (both installed unpinned), with a test; the
+  MkDocs 2.0 migration stays in 6.7.0.
+- **One page for every QC flag, each defined once (#156):**
+  `docs/reference/qc-flags.md`, a table per family (status reasons, diagnostics,
+  rescue outcomes, ASJD, QC columns, mFSD classes, VCF record shapes) with mode,
+  MAF column, VCF field and what to do. Each family is a snippet section that the
+  pages needing the table include (normalization, architecture, RNA annotation,
+  output formats, mFSD report); the rest link to it. Tests fail when a flag the
+  code emits is missing from the page, when a flag is defined anywhere else (a
+  table row or bullet), when a line lists three or more flags without linking it,
+  or when an include names a missing section; the docs build now fails on a
+  missing snippet or anchor. Consolidating found copies that had drifted: the mFSD
+  report's class table and flowchart (thresholds 1.0 and the raw KS p-value; the
+  code uses 1.3/1.2, the FDR q-value and the CH-gene check), its `mfsd_ch_flag`
+  ("CH-like profile"; it marks a CH gene), output formats' `STRAND_DISCORDANT`
+  (from before intronic loci got a strand), the VCF `GS` row (the pre-6.0
+  combined status; `GSR` was missing), and the report's own tooltips (raw p).
+
 ### Changed — input and representation (#122, #123, #124, #125, #126, #147, #208, #149, #218)
 
 Measured on the MSK sign-out dump (1,133,044 rows; operator decisions 2026-09-25

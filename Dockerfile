@@ -52,6 +52,11 @@ COPY pyproject.toml README.md LICENSE ./
 COPY rust/ rust/
 COPY src/ src/
 
+# The commit this image is built from: the build copies no .git, so it is passed
+# in (rust/build.rs records it for output provenance, `#gbcms vX (commit)`).
+ARG GBCMS_BUILD_COMMIT=""
+ENV GBCMS_BUILD_COMMIT=${GBCMS_BUILD_COMMIT}
+
 # Build unified wheel with maturin (includes both Python and Rust)
 # Don't use --manifest-path; it's in pyproject.toml and ensures correct wheel name
 RUN maturin build --release --out /app/dist

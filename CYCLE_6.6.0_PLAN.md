@@ -40,17 +40,17 @@ marks a ticket with an open PR.
 | C6 | Error-tolerant exact-length insertion matching | L | [counts] [6.7.0] | #143 (#92) |
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] [6.7.0] | #144 (#92) |
 | C8 | One-base-REF delins without a shared anchor | L | [counts] [done] | #121 |
-| C9 | Count a MAF deletion at Start 1 | L | [counts] group 4 (built) | #122 |
+| C9 | Count a MAF deletion at Start 1 | L | [counts] group 4 [done] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] [done] | #157 |
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] [closed] | #159 |
 | C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [done] | #167 |
 | C13 | BAQ spares the variant's own indel evidence | H | [counts] [done] | #166 |
 | C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
 | C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] RNA part group 3 (RJ-18, built); the rest [6.7.0] | #173 |
-| C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] [decided] | #174 |
-| T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [in review] | #170 |
-| T2 | Read census as the classification oracle in tests | M | [in review] | #171 |
-| H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | | #204 |
+| C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] [decided] [done] | #174 |
+| T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [done] | #170 |
+| T2 | Read census as the classification oracle in tests | M | [done] | #171 |
+| H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | [done] | #204 |
 | C17 | A read ends at its fragment end: adapter-like read-through bases are clipped in every read | M | [counts] [decided] [done] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decided] [done] | #182 |
@@ -59,43 +59,45 @@ marks a ticket with an open PR.
 | C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [done] | #191 |
 | C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [done] | #192 |
 | C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
-| C25 | Exact-carrier long-event junction windows: a read holding one junction decides the call (REF for anchor-keeping reads; ALT for reads carrying only the substitution) | M | [counts] [decided] | #199 |
-| C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decided] | #200 |
-| C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [decided] | #201 |
-| C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] [decided] | #202 |
+| C25 | Exact-carrier long-event junction windows: a read holding one junction decides the call (REF for anchor-keeping reads; ALT for reads carrying only the substitution) | M | [counts] [decided] [done] | #199 |
+| C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decided] [done] | #200 |
+| C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [decided] [done] | #201 |
+| C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] [decided] [done] | #202 |
 | C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] [done] | #207 |
-| C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] group 4 (built) | #208 |
+| C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] group 4 [done] | #208 |
 | C31 | Measure the fragment end from the mate's unclipped 5' end (MC tag), so a mate's clipped 5' end does not clip molecule bases as adapter | L | [counts] [6.7.0] | #212 |
-| C32 | Junction-placement guard for spliced reads at exon-edge events (needs reference access in the engine) | M | [counts] group 3 (RJ-19, built) | #213 |
+| C32 | Junction-placement guard for spliced reads at exon-edge events (needs reference access in the engine) | M | [counts] group 3 (RJ-19) [done] | #213 |
 | C34 | GTF transcripts keyed by ID alone: an ID reused on another chromosome merges (introns, per-transcript counts, ASJD); 0 such IDs in Ensembl 111 | S | [6.7.0] | #216 |
 | C33 | Exact-carrier REF and ALT windows read from different anchors can miss a contradicting base | L | [counts] [6.7.0] | #214 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
-| R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] group 3 (decided, built) | #185 |
-| R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] group 3 (RJ-17, built) | #198 |
+| R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] group 3 (decided) [done] | #185 |
+| R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] group 3 (RJ-17) [done] | #198 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | [6.7.0] | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] [6.7.0] | #180 |
 | O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | [decided] [done] | #183 |
-| O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | group 3 (built) | #186 |
-| O9 | VCF output of a whole-contig MAF deletion at Start 1 writes REF past the contig end | L | [6.7.0] | #220 |
+| O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | group 3 [done] | #186 |
+| O9 | VCF output of a whole-contig MAF deletion at Start 1 writes REF past the contig end | L | [decided] group 5 (built; from 6.7.0) | #220 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] [done] | #114 |
-| I1 | MAF allele base check | M | [decided] group 4 (built) | #123 |
-| I2 | `End_Position` optional | L | group 4 (built) | #124 |
-| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] group 4 (built) | #125 |
-| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] group 4 (built) | #126 |
+| I1 | MAF allele base check | M | [decided] group 4 [done] | #123 |
+| I2 | `End_Position` optional | L | group 4 [done] | #124 |
+| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] group 4 [done] | #125 |
+| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] group 4 [done] | #126 |
 | I5 | Nextflow `convert` module | L | [6.7.0] | #127 |
-| I6 | `REF_MISMATCH` rows say where the given REF sits | L | [decided] group 4 (built) | #218 |
+| I6 | `REF_MISMATCH` rows say where the given REF sits | L | [decided] group 4 [done] | #218 |
 | I7 | A MAF dash insertion at Start 0 is skipped, not a FAIL row | L | [6.7.0] | #219 |
 | M1 | Merge rows whose flavors report different alleles | M | [6.7.0] | #128 |
-| M2 | Merge inputs from different gbcms versions | M | | #129 |
+| M2 | Merge inputs from different gbcms versions | M | [decided] group 5 (built) | #129 |
 | M3 | Decomposed-allele hardening (observations, list length) | M | | #147; #146 [6.7.0] (#112) |
-| M4 | Merge sums NA/nan count cells as 0 silently (the documented warning was never implemented) | M | [decided] | #194 |
-| M5 | Merge leaves the annotation columns of a row only a later input has empty | L | [decided] | #221 |
-| O1 | UMI and no-bases warnings repeated by the rescue recount | L | | #130 |
-| O2 | Run-start summary of enabled options | L | | #131 |
+| M4 | Merge sums NA/nan count cells as 0 silently (the documented warning was never implemented) | M | [decided] group 5 (built) | #194 |
+| M5 | Merge leaves the annotation columns of a row only a later input has empty | L | [decided] group 5 (built) | #221 |
+| M6 | Merge takes mFSD and RNA columns from the first input only | M | [decided] group 5 (built) | #223 |
+| M1a | Merge: combined columns NA where the flavors' MNP rescue outcomes differ (rescue half of M1, from 6.7.0) | L | [decided] group 5 (built) | #224 |
+| O1 | UMI and no-bases warnings repeated by the rescue recount | L | [decided] group 5 (built) | #130 |
+| O2 | Run-start summary of enabled options | L | [decided] group 5 (built) | #131 |
 | O3 | Rescue in fillouts without the MNP | L | [6.7.0] | #132 |
-| H1 | Writers closed when a write fails | L | | #148 |
-| H2 | `is_indel` in preparation | L | group 4 (built) | #149 |
+| H1 | Writers closed when a write fails | L | [decided] group 5 (built) | #148 |
+| H2 | `is_indel` in preparation | L | group 4 [done] | #149 |
 | P1 | Deep-bin fetch reduction (M5b) | L | [6.7.0] | #150 |
 | P2 | Bin cost-sort (PF-2) | L | [closed] | #151 |
 | P3 | Document the bin-span soft floor (LO-3) | L | | #152 |
@@ -103,10 +105,11 @@ marks a ticket with an open PR.
 | S2 | `MIN_FOR_KS` floor (ME-9) | L | [decided] | #154 |
 | D1 | CI version-consistency check | M | | #136 |
 | D2 | Release workflow creates the GitHub Release | M | | #137 |
-| D3 | mkdocs-material 2.0 | L | [6.7.0] | #138 |
+| D3 | mkdocs-material 2.0 | L | [6.7.0] (pin: D3a #225, group 5) | #138 |
+| D3a | Pin the docs toolchain below MkDocs 2.0 | L | [decided] group 5 (built) | #225 |
 | D4 | Dependency upgrade audit: does anything break on current releases? | M | | #139 |
 | D5 | Coverage-driven regression panel (replaces the 56-sample matrix) | M | | #155 |
-| D6 | One QC-flags reference page | M | | #156 |
+| D6 | One QC-flags reference page | M | [decided] group 5 (built) | #156 |
 
 ## Counting correctness
 
@@ -1306,6 +1309,20 @@ rows. The same happens when some inputs carry `vcf_pos` / `vcf_ref` /
 **Direction.** WARN when the inputs' `#gbcms vX` provenance lines disagree
 across the 6.5.0 representation boundary, or when the VCF-record columns are
 present in only some inputs.
+**Measured (2026-10-05).** The same 102k-record VCF genotyped by 6.4.0 and by
+develop: 6.3% of rows change their variant key; merge exits 0 with 12,771
+half-empty rows; its "n/m variants have no <type> counts" INFO counts rows with
+REF count 0, not rows an input lacks. 6.5.0 vs develop join fully, but every dev
+build since 6.5.0 says `#gbcms v6.5.0` while counts differ. The merged MAF has no
+provenance line. No surveyed merger compares producer versions (bcftools, Picard
+and htsjdk keep the first `##source` silently); structural mismatches (samples,
+contigs) are errors.
+**Decision (2026-10-05, operator): B.** (1) The merged MAF carries its own
+version and command lines and one line per input with that input's version line.
+(2) WARN when the inputs' version lines differ. (3) Refuse the merge when an input
+has the pre-6.5.0 VCF-input shape (`vcf_pos` without `vcf_ref`/`vcf_alt`) and
+another does not. (4) The INFO line counts the rows each input lacks. (5) Develop
+builds say their own version: `6.6.0.dev0` plus the commit.
 
 ### M3 — Decomposed-allele hardening (#112 items 3–4: #146, #147) · M
 **Finding.** The observations export cannot tell that a variant's per-molecule
@@ -1323,10 +1340,31 @@ the same `--umi-tag`, so the "tag never seen" WARN can repeat for one BAM.
 C14 (#172) added a second per-pass warning (records stored without bases), which
 repeats the same way with a smaller number. Suppress both in the recount; the
 main pass's warnings stand for the BAM.
+**Measured.** Reproduced (synthetic): the no-bases and `--umi-tag` warnings print
+twice per BAM under `--rescue-mnp`; the no-bases count is an upper bound
+(overlapping bins). Field: warn once per type (GATK OneShotLogger, htslib,
+bcftools); end-of-run counts (GATK, LoFreq); none scopes per input file.
+**Decision (2026-10-05, operator): B.** The recount runs quiet (intent across the
+FFI), so each BAM warns once, from the main pass; records without bases or
+qualities are counted once each (exact, not an upper bound).
 
 ### O2 — Run-start summary of enabled options (#131) · L
 One INFO block at run start naming the enabled options and what they imply
 (e.g. `--rescue-mnp` replaces counts on rescued rows). A 6.5.0 T7 follow-up.
+**Measured.** The run start logs the command, version, mode, BAM count and four
+settings. Ten real BAMs (IMPACT 4, ACCESS 4, FORTE 2; first 200k records):
+duplicates flagged 12–25% in IMPACT, none in ACCESS consensus or FORTE (both
+legitimate); binned BQ in FORTE (2/9/24/40) and one ACCESS simplex; bases below
+Q20 0.8–2.1%, below a threshold between bins up to 12% (IMPACT Q30) or ~100%
+(IMPACT Q40); no ALT contigs, hard-clipped primaries or records without bases;
+the proper-pair flag absent on every IMPACT read, but the engine never reads it.
+Field: GATK and fgbio log every resolved argument; no tool warns on unmarked
+duplicates, BQ binning or hard clips.
+**Decision (2026-10-05, operator): B.** One INFO block with every resolved option
+(grouped) and a one-line implication for options that change counts or columns;
+one INFO facts line per BAM from its first records; WARN only when `--min-baseq`
+removes more than 10% of sampled bases, the header has ALT contigs, or more than
+1% of primaries are hard-clipped. No duplicate or proper-pair warning.
 
 ### O3 — Rescue in fillouts without the MNP (#132) · L
 In a fillout of other timepoints or normals, where the MNP itself is absent,
@@ -1375,6 +1413,14 @@ allele, each checked read by read. C1's mis-described variant is flagged.
 ### H1 — Writers closed when a write fails (#148, under #133) · L
 `_write_output` does not close the writer (or its reference handle) when a
 write raises. Use context managers.
+**Measured.** A write failure exits 1 but leaves the output at its final path
+(truncated) and an unclosed handle. Nine output kinds; the GTF cache already
+writes temp-then-rename. Field: htslib tools check close and exit non-zero but
+leave the partial file; GATK/Picard write in place; only workflow managers clean
+up (Snakemake, Nextflow).
+**Decision (2026-10-05, operator): B.** Every output is written to a temp file
+beside it, flushed, fsynced, closed with errors checked, and renamed over the
+final name; on failure the temp is removed and the final path untouched.
 
 ### H2 — `is_indel` in preparation (#149, under #133) · L
 `is_indel` reduces to `ref_len != alt_len`; its second clause is exactly
@@ -1663,6 +1709,12 @@ columns; mFSD classes). Each row says when the flag is set, the mode (DNA, RNA,
 opt-in), its MAF column and VCF field, and what to do about it.
 `output-formats.md` and the glossary link to it. A test asserts that every flag
 string the code emits appears on the page, so the page stays complete.
+**Measured.** All 50 flag strings the code emits are documented, across 6+ pages,
+the diagnostics in one large table cell; no completeness test. Field: GATK's
+header registry throws on an undocumented key; Picard and nf-core lint test
+completeness; no variant tool tests flag values against its user docs.
+**Decision (2026-10-05, operator): A** as directed, with the test scanning the
+flag strings Rust and Python emit.
 
 ## Reviewed, no action
 
@@ -1808,7 +1860,7 @@ changes in step whenever the read inputs do.
    2026-10-03. Policy for 6.7.0: R3 #178 (editing sites in windows).
 4. **Input and representation:** C9 #122, I1 #123, I2 #124, I3 #125, I4 #126,
    #147, H2 #149, C30 #208 (lowercase or unprepared alleles).
-5. **Merge, outputs, observability:** M4 #194, M5 #221, M2 #129, H1 #148, O1 #130, O2
+5. **Merge, outputs, observability:** M4 #194, M5 #221, M6 #223, M1a #224, O9 #220, D3a #225, M2 #129, H1 #148, O1 #130, O2
    #131, D6 #156. Policy for 6.7.0: M1 #128, #146.
 6. **Statistics:** S1 #153 (decided), S2 #154.
 7. **Release:** D1 #136, D2 #137, D4 #139 before the cut, P3 #152, D5 #155 last.

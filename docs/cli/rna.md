@@ -336,7 +336,7 @@ RNA uses **relaxed gap penalties** to tolerate reverse transcriptase (RT) stutte
     | `rna_sense_depth` | u32 | REF and ALT reads on the gene **sense** strand |
     | `rna_antisense_depth` | u32 | REF and ALT reads on the gene **antisense** strand, tallied even when `--enforce-strandedness` keeps them out of every count |
     | `rna_alt_sense_count` | u32 | ALT-classified reads on the sense strand |
-    | `rna_editing_site` | bool | Variant overlaps a known A→I editing site from `--rna-editing-db` |
+    | `rna_editing_site` | bool | QC flag (`--rna-editing-db`): [definition](../reference/qc-flags.md#qc-columns) |
     | `rna_splice_spanning` | u32 | ALT-classified reads containing splice junctions (CIGAR `N` operations) spanning the variant |
 
     ### VCF INFO Fields (5 additional)

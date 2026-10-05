@@ -33,4 +33,6 @@ checkout's `.venv`, whose `gbcms.pth` then points at the worktree (2026-10-03,
 a review agent following a prompt that said `.venv-rev/bin/maturin develop`).
 Always set `VIRTUAL_ENV` (and PATH) as above in review-agent prompts; if it
 happens, rerun `maturin develop` from the main checkout root and check
-`gbcms.pth`.
+`gbcms.pth`. It recurred on 2026-10-05 (the group 5 review agent ran
+`.rv/bin/maturin develop` with no `VIRTUAL_ENV`): the warning sat in this file,
+not in the index line read every session, which now carries it.

@@ -31,7 +31,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 ## Tooling / build
 - [pyproject is the dep source of truth](deps-pyproject-source-of-truth.md) — CI/Docker bypass lockfiles; declare every directly-imported package.
 - [Lint-tool version skew (local vs CI)](black-version-skew-venv-vs-ci.md) — venv black 25.9 lags CI 26.5 (rustc caught up to 1.96 on 2026-09-23); run CI's versions before trusting a clean/drift result.
-- [Worktree tests need an isolated venv](worktree-tests-need-isolated-venv.md) — the shared .venv imports the MAIN checkout's gbcms; in a worktree build a scratch venv + maturin develop or tests exercise the wrong code.
+- [Worktree tests need an isolated venv](worktree-tests-need-isolated-venv.md) — the shared .venv imports the MAIN checkout's gbcms; in a worktree build a scratch venv + maturin develop. Every review-agent prompt says `VIRTUAL_ENV=<scratch venv> maturin develop`, or maturin installs into the main .venv.
 - [maturin develop: repo root only](maturin-develop-repo-root-only.md) — `-m rust/Cargo.toml` bypasses [tool.maturin] and leaves a stale src/gbcms/_rs.so shadowing every rebuild.
 - [Harness cleanup after merge](harness-cleanup-after-merge.md) — delete the ticket's `src_*` builds (rebuildable from BUILT_FROM; patch prototypes first), gzip traces, `cargo clean` when rust/target bloats.
 - [Long runs visible](long-runs-visible.md) — pair every detached nohup harness run with a tracked background waiter; runs over a network mount go one at a time, grouped by file.

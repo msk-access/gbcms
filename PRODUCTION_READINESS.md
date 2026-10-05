@@ -41,10 +41,11 @@ that turns one on must clear its section 5 issues first.
 | I6 #218 | A `REF_MISMATCH` row says nothing about a REF written a few bases off (87 of 154 sign-out mismatches) | MAF and VCF input | 4 | Built: FAIL kept, uncounted; `gbcms_diagnostic` `REF_AT_OFFSET(k)` |
 | I3 #125 | VCF to MAF: `Tumor_Seq_Allele1` empty (decide REF or empty) | VCF input | 4 | Built: the reference allele |
 | I4 #126 | A maf2vcf second ALT: one allele per row (documented) or genotype both | MAF from VCF | 4 | Built: one row, one allele (documented, tested; 0 sign-out rows) |
-| M4 #194 | `gbcms merge` sums NA count cells as 0 silently | ACCESS merged fillouts | 5 | Open |
-| M5 #221 | `gbcms merge`: a row only a later input has gets empty annotation columns (not in the pipeline: 0 of 40 ACCESS pairs) | hand-made merges | 5 | Decided (fill from the later input) |
-| M2 #129 | Merging outputs of different gbcms versions or representations without a warning | merged fillouts | 5 | Open |
-| H1 #148 | Writers (and the reference handle) not closed when a write fails: partial files | all | 5 | Open |
+| M4 #194 | `gbcms merge` sums NA count cells as 0 silently | ACCESS merged fillouts | 5 | Built: combined cell NA, warned per column (0 such cells in 180,348 real ones) |
+| M5 #221 | `gbcms merge`: a row only a later input has gets empty annotation columns (not in the pipeline: 0 of 40 ACCESS pairs) | hand-made merges | 5 | Built: filled from the earliest later input |
+| M6 #223 | `gbcms merge` takes mFSD and RNA columns from the first input only | merged `--mfsd` fillouts | 5 | Built: every gbcms column per input, set taken from the writer |
+| M2 #129 | Merging outputs of different gbcms versions or representations without a warning | merged fillouts | 5 | Built: provenance kept, versions warned, pre-6.5.0 VCF shape refused (6.3% of rows split before) |
+| H1 #148 | Writers (and the reference handle) not closed when a write fails: partial files | all | 5 | Built: every output written atomically |
 | D6 #156 | No single reference for status reasons, diagnostics, ASJD and rescue flags | all | 5 | Open (docs) |
 
 Done in 6.6.0 so far, each with real-data acceptance: read inputs (adapter

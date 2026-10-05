@@ -18,6 +18,7 @@ from pathlib import Path
 
 from gbcms import _rs as gbcms_rs
 
+from .io.atomic import atomic_output
 from .io.input import MafReader, VcfReader
 
 logger = logging.getLogger(__name__)
@@ -95,7 +96,7 @@ def normalize_variants(
         "was_normalized",
     ]
 
-    with open(output, "w", newline="") as f:
+    with atomic_output(output, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t")
         writer.writeheader()
 
