@@ -713,8 +713,12 @@ writer itself:
 Annotation columns (e.g., `Hugo_Symbol`, `Chromosome`) are taken from the first
 input and **not** duplicated. A row only a later input has takes them from the
 earliest later input that has the row (the column set stays the first input's;
-a row the first input has keeps its own values); its counts for an input that
-lacks it are 0, and the log counts the rows each input lacks. Rows are joined on `Chromosome` (in any naming),
+a row the first input has keeps its own values). For an input that lacks a row,
+the row's read and fragment counts are 0, its status columns empty, and its
+other per-input columns (mFSD, RNA) empty; the log counts the rows each input
+lacks. An input written with `--column-prefix` (`duplex_` as the pipeline runs
+it, or `t_`) has its counts under that name and its status, strand-bias, mFSD and
+RNA columns unprefixed: merge finds each and keeps it per input. Rows are joined on `Chromosome` (in any naming),
 `Start_Position`, `Reference_Allele` and `Tumor_Seq_Allele2`, and VCF-input MAFs
 also on the VCF record. `End_Position` follows from Start and REF and is not
 joined on: a row keeps the first input's, or that of the earliest input that has

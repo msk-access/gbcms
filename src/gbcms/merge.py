@@ -24,6 +24,7 @@ Design decisions:
 """
 
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -31,7 +32,13 @@ import polars as pl
 
 from gbcms.core.kernel import CoordinateKernel
 from gbcms.io.batch import scan_maf, write_maf
-from gbcms.io.output import gbcms_column_basenames, provenance_line
+from gbcms.io.output import (
+    _fmt,
+    _fmt_sci,
+    gbcms_column_basenames,
+    gbcms_prefixed_basenames,
+    provenance_line,
+)
 from gbcms.models.core import MergeConfig
 from gbcms.rescue_audit import rescued_component
 
@@ -251,7 +258,7 @@ def merge_mafs(config: MergeConfig) -> None:
         frames[bam_type] = _with_contig_key(lf, bam_type).with_row_index(_row_col(bam_type))
         input_columns[bam_type] = schema_names
 
-    _refuse_mixed_vcf_representations(input_columns)
+    _refuse_mixed_vcf_representations(input_columns, versions)
     _warn_mixed_versions(versions)
 
     # ── 2. Progressive outer join ─────────────────────────────────────────────
@@ -363,17 +370,39 @@ def _version_line(path: Path) -> str | None:
     return None
 
 
-def _refuse_mixed_vcf_representations(input_columns: dict[str, list[str]]) -> None:
-    """Stop when one input has the pre-6.5.0 VCF-input representation and
-    another does not. Before 6.5.0 a VCF-input MAF carried ``vcf_pos`` but not
-    ``vcf_ref``/``vcf_alt``, and many indel and MNP rows had other coordinates
-    and alleles (6.5.0 follows vcf2maf), so their rows do not join: merged, the
-    same variant appears twice, each half empty."""
-    old = sorted(
-        t
-        for t, cols in input_columns.items()
-        if "vcf_pos" in cols and not {"vcf_ref", "vcf_alt"} <= set(cols)
-    )
+_VERSION_LINE = re.compile(r"gbcms v(\S+)(?: \(([0-9a-f]+)\))?")
+
+
+def _parse_version(line: str | None) -> tuple[str, str | None] | None:
+    """(version, commit) from a ``gbcms v6.6.0.dev0 (9c371263)`` line."""
+    m = _VERSION_LINE.match(line or "")
+    return (m.group(1), m.group(2)) if m else None
+
+
+def _release(version: str) -> tuple[int, ...]:
+    """The numeric release of a version string (``6.6.0.dev0`` → (6, 6, 0))."""
+    return tuple(int(x) for x in re.findall(r"\d+", version)[:3])
+
+
+def _refuse_mixed_vcf_representations(
+    input_columns: dict[str, list[str]], versions: dict[str, str | None]
+) -> None:
+    """Stop when one input is a VCF-input MAF from before 6.5.0 and another is
+    not. Before 6.5.0 a VCF-input MAF carried ``vcf_pos`` (with ``vcf_id``,
+    ``vcf_region``) but not ``vcf_ref``/``vcf_alt``, and many indel and MNP rows
+    had other coordinates and alleles (6.5.0 follows vcf2maf), so their rows do
+    not join: merged, the same variant appears twice, each half empty. Only an
+    input whose version line is missing or older than 6.5.0 has that shape: a
+    later MAF-input output can carry ``vcf_pos`` from vcf2maf."""
+
+    def old_shape(t: str) -> bool:
+        cols = set(input_columns[t])
+        if "vcf_pos" not in cols or {"vcf_ref", "vcf_alt"} <= cols:
+            return False
+        parsed = _parse_version(versions.get(t))
+        return parsed is None or _release(parsed[0]) < (6, 5, 0)
+
+    old = sorted(t for t in input_columns if old_shape(t))
     if old and len(old) < len(input_columns):
         others = sorted(set(input_columns) - set(old))
         raise ValueError(
@@ -385,14 +414,23 @@ def _refuse_mixed_vcf_representations(input_columns: dict[str, list[str]]) -> No
 
 
 def _warn_mixed_versions(versions: dict[str, str | None]) -> None:
-    """Warn when the inputs come from different gbcms versions (or builds): their
-    counts may follow different rules, which their sums would hide."""
-    named = {t: v for t, v in versions.items() if v}
-    if len(set(named.values())) > 1:
+    """Warn when the inputs come from different gbcms versions or builds (their
+    counts may follow different rules, which their sums would hide), or when only
+    some inputs say which version wrote them. Builds of one version differ only
+    when both name a commit."""
+    parsed = {t: _parse_version(v) for t, v in versions.items()}
+    seen = list(parsed.values())
+
+    def differ(a: tuple[str, str | None] | None, b: tuple[str, str | None] | None) -> bool:
+        if a is None or b is None:
+            return (a is None) != (b is None)
+        return a[0] != b[0] or (a[1] is not None and b[1] is not None and a[1] != b[1])
+
+    if any(differ(a, b) for i, a in enumerate(seen) for b in seen[i + 1 :]):
         logger.warning(
             "Inputs come from different gbcms versions (%s): counts made by different "
             "versions may follow different rules; merge outputs of one version",
-            ", ".join(f"{t}: {v}" for t, v in named.items()),
+            ", ".join(f"{t}: {versions[t] or 'no version line'}" for t in versions),
         )
 
 
@@ -477,12 +515,11 @@ def _fill_later_only_rows(
         cols = [c for c in ann if c in names]
         if not cols:
             continue
-        later = (
-            frames[t]
-            .select([*join_key, *[pl.col(c).alias(f"_ann_{t}_{c}") for c in cols]])
-            .unique(subset=join_key, keep="first", maintain_order=True)
-        )
-        missing = missing.join(later.collect(), on=join_key, how="left")
+        # By the later input's own row (not the join key): two rows sharing a key
+        # (one variant listed for two samples) each keep their own annotations.
+        row = _row_col(t)
+        later = frames[t].select([row, *[pl.col(c).alias(f"_ann_{t}_{c}") for c in cols]])
+        missing = missing.join(later.collect(), on=row, how="left")
         missing = missing.with_columns(
             [pl.coalesce(c, f"_ann_{t}_{c}").alias(c) for c in cols]
         ).drop([f"_ann_{t}_{c}" for c in cols])
@@ -650,12 +687,31 @@ def _validate_variant_key(
         )
 
 
-def _build_rename_map(columns: list[str], bam_type: str) -> dict[str, str]:
-    """Build a column rename map: unprefixed gbcms cols → type-prefixed.
+def _writer_prefix(columns: set[str]) -> str:
+    """The ``--column-prefix`` an input's counts were written with: ``""``,
+    ``duplex_`` as the pipeline runs it, ``t_`` for legacy names. Found from the
+    core counts every gbcms output has (``ref_count`` and ``alt_count``); a name
+    that is itself a gbcms column (``mfsd_ref_count``) is not a prefixed count."""
+    if {"ref_count", "alt_count"} <= columns:
+        return ""
+    found = [
+        col[: -len("ref_count")]
+        for col in columns
+        if col.endswith("ref_count")
+        and col not in ALL_GBCMS_BASENAMES
+        and f"{col[: -len('ref_count')]}alt_count" in columns
+    ]
+    return min(found, key=len) if found else ""
 
-    Detects whether columns are already prefixed with the bam_type label.
-    If already prefixed (e.g., ``duplex_ref_count``), returns empty dict
-    to avoid double-prefixing.
+
+def _build_rename_map(columns: list[str], bam_type: str) -> dict[str, str]:
+    """Rename every gbcms column of an input to ``{bam_type}_{basename}``.
+
+    The writer's ``--column-prefix`` sits on the counts and normalization
+    columns only; status, diagnostics, strand bias, mFSD and RNA columns are
+    written unprefixed. Each column is found under the name the writer gave it,
+    so an input written with ``--column-prefix duplex_`` (as the pipeline runs)
+    or ``t_`` keeps all its gbcms columns per input, not only its counts.
 
     Args:
         columns: List of column names in the MAF.
@@ -663,29 +719,18 @@ def _build_rename_map(columns: list[str], bam_type: str) -> dict[str, str]:
 
     Returns:
         Dict mapping original column name → prefixed column name.
-        Empty dict if columns are already prefixed.
     """
-    prefix = f"{bam_type}_"
-
-    # Check if columns are already prefixed
-    already_prefixed = any(
-        c.startswith(prefix) for c in columns if _strip_prefix(c) in ALL_GBCMS_BASENAMES
-    )
-    if already_prefixed:
-        logger.debug(
-            "Columns in '%s' MAF already have '%s' prefix",
-            bam_type,
-            prefix,
-        )
-        return {}
-
-    # Build rename map for unprefixed gbcms columns
+    target = f"{bam_type}_"
+    present = set(columns)
+    writer = _writer_prefix(present)
+    prefixed = gbcms_prefixed_basenames()
     rename_map: dict[str, str] = {}
-    for col in columns:
-        if col in ALL_GBCMS_BASENAMES:
-            rename_map[col] = f"{prefix}{col}"
+    for base in sorted(ALL_GBCMS_BASENAMES):
+        src = f"{writer}{base}" if base in prefixed else base
+        if src in present and src != f"{target}{base}" and f"{target}{base}" not in present:
+            rename_map[src] = f"{target}{base}"
 
-    if not rename_map:
+    if not rename_map and not any(f"{target}{b}" in present for b in ALL_GBCMS_BASENAMES):
         logger.warning(
             "No gbcms count columns found in '%s' MAF. " "Available columns: %s",
             bam_type,
@@ -805,6 +850,10 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
             sorted(skipped),
         )
 
+    # Materialize once: the bad-cell count below and the strand-bias pass would
+    # otherwise each run the scan and join again.
+    lf = lf.collect().lazy()
+
     # A count cell neither absent (a row the input lacks counts 0, filled
     # above) nor a finite number: the combined value is NA. One warning per
     # column, with the number of rows.
@@ -884,25 +933,16 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 def _write_combined_as_text(lf: pl.LazyFrame) -> pl.LazyFrame:
     """The combined counts and VAFs as the writers write theirs: integers, VAFs
-    with four decimals, and NA where a value is missing."""
+    as ``f"{v:.4f}"``, NA where a value is missing. (Strand bias is formatted
+    where it is computed.)"""
     names = lf.collect_schema().names()
     exprs = []
     for col in names:
         if not col.startswith("simplex_duplex_") or "strand_bias" in col:
             continue
-        if col.endswith(("_vaf", "_vaf_fragment")) or col in (
-            "simplex_duplex_vaf",
-            "simplex_duplex_vaf_fragment",
-        ):
-            scaled = (pl.col(col) * 10000).round(0).cast(pl.Int64)
-            text = pl.format(
-                "{}.{}",
-                (scaled // 10000).cast(pl.Utf8),
-                (scaled % 10000).cast(pl.Utf8).str.zfill(4),
-            )
-            exprs.append(
-                pl.when(pl.col(col).is_null()).then(pl.lit("NA")).otherwise(text).alias(col)
-            )
+        if col in ("simplex_duplex_vaf", "simplex_duplex_vaf_fragment"):
+            text = pl.col(col).map_elements(lambda v: f"{v:.4f}", return_dtype=pl.Utf8)
+            exprs.append(text.fill_null("NA").alias(col))
         else:
             exprs.append(pl.col(col).cast(pl.Utf8).fill_null("NA").alias(col))
     return lf.with_columns(exprs) if exprs else lf
@@ -949,8 +989,12 @@ def _compute_combined_strand_bias(
         )
         df = df.with_columns(
             [
-                pl.Series("simplex_duplex_strand_bias_p_value", sb_results[0]),
-                pl.Series("simplex_duplex_strand_bias_odds_ratio", sb_results[1]),
+                pl.Series(
+                    "simplex_duplex_strand_bias_p_value", [_fmt_sci(v) for v in sb_results[0]]
+                ),
+                pl.Series(
+                    "simplex_duplex_strand_bias_odds_ratio", [_fmt(v) for v in sb_results[1]]
+                ),
             ]
         )
 
@@ -966,8 +1010,14 @@ def _compute_combined_strand_bias(
         )
         df = df.with_columns(
             [
-                pl.Series("simplex_duplex_fragment_strand_bias_p_value", fsb_results[0]),
-                pl.Series("simplex_duplex_fragment_strand_bias_odds_ratio", fsb_results[1]),
+                pl.Series(
+                    "simplex_duplex_fragment_strand_bias_p_value",
+                    [_fmt_sci(v) for v in fsb_results[0]],
+                ),
+                pl.Series(
+                    "simplex_duplex_fragment_strand_bias_odds_ratio",
+                    [_fmt(v) for v in fsb_results[1]],
+                ),
             ]
         )
     # ── Sanitize NaN/Inf in strand bias columns ─────────────────────────────

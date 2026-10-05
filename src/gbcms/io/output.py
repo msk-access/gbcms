@@ -9,13 +9,12 @@ import contextlib
 import csv
 import logging
 import math
-import os
 from pathlib import Path
 from typing import IO, Any
 
 from ..core.kernel import CoordinateKernel
 from ..models.core import Variant
-from .atomic import discard_partial, partial_path
+from .atomic import commit_partial, discard_partial, write_target
 from .reference import ReferenceBases
 
 __all__ = [
@@ -26,6 +25,7 @@ __all__ = [
     "maf_origin_info",
     "is_sequence_allele",
     "gbcms_column_basenames",
+    "gbcms_prefixed_basenames",
     "build_identity",
     "provenance_line",
 ]
@@ -215,6 +215,27 @@ def maf_origin_info(variant: Variant) -> list[str]:
     ]
 
 
+def gbcms_prefixed_basenames() -> frozenset[str]:
+    """The columns the writer's ``--column-prefix`` applies to (the counts and
+    the normalization columns); status, strand bias, mFSD and RNA columns are
+    written unprefixed. ``gbcms merge`` finds each column under that name."""
+    probe = "PREFIX_"
+    names: set[str] = set()
+    for mfsd in (False, True):
+        for mode, has_gtf in (("dna", False), ("rna", False), ("rna", True)):
+            for flags in (False, True):
+                cols = MafWriter.column_names(
+                    column_prefix=probe,
+                    mfsd=mfsd,
+                    mode=mode,
+                    rescue_mnp=flags,
+                    has_gtf=has_gtf,
+                    show_normalization=flags,
+                )
+                names.update(c[len(probe) :] for c in cols if c.startswith(probe))
+    return frozenset(names)
+
+
 def build_identity() -> str:
     """``gbcms v<version>``, with the build's commit when known
     (``gbcms v6.6.0.dev0 (9c371263)``): two builds of one version differ."""
@@ -280,11 +301,16 @@ class OutputWriter:
         return False
 
     def _finish(self, path: Path) -> None:
-        """Flush, fsync and close the temp file, then rename it over ``path``."""
-        self.file.flush()
-        os.fsync(self.file.fileno())
-        self.file.close()
-        os.replace(partial_path(path), path)
+        """Flush and close the temp file, then rename it over ``path`` (fsynced).
+        Any failure here (a full disk surfaces at flush or close) removes the
+        temp file before it is raised."""
+        try:
+            self.file.flush()
+            self.file.close()
+            commit_partial(path)
+        except BaseException:
+            self._discard(path)
+            raise
 
     def _discard(self, path: Path) -> None:
         with contextlib.suppress(OSError):
@@ -393,7 +419,7 @@ class MafWriter(OutputWriter):
         self.rescue_mnp = rescue_mnp
         self.has_gtf = has_gtf
         self.command_line = command_line
-        self.file = open(partial_path(path), "w")
+        self.file = open(write_target(path), "w")
 
         # Write provenance comment headers before TSV data.
         # These are #-prefixed lines that downstream readers skip via
@@ -974,7 +1000,7 @@ class VcfWriter(OutputWriter):
         self.command_line = command_line
         self.reference_fasta = reference_fasta
         self.contigs = contigs or []
-        self.file = open(partial_path(path), "w")
+        self.file = open(write_target(path), "w")
         self._headers_written = False
         # Opened on the first MAF-input row that needs an anchor base.
         self._reference: ReferenceBases | None = None

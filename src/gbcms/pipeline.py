@@ -181,24 +181,34 @@ def _zero_counts():
 
 def run_implications(cfg: Any) -> list[str]:
     """What the options set for a run imply for its counts or columns, one line
-    each, for those that differ from the defaults' meaning."""
+    each, for those that depart from the mode's defaults (an RNA run's defaults
+    are RNA's: BAQ on, strandedness enforced, MAPQ 1)."""
     out = []
-    f, q, o = cfg.filters, cfg.quality, cfg.output
-    for flag, kept, what in (
-        ("duplicates", False, "duplicate reads are counted (flag 0x400)"),
-        ("secondary", False, "secondary alignments are counted"),
-        ("supplementary", False, "supplementary alignments are counted"),
-        ("qc_failed", False, "QC-failed reads are counted (flag 0x200)"),
-        ("improper_pair", True, "reads not flagged as a proper pair are dropped"),
-        ("indel", True, "reads with any CIGAR insertion or deletion are dropped"),
-    ):
-        if getattr(f, flag) == kept:
+    default = type(cfg).model_construct()
+    f, d, q, o = cfg.filters, default.filters, cfg.quality, cfg.output
+    filter_effects = {
+        "duplicates": (False, "duplicate reads are counted (flag 0x400)"),
+        "secondary": (False, "secondary alignments join fragment evidence (never read counts)"),
+        "supplementary": (
+            False,
+            "supplementary alignments join fragment evidence (never read counts)",
+        ),
+        "qc_failed": (False, "QC-failed reads are counted (flag 0x200)"),
+        "improper_pair": (True, "reads not flagged as a proper pair are dropped"),
+        "indel": (True, "reads with any CIGAR insertion or deletion are dropped"),
+    }
+    for flag, (value, what) in filter_effects.items():
+        if getattr(f, flag) == value and getattr(d, flag) != value:
             name = flag.replace("_", "-")
-            out.append(f"--{'no-' if not kept else ''}filter-{name}: {what}")
+            out.append(f"--{'' if value else 'no-'}filter-{name}: {what}")
     if q.min_mapping_quality == 0:
         out.append("--min-mapq 0: multi-mapped reads (MAPQ 0) are counted")
-    if cfg.apply_baq:
-        out.append("--apply-baq: base qualities near indels are capped (BAQ) before --min-baseq")
+    if cfg.apply_baq != default.apply_baq:
+        out.append(
+            "--apply-baq: base qualities near indels are capped (BAQ) before --min-baseq"
+            if cfg.apply_baq
+            else "--no-apply-baq: base qualities near indels are not capped (BAQ off)"
+        )
     if cfg.umi_tag:
         out.append(
             f"--umi-tag {cfg.umi_tag}: fragments are grouped by the {cfg.umi_tag} tag "
@@ -217,10 +227,25 @@ def run_implications(cfg: Any) -> list[str]:
     if o.observations_parquet:
         out.append("--observations-parquet writes one Parquet row per molecule and variant")
     if cfg.mode == "rna":
-        if not getattr(cfg, "enforce_strandedness", True):
+        if getattr(cfg, "library_type", "capture") == "amplicon":
+            out.append(
+                "--library-type amplicon: each read is its own fragment (fragment counts "
+                "approximate read counts) and strandedness is not enforced"
+            )
+        elif not getattr(cfg, "enforce_strandedness", True):
             out.append("--no-enforce-strandedness: antisense reads are counted")
+        stranded = getattr(cfg, "strandedness", "reverse")
+        if stranded != getattr(default, "strandedness", "reverse"):
+            out.append(
+                "--strandedness unstranded: no read is filtered by strand"
+                if stranded == "unstranded"
+                else f"--strandedness {stranded}: a read's orientation maps to its transcript "
+                "strand the other way round"
+            )
         if getattr(cfg, "gtf", None):
             out.append("--gtf adds the exon-distance, per-transcript and ASJD columns")
+        if getattr(cfg, "rna_editing_db", None):
+            out.append("--rna-editing-db adds the rna_editing_site flag")
     return out
 
 
@@ -242,15 +267,18 @@ def log_bam_properties(
     removing more than 10% of sampled bases, ALT contigs in the header, or more
     than 1% hard-clipped primary alignments. Unmarked duplicates are only a fact:
     consensus and RNA BAMs legitimately carry none."""
+    try:
+        _log_bam_properties(label, bam_path, min_baseq=min_baseq, reference=reference)
+    except Exception as exc:  # noqa: BLE001 — facts only; counting handles the BAM
+        logger.info("BAM %s: run-start properties not read (%s); counting proceeds", label, exc)
+
+
+def _log_bam_properties(label: str, bam_path: Path, *, min_baseq: int, reference: Any) -> None:
     import pysam
 
-    try:
-        fh = pysam.AlignmentFile(
-            str(bam_path), reference_filename=str(reference) if reference else None
-        )
-    except (OSError, ValueError) as exc:
-        logger.debug("BAM %s: properties not read (%s)", label, exc)
-        return
+    fh = pysam.AlignmentFile(
+        str(bam_path), reference_filename=str(reference) if reference else None
+    )
     with fh:
         names = [sq.get("SN", "") for sq in fh.header.to_dict().get("SQ", [])]
         alts = [n for n in names if n.endswith("_alt") or n.startswith("HLA-")]
@@ -747,13 +775,11 @@ class Pipeline:
                 if _obs_path:
                     discard_partial(_obs_final)
                 raise
-            if _obs_path:
-                commit_partial(_obs_final)
+
             # The observations entry point returns (counts, rows); rows are empty because
             # they were written to Parquet. Counts are the same either way.
             counts_list = _result[0] if _obs_path else _result
-            if _obs_path:
-                logger.info("Wrote per-molecule observations → %s", _obs_final)
+
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 
@@ -782,12 +808,18 @@ class Pipeline:
 
             # Write Output (all variants, including rejected with zero counts)
             self._write_output(sample_name, variants, full_counts, prepared)
+            # The observations Parquet goes into place only once the MAF/VCF did,
+            # so a failed run never pairs new observations with a missing output.
+            if _obs_path:
+                commit_partial(_obs_final)
+                logger.info("Wrote per-molecule observations → %s", _obs_final)
             self._stats["samples_processed"] += 1
 
             sample_time = time.perf_counter() - sample_start
             logger.debug("Sample %s completed in %.3fs", sample_name, sample_time)
 
         except Exception as e:
+            discard_partial(self.config.output.directory / f"{sample_name}.observations.parquet")
             # logger.exception captures the traceback; the stored message
             # names the exception class because str(e) alone can be a bare
             # dictionary key (KeyError) or even empty.

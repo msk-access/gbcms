@@ -19,7 +19,8 @@ DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
   totals, VAFs and strand bias built from it, and merge warns once per column
   with the number of rows (it summed them as 0, silently). A row an input lacks
   still counts 0 for it. Combined VAFs are written with four decimals, as the
-  writers write theirs. No real output carries such cells (0 of 180,348 count
+  writers write theirs (`f"{v:.4f}"`), and the combined strand-bias p-values and
+  odds ratios as theirs (`1.7045e-01`, `3.0000`). No real output carries such cells (0 of 180,348 count
   cells measured); they come from edited files or other tools.
 - **Merge keeps every gbcms column per input (#223).** The mFSD and RNA columns
   (63 of the 89 columns the writers can emit) were taken from the first input
@@ -27,16 +28,24 @@ DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
   the pipeline allows alongside merge, a merged ACCESS output showed the duplex
   BAM's fragment sizes as the sample's. They are prefixed per input
   (`duplex_mfsd_ref_mean`), the set taken from the writer, with a test that it
-  matches in every mode.
+  matches in every mode. Inputs written with `--column-prefix` (`duplex_` as the
+  pipeline runs it, `t_`) carry their counts under that prefix and their status,
+  strand-bias, mFSD and RNA columns unprefixed: merge renamed nothing for them, so
+  the second input's status and strand bias were dropped too, and `t_` counts were
+  never combined. Every column is now found under the writer's name.
 - **A row only a later input has keeps its annotations (#221):** its first-input
   columns (gene, sample barcode, classification...) come from the earliest
-  later input that has the row; they were empty. No work when every row is in
-  the first input, as in the pipeline.
+  later input that has the row (matched by that input's own row, so one variant
+  listed for two samples keeps each sample's); they were empty. No work when
+  every row is in the first input, as in the pipeline.
 - **Merge reads its inputs' provenance (#129).** The merged MAF starts with its
   own `#gbcms`/`#command` lines and one `#input` line per input with that
   input's version line (it had none). Merge warns when the inputs come from
-  different versions or builds, and stops when one is a VCF-input MAF from
-  before 6.5.0 (`vcf_pos` without `vcf_ref`/`vcf_alt`) and another is not: the
+  different versions or builds (builds differ only when both name a commit), or
+  when only some say which version wrote them, and stops when one is a VCF-input
+  MAF from before 6.5.0 (`vcf_pos` without `vcf_ref`/`vcf_alt`, its version line
+  missing or older than 6.5.0; a later output can carry vcf2maf's `vcf_pos`) and
+  another is not: the
   same 102k VCF records genotyped by 6.4.0 and by this version differ in 6.3% of
   their rows, which merged into 12,771 half-empty rows with exit 0. The INFO line
   that claimed "n/m variants have no <type> counts" counted rows whose REF count
@@ -49,8 +58,12 @@ DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
   Dockerfile and the release workflow).
 - **No partial output files (#148).** Every output (MAF, VCF, the merged MAF,
   `convert` and `normalize` files, both Parquet files, the mFSD report) is
-  written to `.<name>.partial`, fsynced, and renamed into place; a failed run
-  leaves nothing at the output path and no temp file. It left a truncated file
+  written to `.<name>.partial`, fsynced, and renamed into place; a failed run,
+  including a failure while closing (a full disk), leaves nothing at the output
+  path and no temp file, and the observations Parquet goes into place only after
+  the MAF/VCF. A symlinked output keeps its link (its target is replaced), a
+  replaced file keeps its permission bits, and a device or FIFO (`/dev/stdout`)
+  is written in place. It left a truncated file
   under the final name (htslib tools, GATK and Picard do too; only workflow
   managers clean up).
 - **Per-BAM warnings once (#130).** The `--rescue-mnp` re-count no longer repeats
@@ -67,7 +80,10 @@ DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
   MSK BAMs the default removes 0.8–2.1% and none has ALT contigs or hard-clipped
   primaries. Unmarked duplicates are reported, not warned: ACCESS consensus and
   FORTE RNA BAMs carry none by design. The CLI's four-setting `Config:` line is
-  replaced by the block.
+  replaced by the block. Implications are stated against the mode's defaults (an
+  RNA run's are RNA's), RNA amplicon and strandedness settings included; turning
+  off the secondary or supplementary filter lets those alignments join fragment
+  evidence, never read counts. A BAM the facts cannot read is left to counting.
 - **One page for every QC flag (#156):** `docs/reference/qc-flags.md`, a table
   per family (status reasons, diagnostics, rescue outcomes, ASJD, QC columns,
   mFSD classes, VCF record shapes) with mode, MAF column, VCF field and what to

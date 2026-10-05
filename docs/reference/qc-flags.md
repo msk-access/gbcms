@@ -49,9 +49,9 @@ the run log.
 |:-----|:-----|:---------|:-----------|
 | `ZERO_ALT` | all | No read carries the ALT | None, or check the input allele (see `OBSERVED_ALLELE`) |
 | `PARTIAL_DOMINANT` | all | `partial_alt` exceeds `alt_count`: more reads carry part of the event or another length | Inspect: often a coexisting or mis-described allele |
-| `MNP_DISC_RATIO(n/m)` | all | An MNP with partial carriers: `n` of `m` discriminating positions carried | Consider `--rescue-mnp` (see `MNP_RESCUE_ELIGIBLE`) |
-| `MNP_RESCUE_ELIGIBLE` | all | The MNP is a rescue candidate | With `--rescue-mnp`, rescue runs |
-| `HIGH_N_FRACTION(f)` | all | A fraction `f` of the depth has `N` at the locus | Low-quality region; counts are thinner |
+| `MNP_DISC_RATIO(n/m)` | all | Every MNP row: `n` positions where REF and ALT differ, of its `m` bases | Describes the MNP's shape |
+| `MNP_RESCUE_ELIGIBLE` | all | `n/m` is at most `--rescue-mnp-threshold`: the MNP is a rescue candidate | With `--rescue-mnp`, rescue runs on it |
+| `HIGH_N_FRACTION(f)` | all | More than 5% of the depth (`f`) has `N` at the locus | A masking hotspot (duplex); counts are thinner |
 | `CLIP_CANDIDATES(n)` | DNA | An insertion with no confirmed ALT where `n` (≥ 2) reads carry a long soft clip in the insert's reach | Inspect in IGV: carriers may be clipped |
 | `OBSERVED_ALLELE(chrom:pos:REF>ALT:n/0)` | all | No read carries the given allele; `n` reads carry this one | The input allele is likely mis-described |
 | `COEXISTING_ALLELE(chrom:pos:REF>ALT:n/m)` | all | The given allele is carried (`m`), but more reads (`n`) carry another in the same stretch | A caveat for reading the VAF (germline indel, stutter) |
@@ -101,6 +101,7 @@ semicolon-separated; counts are per fragment. Motifs (`asjd_ref_motif`,
 | `rna_editing_site` (VCF `RED`) | RNA, `--rna-editing-db` | The locus is a known A-to-I editing site | An A>G / T>C call there is likely editing |
 | `mfsd_ks_valid` | `--mfsd` | Both ALT and REF have ≥ 5 fragments in the size window | When `False`, the KS statistics are NA |
 | `mfsd_ch_flag` | `--mfsd` | The variant is in a clonal-hematopoiesis gene | Read with the CH-LIKE class |
+| `mfsd_alt_confidence` | `--mfsd` | `HIGH` with 5 or more ALT fragments in the size window, `LOW` with 1–4, `NONE` with none | Weigh the mFSD statistics by it |
 
 ## mFSD report classes
 

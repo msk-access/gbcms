@@ -2740,10 +2740,6 @@ fn effective_quals(record: &Record, use_baq: bool, baq_spare: Option<(i64, i64)>
     }
 }
 
-/// The read's molecule key, and whether it carried the UMI: a hash of its QNAME,
-/// with its UMI when `umi_tag` is set (reads with different UMIs are different
-/// molecules). In amplicon mode R1 and R2 key apart, so each read is its own
-/// observation (no fragment consensus).
 /// One record's identity across the bins that fetch it: name, flags, contig and
 /// position (a read and its mate, or its supplementary pieces, differ in flags or
 /// position).
@@ -2753,6 +2749,10 @@ fn record_identity(record: &Record) -> u64 {
     std::hash::Hasher::finish(&h)
 }
 
+/// The read's molecule key, and whether it carried the UMI: a hash of its QNAME,
+/// with its UMI when `umi_tag` is set (reads with different UMIs are different
+/// molecules). In amplicon mode R1 and R2 key apart, so each read is its own
+/// observation (no fragment consensus).
 fn molecule_key(record: &Record, umi_tag: Option<[u8; 2]>, amplicon_mode: bool) -> (u64, bool) {
     let umi = umi_tag.and_then(|tag| match record.aux(&tag) {
         Ok(rust_htslib::bam::record::Aux::String(s)) => Some(s.as_bytes()),

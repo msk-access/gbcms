@@ -693,10 +693,7 @@ def test_the_output_reference_and_glossary_link_the_qc_flags_page():
 
 # ── Group 5 review findings ──────────────────────────────────────────────────
 
-_REVIEW = pytest.mark.xfail(strict=True, reason="group 5 review finding")
 
-
-@_REVIEW
 def test_pipeline_prefixed_inputs_keep_every_column_per_input(tmp_path):
     """The pipeline runs with --column-prefix <type>_: counts arrive prefixed,
     status, strand bias, mFSD unprefixed. Each is kept per input, and a row only
@@ -736,7 +733,6 @@ def test_pipeline_prefixed_inputs_keep_every_column_per_input(tmp_path):
     assert not {"gbcms_status", "mfsd_ref_mean", "strand_bias_p_value"} & set(row)
 
 
-@_REVIEW
 def test_legacy_t_prefixed_counts_merge_per_input(tmp_path):
     """--column-prefix t_ counts are gbcms counts: kept per input and combined."""
     cols = [*_KEY, "t_ref_count", "t_alt_count"]
@@ -760,7 +756,6 @@ def test_legacy_t_prefixed_counts_merge_per_input(tmp_path):
     assert "t_ref_count" not in merged[0]
 
 
-@_REVIEW
 def test_the_vcf_shape_refusal_spares_recent_outputs(tmp_path):
     """A MAF-input output can carry vcf_pos (vcf2maf writes it); from 6.5.0 on it
     is not the pre-6.5.0 VCF-input shape, so merge does not refuse it."""
@@ -779,7 +774,6 @@ def test_the_vcf_shape_refusal_spares_recent_outputs(tmp_path):
     assert len(merged) == 1
 
 
-@_REVIEW
 def test_a_bam_property_scan_failure_does_not_stop_the_run(tmp_path, monkeypatch):
     """The run-start facts are informational: a BAM they cannot read is left to
     the counting pass, which handles it per sample."""
@@ -808,7 +802,6 @@ def test_a_bam_property_scan_failure_does_not_stop_the_run(tmp_path, monkeypatch
     assert (tmp_path / "o" / "S.maf").exists()
 
 
-@_REVIEW
 def test_a_later_only_row_takes_its_own_rows_annotations(tmp_path):
     """Two simplex rows with one variant (two samples): each keeps its own
     annotations, not the first such row's."""
@@ -830,7 +823,6 @@ def test_a_later_only_row_takes_its_own_rows_annotations(tmp_path):
     assert sorted(later) == [("S1", "1"), ("S2", "4")]
 
 
-@_REVIEW
 def test_a_failed_maf_write_leaves_no_observations_parquet(tmp_path, monkeypatch):
     from gbcms.io import output as out_mod
 
@@ -844,7 +836,6 @@ def test_a_failed_maf_write_leaves_no_observations_parquet(tmp_path, monkeypatch
     assert sorted(p.name for p in (tmp_path / "o").iterdir()) == []
 
 
-@_REVIEW
 def test_a_failure_at_close_leaves_no_temp_file(tmp_path, monkeypatch):
     import os
 
@@ -860,7 +851,6 @@ def test_a_failure_at_close_leaves_no_temp_file(tmp_path, monkeypatch):
     assert sorted(p.name for p in tmp_path.iterdir()) == []
 
 
-@_REVIEW
 def test_combined_text_matches_the_writers_formatting(tmp_path):
     """VAF as the writers' f'{v:.4f}' (1/160 is 0.0063 there), strand-bias p-value
     and odds ratio as theirs (scientific and four decimals)."""
@@ -891,7 +881,6 @@ def test_combined_text_matches_the_writers_formatting(tmp_path):
     assert re.fullmatch(r"NA|\d+\.\d{4}", row["simplex_duplex_strand_bias_odds_ratio"])
 
 
-@_REVIEW
 def test_implications_say_what_secondary_and_supplementary_filters_do(tmp_path):
     maf, fa, bam = _five_snvs(tmp_path)
     res, text = _dna(tmp_path, maf, bam, fa, "--no-filter-secondary")
@@ -900,7 +889,6 @@ def test_implications_say_what_secondary_and_supplementary_filters_do(tmp_path):
     assert "secondary alignments are counted" not in text
 
 
-@_REVIEW
 def test_rna_implications_report_departures_from_rna_defaults():
     from gbcms.models.core import GbcmsRnaConfig, OutputConfig
     from gbcms.pipeline import run_implications
@@ -919,13 +907,8 @@ def test_rna_implications_report_departures_from_rna_defaults():
     "lines,warns",
     [
         pytest.param(("#gbcms v5.3.0", "#gbcms v6.6.0 (4f46d4fb)"), True, id="old-version"),
-        pytest.param(
-            ("#gbcms v6.6.0", "#gbcms v6.6.0 (4f46d4fb)"),
-            False,
-            id="commit-only-on-one",
-            marks=_REVIEW,
-        ),
-        pytest.param(("#gbcms v6.6.0", None), True, id="no-line-on-one", marks=_REVIEW),
+        pytest.param(("#gbcms v6.6.0", "#gbcms v6.6.0 (4f46d4fb)"), False, id="commit-only-on-one"),
+        pytest.param(("#gbcms v6.6.0", None), True, id="no-line-on-one"),
     ],
 )
 def test_version_lines_are_compared_as_versions(tmp_path, caplog, lines, warns):
@@ -937,7 +920,6 @@ def test_version_lines_are_compared_as_versions(tmp_path, caplog, lines, warns):
     assert bool(warned) == warns, [r.message for r in caplog.records]
 
 
-@_REVIEW
 def test_an_output_symlink_and_mode_survive_a_rewrite(tmp_path):
     import os
     import stat
@@ -955,7 +937,6 @@ def test_an_output_symlink_and_mode_survive_a_rewrite(tmp_path):
     assert stat.S_IMODE(target.stat().st_mode) == 0o640
 
 
-@_REVIEW
 def test_the_qc_flags_page_has_the_mfsd_confidence_classes():
     text = (ROOT / "docs" / "reference" / "qc-flags.md").read_text()
     assert "mfsd_alt_confidence" in text
