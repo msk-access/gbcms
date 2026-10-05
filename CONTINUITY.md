@@ -137,16 +137,22 @@ Acceptance: counts unchanged everywhere. Follow-ups: I7 #219, O9 #220 (6.7.0), M
 #221 (group 5). Group 4 builds and slices removed (REMOVED_BUILDS.md).
 
 **In progress — group 5, merge, outputs, observability (M4 #194, M5 #221, M6 #223,
-M2 #129, H1 #148, O1 #130, O2 #131, D6 #156):** branch `feature/g5-merge-outputs`.
-Decided 2026-10-05 (M4 2026-09-30), measured first, survey in the plan: combined
-NA for missing counts (warned); every gbcms column per input (set from the
-writer); later-only rows keep annotations; merged MAF provenance, version
-warning, pre-6.5.0 VCF shape refused, builds name their commit (6.6.0.dev0);
-atomic outputs; per-BAM warnings once with exact counts; run-start settings
-block, implications and per-BAM facts with three measured warnings; one
-QC-flags page with a completeness test. Commits: plan `1048c6de`, red
-`3a5baf5b`, fix `b317121f`, M5 test (operator-approved) `4f46d4fb`. Pending:
-adversarial review, acceptance (base 9c371263), PR. Harness
+M2 #129, H1 #148, O1 #130, O2 #131, D6 #156; pulled in from 6.7.0: M1a #224,
+O9 #220, D3a #225):** branch `feature/g5-merge-outputs`. Decided 2026-10-05 (M4
+2026-09-30), measured first, surveyed: combined NA for missing counts and for
+rows whose flavors' rescue differs; every gbcms column per input (set from the
+writer, found under the writer's --column-prefix); later-only rows keep
+annotations (by their own row); merged MAF provenance, version warning,
+pre-6.5.0 VCF shape refused (version-gated), builds name their commit
+(6.6.0.dev0); atomic outputs; per-BAM warnings once, exact counts; run-start
+settings block, implications and per-BAM facts with three measured warnings;
+QC flags defined once in qc-flags.md sections (included or linked; tests and
+the docs build guard it); whole-contig deletion VCF record valid; docs
+toolchain pinned below MkDocs 2. Commits: plan `1048c6de`, red `3a5baf5b`, fix
+`b317121f`, review red `8b1d7022` + fix `64bafc72`, docs single-source
+`941defbe`, pull-ins red `5a26e990` + fix `4cf49bc4`; two test expectations
+updated with the operator's approval (`4f46d4fb`, `6bd7da0d`). Pending:
+acceptance (base 9c371263; finals 64bafc72 and 6bd7da0d), PR. Harness
 `~/test/gbcms/harness/g5/`.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
