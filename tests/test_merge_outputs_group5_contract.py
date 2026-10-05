@@ -1037,3 +1037,138 @@ def test_every_qc_flags_include_names_a_section():
         includes += re.findall(r'--8<-- "reference/qc-flags\.md:([\w-]+)"', page.read_text())
     assert includes, "no page includes a QC Flags section"
     assert set(includes) <= sections, set(includes) - sections
+
+
+# ── Pulled in from 6.7.0: M1 #128 (rescue half), O9 #220, D3 #138 (pin) ──────
+
+_PULLED = pytest.mark.xfail(strict=True, reason="pulled in from 6.7.0")
+_RCOLS = [*_MCOLS, "gbcms_status", "gbcms_rescue"]
+_RESCUED = (
+    "method=decomposed;outcome=rescued;original_ref=9;original_alt=0;original_partial=4;"
+    "original_confirmed=0;adopted=1:100(A>T)"
+)
+_KEPT = (
+    "method=decomposed;outcome=no_improvement;original_ref=9;original_alt=0;"
+    "original_partial=4;original_confirmed=0"
+)
+_SD = (
+    "simplex_duplex_ref_count",
+    "simplex_duplex_alt_count",
+    "simplex_duplex_total_count",
+    "simplex_duplex_vaf",
+)
+
+
+@_PULLED
+def test_combined_columns_are_na_where_the_flavors_rescue_differently(tmp_path, caplog):
+    """Duplex reports a rescued component, simplex the MNP: their counts describe
+    different alleles, so the row's combined cells are NA (the warning stays)."""
+    merged = _merge(
+        tmp_path,
+        {
+            "duplex": (
+                _RCOLS,
+                [
+                    ["1", "100", "101", "AC", "TT", "20", "5", "20", "5", "PASS", _RESCUED],
+                    ["1", "200", "201", "GA", "CC", "9", "1", "9", "1", "PASS", ""],
+                ],
+            ),
+            "simplex": (
+                _RCOLS,
+                [
+                    ["1", "100", "101", "AC", "TT", "7", "0", "7", "0", "PASS", _KEPT],
+                    ["1", "200", "201", "GA", "CC", "3", "1", "3", "1", "PASS", ""],
+                ],
+            ),
+        },
+        caplog,
+    )
+    assert all(merged[0][c] == "NA" for c in _SD), {c: merged[0][c] for c in _SD}
+    assert merged[0]["simplex_duplex_strand_bias_p_value"] in ("NA", "")
+    assert (merged[1]["simplex_duplex_ref_count"], merged[1]["simplex_duplex_alt_count"]) == (
+        "12",
+        "2",
+    )
+    assert any("Mixed MNP rescue" in r.message and "NA" in r.message for r in caplog.records)
+
+
+@_PULLED
+def test_rescue_on_one_flavor_only_makes_its_rescued_rows_na(tmp_path):
+    merged = _merge(
+        tmp_path,
+        {
+            "duplex": (
+                _RCOLS,
+                [["1", "100", "101", "AC", "TT", "20", "5", "20", "5", "PASS", _RESCUED]],
+            ),
+            "simplex": (
+                [*_MCOLS, "gbcms_status"],
+                [["1", "100", "101", "AC", "TT", "7", "0", "7", "0", "PASS"]],
+            ),
+        },
+    )
+    assert merged[0]["simplex_duplex_ref_count"] == "NA"
+
+
+def test_a_row_one_flavor_lacks_is_not_mixed(tmp_path):
+    """Guard: duplex rescued a row simplex does not have: nothing is summed across
+    alleles, so the combined cells are duplex's counts."""
+    merged = _merge(
+        tmp_path,
+        {
+            "duplex": (
+                _RCOLS,
+                [["1", "100", "101", "AC", "TT", "20", "5", "20", "5", "PASS", _RESCUED]],
+            ),
+            "simplex": (_RCOLS, [["1", "300", "300", "G", "C", "3", "1", "3", "1", "PASS", ""]]),
+        },
+    )
+    assert (merged[0]["simplex_duplex_ref_count"], merged[0]["simplex_duplex_alt_count"]) == (
+        "20",
+        "5",
+    )
+
+
+def _tiny_contig(tmp_path):
+    """A 6-base contig '1' and a longer contig '2'; an empty BAM over both."""
+    fa = tmp_path / "tiny.fa"
+    fa.write_text(">1\nACGTAC\n>2\n" + REF + "\n")
+    pysam.faidx(str(fa))
+    hdr = {
+        "HD": {"VN": "1.6", "SO": "coordinate"},
+        "SQ": [{"SN": "1", "LN": 6}, {"SN": "2", "LN": len(REF)}],
+    }
+    bam = tmp_path / "tiny.bam"
+    with pysam.AlignmentFile(str(bam), "wb", header=hdr):
+        pass
+    pysam.index(str(bam))
+    return fa, bam
+
+
+@_PULLED
+@pytest.mark.parametrize("command", ["dna", "convert"])
+def test_vcf_output_of_a_whole_contig_deletion_is_a_valid_record(tmp_path, command):
+    """A MAF deletion at Start 1 spanning its whole contig has no reference base
+    before or after it: the record is the symbolic one (REF the base at POS),
+    not a REF padded past the contig end with N."""
+    fa, bam = _tiny_contig(tmp_path)
+    maf = _maf(tmp_path, [_row(1, "ACGTAC", "-", Chromosome="1")])
+    if command == "dna":
+        res, _ = _dna(tmp_path, maf, bam, fa, fmt="vcf")
+        out = next((tmp_path / "o").glob("*.vcf"))
+    else:
+        out = tmp_path / "c.vcf"
+        res = runner.invoke(app, ["convert", "-v", str(maf), "-f", str(fa), "-o", str(out)])
+    assert res.exit_code == 0, res.output
+    with pysam.VariantFile(str(out)) as fh:
+        (rec,) = list(fh)
+    assert (rec.contig, rec.pos, rec.ref, rec.alts) == ("1", 1, "A", ("<NON_SEQUENCE>",))
+
+
+@_PULLED
+def test_the_docs_toolchain_is_pinned_below_mkdocs_2():
+    """MkDocs 2.0 is incompatible with Material and with this site's config
+    (anchor validation, exclude_docs, snippets): every install pins mkdocs < 2."""
+    pin = "mkdocs>=1.6,<2"
+    assert f'"{pin}"' in (ROOT / "pyproject.toml").read_text()
+    assert pin in (ROOT / ".github" / "workflows" / "deploy-docs.yml").read_text()
