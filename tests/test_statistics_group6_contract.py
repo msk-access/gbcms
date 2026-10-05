@@ -226,8 +226,9 @@ def test_no_report_class_is_named_ch_like(tmp_path):
     )  # fmt: skip
     html = out.read_text()
     assert "CH-LIKE" not in html and "CH-like" not in html
-    # the summary cards name the graded classes (the badge itself is checked on a
-    # report built from known sizes, below)
+    # the class as a card badge (the fixture has a significant, shorter ALT) and the
+    # summary cards, not only tooltip text
+    assert ">LEANS-SOMATIC</span>" in html
     assert '<div class="label">Leans somatic</div>' in html
     assert '<div class="label">No size evidence</div>' in html
 

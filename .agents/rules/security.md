@@ -26,6 +26,11 @@ model's habits and loses under load). The deterministic floor lives in
   `.githooks/pre-push` runs gitleaks.)
 - Scan tracked **code and fixtures**, not only data files — secrets hide in test
   fixtures and hardcoded example lists.
+- Test fixtures (`tests/testdata/`) are **synthetic**. The pre-commit hook lets data
+  files in there only after scanning each staged one (decoded where binary) for MSK
+  sample, CMO and anonymized-BAM identifiers, under 2 MB; a slice of a real BAM
+  never goes there, renamed or not — its reads are the patient's. (Enforced:
+  `.githooks/pre-commit` step 1b.)
 
 ## Outward-facing actions
 - **Ask before public.** The default destination for any artifact is private. A
