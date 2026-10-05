@@ -37,6 +37,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Harness cleanup after merge](harness-cleanup-after-merge.md) — delete the ticket's `src_*` builds (rebuildable from BUILT_FROM; patch prototypes first), gzip traces, `cargo clean` when rust/target bloats.
 - [Long runs visible](long-runs-visible.md) — pair every detached nohup harness run with a tracked background waiter; runs over a network mount go one at a time, grouped by file.
 - [No `timeout` on this Mac](macos-no-timeout-command.md) — `timeout N cmd && ok || fail` always says fail; check SFTP mounts with a plain read.
+- [Pipes mask gate exit codes](pipe-masks-gate-exit.md) — `pytest | tail && git commit` commits on failure; capture `$?` or use pipefail.
 
 ## Validation / testing
 - [QC-fail flag absent from MSK data](qcfail-flag-absent-msk-data.md) — no pipeline stage sets 0x200; filter verified correct but inert in practice (contract test pins it).
