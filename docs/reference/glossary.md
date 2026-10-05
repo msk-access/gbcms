@@ -58,24 +58,10 @@ Technical terms used throughout the documentation.
 
 ## Validation Status
 
-All flags, reasons and classes in one place: [QC Flags](qc-flags.md).
-
 Status is two fields: `gbcms_status` (verdict `PASS`/`FAIL`) and `gbcms_status_reason`
 (`|`-separated reason tags, empty for a clean PASS).
 
-| `gbcms_status` | `gbcms_status_reason` | Meaning |
-|:-------|:--------|:--------|
-| **PASS** | *(empty)* | Variant validated against reference, ready for counting |
-| **PASS** | **WARN_REF_CORRECTED** | REF allele ≥90% match; corrected to FASTA REF |
-| **PASS** | **WARN_HOMOPOLYMER_DECOMP** | With `--rescue-homopolymer`: variant spans a homopolymer; dual-counted with a corrected allele, and the corrected allele won |
-| **PASS** | **MULTI_ALLELIC** | Variant overlaps another variant at the same locus; sibling ALT exclusion active |
-| **PASS** | **TRACT_CLUSTER** | Variant shares a repeat-tract scan window with a co-annotated length-changing variant (spans need not touch); sibling exclusion and exclusive AD assignment active |
-| **FAIL** | **REF_MISMATCH** | REF allele does not match the reference genome at the stated position; `REF_AT_OFFSET(k)` in `gbcms_diagnostic` when it sits exactly a few bases off |
-| **FAIL** | **FETCH_FAILED** | Could not fetch the reference region (chromosome not found, etc.) |
-| **FAIL** | **EMPTY_ALLELE** | Empty REF or ALT (malformed indel) |
-| **FAIL** | **NON_SEQUENCE_ALLELE** | An allele is not a base sequence (an IUPAC code or another character; `-` outside MAF input); kept in MAF output, written as `<NON_SEQUENCE>` in VCF output |
-| **FAIL** | **ALT_EQUALS_REF** | ALT equals REF (any case; `-` for both in a MAF): no change to count |
-| **FAIL** | **ALT_CONTAINS_N** | ALT allele contains an `N` base |
+The reasons and what each means: [QC Flags → Verdict and status reasons](qc-flags.md#verdict-and-status-reasons).
 
 ## RNA Terms
 

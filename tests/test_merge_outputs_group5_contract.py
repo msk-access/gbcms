@@ -941,3 +941,99 @@ def test_the_qc_flags_page_has_the_mfsd_confidence_classes():
     text = (ROOT / "docs" / "reference" / "qc-flags.md").read_text()
     assert "mfsd_alt_confidence" in text
     assert all(v in text for v in ("HIGH", "LOW", "NONE"))
+
+
+# ── D6: each flag is defined once (QC Flags), included or linked elsewhere ────
+
+_QC_PAGE = ROOT / "docs" / "reference" / "qc-flags.md"
+_SECTION = re.compile(r"--8<-- \[start:([\w-]+)\](.*?)--8<-- \[end:\1\]", re.S)
+
+
+def _defined_flags():
+    """Flags defined in QC Flags' sections: the first cell of each table row."""
+    flags = set()
+    for _, body in _SECTION.findall(_QC_PAGE.read_text()):
+        for line in body.splitlines():
+            if line.startswith("| ") and not line.startswith("|:"):
+                cell = line.split("|")[1].strip()
+                first = re.match(r"`([A-Za-z][\w-]*)", cell)
+                if first:
+                    flags.add(first.group(1))
+    flags -= {"Reason", "Flag", "Outcome", "Column", "Class"}
+    return flags
+
+
+def _cells(line):
+    return [c.strip().strip("*").strip("`").strip() for c in line.strip().strip("|").split("|")]
+
+
+def _other_pages():
+    return [p for p in (ROOT / "docs").rglob("*.md") if p != _QC_PAGE]
+
+
+def test_the_qc_flags_page_defines_every_family():
+    flags = _defined_flags()
+    for expected in (
+        "REF_MISMATCH",
+        "ZERO_ALT",
+        "rescued",
+        "LOW_ALT_JUNC",
+        "mfsd_ks_valid",
+        "TUMOR-LIKE",
+    ):
+        assert expected in flags, expected
+
+
+def test_flags_are_defined_only_on_the_qc_flags_page():
+    """Outside QC Flags, a table row whose first or second cell is a flag, or a
+    bullet that opens with a flag and a definition, must link to QC Flags (a
+    column row pointing at the definition); a full definition lives in one place,
+    so a copy cannot go stale."""
+    flags = _defined_flags()
+    bullet = re.compile(
+        r"^\s*(?:[-*]|\d+\.)\s+\*{0,2}`?([A-Za-z][\w-]*)`?(?:\([^)]*\))?`?\*{0,2}\s*(?:—|:|–| - )"
+    )
+    found = []
+    for page in _other_pages():
+        for n, line in enumerate(page.read_text().splitlines(), 1):
+            if "qc-flags.md" in line:
+                continue
+            m = bullet.match(line)
+            if m and m.group(1) in flags:
+                found.append(f"{page.relative_to(ROOT)}:{n} {m.group(1)} (bullet)")
+            if not line.lstrip().startswith("|"):
+                continue
+            for cell in _cells(line)[:2]:
+                name = re.sub(r"\(.*\)$", "", cell)
+                if name in flags:
+                    found.append(f"{page.relative_to(ROOT)}:{n} {name}")
+    assert found == [], found
+
+
+def test_flag_lists_link_the_qc_flags_page():
+    """A line that names three or more flags (a vocabulary list) links to QC
+    Flags, so a list cannot silently miss a new flag."""
+    flags = _defined_flags()
+    found = []
+    for page in _other_pages():
+        for n, line in enumerate(page.read_text().splitlines(), 1):
+            # A lowercase name (an outcome, a column) counts only in backticks:
+            # "rescued" is also an English word.
+            named = {
+                f
+                for f in flags
+                if (f"`{f}" in line)
+                or (f.upper() == f and re.search(rf"(?<![\w-]){re.escape(f)}(?![\w-])", line))
+            }
+            if len(named) >= 3 and "qc-flags.md" not in line:
+                found.append(f"{page.relative_to(ROOT)}:{n} {sorted(named)}")
+    assert found == [], found
+
+
+def test_every_qc_flags_include_names_a_section():
+    sections = {name for name, _ in _SECTION.findall(_QC_PAGE.read_text())}
+    includes = []
+    for page in _other_pages():
+        includes += re.findall(r'--8<-- "reference/qc-flags\.md:([\w-]+)"', page.read_text())
+    assert includes, "no page includes a QC Flags section"
+    assert set(includes) <= sections, set(includes) - sections

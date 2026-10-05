@@ -147,10 +147,10 @@ for the full design.
 | `--rescue-mnp-threshold` | `1.0` | Maximum discriminating/length ratio for MNP rescue eligibility (0.0–1.0). `1.0` = all MNPs are eligible (C++ gbcms compatible, default). `0.5` = conservative sparse-only mode (≤50% discriminating positions). `0.0` = disable rescue eligibility (MNP_DISC_RATIO diagnostics are still emitted). Only used when `--rescue-mnp` is enabled. |
 
 !!! info "Diagnostic Flags"
-    Two diagnostic flags are emitted for every MNP variant, with or without `--rescue-mnp`:
-
-    - **`MNP_DISC_RATIO(n/m)`** — Always emitted. Shows the ratio of discriminating positions to total MNP length.
-    - **`MNP_RESCUE_ELIGIBLE`** — Emitted only when disc/len ≤ `--rescue-mnp-threshold`. Marks the variant as eligible; rescue additionally requires `partial_alt > alt_count`. Both flags describe the annotated MNP's shape, so a rescued row keeps them next to `RESCUED_COMPONENT(...)`; rows still awaiting review after a rescue run are `MNP_RESCUE_ELIGIBLE` without `RESCUED_COMPONENT`.
+    Every MNP row carries `MNP_DISC_RATIO(n/m)`, with or without `--rescue-mnp`, and
+    `MNP_RESCUE_ELIGIBLE` when `n/m` is at most `--rescue-mnp-threshold`. Both describe
+    the annotated MNP's shape, so a rescued row keeps them next to `RESCUED_COMPONENT`.
+    Definitions: [QC Flags → Diagnostics](../reference/qc-flags.md#diagnostics).
 
 !!! warning "A rescued row reports a component, not the annotated MNP"
     When reads show the whole MNP (e.g. a somatic change on top of a germline SNP), rescue

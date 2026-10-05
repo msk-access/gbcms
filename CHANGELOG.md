@@ -84,10 +84,21 @@ DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
   RNA run's are RNA's), RNA amplicon and strandedness settings included; turning
   off the secondary or supplementary filter lets those alignments join fragment
   evidence, never read counts. A BAM the facts cannot read is left to counting.
-- **One page for every QC flag (#156):** `docs/reference/qc-flags.md`, a table
-  per family (status reasons, diagnostics, rescue outcomes, ASJD, QC columns,
-  mFSD classes, VCF record shapes) with mode, MAF column, VCF field and what to
-  do; a test fails when a flag the code emits is missing from it.
+- **One page for every QC flag, each defined once (#156):**
+  `docs/reference/qc-flags.md`, a table per family (status reasons, diagnostics,
+  rescue outcomes, ASJD, QC columns, mFSD classes, VCF record shapes) with mode,
+  MAF column, VCF field and what to do. Each family is a snippet section that the
+  pages needing the table include (normalization, architecture, RNA annotation,
+  output formats, mFSD report); the rest link to it. Tests fail when a flag the
+  code emits is missing from the page, when a flag is defined anywhere else (a
+  table row or bullet), when a line lists three or more flags without linking it,
+  or when an include names a missing section; the docs build now fails on a
+  missing snippet or anchor. Consolidating found copies that had drifted: the mFSD
+  report's class table and flowchart (thresholds 1.0 and the raw KS p-value; the
+  code uses 1.3/1.2, the FDR q-value and the CH-gene check), its `mfsd_ch_flag`
+  ("CH-like profile"; it marks a CH gene), output formats' `STRAND_DISCORDANT`
+  (from before intronic loci got a strand), the VCF `GS` row (the pre-6.0
+  combined status; `GSR` was missing), and the report's own tooltips (raw p).
 
 ### Changed — input and representation (#122, #123, #124, #125, #126, #147, #208, #149, #218)
 

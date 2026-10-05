@@ -144,6 +144,8 @@ markdown_extensions:
       base_path:
         - .
         - docs
+      # A missing file or section fails the build (default: silently empty).
+      check_paths: true
       auto_append:
         - includes/abbreviations.md
   - pymdownx.tabbed:
@@ -177,3 +179,11 @@ copyright: |
   <a href="https://www.mskcc.org">MSKCC</a> | 
   Built with <a href="https://antigravity.google/">Antigravity</a> | 
   <a href="https://github.com/msk-access/gbcms/blob/main/LICENSE">AGPL-3.0</a>
+
+# Snippet sources, not pages (read by pymdownx.snippets, not built).
+exclude_docs: |
+  includes/
+
+# A link to a missing heading anchor warns (and fails --strict builds).
+validation:
+  anchors: warn
