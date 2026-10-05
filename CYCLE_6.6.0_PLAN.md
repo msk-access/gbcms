@@ -40,17 +40,17 @@ marks a ticket with an open PR.
 | C6 | Error-tolerant exact-length insertion matching | L | [counts] [6.7.0] | #143 (#92) |
 | C7 | Rescue for clip-borne ITD carriers | L | [counts] [6.7.0] | #144 (#92) |
 | C8 | One-base-REF delins without a shared anchor | L | [counts] [done] | #121 |
-| C9 | Count a MAF deletion at Start 1 | L | [counts] group 4 (built) | #122 |
+| C9 | Count a MAF deletion at Start 1 | L | [counts] group 4 [done] | #122 |
 | C10 | Reads ending inside an indel's repeat tract counted REF | H | [counts] [done] | #157 |
 | C11 | Phase-3 context misses tandem duplications longer than the repeat finder's motifs | M | [counts] [closed] | #159 |
 | C12 | Count carriers whose allele lies in soft-clipped bases (complex variants) | H | [counts] [done] | #167 |
 | C13 | BAQ spares the variant's own indel evidence | H | [counts] [done] | #166 |
 | C14 | Records without bases (SEQ `*`) crash the SNP path | M | [counts] [done] | #172 |
 | C15 | C12 follow-ups: RNA, clipped pure deletions, anchors in the clip | M | [counts] RNA part group 3 (RJ-18, built); the rest [6.7.0] | #173 |
-| C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] [decided] | #174 |
-| T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [in review] | #170 |
-| T2 | Read census as the classification oracle in tests | M | [in review] | #171 |
-| H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | | #204 |
+| C16 | Stray ALT calls at RNA exon-edge probes | L | [counts] [decided] [done] | #174 |
+| T1 | Test architecture: retire the legacy parity path for binning-invariance tests | M | [done] | #170 |
+| T2 | Read census as the classification oracle in tests | M | [done] | #171 |
+| H3 | Code-quality sweep of the cycle's code: duplication, unused code, silent failures, comments, logging, monitoring | M | [done] | #204 |
 | C17 | A read ends at its fragment end: adapter-like read-through bases are clipped in every read | M | [counts] [decided] [done] | #176 |
 | C18 | Split-read evidence for long events (supplementary alignments) | M | [counts] [6.7.0] | #177 |
 | C19 | Absent base qualities (QUAL `*`, read as 0xFF) overflow fragment consensus | M | [counts] [decided] [done] | #182 |
@@ -59,32 +59,32 @@ marks a ticket with an open PR.
 | C22 | Same-length non-equivalent deletions ≥5bp near a deletion row reach Phase 3, which calls them ALT | M | [counts] [done] | #191 |
 | C23 | Distinct alleles in long-period repeats (motif > 6bp) keep REF: "in a repeat" is decided by `repeat_span` | L | [counts] [done] | #192 |
 | C24 | Local-alignment fallback tail reads stale semiglobal scores (rare no-reference path; partial_alt only) | L | [counts] [6.7.0] | #195 |
-| C25 | Exact-carrier long-event junction windows: a read holding one junction decides the call (REF for anchor-keeping reads; ALT for reads carrying only the substitution) | M | [counts] [decided] | #199 |
-| C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decided] | #200 |
-| C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [decided] | #201 |
-| C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] [decided] | #202 |
+| C25 | Exact-carrier long-event junction windows: a read holding one junction decides the call (REF for anchor-keeping reads; ALT for reads carrying only the substitution) | M | [counts] [decided] [done] | #199 |
+| C26 | Which of a read's other indels decide its REF call: a short one inside the window counts REF, a ≥5bp one outside it withdraws REF | M | [counts] [decided] [done] | #200 |
+| C27 | A read spelling the ALT across several indel ops is judged by its ops, not its bases | L | [counts] [decided] [done] | #201 |
+| C28 | A read deleting a pure deletion's anchor falls back to Phase 3, which credits the closer haplotype | M | [counts] [decided] [done] | #202 |
 | C29 | `check_complex`'s inline query walk counts hard clips (a hard-clipped read's anchor quality is read from the wrong base) | L | [counts] [done] | #207 |
-| C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] group 4 (built) | #208 |
+| C30 | Two pure-indel tests disagree with the allele-kind classification on lowercase or unprepared alleles | L | [counts] group 4 [done] | #208 |
 | C31 | Measure the fragment end from the mate's unclipped 5' end (MC tag), so a mate's clipped 5' end does not clip molecule bases as adapter | L | [counts] [6.7.0] | #212 |
-| C32 | Junction-placement guard for spliced reads at exon-edge events (needs reference access in the engine) | M | [counts] group 3 (RJ-19, built) | #213 |
+| C32 | Junction-placement guard for spliced reads at exon-edge events (needs reference access in the engine) | M | [counts] group 3 (RJ-19) [done] | #213 |
 | C34 | GTF transcripts keyed by ID alone: an ID reused on another chromosome merges (introns, per-transcript counts, ASJD); 0 such IDs in Ensembl 111 | S | [6.7.0] | #216 |
 | C33 | Exact-carrier REF and ALT windows read from different anchors can miss a contradicting base | L | [counts] [6.7.0] | #214 |
 | R3 | RNA: catalogued editing positions inside carrier windows | L | [counts] [6.7.0] | #178 |
-| R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] group 3 (decided, built) | #185 |
-| R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] group 3 (RJ-17, built) | #198 |
+| R4 | Gene strand unresolved at intronic loci (splice sites) and opposite-strand overlaps | M | [counts] group 3 (decided) [done] | #185 |
+| R5 | C10's informative rule counts a read's splices as reference coverage (RNA reads spliced inside a repeat tract) | L | [counts] group 3 (RJ-17) [done] | #198 |
 | O5 | Mapping-bias diagnostic (ALT reads mapped or clipped worse than REF) | M | [6.7.0] | #179 |
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] [6.7.0] | #180 |
 | O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | [decided] [done] | #183 |
-| O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | group 3 (built) | #186 |
+| O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | group 3 [done] | #186 |
 | O9 | VCF output of a whole-contig MAF deletion at Start 1 writes REF past the contig end | L | [decided] group 5 (built; from 6.7.0) | #220 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] [done] | #114 |
-| I1 | MAF allele base check | M | [decided] group 4 (built) | #123 |
-| I2 | `End_Position` optional | L | group 4 (built) | #124 |
-| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] group 4 (built) | #125 |
-| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] group 4 (built) | #126 |
+| I1 | MAF allele base check | M | [decided] group 4 [done] | #123 |
+| I2 | `End_Position` optional | L | group 4 [done] | #124 |
+| I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] group 4 [done] | #125 |
+| I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] group 4 [done] | #126 |
 | I5 | Nextflow `convert` module | L | [6.7.0] | #127 |
-| I6 | `REF_MISMATCH` rows say where the given REF sits | L | [decided] group 4 (built) | #218 |
+| I6 | `REF_MISMATCH` rows say where the given REF sits | L | [decided] group 4 [done] | #218 |
 | I7 | A MAF dash insertion at Start 0 is skipped, not a FAIL row | L | [6.7.0] | #219 |
 | M1 | Merge rows whose flavors report different alleles | M | [6.7.0] | #128 |
 | M2 | Merge inputs from different gbcms versions | M | [decided] group 5 (built) | #129 |
@@ -97,7 +97,7 @@ marks a ticket with an open PR.
 | O2 | Run-start summary of enabled options | L | [decided] group 5 (built) | #131 |
 | O3 | Rescue in fillouts without the MNP | L | [6.7.0] | #132 |
 | H1 | Writers closed when a write fails | L | [decided] group 5 (built) | #148 |
-| H2 | `is_indel` in preparation | L | group 4 (built) | #149 |
+| H2 | `is_indel` in preparation | L | group 4 [done] | #149 |
 | P1 | Deep-bin fetch reduction (M5b) | L | [6.7.0] | #150 |
 | P2 | Bin cost-sort (PF-2) | L | [closed] | #151 |
 | P3 | Document the bin-span soft floor (LO-3) | L | | #152 |
