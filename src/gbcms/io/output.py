@@ -5,14 +5,17 @@ This module provides classes to write processed variants and their counts
 to output files, handling format-specific columns and headers.
 """
 
+import contextlib
 import csv
 import logging
 import math
+import os
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from ..core.kernel import CoordinateKernel
 from ..models.core import Variant
+from .atomic import discard_partial, partial_path
 from .reference import ReferenceBases
 
 __all__ = [
@@ -22,6 +25,9 @@ __all__ = [
     "maf_vcf_record",
     "maf_origin_info",
     "is_sequence_allele",
+    "gbcms_column_basenames",
+    "build_identity",
+    "provenance_line",
 ]
 
 logger = logging.getLogger(__name__)
@@ -209,14 +215,81 @@ def maf_origin_info(variant: Variant) -> list[str]:
     ]
 
 
+def build_identity() -> str:
+    """``gbcms v<version>``, with the build's commit when known
+    (``gbcms v6.6.0.dev0 (9c371263)``): two builds of one version differ."""
+    from .. import __version__
+    from .._rs import build_commit
+
+    commit = build_commit()
+    return f"gbcms v{__version__}" + (f" ({commit})" if commit else "")
+
+
+def provenance_line() -> str:
+    """The first line of every MAF gbcms writes (``#gbcms v...``)."""
+    return f"#{build_identity()}"
+
+
+def gbcms_column_basenames() -> frozenset[str]:
+    """Every column a MafWriter can add, in any mode, unprefixed: the columns
+    ``gbcms merge`` keeps per input (one source of truth with the writer)."""
+    names: set[str] = set()
+    for mfsd in (False, True):
+        for mode, has_gtf in (("dna", False), ("rna", False), ("rna", True)):
+            for flags in (False, True):
+                names.update(
+                    MafWriter.column_names(
+                        mfsd=mfsd,
+                        mode=mode,
+                        rescue_mnp=flags,
+                        has_gtf=has_gtf,
+                        show_normalization=flags,
+                    )
+                )
+    return frozenset(names)
+
+
 class OutputWriter:
-    """Abstract base class for output writers."""
+    """Abstract base class for output writers.
+
+    A writer writes to a temp file beside its output (see :mod:`gbcms.io.atomic`):
+    :meth:`close` renames it into place, :meth:`abort` removes it. Used as a
+    context manager, a clean exit closes and an exception aborts, so a failed run
+    leaves no partial output.
+    """
+
+    file: IO[str]
 
     def write(self, variant: Variant, counts: Any):
         raise NotImplementedError
 
     def close(self):
         pass
+
+    def abort(self):
+        """Discard the output after a failure: nothing is left at its path."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            self.close()
+        else:
+            self.abort()
+        return False
+
+    def _finish(self, path: Path) -> None:
+        """Flush, fsync and close the temp file, then rename it over ``path``."""
+        self.file.flush()
+        os.fsync(self.file.fileno())
+        self.file.close()
+        os.replace(partial_path(path), path)
+
+    def _discard(self, path: Path) -> None:
+        with contextlib.suppress(OSError):
+            self.file.close()
+        discard_partial(path)
 
 
 class MafWriter(OutputWriter):
@@ -320,14 +393,12 @@ class MafWriter(OutputWriter):
         self.rescue_mnp = rescue_mnp
         self.has_gtf = has_gtf
         self.command_line = command_line
-        self.file = open(path, "w")
+        self.file = open(partial_path(path), "w")
 
         # Write provenance comment headers before TSV data.
         # These are #-prefixed lines that downstream readers skip via
         # comment_prefix="#" (e.g., Polars read_maf in batch.py).
-        from .. import __version__
-
-        self.file.write(f"#gbcms v{__version__}\n")
+        self.file.write(f"{provenance_line()}\n")
         if self.command_line:
             self.file.write(f"#command {self.command_line}\n")
 
@@ -347,8 +418,28 @@ class MafWriter(OutputWriter):
         )
 
     def _gbcms_column_names(self) -> list[str]:
+        """The gbcms columns this writer adds (see :meth:`column_names`)."""
+        return self.column_names(
+            column_prefix=self.column_prefix,
+            mfsd=self.mfsd,
+            mode=self.mode,
+            rescue_mnp=self.rescue_mnp,
+            # GTF columns exist only in RNA mode (has_gtf is read only there).
+            has_gtf=self.mode == "rna" and self.has_gtf,
+            show_normalization=self.show_normalization,
+        )
+
+    @staticmethod
+    def column_names(
+        column_prefix: str = "",
+        mfsd: bool = False,
+        mode: str = "dna",
+        rescue_mnp: bool = False,
+        has_gtf: bool = False,
+        show_normalization: bool = False,
+    ) -> list[str]:
         """
-        Build the list of gbcms-generated count column names with the configured prefix.
+        Build the list of gbcms-generated count column names with the given prefix.
 
         Column order (v5.1):
           1. Status & diagnostic flags
@@ -366,7 +457,7 @@ class MafWriter(OutputWriter):
         Returns:
             Ordered list of gbcms column names.
         """
-        p = self.column_prefix
+        p = column_prefix
 
         # ── 1. Status & diagnostic flags ──────────────────────────────────────
         cols = [
@@ -375,7 +466,7 @@ class MafWriter(OutputWriter):
             "gbcms_diagnostic",
         ]
         # gbcms_rescue column is only present when --rescue-mnp is enabled (design §5)
-        if self.rescue_mnp:
+        if rescue_mnp:
             cols.append("gbcms_rescue")
 
         cols.extend(
@@ -415,7 +506,7 @@ class MafWriter(OutputWriter):
                 "fragment_strand_bias_odds_ratio",
             ]
         )
-        if self.mfsd:
+        if mfsd:
             # ── mFSD: Mutant Fragment Size Distribution (40 columns) ──────────
             # Only appended when --mfsd is set. Without the flag these columns
             # are completely absent from output (not NA-filled or zero-filled).
@@ -470,13 +561,20 @@ class MafWriter(OutputWriter):
                 # CH gene flag (computed in Python from Hugo_Symbol)
                 "mfsd_ch_flag",
             ]
-        if self.show_normalization:
-            cols.extend(self._norm_column_names())
+        if show_normalization:
+            cols.extend(
+                [
+                    f"{p}norm_Start_Position",
+                    f"{p}norm_End_Position",
+                    f"{p}norm_Reference_Allele",
+                    f"{p}norm_Tumor_Seq_Allele2",
+                ]
+            )
 
         # ── RNA-specific columns (5) ──────────────────────────────────────────
         # Only appended in RNA mode. These replace mFSD as the RNA-specific
         # diagnostic columns. When mode="dna" these are completely absent.
-        if self.mode == "rna":
+        if mode == "rna":
             cols += [
                 "rna_sense_depth",
                 "rna_antisense_depth",
@@ -485,7 +583,7 @@ class MafWriter(OutputWriter):
                 "rna_splice_spanning",
             ]
             # GTF annotation columns — only present when --gtf is provided
-            if self.has_gtf:
+            if has_gtf:
                 cols += [
                     "exon_boundary_dist",
                     "transcript_read_counts",
@@ -508,16 +606,6 @@ class MafWriter(OutputWriter):
                 ]
 
         return cols
-
-    def _norm_column_names(self) -> list[str]:
-        """Normalization columns (only appended when --show-normalization)."""
-        p = self.column_prefix
-        return [
-            f"{p}norm_Start_Position",
-            f"{p}norm_End_Position",
-            f"{p}norm_Reference_Allele",
-            f"{p}norm_Tumor_Seq_Allele2",
-        ]
 
     def _init_writer(self, original_headers: list[str]) -> None:
         """
@@ -845,9 +933,12 @@ class MafWriter(OutputWriter):
         self.writer.writerow(row)
 
     def close(self) -> None:
-        """Close the output file."""
-        self.file.close()
+        """Finish the output file: renamed into place from its temp file."""
+        self._finish(self.path)
         logger.debug("MafWriter closed: %s", self.path)
+
+    def abort(self) -> None:
+        self._discard(self.path)
 
 
 class VcfWriter(OutputWriter):
@@ -883,7 +974,7 @@ class VcfWriter(OutputWriter):
         self.command_line = command_line
         self.reference_fasta = reference_fasta
         self.contigs = contigs or []
-        self.file = open(path, "w")
+        self.file = open(partial_path(path), "w")
         self._headers_written = False
         # Opened on the first MAF-input row that needs an anchor base.
         self._reference: ReferenceBases | None = None
@@ -907,11 +998,9 @@ class VcfWriter(OutputWriter):
         headers per VCF 4.2 spec. mFSD ##INFO fields (7 lines) are only
         included when self.mfsd is True.
         """
-        from .. import __version__
-
         headers = [
             "##fileformat=VCFv4.2",
-            f"##source=gbcms v{__version__}",
+            f"##source={build_identity()}",
         ]
         # Provenance headers
         if self.command_line:
@@ -1244,4 +1333,10 @@ class VcfWriter(OutputWriter):
     def close(self):
         if self._reference is not None:
             self._reference.close()
-        self.file.close()
+        self._finish(self.path)
+
+    def abort(self):
+        if self._reference is not None:
+            with contextlib.suppress(Exception):
+                self._reference.close()
+        self._discard(self.path)

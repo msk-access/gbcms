@@ -31,6 +31,7 @@ import polars as pl
 
 from gbcms.core.kernel import CoordinateKernel
 from gbcms.io.batch import scan_maf, write_maf
+from gbcms.io.output import gbcms_column_basenames, provenance_line
 from gbcms.models.core import MergeConfig
 from gbcms.rescue_audit import rescued_component
 
@@ -69,9 +70,9 @@ JOIN_KEY: list[str] = [
 # columns, so a row only a later input has keeps its coordinates and alleles.
 VCF_RECORD_KEY: list[str] = [*JOIN_KEY, "vcf_pos", "vcf_ref", "vcf_alt"]
 # Prefixes of the other per-input join helpers (row numbers, each later
-# input's own contig names and End_Position). Input columns with these names
-# are rejected.
-_HELPER_PREFIXES = ("_row_", "_chrom_", "_end_")
+# input's own contig names and End_Position, a later-only row's annotations).
+# Input columns with these names are rejected.
+_HELPER_PREFIXES = ("_row_", "_chrom_", "_end_", "_ann_")
 
 
 def _row_col(bam_type: str) -> str:
@@ -120,9 +121,8 @@ def _with_contig_key(lf: pl.LazyFrame, bam_type: str) -> pl.LazyFrame:
     )
 
 
-# gbcms count column basenames (without any prefix).
-# These columns contain numeric counts/rates and will be type-prefixed.
-# Reference: MafWriter._gbcms_column_names() in io/output.py lines 190-219.
+# gbcms count column basenames (without any prefix): the counts a row an input
+# lacks gets as 0 for that input (see GBCMS_META_BASENAMES for its empty ones).
 GBCMS_COUNT_BASENAMES: list[str] = [
     "ref_count",
     "alt_count",
@@ -158,8 +158,11 @@ GBCMS_META_BASENAMES: list[str] = [
     "fragment_strand_bias_odds_ratio",
 ]
 
-# Combined set of all gbcms basenames for detection.
-ALL_GBCMS_BASENAMES: set[str] = set(GBCMS_COUNT_BASENAMES) | set(GBCMS_META_BASENAMES)
+# Every column gbcms writes, in any mode (mFSD, RNA, GTF, rescue,
+# normalization), unprefixed: each is kept per input (``duplex_mfsd_ref_mean``).
+# Taken from the writer so a new output column cannot fall back to "the first
+# input's value" unnoticed.
+ALL_GBCMS_BASENAMES: set[str] = set(gbcms_column_basenames())
 
 # Additive count basenames for simplex+duplex combination.
 # Duplex and simplex BAMs contain distinct consensus molecules — there is
@@ -222,7 +225,9 @@ def merge_mafs(config: MergeConfig) -> None:
     # ── 1. Scan and rename ────────────────────────────────────────────────────
     frames: dict[str, pl.LazyFrame] = {}
     input_columns: dict[str, list[str]] = {}
+    versions: dict[str, str | None] = {}
     for bam_type, path in config.inputs.items():
+        versions[bam_type] = _version_line(path)
         logger.info("Scanning %s MAF: %s", bam_type, path)
         lf = scan_maf(path)
 
@@ -245,6 +250,9 @@ def merge_mafs(config: MergeConfig) -> None:
 
         frames[bam_type] = _with_contig_key(lf, bam_type).with_row_index(_row_col(bam_type))
         input_columns[bam_type] = schema_names
+
+    _refuse_mixed_vcf_representations(input_columns)
+    _warn_mixed_versions(versions)
 
     # ── 2. Progressive outer join ─────────────────────────────────────────────
     join_key = _join_key(frames, input_columns)
@@ -273,24 +281,22 @@ def merge_mafs(config: MergeConfig) -> None:
         )
         logger.info("  Joined '%s' (%d count cols)", join_type, len(count_cols))
 
-    # ── 3. Fill nulls → "0" for count columns, "" for meta columns ─────────
-    output_schema = merged.collect_schema().names()
-    count_cols_in_output = [
-        c
-        for c in output_schema
-        if any(c == f"{t}_{base}" for t in types for base in GBCMS_COUNT_BASENAMES)
-    ]
-    meta_cols_in_output = [
-        c
-        for c in output_schema
-        if any(c == f"{t}_{base}" for t in types for base in GBCMS_META_BASENAMES)
-    ]
-    if count_cols_in_output:
-        merged = merged.with_columns([pl.col(c).fill_null("0") for c in count_cols_in_output])
-        logger.info("  Filled nulls → '0' for %d count columns", len(count_cols_in_output))
-    if meta_cols_in_output:
-        merged = merged.with_columns([pl.col(c).fill_null("") for c in meta_cols_in_output])
-        logger.info("  Filled nulls → '' for %d meta columns", len(meta_cols_in_output))
+    # ── 3. A row an input lacks: its counts 0, its status columns empty ─────
+    # A row the input has keeps its cells as written: a missing count stays
+    # missing (it is not a zero), and the combined columns say NA for it.
+    output_schema = set(merged.collect_schema().names())
+    fills = []
+    for t in types:
+        absent = pl.col(_row_col(t)).is_null()
+        for bases, value in ((GBCMS_COUNT_BASENAMES, "0"), (GBCMS_META_BASENAMES, "")):
+            for base in bases:
+                col = f"{t}_{base}"
+                if col in output_schema:
+                    fills.append(
+                        pl.when(absent).then(pl.lit(value)).otherwise(pl.col(col)).alias(col)
+                    )
+    if fills:
+        merged = merged.with_columns(fills)
 
     # ── 4. Combined simplex+duplex columns ────────────────────────────────────
     if config.add_combined and "simplex" in frames and "duplex" in frames:
@@ -298,8 +304,18 @@ def merge_mafs(config: MergeConfig) -> None:
         logger.info("  Added simplex_duplex combined columns")
 
     # ── 5. Materialize and write ──────────────────────────────────────────────
+    collected = _fill_later_only_rows(merged.collect(), frames, types, join_key)
+    for t in types:
+        lacking = collected.filter(pl.col(_row_col(t)).is_null()).height
+        if lacking:
+            logger.info(
+                "  '%s' lacks %d of %d merged rows: its counts there are written as 0",
+                t,
+                lacking,
+                collected.height,
+            )
     result = _in_input_order(
-        _resolve_end_positions(_resolve_contig_names(merged.collect(), types), types), types
+        _resolve_end_positions(_resolve_contig_names(collected, types), types), types
     )
     logger.info(
         "Merged result: %d rows × %d columns",
@@ -313,20 +329,6 @@ def merge_mafs(config: MergeConfig) -> None:
             "contain data and share variant key columns."
         )
 
-    # Log unmatched variant counts per type for monitoring
-    # A variant is "unmatched" if its count columns are all "0" for that type
-    for t in types:
-        t_ref_col = f"{t}_ref_count"
-        if t_ref_col in result.columns:
-            n_unmatched = result.filter(pl.col(t_ref_col) == "0").height
-            if n_unmatched > 0:
-                logger.info(
-                    "  %d/%d variants have no %s counts (filled with 0)",
-                    n_unmatched,
-                    result.height,
-                    t,
-                )
-
     if "duplex" in frames and "simplex" in frames:
         _warn_mixed_rescue(result, combined=config.add_combined)
 
@@ -335,12 +337,63 @@ def merge_mafs(config: MergeConfig) -> None:
         result = _apply_legacy_naming(result, types)
         logger.info("  Applied legacy t_{metric}_{type} naming")
 
-    write_maf(result, config.output)
+    header = [provenance_line()]
+    if config.command_line:
+        header.append(f"#command {config.command_line}")
+    header += [
+        f"#input {t}: {versions[t] or 'no gbcms version line'} ({config.inputs[t]})" for t in types
+    ]
+    write_maf(result, config.output, header=header)
     elapsed = time.perf_counter() - t_start
     logger.info("Merge complete in %.1fs", elapsed)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _version_line(path: Path) -> str | None:
+    """The ``gbcms v...`` provenance an input MAF starts with (``#gbcms v6.5.0``,
+    with a build commit since 6.6.0), or None when it has none."""
+    with open(path) as fh:
+        for line in fh:
+            if not line.startswith("#"):
+                return None
+            if line.startswith("#gbcms v"):
+                return line[1:].strip()
+    return None
+
+
+def _refuse_mixed_vcf_representations(input_columns: dict[str, list[str]]) -> None:
+    """Stop when one input has the pre-6.5.0 VCF-input representation and
+    another does not. Before 6.5.0 a VCF-input MAF carried ``vcf_pos`` but not
+    ``vcf_ref``/``vcf_alt``, and many indel and MNP rows had other coordinates
+    and alleles (6.5.0 follows vcf2maf), so their rows do not join: merged, the
+    same variant appears twice, each half empty."""
+    old = sorted(
+        t
+        for t, cols in input_columns.items()
+        if "vcf_pos" in cols and not {"vcf_ref", "vcf_alt"} <= set(cols)
+    )
+    if old and len(old) < len(input_columns):
+        others = sorted(set(input_columns) - set(old))
+        raise ValueError(
+            f"Input(s) {old} are VCF-input MAFs from before gbcms 6.5.0 (vcf_pos without "
+            f"vcf_ref/vcf_alt), and {others} are not: 6.5.0 changed the coordinates and "
+            "alleles of VCF-input rows, so their rows would not join. Genotype every "
+            "input with one gbcms version and merge again."
+        )
+
+
+def _warn_mixed_versions(versions: dict[str, str | None]) -> None:
+    """Warn when the inputs come from different gbcms versions (or builds): their
+    counts may follow different rules, which their sums would hide."""
+    named = {t: v for t, v in versions.items() if v}
+    if len(set(named.values())) > 1:
+        logger.warning(
+            "Inputs come from different gbcms versions (%s): counts made by different "
+            "versions may follow different rules; merge outputs of one version",
+            ", ".join(f"{t}: {v}" for t, v in named.items()),
+        )
 
 
 def _join_key(frames: dict[str, pl.LazyFrame], input_columns: dict[str, list[str]]) -> list[str]:
@@ -385,6 +438,61 @@ def _warn_duplicate_keys(lf: pl.LazyFrame, join_key: list[str], bam_type: str) -
             dups.height,
             int(dups["len"].sum()),
         )
+
+
+def _fill_later_only_rows(
+    result: pl.DataFrame,
+    frames: dict[str, pl.LazyFrame],
+    types: list[str],
+    join_key: list[str],
+) -> pl.DataFrame:
+    """Fill the first input's annotation columns of rows the first input lacks.
+
+    Non-key columns come from the first input, so a row only a later input has
+    would otherwise carry them empty (gene, sample barcode, classification...).
+    Each such row takes them from the earliest later input that has the row and
+    the column; the column set stays the first input's, and a row the first
+    input has keeps its own values. Contig names and End_Position have their
+    own rules (:func:`_resolve_contig_names`, :func:`_resolve_end_positions`).
+    No work when every row is in the first input, as when every flavor was
+    genotyped from one variant file.
+    """
+    first = types[0]
+    lacks_first = pl.col(_row_col(first)).is_null()
+    missing = result.filter(lacks_first)
+    if missing.height == 0:
+        return result
+    first_names = frames[first].collect_schema().names()
+    ann = [
+        c
+        for c in first_names
+        if c not in join_key
+        and c not in ("Chromosome", "End_Position")
+        and not c.startswith("_")
+        and not _is_prefixed_gbcms_col(c, first)
+    ]
+    filled = 0
+    for t in types[1:]:
+        names = set(frames[t].collect_schema().names())
+        cols = [c for c in ann if c in names]
+        if not cols:
+            continue
+        later = (
+            frames[t]
+            .select([*join_key, *[pl.col(c).alias(f"_ann_{t}_{c}") for c in cols]])
+            .unique(subset=join_key, keep="first", maintain_order=True)
+        )
+        missing = missing.join(later.collect(), on=join_key, how="left")
+        missing = missing.with_columns(
+            [pl.coalesce(c, f"_ann_{t}_{c}").alias(c) for c in cols]
+        ).drop([f"_ann_{t}_{c}" for c in cols])
+        filled += len(cols)
+    if filled:
+        logger.info(
+            "  %d row(s) only a later input has: their annotation columns are that input's",
+            missing.height,
+        )
+    return pl.concat([result.filter(~lacks_first), missing.select(result.columns)])
 
 
 def _resolve_contig_names(result: pl.DataFrame, types: list[str]) -> pl.DataFrame:
@@ -643,17 +751,11 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         """String count column → Int64, tolerating float formatting.
 
         A pandas/R round-trip renders integer columns as '12.0'; a direct
-        Int64 cast would null that (and fill_null would silently turn it
-        into 0), so cast through Float64 and round. Genuinely non-numeric
-        values (e.g. 'NA') still become null → 0 here — they are counted
-        and warned about before this runs (see merge_mafs)."""
-        return (
-            pl.col(col)
-            .cast(pl.Float64, strict=False)
-            .round(0)
-            .cast(pl.Int64, strict=False)
-            .fill_null(0)
-        )
+        Int64 cast would null that, so cast through Float64 and round. A
+        missing or non-numeric cell (empty, 'NA', 'nan', 'inf', text) is null:
+        a missing count is not a zero, so every combined value built from it
+        is NA (and counted in a warning per column below)."""
+        return pl.col(col).cast(pl.Float64, strict=False).round(0).cast(pl.Int64, strict=False)
 
     def _sum(metric: str) -> pl.Expr:
         """Sum simplex_{metric} + duplex_{metric}, casting from string."""
@@ -668,11 +770,16 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         ).alias(f"simplex_duplex_{total_name}")
 
     def _vaf(alt_metric: str, total_name: str, vaf_name: str) -> pl.Expr:
-        """Compute VAF = combined_alt / combined_total, 0/0 → 0.0."""
+        """Compute VAF = combined_alt / combined_total, 0/0 → 0.0, NA → NA."""
         alt = pl.col(f"simplex_duplex_{alt_metric}").cast(pl.Float64)
         total = pl.col(f"simplex_duplex_{total_name}").cast(pl.Float64)
-        return (pl.when(total > 0).then(alt / total).otherwise(0.0)).alias(
-            f"simplex_duplex_{vaf_name}"
+        return (
+            pl.when(total.is_null())
+            .then(None)
+            .when(total > 0)
+            .then(alt / total)
+            .otherwise(0.0)
+            .alias(f"simplex_duplex_{vaf_name}")
         )
 
     # ── Determine which additive metrics exist in the merged output ─────
@@ -697,6 +804,33 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
             len(skipped),
             sorted(skipped),
         )
+
+    # A count cell neither absent (a row the input lacks counts 0, filled
+    # above) nor a finite number: the combined value is NA. One warning per
+    # column, with the number of rows.
+    def _bad(col: str) -> pl.Expr:
+        v = pl.col(col).cast(pl.Float64, strict=False)
+        return v.is_null() | ~v.is_finite()
+
+    bad = (
+        lf.select(
+            [
+                (_bad(f"simplex_{m}") | _bad(f"duplex_{m}")).sum().alias(m)
+                for m in available_additive
+            ]
+        )
+        .collect()
+        .row(0, named=True)
+    )
+    for metric, n in bad.items():
+        if n:
+            logger.warning(
+                "  %s: %d row(s) have a missing or non-numeric count in duplex or simplex; "
+                "simplex_duplex_%s (and the totals and VAF built from it) is NA there",
+                metric,
+                n,
+                metric,
+            )
 
     # ── Phase 1: Additive sums (lazy, vectorized) ────────────────────────
     sum_exprs = [_sum(m) for m in available_additive]
@@ -743,9 +877,35 @@ def _add_combined_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
             compute_read_sb=has_read_strand,
             compute_fragment_sb=has_frag_strand,
         )
-        return df.lazy()
+        lf = df.lazy()
 
-    return lf
+    return _write_combined_as_text(lf)
+
+
+def _write_combined_as_text(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """The combined counts and VAFs as the writers write theirs: integers, VAFs
+    with four decimals, and NA where a value is missing."""
+    names = lf.collect_schema().names()
+    exprs = []
+    for col in names:
+        if not col.startswith("simplex_duplex_") or "strand_bias" in col:
+            continue
+        if col.endswith(("_vaf", "_vaf_fragment")) or col in (
+            "simplex_duplex_vaf",
+            "simplex_duplex_vaf_fragment",
+        ):
+            scaled = (pl.col(col) * 10000).round(0).cast(pl.Int64)
+            text = pl.format(
+                "{}.{}",
+                (scaled // 10000).cast(pl.Utf8),
+                (scaled % 10000).cast(pl.Utf8).str.zfill(4),
+            )
+            exprs.append(
+                pl.when(pl.col(col).is_null()).then(pl.lit("NA")).otherwise(text).alias(col)
+            )
+        else:
+            exprs.append(pl.col(col).cast(pl.Utf8).fill_null("NA").alias(col))
+    return lf.with_columns(exprs) if exprs else lf
 
 
 def _compute_combined_strand_bias(
@@ -862,11 +1022,12 @@ def _apply_fisher(
 
     for i in range(df.height):
         # Values are Int64 from the additive sum phase
-        a = int(rf[i]) if rf[i] is not None else 0
-        b = int(rr[i]) if rr[i] is not None else 0
-        c = int(af[i]) if af[i] is not None else 0
-        d = int(ar[i]) if ar[i] is not None else 0
-        p, odds = fisher_fn(a, b, c, d)
+        # A missing combined count (NA) leaves no table to test: NA.
+        if None in (rf[i], rr[i], af[i], ar[i]):
+            p_values.append(float("nan"))
+            odds_ratios.append(float("nan"))
+            continue
+        p, odds = fisher_fn(int(rf[i]), int(rr[i]), int(af[i]), int(ar[i]))
         p_values.append(p)
         odds_ratios.append(odds)
 

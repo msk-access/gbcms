@@ -96,6 +96,7 @@ nav:
     - Architecture: reference/architecture.md
     - Input Formats: reference/input-formats.md
     - Output Formats: reference/output-formats.md
+    - QC Flags: reference/qc-flags.md
     - Variant Normalization: reference/variant-normalization.md
     - Read Filters: reference/read-filters.md
     - RNA Splice Handling: reference/rna-splice-handling.md

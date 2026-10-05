@@ -28,8 +28,9 @@ from rich.progress import (
 )
 
 from .core.kernel import CoordinateKernel
+from .io.atomic import atomic_path, commit_partial, discard_partial, partial_path
 from .io.input import MafReader, VariantReader, VcfReader
-from .io.output import MafWriter, VcfWriter, declared_contigs
+from .io.output import MafWriter, VcfWriter, build_identity, declared_contigs
 from .models.core import GbcmsBaseConfig, OutputFormat, Variant, VariantType
 from .rescue_audit import (
     MNP_RESCUE_ELIGIBLE,
@@ -178,6 +179,144 @@ def _zero_counts():
     )
 
 
+def run_implications(cfg: Any) -> list[str]:
+    """What the options set for a run imply for its counts or columns, one line
+    each, for those that differ from the defaults' meaning."""
+    out = []
+    f, q, o = cfg.filters, cfg.quality, cfg.output
+    for flag, kept, what in (
+        ("duplicates", False, "duplicate reads are counted (flag 0x400)"),
+        ("secondary", False, "secondary alignments are counted"),
+        ("supplementary", False, "supplementary alignments are counted"),
+        ("qc_failed", False, "QC-failed reads are counted (flag 0x200)"),
+        ("improper_pair", True, "reads not flagged as a proper pair are dropped"),
+        ("indel", True, "reads with any CIGAR insertion or deletion are dropped"),
+    ):
+        if getattr(f, flag) == kept:
+            name = flag.replace("_", "-")
+            out.append(f"--{'no-' if not kept else ''}filter-{name}: {what}")
+    if q.min_mapping_quality == 0:
+        out.append("--min-mapq 0: multi-mapped reads (MAPQ 0) are counted")
+    if cfg.apply_baq:
+        out.append("--apply-baq: base qualities near indels are capped (BAQ) before --min-baseq")
+    if cfg.umi_tag:
+        out.append(
+            f"--umi-tag {cfg.umi_tag}: fragments are grouped by the {cfg.umi_tag} tag "
+            "(by read name where a read lacks it)"
+        )
+    # --rescue-mnp has its own WARNING at run start (rescued rows' counts).
+    if cfg.rescue_homopolymer:
+        out.append(
+            "--rescue-homopolymer: a row whose corrected allele wins reports it "
+            "(WARN_HOMOPOLYMER_DECOMP)"
+        )
+    if o.mfsd:
+        out.append("--mfsd adds 40 fragment-size (mFSD) columns")
+    if cfg.show_normalization:
+        out.append("--show-normalization adds the norm_* columns")
+    if o.observations_parquet:
+        out.append("--observations-parquet writes one Parquet row per molecule and variant")
+    if cfg.mode == "rna":
+        if not getattr(cfg, "enforce_strandedness", True):
+            out.append("--no-enforce-strandedness: antisense reads are counted")
+        if getattr(cfg, "gtf", None):
+            out.append("--gtf adds the exon-distance, per-transcript and ASJD columns")
+    return out
+
+
+#: The first records of a BAM read for its run-start facts.
+BAM_SAMPLE_RECORDS = 20_000
+#: --min-baseq removing more than this share of sampled bases warns. At the
+#: default (Q20) 10 real BAMs lost 0.8-2.1%; a threshold between quality bins
+#: lost 4-12% (RNA at Q25, IMPACT at Q30), and nearly all at Q40 on IMPACT.
+MIN_BASEQ_LOSS_WARN = 0.10
+#: Hard-clipped primary alignments above this share warn (none in 10 real BAMs).
+HARD_CLIP_WARN = 0.01
+
+
+def log_bam_properties(
+    label: str, bam_path: Path, *, min_baseq: int, reference: Any = None
+) -> None:
+    """One INFO line of facts from a BAM's header and first records, and a
+    WARNING for each property that changes how its counts read: --min-baseq
+    removing more than 10% of sampled bases, ALT contigs in the header, or more
+    than 1% hard-clipped primary alignments. Unmarked duplicates are only a fact:
+    consensus and RNA BAMs legitimately carry none."""
+    import pysam
+
+    try:
+        fh = pysam.AlignmentFile(
+            str(bam_path), reference_filename=str(reference) if reference else None
+        )
+    except (OSError, ValueError) as exc:
+        logger.debug("BAM %s: properties not read (%s)", label, exc)
+        return
+    with fh:
+        names = [sq.get("SN", "") for sq in fh.header.to_dict().get("SQ", [])]
+        alts = [n for n in names if n.endswith("_alt") or n.startswith("HLA-")]
+        records = dups = primaries = hard = 0
+        quals: dict[int, int] = {}
+        for i, r in enumerate(fh):
+            if i >= BAM_SAMPLE_RECORDS:
+                break
+            records += 1
+            dups += bool(r.flag & 0x400)
+            if r.flag & 0x904:
+                continue
+            primaries += 1
+            if r.cigartuples and any(op == 5 for op, _ in r.cigartuples):
+                hard += 1
+            q = r.query_qualities
+            if q is not None:
+                for value, n in Counter(q).items():
+                    quals[value] = quals.get(value, 0) + n
+    bases = sum(quals.values())
+    below = sum(n for v, n in quals.items() if v < min_baseq) / bases if bases else 0.0
+    alphabet = sorted(quals)
+    bq = (
+        f"{len(alphabet)} value{'' if len(alphabet) == 1 else 's'}"
+        + (f" ({alphabet[0]}-{alphabet[-1]})" if alphabet else "")
+        + (" (binned)" if 0 < len(alphabet) <= 8 else "")
+    )
+    clipped = hard / primaries if primaries else 0.0
+    logger.info(
+        "BAM %s: first %d records: duplicates flagged %.1f%%; base qualities %s; bases "
+        "below --min-baseq %d: %.1f%%; ALT contigs %d; hard-clipped primaries %.1f%%",
+        label,
+        records,
+        100 * dups / records if records else 0.0,
+        bq,
+        min_baseq,
+        100 * below,
+        len(alts),
+        100 * clipped,
+    )
+    if below > MIN_BASEQ_LOSS_WARN:
+        logger.warning(
+            "BAM %s: --min-baseq %d removes %.1f%% of sampled bases (base qualities %s): "
+            "counts lose that evidence; check the threshold against the BAM's quality values",
+            label,
+            min_baseq,
+            100 * below,
+            bq,
+        )
+    if alts:
+        logger.warning(
+            "BAM %s: the header has %d ALT contig(s) (e.g. %s): without ALT-aware alignment, "
+            "reads where ALT haplotypes exist get low MAPQ and --min-mapq drops them",
+            label,
+            len(alts),
+            alts[0],
+        )
+    if clipped > HARD_CLIP_WARN:
+        logger.warning(
+            "BAM %s: %.1f%% of sampled primary alignments are hard-clipped: their clipped "
+            "bases are not in the BAM, so evidence in them cannot be read",
+            label,
+            100 * clipped,
+        )
+
+
 def read_variant_file(path: Path) -> list[Variant]:
     """Read raw variants from a ``.vcf``/``.vcf.gz``/``.vcf.bgz``/``.maf`` file.
 
@@ -313,50 +452,7 @@ class Pipeline:
         logger.info("Starting gbcms pipeline")
         logger.info("Output directory: %s", self.config.output.directory)
 
-        # Log all resolved parameters at DEBUG for full reproducibility
-        logger.debug(
-            "Parameters:\n"
-            "  mode=%s\n"
-            "  reference_fasta=%s\n"
-            "  variant_file=%s\n"
-            "  bam_files=%s\n"
-            "  threads=%d\n"
-            "  output_format=%s\n"
-            "  output_suffix=%s\n"
-            "  column_prefix=%s\n"
-            "  min_mapq=%d\n"
-            "  min_baseq=%d\n"
-            "  fragment_qual_threshold=%d\n"
-            "  context_padding=%d\n"
-            "  adaptive_context=%s\n"
-            "  alignment_backend=%s\n"
-            "  apply_baq=%s\n"
-            "  umi_tag=%s\n"
-            "  show_normalization=%s\n"
-            "  rescue_mnp=%s\n"
-            "  rescue_homopolymer=%s\n"
-            "  mfsd=%s",
-            self.config.mode,
-            self.config.reference_fasta,
-            self.config.variant_file,
-            list(self.config.bam_files.keys()),
-            self.config.threads,
-            self.config.output.format.value,
-            self.config.output.suffix or "(none)",
-            self.config.output.column_prefix or "(none)",
-            self.config.quality.min_mapping_quality,
-            self.config.quality.min_base_quality,
-            self.config.quality.fragment_qual_threshold,
-            self.config.quality.context_padding,
-            self.config.quality.adaptive_context,
-            self.config.alignment.backend,
-            self.config.apply_baq,
-            self.config.umi_tag or "none",
-            self.config.show_normalization,
-            self.config.rescue_mnp,
-            self.config.rescue_homopolymer,
-            self.config.output.mfsd,
-        )
+        self._log_run_settings()
         if self.config.rescue_mnp:
             logger.warning(
                 "MNP rescue enabled (--rescue-mnp, threshold=%.2f): rescued rows report a "
@@ -536,6 +632,27 @@ class Pipeline:
         # Include failed_samples in returned stats for callers
         return {**self._stats, "failed_samples": self._failed_samples}
 
+    def _log_run_settings(self) -> None:
+        """One INFO block with every resolved option, grouped as the config is,
+        then what each count- or column-changing option set for this run implies.
+        Generated from the config model, so a new option is listed without edits
+        here."""
+        cfg = self.config
+        dumped = cfg.model_dump(exclude={"command_line"})
+        lines = [f"Run settings ({build_identity()}):"]
+        top = []
+        for name, value in dumped.items():
+            if isinstance(value, dict) and name != "bam_files":
+                inner = ", ".join(f"{k}={v}" for k, v in value.items())
+                lines.append(f"  {name}: {inner}")
+            elif name == "bam_files":
+                top.append(f"bam_files={', '.join(value)}")
+            else:
+                top.append(f"{name}={value}")
+        lines.insert(1, "  run: " + ", ".join(top))
+        lines += [f"  implies: {x}" for x in run_implications(cfg)]
+        logger.info("\n".join(lines))
+
     def _process_sample(
         self,
         sample_name: str,
@@ -565,6 +682,12 @@ class Pipeline:
                 "BAM %s may not contain variant chromosomes. Proceeding anyway.",
                 sample_name,
             )
+        log_bam_properties(
+            sample_name,
+            bam_path,
+            min_baseq=self.config.quality.min_base_quality,
+            reference=self.config.reference_fasta,
+        )
 
         try:
             # Run Rust Engine (only on valid variants)
@@ -602,27 +725,35 @@ class Pipeline:
             # writes the per-molecule rows straight to Parquet from Rust, so counts are
             # identical and the rows never cross the FFI boundary (flat memory at panel
             # scale). Mirrors how --mfsd-parquet delegates to the native writer.
+            # Written through a temp file renamed once counting succeeds, so a
+            # failed run leaves no partial Parquet.
             _obs_path: str | None = None
+            _obs_final = self.config.output.directory / f"{sample_name}.observations.parquet"
             if self.config.output.observations_parquet:
-                _obs_path = str(
-                    self.config.output.directory / f"{sample_name}.observations.parquet"
-                )
+                _obs_path = str(partial_path(_obs_final))
             _count_fn = (
                 _get_rs().count_bam_binned_observations if _obs_path else _get_rs().count_bam_binned
             )
-            _result = _count_fn(
-                str(bam_path),
-                rs_variants,
-                decomposed,
-                sibling_variants=sibling_variants,
-                **self._engine_kwargs(),
-                **({"observations_path": _obs_path} if _obs_path else {}),
-            )
+            try:
+                _result = _count_fn(
+                    str(bam_path),
+                    rs_variants,
+                    decomposed,
+                    sibling_variants=sibling_variants,
+                    **self._engine_kwargs(),
+                    **({"observations_path": _obs_path} if _obs_path else {}),
+                )
+            except BaseException:
+                if _obs_path:
+                    discard_partial(_obs_final)
+                raise
+            if _obs_path:
+                commit_partial(_obs_final)
             # The observations entry point returns (counts, rows); rows are empty because
             # they were written to Parquet. Counts are the same either way.
             counts_list = _result[0] if _obs_path else _result
             if _obs_path:
-                logger.info("Wrote per-molecule observations → %s", _obs_path)
+                logger.info("Wrote per-molecule observations → %s", _obs_final)
             rust_time = time.perf_counter() - rust_start
             logger.debug("Rust count_bam_binned completed in %.3fs", rust_time)
 
@@ -1108,6 +1239,10 @@ class Pipeline:
                 [None] * len(valid),
                 sibling_variants=[[] for _ in valid],
                 **self._engine_kwargs(),
+                # A second pass over the same BAM: its per-BAM warnings (records
+                # without bases or qualities, an absent --umi-tag) were given by
+                # the main pass.
+                warn_per_bam=False,
             )
             if valid
             else []
@@ -1256,32 +1391,32 @@ class Pipeline:
             output_path,
         )
 
-        for i, (v, counts) in enumerate(zip(variants, counts_list, strict=True)):
-            pv = prepared[i] if prepared else None
+        with writer:
+            for i, (v, counts) in enumerate(zip(variants, counts_list, strict=True)):
+                pv = prepared[i] if prepared else None
 
-            # Build norm_variant only when normalization display is enabled
-            norm_v = None
-            if pv and pv.was_normalized:
-                norm_v = Variant(
-                    chrom=pv.variant.chrom,
-                    pos=pv.variant.pos,
-                    ref=pv.variant.ref_allele,
-                    alt=pv.variant.alt_allele,
-                    variant_type=VariantType(pv.variant.variant_type),
+                # Build norm_variant only when normalization display is enabled
+                norm_v = None
+                if pv and pv.was_normalized:
+                    norm_v = Variant(
+                        chrom=pv.variant.chrom,
+                        pos=pv.variant.pos,
+                        ref=pv.variant.ref_allele,
+                        alt=pv.variant.alt_allele,
+                        variant_type=VariantType(pv.variant.variant_type),
+                    )
+
+                writer.write(
+                    v,
+                    counts,
+                    sample_name=sample_name,
+                    gbcms_status=pv.gbcms_status if pv else "PASS",
+                    gbcms_status_reason=pv.gbcms_status_reason if pv else "",
+                    gbcms_diagnostic=pv.gbcms_diagnostic if pv else "",
+                    gbcms_rescue=pv.gbcms_rescue if pv else "",
+                    norm_variant=norm_v,
                 )
 
-            writer.write(
-                v,
-                counts,
-                sample_name=sample_name,
-                gbcms_status=pv.gbcms_status if pv else "PASS",
-                gbcms_status_reason=pv.gbcms_status_reason if pv else "",
-                gbcms_diagnostic=pv.gbcms_diagnostic if pv else "",
-                gbcms_rescue=pv.gbcms_rescue if pv else "",
-                norm_variant=norm_v,
-            )
-
-        writer.close()
         logger.debug("Results written to %s", output_path)
 
         # Write companion mFSD Parquet when --mfsd-parquet is enabled.
@@ -1298,14 +1433,15 @@ class Pipeline:
                 if not isinstance(c, types.SimpleNamespace)
             ]
             excluded = len(variants) - len(counted)
-            _get_rs().write_fsd_parquet(
-                str(fsd_path),
-                [v.output_chrom for v, _ in counted],
-                [v.pos + 1 for v, _ in counted],  # 1-based MAF/VCF convention
-                [v.ref for v, _ in counted],
-                [v.alt for v, _ in counted],
-                [c for _, c in counted],
-            )
+            with atomic_path(fsd_path) as fsd_tmp:
+                _get_rs().write_fsd_parquet(
+                    str(fsd_tmp),
+                    [v.output_chrom for v, _ in counted],
+                    [v.pos + 1 for v, _ in counted],  # 1-based MAF/VCF convention
+                    [v.ref for v, _ in counted],
+                    [v.alt for v, _ in counted],
+                    [c for _, c in counted],
+                )
             if excluded:
                 logger.info(
                     "mFSD Parquet written: %s (%d variants; %d rejected "

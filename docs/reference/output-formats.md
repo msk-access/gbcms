@@ -13,6 +13,11 @@ composition, and sample-naming strategy all depend on the CLI flags used.
 
 ## How the Output Path Is Decided
 
+Every output (MAF, VCF, the merged MAF, `gbcms convert` and `gbcms normalize`
+files, the Parquet files and the mFSD report) is written to a temp file beside
+it (`.<name>.partial`) and renamed into place once complete. A run that fails
+leaves nothing at the output path and removes its temp file.
+
 The diagram below shows every decision point from CLI flags to the final
 output column set. Follow your input type and desired output format to see
 exactly what you get.
@@ -362,7 +367,7 @@ metadata for reproducibility:
 === "DNA mode"
 
     ```
-    #gbcms v5.3.0
+    #gbcms v6.6.0 (9c371263)
     #command gbcms dna --bam tumor:tumor.bam --fasta ref.fa --threads 4
     Hugo_Symbol	Chromosome	Start_Position	...
     ```
@@ -370,14 +375,14 @@ metadata for reproducibility:
 === "RNA mode"
 
     ```
-    #gbcms v5.3.0
+    #gbcms v6.6.0 (9c371263)
     #command gbcms rna --bam rna_sample:star.bam --fasta ref.fa --gtf genes.gtf
     Hugo_Symbol	Chromosome	Start_Position	...
     ```
 
 | Line | Content |
 |:-----|:--------|
-| `#gbcms vX.Y.Z` | gbcms version that produced this file |
+| `#gbcms vX.Y.Z (commit)` | gbcms version and the commit of the build that produced this file (the commit is absent when the build had neither git nor `GBCMS_BUILD_COMMIT`). Development builds carry a `.devN` version, so two builds of one version are told apart. VCF output's `##source` carries the same. |
 | `#command ...` | Full CLI command used (only when available) |
 
 !!! tip "Reading MAF files with provenance headers"
@@ -473,6 +478,8 @@ The set of columns in the first row of the header depends on whether the
 ---
 
 ### gbcms Count Columns
+
+Every flag these columns can carry, with what to do about it, is on one page: [QC Flags](qc-flags.md).
 
 These columns are **always** appended regardless of input format.
 
@@ -693,7 +700,10 @@ combined metrics.
 
 ### Type-Prefixed Columns
 
-Each input MAF's gbcms count columns are prefixed with the BAM type label:
+Each input MAF's gbcms columns are prefixed with the BAM type label. That is
+every column gbcms writes, in any mode: counts, status, diagnostics, and the
+mFSD and RNA columns (`duplex_mfsd_ref_mean`); merge takes the set from the
+writer itself:
 
 | Input Label | Example Columns |
 |:------------|:---------------|
@@ -701,7 +711,10 @@ Each input MAF's gbcms count columns are prefixed with the BAM type label:
 | `simplex` | `simplex_ref_count`, `simplex_alt_count`, `simplex_vaf`, ... |
 
 Annotation columns (e.g., `Hugo_Symbol`, `Chromosome`) are taken from the first
-input and **not** duplicated. Rows are joined on `Chromosome` (in any naming),
+input and **not** duplicated. A row only a later input has takes them from the
+earliest later input that has the row (the column set stays the first input's;
+a row the first input has keeps its own values); its counts for an input that
+lacks it are 0, and the log counts the rows each input lacks. Rows are joined on `Chromosome` (in any naming),
 `Start_Position`, `Reference_Allele` and `Tumor_Seq_Allele2`, and VCF-input MAFs
 also on the VCF record. `End_Position` follows from Start and REF and is not
 joined on: a row keeps the first input's, or that of the earliest input that has
@@ -720,13 +733,29 @@ are distinct — counts are **additive** across BAM types with no double-countin
 |:------|:--------|:------|:-------|
 | **Additive sums** | Read counts, strand counts, fragment counts, fragment strand counts | 12 | `simplex_{x} + duplex_{x}` |
 | **Derived totals** | `total_count`, `total_count_fragment` | 2 | `ref + alt` |
-| **Derived VAFs** | `vaf`, `vaf_fragment` | 2 | `alt / total` (0/0 → 0.0) |
+| **Derived VAFs** | `vaf`, `vaf_fragment` | 2 | `alt / total` (0/0 → 0.0), four decimals as the writers write them |
 | **Strand bias** | `strand_bias_p_value`, `strand_bias_odds_ratio`, `fragment_strand_bias_p_value`, `fragment_strand_bias_odds_ratio` | 4 | Rust Fisher exact 2×2 test |
+
+A missing count is not a zero: when either flavor's cell is missing or not a
+finite number (empty, `NA`, `nan`, `inf`, text) in a row it has, the combined
+cell is `NA`, as are the totals, VAFs and strand bias built from it, and merge
+warns once per column with the number of rows. (A row an input lacks counts 0
+for it.)
 
 !!! note "Schema-Aware"
     If strand-level columns are absent from the input MAFs (e.g., older gbcms versions),
     only the available metrics are computed. Missing columns are logged and skipped —
     the pipeline does not fail.
+
+### Provenance and versions
+
+The merged MAF starts with its own provenance (`#gbcms v…`, `#command …`) and one
+line per input with that input's version line: `#input duplex: gbcms v6.6.0
+(9c371263) (/path/to/duplex.maf)`. Merge warns when the inputs come from
+different gbcms versions or builds (their counts may follow different rules),
+and stops when one input is a VCF-input MAF from before 6.5.0 (`vcf_pos` without
+`vcf_ref`/`vcf_alt`) and another is not: 6.5.0 changed the coordinates and
+alleles of VCF-input rows, so their rows would not join.
 
 ---
 

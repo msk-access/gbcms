@@ -18,9 +18,12 @@ Design rationale:
 """
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 import polars as pl
+
+from gbcms.io.atomic import atomic_output
 
 __all__ = ["read_maf", "scan_maf", "read_parquet", "write_maf"]
 
@@ -149,15 +152,20 @@ def read_parquet(path: Path) -> pl.DataFrame:
     return df
 
 
-def write_maf(df: pl.DataFrame, path: Path) -> None:
+def write_maf(df: pl.DataFrame, path: Path, header: Sequence[str] = ()) -> None:
     """Write a Polars DataFrame as a tab-separated MAF file.
 
-    Writes all columns as-is with tab separator. No comment header is
-    added — the output is a plain TSV with a single header row.
+    Writes all columns as-is with tab separator, after the ``#`` comment lines
+    in ``header`` (provenance), atomically: through a temp file renamed on
+    success, so a failed write leaves nothing at ``path``.
 
     Args:
         df: DataFrame to write.
         path: Output file path.
+        header: Comment lines (each starting with ``#``) written first.
     """
-    df.write_csv(path, separator="\t")
+    with atomic_output(Path(path), "w") as fh:
+        for line in header:
+            fh.write(f"{line}\n")
+        df.write_csv(fh, separator="\t")
     logger.info("Wrote MAF: %s (%d rows × %d cols)", path.name, df.height, df.width)

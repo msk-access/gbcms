@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — merge, outputs and observability (#194, #221, #223, #129, #148, #130, #131, #156)
+
+Measured first (operator decisions 2026-09-30 for #194, 2026-10-05 for the rest);
+community practice surveyed (bcftools, Picard/htsjdk, GATK, samtools/htslib,
+maftools, genotype_variants, Snakemake, Nextflow, bam-readcount, LoFreq, fgbio,
+DeepVariant, Strelka2). Where no tool sets a standard, gbcms now does more.
+- **A missing count is not a zero in `gbcms merge` (#194).** When either flavor's
+  count cell is missing or not a finite number (empty, `NA`, `nan`, `inf`, text)
+  in a row it has, the combined `simplex_duplex_*` cell is `NA`, as are the
+  totals, VAFs and strand bias built from it, and merge warns once per column
+  with the number of rows (it summed them as 0, silently). A row an input lacks
+  still counts 0 for it. Combined VAFs are written with four decimals, as the
+  writers write theirs. No real output carries such cells (0 of 180,348 count
+  cells measured); they come from edited files or other tools.
+- **Merge keeps every gbcms column per input (#223).** The mFSD and RNA columns
+  (63 of the 89 columns the writers can emit) were taken from the first input
+  only, unprefixed, and every later input's were dropped: with `--mfsd`, which
+  the pipeline allows alongside merge, a merged ACCESS output showed the duplex
+  BAM's fragment sizes as the sample's. They are prefixed per input
+  (`duplex_mfsd_ref_mean`), the set taken from the writer, with a test that it
+  matches in every mode.
+- **A row only a later input has keeps its annotations (#221):** its first-input
+  columns (gene, sample barcode, classification...) come from the earliest
+  later input that has the row; they were empty. No work when every row is in
+  the first input, as in the pipeline.
+- **Merge reads its inputs' provenance (#129).** The merged MAF starts with its
+  own `#gbcms`/`#command` lines and one `#input` line per input with that
+  input's version line (it had none). Merge warns when the inputs come from
+  different versions or builds, and stops when one is a VCF-input MAF from
+  before 6.5.0 (`vcf_pos` without `vcf_ref`/`vcf_alt`) and another is not: the
+  same 102k VCF records genotyped by 6.4.0 and by this version differ in 6.3% of
+  their rows, which merged into 12,771 half-empty rows with exit 0. The INFO line
+  that claimed "n/m variants have no <type> counts" counted rows whose REF count
+  was 0; it now counts the rows each input lacks. No surveyed merger compares
+  producer versions.
+- **Builds name their commit.** Provenance lines (`#gbcms`, VCF `##source`, run
+  logs, `gbcms --version`) read `gbcms v6.6.0.dev0 (9c371263)`; develop now
+  carries a `.devN` version, since every development build since 6.5.0 reported
+  6.5.0. The commit comes from git, or from `GBCMS_BUILD_COMMIT` (set by the
+  Dockerfile and the release workflow).
+- **No partial output files (#148).** Every output (MAF, VCF, the merged MAF,
+  `convert` and `normalize` files, both Parquet files, the mFSD report) is
+  written to `.<name>.partial`, fsynced, and renamed into place; a failed run
+  leaves nothing at the output path and no temp file. It left a truncated file
+  under the final name (htslib tools, GATK and Picard do too; only workflow
+  managers clean up).
+- **Per-BAM warnings once (#130).** The `--rescue-mnp` re-count no longer repeats
+  the records-without-bases, records-without-qualities and absent `--umi-tag`
+  warnings, and those records are counted once each (the count was an upper
+  bound: overlapping bins fetched a record more than once).
+- **The run start says what the run does (#131).** One INFO block lists every
+  resolved option (generated from the configuration, so none is left out) and
+  what each count- or column-changing option implies; one INFO line per BAM
+  gives facts from its first 20,000 records (duplicates flagged, base-quality
+  values, the share below `--min-baseq`, ALT contigs, hard-clipped primaries). It
+  warns only when `--min-baseq` removes more than 10% of sampled bases, the
+  header has ALT contigs, or more than 1% of primaries are hard-clipped: on 10
+  MSK BAMs the default removes 0.8–2.1% and none has ALT contigs or hard-clipped
+  primaries. Unmarked duplicates are reported, not warned: ACCESS consensus and
+  FORTE RNA BAMs carry none by design. The CLI's four-setting `Config:` line is
+  replaced by the block.
+- **One page for every QC flag (#156):** `docs/reference/qc-flags.md`, a table
+  per family (status reasons, diagnostics, rescue outcomes, ASJD, QC columns,
+  mFSD classes, VCF record shapes) with mode, MAF column, VCF field and what to
+  do; a test fails when a flag the code emits is missing from it.
+
 ### Changed — input and representation (#122, #123, #124, #125, #126, #147, #208, #149, #218)
 
 Measured on the MSK sign-out dump (1,133,044 rows; operator decisions 2026-09-25

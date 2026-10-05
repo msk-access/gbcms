@@ -16,6 +16,8 @@ from typing import Any
 from gbcms.core.kernel import CoordinateKernel
 from gbcms.io.output import CH_GENES
 
+from ..io.atomic import atomic_output
+
 logger = logging.getLogger(__name__)
 
 # ── Tooltip definitions (single source of truth for hover-over explanations) ──
@@ -381,7 +383,8 @@ def generate_mfsd_report(
 
     # ── Generate HTML ────────────────────────────────────────────────────────
     html = _build_html(variants, sample_name, parquet_path.name, min_alt)
-    output_path.write_text(html, encoding="utf-8")
+    with atomic_output(output_path, "w", encoding="utf-8") as fh:
+        fh.write(html)
     logger.info("mFSD report written: %s (%d variants)", output_path, len(variants))
     return output_path
 

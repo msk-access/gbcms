@@ -97,7 +97,7 @@ def test_merge_duplex_simplex(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert result.height == 1
     assert "duplex_ref_count" in result.columns
     assert "simplex_ref_count" in result.columns
@@ -130,7 +130,7 @@ def test_merge_combined_columns(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert "simplex_duplex_ref_count_fragment" in result.columns
     assert "simplex_duplex_alt_count_fragment" in result.columns
     assert "simplex_duplex_total_count_fragment" in result.columns
@@ -165,7 +165,7 @@ def test_merge_no_combined(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     combined_cols = [c for c in result.columns if c.startswith("simplex_duplex_")]
     assert combined_cols == [], f"Expected no combined columns, found: {combined_cols}"
 
@@ -191,7 +191,7 @@ def test_merge_three_types(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert "duplex_ref_count" in result.columns
     assert "simplex_ref_count" in result.columns
     assert "standard_ref_count" in result.columns
@@ -217,7 +217,7 @@ def test_merge_unmatched_variants(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert result.height == 2, f"Expected 2 rows from outer join, got {result.height}"
 
     # Check that missing counts are filled with "0"
@@ -245,7 +245,7 @@ def test_merge_empty_maf(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     # Outer join should preserve the duplex row
     assert result.height >= 0  # At minimum, the file is valid
 
@@ -279,7 +279,7 @@ def test_merge_prefixed_input(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     # Should have duplex_ref_count, NOT duplex_duplex_ref_count
     assert "duplex_ref_count" in result.columns
     double_prefixed = [c for c in result.columns if c.startswith("duplex_duplex_")]
@@ -305,7 +305,7 @@ def test_merge_unprefixed_input(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     # Original "ref_count" should NOT exist — should be "duplex_ref_count"
     assert "ref_count" not in result.columns, "Unprefixed ref_count should be renamed"
     assert "duplex_ref_count" in result.columns
@@ -332,7 +332,7 @@ def test_merge_legacy_naming(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert "t_ref_count_duplex" in result.columns, f"Expected legacy naming, got: {result.columns}"
     assert "t_ref_count_simplex" in result.columns
 
@@ -356,7 +356,7 @@ def test_merge_annotation_passthrough(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert "Hugo_Symbol" in result.columns
     assert result["Hugo_Symbol"].to_list() == ["TP53"]
 
@@ -421,7 +421,7 @@ def test_merge_cli_integration(tmp_path):
     assert result.exit_code == 0, f"CLI failed: {result.output}"
     assert output.exists()
 
-    df = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    df = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert df.height == 1
     assert "duplex_ref_count" in df.columns
 
@@ -451,7 +451,7 @@ def test_merge_vaf_zero_division(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     vaf = float(result["simplex_duplex_vaf_fragment"][0])
     assert vaf == 0.0, f"Expected 0.0 for 0/0, got {vaf}"
 
@@ -475,7 +475,7 @@ def test_merge_singleton_column_prefixing(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert (
         "duplex_gbcms_status" in result.columns
     ), f"Expected 'duplex_gbcms_status', got: {[c for c in result.columns if 'status' in c]}"
@@ -520,7 +520,7 @@ def test_merge_asymmetric_row_counts(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert result.height == 6, f"Expected 6 rows (5+3-2 overlap), got {result.height}"
 
     # Check overlap rows: both have real counts
@@ -568,7 +568,7 @@ def test_merge_combined_with_unmatched(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert result.height == 2
 
     # Duplex-only variant: combined = duplex + 0
@@ -606,7 +606,7 @@ def test_merge_annotation_nulls_right_only(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
 
     # Duplex-only row (left): Hugo_Symbol preserved
     left_row = result.filter(pl.col("Start_Position") == "100")
@@ -639,7 +639,7 @@ def test_merge_meta_null_fill(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
 
     # Duplex-only row: simplex_gbcms_status should be "" (not null)
     duplex_only = result.filter(pl.col("Start_Position") == "100")
@@ -748,7 +748,7 @@ def test_merge_combined_read_level(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
 
     # Read-level additive sums
     assert int(result["simplex_duplex_ref_count"][0]) == 25  # 20 + 5
@@ -809,7 +809,7 @@ def test_merge_combined_strand_bias(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
 
     # Verify additive strand counts
     assert int(result["simplex_duplex_ref_count_forward"][0]) == 10  # 10 + 0
@@ -854,7 +854,7 @@ def test_merge_combined_column_order(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
 
     # Extract all simplex_duplex_* columns in order
     combined_cols = [c for c in result.columns if c.startswith("simplex_duplex_")]
@@ -934,7 +934,7 @@ def test_merge_combined_strand_bias_balanced(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     sb_p = float(result["simplex_duplex_strand_bias_p_value"][0])
     assert sb_p > 0.9, f"Expected p ~1.0 for balanced table, got {sb_p}"
 
@@ -989,7 +989,7 @@ def test_merge_combined_strand_bias_nan_sanitized(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
 
     # Identify all simplex_duplex strand bias columns
     sb_cols = [c for c in result.columns if "strand_bias" in c and c.startswith("simplex_duplex_")]
@@ -1067,7 +1067,7 @@ def test_merge_handles_provenance_comment_lines(tmp_path):
     )
     merge_mafs(config)
 
-    result = pl.read_csv(output, separator="\t", infer_schema_length=0)
+    result = pl.read_csv(output, separator="\t", infer_schema_length=0, comment_prefix="#")
     assert result.height == 1, f"Expected 1 row, got {result.height}"
     assert "duplex_ref_count" in result.columns, f"Missing duplex_ref_count, got: {result.columns}"
     assert result["duplex_ref_count"].to_list() == ["20"]
@@ -1111,6 +1111,6 @@ def test_merge_row_order_follows_inputs(tmp_path, n_inputs, combined):
     for k in range(5):
         out = tmp_path / f"merged{k}.maf"
         merge_mafs(MergeConfig(inputs=paths, output=out, add_combined=combined))
-        result = pl.read_csv(out, separator="\t", infer_schema_length=0)
+        result = pl.read_csv(out, separator="\t", infer_schema_length=0, comment_prefix="#")
         assert result["Start_Position"].to_list() == expected, f"run {k}"
         assert not any(c.startswith("_") for c in result.columns), result.columns

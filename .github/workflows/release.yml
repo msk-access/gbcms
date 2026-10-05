@@ -32,7 +32,9 @@ jobs:
           manylinux: manylinux_2_34
           # docker-options ensures env vars are passed directly to the container
           # (before-script exports don't persist to cargo build phase)
-          docker-options: -e OPENSSL_NO_VENDOR=1
+          # GBCMS_BUILD_COMMIT: the commit for output provenance (rust/build.rs);
+          # the manylinux container may not see the checkout's .git.
+          docker-options: -e OPENSSL_NO_VENDOR=1 -e GBCMS_BUILD_COMMIT=${{ github.sha }}
           before-script-linux: |
             SUDO=""
             if [ "$(id -u)" -ne 0 ] && command -v sudo &> /dev/null; then
@@ -128,6 +130,7 @@ jobs:
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: GBCMS_BUILD_COMMIT=${{ github.sha }}
 
   # Summary
   summary:

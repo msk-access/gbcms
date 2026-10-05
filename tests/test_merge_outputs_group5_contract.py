@@ -96,10 +96,7 @@ def _dna(tmp_path, variants, bam, fa, *extra, fmt="maf", name="o"):
 
 # ── M4 #194: a missing count is not a zero ───────────────────────────────────
 
-_M4 = pytest.mark.xfail(strict=True, reason="M4: merge sums a missing count as 0")
 
-
-@_M4
 @pytest.mark.parametrize("flavor", ["duplex", "simplex"])
 @pytest.mark.parametrize("cell", ["NA", "nan", "inf", "", "text"])
 def test_a_missing_count_cell_makes_the_combined_cell_na(tmp_path, caplog, cell, flavor):
@@ -124,7 +121,6 @@ def test_a_missing_count_cell_makes_the_combined_cell_na(tmp_path, caplog, cell,
     assert len(warned) == 1, [r.message for r in caplog.records]
 
 
-@_M4
 def test_combined_vafs_have_four_decimals(tmp_path):
     """The combined VAFs are written as the writers write theirs (4 decimals)."""
     merged = _merge(
@@ -160,11 +156,9 @@ def test_numeric_and_absent_counts_still_combine(tmp_path):
 
 # ── M5 #221: a later-only row keeps its annotations ──────────────────────────
 
-_M5 = pytest.mark.xfail(strict=True, reason="M5: a later-only row's annotations are empty")
 _ACOLS = ["Hugo_Symbol", "Tumor_Sample_Barcode", *_MCOLS]
 
 
-@_M5
 def test_a_row_only_a_later_input_has_keeps_its_annotations(tmp_path):
     """Its first-input columns come from the later input; a column only the
     later input has is not added; a row the first input has keeps its own."""
@@ -188,7 +182,6 @@ def test_a_row_only_a_later_input_has_keeps_its_annotations(tmp_path):
     assert "Only_Simplex" not in merged[0]
 
 
-@_M5
 def test_the_earliest_later_input_fills_the_row(tmp_path):
     rows = {
         "duplex": [["G1", "S", "1", "100", "100", "A", "T", "1", "1", "1", "1"]],
@@ -201,10 +194,7 @@ def test_the_earliest_later_input_fills_the_row(tmp_path):
 
 # ── M6 #223: every gbcms column is per input ─────────────────────────────────
 
-_M6 = pytest.mark.xfail(strict=True, reason="M6: mFSD/RNA columns taken from the first input")
 
-
-@_M6
 def test_mfsd_and_rna_columns_are_prefixed_per_input(tmp_path):
     cols = [*_MCOLS, "mfsd_ref_mean", "mfsd_ks_valid", "rna_sense_depth", "exon_boundary_dist"]
     merged = _merge(
@@ -229,7 +219,6 @@ def test_mfsd_and_rna_columns_are_prefixed_per_input(tmp_path):
     assert not {"mfsd_ref_mean", "mfsd_ks_valid", "rna_sense_depth"} & set(row)
 
 
-@_M6
 def test_merge_knows_every_column_the_writers_emit(tmp_path):
     from gbcms.io.output import MafWriter
     from gbcms.merge import ALL_GBCMS_BASENAMES
@@ -252,13 +241,12 @@ def test_merge_knows_every_column_the_writers_emit(tmp_path):
 
 # ── M2 #129: inputs from different gbcms versions ────────────────────────────
 
-_M2 = pytest.mark.xfail(strict=True, reason="M2: merge ignores the inputs' provenance")
 _ROW_D = ["1", "100", "100", "A", "T", "20", "10", "20", "10"]
 _ROW_S = ["1", "100", "100", "A", "T", "5", "2", "5", "2"]
 
 
-@_M2
-def test_the_merged_maf_carries_its_own_and_each_inputs_provenance(tmp_path):
+def test_the_merged_maf_carries_its_own_and_each_inputs_provenance(tmp_path, monkeypatch):
+    monkeypatch.setattr("sys.argv", ["gbcms", "merge", "--input", "duplex:d.maf"])
     res, out = _cli_merge(
         tmp_path,
         {
@@ -275,7 +263,6 @@ def test_the_merged_maf_carries_its_own_and_each_inputs_provenance(tmp_path):
     assert len(list(read_maf_output(out))) == 1
 
 
-@_M2
 def test_merge_warns_when_the_inputs_come_from_different_versions(tmp_path, caplog):
     _merge(
         tmp_path,
@@ -304,7 +291,6 @@ def test_merge_of_one_version_does_not_warn_about_versions(tmp_path, caplog):
     ]
 
 
-@_M2
 def test_merge_refuses_the_pre_650_vcf_input_shape_mixed_with_another(tmp_path):
     """A VCF-input MAF from before 6.5.0 has vcf_pos but no vcf_ref/vcf_alt; its
     rows do not join a later one's, so merge stops instead of writing split rows."""
@@ -331,7 +317,6 @@ def test_merge_of_two_pre_650_vcf_input_mafs_still_joins(tmp_path):
     assert len(merged) == 1
 
 
-@_M2
 def test_merge_log_counts_the_rows_an_input_lacks(tmp_path, caplog):
     """Not rows whose REF count is 0: a present row with ref_count 0 is not
     missing from its input."""
@@ -354,7 +339,6 @@ def test_merge_log_counts_the_rows_an_input_lacks(tmp_path, caplog):
     assert "'duplex' lacks" not in text
 
 
-@_M2
 def test_the_provenance_line_names_the_build_commit():
     """A build carries its commit (from git, or GBCMS_BUILD_COMMIT where the
     source has no git, as in Docker), so two builds of one version differ."""
@@ -367,8 +351,6 @@ def test_the_provenance_line_names_the_build_commit():
 
 # ── H1 #148: no partial output files ─────────────────────────────────────────
 
-_H1 = pytest.mark.xfail(strict=True, reason="H1: a failed write leaves a partial file")
-
 
 def _five_snvs(tmp_path):
     rows = [
@@ -379,7 +361,6 @@ def _five_snvs(tmp_path):
     return _maf(tmp_path, rows), fa, bam
 
 
-@_H1
 @pytest.mark.parametrize("fmt", ["maf", "vcf"])
 def test_a_failed_write_leaves_no_output_file(tmp_path, monkeypatch, fmt):
     from gbcms.io import output as out_mod
@@ -409,7 +390,6 @@ def test_a_run_leaves_only_its_outputs(tmp_path, fmt):
     assert sorted(p.name for p in (tmp_path / "o").iterdir()) == [f"S.{fmt}"]
 
 
-@_H1
 def test_a_failed_merge_write_leaves_no_output_file(tmp_path, monkeypatch):
     import polars as pl
 
@@ -426,7 +406,6 @@ def test_a_failed_merge_write_leaves_no_output_file(tmp_path, monkeypatch):
     assert not [p for p in tmp_path.iterdir() if "merged" in p.name]
 
 
-@_H1
 @pytest.mark.parametrize("command", ["normalize", "convert"])
 def test_a_failed_normalize_or_convert_write_leaves_no_output_file(tmp_path, monkeypatch, command):
     orig, calls = csv.DictWriter.writerow, {"n": 0}
@@ -462,7 +441,6 @@ def test_a_failed_normalize_or_convert_write_leaves_no_output_file(tmp_path, mon
     ]
 
 
-@_H1
 def test_a_failed_parquet_write_leaves_no_output_file(tmp_path, monkeypatch):
     """The parquet writers write to a temp path the run renames: a failure
     inside one leaves nothing at the final path."""
@@ -489,8 +467,6 @@ def test_a_failed_parquet_write_leaves_no_output_file(tmp_path, monkeypatch):
 
 # ── O1 #130: per-BAM warnings once ───────────────────────────────────────────
 
-_O1 = pytest.mark.xfail(strict=True, reason="O1: the rescue recount repeats per-BAM warnings")
-
 
 def _with_record_without_bases(tmp_path, reads, at):
     fa, bam = _files(tmp_path, reads)
@@ -511,7 +487,6 @@ def _with_record_without_bases(tmp_path, reads, at):
     return fa, out
 
 
-@_O1
 def test_the_rescue_recount_does_not_repeat_the_per_bam_warnings(tmp_path):
     a0 = "A" if REF[P] != "A" else "C"
     a1 = "A" if REF[P + 1] != "A" else "C"
@@ -529,7 +504,6 @@ def test_the_rescue_recount_does_not_repeat_the_per_bam_warnings(tmp_path):
     assert text.count("carries the RX tag") == 1, text
 
 
-@_O1
 def test_a_record_without_bases_is_counted_once_across_bins(tmp_path, caplog):
     """Two one-variant bins both fetch the record: it is one record."""
     fa, bam = _with_record_without_bases(tmp_path, _ref_reads(), P - 30)
@@ -557,8 +531,6 @@ def test_a_record_without_bases_is_counted_once_across_bins(tmp_path, caplog):
 
 # ── O2 #131: the run start says what the run does ────────────────────────────
 
-_O2 = pytest.mark.xfail(strict=True, reason="O2: the run start logs four settings")
-
 
 def _leaf_fields(model, prefix=""):
     from pydantic import BaseModel
@@ -573,7 +545,6 @@ def _leaf_fields(model, prefix=""):
     return out
 
 
-@_O2
 def test_the_run_start_logs_every_resolved_option(tmp_path):
     from gbcms.models.core import GbcmsDnaConfig
 
@@ -589,7 +560,6 @@ def test_the_run_start_logs_every_resolved_option(tmp_path):
     assert missing == [], missing
 
 
-@_O2
 def test_the_run_start_says_what_count_changing_options_imply(tmp_path):
     maf, fa, bam = _five_snvs(tmp_path)
     res, text = _dna(tmp_path, maf, bam, fa, "--no-filter-duplicates", "--min-mapq", "0", "--mfsd")
@@ -616,7 +586,6 @@ def _bam_with(tmp_path, reads, extra_sq=()):
     return fa, bam
 
 
-@_O2
 def test_the_run_start_logs_each_bams_properties(tmp_path):
     fa, bam = _bam_with(tmp_path, _ref_reads())
     maf = _maf(tmp_path, [_row(P + 1, REF[P], "A" if REF[P] != "A" else "C")])
@@ -633,7 +602,6 @@ def test_the_run_start_logs_each_bams_properties(tmp_path):
     assert "duplicate" not in " ".join(x for x in res.output.splitlines() if "WARN" in x)
 
 
-@_O2
 @pytest.mark.parametrize("case", ["min-baseq", "alt contigs", "hard clips"])
 def test_the_run_start_warns_on_bam_properties_that_change_counts(tmp_path, case):
     reads = _ref_reads()
@@ -686,8 +654,7 @@ def test_no_bam_property_warning_at_ordinary_settings(tmp_path):
 
 # ── D6 #156: one page for every QC flag ──────────────────────────────────────
 
-_D6 = pytest.mark.xfail(strict=True, reason="D6: no QC-flags page")
-_NOT_FLAGS = {"UTF-8", "VARIANT_KEY"}
+_NOT_FLAGS = {"UTF-8", "VARIANT_KEY", "BH-FDR"}
 
 
 def _emitted_flags():
@@ -699,8 +666,10 @@ def _emitted_flags():
     )
     for p in files:
         s = p.read_text()
-        if p.suffix == ".rs" and "#[cfg(test)]" in s:
-            s = s[: s.index("#[cfg(test)]")]
+        if p.suffix == ".rs":
+            # The unit-test module, not the first #[cfg(test)] (some guard an import).
+            m = re.search(r"#\[cfg\(test\)\]\s*(?:pub\s+)?mod\s+\w+\s*\{", s)
+            s = s[: m.start()] if m else s
         code = "\n".join(x for x in s.splitlines() if not x.lstrip().startswith(("//", "#")))
         for literal in lit.findall(code):
             for t in re.findall(r"\b([A-Z][A-Z0-9]+(?:[_-][A-Z0-9]+)+)\b", literal):
@@ -709,7 +678,6 @@ def _emitted_flags():
     return flags
 
 
-@_D6
 def test_the_qc_flags_page_lists_every_flag_the_code_emits():
     page = ROOT / "docs" / "reference" / "qc-flags.md"
     text = page.read_text()
@@ -718,7 +686,6 @@ def test_the_qc_flags_page_lists_every_flag_the_code_emits():
     assert sorted(f for f in flags if f not in text) == []
 
 
-@_D6
 def test_the_output_reference_and_glossary_link_the_qc_flags_page():
     for page in ("output-formats.md", "glossary.md"):
         assert "qc-flags.md" in (ROOT / "docs" / "reference" / page).read_text(), page

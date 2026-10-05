@@ -58,6 +58,8 @@ Technical terms used throughout the documentation.
 
 ## Validation Status
 
+All flags, reasons and classes in one place: [QC Flags](qc-flags.md).
+
 Status is two fields: `gbcms_status` (verdict `PASS`/`FAIL`) and `gbcms_status_reason`
 (`|`-separated reason tags, empty for a clean PASS).
 

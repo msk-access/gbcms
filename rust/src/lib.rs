@@ -26,6 +26,14 @@ fn reset_log_caching() {
     }
 }
 
+/// The commit this build came from (8 hex characters), or empty when the build
+/// had neither git nor `GBCMS_BUILD_COMMIT` (see build.rs). Output provenance
+/// names it after the version, so two builds of one version are told apart.
+#[pyfunction]
+fn build_commit() -> &'static str {
+    env!("GBCMS_BUILD_COMMIT")
+}
+
 /// A Python module implemented in Rust (bundled as gbcms._rs).
 #[pymodule]
 fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -50,6 +58,7 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         }
     }
     m.add_function(wrap_pyfunction!(reset_log_caching, m)?)?;
+    m.add_function(wrap_pyfunction!(build_commit, m)?)?;
     m.add_function(wrap_pyfunction!(counting::count_bam_binned, m)?)?;
     m.add_function(wrap_pyfunction!(counting::count_bam_binned_observations, m)?)?;
     m.add_function(wrap_pyfunction!(counting::build_gtf_cache, m)?)?;

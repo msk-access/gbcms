@@ -248,6 +248,7 @@ def count_bam_binned(
     library_type: str = "capture",
     bin_window: int | None = None,
     bin_max_variants: int | None = None,
+    warn_per_bam: bool = True,
 ) -> list[BaseCounts]: ...
 def count_bam_binned_observations(
     bam_path: str,
@@ -291,6 +292,7 @@ def build_gtf_cache(
     cache_dir: str,
 ) -> int: ...
 def reset_log_caching() -> None: ...
+def build_commit() -> str: ...
 def prepare_variants(
     variants: list[Variant],
     fasta_path: str,

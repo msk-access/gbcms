@@ -87,15 +87,15 @@ marks a ticket with an open PR.
 | I6 | `REF_MISMATCH` rows say where the given REF sits | L | [decided] group 4 (built) | #218 |
 | I7 | A MAF dash insertion at Start 0 is skipped, not a FAIL row | L | [6.7.0] | #219 |
 | M1 | Merge rows whose flavors report different alleles | M | [6.7.0] | #128 |
-| M2 | Merge inputs from different gbcms versions | M | | #129 |
+| M2 | Merge inputs from different gbcms versions | M | [decided] group 5 (built) | #129 |
 | M3 | Decomposed-allele hardening (observations, list length) | M | | #147; #146 [6.7.0] (#112) |
-| M4 | Merge sums NA/nan count cells as 0 silently (the documented warning was never implemented) | M | [decided] | #194 |
-| M5 | Merge leaves the annotation columns of a row only a later input has empty | L | [decided] | #221 |
-| M6 | Merge takes mFSD and RNA columns from the first input only | M | [decided] | #223 |
-| O1 | UMI and no-bases warnings repeated by the rescue recount | L | | #130 |
-| O2 | Run-start summary of enabled options | L | | #131 |
+| M4 | Merge sums NA/nan count cells as 0 silently (the documented warning was never implemented) | M | [decided] group 5 (built) | #194 |
+| M5 | Merge leaves the annotation columns of a row only a later input has empty | L | [decided] group 5 (built) | #221 |
+| M6 | Merge takes mFSD and RNA columns from the first input only | M | [decided] group 5 (built) | #223 |
+| O1 | UMI and no-bases warnings repeated by the rescue recount | L | [decided] group 5 (built) | #130 |
+| O2 | Run-start summary of enabled options | L | [decided] group 5 (built) | #131 |
 | O3 | Rescue in fillouts without the MNP | L | [6.7.0] | #132 |
-| H1 | Writers closed when a write fails | L | | #148 |
+| H1 | Writers closed when a write fails | L | [decided] group 5 (built) | #148 |
 | H2 | `is_indel` in preparation | L | group 4 (built) | #149 |
 | P1 | Deep-bin fetch reduction (M5b) | L | [6.7.0] | #150 |
 | P2 | Bin cost-sort (PF-2) | L | [closed] | #151 |
@@ -107,7 +107,7 @@ marks a ticket with an open PR.
 | D3 | mkdocs-material 2.0 | L | [6.7.0] | #138 |
 | D4 | Dependency upgrade audit: does anything break on current releases? | M | | #139 |
 | D5 | Coverage-driven regression panel (replaces the 56-sample matrix) | M | | #155 |
-| D6 | One QC-flags reference page | M | | #156 |
+| D6 | One QC-flags reference page | M | [decided] group 5 (built) | #156 |
 
 ## Counting correctness
 

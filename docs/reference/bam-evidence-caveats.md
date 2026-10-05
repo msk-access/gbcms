@@ -38,15 +38,15 @@ caveat in gbcms's output.
 | Allele soft-clipped at a read end | Counted for complex/MNP in DNA | Decided (extend) | #173, C7 #144 |
 | Long event split across alignments | The primary's clip is read at the junction | Proposed | C18 #177 |
 | Indel realignment (ABRA2) fixes or forces placements | Invariant by design (bases, not placement) | Decided; verify | D5 #155 |
-| Aligner settings change clipping; hard clips drop bases | Clips read; hard-clipped bases lost | Decided; warn on hard clips | O2 #131, D5 #155 |
+| Aligner settings change clipping; hard clips drop bases | Clips read; hard-clipped bases lost; warned at run start | Decided (done: warn) | O2 #131, D5 #155 |
 | Reads from paralogs or segmental duplications | MAPQ ≥ 20; `mq0_count` | To measure | O5 #179 |
 | Reference bias: ALT reads map worse, clip, or go unmapped | Counts what maps | Proposed (diagnostic) | O5 #179 |
-| Alt contigs and decoys split coverage | Contig naming handled | Proposed (warn) | O2 #131 |
-| Base-quality calibration: binned, BQSR, BAQ | One masking rule; BAQ spares the variant's own indel | Decided (done); warn on bins | O2 #131 |
+| Alt contigs and decoys split coverage | Contig naming handled; ALT contigs warned at run start | Decided (done: warn) | O2 #131 |
+| Base-quality calibration: binned, BQSR, BAQ | One masking rule; BAQ spares the variant's own indel; run start reports the share below `--min-baseq` | Decided (done: warn above 10%) | O2 #131 |
 | Adapter read-through | Clipped at the fragment end in every read | Decided (done) | C17 #176 |
 | Stutter in repeats | Counted exactly; named by a diagnostic | Decided (done) | — |
 | OxoG / FFPE orientation artifacts | Strand counts only | To measure (decide) | O6 #180 |
-| Unmarked duplicates; UMI consensus N's | Duplicate flag honoured; N masked | Proposed (warn) | O2 #131 |
+| Unmarked duplicates; UMI consensus N's | Duplicate flag honoured; N masked; run start reports the flagged share | Decided (done: report, no warning) | O2 #131 |
 | Overlapping mates | Fragment counts | Decided (done) | — |
 | RNA: splicing at exon edges | Windows built over the reference spliced at each read's junctions; a splice is not coverage; ASJD | Decided (done) | C32 #213, R5 #198 |
 | RNA: STAR clips hold next-exon bases | A clip reaching an exon edge or junction end is not evidence; other clips are read | Decided (done) | C15 #173 |
@@ -116,7 +116,8 @@ caveat in gbcms's output.
     - a realigner converts clips into indels, and can force a placement;
     - aligner settings change clipping (a lower mismatch penalty, `-Y` soft-clipped
       supplementaries);
-    - hard clips drop bases entirely.
+    - hard clips drop bases entirely; the run start warns when more than 1% of a
+      BAM's sampled primary alignments are hard-clipped (none in 10 MSK BAMs).
 - **gbcms now:** judgements rest on bases, not placement, so they are invariant by
   design. Hard-clipped bases cannot be read.
 - **Should do:** decided. Verify invariance on realigned and non-realigned pairs of
@@ -158,8 +159,10 @@ caveat in gbcms's output.
 - **In the BAM:** alt-aware GRCh38 alignment can move reads onto alt haplotype
   contigs, and decoys absorb reads, so coverage at the primary locus drops.
 - **gbcms now:** contig naming is reconciled; nothing else.
-- **Should do:** proposed. Warn at run start when the reference has alt contigs
-  (O2 #131).
+- **Should do:** done (O2 #131): the run start warns when a BAM's header has ALT
+  contigs (`*_alt`, `HLA-*`): without ALT-aware alignment, reads where ALT
+  haplotypes exist get low MAPQ and `--min-mapq` drops them. None of 10 sampled
+  MSK BAMs (IMPACT, ACCESS, FORTE) has any.
 - **Community:** alt-aware aligners (bwa's `.alt` handling) and GATK's GRCh38
   guidance. To survey.
 
@@ -171,8 +174,11 @@ caveat in gbcms's output.
 - **gbcms now:**
     - one masking rule: bases below min BQ, and N, match anything;
     - BAQ spares the variant's own indel (#166).
-- **Should do:** decided and done. Warn when qualities look binned and
-  `--min-baseq` falls between bins (O2 #131).
+- **Should do:** done (O2 #131): the run start reports each BAM's base-quality
+  values (binned when 8 or fewer) and the share of sampled bases below
+  `--min-baseq`, and warns above 10%. Measured on 10 MSK BAMs: 0.8–2.1% at the
+  default Q20; a threshold between bins removes more (FORTE's 2/9/24/40 at Q25:
+  4%; IMPACT at Q30: 5–12%; IMPACT at Q40: nearly all).
 - **Community:** GATK BQSR; bcftools and samtools BAQ (`-B`/`-E`).
 - **See it:** `n_count`; the per-read trace.
 
@@ -210,7 +216,10 @@ caveat in gbcms's output.
   disagreeing bases as N.
 - **gbcms now:** the duplicate flag is honoured; N matches anything; UMI families
   are supported.
-- **Should do:** proposed. Warn when duplicates appear unmarked (O2 #131).
+- **Should do:** decided (O2 #131): report, don't warn. Each BAM's run-start line
+  gives the share of its first records flagged duplicate. ACCESS consensus and
+  FORTE RNA BAMs carry no duplicate flags by design (0 in 6 sampled; IMPACT
+  12–25%), so a warning would fire on every such run.
 - **Community:** Picard MarkDuplicates; fgbio consensus calling.
 
 ### Overlapping mates

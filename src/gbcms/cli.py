@@ -18,7 +18,7 @@ from pathlib import Path
 
 import typer
 
-from . import __version__
+from .io.output import build_identity
 from .models.core import (
     AlignmentConfig,
     GbcmsDnaConfig,
@@ -161,7 +161,7 @@ def _exit_on_sample_failure(result: dict) -> None:
 def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
-        typer.echo(f"gbcms {__version__}")
+        typer.echo(build_identity())
         raise typer.Exit()
 
 
@@ -425,7 +425,7 @@ def dna(
     # ── 1. Logging (must be first so all subsequent checks log correctly) ──────
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
-    logger.info("Running gbcms v%s in DNA mode", __version__)
+    logger.info("Running %s in DNA mode", build_identity())
     # ── 2. Pre-model validation (semantic + cross-option checks) ───────────────
 
     # GAP 12: Reject unsupported variant file extensions before any I/O.
@@ -487,13 +487,6 @@ def dna(
         raise typer.Exit(code=1)
 
     logger.info("Found %d BAM file(s) to process", len(bams_dict))
-    logger.info(
-        "Config: min_mapq=%d, apply_baq=%s, alignment_backend=%s, umi_tag=%s",
-        min_mapq,
-        apply_baq,
-        alignment_backend.value,
-        umi_tag or "none",
-    )
 
     try:
         # Build nested config objects
@@ -815,7 +808,7 @@ def rna(
     # ── 1. Logging ──
     setup_logging(verbose=verbose, trace=trace)
     command_line = _log_command()
-    logger.info("Running gbcms v%s in RNA mode", __version__)
+    logger.info("Running %s in RNA mode", build_identity())
     # ── 2. Pre-model validation ──
     is_maf = _variant_format(variant_file) == "maf"
 
@@ -869,17 +862,6 @@ def rna(
             "(no transcript strand to filter against)"
         )
 
-    logger.info(
-        "Config: min_mapq=%d, apply_baq=%s, alignment_backend=%s, "
-        "enforce_strandedness=%s, strandedness=%s, library_type=%s, umi_tag=%s",
-        min_mapq,
-        apply_baq,
-        alignment_backend.value,
-        enforce_strandedness,
-        strandedness,
-        library_type,
-        umi_tag or "none",
-    )
     if rna_editing_db:
         logger.info("RNA editing database: %s", rna_editing_db)
     if gtf:
@@ -1179,7 +1161,7 @@ def merge(
 
     setup_logging(verbose=verbose, trace=False)
     _log_command()
-    logger.info("gbcms merge v%s", __version__)
+    logger.info("%s merge", build_identity())
 
     # ── Pre-model: parse type:path pairs ──────────────────────────────────
     parsed: dict[str, Path] = {}
@@ -1216,6 +1198,7 @@ def merge(
             output=output,
             add_combined=add_combined,
             legacy_naming=legacy_naming,
+            command_line=" ".join(sys.argv),
         )
     except ValidationError as e:
         logger.error("Configuration error: %s", e)
