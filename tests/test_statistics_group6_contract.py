@@ -226,9 +226,11 @@ def test_no_report_class_is_named_ch_like(tmp_path):
     )  # fmt: skip
     html = out.read_text()
     assert "CH-LIKE" not in html and "CH-like" not in html
-    # the class as a card badge (the fixture has a significant, shorter ALT) and the
-    # summary cards, not only tooltip text
-    assert ">LEANS-SOMATIC</span>" in html
+    # The fixture's significant variant (APC, q 0.002) has a slightly larger
+    # short-fragment share but is longer where the size distributions differ most:
+    # a card badge of NO-SIZE-EVIDENCE that says so, not LEANS-SOMATIC.
+    assert ">NO-SIZE-EVIDENCE</span>" in html and ">LEANS-SOMATIC</span>" not in html
+    assert "with ALT longer than REF" in html
     assert '<div class="label">Leans somatic</div>' in html
     assert '<div class="label">No size evidence</div>' in html
 
