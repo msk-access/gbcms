@@ -1160,9 +1160,10 @@ def merge(
     """
     Merge per-BAM-type genotyped MAFs into a single type-prefixed output.
 
-    Performs an outer join on the 5-column variant key (Chromosome,
-    Start_Position, End_Position, Reference_Allele, Tumor_Seq_Allele2),
-    prefixes all gbcms count columns with the BAM type label, and
+    Performs an outer join on the variant (Chromosome, Start_Position,
+    Reference_Allele, Tumor_Seq_Allele2; End_Position is filled from the
+    inputs that have each row), prefixes all gbcms count columns with the BAM
+    type label, and
     optionally computes additive simplex+duplex combined columns.
 
     Example::

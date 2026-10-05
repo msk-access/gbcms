@@ -31,8 +31,10 @@ pub struct PreparedVariant {
     #[pyo3(get, set)]
     pub gbcms_status_reason: String,
 
-    /// Post-counting diagnostic flags. Semicolon-separated.
-    /// Empty string = no diagnostics. Set by Python pipeline after counting.
+    /// Diagnostic flags. Semicolon-separated. Empty string = no diagnostics.
+    /// Set by the Python pipeline after counting for a PASS row; on a
+    /// `REF_MISMATCH` row, prep sets `REF_AT_OFFSET(k)` where the given REF
+    /// matches the reference exactly nearby.
     /// Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
     #[pyo3(get, set)]
     pub gbcms_diagnostic: String,

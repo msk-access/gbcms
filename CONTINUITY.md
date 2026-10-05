@@ -128,18 +128,23 @@ Where the right behaviour is unknown, measure it on that matrix and survey
 community practice before deciding; record the decision in the issue.
 
 **In progress — group 4, input and representation (C9 #122, I1 #123, I2 #124,
-I3 #125, I4 #126, #147, H2 #149, C30 #208):** branch `feature/g4-input`. Decided
-(2026-09-25 I1/I3/I4; 2026-10-05 the rest): non-sequence MAF alleles FAIL
+I3 #125, I4 #126, I6 #218, #147, H2 #149, C30 #208):** branch `feature/g4-input`.
+Decided (2026-09-25 I1/I3/I4; 2026-10-05 the rest): non-sequence MAF alleles FAIL
 `NON_SEQUENCE_ALLELE` (VCF output `<NON_SEQUENCE>`); VCF output of MAF input
-carries MAF_START/MAF_REF/MAF_ALT; a MAF deletion at Start 1 counts in the
-base-after form; End_Position optional (merge no longer joins on it; fills it
-from the inputs that have each row); VCF-input MAF output fills Tumor_Seq_Allele1 with REF; one row, one
-allele; decomposed/sibling lists padded short, rejected long; one allele-kind
-rule. Red tests `766f8e7c`, fix `03563479`. Measured on the sign-out dump (1.13M
-rows): 7 non-sequence alleles, 0 Start-1 deletions, 0 missing End_Position, 0
-differing Allele1, 0 prepared rows hit by C30. Also corrected group 3's "R5
-leaves vaf unchanged" (vaf is alt over REF plus ALT). Pending: review,
-acceptance, PR. Harness `~/test/gbcms/harness/g4/`.
+carries MAF_START/MAF_REF/MAF_ALT (the row's alleles as written); a MAF deletion
+at Start 1 counts in the base-after form; End_Position optional (merge joins on
+contig, Start and alleles, fills End_Position from the inputs that have each
+row, and joins on it too only when an input splits a variant by it); VCF-input
+MAF output fills Tumor_Seq_Allele1 with REF; one row, one allele;
+decomposed/sibling lists padded short, rejected long; one allele-kind rule;
+I6: a REF_MISMATCH row stays FAIL and gets `REF_AT_OFFSET(k)` in
+gbcms_diagnostic (REF of 3+ bases exact within ±3 bp). Commits: red `766f8e7c`,
+fix `03563479`, merge key `d928c9af`, review + I6 red `0925f636` and fix.
+Measured on the sign-out dump (1.13M rows): 7 non-sequence alleles, 0 Start-1
+deletions, 0 missing End_Position, 0 differing Allele1, 0 prepared rows hit by
+C30, 154 REF_MISMATCH (87 sit 1–3 bp off; 109 from 134 legacy ANNOVAR rows).
+Adversarial review done (findings fixed; I7 #219 and O9 #220 filed for 6.7.0).
+Pending: acceptance on the final build, PR. Harness `~/test/gbcms/harness/g4/`.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
 Groups 1–3 are merged (#211, #215, #217). `PRODUCTION_READINESS.md` holds the

@@ -8,8 +8,9 @@ WGS-scale performance.
 Architecture:
     1. Scan each input MAF lazily via ``io.batch.scan_maf``
     2. Detect whether columns are already prefixed or need renaming
-    3. Progressive outer join on the 5-column variant key (plus the VCF
-       record — vcf_pos / vcf_ref / vcf_alt — when every input carries it)
+    3. Progressive outer join on the variant — contig, Start and alleles
+       (plus the VCF record — vcf_pos / vcf_ref / vcf_alt — when every input
+       carries it); End_Position is filled from the inputs that have each row
     4. Optionally compute additive ``simplex_duplex_*`` combined columns
     5. Materialize and write via ``io.batch.write_maf``
 
@@ -246,7 +247,7 @@ def merge_mafs(config: MergeConfig) -> None:
         input_columns[bam_type] = schema_names
 
     # ── 2. Progressive outer join ─────────────────────────────────────────────
-    join_key = _join_key(input_columns)
+    join_key = _join_key(frames, input_columns)
     for bam_type, lf in frames.items():
         _warn_duplicate_keys(lf, join_key, bam_type)
     types = list(frames.keys())
@@ -262,7 +263,7 @@ def merge_mafs(config: MergeConfig) -> None:
         join_names = join_frame.collect_schema().names()
         count_cols = [c for c in join_names if _is_prefixed_gbcms_col(c, join_type)]
         aside = {"Chromosome": f"_chrom_{join_type}"}
-        if "End_Position" in join_names:
+        if "End_Position" in join_names and "End_Position" not in join_key:
             aside["End_Position"] = f"_end_{join_type}"
         merged = merged.join(
             join_frame.select([*join_key, *aside, _row_col(join_type), *count_cols]).rename(aside),
@@ -342,13 +343,33 @@ def merge_mafs(config: MergeConfig) -> None:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _join_key(input_columns: dict[str, list[str]]) -> list[str]:
+def _join_key(frames: dict[str, pl.LazyFrame], input_columns: dict[str, list[str]]) -> list[str]:
     """The VCF record key when every input carries it (all VCF-derived), else
-    the MAF variant key."""
+    the MAF variant key. End_Position joins too when every input has it and one
+    lists a variant (contig, Start, alleles) more than once with different
+    End_Position, so each such row pairs with its own counterpart rather than
+    with every one of them."""
+    key = JOIN_KEY
+    if all("End_Position" in cols for cols in input_columns.values()):
+        split = [t for t, lf in frames.items() if _end_splits_a_variant(lf)]
+        if split:
+            logger.info(
+                "  Joining on End_Position too: %s list(s) a variant more than once with "
+                "different End_Position",
+                ", ".join(f"'{t}'" for t in split),
+            )
+            key = [*JOIN_KEY, "End_Position"]
     if all(set(VCF_RECORD_KEY[len(JOIN_KEY) :]) <= set(cols) for cols in input_columns.values()):
         logger.info("  Joining on the VCF record (vcf_pos, vcf_ref, vcf_alt): every input has it")
-        return VCF_RECORD_KEY
-    return JOIN_KEY
+        return [*key, *VCF_RECORD_KEY[len(JOIN_KEY) :]]
+    return key
+
+
+def _end_splits_a_variant(lf: pl.LazyFrame) -> bool:
+    """Whether an input lists one variant (the join key) with more than one
+    End_Position."""
+    split = lf.group_by(JOIN_KEY).agg(pl.col("End_Position").n_unique().alias("ends"))
+    return bool(split.filter(pl.col("ends") > 1).select(pl.len()).collect().item())
 
 
 def _warn_duplicate_keys(lf: pl.LazyFrame, join_key: list[str], bam_type: str) -> None:
@@ -516,7 +537,8 @@ def _validate_variant_key(
     if missing:
         raise ValueError(
             f"Input MAF for '{bam_type}' ({path}) is missing variant key "
-            f"columns: {missing}. Expected all of: {VARIANT_KEY}"
+            f"columns: {missing}. Expected all of: "
+            f"{[k for k in VARIANT_KEY if k != 'End_Position']} (End_Position is optional)"
         )
 
 

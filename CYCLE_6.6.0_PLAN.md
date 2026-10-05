@@ -76,6 +76,7 @@ marks a ticket with an open PR.
 | O6 | Read-orientation evidence for oxoG/FFPE artifacts | L | [decide] [6.7.0] | #180 |
 | O7 | Unmapped mates (flag 0x4) placed at a variant count in `mq0_count` | L | [decided] [done] | #183 |
 | O8 | `OBSERVED_ALLELE`/`COEXISTING_ALLELE` read antisense reads under enforcement (no NH rescue) | L | group 3 (built) | #186 |
+| O9 | VCF output of a whole-contig MAF deletion at Start 1 writes REF past the contig end | L | [6.7.0] | #220 |
 | R1 | Span-aware exon-edge BAQ rule | L | [counts] [decided] [done] | #106 |
 | R2 | RNA strandedness gating observability | M | [decided] [done] | #114 |
 | I1 | MAF allele base check | M | [decided] group 4 (built) | #123 |
@@ -83,6 +84,8 @@ marks a ticket with an open PR.
 | I3 | VCF→MAF `Tumor_Seq_Allele1` | L | [decided] group 4 (built) | #125 |
 | I4 | maf2vcf's second ALT from `Tumor_Seq_Allele1` | L | [decided] group 4 (built) | #126 |
 | I5 | Nextflow `convert` module | L | [6.7.0] | #127 |
+| I6 | `REF_MISMATCH` rows say where the given REF sits | L | [decided] group 4 (built) | #218 |
+| I7 | A MAF dash insertion at Start 0 is skipped, not a FAIL row | L | [6.7.0] | #219 |
 | M1 | Merge rows whose flavors report different alleles | M | [6.7.0] | #128 |
 | M2 | Merge inputs from different gbcms versions | M | | #129 |
 | M3 | Decomposed-allele hardening (observations, list length) | M | | #147; #146 [6.7.0] (#112) |
@@ -1239,6 +1242,24 @@ would otherwise lose it), and logs an input that writes it differently. No effec
 on binning or counts (merge runs on outputs); lookup by the input is kept (each
 row keeps its End_Position). Measured: no two sign-out rows (per sample) differ
 only in End_Position.
+
+### I6 — `REF_MISMATCH` rows say where the given REF sits (#218) · L [decided]
+**Finding.** REF validation compares only at the stated position (tolerant
+validation, 2.6.1: ≥90% → `WARN_REF_CORRECTED`, FASTA REF used; below →
+`REF_MISMATCH`, FAIL, zero counts). Nothing has looked elsewhere. Sign-out dump
+(1.13M rows): 19 `WARN_REF_CORRECTED` (none hides a shifted REF), 154
+`REF_MISMATCH`, of which 109 come from the 134 legacy ANNOVAR-annotated rows;
+87 with a REF of 3+ bases match exactly 1–3 bp away (47 at Start−1 with the VCF
+anchor still in the alleles); ±10 adds 9 at a higher chance rate; 2-base REFs
+match nearby by chance about one time in three.
+**Survey.** `bcftools norm --check-ref` exits, warns, excludes or sets/fixes REF
+(swapping REF/ALT); it never relocates. maf2vcf skips the row. None explains it.
+
+**Decision (2026-10-05, operator): B.** The row stays FAIL and uncounted (count
+the given allele); `gbcms_diagnostic` gives `REF_AT_OFFSET(k)`, every exact
+offset within ±3 bp for a REF of 3+ bases, nearest first, from the row's own
+position and alleles. An opt-in rescue that counts at the offset would first
+need a per-read check on the BAMs.
 
 ### I3 — VCF→MAF `Tumor_Seq_Allele1` (#125) · L [decided]
 **Finding.** For VCF input, `Tumor_Seq_Allele1`, `Strand` and

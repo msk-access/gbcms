@@ -512,10 +512,6 @@ def _convert_line(tmp_path, rows, header=None):
     return [x for x in open(out) if not x.startswith("#")], out
 
 
-_STRICT_REVIEW = pytest.mark.xfail(strict=True, reason="group 4 review finding")
-
-
-@_STRICT_REVIEW
 def test_maf_origin_writes_the_rows_own_placeholder_alleles(tmp_path):
     """MAF_REF / MAF_ALT are the row's values as written, so the record can be
     looked up by its input: a placeholder REF ('0', '--') is not rewritten as
@@ -525,7 +521,6 @@ def test_maf_origin_writes_the_rows_own_placeholder_alleles(tmp_path):
     assert "MAF_REF=--;" in lines[1], lines[1]
 
 
-@_STRICT_REVIEW
 def test_an_empty_maf_allele_is_missing_in_the_maf_origin(tmp_path):
     """An empty allele (FAIL EMPTY_ALLELE) is written as the VCF missing value
     '.', and a literal '.' allele is encoded, so '.' only ever means missing.
@@ -534,10 +529,9 @@ def test_an_empty_maf_allele_is_missing_in_the_maf_origin(tmp_path):
     assert "MAF_REF=.;" in lines[0], lines[0]
     assert "MAF_ALT=%2E" in lines[1], lines[1]
     with pysam.VariantFile(str(out)) as fh:
-        assert "GSR" in fh.header.alts["NON_SEQUENCE"].description
+        assert "GSR" in fh.header.alts["NON_SEQUENCE"].get("Description")
 
 
-@_STRICT_REVIEW
 @pytest.mark.parametrize("ref_len", [1, 2])
 def test_a_dash_allele_is_not_a_base_outside_maf_input(tmp_path, ref_len):
     """'-' is a MAF dash allele only: given as non-MAF input (the observations
@@ -548,7 +542,6 @@ def test_a_dash_allele_is_not_a_base_outside_maf_input(tmp_path, ref_len):
     assert (pv.gbcms_status, pv.gbcms_status_reason) == ("FAIL", "NON_SEQUENCE_ALLELE")
 
 
-@_STRICT_REVIEW
 def test_merge_pairs_rows_of_one_input_that_differ_only_in_end_position(tmp_path, caplog):
     """When an input has rows that share contig, Start and alleles but not
     End_Position, merge joins on End_Position too (every input has it), so the
@@ -579,8 +572,6 @@ def test_merge_pairs_rows_of_one_input_that_differ_only_in_end_position(tmp_path
 
 # ── REF_MISMATCH: where the given REF does sit ───────────────────────────────
 
-_STRICT_B = pytest.mark.xfail(strict=True, reason="REF_MISMATCH names no offset")
-
 
 def _shifted(offset, n=6):
     """(1-based Start, REF): a REF of n bases that matches the reference
@@ -596,7 +587,6 @@ def _shifted(offset, n=6):
     raise AssertionError("no such locus in the test reference")
 
 
-@_STRICT_B
 @pytest.mark.parametrize("offset", [-1, 2, -3])
 def test_ref_mismatch_names_where_the_given_ref_sits(tmp_path, offset):
     """The row stays FAIL REF_MISMATCH with zero counts; gbcms_diagnostic says
@@ -609,7 +599,6 @@ def test_ref_mismatch_names_where_the_given_ref_sits(tmp_path, offset):
     assert (row["ref_count"], row["alt_count"]) == ("0", "0")
 
 
-@_STRICT_B
 def test_ref_mismatch_offset_of_a_maf_dash_deletion_is_the_given_bases(tmp_path):
     """A MAF '-' deletion: the deleted bases as given, from Start (the anchor is
     the reference's own base and is not part of what the row gives)."""
@@ -621,7 +610,6 @@ def test_ref_mismatch_offset_of_a_maf_dash_deletion_is_the_given_bases(tmp_path)
     )
 
 
-@_STRICT_B
 def test_ref_mismatch_offset_in_vcf_output_and_normalize(tmp_path):
     """The diagnostic reaches VCF output (GD) and gbcms normalize's TSV."""
     start, ref = _shifted(-1)
@@ -636,7 +624,6 @@ def test_ref_mismatch_offset_in_vcf_output_and_normalize(tmp_path):
     assert norm["gbcms_diagnostic"] == "REF_AT_OFFSET(-1)"
 
 
-@_STRICT_B
 def test_ref_mismatch_lists_every_offset_in_a_repeat(tmp_path):
     """In a repeat the given REF can sit at several offsets: all within 3 bases
     are listed, nearest first (the left one first at equal distance)."""

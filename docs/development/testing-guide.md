@@ -191,6 +191,7 @@ Every N/masked/partial path must produce a deterministic, traceable outcome:
 | Complex with N in haplotype | via masked compare | +1 | depends on match | `trace` |
 | ALT = "N" in input VCF/MAF | `FAIL` + reason `ALT_CONTAINS_N` | — | — | `warn` (validation) |
 | ALT equal to REF in input VCF/MAF | `FAIL` + reason `ALT_EQUALS_REF` | — | — | `warn` (validation) |
+| Allele that is not a base sequence (IUPAC code, stray character; `-` outside MAF input) | `FAIL` + reason `NON_SEQUENCE_ALLELE` | — | — | `warn` (validation) |
 | ThirdAllele with partial match | neither + partial | — | +1 | `trace` |
 
 ---

@@ -51,6 +51,7 @@ This is useful for:
 | `variant_type` | SNP, INSERTION, DELETION, or COMPLEX — from the normalized alleles; INSERTION/DELETION only with a shared anchor base (see [Input Formats](../reference/input-formats.md#variant-types)) |
 | `gbcms_status` | Verdict: `PASS` or `FAIL` |
 | `gbcms_status_reason` | `\|`-separated reason tags, empty for a clean PASS (e.g. `WARN_REF_CORRECTED`, `REF_MISMATCH`, `FETCH_FAILED`) |
+| `gbcms_diagnostic` | On a `REF_MISMATCH` row, `REF_AT_OFFSET(k)` when the REF (3+ bases) matches the reference exactly k bases from its position (every offset within 3, nearest first); otherwise empty |
 | `was_anchor_resolved` | Whether MAF anchor resolution changed pos/ref/alt |
 | `was_left_aligned` | Whether left-alignment shifted the variant |
 | `was_normalized` | Combined: `True` if either anchor resolution or left-alignment changed the variant |

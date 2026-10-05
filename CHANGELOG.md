@@ -7,21 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed — input and representation (#122, #123, #124, #125, #126, #147, #208, #149)
+### Changed — input and representation (#122, #123, #124, #125, #126, #147, #208, #149, #218)
 
 Measured on the MSK sign-out dump (1,133,044 rows; operator decisions 2026-09-25
 and 2026-10-05).
 - **Non-sequence MAF alleles are FAIL rows (#123).** An allele that is not a base
   sequence (an IUPAC code such as `R`, `.`, a stray character from a hand edit)
   made the row count 0 silently; it is now a FAIL row, `NON_SEQUENCE_ALLELE`,
-  kept in MAF output. Lowercase bases are bases. VCF output, which cannot carry
-  such an allele, writes the symbolic record `<NON_SEQUENCE>` (REF the reference
-  base at POS, declared in the header), in counting runs and in `gbcms convert`.
-  7 such rows in the sign-out data.
+  kept in MAF output. Lowercase bases are bases; `-` is a MAF dash allele, so a
+  `-` given as non-MAF input (the observations API) is one too. VCF output,
+  which cannot carry such an allele (nor an empty one), writes the symbolic
+  record `<NON_SEQUENCE>` (REF the reference base at POS, declared in the
+  header), in counting runs and in `gbcms convert`. 7 such rows in the sign-out
+  data.
+- **A `REF_MISMATCH` row says where the given REF sits (#218).** The row stays
+  FAIL and uncounted; `gbcms_diagnostic` (VCF `GD`, and `gbcms normalize`'s
+  new `gbcms_diagnostic` column) gives `REF_AT_OFFSET(k)` when the REF (3+
+  bases) matches the reference exactly within 3 bases of its position, every
+  such offset listed nearest first. In the sign-out data 87 of 154
+  `REF_MISMATCH` rows sit 1–3 bases off, mostly legacy ANNOVAR-annotated
+  indels at Start−1 whose alleles still carry the VCF anchor base. No tool
+  surveyed moves or explains such a row (`bcftools norm --check-ref` exits,
+  warns, excludes or fixes REF in place; maf2vcf skips it).
 - **VCF output of MAF input names its MAF row.** Every record carries
-  `MAF_START`, `MAF_REF` and `MAF_ALT` (percent-encoded), so a result can be
-  looked up by its input, as VCF input's MAF output carries `vcf_pos`,
-  `vcf_ref` and `vcf_alt`. Also in `gbcms convert`.
+  `MAF_START`, `MAF_REF` and `MAF_ALT`: the row's Start and alleles as
+  written (a placeholder such as `0` too; percent-encoded, `.` when empty), so
+  a result can be looked up by its input, as VCF input's MAF output carries
+  `vcf_pos`, `vcf_ref` and `vcf_alt`. Also in `gbcms convert`.
 - **A MAF deletion at Start 1 is counted (#122).** It has no base before it; it
   is resolved to the VCF spec's position-1 form (the base after it), as gbcms's
   VCF output already wrote it, and counts as the same event given as VCF does
@@ -31,7 +43,9 @@ and 2026-10-05).
   skipped and are now read (maf2vcf converts them). `gbcms merge` no longer
   joins on it: inputs that write it differently for one variant join into one
   row (the first input's `End_Position`, the difference logged), and a row only
-  a later input has keeps that input's. The sign-out data has it, consistent
+  a later input has keeps that input's. Where an input lists one variant twice
+  with different `End_Position`, it joins on `End_Position` too, so each row
+  pairs with its own counterpart. The sign-out data has it, consistent
   with Start and REF, on every row but one; no two of its rows differ only in
   `End_Position`.
 - **VCF input's MAF output fills `Tumor_Seq_Allele1` (#125)** with the reference

@@ -15,7 +15,7 @@ use crate::types::Variant;
 use super::types::PreparedVariant;
 use super::decomp::check_homopolymer_decomp;
 use super::left_align::left_align_variant;
-use super::fasta::{fetch_region, fetch_window, resolve_maf_anchor, validate_ref};
+use super::fasta::{fetch_region, fetch_window, ref_offsets, resolve_maf_anchor, validate_ref};
 use crate::counting::{carrier, window};
 use super::repeat::{find_tandem_repeat, compute_adaptive_padding, first_change_offset};
 
@@ -591,8 +591,11 @@ fn prepare_single_variant(
     // - NON_SEQUENCE_ALLELE: an allele that is not a base sequence (an IUPAC code
     //   such as R, a placeholder such as '.', a stray character from a hand edit)
     //   matches no read base, so it would count 0 silently. Bases are A, C, G, T
-    //   and N in either case; '-' is a MAF dash allele.
-    let is_sequence = |a: &str| a == "-" || a.bytes().all(|b| b"ACGTNacgtn".contains(&b));
+    //   and N in either case; '-' is a MAF dash allele, so only in MAF input
+    //   (elsewhere nothing resolves it).
+    let is_sequence = |a: &str| {
+        (is_maf && a == "-") || a.bytes().all(|b| b"ACGTNacgtn".contains(&b))
+    };
     let malformed = if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
         Some(("EMPTY_ALLELE", "malformed indel; MAF dash alleles must be '-', not ''"))
     } else if !is_sequence(&variant.ref_allele) || !is_sequence(&variant.alt_allele) {
@@ -692,13 +695,28 @@ fn prepare_single_variant(
     }
 
     if verdict != "PASS" {
+        // A REF that matches the reference exactly a few bases away was likely
+        // written at the wrong coordinate: say where the given REF (as the row
+        // gives it, from its own position) sits. The row stays FAIL, uncounted.
+        let gbcms_diagnostic = if reason == "REF_MISMATCH" {
+            let offsets = ref_offsets(reader, &variant.chrom, variant.pos, &variant.ref_allele);
+            if offsets.is_empty() {
+                String::new()
+            } else {
+                let listed: Vec<String> = offsets.iter().map(|o| format!("{o:+}")).collect();
+                format!("REF_AT_OFFSET({})", listed.join("/"))
+            }
+        } else {
+            String::new()
+        };
         debug!(
-            "REF validation FAIL ({}): {}:{} {}>{}",
+            "REF validation FAIL ({}): {}:{} {}>{} {}",
             reason,
             variant.chrom,
             pos + 1,
             ref_al,
             alt_al,
+            gbcms_diagnostic,
         );
         return Ok(PreparedVariant {
             variant: Variant {
@@ -717,7 +735,7 @@ fn prepare_single_variant(
             },
             gbcms_status: verdict,
             gbcms_status_reason: reason,
-            gbcms_diagnostic: String::new(),
+            gbcms_diagnostic,
             gbcms_rescue: String::new(),
             was_anchor_resolved,
             was_left_aligned: false,

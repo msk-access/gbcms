@@ -195,10 +195,12 @@ class PreparedVariant:
     gbcms_status: str  # verdict: "PASS" or "FAIL"
     # Status reason tags, '|'-separated; empty when a clean PASS.
     # PASS: WARN_REF_CORRECTED, WARN_HOMOPOLYMER_DECOMP, MULTI_ALLELIC, TRACT_CLUSTER.
-    # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, ALT_EQUALS_REF, ALT_CONTAINS_N.
+    # FAIL: REF_MISMATCH, FETCH_FAILED, EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF,
+    # ALT_CONTAINS_N.
     gbcms_status_reason: str
-    # Post-counting diagnostic flags (set by pipeline._compute_diagnostics).
-    # Semicolon-separated. Empty string when no diagnostics.
+    # Diagnostic flags: post-counting on a PASS row (pipeline._compute_diagnostics);
+    # on a REF_MISMATCH row, prep's REF_AT_OFFSET(k) where the given REF matches
+    # the reference exactly nearby. Semicolon-separated. Empty when none.
     # Examples: "ZERO_ALT", "PARTIAL_DOMINANT;MNP_DISC_RATIO(2/5);MNP_RESCUE_ELIGIBLE".
     gbcms_diagnostic: str
     # Rescue audit trail (set by pipeline._rescue_mnp_pass; format in

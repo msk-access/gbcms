@@ -737,7 +737,8 @@ class Pipeline:
     def _compute_diagnostics(self, prepared: list, full_counts: list) -> None:
         """Populate gbcms_diagnostic (semicolon-separated) for every PASS variant.
 
-        FAIL variants keep gbcms_diagnostic empty. Logs the per-sample flag
+        FAIL variants keep what preparation set (``REF_AT_OFFSET(k)`` on a
+        ``REF_MISMATCH`` row, else empty). Logs the per-sample flag
         distribution. Flag definitions: :meth:`_diagnostic_flags`.
         """
         flag_counts: dict[str, int] = {}

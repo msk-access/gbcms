@@ -145,8 +145,8 @@ def vcf_contig_lines(contigs: list[tuple[str, int | None]]) -> list[str]:
 #: REF is then the reference base at POS, as for any symbolic allele.
 NON_SEQUENCE_ALT = "<NON_SEQUENCE>"
 NON_SEQUENCE_HEADER = (
-    '##ALT=<ID=NON_SEQUENCE,Description="The MAF allele is not a base sequence (an IUPAC '
-    'code or another character): the row is FAIL NON_SEQUENCE_ALLELE and is not counted">'
+    '##ALT=<ID=NON_SEQUENCE,Description="The MAF allele is not a base sequence (empty, an '
+    'IUPAC code or another character): the row is FAIL, the reason in GSR, and is not counted">'
 )
 #: The MAF row a VCF record of MAF input came from, so a result can be looked up
 #: by its input (as VCF input's MAF output carries vcf_pos, vcf_ref and vcf_alt).
@@ -154,10 +154,10 @@ MAF_ORIGIN_HEADERS = [
     '##INFO=<ID=MAF_START,Number=1,Type=Integer,Description="Start_Position of the MAF row '
     'this record came from">',
     '##INFO=<ID=MAF_REF,Number=1,Type=String,Description="Reference_Allele of the MAF row this '
-    'record came from (percent-encoded)">',
-    "##INFO=<ID=MAF_ALT,Number=1,Type=String,Description=\"The MAF row's variant allele: "
-    "Tumor_Seq_Allele2, or Tumor_Seq_Allele1 when Allele2 is empty or the reference "
-    '(percent-encoded)">',
+    "record came from, as written (percent-encoded; '.' when empty)\">",
+    "##INFO=<ID=MAF_ALT,Number=1,Type=String,Description=\"The MAF row's variant allele as "
+    "written: Tumor_Seq_Allele2, or Tumor_Seq_Allele1 when Allele2 is empty or the reference "
+    "(percent-encoded; '.' when empty)\">",
 ]
 # Characters a VCF INFO value cannot hold as written (VCF 4.3 percent-encoding),
 # plus whitespace, which no INFO value may contain.
@@ -171,6 +171,12 @@ def is_sequence_allele(allele: str) -> bool:
 
 
 def _info_value(text: str) -> str:
+    """``text`` as a VCF INFO value: percent-encoded, the missing value ``.`` when
+    empty, and a literal ``.`` encoded so that ``.`` only ever means missing."""
+    if not text:
+        return "."
+    if text == ".":
+        return "%2E"
     return "".join(_INFO_ESCAPES.get(c, c) for c in text)
 
 
@@ -186,11 +192,20 @@ def maf_vcf_record(variant: Variant, base: Any) -> tuple[int, str, str]:
 
 
 def maf_origin_info(variant: Variant) -> list[str]:
-    """INFO entries naming the MAF row a VCF record came from."""
+    """INFO entries naming the MAF row a VCF record came from: its Start and its
+    alleles as the row writes them (a placeholder such as ``0`` or ``--`` too,
+    which preparation reads as ``-``), so a record can be looked up by its row."""
+    row = variant.metadata or {}
+    ref = row.get("Reference_Allele", variant.ref)
+    allele1, allele2 = row.get("Tumor_Seq_Allele1") or "", row.get("Tumor_Seq_Allele2", variant.alt)
+    # The row's variant allele is Allele1 when MafReader read it from there.
+    from_allele1 = CoordinateKernel.maf_alleles(ref, allele1, allele2) != (
+        CoordinateKernel.maf_alleles(ref, "", allele2)
+    )
     return [
         f"MAF_START={variant.pos + 1}",
-        f"MAF_REF={_info_value(variant.ref)}",
-        f"MAF_ALT={_info_value(variant.alt)}",
+        f"MAF_REF={_info_value(ref)}",
+        f"MAF_ALT={_info_value(allele1 if from_allele1 else allele2)}",
     ]
 
 

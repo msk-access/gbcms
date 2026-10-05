@@ -77,6 +77,18 @@ When a variant gets a `WARN_REF_CORRECTED` reason (verdict stays `PASS`), the MA
     - Upstream normalization changed coordinates incorrectly
     - MAF annotation artifact (trailing base error) — now handled by tolerant validation
 
+!!! note "A REF written a few bases off: `REF_AT_OFFSET(k)`"
+    REF validation compares only at the stated position. When a `REF_MISMATCH`
+    row's REF (3 or more bases, as the row gives it) matches the reference
+    exactly within 3 bases of its position, `gbcms_diagnostic` says where:
+    `REF_AT_OFFSET(-1)` means one base before. In a repeat every such offset is
+    listed, nearest first (`REF_AT_OFFSET(-1/+1)`). The row stays FAIL and is not
+    counted: gbcms counts the allele as given and does not move it. A shorter
+    REF is not placed, since a 2-base REF matches within 3 bases by chance
+    about one time in three. In the MSK sign-out data, 87 of 154 `REF_MISMATCH`
+    rows sit 1–3 bases off, most of them legacy indels at Start−1 whose alleles
+    still carry the VCF anchor base (Start advanced as if it were trimmed).
+
 ---
 
 ## Step 3: Left-Alignment
@@ -282,7 +294,7 @@ string is byte-identical in the MAF and the VCF.
 | `PASS` | `WARN_HOMOPOLYMER_DECOMP` | Passed, but the corrected allele was used (`--rescue-homopolymer` only) | ✅ |
 | `PASS` | `MULTI_ALLELIC` | Passed; overlaps a sibling variant at the same locus (sibling-ALT exclusion active) | ✅ |
 | `PASS` | `TRACT_CLUSTER` | Passed; shares a repeat-tract scan window with a co-annotated length-changing variant (exclusive AD assignment active) | ✅ |
-| `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome | ❌ |
+| `FAIL` | `REF_MISMATCH` | REF allele <90% match against reference genome; `gbcms_diagnostic` gives `REF_AT_OFFSET(k)` when the REF sits exactly a few bases off | ❌ |
 | `FAIL` | `FETCH_FAILED` | Could not fetch the reference region | ❌ |
 | `FAIL` | `EMPTY_ALLELE` | Empty REF or ALT (malformed / non-left-anchored indel) | ❌ |
 | `FAIL` | `NON_SEQUENCE_ALLELE` | An allele is not a base sequence (anything but A, C, G, T, N in either case, or a MAF `-`) | ❌ |
