@@ -152,7 +152,7 @@ flowchart TD
     AltCheck -->|"No"| Insufficient(["INSUFFICIENT"]):::grey
     AltCheck -->|"Yes"| KSValid{"KS test ran?<br/>(mfsd_ks_valid)"}
     KSValid -->|"No"| Insufficient
-    KSValid -->|"Yes"| Shorter{"KS q < 0.05 and a larger<br/>sub-nucleosomal share<br/>among ALT than REF?"}
+    KSValid -->|"Yes"| Shorter{"KS q < 0.05, ALT shorter<br/>where the size distributions<br/>differ most?"}
     Shorter -->|"Yes"| Somatic(["LEANS-SOMATIC"]):::green
     Shorter -->|"No"| None(["NO-SIZE-EVIDENCE"]):::blue
 
@@ -163,9 +163,12 @@ flowchart TD
 
 | Class | Rule | What it means |
 |:------|:-----|:--------------|
-| `LEANS-SOMATIC` | KS q < 0.05 and a larger sub-nucleosomal (< 150 bp) share among ALT than REF fragments | ALT fragments significantly shorter than REF: increased confidence the variant is tumor-derived (on labeled ACCESS plasma: 0 of 39 white-cell variants, 44% of tumor variants) |
+| `LEANS-SOMATIC` | KS q < 0.05 and the ALT fragments shorter where the two size distributions differ most (the ALT ECDF above the REF ECDF at the KS statistic) | ALT fragments significantly shorter than REF: increased confidence the variant is tumor-derived (on labeled ACCESS plasma, duplex fragments: 22 of 97 tumor variants, 0 of 39 white-cell variants) |
 | `NO-SIZE-EVIDENCE` | The KS test ran and the ALT fragments are not significantly shorter (including a significantly longer ALT) | The sizes do not separate ALT from REF; not evidence for clonal hematopoiesis |
-| `INSUFFICIENT` | ALT fragments below `--mfsd-report-min-alt`, or the KS test did not run (`mfsd_ks_valid` False: a class has fewer than 5 fragments) | Too few fragments for the size test |
+| `INSUFFICIENT` | The KS test did not run (`mfsd_ks_valid` False: a class has fewer than 5 fragments) | Too few fragments for the size test |
+
+Variants with fewer ALT fragments than `--mfsd-report-min-alt` are left out of the
+report.
 <!-- --8<-- [end:mfsd-classes] -->
 
 In VCF, the mFSD summary is in INFO: `MFSD_REF_COUNT`, `MFSD_ALT_COUNT`,

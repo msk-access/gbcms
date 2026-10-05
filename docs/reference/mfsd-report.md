@@ -42,7 +42,7 @@ Each card counts the variants in one class: LEANS-SOMATIC, NO-SIZE-EVIDENCE and 
 
 ### 3. Caveat Banner
 
-A clinical disclaimer noting that fragment origin signal is an experimental diagnostic tool and should not be used as the sole basis for clinical decisions.
+A clinical disclaimer noting that the fragment-size evidence is graded, not diagnostic, and should not be used as the sole basis for clinical decisions; matched-normal (buffy coat) sequencing decides CH.
 
 ### 4. Per-Variant Analysis Cards
 

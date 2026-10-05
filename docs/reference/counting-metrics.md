@@ -322,14 +322,21 @@ It counts in fragment depth but in none of the four classes.
 #### Pairwise KS Statistics (6 pairs × 3 values = 18 columns, + 1 FDR q-value)
 
 Each pair yields: `delta` (mean difference in bp), `ks` (KS D-statistic), `pval` (KS p-value).
-Values are `NA` when either class has fewer than 5 fragments (`mfsd_ks_valid = False`).
+When either class has fewer than 5 fragments the test does not run
+(`mfsd_ks_valid = False`): `ks` is `NA` and `pval` is `1.0000`, a placeholder;
+`delta` is still the mean difference when both classes have fragments. Read
+`mfsd_ks_valid` before the KS columns.
 
-> The `pval` is the **exact** two-sample KS p-value for small samples (the
-> low-input cfDNA regime), falling back to the asymptotic Kolmogorov series only
-> for large fragment counts. The exact value matters because at small N the KS
-> statistic is highly discrete — the asymptotic approximation mis-estimates the
-> p-value, and below a handful of fragments the test has essentially no power
-> (e.g. n=m=3 cannot reach p < 0.05 even when fully separated).
+> The `pval` is the **exact** two-sample KS p-value whenever the two classes span at
+> most 10⁷ lattice cells (n·m) — every class pair a targeted panel produces — and
+> the asymptotic Kolmogorov series with Stephens' finite-sample correction above.
+> Exact matters where cfDNA decides: a few ALT fragments against thousands of REF
+> fragments, where the uncorrected series overstates p (about 1.7x at 5 ALT
+> fragments near p = 0.05, and up to 45x for a strong shift). Fragment sizes are
+> integers, so ties are common; the exact p-value treats sizes as continuous, which
+> is conservative with ties. Below a handful of fragments the test has little power
+> (about 8% at 5 ALT fragments on real cfDNA), so a non-significant p is not
+> evidence of "no shift".
 
 | Pairs |
 |:------|
@@ -343,8 +350,9 @@ Values are `NA` when either class has fewer than 5 fragments (`mfsd_ks_valid = F
 An additional column, `mfsd_qval_alt_ref`, carries the Benjamini-Hochberg FDR
 q-value for the ALT-vs-REF KS p-value, corrected across all variants with a valid
 ALT-vs-REF test in the sample. The mFSD report's LEANS-SOMATIC class uses this
-q-value, not the raw p-value. It is `NA` when the KS test was invalid, and
-equals the p-value until the post-counting BH pass runs.
+q-value, not the raw p-value. When the KS test did not run it stays the p-value
+placeholder (`1.0000`) and is left out of the correction; a variant on a contig
+absent from the BAM is likewise left out.
 
 #### Derived Metrics
 

@@ -253,7 +253,7 @@ def dna(
         "--mfsd-report",
         help=(
             "Generate an interactive HTML report with per-variant fragment "
-            "size distributions and CH-vs-ctDNA fragment origin signals. "
+            "size distributions and graded fragment-size evidence. "
             "Implies --mfsd and --mfsd-parquet. Output: "
             "<sample>.mfsd_report.html alongside the main output."
         ),

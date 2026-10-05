@@ -264,49 +264,41 @@ pub fn ks_test(a: &[f64], b: &[f64]) -> (f64, f64) {
     let mut b_sorted = b.to_vec();
     a_sorted.sort_unstable_by(|x, y| x.partial_cmp(y).unwrap());
     b_sorted.sort_unstable_by(|x, y| x.partial_cmp(y).unwrap());
+    let (n, m) = (a_sorted.len(), b_sorted.len());
 
-    let n = a_sorted.len() as f64;
-    let m = b_sorted.len() as f64;
-
-    // Walk merged sorted values computing CDF difference at each step
-    let mut d: f64 = 0.0;
-    let mut i = 0usize;
-    let mut j = 0usize;
-
-    // Merge-walk to track CDF of each sample
-    while i < a_sorted.len() && j < b_sorted.len() {
-        let val = if a_sorted[i] <= b_sorted[j] {
-            a_sorted[i]
-        } else {
-            b_sorted[j]
-        };
+    // Merge-walk the two ECDFs, taking the gap after each block of tied values. The
+    // gap is kept in integers scaled by n·m (|i·m − j·n|), so the exact p-value can
+    // compare lattice points against the observed deviation without float error.
+    let mut dev: i64 = 0;
+    let (mut i, mut j) = (0usize, 0usize);
+    while i < n && j < m {
+        let val = if a_sorted[i] <= b_sorted[j] { a_sorted[i] } else { b_sorted[j] };
         // Advance all entries equal to `val` in both arrays
-        while i < a_sorted.len() && a_sorted[i] <= val { i += 1; }
-        while j < b_sorted.len() && b_sorted[j] <= val { j += 1; }
-
-        let cdf_a = i as f64 / n;
-        let cdf_b = j as f64 / m;
-        d = d.max((cdf_a - cdf_b).abs());
+        while i < n && a_sorted[i] <= val { i += 1; }
+        while j < m && b_sorted[j] <= val { j += 1; }
+        dev = dev.max((i as i64 * m as i64 - j as i64 * n as i64).abs());
     }
 
-    let p = ks_p_value(d, a_sorted.len(), b_sorted.len());
-    (d, p)
+    let d = dev as f64 / (n as f64 * m as f64);
+    (d, ks_p_value(dev, d, n, m))
 }
 
-/// Two-sample KS p-value: P(D ≥ d) under the null.
+/// Two-sample KS p-value: P(D ≥ d) under the null, for an observed deviation `dev`
+/// = D·n·m (an integer; `d` is the same value as a fraction).
 ///
 /// Exact whenever the lattice has at most `KS_EXACT_MAX_CELLS` cells. A cfDNA
 /// variant usually pairs a few ALT fragments with thousands of REF fragments; the
 /// asymptotic Kolmogorov series overstates p there (about 1.7x at 5 ALT fragments
 /// near p = 0.05, and 45x for a strong shift), and the old switch on `n·m` (R's
-/// `ks.test` rule) sent most real ALT-vs-REF pairs to it. Beyond the limit both
-/// classes are large, and the series with Stephens' correction is used.
+/// `ks.test` rule) sent most real ALT-vs-REF pairs to it. Beyond the limit the
+/// lattice is large (for realistic shapes, both classes are), and the series with
+/// Stephens' correction is used.
 ///
 /// The exact p-value treats the sizes as continuous; with tied (integer) sizes it
 /// is conservative (measured on real cfDNA: 3.7–4.7% of null draws below 0.05).
-fn ks_p_value(d: f64, n: usize, m: usize) -> f64 {
+fn ks_p_value(dev: i64, d: f64, n: usize, m: usize) -> f64 {
     if (n as u64) * (m as u64) <= KS_EXACT_MAX_CELLS {
-        ks_p_value_exact(d, n, m)
+        ks_p_value_exact(dev, n, m)
     } else {
         ks_p_value_asymptotic(d, n as f64, m as f64)
     }
@@ -315,50 +307,67 @@ fn ks_p_value(d: f64, n: usize, m: usize) -> f64 {
 /// Exact two-sample KS p-value from the monotone lattice paths (Hodges 1957).
 ///
 /// A path from (0,0) to (n,m) takes one step per sorted observation; under the null
-/// every path is equally likely. `u(i, j)` is the share of the paths reaching (i, j)
-/// that stayed strictly inside the band `|i·m − j·n| < d·n·m` (deviation compared in
-/// integers scaled by n·m to avoid float drift; a tiny epsilon makes a deviation
-/// exactly equal to D count as reaching it, matching `P(D ≥ d)`). Because the share
-/// splits as `u(i,j) = u(i−1,j)·i/(i+j) + u(i,j−1)·j/(i+j)`, every value stays in
-/// [0, 1] and no path count or binomial coefficient can overflow at any n, m. The
-/// p-value is `1 − u(n, m)`.
-fn ks_p_value_exact(d: f64, n: usize, m: usize) -> f64 {
-    if d <= 0.0 {
+/// every path is equally likely. A lattice point is inside the band when its
+/// deviation |i·m − j·n| is below the observed `dev` (integers, so a point exactly
+/// at the observed deviation counts as reaching D: `P(D ≥ d)`). `v(i, j)` is the
+/// share of the paths reaching (i, j) that have already left the band — 1 at a point
+/// outside it, and inside it `v(i,j) = v(i−1,j)·i/(i+j) + v(i,j−1)·j/(i+j)`, since
+/// those are the shares of paths arriving from each neighbour. The p-value is
+/// `v(n, m)`, computed directly (no `1 − u` cancellation, so a tiny p keeps its
+/// digits), with every value in [0, 1] (no path count or binomial can overflow).
+/// Only the cells inside the band are visited; the rest stay at 1.
+fn ks_p_value_exact(dev: i64, n: usize, m: usize) -> f64 {
+    if dev <= 0 {
         return 1.0;
     }
-    // Walk rows over the larger class and columns over the smaller: the band is
-    // symmetric in (n, m), and the working row is the smaller one.
+    // Rows over the larger class, columns over the smaller: the band is symmetric in
+    // (n, m), and the working row is the smaller one.
     let (n, m) = if n >= m { (n, m) } else { (m, n) };
-    let band = d * n as f64 * m as f64 - 1e-9;
     let (ni, mi) = (n as i64, m as i64);
-    let inside = |i: usize, j: usize| ((i as i64 * mi - j as i64 * ni).abs() as f64) < band;
+    // Columns j inside the band on row i: |i·m − j·n| < dev, i.e.
+    // (i·m − dev)/n < j < (i·m + dev)/n.
+    let band = |i: usize| -> (usize, usize) {
+        let c = i as i64 * mi;
+        let lo = (c - dev).div_euclid(ni) + 1;
+        let hi = (c + dev - 1).div_euclid(ni);
+        (lo.max(0) as usize, hi.min(mi) as usize)
+    };
 
-    let mut row = vec![0f64; m + 1];
-    row[0] = 1.0;
-    for j in 1..=m {
-        row[j] = if inside(0, j) { row[j - 1] } else { 0.0 };
+    let mut row = vec![1.0f64; m + 1]; // outside the band: every path has left it
+    let (lo0, hi0) = band(0);
+    for v in row.iter_mut().take(hi0 + 1).skip(lo0) {
+        *v = 0.0; // row 0 inside the band: reached only along the edge, never outside
     }
+    let mut prev_lo = lo0;
     for i in 1..=n {
-        row[0] = if inside(i, 0) { row[0] } else { 0.0 };
-        for j in 1..=m {
-            row[j] = if inside(i, j) {
-                let k = (i + j) as f64;
-                row[j] * i as f64 / k + row[j - 1] * j as f64 / k
-            } else {
-                0.0
-            };
+        let (lo, hi) = band(i);
+        // Cells that left the band on the left since the previous row read as 1.
+        for v in row.iter_mut().take(lo.min(m + 1)).skip(prev_lo) {
+            *v = 1.0;
         }
+        if lo <= hi {
+            let fi = i as f64;
+            for j in lo..=hi {
+                let up = row[j]; // v(i−1, j): 1 if it was outside the previous band
+                row[j] = if j == 0 {
+                    up
+                } else {
+                    let k = fi + j as f64;
+                    (up * fi + row[j - 1] * j as f64) / k
+                };
+            }
+        }
+        prev_lo = lo;
     }
-    (1.0 - row[m]).clamp(0.0, 1.0)
+    row[m].clamp(0.0, 1.0)
 }
 
 /// Asymptotic KS p-value via the Kolmogorov series Q_KS(λ) = 2 Σ (−1)^(k−1) e^(−2k²λ²)
 /// with Stephens' finite-sample correction, λ = (√Nₑ + 0.12 + 0.11/√Nₑ)·D,
-/// Nₑ = n·m/(n+m). Used only above `KS_EXACT_MAX_CELLS`, where both classes are
-/// large.
+/// Nₑ = n·m/(n+m). Used only above `KS_EXACT_MAX_CELLS`.
 fn ks_p_value_asymptotic(d: f64, n: f64, m: f64) -> f64 {
-    let ne = (n * m / (n + m)).sqrt();
-    let lambda = (ne + 0.12 + 0.11 / ne) * d;
+    let sqrt_ne = (n * m / (n + m)).sqrt();
+    let lambda = (sqrt_ne + 0.12 + 0.11 / sqrt_ne) * d;
     if lambda < f64::EPSILON {
         return 1.0;
     }
@@ -596,17 +605,10 @@ mod tests {
         }
     }
 
-    // The observed deviation must count as reaching D (P(D >= d), not P(D > d)) at any
-    // lattice size. Here (2,583 x 3,871, just under the exact cap) the float band
-    // d*n*m - 1e-9 lands above the integer deviation; the reference compares integers.
-    #[test]
-    #[should_panic]
-    fn test_ks_exact_counts_the_observed_point_in_integers() {
-        let a = lcg_sizes(3369, 2583, 100, 161);
-        let b = lcg_sizes(103_369, 3871, 104, 161);
-        let (_, p) = ks_test(&a, &b);
-        // integer reference: max deviation from the ECDF walk, strict band in integers
-        let (mut sa, mut sb) = (a.clone(), b.clone());
+    /// Reference p-value over the full lattice: the observed deviation from the ECDF
+    /// walk in integers, every cell visited, p = 1 − (share of paths kept inside).
+    fn full_grid_p(a: &[f64], b: &[f64]) -> f64 {
+        let (mut sa, mut sb) = (a.to_vec(), b.to_vec());
         sa.sort_by(f64::total_cmp);
         sb.sort_by(f64::total_cmp);
         let (n, m) = (sa.len() as i64, sb.len() as i64);
@@ -617,29 +619,56 @@ mod tests {
             while j < sb.len() && sb[j] <= v { j += 1; }
             dev = dev.max((i as i64 * m - j as i64 * n).abs());
         }
+        let inside = |i: usize, j: usize| (i as i64 * m - j as i64 * n).abs() < dev;
         let mut row = vec![0f64; sb.len() + 1];
+        row[0] = 1.0;
         for jj in 1..=sb.len() {
-            row[jj] = if jj as i64 * n >= dev { 1.0 } else { row[jj - 1] };
+            row[jj] = if inside(0, jj) { row[jj - 1] } else { 0.0 };
         }
         for ii in 1..=sa.len() {
-            row[0] = if ii as i64 * m >= dev { 1.0 } else { row[0] };
+            row[0] = if inside(ii, 0) { row[0] } else { 0.0 };
             for jj in 1..=sb.len() {
-                row[jj] = if (ii as i64 * m - jj as i64 * n).abs() >= dev {
-                    1.0
-                } else {
+                row[jj] = if inside(ii, jj) {
                     let k = (ii + jj) as f64;
                     row[jj] * ii as f64 / k + row[jj - 1] * jj as f64 / k
+                } else {
+                    0.0
                 };
             }
         }
-        let want = row[sb.len()];
-        assert!((p - want).abs() <= 1e-12 * want.max(1e-300), "p={p} want={want}");
+        (1.0 - row[sb.len()]).clamp(0.0, 1.0)
+    }
+
+    // The observed deviation must count as reaching D (P(D >= d), not P(D > d)) at any
+    // lattice size. Here (2,583 x 3,871, just under the exact cap) a float band
+    // d*n*m - 1e-9 lands above the integer deviation; the reference compares integers.
+    #[test]
+    fn test_ks_exact_counts_the_observed_point_in_integers() {
+        let a = lcg_sizes(3369, 2583, 100, 161);
+        let b = lcg_sizes(103_369, 3871, 104, 161);
+        let (_, p) = ks_test(&a, &b);
+        let want = full_grid_p(&a, &b);
+        assert!((p - want).abs() <= 1e-12, "p={p} want={want}");
+    }
+
+    // The banded walk visits only cells inside the band; it must equal the full lattice
+    // for any shape and either class order (rows run over the larger class).
+    #[test]
+    fn test_ks_banded_walk_equals_the_full_lattice() {
+        for seed in 1..40u32 {
+            let n = 5 + (seed as usize * 37) % 300;
+            let m = 5 + (seed as usize * 53) % 400;
+            let a = lcg_sizes(seed, n, 120, 40 + seed % 60);
+            let b = lcg_sizes(seed + 500, m, 118 + seed % 9, 50);
+            let (_, p) = ks_test(&a, &b);
+            let want = full_grid_p(&a, &b);
+            assert!((p - want).abs() <= 1e-11, "seed={seed} n={n} m={m}: p={p} want={want}");
+        }
     }
 
     // Disjoint classes: P(D >= 1) = 2 / C(n+m, n) (all ALT below, or all above, all REF).
     // About 3e-15 here; computing p as 1 - u loses it to cancellation.
     #[test]
-    #[should_panic]
     fn test_ks_tiny_p_is_accurate() {
         let a: Vec<f64> = (0..5).map(|k| 100.0 + k as f64).collect();
         let b: Vec<f64> = (0..2400).map(|k| 200.0 + (k % 300) as f64).collect();

@@ -2,7 +2,7 @@
 mFSD Per-Variant HTML Report Generator.
 
 Generates a standalone, interactive HTML report with per-variant fragment size
-distributions, CH-vs-ctDNA fragment origin signals, and summary statistics.
+distributions, graded fragment-size evidence, and summary statistics.
 Uses Plotly.js for interactive histograms with normalized KDE density overlays
 and a STRiDE-inspired design system.
 """
@@ -96,20 +96,23 @@ def _classify_origin(
     ks_valid: bool,
     alt_count: int,
     min_alt: int,
+    alt_shorter: bool | None = None,
 ) -> tuple[str, str]:
     """Graded fragment-size evidence: LEANS-SOMATIC, NO-SIZE-EVIDENCE or INSUFFICIENT.
 
     Plasma only: the ALT fragments against the REF fragments at the same locus.
     LEANS-SOMATIC when the ALT fragments are significantly shorter: the
-    BH-FDR-corrected KS q-value (``mfsd_qval_alt_ref``) below 0.05 with a larger
-    sub-nucleosomal (<150 bp) share among ALT than REF fragments. On labeled ACCESS
-    plasma this never fired on a white-cell (CH) variant and found 44% of tumor
-    variants. Nothing leans CH: a non-significant test is also the usual result for
-    tumor variants at these fragment counts (about 30% look REF-like below 50
-    fragments), so it is reported as no size evidence. A significantly longer ALT
-    is not somatic evidence either. Gene membership is a note, never a gate. A KS
-    test that did not run (a class below MIN_FOR_KS, so ``mfsd_ks_valid`` is False
-    and the q-value a 1.0 placeholder) is INSUFFICIENT. Returns (label, explanation).
+    BH-FDR-corrected KS q-value (``mfsd_qval_alt_ref``) below 0.05 with the KS gap on
+    the short side (``alt_shorter``: the ALT ECDF above the REF ECDF where they differ
+    most, from :func:`_alt_shorter`). Without the size arrays a larger
+    sub-nucleosomal (<150 bp) share among ALT than REF fragments stands in. On
+    labeled ACCESS plasma this never fired on a white-cell (CH) variant. Nothing
+    leans CH: a non-significant test is also the usual result for tumor variants at
+    these fragment counts (about 30% look REF-like below 50 fragments), so it is
+    reported as no size evidence. A significantly longer ALT is not somatic evidence
+    either. Gene membership is a note, never a gate. A KS test that did not run (a
+    class below MIN_FOR_KS, so ``mfsd_ks_valid`` is False and the q-value a 1.0
+    placeholder) is INSUFFICIENT. Returns (label, explanation).
     """
     note = f" Note: {hugo} is a CH-associated gene." if hugo and hugo.upper() in CH_GENES else ""
     if alt_count < min_alt:
@@ -125,27 +128,52 @@ def _classify_origin(
 
     q = "NA" if math.isnan(ks_qval) else f"{ks_qval:.2e}"
     significant = not math.isnan(ks_qval) and ks_qval < 0.05
-    shorter = (
-        not math.isnan(sub_nuc_alt) and not math.isnan(sub_nuc_ref) and sub_nuc_alt > sub_nuc_ref
-    )
+    shares_known = not (math.isnan(sub_nuc_alt) or math.isnan(sub_nuc_ref))
+    if alt_shorter is None:
+        alt_shorter = shares_known and sub_nuc_alt > sub_nuc_ref
     share = (
         f"sub-nucleosomal share ALT {sub_nuc_alt:.2f} vs REF {sub_nuc_ref:.2f}"
-        if not (math.isnan(sub_nuc_alt) or math.isnan(sub_nuc_ref))
+        if shares_known
         else "sub-nucleosomal share undefined"
     )
-    if significant and shorter:
+    if not math.isnan(sub_nuc_enrichment):
+        share += f", enrichment {sub_nuc_enrichment:.2f}"
+    if significant and alt_shorter:
         return "LEANS-SOMATIC", (
             f"ALT fragments shorter than REF: KS q={q} (<0.05, FDR-corrected), {share}.{note}"
         )
     if significant:
         return "NO-SIZE-EVIDENCE", (
-            f"ALT and REF sizes differ (KS q={q}) but ALT is not shorter ({share}; "
-            f"ALT longer than REF is not somatic evidence).{note}"
+            f"ALT and REF sizes differ (KS q={q}) with ALT longer than REF ({share}); a "
+            f"longer ALT is not somatic evidence.{note}"
         )
     return "NO-SIZE-EVIDENCE", (
         f"Fragment sizes do not separate ALT from REF (KS q={q}); this is not evidence "
         f"for CH.{note}"
     )
+
+
+def _alt_shorter(alt_sizes: list[int], ref_sizes: list[int]) -> bool | None:
+    """Whether the ALT fragments are shorter where the two size distributions differ
+    most: the sign of ECDF(ALT) - ECDF(REF) at the KS statistic (the largest gap, read
+    after each block of tied sizes, as the engine's KS walk reads it). None when a
+    class is empty or the distributions do not differ."""
+    if not alt_sizes or not ref_sizes:
+        return None
+    a, r = sorted(alt_sizes), sorted(ref_sizes)
+    n, m = len(a), len(r)
+    i = j = 0
+    best, sign = 0, 0
+    while i < n and j < m:
+        v = min(a[i], r[j])
+        while i < n and a[i] <= v:
+            i += 1
+        while j < m and r[j] <= v:
+            j += 1
+        gap = i * m - j * n  # ECDF(ALT) - ECDF(REF), scaled by n*m
+        if abs(gap) > best:
+            best, sign = abs(gap), gap
+    return None if sign == 0 else sign > 0
 
 
 def _safe_float(v: Any) -> float:
@@ -336,6 +364,7 @@ def generate_mfsd_report(
             ks_valid,
             alt_count,
             min_alt,
+            alt_shorter=_alt_shorter(alt_sizes, ref_sizes),
         )
 
         variants.append(
@@ -778,7 +807,8 @@ body {{ font-family: 'Inter', sans-serif; background: var(--bg-page); color: var
     <p>A CH-associated gene is shown as a note; it never changes the class. Matched-normal (buffy coat) data decide CH.</p>
     <h3>Sub-nucleosomal Enrichment</h3>
     <p>Ratio of ALT fragments &lt;150bp to REF fragments &lt;150bp. ctDNA tends to show enrichment
-    (ratio &gt;1.0) due to tumor-derived fragments being shorter. CH mirrors background cfDNA.</p>
+    (ratio &gt;1.0) due to tumor-derived fragments being shorter. Variants carried by blood cells (CH) are expected
+    to mirror the REF sizes, but so do many tumor variants at low fragment counts: similar sizes are not evidence for CH.</p>
     <h3>CH Gene Set ({len(CH_GENES)} genes)</h3>
     <p class="gene-list">{ch_gene_list}</p>
     <p style="margin-top:8px;font-size:0.82rem;color:var(--text-secondary)">

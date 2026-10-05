@@ -658,6 +658,16 @@ fn count_bam_binned_core(
 
     // Result array: one BaseCounts per variant, initialized to default
     let mut all_counts: Vec<BaseCounts> = (0..n).map(|_| BaseCounts::default()).collect();
+    // With mFSD on, every row starts as a variant with no fragments: NaN means, LLR
+    // and KS statistic. A row the bins never reach (its contig is absent from the
+    // BAM) keeps that state, so it reads as "no test" and stays out of the BH family
+    // below; the 0.0 defaults would pass for a test with p = 0 and deflate every
+    // real variant's q-value. Counted rows overwrite it.
+    if mfsd {
+        for (c, v) in all_counts.iter_mut().zip(variants.iter()) {
+            compute_mfsd_stats(c, Vec::new(), Vec::new(), Vec::new(), Vec::new(), v);
+        }
+    }
 
     // The Parquet rows echo (chrom, pos, ref, alt) so the file is self-describing — a bare
     // variant_index means nothing once the data outlives the call. `variants` is moved into
@@ -895,7 +905,7 @@ fn count_bam_binned_core(
             }
 
             // ── BH-FDR correction for the mFSD alt-vs-REF KS p-values ──
-            // This p-value drives the report's TUMOR-LIKE/CH-LIKE call, so correct
+            // This p-value drives the report's LEANS-SOMATIC class, so correct
             // it for multiplicity across the sample. BH runs ONLY over variants whose
             // KS test actually RAN — a variant with too few fragments returns
             // (D = NaN, p = 1.0) from ks_test, so the *D-statistic* (not the p-value)

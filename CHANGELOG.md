@@ -19,21 +19,31 @@ reads `<sample>.fsd.parquet`. Only `--mfsd` output changes.
   `mfsd_*_count`. An empty fragment class writes `NA` for its mean size and LLR (it
   wrote 0, where the docs already said `NA`; the N class is empty on most rows).
 - **The mFSD report grades the evidence (#154).** Its classes are `LEANS-SOMATIC`
-  (ALT fragments significantly shorter than REF: KS q < 0.05 with a larger
-  sub-nucleosomal share), `NO-SIZE-EVIDENCE` and `INSUFFICIENT`, replacing
-  `TUMOR-LIKE` / `CH-LIKE` / `AMBIGUOUS`. `CH-LIKE` rested on a non-significant KS,
-  which is also the usual result for tumor variants at these fragment counts: on 39
-  labeled samples it called 3 of 17 tumor variants in CH-associated genes CH-LIKE,
-  and about 30% of tumor variants below 50 ALT fragments looked REF-like. Nothing
-  leans CH now. Gene membership is a note, not a gate (a tumor TP53 variant could
-  never be `TUMOR-LIKE`), and the extra enrichment > 1.3 gate is gone (significant
-  shortening found 35 of 97 tumor variants, 0 of 39 white-cell variants; the gate
-  kept 22). A significantly longer ALT is not somatic evidence.
-- **The KS p-value is exact** up to 10⁷ lattice cells, computed as shares of
-  in-band paths (no overflow), with Stephens' corrected asymptotic series above.
-  The switch at `n·m` 10,000 sent most real ALT-vs-REF pairs (348 of 512) to the
-  uncorrected series, which overstated p 1.7–2.3x at 5 ALT fragments near
-  p = 0.05 and up to 45x for a strong shift.
+  (ALT fragments significantly shorter than REF: KS q < 0.05 with the ALT ECDF
+  above the REF ECDF where they differ most), `NO-SIZE-EVIDENCE` and
+  `INSUFFICIENT`, replacing `TUMOR-LIKE` / `CH-LIKE` / `AMBIGUOUS`. `CH-LIKE` rested
+  on a non-significant KS, which is also the usual result for tumor variants at
+  these fragment counts: on 39 labeled samples it called 3 of 17 tumor variants in
+  CH-associated genes CH-LIKE, and about 30% of tumor variants below 50 ALT
+  fragments looked REF-like. Nothing leans CH now. Gene membership is a note, not
+  a gate (a tumor TP53 variant could never be `TUMOR-LIKE`), and the enrichment
+  > 1.3 gate is gone: on duplex fragments the new rule leans somatic on 22 of 97
+  tumor variants and 0 of 39 white-cell variants (the old rule found 16). The
+  direction is read from the KS gap, not from the sub-nucleosomal share, which
+  missed an ALT 31 bp shorter with no fragment under 150 bp. A significantly
+  longer ALT is not somatic evidence. Variants below `--mfsd-report-min-alt` are
+  left out of the report, as before.
+- **The KS p-value is exact** up to 10⁷ lattice cells, with Stephens' corrected
+  asymptotic series above. The switch at `n·m` 10,000 sent most real ALT-vs-REF
+  pairs (348 of 512) to the uncorrected series, which overstated p 1.7–2.3x at 5
+  ALT fragments near p = 0.05 and up to 45x for a strong shift. The exact value
+  compares lattice points with the observed deviation in integers (a float band
+  could count the observed point as not reaching D near the cap), computes p
+  directly as the share of paths leaving the band (a tiny p keeps its digits), and
+  visits only the cells inside the band.
+- **A variant on a contig absent from the BAM stays out of the mFSD q-values.**
+  With `--mfsd` its fields held 0.0, which read as a KS test with p = 0 and
+  deflated every real variant's BH q-value; it now reads as no test (`NA`).
 - **`mfsd_alt_confidence` is `TESTABLE` / `SPARSE` / `NONE`** (was `HIGH` / `LOW` /
   `NONE`): it names how much ALT data there is (≥ 5, 1–4, 0 fragments); at 5
   fragments a real size shift is detected only about 8% of the time.

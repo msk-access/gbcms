@@ -250,16 +250,7 @@ def test_the_docs_describe_the_graded_classes_and_the_mean_llr():
 
 # ── review round: direction, skipped contigs, writers ──────────────────────────
 
-_DIR = pytest.mark.xfail(
-    strict=True, reason="review: 'shorter' is read from the short-fragment share, not the KS gap"
-)
-_SKIP = pytest.mark.xfail(
-    strict=True,
-    reason="review: a row on a contig absent from the BAM keeps 0.0 mFSD fields and joins BH",
-)
 
-
-@_DIR
 def test_the_direction_comes_from_the_ks_gap_not_the_short_fragment_share():
     # Shares can be equal (both 0) while ALT is clearly shorter, or tilt the other way
     # while a long ALT tail drives the test.
@@ -272,7 +263,6 @@ def test_the_direction_comes_from_the_ks_gap_not_the_short_fragment_share():
     assert "longer" in reason
 
 
-@_DIR
 def test_the_report_reads_the_direction_from_the_fragment_sizes(tmp_path):
     import polars as pl
 
@@ -346,7 +336,6 @@ def _count_all(bam, variants):
     )  # fmt: skip
 
 
-@_SKIP
 def test_rows_on_a_contig_absent_from_the_bam_stay_out_of_the_mfsd_family(tmp_path):
     bam = _bam_loci(
         tmp_path,

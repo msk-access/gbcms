@@ -636,10 +636,10 @@ All counts below are **per fragment** (a molecule's R1 and R2 are deduped to one
     | `mfsd_n_count` | Integer | Fragments with no valid insert size |
     | `mfsd_alt_llr` | Float | Log-likelihood ratio, mean per fragment (ALT fragments; positive = tumor-like) |
     | `mfsd_ref_llr` | Float | Log-likelihood ratio, mean per fragment (REF fragments) |
-    | `mfsd_ref_mean` | Float | Mean fragment size for REF class (bp) |
-    | `mfsd_alt_mean` | Float | Mean fragment size for ALT class (bp) |
-    | `mfsd_nonref_mean` | Float | Mean fragment size for non-REF class (bp) |
-    | `mfsd_n_mean` | Float | Mean fragment size for N class (bp) |
+    | `mfsd_ref_mean` | Float | Mean fragment size for REF class (bp); `NA` when the class is empty |
+    | `mfsd_alt_mean` | Float | Mean fragment size for ALT class (bp); `NA` when the class is empty |
+    | `mfsd_nonref_mean` | Float | Mean fragment size for non-REF class (bp); `NA` when the class is empty |
+    | `mfsd_n_mean` | Float | Mean fragment size for N class (bp); `NA` when the class is empty |
     | `mfsd_delta_alt_ref` | Float | mean(ALT) − mean(REF) delta (bp) |
     | `mfsd_ks_alt_ref` | Float | KS D-stat (ALT vs REF) |
     | `mfsd_pval_alt_ref` | Float | KS p-value (ALT vs REF) |
