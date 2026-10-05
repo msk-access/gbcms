@@ -145,7 +145,10 @@ deletions, 0 missing End_Position, 0 differing Allele1, 0 prepared rows hit by
 C30, 154 REF_MISMATCH (87 sit 1–3 bp off; 109 from 134 legacy ANNOVAR rows).
 Adversarial review done (findings fixed; I7 #219 and O9 #220 filed for 6.7.0).
 Group 3's "vaf unchanged" corrected on #198 and the #217 description (2026-10-05).
-Pending: acceptance on the final build, PR. Harness `~/test/gbcms/harness/g4/`.
+Acceptance (base develop 5fb7e79a vs 90942daa): RC DNA, WES, truth identical; VCF-input
+probe sets (T9, splice, masked) change only Tumor_Seq_Allele1 (REF); VCF output adds only
+the MAF origin (each record names one input row); sign-out normalize: 87 REF_AT_OFFSET.
+Pending: PR. Harness `~/test/gbcms/harness/g4/`.
 
 ## Next (in order; the plan's "Suggested order" is canonical)
 Groups 1–3 are merged (#211, #215, #217). `PRODUCTION_READINESS.md` holds the
