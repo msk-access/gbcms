@@ -524,12 +524,130 @@ mod tests {
 
     #[test]
     fn test_ks_large_classes_use_the_corrected_series() {
-        // 4,000 x 4,000 cells is past the exact limit; the corrected series stays a
-        // probability and is small for a clear shift.
-        let a: Vec<f64> = (0..4000).map(|k| (120 + k % 80) as f64).collect();
-        let b: Vec<f64> = (0..4000).map(|k| (130 + k % 80) as f64).collect();
+        // 4,000 x 4,000 cells is past the exact limit: the p-value is the Kolmogorov
+        // series at Stephens' corrected lambda (the uncorrected lambda gives another value).
+        let a: Vec<f64> = (0..4000).map(|k| (120 + (k * 7) % 90) as f64).collect();
+        let b: Vec<f64> = (0..4000).map(|k| (123 + (k * 11) % 90) as f64).collect();
+        let (d, p) = ks_test(&a, &b);
+        let series = |lambda: f64| -> f64 {
+            let s: f64 = (1..=100i64)
+                .map(|k| { let t = (-2.0 * (k as f64 * lambda).powi(2)).exp(); if k % 2 == 0 { -t } else { t } })
+                .sum();
+            (2.0 * s).clamp(0.0, 1.0)
+        };
+        let sqrt_ne = (4000.0f64 * 4000.0 / 8000.0).sqrt();
+        let corrected = series((sqrt_ne + 0.12 + 0.11 / sqrt_ne) * d);
+        let uncorrected = series(sqrt_ne * d);
+        assert!(p > 1e-4 && p < 0.9, "pick data with a mid-range p: {p}");
+        assert!((p - corrected).abs() < 1e-12, "p={p} corrected={corrected}");
+        assert!((corrected - uncorrected).abs() > 1e-6);
+    }
+
+    /// Sizes from a 32-bit LCG (Numerical Recipes constants), reproducible in tests.
+    fn lcg_sizes(seed: u32, k: usize, lo: u32, span: u32) -> Vec<f64> {
+        let mut x = seed;
+        (0..k)
+            .map(|_| {
+                x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (lo + (x >> 16) % span) as f64
+            })
+            .collect()
+    }
+
+    /// Independent reference: P(D ≥ d_obs) over every placement of the a-values among
+    /// the pooled sorted values (tie-free data; the continuous null), by enumeration.
+    fn brute_force_p(a: &[f64], b: &[f64]) -> f64 {
+        let (n, m) = (a.len(), b.len());
+        let (d_obs, _) = ks_test(a, b);
+        let mut pooled: Vec<f64> = a.iter().chain(b.iter()).copied().collect();
+        pooled.sort_by(f64::total_cmp);
+        let (mut hit, mut total) = (0u64, 0u64);
+        for mask in 0u32..(1 << (n + m)) {
+            if mask.count_ones() as usize != n {
+                continue;
+            }
+            total += 1;
+            let (mut i, mut j, mut d) = (0usize, 0usize, 0f64);
+            for k in 0..n + m {
+                if mask >> k & 1 == 1 { i += 1 } else { j += 1 }
+                d = d.max((i as f64 / n as f64 - j as f64 / m as f64).abs());
+            }
+            let _ = &pooled;
+            if d >= d_obs - 1e-12 {
+                hit += 1;
+            }
+        }
+        hit as f64 / total as f64
+    }
+
+    #[test]
+    fn test_ks_exact_matches_brute_force_enumeration() {
+        for (n, m) in [(5usize, 5usize), (5, 7), (6, 5), (5, 9)] {
+            for seed in 1..6u32 {
+                // distinct values (no ties), so enumeration and the lattice agree exactly
+                let mut a: Vec<f64> = lcg_sizes(seed, n, 100, 1000);
+                let mut b: Vec<f64> = lcg_sizes(seed + 77, m, 100, 1000);
+                for (k, v) in a.iter_mut().enumerate() { *v += 0.001 * k as f64; }
+                for (k, v) in b.iter_mut().enumerate() { *v += 0.0005 + 0.001 * k as f64; }
+                let (_, p) = ks_test(&a, &b);
+                let want = brute_force_p(&a, &b);
+                assert!((p - want).abs() < 1e-12, "n={n} m={m} seed={seed}: p={p} want={want}");
+            }
+        }
+    }
+
+    // The observed deviation must count as reaching D (P(D >= d), not P(D > d)) at any
+    // lattice size. Here (2,583 x 3,871, just under the exact cap) the float band
+    // d*n*m - 1e-9 lands above the integer deviation; the reference compares integers.
+    #[test]
+    #[should_panic]
+    fn test_ks_exact_counts_the_observed_point_in_integers() {
+        let a = lcg_sizes(3369, 2583, 100, 161);
+        let b = lcg_sizes(103_369, 3871, 104, 161);
         let (_, p) = ks_test(&a, &b);
-        assert!((0.0..1e-6).contains(&p), "p={p}");
+        // integer reference: max deviation from the ECDF walk, strict band in integers
+        let (mut sa, mut sb) = (a.clone(), b.clone());
+        sa.sort_by(f64::total_cmp);
+        sb.sort_by(f64::total_cmp);
+        let (n, m) = (sa.len() as i64, sb.len() as i64);
+        let (mut i, mut j, mut dev) = (0usize, 0usize, 0i64);
+        while i < sa.len() && j < sb.len() {
+            let v = sa[i].min(sb[j]);
+            while i < sa.len() && sa[i] <= v { i += 1; }
+            while j < sb.len() && sb[j] <= v { j += 1; }
+            dev = dev.max((i as i64 * m - j as i64 * n).abs());
+        }
+        let mut row = vec![0f64; sb.len() + 1];
+        for jj in 1..=sb.len() {
+            row[jj] = if jj as i64 * n >= dev { 1.0 } else { row[jj - 1] };
+        }
+        for ii in 1..=sa.len() {
+            row[0] = if ii as i64 * m >= dev { 1.0 } else { row[0] };
+            for jj in 1..=sb.len() {
+                row[jj] = if (ii as i64 * m - jj as i64 * n).abs() >= dev {
+                    1.0
+                } else {
+                    let k = (ii + jj) as f64;
+                    row[jj] * ii as f64 / k + row[jj - 1] * jj as f64 / k
+                };
+            }
+        }
+        let want = row[sb.len()];
+        assert!((p - want).abs() <= 1e-12 * want.max(1e-300), "p={p} want={want}");
+    }
+
+    // Disjoint classes: P(D >= 1) = 2 / C(n+m, n) (all ALT below, or all above, all REF).
+    // About 3e-15 here; computing p as 1 - u loses it to cancellation.
+    #[test]
+    #[should_panic]
+    fn test_ks_tiny_p_is_accurate() {
+        let a: Vec<f64> = (0..5).map(|k| 100.0 + k as f64).collect();
+        let b: Vec<f64> = (0..2400).map(|k| 200.0 + (k % 300) as f64).collect();
+        let (d, p) = ks_test(&a, &b);
+        assert!((d - 1.0).abs() < 1e-12);
+        let comb: f64 = (0..5).map(|k| (2405 - k) as f64 / (k + 1) as f64).product();
+        let want = 2.0 / comb;
+        assert!(((p - want) / want).abs() < 1e-6, "p={p} want={want}");
     }
 
     // ─── calc_physical_insert_size ────────────────────────────────────────────

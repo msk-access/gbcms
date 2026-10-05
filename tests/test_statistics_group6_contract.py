@@ -226,7 +226,10 @@ def test_no_report_class_is_named_ch_like(tmp_path):
     )  # fmt: skip
     html = out.read_text()
     assert "CH-LIKE" not in html and "CH-like" not in html
-    assert "LEANS-SOMATIC" in html and "NO-SIZE-EVIDENCE" in html
+    # the summary cards name the graded classes (the badge itself is checked on a
+    # report built from known sizes, below)
+    assert '<div class="label">Leans somatic</div>' in html
+    assert '<div class="label">No size evidence</div>' in html
 
 
 # ── docs follow the code ───────────────────────────────────────────────────────
@@ -243,3 +246,140 @@ def test_the_docs_describe_the_graded_classes_and_the_mean_llr():
     metrics = (ROOT / "docs" / "reference" / "counting-metrics.md").read_text()
     row = next(ln for ln in metrics.splitlines() if ln.startswith("| `mfsd_alt_llr`"))
     assert "mean" in row and "Σ" not in row, row
+
+
+# ── review round: direction, skipped contigs, writers ──────────────────────────
+
+_DIR = pytest.mark.xfail(
+    strict=True, reason="review: 'shorter' is read from the short-fragment share, not the KS gap"
+)
+_SKIP = pytest.mark.xfail(
+    strict=True,
+    reason="review: a row on a contig absent from the BAM keeps 0.0 mFSD fields and joins BH",
+)
+
+
+@_DIR
+def test_the_direction_comes_from_the_ks_gap_not_the_short_fragment_share():
+    # Shares can be equal (both 0) while ALT is clearly shorter, or tilt the other way
+    # while a long ALT tail drives the test.
+    signal, _ = _classify_origin("NOTACHGENE", _NAN, 0.0, 0.0, 0.0, True, 30, 3, alt_shorter=True)
+    assert signal == "LEANS-SOMATIC"
+    signal, reason = _classify_origin(
+        "NOTACHGENE", 1.1, 0.10, 0.11, 1e-4, True, 30, 3, alt_shorter=False
+    )
+    assert signal == "NO-SIZE-EVIDENCE"
+    assert "longer" in reason
+
+
+@_DIR
+def test_the_report_reads_the_direction_from_the_fragment_sizes(tmp_path):
+    import polars as pl
+
+    from gbcms.report import generate_mfsd_report
+
+    # REF 165-204 bp and ALT 150-157 bp: ALT about 31 bp shorter, yet no fragment on
+    # either side is under 150 bp, so the sub-nucleosomal shares are both 0.
+    ref = [165 + k % 40 for k in range(200)]
+    alt = [150 + k % 8 for k in range(30)]
+    pl.DataFrame(
+        {
+            "chrom": ["1"],
+            "pos": [1000],
+            "ref": ["C"],
+            "alt": ["T"],
+            "ref_sizes": [ref],
+            "alt_sizes": [alt],
+        }
+    ).write_parquet(tmp_path / "s.fsd.parquet")
+    cols = {
+        "Hugo_Symbol": "NOTACHGENE", "Chromosome": "1", "Start_Position": "1000",
+        "Reference_Allele": "C", "Tumor_Seq_Allele1": "C", "Tumor_Seq_Allele2": "T",
+        "mfsd_sub_nuc_enrichment": "NA", "mfsd_pval_alt_ref": "0.0000", "mfsd_qval_alt_ref": "0.0000",
+        "mfsd_ks_valid": "True", "mfsd_alt_mean": "153.5", "mfsd_ref_mean": "184.5",
+        "mfsd_delta_alt_ref": "-31.0", "mfsd_alt_llr": "0.4", "mfsd_sub_nuc_ref_frac": "0.0000",
+        "mfsd_sub_nuc_alt_frac": "0.0000",
+    }  # fmt: skip
+    (tmp_path / "s.maf").write_text("\t".join(cols) + "\n" + "\t".join(cols.values()) + "\n")
+    out = generate_mfsd_report(
+        parquet_path=tmp_path / "s.fsd.parquet", maf_path=tmp_path / "s.maf",
+        output_path=tmp_path / "r.html", min_alt=3, max_variants=20, sample_name="T",
+    )  # fmt: skip
+    html = out.read_text()
+    assert ">LEANS-SOMATIC</span>" in html
+    assert "ALT longer than REF" not in html
+
+
+def _bam_loci(tmp_path, loci):
+    """chr1 loci at the given 0-based sites (REF A, ALT T), each with its fragments."""
+    path = tmp_path / "loci.bam"
+    header = {"HD": {"VN": "1.0", "SO": "coordinate"}, "SQ": [{"LN": 50000, "SN": "chr1"}]}
+    with pysam.AlignmentFile(path, "wb", header=header) as out:
+        for site, ref_sizes, alt_sizes in loci:
+            for kind, sizes, base in (("r", ref_sizes, "A"), ("a", alt_sizes, "T")):
+                for i, size in enumerate(sizes):
+                    for is_r2 in (False, True):
+                        a = pysam.AlignedSegment()
+                        a.query_name = f"s{site}{kind}{i}"
+                        a.query_sequence = "AAAAA" + base + "AAAA"
+                        a.flag = (1 | 2 | 128 | 16) if is_r2 else (1 | 2 | 64)
+                        a.reference_id = 0
+                        a.reference_start = site - 5
+                        a.mapping_quality = 60
+                        a.cigartuples = [(0, 10)]
+                        a.query_qualities = [30] * 10  # type: ignore[assignment]
+                        a.next_reference_id = 0
+                        a.next_reference_start = site - 5
+                        a.template_length = -size if is_r2 else size
+                        out.write(a)
+    sorted_path = tmp_path / "loci.sorted.bam"
+    pysam.sort("-o", str(sorted_path), str(path))
+    pysam.index(str(sorted_path))
+    return str(sorted_path)
+
+
+def _count_all(bam, variants):
+    return count_bam_binned(
+        bam, variants, [None] * len(variants), min_mapq=20, min_baseq=20, filter_duplicates=True,
+        filter_secondary=True, filter_supplementary=True, filter_qc_failed=False,
+        filter_improper_pair=False, filter_indel=False, threads=1, mfsd=True,
+    )  # fmt: skip
+
+
+@_SKIP
+def test_rows_on_a_contig_absent_from_the_bam_stay_out_of_the_mfsd_family(tmp_path):
+    bam = _bam_loci(
+        tmp_path,
+        [(100, _REF, [118, 126, 133, 141, 152, 120]), (2000, _REF, [150, 160, 170, 180, 190, 155])],
+    )
+
+    def snv(chrom, pos):
+        return Variant(chrom=chrom, pos=pos, ref_allele="A", alt_allele="T", variant_type="SNP")
+
+    real = [snv("chr1", 100), snv("chr1", 2000)]
+    alone = _count_all(bam, real)
+    mixed = _count_all(bam, real + [snv("chr9", 100 + k) for k in range(8)])
+    for skipped in mixed[2:]:
+        assert math.isnan(skipped.mfsd_ks_alt_ref)  # no test ran, so not in the BH family
+        assert math.isnan(skipped.mfsd_alt_mean) and math.isnan(skipped.mfsd_alt_llr)
+    for a, b in zip(alone, mixed[:2], strict=True):
+        assert b.mfsd_qval_alt_ref == pytest.approx(a.mfsd_qval_alt_ref)
+
+
+def test_the_writers_write_an_empty_class_as_missing(tmp_path):
+    from test_mfsd_flag import _MockCounts, _MockVariant
+
+    counts = _MockCounts(mfsd=True)
+    counts.mfsd_alt_count = 0
+    counts.mfsd_alt_mean = counts.mfsd_alt_llr = float("nan")
+    maf, vcf = tmp_path / "o.maf", tmp_path / "o.vcf"
+    for writer in (MafWriter(maf, mfsd=True), VcfWriter(vcf, sample_name="T", mfsd=True)):
+        writer.write(_MockVariant(), counts)
+        writer.close()
+    header, row = [ln.split("\t") for ln in maf.read_text().splitlines() if not ln.startswith("#")][
+        :2
+    ]
+    cells = dict(zip(header, row, strict=True))
+    assert cells["mfsd_alt_mean"] == "NA" and cells["mfsd_alt_llr"] == "NA"
+    info = [ln for ln in vcf.read_text().splitlines() if not ln.startswith("#")][0].split("\t")[7]
+    assert "MFSD_ALT_LLR=." in info.split(";")
