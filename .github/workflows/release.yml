@@ -160,9 +160,10 @@ jobs:
     needs: [release, docker]
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
-      contents: write      # create the release and upload assets
-      id-token: write      # sign the attestations (OIDC)
-      attestations: write  # store them
+      contents: write           # create the release and upload assets
+      id-token: write           # sign the attestations (OIDC)
+      attestations: write       # store them
+      artifact-metadata: write  # the artifact storage records actions/attest creates
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -176,7 +177,7 @@ jobs:
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4  # a wrapper on actions/attest (SLSA provenance)
         with:
           subject-path: 'dist/*.whl, dist/*.tar.gz'
       - name: Release notes from the CHANGELOG
