@@ -85,12 +85,12 @@ pub(crate) fn allele_kind(ref_allele: &str, alt_allele: &str) -> Option<AlleleKi
     })
 }
 
-/// Whether the alleles are a pure insertion or deletion: one allele is the
-/// other plus bases after their shared prefix.
+/// Whether the alleles are a pure insertion or deletion by [`allele_kind`]: a
+/// one-base allele that is the other's first base (compared case-insensitively),
+/// the classification the dispatcher counts by. A multi-base shared prefix
+/// (`GAA>GA`, an unprepared row) is complex there, so it is complex here too.
 pub(crate) fn is_pure_indel(ref_allele: &str, alt_allele: &str) -> bool {
-    let (r, a) = (ref_allele.len() as i64, alt_allele.len() as i64);
-    let p = first_change_offset(ref_allele, alt_allele);
-    (a < r && p == a) || (r < a && p == r)
+    matches!(allele_kind(ref_allele, alt_allele), Some(AlleleKind::Insertion | AlleleKind::Deletion))
 }
 
 /// [`change_interval`] for an event at `pos`, sliding over the reference
@@ -613,6 +613,19 @@ mod tests {
 
     //                0123456789012345
     const HOMO: &str = "TGCAAAAAAGTCCTGA"; // A-run at 3..9, G at 9
+
+    #[test]
+    fn a_pure_indel_is_the_dispatchers_insertion_or_deletion() {
+        assert!(is_pure_indel("A", "ACC"));
+        assert!(is_pure_indel("g", "GA"), "a lowercase anchor is the same base");
+        assert!(is_pure_indel("GAA", "g"));
+        assert!(!is_pure_indel("GAA", "GA"), "a multi-base shared prefix is complex");
+        assert!(!is_pure_indel("C", "TA"));
+        assert!(!is_pure_indel("AC", "GT"));
+        // So the pure-indel windows never judge a row the dispatcher calls complex.
+        assert_eq!(informative_windows(&var(HOMO, 2, "CAA", "CA")), None);
+        assert!(informative_windows(&var(HOMO, 2, "ca", "C")).is_some());
+    }
 
     #[test]
     fn homopolymer_deletion_covers_the_tract() {

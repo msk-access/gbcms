@@ -435,6 +435,20 @@ fn count_bam_binned_core(
     bin_max_variants: Option<i64>,
 ) -> PyResult<(Vec<BaseCounts>, Vec<Observation>)> {
     let (window, max_variants) = bin_geometry(bin_window, bin_max_variants)?;
+    // The decomposed and sibling lists run parallel to the variants: a shorter
+    // one is padded (no twin, no siblings), a longer one is a caller error, never
+    // silently cut.
+    for (name, len) in [("decomposed", decomposed.len()), ("sibling_variants", sibling_variants.len())] {
+        if len > variants.len() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "{name} has {len} entries for {} variants: it must run parallel to them",
+                variants.len(),
+            )));
+        }
+    }
+    decomposed.resize_with(variants.len(), || None);
+    let mut sibling_variants = sibling_variants;
+    sibling_variants.resize_with(variants.len(), Vec::new);
     let backend = parse_alignment_backend(
         alignment_backend,
         hmm_llr_threshold,
@@ -607,10 +621,7 @@ fn count_bam_binned_core(
     }
     let bins = build_genomic_bins(&variants, header_reader.header(), window, max_variants);
 
-    // Pre-pad sibling_variants
-    let mut sibling_variants = sibling_variants;
     let n = variants.len();
-    sibling_variants.resize_with(n, Vec::new);
 
     // Kept for the post-run UMI-tag check (bam_path moves into the workers).
     let bam_label = bam_path.clone();
@@ -2204,11 +2215,7 @@ fn sibling_claims_alt(
     // deletion/insertion; a delins that merely has a 1-base side (e.g.
     // CAG>T) is complex and exempt (the exact-carrier rule judges its carriers by
     // their own bases).
-    let ref_al = variant.ref_allele.as_bytes();
-    let alt_al = variant.alt_allele.as_bytes();
-    let pure_indel = (alt_al.len() == 1 && ref_al.len() > 1 && ref_al[0] == alt_al[0])
-        || (ref_al.len() == 1 && alt_al.len() > 1 && alt_al[0] == ref_al[0]);
-    if result.phase == ClassifyPhase::Alignment && pure_indel {
+    if result.phase == ClassifyPhase::Alignment && window::is_pure_indel(&variant.ref_allele, &variant.alt_allele) {
         trace!(
             "AD-claiming guard: read={} alignment-phase ALT on pure indel {}>{} at {}:{} \
              in a co-annotated cluster (no structural op) — partial_alt, not ad",

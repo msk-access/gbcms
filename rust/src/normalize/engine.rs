@@ -547,7 +547,8 @@ impl PrepTally {
 /// Process a single variant through the full preparation pipeline.
 ///
 /// Steps:
-/// 0. Reject malformed alleles (EMPTY_ALLELE, ALT_EQUALS_REF) as FAIL rows.
+/// 0. Reject malformed alleles (EMPTY_ALLELE, NON_SEQUENCE_ALLELE, ALT_EQUALS_REF)
+///    as FAIL rows.
 /// 1. MAF anchor resolution for dash alleles (FETCH_FAILED when the fetch fails).
 /// 2. REF validation (a REF ≥90% similar to the FASTA is corrected to it,
 ///    WARN_REF_CORRECTED); then (2b) reject an ALT containing N (ALT_CONTAINS_N).
@@ -587,8 +588,15 @@ fn prepare_single_variant(
     // - ALT_EQUALS_REF: an ALT equal to its REF (bases compared case-insensitively;
     //   "-" for both in a MAF) describes no change, so every read would match both
     //   alleles and the counts would mean nothing.
+    // - NON_SEQUENCE_ALLELE: an allele that is not a base sequence (an IUPAC code
+    //   such as R, a placeholder such as '.', a stray character from a hand edit)
+    //   matches no read base, so it would count 0 silently. Bases are A, C, G, T
+    //   and N in either case; '-' is a MAF dash allele.
+    let is_sequence = |a: &str| a == "-" || a.bytes().all(|b| b"ACGTNacgtn".contains(&b));
     let malformed = if variant.ref_allele.is_empty() || variant.alt_allele.is_empty() {
         Some(("EMPTY_ALLELE", "malformed indel; MAF dash alleles must be '-', not ''"))
+    } else if !is_sequence(&variant.ref_allele) || !is_sequence(&variant.alt_allele) {
+        Some(("NON_SEQUENCE_ALLELE", "an allele is not a base sequence (A, C, G, T, N or a MAF '-')"))
     } else if variant.ref_allele.eq_ignore_ascii_case(&variant.alt_allele) {
         Some(("ALT_EQUALS_REF", "ALT equals REF, no change to count"))
     } else {
@@ -765,10 +773,7 @@ fn prepare_single_variant(
     // be left-aligned and don't need ref_context for alignment.
     // C++ GBCMS (baseCountDNP) has no normalization at all.
     let mut was_left_aligned = false;
-    let is_mnp = ref_al.len() == alt_al.len() && ref_al.len() > 1;
-    let is_indel = !is_mnp
-        && (ref_al.len() != alt_al.len()
-            || (ref_al.len() > 1 && alt_al.len() > 1));
+    let is_indel = ref_al.len() != alt_al.len();
 
     if is_indel {
         let mut norm_window: i64 = 100; // bcftools default

@@ -1,4 +1,4 @@
-"""Group 4 (input and representation) contracts, red first.
+"""Group 4 (input and representation) contracts.
 
 Operator decisions (2026-09-25 for I1, I3, I4; 2026-10-05 for the rest):
 - I1 #123: a MAF row with an allele that is not a base sequence (an IUPAC code,
@@ -138,7 +138,6 @@ _NON_SEQUENCE = [
 
 
 @pytest.mark.parametrize("row", _NON_SEQUENCE)
-@pytest.mark.xfail(strict=True, reason="I1 #123: a non-sequence MAF allele counts 0 silently")
 def test_a_non_sequence_maf_allele_is_a_fail_row(tmp_path, row):
     """The row is kept in MAF output, FAIL with NON_SEQUENCE_ALLELE, not counted."""
     good = _row(P + 21, REF[P + 20], next(b for b in "ACGT" if b != REF[P + 20]))
@@ -179,9 +178,6 @@ def test_lowercase_maf_alleles_are_bases(tmp_path):
     )
 
 
-@pytest.mark.xfail(
-    strict=True, reason="I1 #123: VCF output writes the non-sequence allele as given"
-)
 def test_vcf_output_writes_a_non_sequence_row_as_a_symbolic_record(tmp_path):
     """VCF output stays valid: REF is the reference base at POS, ALT is the
     declared symbolic <NON_SEQUENCE>, GS=FAIL, GSR=NON_SEQUENCE_ALLELE, and the
@@ -202,9 +198,6 @@ def test_vcf_output_writes_a_non_sequence_row_as_a_symbolic_record(tmp_path):
 # ── MAF origin in VCF output ─────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True, reason="lookup: VCF output of MAF input keeps nothing of the MAF row"
-)
 def test_vcf_output_of_maf_input_carries_the_maf_row(tmp_path):
     """A MAF deletion (Start at its first deleted base) is written as maf2vcf's
     record, anchored one base before; the MAF row it came from rides along."""
@@ -234,7 +227,6 @@ def test_vcf_output_of_vcf_input_has_no_maf_row(tmp_path):
 # ── C9: a MAF deletion at Start_Position 1 ───────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="C9 #122: a MAF deletion at Start 1 is FETCH_FAILED")
 def test_a_maf_deletion_at_start_1_counts_in_the_base_after_form(tmp_path):
     """The contig's first two bases deleted: the MAF row keeps its input columns
     and counts the reads that show those bases as REF (an ALT molecule starts at
@@ -260,7 +252,6 @@ def test_a_maf_deletion_at_start_1_counts_in_the_base_after_form(tmp_path):
 
 
 @pytest.mark.parametrize("header", ["no column", "empty values"])
-@pytest.mark.xfail(strict=True, reason="I2 #124: rows without End_Position are skipped")
 def test_end_position_is_optional(tmp_path, header):
     alt = "A" if REF[P] != "A" else "C"
     if header == "no column":
@@ -287,7 +278,6 @@ def test_end_position_is_optional(tmp_path, header):
     [("C", "T", "C"), ("C", "CTT", "-"), ("CTT", "C", "TT"), ("CAG", "TTA", "CAG")],
     ids=["SNP", "insertion", "deletion", "MNP"],
 )
-@pytest.mark.xfail(strict=True, reason="I3 #125: Tumor_Seq_Allele1 is empty for VCF input")
 def test_vcf_input_maf_output_fills_allele1_with_the_reference_allele(ref, alt, allele1):
     """Tumor_Seq_Allele1 is the MAF reference allele (after vcf2maf's trim)."""
     v = Variant(chrom="1", pos=99, ref=ref, alt=alt, variant_type=VariantType.SNP)
@@ -347,7 +337,6 @@ def _two_snvs(tmp_path):
     return str(bam), vs
 
 
-@pytest.mark.xfail(strict=True, reason="#147: a short decomposed list panics")
 def test_a_short_decomposed_list_is_padded(tmp_path):
     bam, vs = _two_snvs(tmp_path)
     full = _rs.count_bam_binned(bam, vs, [None, None], **_ARGS)
@@ -356,7 +345,6 @@ def test_a_short_decomposed_list_is_padded(tmp_path):
 
 
 @pytest.mark.parametrize("which", ["decomposed", "sibling_variants"])
-@pytest.mark.xfail(strict=True, reason="#147: a long list is truncated silently")
 def test_a_list_longer_than_the_variants_is_an_error(tmp_path, which):
     bam, vs = _two_snvs(tmp_path)
     kwargs = dict(_ARGS)
@@ -367,3 +355,71 @@ def test_a_list_longer_than_the_variants_is_an_error(tmp_path, which):
         kwargs["sibling_variants"] = [[], [], []]
     with pytest.raises(ValueError, match="3"):
         _rs.count_bam_binned(bam, vs, decomposed, **kwargs)
+
+
+def test_merge_joins_outputs_of_mafs_without_end_position(tmp_path):
+    """I2's reach: outputs of a MAF without End_Position merge, joined on the
+    rest of the variant key (End_Position follows from Start and REF)."""
+    from gbcms.merge import merge_mafs
+    from gbcms.models.core import MergeConfig
+
+    head = [
+        "Hugo_Symbol",
+        "Chromosome",
+        "Start_Position",
+        "Reference_Allele",
+        "Tumor_Seq_Allele2",
+        "Tumor_Sample_Barcode",
+    ]
+    rows = [
+        _row(P + 1, REF[P], "A" if REF[P] != "A" else "C"),
+        _row(P + 11, REF[P + 10 : P + 12], "-"),
+    ]
+    maf = _maf(tmp_path, rows, header=head)
+    d = _run(tmp_path, maf, _ref_reads(), name="d")
+    s = _run(tmp_path, maf, _ref_reads(), name="s")
+    out = tmp_path / "m.maf"
+    merge_mafs(MergeConfig(inputs={"duplex": d, "simplex": s}, output=out))
+    merged = list(read_maf_output(out))
+    assert [(r["Start_Position"], r["Reference_Allele"]) for r in merged] == [
+        (str(r["Start_Position"]), r["Reference_Allele"]) for r in rows
+    ]
+    assert merged[0]["simplex_duplex_ref_count"] == "12"
+
+
+def test_convert_maf_to_vcf_carries_the_maf_row(tmp_path):
+    """gbcms convert writes VCF output of MAF input too: the MAF row in INFO, and
+    a non-sequence allele as the symbolic record."""
+    fa, _ = _files(tmp_path, [])
+    rows = [_row(P + 1, REF[P : P + 2], "-"), _row(P + 21, REF[P + 20], "LU")]
+    out = tmp_path / "o.vcf"
+    res = runner.invoke(
+        app, ["convert", "-v", str(_maf(tmp_path, rows)), "-f", str(fa), "-o", str(out)]
+    )
+    assert res.exit_code == 0, res.output
+    recs = _vcf_records(str(out))
+    assert [(r.pos, r.ref, r.alts[0]) for r in recs] == [
+        (P, REF[P - 1 : P + 2], REF[P - 1]),
+        (P + 21, REF[P + 20], "<NON_SEQUENCE>"),
+    ]
+    assert [(r.info["MAF_START"], r.info["MAF_REF"], r.info["MAF_ALT"]) for r in recs] == [
+        (P + 1, REF[P : P + 2], "-"),
+        (P + 21, REF[P + 20], "LU"),
+    ]
+
+
+def test_maf_origin_values_are_percent_encoded(tmp_path):
+    """A hand-edited allele with characters an INFO value cannot hold (';', '=',
+    ',', a space) is percent-encoded, so the VCF stays parseable and the value
+    decodes to the input."""
+    fa, _ = _files(tmp_path, [])
+    rows = [_row(P + 1, REF[P], "A;B=C, D")]
+    out = tmp_path / "o.vcf"
+    res = runner.invoke(
+        app, ["convert", "-v", str(_maf(tmp_path, rows)), "-f", str(fa), "-o", str(out)]
+    )
+    assert res.exit_code == 0, res.output
+    line = [x for x in open(out) if not x.startswith("#")][0]
+    assert "MAF_ALT=A%3BB%3DC%2C%20D" in line
+    (rec,) = _vcf_records(str(out))
+    assert rec.alts == ("<NON_SEQUENCE>",)

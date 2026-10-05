@@ -228,7 +228,10 @@ pub(crate) fn validate_ref(
 /// - `ref = "-"` (insertion): MAF Start is the base before the insertion; that
 ///   base is the anchor, prepended to ALT (and it is the REF).
 /// - `alt = "-"` (deletion): MAF Start is the first deleted base; the base
-///   before it is the anchor, prepended to REF (and it is the ALT).
+///   before it is the anchor, prepended to REF (and it is the ALT). A deletion
+///   at Start 1 has no base before it: the base after it is appended instead
+///   (the VCF spec's form at position 1, as the VCF writer writes it), so it is
+///   counted as the same event given as VCF is.
 ///
 /// Called only for rows with a `-` allele; sequence alleles are used as
 /// written. The prepared label is derived from the result's alleles.
@@ -243,6 +246,11 @@ pub(crate) fn resolve_maf_anchor(
     alt_allele: &str,
 ) -> anyhow::Result<(i64, String, String)> {
     let is_insertion = ref_allele == "-";
+    if !is_insertion && start_pos == 1 {
+        let after = fetch_single_base(reader, chrom, ref_allele.len() as i64)?;
+        let after = (after as char).to_uppercase().to_string();
+        return Ok((0, format!("{ref_allele}{after}"), after));
+    }
     // Insertion: anchor at Start (1-based) -> Start - 1 (0-based).
     // Deletion: anchor one base before Start -> Start - 2 (0-based).
     let anchor_pos_0based = if is_insertion { start_pos - 1 } else { start_pos - 2 };

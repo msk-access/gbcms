@@ -333,11 +333,16 @@ def merge_mafs(config: MergeConfig) -> None:
 
 def _join_key(input_columns: dict[str, list[str]]) -> list[str]:
     """The VCF record key when every input carries it (all VCF-derived), else
-    the MAF variant key."""
+    the MAF variant key. End_Position, which follows from Start and REF and is
+    optional in a MAF, joins only when every input has it."""
+    base = JOIN_KEY
+    if not all("End_Position" in cols for cols in input_columns.values()):
+        base = [k for k in JOIN_KEY if k != "End_Position"]
+        logger.info("  Joining without End_Position: not every input has it")
     if all(set(VCF_RECORD_KEY[len(JOIN_KEY) :]) <= set(cols) for cols in input_columns.values()):
         logger.info("  Joining on the VCF record (vcf_pos, vcf_ref, vcf_alt): every input has it")
-        return VCF_RECORD_KEY
-    return JOIN_KEY
+        return [*base, *VCF_RECORD_KEY[len(JOIN_KEY) :]]
+    return base
 
 
 def _warn_duplicate_keys(lf: pl.LazyFrame, join_key: list[str], bam_type: str) -> None:
@@ -432,7 +437,8 @@ def _warn_mixed_rescue(result: pl.DataFrame, combined: bool) -> None:
             other,
         )
     mixed = 0
-    for row in result.select([*VARIANT_KEY, *present]).iter_rows(named=True):
+    key = [k for k in VARIANT_KEY if k in result.columns]
+    for row in result.select([*key, *present]).iter_rows(named=True):
         d_comp = rescued_component(row.get(d) or "")
         s_comp = rescued_component(row.get(s) or "")
         if d_comp == s_comp:
@@ -466,7 +472,7 @@ def _validate_variant_key(
     Raises:
         ValueError: If any key column is missing, with actionable message.
     """
-    missing = [k for k in VARIANT_KEY if k not in columns]
+    missing = [k for k in VARIANT_KEY if k not in columns and k != "End_Position"]
     if missing:
         raise ValueError(
             f"Input MAF for '{bam_type}' ({path}) is missing variant key "
