@@ -578,7 +578,7 @@ def test_merge_warns_when_duplex_and_simplex_rescue_differ(tmp_path):
     log = _merge(tmp_path, _component_carrier_reads(), _cis_carrier_reads())
     assert "Mixed MNP rescue" in log
     assert "1 row(s)" in log
-    assert "simplex_duplex_* columns add counts of different alleles" in log
+    assert "simplex_duplex_* columns are NA" in log
 
 
 def test_merge_warns_on_mixed_rescue_without_combined_columns(tmp_path):
