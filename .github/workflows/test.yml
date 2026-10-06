@@ -23,8 +23,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.11', '3.12']
+        # The ends of the supported range (3.10 with every runtime dependency at its
+        # declared floor, so the floors stay true; 3.14), the Docker image's 3.11, and
+        # macOS. The monthly latest-deps workflow runs every version.
+        include:
+          - {os: ubuntu-latest, python-version: '3.10', floors: true}
+          - {os: ubuntu-latest, python-version: '3.11'}
+          - {os: ubuntu-latest, python-version: '3.14'}
+          - {os: macos-latest, python-version: '3.12'}
 
     steps:
       - name: Checkout code
@@ -73,17 +79,29 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install package and test basic functionality
+        env:
+          FLOORS: ${{ matrix.floors }}
         run: |
           # Install maturin to build the unified Python+Rust package
           uv pip install --system maturin
-          
+
           # Build wheel and install (works without virtualenv)
           maturin build --release --out dist
-          uv pip install --system dist/*.whl
-          
-          # Install dev dependencies  
-          # pyyaml: the workflow-contract tests parse .github/workflows/*.yml
-          uv pip install --system pytest pytest-cov pytest-mock pyarrow pyyaml
+          if [ "$FLOORS" = "true" ]; then
+            # Every runtime dependency at its declared floor, first: lowest-direct
+            # keeps an installed version that satisfies a floor. Then the test tools,
+            # a check that the floors are what is installed, and gbcms on top
+            # without re-resolving them.
+            uv pip install --system --resolution lowest-direct -r pyproject.toml
+            uv pip install --system --group test
+            python scripts/check_floors.py
+            uv pip install --system --no-deps dist/*.whl
+          else
+            uv pip install --system --group test
+            uv pip install --system dist/*.whl
+          fi
+          python -m pip check
+          python -m pip list --format=freeze | grep -i -E '^(pysam|typer|click|rich|pydantic|polars)=='
           gbcms --help
 
       - name: Run tests with coverage
@@ -102,14 +120,6 @@ jobs:
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
-
-      - name: Run integration tests (Ubuntu only)
-        if: matrix.os == 'Linux'
-        run: |
-          chmod +x scripts/test_vcf_workflow.sh scripts/test_maf_workflow.sh scripts/test_docker.sh
-          # Skip integration tests that require cyvcf2 on Ubuntu
-          echo "⚠️  Skipping integration tests on Ubuntu due to htslib dependency issues"
-          # bash scripts/test_docker.sh  # Only run Docker test
 
   lint:
     runs-on: ubuntu-latest
@@ -141,7 +151,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system scipy-stubs maturin
+          uv pip install --system maturin
           
           # Build and install the Rust extension
           cd rust
@@ -149,7 +159,7 @@ jobs:
           uv pip install --system target/wheels/*.whl
           cd ..
           
-          uv pip install --system -e ".[dev]"
+          uv pip install --system -e . --group dev
 
       - name: Run black
         run: |
@@ -219,13 +229,15 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: gbcms:test
           cache-from: type=gha,scope=test
           cache-to: type=gha,mode=max,scope=test
 
-      - name: Verify Docker build success
+      - name: Run the image
         run: |
-          # Check that the image was built successfully
           docker images gbcms:test --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
-          echo "✅ Docker image gbcms:test built successfully"
+          # The CLI starts, and the locked dependencies satisfy gbcms's requirements.
+          docker run --rm gbcms:test --version
+          docker run --rm --entrypoint python gbcms:test -m pip check
 

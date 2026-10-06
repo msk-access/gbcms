@@ -33,6 +33,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Changed — dependencies, CI coverage and the image (#139)
+
+Measured first (`CYCLE_6.6.0_PLAN.md`, "D4 PR A"). Nothing changes at runtime.
+- **The dependency floors are true.** At the declared floors the CLI crashed: typer
+  0.9.0 cannot read its `list[...]` options. pysam 0.21.0 has no macOS arm64 wheel
+  and an sdist that fails on current setuptools. Bisected one package at a time, the
+  minimums are `typer>=0.15.4` (older typer does not cap click and breaks with
+  click >= 8.2) and `pysam>=0.22.0`; rich 13.0, pydantic 2.0 and polars 1.0 held.
+  All of them together pass the suite on Python 3.10 and 3.11. A new CI leg installs
+  the floors on every PR and checks that they are what got installed.
+- **click is no longer a runtime dependency.** typer bundles its own copy, and gbcms
+  never imports click; the CLI tests do, so it moved to the `test` group, and the
+  image no longer installs it.
+- **CI tests the supported range.** Python 3.10–3.14 all pass on the latest
+  releases, but CI tested only 3.11 and 3.12. PRs now run Ubuntu 3.10 (at the
+  floors), 3.11 (the image's) and 3.14, plus macOS 3.12, and the classifiers list
+  3.10–3.14. A monthly workflow (`latest-deps.yml`, also run by hand before a release)
+  runs every version on the newest releases with the semver-compatible Rust updates. On failure it opens or updates
+  one `latest-deps` issue.
+- **One dev-dependency list.** The `dev` extra and a PEP 735 `dev` group had drifted
+  apart. The group lacked pytest-mock, types-pyyaml, pyyaml and mkdocs; the extra
+  lacked pyarrow, which the tests import. They are now the dependency groups `test`
+  and `dev` (`dev` includes `test` and `docs`, the site's tools, which
+  `deploy-docs.yml` now installs instead of its own list), kept out of the published
+  metadata.
+  `pip install gbcms[dev]` no longer exists. `maturin develop` installs `dev`, which
+  needs pip >= 25.1 (or uv); the developer docs now say so, since the old
+  `python -m venv` steps failed on Python's bundled pip. `make setup` installs it too.
+- **The image installs a hash-pinned lock.** It resolved its dependencies afresh at
+  each build. `docker/requirements.lock` (linux/amd64, Python 3.11) is installed
+  with `--require-hashes --no-deps`, then `pip check`, and is refreshed at each
+  release (release guide step 4). CI now runs the image (`--version`, `pip check`).
+
 ### Changed — GTF loading (#139)
 
 Measured on GRCh38.111 (`CYCLE_6.6.0_PLAN.md`, "D4 GTF loading"). Only `--gtf` runs

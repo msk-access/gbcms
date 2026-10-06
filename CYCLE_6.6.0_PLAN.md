@@ -1793,6 +1793,46 @@ page from the CHANGELOG section in the release workflow.
     ch-fragmentomics), and the annotation answers ship as output columns. The
     parser (`gtf_line.rs`) and the index's seven queries are self-contained if one
     appears.
+- **D4 PR A: Python, CI, Docker lock (2026-10-06, operator).** Measured on macOS
+  arm64 against `develop` (`harness/d4/py/`):
+  - **Every Python works.** On 3.10, 3.11, 3.12, 3.13 and 3.14 with the latest
+    releases (pysam 0.24.1, typer 0.27.2, click 8.5.0, rich 15.0.0, pydantic 2.13.5,
+    polars 1.44.2), the suite passes (1,294 each). CI tests 3.11 and 3.12; the
+    declared minimum (3.10) and the newest (3.13, 3.14) were untested.
+  - **The declared floors were false.** At `lowest-direct` the CLI crashes: typer
+    0.9.0 cannot read its `list[...]` options. pysam 0.21.0 has no macOS arm64 wheel,
+    and its sdist fails on current setuptools (`pkg_resources`); its Linux wheels
+    pass the suite (review). click is no runtime dependency at all: typer 0.2x
+    bundles its own, and only a test imports it.
+  - **Measured minimums.** Bisected one package at a time, the others at latest:
+    typer 0.15.4 (older typer breaks with click >= 8.2, which `click>=8.0` allows)
+    and pysam 0.22.0. click 8.0, rich 13.0, pydantic 2.0 and polars 1.0 hold. All
+    minimums together pass on 3.11, and on 3.10 once a test helper stops calling
+    `issubclass()` on a generic alias.
+  - **Two dev lists, drifted apart.** `maturin develop` needs pip >= 25.1 because
+    `[dependency-groups] dev` makes it run `pip install --group`. That table and the
+    `dev` extra (what CI installs) diverged: the group lacked pytest-mock,
+    types-pyyaml, pyyaml and mkdocs; the extra lacked pyarrow, which the tests
+    import. The developer guide's `python -m venv` + `maturin develop` fails on
+    Python's bundled pip.
+  - **The image has no lock.** Its dependencies resolve fresh at each build, and CI
+    never runs anything inside the image. A hash-pinned lock for linux/amd64 and
+    Python 3.11 is 16 packages. One Ubuntu step in `test.yml` can never run.
+  Decided:
+  - Floors become `typer>=0.15.4` and `pysam>=0.22.0`, and click moves to the
+    `test` group. A PR CI leg (Ubuntu, Python 3.10) installs the floors first
+    (`uv --resolution lowest-direct`) and `scripts/check_floors.py` checks them.
+  - On every PR, CI tests Ubuntu 3.10 (at the floors), 3.11 (the image's) and 3.14,
+    plus macOS 3.12. The classifiers list 3.10–3.14.
+  - One dev list: PEP 735 groups `test`, `docs` (also what `deploy-docs.yml`
+    installs) and `dev` (which includes both). CI installs them with uv, and the docs
+    say pip >= 25.1.
+  - The image installs a hash-pinned lock (`--require-hashes --no-deps`, then
+    `pip check`), refreshed as a release-guide step, and CI runs the image.
+  - A monthly job (and a manual run before each release) runs the latest Python
+    releases on 3.10–3.14, with semver-compatible Rust updates. On failure it opens or
+    updates one issue. It is monthly, not weekly or quarterly: PR CI already installs
+    the latest releases, and GitHub disables schedules after 60 days without activity.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
@@ -1802,6 +1842,14 @@ page from the CHANGELOG section in the release workflow.
   max 44 kb (1,458 cap splits). The architecture page also still cites the retired
   parity suite.
 - **D5 #155:** built last, against the release candidate (after D4).
+- **After the 6.6.0 tag (operator, 2026-10-05): the downstream org repos.**
+  - `mskcc-omics-workflows/containers` gets `containers/gbcms/6.6.0/Dockerfile`,
+    which builds `ghcr.io/mskcc-omics-workflows/gbcms:6.6.0`.
+  - `mskcc-omics-workflows/modules` bumps the `gbcmsrs` modules from 6.3.1:
+    - drop `buildgtfcache` and the `rna` module's `gtf_cache` input (they still
+      work under 6.6.0, with a warning; 6.7.0 removes them);
+    - widen the `gtf` pattern to `*.{gtf,gtf.gz}`;
+    - check the 6.4–6.6 CLI and output changes, then update the nf-test snapshots.
 - 6.7.0 overlap: D3 #138 stays (D3a pins below MkDocs 2); P1 #150 stays (P3's spans
   inform it).
 
