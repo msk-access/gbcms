@@ -1929,6 +1929,47 @@ page from the CHANGELOG section in the release workflow.
   and stops where terms underflow (e^-750): 2.0e-15 and 5.0e-14 on those tables,
   and u32-max cells take 40 ms instead of a 34 GB allocation.
   Tests now pin R's tie rule against scipy's on three near-tie tables.
+- **C35 #240: inserted bases nobody can read (2026-10-06, measured).** Develop, the
+  reviewer's synthetic case first, then real data (`harness/c35/`):
+  - **Both backends, four paths.** A same-length insert whose bases are all N or all
+    below min BQ is "unverifiable" on the strict path and goes to Phase 3, which calls
+    ALT on length alone (REF pays for the gap) under PairHMM and SW alike. Shifted
+    placements reach Phase 3 the same way. `read_bases_fit_alt` (split ops, a deleted
+    anchor) needs one readable base anywhere between the flanks, so flank bases
+    suffice. `insert_truncation_match` ignores BQ. The post-splice twin already calls
+    the same read partial (pinned by the RNA splice contract). At a homopolymer only
+    the repeat gap penalties keep the LLR under 2.3 with bio 3; bio 4 crosses it.
+  - **RC DNA (28 samples, 82 insertion rows).** Same-length carriers: 11,487 clean
+    and 660 partly masked at the junction, 172 readable shifted; 157 with no readable
+    inserted base (22 junction, 135 shifted), of which develop calls 127 ALT, all in
+    Phase 3. 105 of those are one shape: a 1bp insertion into a homopolymer run of
+    3–8 with a duplex-masked N inside the run, the aligner writing the N as the
+    insertion. The rest (22) are low-BQ letters. Three rows of one sample lose 62, 15
+    and 11 ALT reads (AD 430, 299, 111); the other 23 rows 0–8. 127 fragments have
+    no readable insert on either read. Residuals: 0 truncation candidates without a
+    readable base (3,412 readable), 10 reads with the insert in a soft clip at the
+    junction, all bases unreadable (not traced).
+  - **FORTE (local).** DNA mode 6 such reads (3 ALT today), RNA mode 14 (8 ALT), all
+    low-BQ letters, no N. BAQ spares the variant's own insertion, so RNA BAQ does not
+    add to them except within 5bp of a splice.
+  - **Survey.** Likelihood callers (GATK HC/Mutect2, bcftools, Strelka2) credit ALT on
+    length: N matches anything, low BQ is floored (Q6/Q7). Sequence-keyed counters
+    never credit an N insert: VarDict and freebayes drop it, bam-readcount and LoFreq
+    report it as its own allele, and GetBaseCountsMultiSample (`baseCountIndelDMP`,
+    exact string match) counts it as neither (DP only); it checks BQ on the anchor
+    only, so low-BQ letters that match count ALT there (`--generic_counting` drops
+    them). No literature on counting indels from N-masked consensus reads.
+
+  Decided (operator, 2026-10-06), 6.6.0, own PR:
+  - An insertion's ALT needs one of the read's own inserted bases read: not N and at
+    or above min BQ (one quality gate, invariant 2; its own bases, invariant 7). A
+    read whose inserted bases are all unreadable is partial (depth and partial_alt),
+    on every path: the strict junction, shifted placements, split ops, a deleted
+    anchor, truncations. Partly masked inserts whose readable bases match stay ALT.
+  - No new output signal: partial_alt carries them, a trace line names the cause.
+  - The read census gets the same rule as policy.
+  - Inserts in a soft clip at the junction (10 RC reads): a sub-issue.
+  - Then bio 4 is measured on top.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
