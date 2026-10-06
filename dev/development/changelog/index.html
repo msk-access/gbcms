@@ -794,6 +794,61 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
 </ul>
+<h3 id="fixed-fishers-exact-test-at-any-depth-239">Fixed — Fisher's exact test at any depth (#239)<a class="headerlink" href="#fixed-fishers-exact-test-at-any-depth-239" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Strand-bias p-values were 0 at depth.</strong> <code>strand_bias_p_value</code>,
+  <code>fragment_strand_bias_p_value</code> (<abbr title="Variant Call Format - Standard variant call file format">VCF</abbr> <code>SB_PVAL</code>, <code>FSB_PVAL</code>) and merge's combined
+  columns were 0, as if strongly biased, whenever the binomial C(n, forward total)
+  passed f64's range. That needs both strands well covered: from about 1,030 reads
+  on a strand-balanced table. Tables with one thin strand stayed correct. On the
+  RC <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> rows that was 316 of 1,060 read-level p-values, 298 of them truly
+  ≥ 0.05. The ASJD junction test (p &lt; 0.05) read the same zeros.</li>
+<li><strong>The fix.</strong> The test is now the exact two-sided p of R's <code>fisher.test</code>, computed
+  in log space from the ratio of neighbouring tables, walking out from the most
+  likely table: no factorial, nothing overflows, relative error near 10⁻¹³ at any
+  depth, and tables too unlikely to count are never visited.</li>
+<li>Ties follow R's rule (probability ≤ observed × (1 + 10⁻⁷)). That replaces an
+    absolute 10⁻¹⁰ tolerance which floored strongly biased tables near 10⁻¹⁰; one
+    printed 2.1 × 10⁻¹⁰ where the exact p is 7.0 × 10⁻⁹⁰.</li>
+<li>The p = 1 guards (≤ 1 ALT observation, empty or full margins) and the odds ratio
+    are unchanged.</li>
+<li>The p-value stays the exact p of the raw counts. At deep coverage, read the odds
+    ratio for the size of a bias.</li>
+<li><strong>Measured on the local FORTE sample (9,536 rows).</strong></li>
+<li>What moved: 397 read-level and 205 fragment-level strand-bias p-values, and 5
+    ASJD p-values, of which one flag clears. All counts and Parquet tables are
+    unchanged.</li>
+<li>Every reported strand-bias p now equals scipy's exact value.</li>
+<li><strong>statrs</strong> leaves the direct dependencies.</li>
+</ul>
+<h3 id="changed-rust-dependencies-on-their-current-releases-139">Changed — Rust dependencies on their current releases (#139)<a class="headerlink" href="#changed-rust-dependencies-on-their-current-releases-139" title="Permanent link">¶</a></h3>
+<p>The Rust dependencies move to their current releases, one per commit
+(<code>CYCLE_6.6.0_PLAN.md</code>, "D4 PR B"). No output changes. bio stays at 3.0 for now.
+- <strong>pyo3 0.29</strong> (from 0.27). The API migration: <code>allow_threads</code> is now <code>detach</code>,
+  and <code>Variant</code> and <code>BaseCounts</code> opt in to the by-value conversion that Python
+  passes back. The module keeps the GIL on a free-threaded interpreter, as before;
+  gbcms is not built or tested free-threaded.
+- <strong>rust-htslib 1.0, arrow/parquet 60</strong>, and the semver-compatible updates.
+  (statrs went to 0.19 here, then left the dependencies with #239.)
+  - parquet 60 truncates column-chunk min/max statistics of strings longer than 64
+    bytes. The data are unchanged.
+- <strong>wfa2lib-rs moves to upstream's current commit without its default features.</strong>
+  Those only built its benchmark binary, so clap, tracing and mimalloc leave the
+  build.
+- <strong>bio is held at 3.0.</strong> bio 4.1 fixes how the <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> scores the bases of an
+  extended gap.
+  - For reads whose inserted bases are N or below the base-quality floor, that moves
+    gbcms's <abbr title="Log-Likelihood Ratio - Confidence metric for PairHMM alignment">LLR</abbr> across the ±2.3 threshold (synthetic reads: 1.8 → 5.0).
+  - gbcms already credits ALT to such reads at non-repeat insertions, so bio 4 waits
+    for a gate that requires the inserted bases to carry the ALT.
+  - bio 4's other change, the Smith-Waterman gap rule, needs the open penalty moved
+    from −5 to −6 to keep every score; that ships with the bio upgrade.
+- <strong>Unchanged output:</strong>
+  - Local FORTE sample (RNA and DNA modes, both alignment backends, 9,536 rows
+    including 806 indels observed in the reads): compared after step 1, after steps
+    1–5, and for the final tree. No column and no Parquet table changes.
+  - RC sets on the cluster (28 <abbr title="Cell-free DNA - Circulating DNA fragments in blood plasma">cfDNA</abbr> DNA, 33 RNA truth, 3 probe samples and 80 WES
+    loci; 2,212 rows): byte-identical.</p>
 <h3 id="changed-dependencies-ci-coverage-and-the-image-139">Changed — dependencies, <abbr title="Continuous Integration - Automated build and test system">CI</abbr> coverage and the image (#139)<a class="headerlink" href="#changed-dependencies-ci-coverage-and-the-image-139" title="Permanent link">¶</a></h3>
 <p>Measured first (<code>CYCLE_6.6.0_PLAN.md</code>, "D4 PR A"). Nothing changes at runtime.
 - <strong>The dependency floors are true.</strong> At the declared floors the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> crashed: typer
