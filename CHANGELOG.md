@@ -33,6 +33,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Changed — Rust dependencies on their current releases (#139)
+
+The Rust dependencies move to their current releases, one per commit
+(`CYCLE_6.6.0_PLAN.md`, "D4 PR B"). No output changes. bio stays at 3.0 for now.
+- **pyo3 0.29** (from 0.27). The API migration: `allow_threads` is now `detach`,
+  and `Variant` and `BaseCounts` opt in to the by-value conversion that Python
+  passes back. The module keeps the GIL on a free-threaded interpreter, as before;
+  gbcms is not built or tested free-threaded.
+- **rust-htslib 1.0, arrow/parquet 60, statrs 0.19**, and the semver-compatible
+  updates.
+  - statrs supplies Fisher's exact test. On every table with cells up to 40 its
+    results are bit-identical under both versions.
+  - parquet 60 truncates column-chunk min/max statistics of strings longer than 64
+    bytes. The data are unchanged.
+- **wfa2lib-rs moves to upstream's current commit without its default features.**
+  Those only built its benchmark binary, so clap, tracing and mimalloc leave the
+  build.
+- **bio is held at 3.0.** bio 4.1 fixes how the PairHMM scores the bases of an
+  extended gap.
+  - For reads whose inserted bases are N or below the base-quality floor, that moves
+    gbcms's LLR across the ±2.3 threshold (synthetic reads: 1.8 → 5.0).
+  - gbcms already credits ALT to such reads at non-repeat insertions, so bio 4 waits
+    for a gate that requires the inserted bases to carry the ALT.
+  - bio 4's other change, the Smith-Waterman gap rule, needs the open penalty moved
+    from −5 to −6 to keep every score; that ships with the bio upgrade.
+- **Unchanged output:**
+  - Local FORTE sample (RNA and DNA modes, both alignment backends, 9,536 rows
+    including 806 indels observed in the reads): compared after step 1, after steps
+    1–5, and for the final tree. No column and no Parquet table changes.
+  - RC sets on the cluster (28 cfDNA DNA, 33 RNA truth, 3 probe samples and 80 WES
+    loci; 2,212 rows): byte-identical.
+
 ### Changed — dependencies, CI coverage and the image (#139)
 
 Measured first (`CYCLE_6.6.0_PLAN.md`, "D4 PR A"). Nothing changes at runtime.

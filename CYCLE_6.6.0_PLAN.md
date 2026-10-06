@@ -1833,6 +1833,67 @@ page from the CHANGELOG section in the release workflow.
     releases on 3.10–3.14, with semver-compatible Rust updates. On failure it opens or
     updates one issue. It is monthly, not weekly or quarterly: PR CI already installs
     the latest releases, and GitHub disables schedules after 60 days without activity.
+- **D4 PR B: the Rust majors (2026-10-06).** One dependency per commit. Each
+  step passes clippy, `cargo test` and the Python suite. The local FORTE acceptance
+  (`harness/d4/rust/`) compares every column and every Parquet table. It runs RNA
+  mode with the GTF (the STAR and UMI-dedup BAMs × the C1, T9, T10, C16 and 806
+  read-observed indel probes) and DNA mode (mFSD and observations Parquet × both
+  backends): 9,536 rows. It was run after step 1, after steps 1–5, and on the final
+  tree. The cluster acceptance (28 RC DNA, 33 RNA truth, 3 probe samples, 80 WES
+  loci; 2,212 rows) was run on the final tree.
+
+  | Dependency | From → to | Outcome |
+  |:--|:--|:--|
+  | semver-compatible (127 lock entries) | — | upgraded |
+  | statrs | 0.18 → 0.19.1 | upgraded; Fisher's exact test bit-identical under both versions on every table with cells 0–40 |
+  | rust-htslib | 0.51 → 1.0.1 | upgraded; no code change, same hts-sys 2.2.1 |
+  | arrow / parquet | 53 → 60 | upgraded; the Parquet companions are identical by content (string column-chunk statistics truncate at 64 bytes now) |
+  | pyo3 (+ pyo3-log) | 0.27 → 0.29.3 (0.13.4) | upgraded: `allow_threads` → `detach`; `Variant`/`BaseCounts` opt in to `from_py_object`, the output-only types opt out; `gil_used = true` keeps the module's GIL behaviour |
+  | wfa2lib-rs | rev 7d6ec921 → cb8aa3d6 | upgraded, `default-features = false`: clap, tracing and mimalloc (the benchmark binary's) leave the build |
+  | bio | 3.0 (4.2.1 available) | **held** (operator, 2026-10-06); see below |
+  | noodles-gtf, bincode, serde | — | removed in #230 |
+  | flate2 | 1.1.10 | zlib-rs backend since #230 |
+  | coitrees 0.4, bio-types 1.0.4 | — | already current |
+
+  **bio 4, measured and held.**
+  - **Smith-Waterman.** The gap rule changed (rust-bio#660): a k-base gap scores
+    `open + extend·(k−1)`. With `SW_GAP_OPEN` −6, every score is identical on 199,949
+    random pairs, for semiglobal, local, global and clipped alignments.
+  - **PairHMM.** The forward-algorithm fix (rust-bio#701) costs each extended
+    inserted base its emission. Our gap probabilities are symmetric, and
+    haplotype-side gaps emit with probability 1.
+    - For uniform-quality reads, the LLR moves at most 0.004 at Q37 and 0.27 at
+      Q20, with no call crossing ±2.3, on insertion carriers and on REF reads at
+      deletions alike.
+    - Reads whose inserted bases are N or Q2 move across the threshold (synthetic:
+      1.8 → 5.0). The review's side-by-side model crossed on 1,349 of 22,320 such
+      cases.
+  - **Real data.** No row changes: 9,536 local rows and 2,212 cluster rows with the
+    bio 4 tree.
+  - **Why held.** The engine already credits ALT to reads whose inserted bases are
+    all N or below min BQ at non-repeat insertions, under both versions. That breaks
+    invariant 7 and invariant 2. So bio 4 lands with a gate that requires the
+    inserted bases to carry the ALT, re-measured.
+- **Fisher's exact test overflows (found in the D4 PR B review, operator: fix in
+  6.6.0, own PR).** `fisher_exact_2x2` returns p = 0 for any table above ~1,030
+  reads: statrs's binomial overflows, the pmf turns NaN, and the sum stays 0.
+  Examples: (258,258,258,258) gives 0 against an exact p of 1.0; (30,25,500,520)
+  gives 0 against 0.49.
+  - **Affected:** `strand_bias_p_value` and `fragment_strand_bias_p_value`
+    (`SB_PVAL`/`FSB_PVAL`) at ACCESS depth, and the ASJD junction test (p < 0.05).
+  - **Fix:** log-space hypergeometric, validated against an exact reference on a
+    grid that includes deep tables; measure the real rows whose p-values and ASJD
+    flags change.
+- **N or low-BQ inserted bases credited ALT (found in the review, operator: measure
+  in 6.6.0, then decide).** Under the PairHMM backend, reads whose inserted bases
+  are all N or all Q2 are called ALT at non-repeat insertions, under both bio
+  versions. Trace the RC DNA set for ALT calls that rest only on such bases. Fix in
+  6.6.0 if they occur, otherwise in 6.7.0 with bio 4.
+- **Platforms (operator, 2026-10-06):** Red Hat first, macOS second, filed for 6.7.0
+  as D7 #232. The sub-issues: the image under Apptainer in CI (#233), a wheel that
+  installs on RHEL 8 (#234), wheels for Python 3.10–3.14 (#235), a native arm64
+  image (#236) and macOS wheels (#237). In 6.6.0, Docker/Singularity remains the
+  RHEL path.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
