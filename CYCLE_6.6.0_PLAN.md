@@ -1833,6 +1833,33 @@ page from the CHANGELOG section in the release workflow.
     releases on 3.10–3.14, with semver-compatible Rust updates. On failure it opens or
     updates one issue. It is monthly, not weekly or quarterly: PR CI already installs
     the latest releases, and GitHub disables schedules after 60 days without activity.
+- **S3 #239: Fisher's exact test at depth (2026-10-06, operator).** Measured on the
+  cached D4 acceptance outputs (`develop`), each row's strand-bias table recomputed
+  exactly with scipy:
+  - **Overflow.** `fisher_exact_2x2` returns p = 0 above ~1,030 reads (statrs's
+    binomial overflows and the pmf turns NaN). Rows printing p = 0 where the exact p
+    is above 0, out of all rows:
+    - RC cfDNA: read test 316 of 1,060 (298 of them have an exact p ≥ 0.05),
+      fragment test 235;
+    - FORTE RNA mode: 233 of 7,272 (read), 134 (fragment);
+    - FORTE DNA mode: 164 of 2,264 (read), 70 (fragment);
+    - WES 3 of 80, RNA truth 1 of 94, RNA probes 11 of 978.
+  - **ASJD.** 5 of the 7 local junction flags rest on p = 0.
+  - **The tie tolerance was absolute (1e-10).** Strongly biased tables are floored
+    near 1e-10 (e.g. (250, 50, 20, 280) prints 2.1e-10; the exact p is 7.0e-90). On
+    real rows at n ≤ 1,030 only 3 differ beyond the printed precision, all at
+    p < 1e-9.
+  - **Survey.** R's `fisher.test` uses a relative tolerance of 1 + 1e-7 and scipy
+    1 + 1e-14; both work in log space. GATK's FisherStrand scales tables above 400
+    reads down to 200 before testing.
+  - **Merge** recomputes combined strand bias through the same binding.
+
+  Decided:
+  - The exact two-sided p on the raw counts (no GATK-style normalization; the odds
+    ratio column gives the effect size), with R's tie rule: the sum over tables with
+    probability ≤ the observed × (1 + 1e-7). Computed in log space.
+  - Validated against an exact integer oracle; then measure the real rows and ASJD
+    flags that change.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
