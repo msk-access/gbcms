@@ -41,10 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alone: the strict path found the bases unverifiable and handed the read to Phase 3,
   where REF pays for the gap, under both backends. Shifted placements went the same
   way, and the deleted-anchor and split-op reading accepted a readable flank base.
-  On the RC DNA set that was 127 reads, mostly 1bp insertions into homopolymer runs
-  with a duplex-masked N inside the run (the aligner writes the N as the insertion);
-  one row went from 430 ALT reads to 368, most rows lost 0–8. On the FORTE sample, 3
-  reads in DNA mode and 8 in RNA mode, all low-quality letters.
+  On the RC DNA set that was 127 reads in 20 of 1,060 rows, mostly 1bp insertions
+  into homopolymer runs with a duplex-masked N inside the run (the aligner writes the
+  N as the insertion). Three rows lost 62, 15 and 11 ALT reads (430 → 368, 299 → 284,
+  111 → 100), the other 17 one to eight; depth is unchanged and the reads move to
+  `partial_alt`. The WES loci: 21 reads in 8 of 80 rows. The FORTE sample: 8 in DNA
+  mode (both backends) and 9 in RNA mode, all low-quality letters. RNA truth and
+  probe samples are unchanged.
 - **The rule (RJ-20).** A read whose inserted bases are all unreadable is neither,
   with partial evidence, on every path: at the junction, at another placement inside
   the discrimination window, across several ops, after a deleted anchor, and as a

@@ -1970,6 +1970,23 @@ page from the CHANGELOG section in the release workflow.
   - The read census gets the same rule as policy.
   - Inserts in a soft clip at the junction (10 RC reads): a sub-issue.
   - Then bio 4 is measured on top.
+
+  Review (one round, adversarial): a blocker (a deletion outside the flanks offset
+  the deleted anchor in `read_bases_fit`), an unreadable insert flagged anywhere in
+  the scan window (outside the discrimination window it is a separate event, RJ-8),
+  and the census netting deletions only between its anchors. All fixed red-first.
+  Acceptance on the final tree (develop's outputs as the base): RC DNA 20 of 1,060
+  rows, ALT −127 (exactly the measured reads), partial +126, REF +1, fragment ALT
+  −103, depth unchanged; WES 8 of 80 rows, ALT −21; FORTE DNA −8 ALT (both backends),
+  RNA −9; RNA truth and probes unchanged.
+  Residuals measured after the review:
+  - The soft-clip reads: develop calls all 10 RC reads (and 12 FORTE) neither, never
+    ALT. Nothing to fix; recommended: no sub-issue (operator to confirm).
+  - The truncation band reads letters at any quality. Both policies on the RC
+    truncation candidates: 3,387 pass both, 0 pass only by low-BQ letters, 1 passes
+    only with masked identity (an N counted as a mismatch), 24 fail both; FORTE 17
+    fail both. Recommended (operator to confirm): the band stays as it is (the
+    identity-band rule), with a readable base required.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
