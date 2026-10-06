@@ -2119,12 +2119,12 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 </tr>
 <tr>
 <td style="text-align: left;">RJ-14</td>
-<td style="text-align: left;">The ALT written across several insertion or deletion ops in the discrimination window counts ALT when the read's bases between its nearest aligned flanks are the ALT (masked bases fit, at least one base read), the ops' placement only a tie-break as in RJ-15: judged by its bases before the wrong-length and one-change rules read its ops. Amends RJ-2 and RJ-7.</td>
+<td style="text-align: left;">The ALT written across several insertion or deletion ops in the discrimination window counts ALT when the read's bases between its nearest aligned flanks are the ALT (masked bases fit, at least one base read; for an insertion, one of its own inserted bases, RJ-20), the ops' placement only a tie-break as in RJ-15: judged by its bases before the wrong-length and one-change rules read its ops. Amends RJ-2 and RJ-7.</td>
 <td style="text-align: left;">C27 #201, operator 2026-10-02</td>
 </tr>
 <tr>
 <td style="text-align: left;">RJ-15</td>
-<td style="text-align: left;">A read whose own deletion covers the anchor is judged by its bases between its nearest aligned flanks: ALT, or REF, when they equal that allele (masked bases fit; at least one base read), the aligner's placement of its gap only a tie-break (a reference written as the anchor deleted and re-inserted is REF); otherwise neither, with partial evidence. Never Phase 3's closer haplotype. Deletion and insertion rows alike.</td>
+<td style="text-align: left;">A read whose own deletion covers the anchor is judged by its bases between its nearest aligned flanks: ALT, or REF, when they equal that allele (masked bases fit; at least one base read; for an insertion's ALT, one of its own inserted bases, RJ-20), the aligner's placement of its gap only a tie-break (a reference written as the anchor deleted and re-inserted is REF); otherwise neither, with partial evidence. Never Phase 3's closer haplotype. Deletion and insertion rows alike.</td>
 <td style="text-align: left;">C28 #202, operator 2026-10-02</td>
 </tr>
 <tr>
@@ -2146,6 +2146,11 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">RJ-19</td>
 <td style="text-align: left;">A spliced read is judged against the haplotypes spliced at its own junctions: the exact-carrier windows (event, growth, flank, padding) are built over the reference spliced where the read splices, the far exon's bases read from the reference, so bases a length change pushes past the junction show against the next exon, and the read must hold the spliced flank as any read holds its flank. Every junction the windows reach is followed (a short exon between two is read through). A junction starting inside the bases where the alleles differ and running past them (or ending inside them) splices the haplotypes at the event's edge, so the bases decide however the aligner wrote the gap; such a read is also REF spliced where it splices (an alternative donor or acceptor, or a splice site the event straddles), so it counts ALT only when its bases favour ALT over that reading too, by one <code>--min-baseq</code> base's evidence, and is otherwise depth only. Any other splice through those bases leaves the read depth only.</td>
 <td style="text-align: left;">C32 #213, operator 2026-10-04</td>
+</tr>
+<tr>
+<td style="text-align: left;">RJ-20</td>
+<td style="text-align: left;">An insertion's ALT needs one of the read's own inserted bases read: not N and at or above <code>--min-baseq</code>, the one quality gate every base passes. A read whose inserted bases are all N (fgbio masks a duplex disagreement to N at Q2) or all below <code>--min-baseq</code> carries the insertion's length, not its sequence: neither, with partial evidence, on every path (at the junction, at another placement inside the discrimination window, across several ops, after a deleted anchor, a truncation), never Phase 3, where REF pays for the gap so length alone wins ALT. An unreadable insert outside the discrimination window cannot be the variant: a separate event (RJ-8), as a readable one is. In a run the aligner writes the masked base as the insertion, so the read's own inserted bases are its I-op bases, net of the reference bases its deletions beside them re-insert (counted, not placed: a masked re-inserted anchor still nets one readable base). A read whose readable inserted bases match the ALT is ALT however many are masked; a truncation needs one readable base, and its identity band reads its letters at any quality as before. The read census holds the same rule.</td>
+<td style="text-align: left;">C35 #240, operator 2026-10-06</td>
 </tr>
 </tbody>
 </table>
@@ -2350,6 +2355,11 @@ and at anchor-changing events before an A run.</p>
 <td style="text-align: left;">the anchor deleted, with or without an insertion; an insertion row's anchor deleted</td>
 <td style="text-align: left;">decided (RJ-15)</td>
 </tr>
+<tr>
+<td style="text-align: left;">Unreadable inserts</td>
+<td style="text-align: left;">+1 in a run with its inserted base N at the anchor or inside the run, or a letter below <code>--min-baseq</code>; a 10-base insert all N, all below <code>--min-baseq</code>, half masked (ALT); the anchor deleted and re-inserted with the insert unreadable</td>
+<td style="text-align: left;">decided (RJ-20)</td>
+</tr>
 </tbody>
 </table>
 <p>Run <code>python tests/read_judgment_cases.py</code> for the full table: every case's call,
@@ -2379,7 +2389,7 @@ with the read census's verdict next to each pure-indel case.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 5, 2026 11:15:29 UTC"><span class="timeago" datetime="2026-10-05T11:15:29+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 5, 2026 11:15:29 UTC">2026-10-05</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 6, 2026 18:54:00 UTC"><span class="timeago" datetime="2026-10-06T18:54:00+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 6, 2026 18:54:00 UTC">2026-10-06</span>
   </span>
 
     
