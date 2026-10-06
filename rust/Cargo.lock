@@ -774,7 +774,6 @@ dependencies = [
  "pyo3-log",
  "rayon",
  "rust-htslib",
- "statrs",
  "thiserror 2.0.18",
  "wfa2lib-rs",
 ]

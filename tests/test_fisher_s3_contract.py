@@ -64,21 +64,18 @@ BIASED = [
 ]
 
 
-@pytest.mark.xfail(strict=True, reason="p = 0 above ~1,030 reads (binomial overflow)")
 @pytest.mark.parametrize("table", DEEP, ids=[f"n{sum(t)}" for t in DEEP])
 def test_deep_tables_give_the_exact_p(table):
     got, want = fisher_exact_2x2(*table)[0], oracle(*table)
     assert close(got, want), (table, got, want)
 
 
-@pytest.mark.xfail(strict=True, reason="an absolute 1e-10 tie tolerance floors tiny p-values")
 @pytest.mark.parametrize("table", BIASED, ids=[str(t) for t in BIASED])
 def test_strongly_biased_tables_are_not_floored(table):
     got, want = fisher_exact_2x2(*table)[0], oracle(*table)
     assert close(got, want), (table, got, want)
 
 
-@pytest.mark.xfail(strict=True, reason="extreme tables are floored; deep ones are 0")
 def test_a_grid_of_tables_gives_the_exact_p():
     """Every table with cells 0-9, plus 300 seeded random tables up to n = 3,000."""
     tables = [
@@ -105,7 +102,6 @@ def test_the_guards_and_odds_ratio_are_unchanged():
     assert math.isnan(fisher_exact_2x2(10, 0, 30, 40)[1])
 
 
-@pytest.mark.xfail(strict=True, reason="strand-bias p-values are 0 at depth")
 def test_strand_bias_columns_are_exact_at_depth(tmp_path):
     """1,240 single-end reads over an SNV, strand-balanced on both alleles (600/600
     REF, 20/20 ALT): both strand-bias tests give p = 1, not 0."""

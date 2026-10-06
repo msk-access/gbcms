@@ -14,7 +14,6 @@
 //! - `merge.py` — combined strand bias on merged simplex+duplex counts
 
 use pyo3::prelude::*;
-use statrs::distribution::{Discrete, Hypergeometric};
 
 /// Calculate Fisher's Exact Test for a 2×2 contingency table.
 ///
@@ -76,15 +75,17 @@ pub fn fisher_exact_2x2(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
         numerator / denominator
     };
 
-    // Fisher's Exact Test (Two-sided) using Hypergeometric distribution
-    // We want the probability of observing a table as extreme or more extreme than the current one,
-    // given fixed marginals.
-    // Hypergeometric(N, K, n) where:
-    // N = total population size (a+b+c+d)
-    // K = number of successes in population (a+b) (Row 1 sum)
-    // n = sample size (a+c) (Col 1 sum)
-    // k = number of successes in sample (a)
-
+    // Fisher's exact test, two-sided, as R's fisher.test defines it: the sum of the
+    // probabilities of every table with these margins that is at most as likely as
+    // the observed one (times 1 + 1e-7, R's tolerance for ties). Cell a follows a
+    // hypergeometric law over [max(0, r1 + c1 - n), min(r1, c1)].
+    //
+    // Each table's log-probability is taken relative to the first one through the
+    // exact ratio P(k + 1) / P(k) = (r1 - k)(c1 - k) / ((k + 1)(n - r1 - c1 + k + 1)),
+    // then normalized by the sum over all tables, which is 1. No factorial or
+    // binomial is formed, so nothing overflows at any depth (a binomial did above
+    // ~1,030 reads, turning every probability NaN and the p-value 0), and the
+    // relative error stays near 1e-12 however long the range.
     let row1_sum = a + b;
     let col1_sum = a + c;
 
@@ -93,35 +94,29 @@ pub fn fisher_exact_2x2(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
         return (1.0, odds_ratio);
     }
 
-    let dist = match Hypergeometric::new(n, row1_sum, col1_sum) {
-        Ok(d) => d,
-        Err(_) => return (1.0, odds_ratio), // Should not happen with checks above
-    };
-
-    let p_observed = dist.pmf(a);
-    let mut p_value = 0.0;
-
-    // Sum probabilities of all tables with p <= p_observed
-    // Range of possible values for cell 'a' is [max(0, row1_sum + col1_sum - n), min(row1_sum, col1_sum)]
-    let min_a = (row1_sum + col1_sum).saturating_sub(n);
-    let max_a = if row1_sum < col1_sum {
-        row1_sum
-    } else {
-        col1_sum
-    };
-
-    for k in min_a..=max_a {
-        let p = dist.pmf(k);
-        if p <= p_observed + 1e-10 {
-            // Add epsilon for float comparison
-            p_value += p;
+    let lo = (row1_sum + col1_sum).saturating_sub(n);
+    let hi = row1_sum.min(col1_sum);
+    let ln = |x: u64| (x as f64).ln();
+    let mut ln_rel = Vec::with_capacity((hi - lo + 1) as usize);
+    let mut acc = 0.0f64;
+    ln_rel.push(acc);
+    for k in lo..hi {
+        // n + k + 1 > r1 + c1 since k >= lo >= r1 + c1 - n.
+        let d_cell = n + k + 1 - row1_sum - col1_sum;
+        acc += ln(row1_sum - k) + ln(col1_sum - k) - ln(k + 1) - ln(d_cell);
+        ln_rel.push(acc);
+    }
+    let peak = ln_rel.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let cutoff = ln_rel[(a - lo) as usize] + 1e-7f64.ln_1p();
+    let (mut tail, mut total) = (0.0f64, 0.0f64);
+    for &x in &ln_rel {
+        let w = (x - peak).exp();
+        total += w;
+        if x <= cutoff {
+            tail += w;
         }
     }
-
-    // Cap at 1.0
-    if p_value > 1.0 {
-        p_value = 1.0;
-    }
+    let p_value = (tail / total).min(1.0);
 
     (p_value, odds_ratio)
 }
