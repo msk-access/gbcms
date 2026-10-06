@@ -33,6 +33,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Fixed — an insertion's ALT needs one of the read's own inserted bases read (#240)
+
+- **Reads whose inserted bases nobody can read counted ALT.** A read carrying an
+  insertion of the right length whose bases are all N (fgbio masks a duplex
+  disagreement to N at Q2) or all below `--min-baseq` was credited ALT on length
+  alone: the strict path found the bases unverifiable and handed the read to Phase 3,
+  where REF pays for the gap, under both backends. Shifted placements went the same
+  way, and the deleted-anchor and split-op reading accepted a readable flank base.
+  On the RC DNA set that was 127 reads in 20 of 1,060 rows, mostly 1bp insertions
+  into homopolymer runs with a duplex-masked N inside the run (the aligner writes the
+  N as the insertion). Three rows lost 62, 15 and 11 ALT reads (430 → 368, 299 → 284,
+  111 → 100), the other 17 one to eight; depth is unchanged and the reads move to
+  `partial_alt`. The WES loci: 21 reads in 8 of 80 rows. The FORTE sample: 8 in DNA
+  mode (both backends) and 9 in RNA mode, all low-quality letters. RNA truth and
+  probe samples are unchanged.
+- **The rule (RJ-20).** A read whose inserted bases are all unreadable is neither,
+  with partial evidence, on every path: at the junction, at another placement inside
+  the discrimination window, across several ops, after a deleted anchor, and as a
+  truncation. Outside the window such an insert is a separate event, as a readable one
+  is. "Readable" means not N and at or above `--min-baseq`, the gate SNV bases pass.
+  A read whose readable inserted bases match the ALT stays ALT, however many are
+  masked. The read census holds the same rule. The post-splice path already counted
+  such reads this way.
+- **Community practice.** Likelihood callers (GATK, bcftools, Strelka2) credit ALT on
+  length; sequence-keyed counters do not: VarDict and freebayes drop such a read,
+  bam-readcount and LoFreq report it as its own allele, and GetBaseCountsMultiSample
+  counts it as neither. gbcms counts the given allele from the read's own bases.
+
 ### Fixed — Fisher's exact test at any depth (#239)
 
 - **Strand-bias p-values were 0 at depth.** `strand_bias_p_value`,
