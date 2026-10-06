@@ -25,7 +25,7 @@ jobs:
       matrix:
         # The ends of the supported range (3.10 with every runtime dependency at its
         # declared floor, so the floors stay true; 3.14), the Docker image's 3.11, and
-        # macOS. The weekly latest-deps workflow runs every version.
+        # macOS. The monthly latest-deps workflow runs every version.
         include:
           - {os: ubuntu-latest, python-version: '3.10', floors: true}
           - {os: ubuntu-latest, python-version: '3.11'}

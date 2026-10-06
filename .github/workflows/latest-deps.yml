@@ -1,6 +1,7 @@
 name: Latest dependencies
 
-# Weekly: the suite on the newest release of every Python dependency (no lock) on
+# Monthly, and by hand before a release: the suite on the newest release of every
+# Python dependency (no lock) on
 # every supported Python, with the semver-compatible Rust updates applied, so a
 # breaking release is found before a user installs it. A failure opens (or updates)
 # one issue labelled `latest-deps`. Also reports, without failing, how far the
@@ -8,7 +9,9 @@ name: Latest dependencies
 
 on:
   schedule:
-    - cron: "17 6 * * 1"  # Mondays 06:17 UTC
+    # Monthly: PR CI already installs the latest releases, so this only covers quiet
+    # stretches (GitHub disables schedules after 60 days without repo activity).
+    - cron: "17 6 1 * *"  # the 1st, 06:17 UTC
   workflow_dispatch:
 
 permissions:
@@ -136,11 +139,11 @@ jobs:
       - name: Report
         run: |
           gh label create latest-deps --color B60205 \
-            --description "The weekly latest-dependencies job failed" --force
+            --description "The scheduled latest-dependencies job failed" --force
           num=$(gh issue list --label latest-deps --state open --json number --jq '.[0].number')
           if [ -n "$num" ]; then
             gh issue comment "$num" --body "Failed again: $RUN_URL"
           else
             gh issue create --label latest-deps --title "Latest dependencies fail" --body \
-              "The weekly run on the newest dependency releases failed: $RUN_URL. Find the release that broke it in the run's install step, then fix gbcms or cap the dependency."
+              "The latest-dependencies run on the newest releases failed: $RUN_URL. Find the release that broke it in the run's install step, then fix gbcms or cap the dependency."
           fi

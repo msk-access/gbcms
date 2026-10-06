@@ -46,8 +46,8 @@ Measured first (`CYCLE_6.6.0_PLAN.md`, "D4 PR A"). Nothing changes at runtime.
 - **CI tests the supported range.** Python 3.10–3.14 all pass on the latest
   releases, but CI tested only 3.11 and 3.12. PRs now run Ubuntu 3.10 (at the
   floors), 3.11 (the image's) and 3.14, plus macOS 3.12, and the classifiers list
-  3.10–3.14. A weekly workflow (`latest-deps.yml`) runs every version on the newest
-  releases with the semver-compatible Rust updates. On failure it opens or updates
+  3.10–3.14. A monthly workflow (`latest-deps.yml`, also run by hand before a release)
+  runs every version on the newest releases with the semver-compatible Rust updates. On failure it opens or updates
   one `latest-deps` issue.
 - **One dev-dependency list.** The `dev` extra and a PEP 735 `dev` group had drifted
   apart. The group lacked pytest-mock, types-pyyaml, pyyaml and mkdocs; the extra

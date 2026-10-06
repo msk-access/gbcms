@@ -11,7 +11,7 @@ Contracts:
 - the floors are the measured minimums, and a PR CI leg installs them;
 - PR CI covers the ends (3.10 at the floors, 3.14), the image's 3.11 and macOS;
 - one dev list: PEP 735 groups, `test` inside `dev`;
-- a weekly job runs the latest releases on 3.10-3.14 and opens one issue on failure;
+- a monthly job runs the latest releases on 3.10-3.14 and opens one issue on failure;
 - the image installs a hash-pinned lock, checks it, and CI runs the image;
 - the release guide refreshes the lock; the developer docs say pip >= 25.1.
 """
@@ -120,9 +120,11 @@ def test_no_workflow_installs_the_old_dev_extra():
     assert "scipy-stubs" not in lint
 
 
-def test_a_weekly_job_runs_the_latest_releases_and_reports_failure():
+def test_a_monthly_job_runs_the_latest_releases_and_reports_failure():
     wf = _workflow("latest-deps.yml")
     assert "schedule" in wf["on"] and "workflow_dispatch" in wf["on"]
+    # monthly: inside GitHub's 60-day inactivity window, unlike a quarterly schedule
+    assert [c["cron"].split()[2:4] for c in wf["on"]["schedule"]] == [["1", "*"]]
     assert wf.get("permissions") == {"contents": "read"}
     jobs = wf["jobs"]
     pythons = set()
@@ -173,7 +175,7 @@ def test_ci_runs_the_image():
 # ── Docs ─────────────────────────────────────────────────────────────────────
 
 
-def test_the_release_guide_refreshes_the_lock_and_lists_the_weekly_job():
+def test_the_release_guide_refreshes_the_lock_and_lists_the_monthly_job():
     guide = (ROOT / "docs" / "development" / "release-guide.md").read_text()
     assert re.search(r"uv pip compile[^\n]*--generate-hashes", guide)
     assert "docker/requirements.lock" in guide

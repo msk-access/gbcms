@@ -1825,8 +1825,10 @@ page from the CHANGELOG section in the release workflow.
     and the docs say pip >= 25.1.
   - The image installs a hash-pinned lock (`--require-hashes --no-deps`, then
     `pip check`), refreshed as a release-guide step, and CI runs the image.
-  - A weekly job runs the latest Python releases on 3.10–3.14, with semver-compatible
-    Rust updates. On failure it opens or updates one issue.
+  - A monthly job (and a manual run before each release) runs the latest Python
+    releases on 3.10–3.14, with semver-compatible Rust updates. On failure it opens or
+    updates one issue. It is monthly, not weekly or quarterly: PR CI already installs
+    the latest releases, and GitHub disables schedules after 60 days without activity.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists

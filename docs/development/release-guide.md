@@ -132,8 +132,9 @@ too. The next cycle's plan is added to `develop` after the back-merge.
 ### 4. Run Pre-Release Checks
 
 Refresh the Docker image's dependency lock first: the newest releases that satisfy
-`pyproject.toml`, which the weekly `latest-deps.yml` run has been testing. Its summary
-shows what the refresh changes. Commit the lock with the release.
+`pyproject.toml`. Run `latest-deps.yml` by hand first (Actions → Latest dependencies →
+Run workflow): it tests those releases on every Python, and its summary shows what the
+refresh changes. Commit the lock with the release.
 
 ```bash
 uv pip compile pyproject.toml --upgrade --generate-hashes --python-version 3.11 --python-platform x86_64-manylinux_2_28 -o docker/requirements.lock
@@ -343,7 +344,7 @@ Interactive helper for git-flow operations:
 | Workflow | Trigger | Purpose |
 |:---------|:--------|:--------|
 | `test.yml` | Push to develop/main, PR | Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build and run the image |
-| `latest-deps.yml` | Weekly (Monday), manual | The suite on the newest dependency releases, Python 3.10–3.14, with compatible Rust updates; a failure opens or updates one `latest-deps` issue |
+| `latest-deps.yml` | Monthly (the 1st), manual before a release | The suite on the newest dependency releases, Python 3.10–3.14, with compatible Rust updates; a failure opens or updates one `latest-deps` issue |
 | `release.yml` | Tag push `X.Y.Z` | Verify the version sources, build the wheel and sdist, publish PyPI and Docker, create the GitHub Release |
 | `nextflow-lint.yml` | Push/PR touching `nextflow/` | Strict-syntax lint; every process `nextflow inspect` resolves runs the manifest's image |
 | `deploy-docs.yml` | Push to main or develop (docs/) | Deploy versioned docs via `mike` (`stable` from main, `dev` from develop) |
