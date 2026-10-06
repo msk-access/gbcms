@@ -1,8 +1,10 @@
 """S3 #239: Fisher's exact test at any depth.
 
 `fisher_exact_2x2` (strand bias, fragment strand bias, the ASJD junction test, and
-merge's combined strand bias) returned p = 0 for every table above ~1,030 reads:
-statrs's binomial overflowed, every pmf was NaN, and the sum stayed 0. On the RC
+merge's combined strand bias) returned p = 0 whenever C(n, a + c) exceeded f64's
+range: statrs's binomial overflowed and the sum stayed 0. That needs both columns
+(the forward and reverse totals) wide, so on strand-balanced tables it began near
+1,030 reads, while a table with one thin strand stayed correct at any depth. On the RC
 cfDNA rows 316 of 1,060 read-level strand-bias p-values were 0 where the exact p is
 above 0 (298 of them >= 0.05). It also counted every table less likely than 1e-10
 regardless of the observed one, so strongly biased tables were floored near 1e-10.
@@ -22,6 +24,9 @@ from helpers import build_bam, count_one_checked, make_read
 from gbcms._rs import Variant, fisher_exact_2x2
 
 REL = 1e-9
+# Deep tables: a log recurrence started at one end of the range drifts as its sum
+# grows (to ~n ln 2 on balanced tables); started at the mode it does not.
+REL_DEEP = 1e-12
 
 
 def oracle(a, b, c, d):
@@ -76,6 +81,47 @@ def test_strongly_biased_tables_are_not_floored(table):
     assert close(got, want), (table, got, want)
 
 
+BALANCED_DEEP = [
+    (5100, 4900, 4950, 5050),  # n = 20,000
+    (10200, 9800, 9900, 10100),  # n = 40,000
+]
+
+
+@pytest.mark.xfail(strict=True, reason="recurrence starts at the low end of the range")
+@pytest.mark.parametrize("table", BALANCED_DEEP, ids=[f"n{sum(t)}" for t in BALANCED_DEEP])
+def test_precision_holds_at_depth(table):
+    got, want = fisher_exact_2x2(*table)[0], oracle(*table)
+    assert abs(got - want) <= REL_DEEP * want, (table, got, want)
+
+
+# Tables with another table as likely as the observed one to within R's 1 + 1e-7 but
+# not scipy's 1 + 1e-14: R counts it, so R's p (and gbcms's) differs from scipy's.
+NEAR_TIES = [
+    # table, R's fisher.test p, scipy 1.15's p
+    ((531, 913, 484, 623), 4.461780029e-4, 3.86606e-4),
+    ((202, 287, 360, 498), 0.8631643753, 0.818544),
+    ((397, 404, 799, 804), 0.9310402918, 0.896817),
+]
+
+
+@pytest.mark.parametrize("table,r_p,scipy_p", NEAR_TIES, ids=[str(t[0]) for t in NEAR_TIES])
+def test_near_ties_follow_rs_rule(table, r_p, scipy_p):
+    got = fisher_exact_2x2(*table)[0]
+    assert close(got, oracle(*table)), (table, got)
+    assert got == pytest.approx(r_p, rel=1e-9)
+    assert got != pytest.approx(scipy_p, rel=1e-3)
+
+
+@pytest.mark.xfail(strict=True, run=False, reason="holds every table: 34 GB at u32 max")
+def test_extreme_margins_stay_bounded():
+    """Cells at u32 max: terms more than e^-750 below the mode add exactly 0, so the
+    sum stops there and time and memory stay bounded (the whole range is 4.3e9 tables)."""
+    m = 2**32 - 1
+    assert fisher_exact_2x2(m, m, m, m)[0] == 1.0
+    assert fisher_exact_2x2(m, 0, 0, m)[0] == 0.0
+    assert 0.0 < fisher_exact_2x2(m, m - 200_000, m - 200_000, m)[0] < 1.0
+
+
 def test_a_grid_of_tables_gives_the_exact_p():
     """Every table with cells 0-9, plus 300 seeded random tables up to n = 3,000."""
     tables = [
@@ -119,6 +165,10 @@ def test_strand_bias_columns_are_exact_at_depth(tmp_path):
         reads.append(make_read(f"r{i}", seq, start, ((0, 80),), flag=16 if rev else 0))
     bam = build_bam(tmp_path, reads)
     counts = count_one_checked(bam, Variant("chr1", pos, contig[pos], alt, "SNP"))
+    assert counts.dp >= counts.rd + counts.ad
+    assert counts.dpf >= counts.rdf + counts.adf
+    assert counts.rd == counts.rd_fwd + counts.rd_rev
+    assert counts.ad == counts.ad_fwd + counts.ad_rev
     assert (counts.rd_fwd, counts.rd_rev, counts.ad_fwd, counts.ad_rev) == (600, 600, 20, 20)
     assert counts.sb_pval == pytest.approx(oracle(600, 600, 20, 20)) == 1.0
     assert counts.fsb_pval == pytest.approx(
