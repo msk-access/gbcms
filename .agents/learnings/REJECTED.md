@@ -10,6 +10,21 @@ Newest at the top.
 
 ---
 
+## [REJ-20261006-001] Give ALT the REF margin: no ALT call on a read whose last base is the deciding base
+- **Target:** pure-indel read judgment (RJ-1/RJ-3; `tests/census.py` policy rules) — the
+  one-anchor ALT verdict.
+- **Proposed:** require one base past the deciding base for ALT as well as REF, so a
+  terminal sequencing error cannot turn a REF read into an ALT read.
+- **Reason vetoed:** operator, after the C35 BAM check (#242): at the 18 changed RC rows,
+  reads ending on the deciding base show a third base (always an error) 0 times in 348
+  ACCESS reads and once in 71 IMPACT reads, predicting ~0 and ~0.5 false ALT against 32
+  and 13 terminal ALT reads. The REF margin guards a systematic aligner bias (an ALT read
+  near its end written REF with a cheaper mismatch); a false terminal ALT needs a random
+  Q20+ error, the same one-base evidence an SNV ALT call rests on. A symmetric margin
+  would drop ~45 real carriers there. Kept; the third-base control becomes a validation
+  check, not a rule.
+- **Date:** 2026-10-06
+
 ## [REJ-20260923-004] Drop the contig name from MNP rescue labels
 - **Target:** `src/gbcms/pipeline.py` — `RESCUED_COMPONENT(...)` / `gbcms_rescue` labels
 - **Proposed:** write `pos(REF>ALT)` only, since the row names the contig.

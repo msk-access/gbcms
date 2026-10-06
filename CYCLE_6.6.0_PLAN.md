@@ -1987,6 +1987,15 @@ page from the CHANGELOG section in the release workflow.
     only with masked identity (an N counted as a mismatch), 24 fail both; FORTE 17
     fail both. The band stays as it is (operator, 2026-10-06: the identity-band
     rule), with a readable base required.
+  BAM check after the PR (#242 comment): an oracle sharing no code with gbcms,
+  reading each read's bases with the decided rules, equals the fix on 15 of 18
+  changed RC rows (reads and fragments); the other three differ by 1–2 reads (5 of
+  4,107 ALT reads). cBio's ACCESS counts are fragments over duplex + simplex and sit
+  below even the fully readable count; its IMPACT counts are reads, near an
+  exact-junction string count. Reads deciding on their last base: third base 0 of 348
+  (ACCESS), 1 of 71 (IMPACT) against 32 and 13 terminal ALT reads. Decided (operator,
+  2026-10-06): the terminal ALT rule stays (RJ-3; REJECTED REJ-20261006-001); the
+  third-base control is a validation check, not a rule.
 - **C36 #243: a same-length insert of other bases (2026-10-06).** Found in the bio 4
   review. A read whose insertion has the variant's length and other readable bases,
   near the variant, went to Phase 3, whose closer haplotype let length win ALT
