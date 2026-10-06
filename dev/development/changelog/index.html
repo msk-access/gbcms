@@ -794,6 +794,44 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
 </ul>
+<h3 id="changed-gtf-loading-139">Changed — GTF loading (#139)<a class="headerlink" href="#changed-gtf-loading-139" title="Permanent link">¶</a></h3>
+<p>Measured on GRCh38.111 (<code>CYCLE_6.6.0_PLAN.md</code>, "D4 GTF loading"). Only <code>--gtf</code> runs
+are affected, and their output is unchanged for well-formed GTFs.
+- <strong>The GTF loads in 2 s instead of 9 s, plain or <code>.gtf.gz</code>.</strong> noodles-gtf parsed
+  every line before reading its feature column. A byte-level parser reads each
+  line's feature and chromosome first and checks only the exon lines it keeps.
+  Measured in <code>gbcms rna</code> on Ensembl 111: 1.6 s for 16 chromosomes (8.9 s before),
+  2.0 s for the whole genome (9.3 s), 2.4 s from <code>.gtf.gz</code>. GENCODE v50 loads in
+  4.0 s (basic) and 6.5 s (comprehensive) from <code>.gtf.gz</code>. Peak memory falls (407 MB
+  vs 470 MB for 16 chromosomes): <code>gene_id</code>, stored for every exon and never read,
+  is gone.
+  - It loads exactly the exons noodles did: no line differs across Ensembl 111 and
+    GENCODE v50 comprehensive, v50 basic and v47lift37 (26.1M lines).
+  - gzip and BGZF are detected from the file's content. The config already accepted
+    <code>.gtf.gz</code>, but the parser failed on it with "stream did not contain valid UTF-8".
+- <strong>Malformed exon lines are rejected and warned about.</strong> The grammar is noodles-gtf's,
+  column by column, except in four places where noodles loaded a line wrongly:
+  - A whitespace run may now separate a key from its value. noodles read
+    <code>transcript_id  "T1"</code> as the ID <code>"T1"</code>, quotes included.
+  - Unquoted values are trimmed.
+  - A line with start after end is rejected; noodles kept it as a negative-length exon.
+  - A coordinate past 2,147,483,647 is rejected; noodles wrapped it negative.
+  - An exon with an empty <code>transcript_id</code> is rejected, as a missing one already was.
+    noodles merged every such exon into one transcript.
+  - A <code>transcript_id</code> that strips to nothing (<code>"."</code>, <code>".1"</code>) is rejected the same way.
+  - An exon line that is not UTF-8 text is rejected; it used to stop the run.
+  - Each of these lines used to move <code>exon_boundary_dist</code> with a bogus boundary.
+    Rejected lines now get one warning with their count and the first one's line
+    number and reason.
+- <strong>The GTF index cache is deprecated.</strong> On Ensembl it saved 1–1.4 s a sample: a hit
+  cost 0.9 s in the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (~0.3 s of it start-up) against a 1.6–2.0 s load now. It
+  brought a build step, a Nextflow process and a 97 MB file per chromosome set. It is
+  no longer used:
+  - <code>--gtf-cache-dir</code>, <code>gbcms build-gtf-cache</code> and the Nextflow <code>--gtf_cache</code> are
+    accepted and ignored with a warning, and are removed in 6.7.0.
+  - The <code>GBCMS_BUILD_GTF_CACHE</code> process, the cache module and its binding are gone.
+  - The noodles-gtf, bincode and serde dependencies are gone too. bincode 3.0 is a
+    <code>compile_error!</code> release, so there was no upgrade path.</p>
 <h3 id="changed-mfsd-statistics-153-154">Changed — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> statistics (#153, #154)<a class="headerlink" href="#changed-mfsd-statistics-153-154" title="Permanent link">¶</a></h3>
 <p>Measured first on ACCESS plasma labeled by the patient's buffy coat (operator
 decisions 2026-09-25, refined 2026-10-05): <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> is graded, plasma-only evidence,

@@ -3140,7 +3140,7 @@ provides these dependencies.</p>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>build-gtf-cache</strong></td>
-<td style="text-align: left;">Pre-build the shared GTF index once for a cohort so per-sample RNA runs reuse it (<code>gbcms build-gtf-cache --gtf &lt;file&gt; --variants &lt;vcf/maf&gt; --cache-dir &lt;dir&gt;</code>; see <a href="#cli-rna">rna</a>)</td>
+<td style="text-align: left;">Deprecated in 6.6.0: does nothing and warns; removed in 6.7.0. The GTF loads in a few seconds, so there is no cache to build.</td>
 </tr>
 </tbody>
 </table>
@@ -3914,12 +3914,12 @@ transparently.  See <a href="#cli-dna-required-arguments">CRAM Support</a> for d
 <tr>
 <td style="text-align: left;"><code>--gtf</code></td>
 <td style="text-align: left;"><em>(none)</em></td>
-<td style="text-align: left;">Path to Ensembl/GENCODE GTF annotation file (<code>.gtf</code> or <code>.gtf.gz</code>). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's <code>gene_strand</code> — required for <code>--enforce_strandedness</code> and ASJD strand-discordance to do anything.</td>
+<td style="text-align: left;">Path to Ensembl/GENCODE GTF annotation file, plain or gzip/BGZF (<code>.gtf</code> or <code>.gtf.gz</code>). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's <code>gene_strand</code> — required for <code>--enforce_strandedness</code> and ASJD strand-discordance to do anything.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--gtf-cache-dir</code></td>
 <td style="text-align: left;"><em>(none)</em></td>
-<td style="text-align: left;">Directory holding a prebuilt GTF index. When set, per-sample runs load the cached index (~0.05s) instead of re-parsing the GTF (~9s). Build it once for a cohort with <code>gbcms build-gtf-cache --gtf &lt;file&gt; --variants &lt;vcf/maf&gt; --cache-dir &lt;dir&gt;</code>.</td>
+<td style="text-align: left;">Deprecated in 6.6.0 and ignored (warns); removed in 6.7.0. The GTF loads in a few seconds, so there is no cache.</td>
 </tr>
 </tbody>
 </table>
@@ -5707,8 +5707,8 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <p class="admonition-title">RNA mode defaults</p>
 <p>RNA mode uses different <abbr title="Pair Hidden Markov Model - Probabilistic alignment using base quality scores">PairHMM</abbr> gap penalties by default (<code>gap_open=5e-3</code>, <code>gap_extend=0.25</code>) to tolerate <abbr title="Reverse Transcriptase - Enzyme converting RNA to cDNA">RT</abbr>-induced stutter at homopolymers. These can be overridden via the alignment backend parameters below.</p>
 </div>
-<h2 id="nextflow-parameters-gtf-index-caching-rna">GTF Index Caching (RNA)<a class="headerlink" href="#nextflow-parameters-gtf-index-caching-rna" title="Permanent link">¶</a></h2>
-<p>Parsing a full Ensembl GTF takes ~9s. Across a cohort that cost is otherwise paid once <strong>per sample</strong>. The pipeline caches the parsed index so the GTF is parsed <strong>once for the whole cohort</strong> — the per-sample annotation load drops from ~9s to ~0.05s.</p>
+<h2 id="nextflow-parameters-gtf-index-caching-rna-deprecated">GTF Index Caching (RNA) — deprecated<a class="headerlink" href="#nextflow-parameters-gtf-index-caching-rna-deprecated" title="Permanent link">¶</a></h2>
+<p>The GTF index cache is gone in 6.6.0: each <code>GBCMS_RNA</code> task loads the GTF (plain or <code>.gtf.gz</code>) in a few seconds (2 s for a whole Ensembl GTF), so the <code>GBCMS_BUILD_GTF_CACHE</code> step was removed.</p>
 <table>
 <thead>
 <tr>
@@ -5720,14 +5720,17 @@ skip the merge step and output the single <abbr title="Mutation Annotation Forma
 <tbody>
 <tr>
 <td style="text-align: left;"><code>--gtf_cache</code></td>
-<td style="text-align: left;"><code>true</code></td>
-<td style="text-align: left;">When <code>--gtf</code> is set, pre-build the GTF index once per cohort so per-sample tasks skip the parse. Set <code>false</code> to disable (each sample re-parses).</td>
+<td style="text-align: left;"><code>null</code></td>
+<td style="text-align: left;">Deprecated in 6.6.0 and ignored; the pipeline warns when it is set. Removed in 6.7.0.</td>
 </tr>
 </tbody>
 </table>
-<p><strong>This is automatic — no extra wiring needed.</strong> When <code>--mode rna</code> is run with a <code>--gtf</code> (and <code>--gtf_cache</code> is left <code>true</code>), the pipeline runs a single <code>GBCMS_BUILD_GTF_CACHE</code> process up front, using the cohort's <code>--gtf</code> and <code>--variants</code>. Every per-sample <code>GBCMS_RNA</code> task then receives the prebuilt cache directory (via the Nextflow DAG, so it is guaranteed ready first) and loads the index in ~0.05s instead of re-parsing.</p>
-<p><strong>Why the up-front build matters.</strong> Nextflow launches up to <code>queueSize</code> tasks at once. If the cache did not already exist, every concurrently-launched sample would cold-miss and re-parse the GTF — so a plain cache saves nothing until a later wave, and nothing at all for a cohort smaller than <code>queueSize</code>. Building it once before the fan-out lets every sample start warm.</p>
-<p>The pre-build uses the cohort <code>--variants</code> file. With <code>--filter_by_sample</code>, each sample's variants are a per-sample subset; if a subset's chromosome set differs from the cohort's, that sample simply falls back to a normal parse (the cache is keyed on the variant chromosome set). Caching is best-effort throughout — a missing, corrupt, stale-version, or unwritable cache always falls back to a fresh parse and never affects counts.</p>
+<div class="admonition tip">
+<p class="admonition-title">Cohorts on shared storage: pass the <code>.gtf.gz</code></p>
+<p>Every task reads the GTF. The Ensembl GRCh38 GTF is 1.46 GB plain and 61 MB
+gzipped, so <code>--gtf Homo_sapiens.GRCh38.111.gtf.gz</code> keeps per-task reads below
+what the old cache file was (96–125 MB) for about 0.4 s more decoding.</p>
+</div>
 <h2 id="nextflow-parameters-alignment-backend-advanced">Alignment Backend (Advanced)<a class="headerlink" href="#nextflow-parameters-alignment-backend-advanced" title="Permanent link">¶</a></h2>
 <table>
 <thead>
@@ -6418,8 +6421,8 @@ Use mouse to pan and zoom
 <a id="__codelineno-2-20" name="__codelineno-2-20" href="#reference-architecture-__codelineno-2-20"></a>├── lib.rs                    # PyO3 module exports
 <a id="__codelineno-2-21" name="__codelineno-2-21" href="#reference-architecture-__codelineno-2-21"></a>├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
 <a id="__codelineno-2-22" name="__codelineno-2-22" href="#reference-architecture-__codelineno-2-22"></a>│   ├── mod.rs                # AnnotationIndex struct, COITree queries
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>│   ├── gtf.rs                # GTF parser (variant-guided streaming)
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   └── cache.rs              # GTF disk cache (GtfIndexBundle, bincode) — M5a
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#reference-architecture-__codelineno-2-23"></a>│   ├── gtf.rs                # GTF loader (plain or gzip/BGZF, variant-guided streaming)
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#reference-architecture-__codelineno-2-24"></a>│   └── gtf_line.rs           # One GTF line's exon fields (noodles-gtf's grammar)
 <a id="__codelineno-2-25" name="__codelineno-2-25" href="#reference-architecture-__codelineno-2-25"></a>├── counting/
 <a id="__codelineno-2-26" name="__codelineno-2-26" href="#reference-architecture-__codelineno-2-26"></a>│   ├── mod.rs                # Submodule re-exports
 <a id="__codelineno-2-27" name="__codelineno-2-27" href="#reference-architecture-__codelineno-2-27"></a>│   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI
@@ -11054,11 +11057,12 @@ same way and leaves mixed strands undetermined. A run-level WARNING names the
 variants left without a strand (the first ten, then a count).</p>
 </div>
 <div class="admonition tip">
-<p class="admonition-title">Cohort runs: pre-build the GTF cache</p>
-<p>The GTF is parsed per sample. For a cohort, run <code>gbcms build-gtf-cache</code> once and
-point every sample at the same <code>--gtf-cache-dir</code> so each per-sample run reuses the
-prebuilt index (~9s parse → ~0.05s load). The Nextflow pipeline wires this up
-automatically via the <code>GBCMS_BUILD_GTF_CACHE</code> process (<code>--gtf_cache</code>, default on).</p>
+<p class="admonition-title">Loading cost</p>
+<p>The GTF is loaded per run, plain or gzip/BGZF-compressed. Measured on a whole
+genome: 2.0 s for Ensembl 111 (2.4 s from <code>.gtf.gz</code>), 4.0 s for GENCODE v50
+basic and 6.5 s for GENCODE v50 comprehensive; fewer variant chromosomes load
+less. There is no cache to build (<code>--gtf-cache-dir</code> and <code>build-gtf-cache</code> are
+deprecated in 6.6.0 and do nothing).</p>
 </div>
 <hr>
 <h2 id="reference-rna-annotation-gtf-requirements">GTF Requirements<a class="headerlink" href="#reference-rna-annotation-gtf-requirements" title="Permanent link">¶</a></h2>
@@ -11093,13 +11097,22 @@ automatically via the <code>GBCMS_BUILD_GTF_CACHE</code> process (<code>--gtf_ca
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#reference-rna-annotation-__codelineno-0-5"></a>wget<span class="w"> </span>https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencode.v46.annotation.gtf.gz
 </code></pre></div>
 <h3 id="reference-rna-annotation-parsing-details">Parsing Details<a class="headerlink" href="#reference-rna-annotation-parsing-details" title="Permanent link">¶</a></h3>
-<p>The GTF parser (<code>rust/src/annotation/</code>) reads <strong>exon</strong> feature rows and extracts:</p>
+<p>The GTF loader (<code>rust/src/annotation/</code>) reads plain or gzip/BGZF files (detected
+from the content, not the extension) and keeps the <strong>exon</strong> rows of the variant
+chromosomes, extracting:</p>
 <ul>
-<li><code>gene_name</code> attribute → gene symbol</li>
-<li><code>transcript_id</code> attribute → transcript identifier</li>
 <li><code>seqname</code> (column 1) → chromosome (with <code>chr</code> prefix normalization)</li>
-<li><code>start</code>, <code>end</code> (columns 4-5) → 1-based exon coordinates</li>
+<li><code>start</code>, <code>end</code> (columns 4-5) → 1-based exon coordinates, stored 0-based half-open</li>
+<li><code>strand</code> (column 7) → <code>+</code>, <code>-</code> or unstranded <code>.</code></li>
+<li><code>transcript_id</code> attribute → transcript identifier (a GENCODE <code>.N</code> version is stripped)</li>
 </ul>
+<p>Each exon row is checked column by column with noodles-gtf's grammar (the parser
+used before 6.6.0): positive integer coordinates, a numeric or <code>.</code> score, <code>+</code>/<code>-</code>/<code>.</code>
+strand, a <code>.</code>/0/1/2 frame, and <code>key value;</code> attributes (an unquoted value ends at
+its <code>;</code>). Whitespace runs may separate a key from its value. A row with start after
+end, a coordinate past 2,147,483,647, a missing or empty <code>transcript_id</code> (after the
+version is stripped), or bytes that are not UTF-8 text is not loaded. Rejected rows
+are counted in one warning that names the first one's line number and reason.</p>
 <div class="admonition tip">
 <p class="admonition-title">Chromosome Normalization</p>
 <p>Chromosomes are normalized by stripping the <code>chr</code> prefix for internal matching
@@ -17920,6 +17933,44 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
 </ul>
+<h3 id="development-changelog-changed-gtf-loading-139">Changed — GTF loading (#139)<a class="headerlink" href="#development-changelog-changed-gtf-loading-139" title="Permanent link">¶</a></h3>
+<p>Measured on GRCh38.111 (<code>CYCLE_6.6.0_PLAN.md</code>, "D4 GTF loading"). Only <code>--gtf</code> runs
+are affected, and their output is unchanged for well-formed GTFs.
+- <strong>The GTF loads in 2 s instead of 9 s, plain or <code>.gtf.gz</code>.</strong> noodles-gtf parsed
+  every line before reading its feature column. A byte-level parser reads each
+  line's feature and chromosome first and checks only the exon lines it keeps.
+  Measured in <code>gbcms rna</code> on Ensembl 111: 1.6 s for 16 chromosomes (8.9 s before),
+  2.0 s for the whole genome (9.3 s), 2.4 s from <code>.gtf.gz</code>. GENCODE v50 loads in
+  4.0 s (basic) and 6.5 s (comprehensive) from <code>.gtf.gz</code>. Peak memory falls (407 MB
+  vs 470 MB for 16 chromosomes): <code>gene_id</code>, stored for every exon and never read,
+  is gone.
+  - It loads exactly the exons noodles did: no line differs across Ensembl 111 and
+    GENCODE v50 comprehensive, v50 basic and v47lift37 (26.1M lines).
+  - gzip and BGZF are detected from the file's content. The config already accepted
+    <code>.gtf.gz</code>, but the parser failed on it with "stream did not contain valid UTF-8".
+- <strong>Malformed exon lines are rejected and warned about.</strong> The grammar is noodles-gtf's,
+  column by column, except in four places where noodles loaded a line wrongly:
+  - A whitespace run may now separate a key from its value. noodles read
+    <code>transcript_id  "T1"</code> as the ID <code>"T1"</code>, quotes included.
+  - Unquoted values are trimmed.
+  - A line with start after end is rejected; noodles kept it as a negative-length exon.
+  - A coordinate past 2,147,483,647 is rejected; noodles wrapped it negative.
+  - An exon with an empty <code>transcript_id</code> is rejected, as a missing one already was.
+    noodles merged every such exon into one transcript.
+  - A <code>transcript_id</code> that strips to nothing (<code>"."</code>, <code>".1"</code>) is rejected the same way.
+  - An exon line that is not UTF-8 text is rejected; it used to stop the run.
+  - Each of these lines used to move <code>exon_boundary_dist</code> with a bogus boundary.
+    Rejected lines now get one warning with their count and the first one's line
+    number and reason.
+- <strong>The GTF index cache is deprecated.</strong> On Ensembl it saved 1–1.4 s a sample: a hit
+  cost 0.9 s in the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> (~0.3 s of it start-up) against a 1.6–2.0 s load now. It
+  brought a build step, a Nextflow process and a 97 MB file per chromosome set. It is
+  no longer used:
+  - <code>--gtf-cache-dir</code>, <code>gbcms build-gtf-cache</code> and the Nextflow <code>--gtf_cache</code> are
+    accepted and ignored with a warning, and are removed in 6.7.0.
+  - The <code>GBCMS_BUILD_GTF_CACHE</code> process, the cache module and its binding are gone.
+  - The noodles-gtf, bincode and serde dependencies are gone too. bincode 3.0 is a
+    <code>compile_error!</code> release, so there was no upgrade path.</p>
 <h3 id="development-changelog-changed-mfsd-statistics-153-154">Changed — <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> statistics (#153, #154)<a class="headerlink" href="#development-changelog-changed-mfsd-statistics-153-154" title="Permanent link">¶</a></h3>
 <p>Measured first on ACCESS plasma labeled by the patient's buffy coat (operator
 decisions 2026-09-25, refined 2026-10-05): <abbr title="Mutant Fragment Size Distribution - Insert-size analysis for REF vs ALT fragments">mFSD</abbr> is graded, plasma-only evidence,
