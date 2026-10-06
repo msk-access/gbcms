@@ -1724,6 +1724,50 @@ page from the CHANGELOG section in the release workflow.
   `pytest-mock` and `types-pyyaml`. Decided: keep floors; a weekly CI job on the
   latest releases; Docker built from a lock. PR A: Python, CI, Docker lock. PR B: the
   Rust majors one at a time, the RC set byte-identical after each (isolated builds).
+- **D4 GTF loading (noodles-gtf 0.58, bincode 3): no cache, one fast parser.**
+  bincode was a default in M5a, never compared. Surveyed tools: those with their own
+  databases ship them prebuilt (SnpEff, the VEP cache, CTAT); most parse the GTF
+  each run (bcftools csq, featureCounts, Arriba, regtools); bgzip+tabix is the
+  standard index (VEP GTF mode, igv.js, JBrowse), but Ensembl, GENCODE and iGenomes
+  ship none. Measured on GRCh38.111 (`harness/gtfidx/`):
+  - **noodles was the cost.** It parses every line before the feature check:
+    5.9 s (6.3 s with the index build; 9.4 s in `build-gtf-cache`). A byte-level loop
+    checks the feature column first: 0.7 s (1.1 s with the build) for the same
+    16 chromosomes, 1.3 s for the whole genome, 1.7 s from `.gtf.gz`. Peak memory
+    is unchanged (357 MB for 16 chromosomes).
+  - **Identical exons.** Checksums match on both chromosome sets. A per-line diff
+    against noodles on Ensembl 111 and GENCODE v50 comprehensive, v50 basic and
+    v47lift37 (26.1M lines, 12.0M exons) finds no line that differs.
+  - **Edge corpus (34 lines).** noodles reads one space between key and value
+    (`transcript_id  "T1"` gives the ID ` "T1"`, quotes included). It keeps
+    start > end, keeps an empty `transcript_id` (all such exons become one
+    transcript), and keeps coordinates past i32, which wrap negative.
+  - **The cache now saves about 0.5 s a sample.** A hit costs 0.9 s in the CLI
+    (~0.3 s of it is startup), and the cache is 97 MB per chromosome set. It brings a
+    build step, a Nextflow process and the bincode format, and bincode 3.0 is a
+    `compile_error!` tombstone.
+  - **`.gtf.gz` is advertised, but it crashes.** The config validator accepts
+    `.gtf.gz`, and the parser fails with "stream did not contain valid UTF-8".
+  - **Tabix gives exactly the same answers.** All seven queries
+    (strand, nearest splice distance, intron boundaries ×2, overlapping transcripts,
+    transcript introns, junction known) agree on 5,757 positions (the probes plus
+    boundary, random and gene-desert positions) and 111,911 junction probes:
+    0 mismatches. The fetches are a variant window, each found transcript's span
+    from its transcript record, a nearest-boundary window that grows until the best
+    boundary lies inside it, and exons ending within tolerance of a junction's
+    start. Building the index takes 6.6 s (61 MB + 318 KB). The Python cost is
+    1.9 ms a variant; the Rust cost is not measured.
+  Decided:
+  - Replace noodles-gtf with a byte-level parser that reads `.gtf` and
+    `.gtf.gz`. It keeps noodles' grammar field by field, except that it allows
+    whitespace runs between key and value, trims unquoted values, and rejects
+    start > end, coordinates past i32 and an empty `transcript_id` (each counted).
+  - Deprecate the cache in 6.6.0: `--gtf-cache-dir`, `build-gtf-cache` and the
+    Nextflow `--gtf_cache` are accepted and ignored with a warning. The Nextflow
+    step, the cache module and bincode go now; the flags go in 6.7.0.
+  - Tabix stays out. The design above is the answer if memory ever becomes the
+    limit.
+  - A PR of its own, before PR B, which then has no noodles or bincode migration.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
