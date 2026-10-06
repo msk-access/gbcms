@@ -35,7 +35,9 @@ fn build_commit() -> &'static str {
 }
 
 /// A Python module implemented in Rust (bundled as gbcms._rs).
-#[pymodule]
+// gil_used: the module keeps the GIL on a free-threaded interpreter, as before
+// pyo3 0.28 changed the default; gbcms is neither built nor tested free-threaded.
+#[pymodule(gil_used = true)]
 fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Forward Rust log records to Python's `logging` module. The filter must
     // admit TRACE: pyo3_log::init() caps the global max level at DEBUG, which

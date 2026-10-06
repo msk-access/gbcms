@@ -91,9 +91,8 @@ pub fn prepare_variants(
     let tally_ref = &tally;
 
     // Release GIL for parallel execution
-    #[allow(deprecated)]
     let results: Result<Vec<PreparedVariant>, anyhow::Error> =
-        py.allow_threads(move || {
+        py.detach(move || {
             pool.install(|| {
                 variants
                     .par_iter()
