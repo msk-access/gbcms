@@ -1751,6 +1751,21 @@ page from the CHANGELOG section in the release workflow.
     `.gtf.gz`; GENCODE v50 basic 4.0 s and comprehensive 6.5 s (`.gtf.gz`, whole
     genome, 1.3 GB peak). Slower than the prototype above, which skipped UTF-8 and
     full attribute checks; zlib-rs replaces miniz_oxide for gzip.
+  - **Acceptance (develop vs the final build, plain GTF and a BGZF copy in the same
+    line order): 0 changed rows in any column.** FORTE over the mount, one BAM at a
+    time: the RC truth cohort (33 samples, 94 rows) and the T9 probes on the 3 T6
+    samples (978 rows). A full local FORTE BAM: the C1 splice probes (2,408), T9
+    (326), T10 (40) and the C16 masked-window probes (56); every row has a boundary
+    distance and 2,778 of 2,830 have transcripts. The review rebuilt the index both
+    ways and found it byte-identical (Ensembl 111, GENCODE v50 basic).
+  - **Why the cache was added (M5a, #55) and what is left of it.** RNA runs were
+    ~90% GTF parse (~8 s vs ~40 ms of counting), repeated per Nextflow task, and a
+    pre-build step was needed because concurrent tasks all missed the cache. Now:
+    a warm-cache run took 0.86 s / 1.02 s (16 / all chromosomes) against 2.05 s /
+    2.5 s plain and 2.4 s / 2.9 s from `.gtf.gz`. The cache would save 1.2–1.9 s a
+    task, while the pre-build was a serial job every task waited on. Per-task reads
+    were 96–125 MB with the cache; the `.gtf.gz` is 61 MB (the plain GTF 1.46 GB),
+    so the Nextflow page recommends it. Memory is the same either way.
   - **`.gtf.gz` is advertised, but it crashes.** The config validator accepts
     `.gtf.gz`, and the parser fails with "stream did not contain valid UTF-8".
   - **Tabix gives exactly the same answers.** All seven queries
