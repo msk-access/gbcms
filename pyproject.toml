@@ -23,15 +23,14 @@ classifiers = [
 ]
 
 # Floors are measured: the suite passes with every one of them installed together
-# (Python 3.10 and 3.11), and CI's floors leg keeps them so. typer below 0.15.4
-# breaks under click >= 8.2; pysam 0.21 has no arm64 wheel and no buildable sdist.
+# (Python 3.10 and 3.11), and CI's floors leg checks that they are what it installed.
+# typer below 0.15.4 does not cap click and breaks under click >= 8.2; pysam 0.21 has
+# no macOS arm64 wheel and its sdist no longer builds (its Linux wheels work).
+# click is not one: typer bundles its own (and declares click while it needs one),
+# and gbcms never imports it; the test that does gets it from the `test` group.
 dependencies = [
     "pysam>=0.22.0",
     "typer>=0.15.4",
-    # click is the engine under typer; the CLI tests import it directly
-    # (typer.main.get_command returns a click.Group). Pin it explicitly so the
-    # built wheel carries it and CI's lock-bypassing wheel install resolves it.
-    "click>=8.0",
     "rich>=13.0.0",
     "pydantic>=2.0.0",
     "polars>=1.0.0",
@@ -148,8 +147,8 @@ exclude_lines = [
 
 [dependency-groups]
 # Contributors' tools (PEP 735; not in the published metadata). `maturin develop`
-# installs `dev`, which needs pip>=25.1 or uv. CI installs `test` for the suite and
-# `dev` for lint.
+# installs `dev`, which needs pip>=25.1 or uv. CI installs `test` for the suite,
+# `dev` for lint and `docs` for the site.
 test = [
     "pytest>=8.4.2",
     "pytest-cov>=4.1.0",
@@ -158,18 +157,33 @@ test = [
     "pyarrow",
     # the workflow-contract tests parse .github/workflows/*.yml
     "pyyaml>=6.0",
-    # the contract tests parse pyproject.toml
+    # the contract tests parse pyproject.toml and its version specifiers
     "tomli>=2.0; python_version < '3.11'",
+    "packaging",
+    # the CLI tests introspect the Typer app through click's types
+    "click>=8.0",
 ]
-dev = [
-    {include-group = "test"},
-    "black>=25.9.0",
-    "ruff>=0.13.3",
-    "mypy>=1.18.2",
-    "types-pyyaml>=6.0.0",
+# The site build (deploy-docs.yml installs this group).
+docs = [
     # MkDocs 2.0 is incompatible with Material and this site's config (anchor
     # validation, exclude_docs, snippets); the migration is D3 #138.
     "mkdocs>=1.6,<2",
     "mkdocs-material>=9.5,<10",
+    "mkdocs-mermaid2-plugin",
+    "mkdocs-glightbox",
+    "mkdocs-git-revision-date-localized-plugin",
+    "mkdocs-panzoom-plugin",
+    "mkdocs-pdf",
     "mkdocs-print-site-plugin>=2.3.0",
+    "mike",
+    "pillow",
+    "cairosvg",
+]
+dev = [
+    {include-group = "test"},
+    {include-group = "docs"},
+    "black>=25.9.0",
+    "ruff>=0.13.3",
+    "mypy>=1.18.2",
+    "types-pyyaml>=6.0.0",
 ]

@@ -11,6 +11,8 @@ on:
   schedule:
     # Monthly: PR CI already installs the latest releases, so this only covers quiet
     # stretches (GitHub disables schedules after 60 days without repo activity).
+    # A scheduled run tests the default branch, main: the release users install.
+    # Before a release, run it by hand on the release branch.
     - cron: "17 6 1 * *"  # the 1st, 06:17 UTC
   workflow_dispatch:
 

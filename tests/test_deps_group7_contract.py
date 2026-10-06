@@ -19,7 +19,6 @@ Contracts:
 import re
 from pathlib import Path
 
-import pytest
 import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
@@ -35,7 +34,6 @@ FLOORS = {
     "pydantic": "2.0.0",
     "polars": "1.0.0",
 }
-_REVIEW = pytest.mark.xfail(strict=True, reason="review round, red first")
 
 
 def _toml():
@@ -60,7 +58,6 @@ def _runs(job):
 # ── pyproject ────────────────────────────────────────────────────────────────
 
 
-@_REVIEW
 def test_the_floors_are_the_measured_minimums():
     reqs = {Requirement(r).name: Requirement(r) for r in _toml()["project"]["dependencies"]}
     assert set(reqs) == set(FLOORS)
@@ -87,7 +84,6 @@ def _groups():
     }
 
 
-@_REVIEW
 def test_what_only_the_tests_import_is_a_test_dependency():
     """typer bundles its own click since 0.2x and gbcms never imports it; a test does.
     packaging is imported by these contract tests."""
@@ -96,7 +92,6 @@ def test_what_only_the_tests_import_is_a_test_dependency():
     assert {"click", "packaging"} <= _groups()[1]["test"]
 
 
-@_REVIEW
 def test_the_docs_tools_are_one_list():
     groups, names = _groups()
     assert {
@@ -125,7 +120,8 @@ def test_one_dev_dependency_list():
     }
     assert {"pytest", "pytest-cov", "pytest-mock", "pyarrow", "pyyaml"} <= names["test"]
     assert {"include-group": "test"} in groups["dev"]
-    assert {"black", "ruff", "mypy", "types-pyyaml", "mkdocs", "mkdocs-material"} <= names["dev"]
+    assert {"black", "ruff", "mypy", "types-pyyaml"} <= names["dev"]
+    assert {"include-group": "docs"} in groups["dev"] and "mkdocs" in names["docs"]
     assert "pytest-benchmark" not in names["test"] | names["dev"]
 
 
@@ -150,7 +146,6 @@ def test_pr_ci_covers_the_ends_the_image_and_the_floors():
     assert "matrix.os == 'Linux'" not in yaml.safe_dump(job), "a step that can never run"
 
 
-@_REVIEW
 def test_the_floors_leg_proves_it_installed_the_floors():
     """lowest-direct keeps an installed version that satisfies a floor, so the floors
     go in before anything else and a check compares each to pyproject's floor."""
@@ -162,7 +157,6 @@ def test_the_floors_leg_proves_it_installed_the_floors():
     assert (ROOT / "scripts" / "check_floors.py").exists()
 
 
-@_REVIEW
 def test_nothing_installs_the_old_dev_extra():
     extra = re.compile(r"\.\[[^\]]*\bdev\b[^\]]*\]")
     files = [*WF.glob("*.yml"), *ROOT.glob("scripts/*.sh"), ROOT / "Makefile"]
@@ -252,7 +246,6 @@ def test_the_developer_docs_say_pip_251_before_maturin_develop():
         assert re.search(r"pip>=25\.1", text[:first]), doc
 
 
-@_REVIEW
 def test_contributing_creates_a_venv_before_pip():
     """maturin develop needs a virtualenv, and the system pip is externally managed."""
     text = (ROOT / "CONTRIBUTING.md").read_text()

@@ -132,9 +132,10 @@ too. The next cycle's plan is added to `develop` after the back-merge.
 ### 4. Run Pre-Release Checks
 
 Refresh the Docker image's dependency lock first: the newest releases that satisfy
-`pyproject.toml`. Run `latest-deps.yml` by hand first (Actions → Latest dependencies →
-Run workflow): it tests those releases on every Python, and its summary shows what the
-refresh changes. Commit the lock with the release.
+`pyproject.toml`. Run `latest-deps.yml` by hand on the release branch first (Actions →
+Latest dependencies → Run workflow → `release/X.Y.Z`; its monthly runs test `main`): it
+tests those releases on every Python, and its summary shows what the refresh changes.
+Commit the lock with the release.
 
 ```bash
 uv pip compile pyproject.toml --upgrade --generate-hashes --python-version 3.11 --python-platform x86_64-manylinux_2_28 -o docker/requirements.lock

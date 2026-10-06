@@ -1800,8 +1800,10 @@ page from the CHANGELOG section in the release workflow.
     polars 1.44.2), the suite passes (1,294 each). CI tests 3.11 and 3.12; the
     declared minimum (3.10) and the newest (3.13, 3.14) were untested.
   - **The declared floors were false.** At `lowest-direct` the CLI crashes: typer
-    0.9.0 cannot read its `list[...]` options. pysam 0.21.0 has no arm64 wheel, and
-    its sdist fails on current setuptools (`pkg_resources`).
+    0.9.0 cannot read its `list[...]` options. pysam 0.21.0 has no macOS arm64 wheel,
+    and its sdist fails on current setuptools (`pkg_resources`); its Linux wheels
+    pass the suite (review). click is no runtime dependency at all: typer 0.2x
+    bundles its own, and only a test imports it.
   - **Measured minimums.** Bisected one package at a time, the others at latest:
     typer 0.15.4 (older typer breaks with click >= 8.2, which `click>=8.0` allows)
     and pysam 0.22.0. click 8.0, rich 13.0, pydantic 2.0 and polars 1.0 hold. All
@@ -1817,12 +1819,14 @@ page from the CHANGELOG section in the release workflow.
     never runs anything inside the image. A hash-pinned lock for linux/amd64 and
     Python 3.11 is 16 packages. One Ubuntu step in `test.yml` can never run.
   Decided:
-  - Floors become `typer>=0.15.4` and `pysam>=0.22.0`. A PR CI leg (Ubuntu, Python
-    3.10) installs the floors (`uv --resolution lowest-direct`) so they stay true.
+  - Floors become `typer>=0.15.4` and `pysam>=0.22.0`, and click moves to the
+    `test` group. A PR CI leg (Ubuntu, Python 3.10) installs the floors first
+    (`uv --resolution lowest-direct`) and `scripts/check_floors.py` checks them.
   - On every PR, CI tests Ubuntu 3.10 (at the floors), 3.11 (the image's) and 3.14,
     plus macOS 3.12. The classifiers list 3.10–3.14.
-  - One dev list: PEP 735 groups, `test` inside `dev`. CI installs them with uv,
-    and the docs say pip >= 25.1.
+  - One dev list: PEP 735 groups `test`, `docs` (also what `deploy-docs.yml`
+    installs) and `dev` (which includes both). CI installs them with uv, and the docs
+    say pip >= 25.1.
   - The image installs a hash-pinned lock (`--require-hashes --no-deps`, then
     `pip check`), refreshed as a release-guide step, and CI runs the image.
   - A monthly job (and a manual run before each release) runs the latest Python

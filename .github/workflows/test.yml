@@ -87,13 +87,17 @@ jobs:
 
           # Build wheel and install (works without virtualenv)
           maturin build --release --out dist
-          uv pip install --system --group test
           if [ "$FLOORS" = "true" ]; then
-            # Every runtime dependency at its declared floor, then gbcms on top
+            # Every runtime dependency at its declared floor, first: lowest-direct
+            # keeps an installed version that satisfies a floor. Then the test tools,
+            # a check that the floors are what is installed, and gbcms on top
             # without re-resolving them.
             uv pip install --system --resolution lowest-direct -r pyproject.toml
+            uv pip install --system --group test
+            python scripts/check_floors.py
             uv pip install --system --no-deps dist/*.whl
           else
+            uv pip install --system --group test
             uv pip install --system dist/*.whl
           fi
           python -m pip check

@@ -19,8 +19,10 @@ upstream release and break PR CI even though releases and local dev are fine. Th
 us: `tests/test_cli_dna_rna.py` does `import click` (for the `click.Group` type from
 `typer.main.get_command`), but `click` was undeclared — only pulled in via `typer`. A
 fresh CI resolve stopped providing it → `ModuleNotFoundError: No module named 'click'`
-at pytest collection, across all platforms. Fixed by adding `click>=8.0` to
-`[project.dependencies]` (PR #21 / commit on develop).
+at pytest collection, across all platforms. Fixed then by adding `click>=8.0` to
+`[project.dependencies]` (PR #21). Since 2026-10-06 it is in the `test` group
+instead: typer bundles its own click (0.2x+) and gbcms never imports it — declare a
+package where it is imported (runtime vs test), not where it happens to arrive.
 
 **How to apply:**
 - If code (incl. tests) does `import X`, declare `X` in `pyproject.toml` — never rely

@@ -1168,6 +1168,14 @@ def test_vcf_output_of_a_whole_contig_deletion_is_a_valid_record(tmp_path, comma
 def test_the_docs_toolchain_is_pinned_below_mkdocs_2():
     """MkDocs 2.0 is incompatible with Material and with this site's config
     (anchor validation, exclude_docs, snippets): every install pins mkdocs < 2."""
+    import re
+
     pin = "mkdocs>=1.6,<2"
-    assert f'"{pin}"' in (ROOT / "pyproject.toml").read_text()
-    assert pin in (ROOT / ".github" / "workflows" / "deploy-docs.yml").read_text()
+    toml = (ROOT / "pyproject.toml").read_text()
+    # The docs tools are one list, pyproject's `docs` dependency group, which the
+    # site's workflow installs instead of naming packages itself.
+    docs = re.search(r"^docs = \[\n(.*?)^\]", toml, re.M | re.S)
+    assert docs and f'"{pin}"' in docs.group(1)
+    deploy = (ROOT / ".github" / "workflows" / "deploy-docs.yml").read_text()
+    assert "--group docs" in deploy
+    assert not re.search(r"pip install[^\n]*mkdocs", deploy)
