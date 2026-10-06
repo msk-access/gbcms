@@ -377,7 +377,8 @@ pub(crate) fn alt_bases_discriminate(record: &Record, v: &Variant, quals: &[u8],
 /// Whether the read's bases between its nearest aligned base left of a pure indel's
 /// discrimination window and its nearest aligned base right of it (its own gap may
 /// cover a flank base) are exactly the ALT over that stretch (bases below
-/// `min_baseq`, or N, fit anything; at least one base read), and wherever the
+/// `min_baseq`, or N, fit anything; at least one base read, and for an insertion
+/// more of its own inserted bases read than reference bases it deletes), and wherever the
 /// haplotype its own alignment proposes differs from the ALT the read shows the
 /// ALT's base unmasked (else it fits another allele as well). Judges a read whose
 /// CIGAR writes the event somewhere it gives another haplotype: compensating
@@ -435,9 +436,12 @@ fn read_bases_fit(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, che
         return false;
     }
     // The haplotype the read's own alignment proposes between the anchors: the
-    // reference where it aligns, its bases where it inserts.
+    // reference where it aligns, its bases where it inserts. Also which of those
+    // bases it inserts, and how many reference bases it deletes there.
     let seq = record.seq().as_bytes();
     let mut claimed: Vec<u8> = Vec::with_capacity(altw.len());
+    let mut inserted: Vec<bool> = Vec::with_capacity(altw.len());
+    let mut deleted = 0i64;
     let (mut rp, mut qp) = (record.pos(), 0usize);
     for op in record.cigar().iter() {
         match op {
@@ -445,6 +449,7 @@ fn read_bases_fit(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, che
                 for k in 0..*n as usize {
                     if qp + k > ql && qp + k < qr {
                         claimed.push(refw[(rp + k as i64 - (left + 1)) as usize]);
+                        inserted.push(false);
                     }
                 }
                 rp += *n as i64;
@@ -454,11 +459,16 @@ fn read_bases_fit(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, che
                 for k in 0..*n as usize {
                     if qp + k > ql && qp + k < qr {
                         claimed.push(seq[qp + k].to_ascii_uppercase());
+                        inserted.push(matches!(op, Cigar::Ins(_)));
                     }
                 }
                 qp += *n as usize;
             }
-            Cigar::Del(n) | Cigar::RefSkip(n) => rp += *n as i64,
+            Cigar::Del(n) => {
+                deleted += (rp + *n as i64).min(right) - rp.max(left + 1);
+                rp += *n as i64;
+            }
+            Cigar::RefSkip(n) => rp += *n as i64,
             _ => {}
         }
     }
@@ -469,6 +479,7 @@ fn read_bases_fit(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, che
     // the ALT disagree the read must say which, with an unmasked base: a masked one
     // there fits both alleles (an N where "deleted a C" and "deleted a G" differ).
     let mut read_any = false;
+    let mut read_inserted = 0i64;
     for (i, q) in (ql + 1..qr).enumerate() {
         let b = seq[q].to_ascii_uppercase();
         let masked = b == b'N' || quals.get(q).is_none_or(|&x| x < min_baseq);
@@ -482,6 +493,14 @@ fn read_bases_fit(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, che
             return false;
         }
         read_any = true;
+        read_inserted += i64::from(inserted[i]);
+    }
+    // An insertion's ALT needs one of the read's own inserted bases read: more
+    // readable inserted bases than the reference bases it deletes (a deleted anchor
+    // re-inserted with the insert reads the anchor, not the insert). Length alone
+    // is not the sequence.
+    if !want_ref && a.len() > r.len() && read_inserted <= deleted.max(0) {
+        return false;
     }
     read_any
 }

@@ -92,7 +92,6 @@ def _count(tmp_path, name, reads, pos, ref, alt, backend="pairhmm", with_census=
     return counts.rd, counts.ad, counts.partial_alt
 
 
-@pytest.mark.xfail(strict=True, reason="unreadable inserted bases are credited ALT")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_an_unreadable_insert_at_the_junction_is_partial(tmp_path, backend):
     """Four each: clean ALT, NNNNN at Q2, the right bases at Q2, REF."""
@@ -114,7 +113,6 @@ def test_a_partly_masked_insert_stays_alt(tmp_path):
     assert _count(tmp_path, "pm", reads, a, ref, alt) == (4, 8, 0)
 
 
-@pytest.mark.xfail(strict=True, reason="unreadable inserted bases are credited ALT")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_an_unreadable_insert_shifted_in_a_run_is_partial(tmp_path, backend):
     """G>GA before A6: four each of a clean +A at the left junction, a readable +A
@@ -129,7 +127,6 @@ def test_an_unreadable_insert_shifted_in_a_run_is_partial(tmp_path, backend):
     assert _count(tmp_path, f"hp{backend}", reads, a, ref, alt, backend) == (4, 8, 8)
 
 
-@pytest.mark.xfail(strict=True, reason="unreadable inserted bases are credited ALT")
 def test_an_unreadable_insert_after_a_deleted_anchor_is_partial(tmp_path):
     """M D(1) I M: the read deletes the anchor and re-inserts it with the insert. Its
     readable re-inserted anchor is not the insert: four readable carriers are ALT,
@@ -141,7 +138,6 @@ def test_an_unreadable_insert_after_a_deleted_anchor_is_partial(tmp_path):
     assert _count(tmp_path, "da", reads, a, ref, alt) == (4, 4, 4)
 
 
-@pytest.mark.xfail(strict=True, reason="unreadable inserted bases are credited ALT")
 def test_an_unreadable_truncation_is_partial(tmp_path):
     """A truncated copy of an 8bp insert (its first five bases at the junction):
     readable it is the same event (ALT, the identity band unchanged), unreadable
@@ -156,7 +152,6 @@ def test_an_unreadable_truncation_is_partial(tmp_path):
     assert _count(tmp_path, "tr", reads, a, ref, alt, with_census=False) == (4, 8, 4)
 
 
-@pytest.mark.xfail(strict=True, reason="the census has no UNREADABLE verdict yet")
 def test_the_census_holds_the_same_rule(tmp_path):
     """The census judges by bases, two haplotypes, so length alone made an unreadable
     insert fit the ALT. Its policy now: an insertion's ALT verdict needs the read's own

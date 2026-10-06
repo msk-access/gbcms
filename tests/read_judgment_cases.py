@@ -216,6 +216,46 @@ def _pure_shapes(contig: str, ref: str, alt: str):
     return shapes
 
 
+def _unreadable_shapes(contig: str, ref: str, alt: str):
+    """Carriers whose inserted bases are masked: (events, (kind, first, count)), the
+    read's inserted bases [first, first + count) masked as N at Q2 ("N") or kept at
+    Q5 ("low")."""
+    ins = alt[1:]
+    if len(ins) == 1:  # +1 in a run: the aligner writes the masked base as the insertion
+        return {
+            "an unreadable insert at the anchor (N)": ([(A + 1, "I", "N")], ("N", 0, 1)),
+            "an unreadable insert inside the run (N)": ([(A + 3, "I", "N")], ("N", 0, 1)),
+            "an insert below min BQ inside the run": ([(A + 3, "I", ins)], ("low", 0, 1)),
+        }
+    k = len(ins)
+    return {
+        "an unreadable insert (N)": ([(A + 1, "I", ins)], ("N", 0, k)),
+        "an insert below min BQ": ([(A + 1, "I", ins)], ("low", 0, k)),
+        "a partly masked insert": ([(A + 1, "I", ins)], ("N", 0, k // 2)),
+        "anchor deleted, the insert unreadable": (
+            [(A, "D", 1), (A + 1, "I", contig[A] + ins)],
+            ("N", 1, k),
+        ),
+    }
+
+
+def _mask_inserted(read, mask) -> None:
+    """Mask the read's inserted bases [first, first + count), in CIGAR order."""
+    kind, first, count = mask
+    seq, quals = list(read.query_sequence), list(read.query_qualities)
+    q, k = 0, 0
+    for op, n in read.cigartuples:
+        if op == 1:
+            for i in range(q, q + n):
+                if first <= k < first + count:
+                    seq[i], quals[i] = ("N", 2) if kind == "N" else (seq[i], 5)
+                k += 1
+        if op in (0, 1, 4):
+            q += n
+    read.query_sequence = "".join(seq)
+    read.query_qualities = quals
+
+
 def _complex_reads(run: int, ref_allele: str, alt_allele: str):
     """Read haplotypes at an anchor-changing event before an A run, ending inside
     the run, on the base after it, or past it: (events, last reference base)."""
@@ -263,6 +303,10 @@ def cases() -> list[Case]:
     )
     for shape in sorted(READ_INPUTS):
         out.append(Case(f"read inputs | {shape}", "read inputs", "read inputs", shape))
+    for v in ("hp+A", "u+10"):
+        motif, ref, alt = PURE[v]
+        for shape in _unreadable_shapes(_contig(motif), ref, alt):
+            out.append(Case(f"{v} | {shape}", "C35 unreadable inserts", v, shape))
     return out
 
 
@@ -334,10 +378,13 @@ def run(case: Case, workdir: Path) -> tuple[tuple[int, int, int], str]:
         motif, ref, alt = PURE[case.variant]
         contig = _contig(motif)
         siblings: list = []
+        mask = None
         if case.group == "C2 siblings":
             snv_at = A + 3 if "inside" in case.shape else tract(A, ref, alt, contig)[1] + 6
             snv_alt = "C" if contig[snv_at] != "C" else "G"
             events, s0, length = [(snv_at, "X", snv_alt)], 0, 100
+        elif case.group == "C35 unreadable inserts":
+            (events, mask), s0, length = _unreadable_shapes(contig, ref, alt)[case.shape], 0, 100
         else:
             events, s0, length = _pure_shapes(contig, ref, alt)[case.shape]
         reads = []
@@ -345,6 +392,8 @@ def run(case: Case, workdir: Path) -> tuple[tuple[int, int, int], str]:
             s = A - 50 + i + s0
             seq, cig = _build(contig, s, length - i, events)
             reads.append(make_read(f"r{i}", seq, s, cig))
+            if mask:
+                _mask_inserted(reads[-1], mask)
         fa, bam = write_contig(d, contig, reads, "c")
         rows = [_rs.Variant("1", A, ref, alt, "X")]
         if case.group == "C2 siblings":
@@ -396,6 +445,7 @@ DECISIONS = {
     "C28 anchor deleted": "decided: a read deleting the anchor is judged by its bases (C28 #202)",
     "C25 long events": "decided: junction windows read on through the read (C25 #199)",
     "read inputs": "decided: a read contributes its molecule's bases, with qualities (C17 #176, C19 #182; C29 #207 a fix)",
+    "C35 unreadable inserts": "decided: an insertion's ALT needs one of the read's own inserted bases read (C35 #240)",
 }
 
 # (ref_count, alt_count, partial_alt) for the case's four reads.
@@ -550,6 +600,14 @@ EXPECT = {
         4,
         0,
     ),
+    # C35 #240: the read's own inserted bases unreadable (N at Q2, or letters at Q5).
+    "hp+A | an unreadable insert at the anchor (N)": (0, 0, 4),
+    "hp+A | an unreadable insert inside the run (N)": (0, 0, 4),
+    "hp+A | an insert below min BQ inside the run": (0, 0, 4),
+    "u+10 | an unreadable insert (N)": (0, 0, 4),
+    "u+10 | an insert below min BQ": (0, 0, 4),
+    "u+10 | a partly masked insert": (0, 4, 0),
+    "u+10 | anchor deleted, the insert unreadable": (0, 0, 4),
 }
 
 

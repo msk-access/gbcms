@@ -171,9 +171,10 @@ flowchart LR
     - **Wrong length, truncation of the expected insert** — sequencers lose bases from long
       insertions, so reads carry shorter I ops whose bases match a slice of the expected
       insert. Gates: observed ≥4bp and strictly shorter than expected, ≥90% identity to the
-      best-matching window, and **both** sequences non-low-complexity (in a repeat tract every
+      best-matching window, **both** sequences non-low-complexity (in a repeat tract every
       wrong-length insert matches trivially, and there different lengths are distinct slippage
-      alleles). Passing all gates → **ALT** (same event).
+      alleles), and at least one inserted base readable (RJ-20). Passing all gates → **ALT**
+      (same event).
     - **Wrong length, anything else** — a **distinct allele** in the same tract (the +A vs +AA
       slippage ladder) → neither + `partial_alt`. Phase 3 must not arbitrate: its haplotype
       window is length-blind inside repeat tracts.
@@ -181,10 +182,11 @@ flowchart LR
       same-length **third allele** → neither + `partial_alt`. Phase 3 must not arbitrate here
       either: alignment scoring promotes a wrong-sequence insert to ALT because it still beats
       the gapped REF alignment.
-    - **Right length, unverifiable bases** (every inserted base below `--min-baseq`, or the
-      insert runs past the read end) — flag `has_shifted_same_length` for post-walk **Phase-3
-      arbitration** (BQ-aware), honoring the cross-backend quality contract; partial evidence
-      is propagated when Phase 3 does not confirm ALT.
+    - **Right length, no readable inserted base** (each N or below `--min-baseq`, or the
+      insert runs past the read end) — the read carries the insertion's length, not its
+      sequence: flag `has_unreadable_insert`, and the read is neither + `partial_alt` unless
+      the variant is also written readably elsewhere in it (RJ-20). Never Phase 3: REF pays
+      for the gap there, so length alone would win ALT.
 
     See [Wrong-Length Pure Indels](#wrong-length-pure-indels-partial_alt) for the full rule and
     its validation.
@@ -196,7 +198,10 @@ flowchart TD
     WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Ins within window?\n(±max(5, repeat_span+2),\nor in the shift region)"}
     CheckWin -->|No| Continue["Continue CIGAR walk"]
     CheckWin -->|Yes| SameLen{"Same length?"}
-    SameLen -->|Yes| S3{"S3: Same haplotype?\n(X+S = S+Y; quality-masked)"}
+    SameLen -->|Yes| Readable{"Any inserted base\nreadable?"}
+    Readable -->|"No (all N or\nbelow min BQ)"| FlagUR["Flag has_unreadable_insert"]:::partialflag
+    FlagUR --> Continue
+    Readable -->|Yes| S3{"S3: Same haplotype?\n(X+S = S+Y; quality-masked)"}
     S3 -->|Yes| Only{"The read's only change\nacross the window?"}
     Only -->|Yes| S2["S2: Track closest match"]
     Only -->|No| FlagWL
@@ -213,7 +218,9 @@ flowchart TD
     MoreOps -->|Yes| CheckWin
     MoreOps -->|No| Eval{"Windowed candidate found?"}
     Eval -->|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
-    Eval -->|No| SLCheck{"has_shifted_same_length\nAND ref coverage?"}
+    Eval -->|No| URCheck{"has_unreadable_insert?"}
+    URCheck -->|Yes| URPartial(["⚪ Neither + partial\n(length, not sequence)"]):::partial
+    URCheck -->|No| SLCheck{"has_shifted_same_length\nAND ref coverage?"}
     SLCheck -->|Yes| CPX(["🔄 Phase-3 arbitration\n(partial propagated on non-ALT)"]):::fallback
     SLCheck -->|No| WLCheck{"has_distinct_allele_nearby\nAND ref coverage?"}
     WLCheck -->|"Yes, the event slides\n(repeat_span ≥ 2 or a\nwide shift region)"| WLPartial(["⚪ Neither + partial\n(distinct allele)"]):::partial
@@ -501,10 +508,11 @@ as the annotated event inflated VAF several-fold at such loci.
 |:----------------------------|:---------------|
 | Exact-length, sequence-verified indel | **ALT** (structural) |
 | ≥50bp deletion within the placement-aware band (≤3 span bases retained, ≤3 changed outside — covers breakpoint wobble and split `D+M+D` representations) | **ALT** (structural) |
-| Insertion that is a truncation of the expected insert (≥4bp, ≥90% identity, both sequences non-low-complexity) | **ALT** (structural) |
+| Insertion that is a truncation of the expected insert (≥4bp, ≥90% identity, both sequences non-low-complexity, at least one base readable) | **ALT** (structural) |
 | Any other wrong-length pure indel at the anchor | **Neither + `partial_alt`** |
 | Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
-| Same-length candidate with unverifiable bases (all below `--min-baseq`) or a shifted same-length candidate failing S3 | **Phase-3 arbitration**, `partial_alt` propagated on non-ALT |
+| Same-length insertion with no readable inserted base (each N or below `--min-baseq`), at the anchor or shifted | **Neither + `partial_alt`** (RJ-20: the length, not the sequence) |
+| A shifted same-length candidate with readable bases failing S3 | **Phase-3 arbitration**, `partial_alt` propagated on non-ALT |
 | Windowed wrong-length op, where the event slides (`repeat_span ≥ 2` or a shift region wider than the event), or with an indel of the read inside the discrimination window | **Neither + `partial_alt`** (deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
 | Windowed wrong-length op, unique context, the window free of the read's indels | **REF + `partial_alt`** (same size gate; anchor M is definitive REF, the stray op is surfaced) |
 

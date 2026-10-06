@@ -363,6 +363,17 @@ pub fn masked_dual_compare(
     (mm_a, mm_b, reliable)
 }
 
+/// How many of `bases` can be read: not N and at or above `min_baseq`, the mask
+/// `masked_single_compare` applies. An insertion's ALT needs one of the read's own
+/// inserted bases readable; length alone is not its sequence.
+pub fn readable_bases(bases: &[u8], quals: &[u8], min_baseq: u8) -> usize {
+    bases
+        .iter()
+        .zip(quals)
+        .filter(|&(&b, &q)| q >= min_baseq && b != b'N' && b != b'n')
+        .count()
+}
+
 /// Masked comparison against a single allele.
 ///
 /// Masks out bases below `min_baseq` OR N bases (uninformative), then counts

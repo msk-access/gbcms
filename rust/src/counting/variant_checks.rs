@@ -36,7 +36,7 @@ use super::pairhmm::{classify_by_marginalized_pairhmm, ConfigurableGapParams};
 use super::pangenome::build_haplotype_matrix;
 use super::wfa_router::wfa_fast_path;
 use super::window;
-use super::utils::{find_read_pos, masked_dual_compare, masked_single_compare, median_qual, ref_end, ClassifyResult, ClassifyPhase};
+use super::utils::{find_read_pos, masked_dual_compare, masked_single_compare, median_qual, readable_bases, ref_end, ClassifyResult, ClassifyPhase};
 use super::AlignmentBackend;
 
 /// The large-deletion band: a deletion of at least this many bases is real (an
@@ -1289,10 +1289,11 @@ pub fn check_complex<F: Fn(u8, u8) -> i32>(
 enum AnchorInsertionOutcome {
     /// Definitive resolution — the walk returns it immediately.
     Classified(ClassifyResult),
-    /// Same-length I whose inserted bases cannot be verified (every base
-    /// below `min_baseq`, or the op runs past the read end): the caller
-    /// flags `has_shifted_same_length` and the walk continues to post-walk
-    /// Phase-3 arbitration.
+    /// Same-length I none of whose inserted bases can be read (each N or
+    /// below `min_baseq`, or the op runs past the read end): the read carries
+    /// the length, not the sequence. The caller flags `has_unreadable_insert`;
+    /// the read is partial unless the walk finds the variant written readably
+    /// elsewhere.
     Unverifiable,
 }
 
@@ -1370,22 +1371,20 @@ fn resolve_anchor_insertion_candidate(
                     ClassifyPhase::Structural,
                 ));
             }
-            // Every inserted base is below min_baseq: no confident read of
-            // the inserted sequence, and a definitive call on
+            // No inserted base can be read (each N or below min_baseq): the read
+            // carries the insertion's length, not its sequence. A call on
             // quality-rejected bases would break the cross-backend quality
-            // contract. Post-walk Phase-3 arbitration (BQ-aware; windowed
-            // matches still win first) propagates partial evidence on
-            // non-ALT.
+            // contract, and Phase 3 must not arbitrate: REF pays for the gap,
+            // so length alone would win ALT there.
             trace!(
                 "check_insertion: I({}) at junction after {} matches expected length \
-                 but all inserted bases are below min_baseq → unverifiable",
+                 but no inserted base is readable (N or below min_baseq) → unreadable",
                 found_ins_len, anchor_pos
             );
             return AnchorInsertionOutcome::Unverifiable;
         }
-        // Insert runs past the read end (truncated record): the inserted
-        // bases cannot be verified — same Phase-3 arbitration as the
-        // low-quality case.
+        // Insert runs past the read end (truncated record): no inserted base
+        // can be read, as in the case above.
         trace!(
             "check_insertion: I({}) at junction after {} extends past the read end \
              → unverifiable",
@@ -1406,7 +1405,12 @@ fn resolve_anchor_insertion_candidate(
     // exact-length match).
     if ins_start + found_ins_len <= record.seq().len() {
         let ins_seq = &record.seq().as_bytes()[ins_start..ins_start + found_ins_len];
-        if insert_truncation_match(ins_seq, expected_ins_seq) {
+        let ins_quals = &quals[ins_start..ins_start + found_ins_len];
+        // The band judges the bases it can read: a truncation none of whose bases
+        // is readable carries no sequence, and falls to the wrong-length rule below.
+        if readable_bases(ins_seq, ins_quals, min_baseq) > 0
+            && insert_truncation_match(ins_seq, expected_ins_seq)
+        {
             trace!(
                 "check_insertion: I({}) at junction after {} is a truncation of \
                  expected I({}) (≥90% substring identity) (structural)",
@@ -1457,6 +1461,7 @@ fn scan_windowed_insertion_candidate(
     best_windowed_match: &mut Option<u64>,
     has_shifted_same_length: &mut bool,
     has_distinct_allele_nearby: &mut bool,
+    has_unreadable_insert: &mut bool,
 ) {
     let anchor_pos = variant.pos;
     if ins_ref_pos < window_start || ins_ref_pos > window_end || ins_ref_pos == anchor_pos + 1 {
@@ -1469,6 +1474,19 @@ fn scan_windowed_insertion_candidate(
         if ins_start + ins_len_usize <= record.seq().len() {
             let ins_seq = &record.seq().as_bytes()[ins_start..ins_start + ins_len_usize];
             let ins_quals = &quals[ins_start..ins_start + ins_len_usize];
+            if readable_bases(ins_seq, ins_quals, min_baseq) == 0 {
+                // No inserted base readable (a duplex-masked base inside a run,
+                // which the aligner writes as the insertion): the length, not the
+                // sequence. Partial unless the variant is written readably elsewhere
+                // in the read; never Phase 3, where length alone wins ALT.
+                *has_unreadable_insert = true;
+                trace!(
+                    "check_insertion: windowed I({}) at pos {}: no inserted base readable \
+                     (N or below min_baseq) → unreadable",
+                    ins_len_usize, ins_ref_pos
+                );
+                return;
+            }
             // The haplotype check: the placement gives the variant's haplotype (its
             // own bases, or a rotation of them, elsewhere in the repeat) and is the
             // read's only change across the discrimination window.
@@ -1590,6 +1608,11 @@ fn scan_windowed_insertion_candidate(
 ///    by caller vs aligner), or no gap is recognised on a read spanning the
 ///    anchor, falls back to `phase3_classify` for haplotype comparison (under
 ///    PairHMM the pangenomic route first, else `check_complex`).
+/// 6. **Unreadable insert:** an I of the variant's length (at the junction or
+///    elsewhere in the scan window) none of whose bases can be read (each N or
+///    below `min_baseq`) carries the length, not the sequence: partial evidence,
+///    never Phase 3 (where REF pays for the gap, so length alone wins ALT),
+///    unless the variant is also written readably in the read.
 #[allow(clippy::too_many_arguments)]
 pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     record: &Record,
@@ -1633,6 +1656,9 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     // side's ≥5bp noise gate — because wrong-length insertions must never be
     // silently absorbed into REF (the engine-level windowed-I contract).
     let mut has_distinct_allele_nearby = false;
+    // An I of the variant's length none of whose bases can be read: the length,
+    // not the sequence. Partial, unless the variant is written readably elsewhere.
+    let mut has_unreadable_insert = false;
 
     for (i, op) in cigar_view.iter().enumerate() {
         match op {
@@ -1695,14 +1721,13 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                             ) {
                                 AnchorInsertionOutcome::Classified(result) => return result,
                                 AnchorInsertionOutcome::Unverifiable => {
-                                    has_shifted_same_length = true;
+                                    has_unreadable_insert = true;
                                 }
                             }
                         }
                         // Anchor at the block end: either no I op followed (plain
-                        // REF coverage) or an unverified same-length I was flagged
-                        // above — found_ref_coverage still gates the post-walk
-                        // Phase-3 branch for that flag.
+                        // REF coverage) or an unreadable same-length I was flagged
+                        // above, which the post-walk call settles.
                         found_ref_coverage = true;
                     } else {
                         // Anchor in middle of match block → read covers anchor without insertion
@@ -1721,6 +1746,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         &mut best_windowed_match,
                         &mut has_shifted_same_length,
                         &mut has_distinct_allele_nearby,
+                        &mut has_unreadable_insert,
                     );
                 }
 
@@ -1766,6 +1792,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         &mut best_windowed_match,
                         &mut has_shifted_same_length,
                         &mut has_distinct_allele_nearby,
+                        &mut has_unreadable_insert,
                     );
                 }
             }
@@ -1790,16 +1817,11 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         ) {
                             AnchorInsertionOutcome::Classified(result) => return result,
                             AnchorInsertionOutcome::Unverifiable => {
-                                // The M-arm twin flags has_shifted_same_length
-                                // and lets post-walk Phase 3 arbitrate with
-                                // partial propagation — but Phase 3 cannot
-                                // score across this read's splice (extraction
-                                // refuses N-crossing windows), so that route
-                                // ends in a bare neither and silently drops
-                                // the structural evidence. A same-length I at
-                                // the exact junction whose bases cannot be
-                                // verified is partial evidence: say so
-                                // directly.
+                                // No inserted base readable: the length, not
+                                // the sequence. Partial evidence, as the M-arm
+                                // twin's post-walk call makes it; said here
+                                // directly, since nothing after a splice at the
+                                // junction can write the variant elsewhere.
                                 return ClassifyResult::neither_with_nearby(
                                     qual,
                                     ClassifyPhase::Structural,
@@ -1814,6 +1836,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                             &mut best_windowed_match,
                             &mut has_shifted_same_length,
                             &mut has_distinct_allele_nearby,
+                            &mut has_unreadable_insert,
                         );
                     }
                 }
@@ -1842,9 +1865,9 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
             // bases could not be verified): perhaps the same event written
             // differently.
             phase3_candidate: has_shifted_same_length,
-            phase3_reason: "a same-length insertion near the anchor whose bases differ or \
-                            could not be verified",
+            phase3_reason: "a same-length insertion near the anchor whose bases differ",
             distinct_allele_nearby: has_distinct_allele_nearby,
+            unreadable_insert: has_unreadable_insert,
         },
     )
 }
@@ -1867,6 +1890,9 @@ struct WalkFindings {
     /// Inside the discrimination window the read's own indel makes it neither;
     /// outside it, it is a separate event (traced).
     distinct_allele_nearby: bool,
+    /// An insertion of the variant's length none of whose bases can be read (each
+    /// N or below min BQ): the read carries the length, not the sequence.
+    unreadable_insert: bool,
 }
 
 /// The call after an insertion or deletion check's CIGAR walk:
@@ -1899,6 +1925,17 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
             w.kind, anchor_pos, w.anchor_qual
         );
         return ClassifyResult::is_alt_structural(w.anchor_qual, ClassifyPhase::CigarRecon);
+    }
+    if w.unreadable_insert {
+        // Its own bases do not carry the ALT, and REF pays for the gap in Phase 3, so
+        // length alone would win ALT there: partial evidence, as on the post-splice
+        // path.
+        trace!(
+            "check_{}: an insertion of the variant's length after {} with no readable \
+             inserted base (N or below min_baseq) → neither + partial evidence",
+            w.kind, anchor_pos
+        );
+        return ClassifyResult::neither_with_nearby(w.anchor_qual, ClassifyPhase::Structural);
     }
     if !w.found_ref_coverage {
         if record.pos() <= anchor_pos && ref_end(record) > anchor_pos {
@@ -2867,6 +2904,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
             phase3_reason: "an in-band deletion of another length whose deleted bases \
                             differ or could not be verified",
             distinct_allele_nearby: has_distinct_allele_nearby,
+            unreadable_insert: false,
         },
     )
 }

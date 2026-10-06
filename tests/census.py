@@ -30,11 +30,17 @@ How a read is judged:
 The tract is the census's own slide of the indel along the reference, not prep's
 `shift_region`, so a prep error cannot move the census with it.
 
-Two of the engine's decided rules are encoded here, because they are policy, not
+Three of the engine's decided rules are encoded here, because they are policy, not
 bases:
 - a REF verdict needs one base past the first base where the alleles differ (the
   margin that guards CIGAR-only REF calls against a hidden terminal mismatch);
-- an ALT verdict needs only that base, read unmasked.
+- an ALT verdict needs only that base, read unmasked;
+- an insertion's ALT verdict needs one of the read's own inserted bases read: its
+  I-op bases in the stretch it reads must hold more unmasked bases than the
+  reference bases it deletes there (C35 #240). Length alone fits the ALT, but the
+  read then carries the insertion's length, not its sequence (UNREADABLE). This
+  rule reads the CIGAR, as the engine does: in a run, the aligner writes a masked
+  base as the insertion.
 
 Engine REF/ALT counts must equal the census REF/ALT counts. Every other verdict is
 neither, whether partial or uninformative. The census is exact for clean bases,
@@ -65,6 +71,7 @@ class Verdict(Enum):
     CONTRADICTS_BOTH = "contradicts both"
     NOT_ANCHORED = "not anchored"
     SPLICED = "spliced"
+    UNREADABLE = "insert unread"
 
 
 @dataclass(frozen=True)
@@ -316,6 +323,33 @@ def _molecule(read) -> tuple[int, int, dict[int, int]]:
     return lo, hi, pairs
 
 
+def _insert_unread(read, bases: str, spans, ref_lo: int, ref_hi: int) -> bool:
+    """Whether the read's own inserted bases in the query spans `[lo, hi)` it reads
+    hold no more unmasked bases than the reference bases it deletes in
+    `[ref_lo, ref_hi]` (a deleted anchor re-inserted with the insert reads the
+    anchor, not the insert). False when it inserts nothing there."""
+    qp, rp = 0, read.reference_start
+    inserts, readable, deleted = False, 0, 0
+    for op, n in read.cigartuples:
+        if op == 1:
+            for q in range(qp, qp + n):
+                if any(lo <= q < hi for lo, hi in spans):
+                    inserts = True
+                    readable += bases[q] != "N"
+            qp += n
+        elif op in (0, 7, 8):
+            qp += n
+            rp += n
+        elif op == 4:
+            qp += n
+        elif op == 2:
+            deleted += max(0, min(rp + n, ref_hi + 1) - max(rp, ref_lo))
+            rp += n
+        elif op == 3:
+            rp += n
+    return inserts and readable <= deleted
+
+
 def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
     seq = read.query_sequence
     if not seq:
@@ -346,17 +380,29 @@ def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
     lead, trail = _clips(read) if window.indel else (0, len(bases))
     lead, trail = max(lead, frag_lo), min(trail, frag_hi)
 
-    def from_left():
+    def left_span():
         end = min([q for q in stops if q > ql] + [trail])
         reach = len(window.ref_right) if window.indel else n  # through the far flank and on
-        stretch = bases[ql + 1 : min(ql + 1 + reach, end)]
-        return _one_side(stretch, window.ref_right, window.alt_right, window.indel)
+        return ql + 1, min(ql + 1 + reach, end)
 
-    def from_right():
+    def right_span():
         start = max([q for q in stops if q <= qr] + [lead])
         reach = len(window.ref_left) if window.indel else n
-        stretch = bases[max(qr - reach, start) : qr]
+        return max(qr - reach, start), qr
+
+    def from_left():
+        lo, hi = left_span()
+        return _one_side(bases[lo:hi], window.ref_right, window.alt_right, window.indel)
+
+    def from_right():
+        lo, hi = right_span()
+        stretch = bases[lo:hi]
         return _one_side(stretch[::-1], window.ref_left[::-1], window.alt_left[::-1], window.indel)
+
+    insertion = window.indel and len(window.alt) > len(window.ref)
+
+    def unread(spans) -> bool:
+        return insertion and _insert_unread(read, bases, spans, window.left, window.right)
 
     if ql is not None and qr is not None and not any(ql < q <= qr for q in stops):
         stretch = bases[ql + 1 : qr]
@@ -366,16 +412,24 @@ def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
         if window.indel and fits_ref and not fits_alt:
             if not any(r and not a for a, r in (from_left(), from_right())):
                 return Verdict.FITS_BOTH
-        return _verdict(fits_alt, fits_ref)
-    sides = []
+        verdict = _verdict(fits_alt, fits_ref)
+        if verdict is Verdict.ALT and unread([(ql + 1, qr)]):
+            return Verdict.UNREADABLE
+        return verdict
+    sides, spans = [], []
     if ql is not None:
         sides.append(from_left())
+        spans.append(left_span())
     if qr is not None:
         sides.append(from_right())
+        spans.append(right_span())
     if not sides:
         covered = any(a <= window.left + 1 and b >= window.right for _, a, b in splices)
         return Verdict.SPLICED if covered else Verdict.NOT_ANCHORED
-    return _verdict(all(a for a, _ in sides), all(r for _, r in sides))
+    verdict = _verdict(all(a for a, _ in sides), all(r for _, r in sides))
+    if verdict is Verdict.ALT and unread(spans):
+        return Verdict.UNREADABLE
+    return verdict
 
 
 def census(
