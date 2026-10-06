@@ -1,6 +1,8 @@
 use pyo3::prelude::*;
 
-#[pyclass]
+// Python passes Variants back in (count_bam_binned, prepare_variants), so they keep
+// the by-value FromPyObject that pyo3 0.28 made opt-in.
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Variant {
     #[pyo3(get, set)]
@@ -143,7 +145,8 @@ impl DecisionTally {
     }
 }
 
-#[pyclass]
+// Python passes BaseCounts back in (write_fsd_parquet).
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Default)]
 pub struct BaseCounts {
     // Basic counts
@@ -586,7 +589,8 @@ pub const OBS_ALLELE_OTHER: u8 = 3;
 /// default would report `0`, which is a *real* MAPQ meaning "mapped ambiguously", so a
 /// partially-built row (`Observation { .., ..Default::default() }`) would silently claim
 /// evidence was badly placed. Omitting the impl makes that fail to compile instead.
-#[pyclass]
+// Output only: nothing passes an Observation back into Rust.
+#[pyclass(skip_from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Observation {
     /// Index into the `variants` list passed to the counting call.

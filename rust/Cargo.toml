@@ -9,25 +9,27 @@ name = "_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.27.1", features = ["extension-module"] }
-rust-htslib = "0.51.0"
+pyo3 = { version = "0.29", features = ["extension-module"] }
+rust-htslib = "1.0"
 thiserror = "2.0"
 anyhow = "1.0"
 bio-types = "1.0"
 rayon = "1.10"
 bio = "3.0"
 log = "0.4"
-pyo3-log = "0.13.2"
+pyo3-log = "0.13.4"
 # Parquet writer for --mfsd-parquet: writes raw fragment size arrays natively
 # from Rust, avoiding an FFI round-trip and the pyarrow dependency.
-arrow-array = { version = "53", default-features = false }
-arrow-buffer = { version = "53", default-features = false }
-arrow-schema = { version = "53", default-features = false }
-parquet = { version = "53", default-features = false, features = ["arrow", "zstd"] }
+arrow-array = { version = "60", default-features = false }
+arrow-buffer = { version = "60", default-features = false }
+arrow-schema = { version = "60", default-features = false }
+parquet = { version = "60", default-features = false, features = ["arrow", "zstd"] }
 # WFA2 fast-path alignment for Phase 3 read classification triage.
 # Pure Rust implementation from COMBINE-lab — no cmake dependency.
 # NEON/AVX2 SIMD acceleration.
-wfa2lib-rs = { git = "https://github.com/COMBINE-lab/wfa2lib-rs", rev = "7d6ec921" }
+# No default features: those build its benchmark binary (clap, tracing, mimalloc
+# as that binary's allocator); the library needs none of them.
+wfa2lib-rs = { git = "https://github.com/COMBINE-lab/wfa2lib-rs", rev = "cb8aa3d6", default-features = false }
 # Gzip decompression: REDIportal RNA editing DB (.txt.gz) and GTF (.gtf.gz, BGZF).
 # zlib-rs (pure Rust) decodes the 1.46 GB GRCh38 GTF in ~0.5 s vs ~1 s for the
 # default miniz_oxide backend; flate2 prefers it when both are enabled.

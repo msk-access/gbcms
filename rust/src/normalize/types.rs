@@ -7,7 +7,8 @@ use crate::types::Variant;
 ///
 /// Every input variant produces exactly one `PreparedVariant`, even if validation
 /// fails — this ensures the output always has the same row count as input.
-#[pyclass]
+// Output only: nothing passes a PreparedVariant back into Rust.
+#[pyclass(skip_from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PreparedVariant {
     /// Ready-to-count variant (normalized coords + ref_context populated).
