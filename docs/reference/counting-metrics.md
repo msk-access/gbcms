@@ -210,8 +210,9 @@ Computed at **both** levels:
 The p-value is the exact two-sided Fisher test as R's `fisher.test` defines it: the
 sum of the probabilities of every table with the observed margins that is no more
 likely than the observed table (with R's tie tolerance, 1 + 10⁻⁷). It is computed in
-log space, so it is exact at any depth. Before 6.6.0 it was 0 for any table above
-~1,030 reads, and strongly biased tables were floored near 10⁻¹⁰.
+log space, so it is exact at any depth. Before 6.6.0 it was 0 once both strands were
+deep (from about 1,030 reads on a strand-balanced table), and strongly biased tables
+were floored near 10⁻¹⁰.
 
 !!! note "Depth and effect size"
     The p-value is computed on the raw counts. At deep coverage a small strand

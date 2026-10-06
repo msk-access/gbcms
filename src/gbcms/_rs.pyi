@@ -314,6 +314,6 @@ def fisher_exact_2x2(a: int, b: int, c: int, d: int) -> tuple[float, float]:
 
     Returns:
         (p_value, odds_ratio) tuple. p_value is the two-sided Fisher exact
-        probability; odds_ratio is ad/bc (inf when bc=0).
+        probability; odds_ratio is ad/bc (NaN when bc=0).
     """
     ...

@@ -87,7 +87,6 @@ BALANCED_DEEP = [
 ]
 
 
-@pytest.mark.xfail(strict=True, reason="recurrence starts at the low end of the range")
 @pytest.mark.parametrize("table", BALANCED_DEEP, ids=[f"n{sum(t)}" for t in BALANCED_DEEP])
 def test_precision_holds_at_depth(table):
     got, want = fisher_exact_2x2(*table)[0], oracle(*table)
@@ -112,7 +111,6 @@ def test_near_ties_follow_rs_rule(table, r_p, scipy_p):
     assert got != pytest.approx(scipy_p, rel=1e-3)
 
 
-@pytest.mark.xfail(strict=True, run=False, reason="holds every table: 34 GB at u32 max")
 def test_extreme_margins_stay_bounded():
     """Cells at u32 max: terms more than e^-750 below the mode add exactly 0, so the
     sum stops there and time and memory stay bounded (the whole range is 4.3e9 tables)."""

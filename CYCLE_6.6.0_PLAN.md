@@ -1897,8 +1897,9 @@ page from the CHANGELOG section in the release workflow.
 - **S3 #239: Fisher's exact test at depth (2026-10-06, operator).** Measured on the
   cached D4 acceptance outputs (`develop`), each row's strand-bias table recomputed
   exactly with scipy:
-  - **Overflow.** `fisher_exact_2x2` returns p = 0 above ~1,030 reads (statrs's
-    binomial overflows and the pmf turns NaN). Rows printing p = 0 where the exact p
+  - **Overflow.** `fisher_exact_2x2` returns p = 0 once C(n, a + c) passes f64's
+    range (statrs's binomial overflows): both strands deep, from ~1,030 reads on a
+    strand-balanced table; a table with one thin strand stays correct. Rows printing p = 0 where the exact p
     is above 0, out of all rows:
     - RC cfDNA: read test 316 of 1,060 (298 of them have an exact p ≥ 0.05),
       fragment test 235;
@@ -1921,6 +1922,12 @@ page from the CHANGELOG section in the release workflow.
     probability ≤ the observed × (1 + 1e-7). Computed in log space.
   - Validated against an exact integer oracle; then measure the real rows and ASJD
     flags that change.
+
+  Review: no blockers. A recurrence started at the low end of the range drifts as
+  its sum grows (~n ln 2 on balanced tables): 1.9e-12 at n = 20,000, 2.2e-9 at
+  10⁶. It now starts at the mode and stops where terms underflow (e^-750): ≤ 4e-14
+  on the test tables, and u32-max cells take 40 ms instead of a 34 GB allocation.
+  Tests now pin R's tie rule against scipy's on three near-tie tables.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
