@@ -5,7 +5,9 @@
 //! trailing whitespace is trimmed; start and end positive integers; score `.` or a
 //! float; strand `.`, `+` or `-`; frame `.` or 0–2; attributes as `key value`
 //! entries, each value quoted (to the next `"`) or raw (to the next `;`), entries
-//! split by an optional `;`, the first of a repeated key winning. Four departures,
+//! split by an optional `;`, the first of a repeated key winning. An unquoted value
+//! must be followed by a `;` unless it is empty at the end of the line (noodles
+//! rejected such a line, and GTF2.2 ends every attribute with one). Four departures,
 //! each a line noodles loaded wrongly:
 //! - a whitespace run may separate a key from its value (noodles kept the run in a
 //!   raw value, so `transcript_id  "T1"` gave the ID ` "T1"`, quotes included);
@@ -14,12 +16,11 @@
 //! - a coordinate past `i32` is rejected (it wrapped negative in the index).
 //!
 //! Callers read the feature column first and check the rest only for the lines
-//! they keep, so a full GTF costs one tab scan per line.
+//! they keep, so most of a GTF costs a scan to its third tab.
 
-/// A line's nine columns; the attributes column runs to the end of the line.
+/// A line's columns after the feature (the caller has read the first three);
+/// the attributes column runs to the end of the line.
 pub(crate) struct Columns<'a> {
-    pub(crate) seqname: &'a str,
-    pub(crate) feature: &'a str,
     start: &'a str,
     end: &'a str,
     score: &'a str,
@@ -51,6 +52,8 @@ pub(crate) enum LineError {
     InvalidAttributes,
     /// Not a grammar error: the caller's rule for an exon without a usable ID.
     MissingTranscriptId,
+    /// The line is not UTF-8 text.
+    NotUtf8,
 }
 
 impl std::fmt::Display for LineError {
@@ -66,6 +69,7 @@ impl std::fmt::Display for LineError {
             Self::InvalidFrame => "frame is not '.', 0, 1 or 2",
             Self::InvalidAttributes => "attributes are not `key value;` entries",
             Self::MissingTranscriptId => "transcript_id is missing or empty",
+            Self::NotUtf8 => "the line is not UTF-8 text",
         })
     }
 }
@@ -74,12 +78,10 @@ impl std::fmt::Display for LineError {
 pub(crate) fn columns(line: &str) -> Result<Columns<'_>, LineError> {
     let mut it = line.trim_end().splitn(9, '\t');
     let mut next = || it.next().ok_or(LineError::MissingColumns);
+    for _ in 0..3 {
+        next()?; // seqname, source, feature
+    }
     Ok(Columns {
-        seqname: next()?,
-        feature: {
-            next()?; // source
-            next()?
-        },
         start: next()?,
         end: next()?,
         score: next()?,
@@ -123,30 +125,48 @@ fn position(s: &str) -> Option<usize> {
 }
 
 /// The first `transcript_id` in the attributes column, after checking every
-/// entry parses.
+/// entry parses. Scans bytes: every delimiter is ASCII, so each slice taken at
+/// one is on a character boundary.
 fn transcript_id(column: &str) -> Result<Option<&str>, LineError> {
-    let ws = |c: char| c == ' ' || c == '\t';
-    if column.is_empty() {
+    let b = column.as_bytes();
+    let n = b.len();
+    let ws = |c: u8| c == b' ' || c == b'\t';
+    let find = |from: usize, want: u8| b[from..].iter().position(|&c| c == want).map(|p| from + p);
+    if n == 0 {
         return Err(LineError::InvalidAttributes);
     }
     let mut tx = None;
-    let mut s = column;
-    while !s.is_empty() {
-        let i = s.find(ws).ok_or(LineError::InvalidAttributes)?;
-        let key = &s[..i];
-        s = s[i..].trim_start_matches(ws);
-        let value = if let Some(rest) = s.strip_prefix('"') {
-            let j = rest.find('"').ok_or(LineError::InvalidAttributes)?;
-            s = &rest[j + 1..];
-            &rest[..j]
-        } else {
-            let j = s.find(';').unwrap_or(s.len());
-            let v = s[..j].trim_end();
-            s = &s[j..];
+    let mut i = 0;
+    while i < n {
+        let key_start = i;
+        while i < n && !ws(b[i]) {
+            i += 1;
+        }
+        if i == n {
+            return Err(LineError::InvalidAttributes); // a key with no value
+        }
+        let key = &column[key_start..i];
+        while i < n && ws(b[i]) {
+            i += 1;
+        }
+        let value = if i < n && b[i] == b'"' {
+            let close = find(i + 1, b'"').ok_or(LineError::InvalidAttributes)?;
+            let v = &column[i + 1..close];
+            i = close + 1;
             v
+        } else {
+            match find(i, b';') {
+                Some(semi) => {
+                    let v = column[i..semi].trim_end();
+                    i = semi;
+                    v
+                }
+                None if i == n => "",
+                None => return Err(LineError::InvalidAttributes),
+            }
         };
-        s = s.trim_start();
-        s = s.strip_prefix(';').unwrap_or(s).trim_start();
+        let rest = column[i..].trim_start();
+        i = n - rest.strip_prefix(';').unwrap_or(rest).trim_start().len();
         if key == "transcript_id" && tx.is_none() {
             tx = Some(value);
         }
@@ -179,6 +199,7 @@ mod tests {
         for (name, attrs) in [
             ("plain", A.to_string()),
             ("no final semicolon", r#"gene_id "G1"; transcript_id "T1""#.to_string()),
+            ("unquoted value with its semicolon", r#"gene_id "G1"; transcript_id "T1"; exon_number 1;"#.to_string()),
             ("transcript first", r#"transcript_id "T1"; gene_id "G1";"#.to_string()),
             ("no space after ;", r#"gene_id "G1";transcript_id "T1";"#.to_string()),
             ("look-alike key", r#"orig_transcript_id "X9"; gene_id "G1"; transcript_id "T1";"#.to_string()),
@@ -223,6 +244,10 @@ mod tests {
             ("escaped quote", line("100", "200", ".", "+", ".", r#"gene_id "G1"; transcript_id "T\"1";"#), LineError::InvalidAttributes),
             ("unclosed quote", line("100", "200", ".", "+", ".", r#"gene_id "G1; transcript_id "T1";"#), LineError::InvalidAttributes),
             ("key without value", line("100", "200", ".", "+", ".", r#"gene_id "G1"; lonely"#), LineError::InvalidAttributes),
+            ("unquoted last value, no ;", line("100", "200", ".", "+", ".", r#"gene_id "G1"; transcript_id "T1"; exon_number 1"#), LineError::InvalidAttributes),
+            ("no semicolons", line("100", "200", ".", "+", ".", "transcript_id T1 gene_id G1"), LineError::InvalidAttributes),
+            ("trailing comment", line("100", "200", ".", "+", ".", r#"gene_id "G1"; transcript_id "T1"; # note"#), LineError::InvalidAttributes),
+            ("extra columns", line("100", "200", ".", "+", ".", "gene_id \"G1\"; transcript_id \"T1\";\textra\tcols"), LineError::InvalidAttributes),
             ("empty attributes", "1\tsrc\texon\t100\t200\t.\t+\t.\t".to_string(), LineError::MissingColumns),
         ] {
             assert_eq!(exon(&l).map(|_| ()), Err(want), "{name}");
@@ -251,6 +276,13 @@ mod tests {
         );
         let max = line("100", "2147483647", ".", "+", ".", A);
         assert_eq!(exon(&max).unwrap().end, i32::MAX);
+    }
+
+    #[test]
+    fn an_empty_unquoted_value_may_end_the_column() {
+        // noodles accepted it (the line trim makes it unreachable through `columns`).
+        assert_eq!(transcript_id(r#"transcript_id "T1"; tag "#), Ok(Some("T1")));
+        assert_eq!(transcript_id(r#"transcript_id "T1"; tag x"#), Err(LineError::InvalidAttributes));
     }
 
     #[test]

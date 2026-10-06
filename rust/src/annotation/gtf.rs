@@ -2,9 +2,9 @@
 //!
 //! Reads plain or gzip/BGZF-compressed GTF (detected by the gzip magic bytes, not
 //! the extension) and loads the `exon` records of the variant chromosomes. Each line's
-//! feature column is read first, so the other ~half of a GTF costs one tab scan;
-//! exon lines are then checked column by column ([`super::gtf_line`], noodles-gtf's
-//! grammar). On top: variant-guided streaming, chromosome normalization, GENCODE
+//! feature and chromosome are read from its bytes first, so the lines it skips cost a
+//! scan to their third tab; the exon lines it keeps are then checked column by column
+//! ([`super::gtf_line`], noodles-gtf's grammar). On top: variant-guided streaming, chromosome normalization, GENCODE
 //! version stripping, and intron derivation.
 //!
 //! # Supported GTF formats
@@ -47,6 +47,7 @@ pub fn parse_gtf(
     gtf_path: &str,
     variant_chroms: &HashSet<String>,
 ) -> anyhow::Result<AnnotationIndex> {
+    let started = std::time::Instant::now();
     info!("Loading GTF annotation from: {}", gtf_path);
     debug!(
         "Variant-guided filter: loading {} chromosomes: {:?}",
@@ -93,55 +94,50 @@ pub fn parse_gtf(
         if bytes.is_empty() || bytes[0] == b'#' {
             continue;
         }
-        let Ok(line) = std::str::from_utf8(bytes) else {
-            unreadable += 1;
-            debug!("GTF line {} is not UTF-8 text", total_lines);
-            continue;
-        };
 
-        let mut keep_chrom = |seqname: &str| {
-            if seqname != last_seqname {
-                last_seqname.clear();
-                last_seqname.push_str(seqname);
-                // Canonicalize the chromosome so chr1/1 and chrM/MT reconcile across sources.
-                last_chrom = crate::shared::contig::normalize_contig(seqname);
-                last_kept = variant_chroms.contains(&last_chrom);
+        // Feature and chromosome from the raw bytes: only the exon lines of the
+        // variant chromosomes are decoded and checked.
+        let mut fields = bytes.splitn(4, |&b| b == b'\t');
+        let (seqname, feature) = (fields.next().unwrap_or_default(), fields.nth(1));
+        match feature {
+            Some(b"exon") => {}
+            Some(_) => {
+                skipped_non_exon += 1;
+                continue;
             }
-            last_kept
-        };
+            None => {
+                unreadable += 1; // fewer than three columns: not a record
+                continue;
+            }
+        }
+        if seqname != last_seqname.as_bytes() {
+            last_seqname = String::from_utf8_lossy(seqname).into_owned();
+            // Canonicalize the chromosome so chr1/1 and chrM/MT reconcile across sources.
+            last_chrom = crate::shared::contig::normalize_contig(&last_seqname);
+            last_kept = std::str::from_utf8(seqname).is_ok() && variant_chroms.contains(&last_chrom);
+        }
+        // Variant-guided filter: skip chromosomes without variants
+        if !last_kept {
+            skipped_chrom += 1;
+            continue;
+        }
+
         let mut reject = |e: LineError| {
             rejected += 1;
             first_rejected.get_or_insert((total_lines, e));
             debug!("GTF line {} rejected: {}", total_lines, e);
         };
-
+        let Ok(line) = std::str::from_utf8(bytes) else {
+            reject(LineError::NotUtf8);
+            continue;
+        };
         let cols = match columns(line) {
             Ok(c) => c,
             Err(e) => {
-                // Too few columns: a malformed exon line if its third column says
-                // exon and it would have loaded; otherwise not a record at all.
-                let mut it = line.split('\t');
-                let (seqname, feature) = (it.next().unwrap_or(""), it.nth(1));
-                if feature == Some("exon") && keep_chrom(seqname) {
-                    reject(e);
-                } else {
-                    unreadable += 1;
-                }
+                reject(e);
                 continue;
             }
         };
-
-        // Only parse exon records
-        if cols.feature != "exon" {
-            skipped_non_exon += 1;
-            continue;
-        }
-
-        // Variant-guided filter: skip chromosomes without variants
-        if !keep_chrom(cols.seqname) {
-            skipped_chrom += 1;
-            continue;
-        }
 
         let exon = match cols.exon() {
             Ok(x) => x,
@@ -150,8 +146,9 @@ pub fn parse_gtf(
                 continue;
             }
         };
-        let transcript_id = match exon.transcript_id {
-            Some(id) if !id.is_empty() => strip_gencode_version(id).to_string(),
+        // Checked after the version strip, so "." and ".1" are as empty as "".
+        let transcript_id = match exon.transcript_id.map(strip_gencode_version) {
+            Some(id) if !id.is_empty() => id.to_string(),
             _ => {
                 reject(LineError::MissingTranscriptId);
                 continue;
@@ -209,7 +206,14 @@ pub fn parse_gtf(
         // before comparison, so a residual mismatch means the GTF genuinely lacks
         // those contigs or uses spellings the normalizer does not cover (e.g.
         // accession-style names).
-        if skipped_chrom > 0 {
+        if rejected > 0 {
+            warn!(
+                "GTF parser: every exon line on the variant chromosomes {:?} in {} was rejected \
+                 as malformed ({} lines; names shown are normalized). RNA annotation will be \
+                 inert.",
+                variant_chroms, gtf_path, rejected,
+            );
+        } else if skipped_chrom > 0 {
             warn!(
                 "GTF parser: exon records exist but none on the variant chromosomes {:?} in {} \
                  ({} exon rows skipped by the chromosome filter; names shown are normalized). \
@@ -220,9 +224,8 @@ pub fn parse_gtf(
         } else {
             warn!(
                 "GTF parser: no 'exon' feature records found in {} ({} lines read, {} non-exon, \
-                 {} unreadable, {} rejected) — wrong file or feature column? RNA annotation will \
-                 be inert.",
-                gtf_path, total_lines, skipped_non_exon, unreadable, rejected,
+                 {} unreadable) — wrong file or feature column? RNA annotation will be inert.",
+                gtf_path, total_lines, skipped_non_exon, unreadable,
             );
         }
     }
@@ -316,7 +319,9 @@ pub fn parse_gtf(
     );
 
     let exon_trees = build_exon_trees(&exons);
-    Ok(AnnotationIndex::new(exon_trees, exons, splice_sites, transcript_introns, chrom_map))
+    let index = AnnotationIndex::new(exon_trees, exons, splice_sites, transcript_introns, chrom_map);
+    info!("GTF annotation loaded in {:.1}s", started.elapsed().as_secs_f64());
+    Ok(index)
 }
 
 /// Open a GTF for line reading, decompressing it when it starts with the gzip

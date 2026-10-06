@@ -37,11 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Measured on GRCh38.111 (`CYCLE_6.6.0_PLAN.md`, "D4 GTF loading"). Only `--gtf` runs
 are affected, and their output is unchanged for well-formed GTFs.
-- **The GTF loads in about a second, plain or `.gtf.gz`.** noodles-gtf parsed every
-  line before reading its feature column, which took 5.9 s of a 6.3 s load. A
-  byte-level parser reads the feature column first and checks only the exon lines it
-  keeps: 1.1 s for the same chromosomes, 1.3 s for a whole genome, 1.7 s from
-  `.gtf.gz`.
+- **The GTF loads in 2 s instead of 9 s, plain or `.gtf.gz`.** noodles-gtf parsed
+  every line before reading its feature column. A byte-level parser reads each
+  line's feature and chromosome first and checks only the exon lines it keeps.
+  Measured in `gbcms rna` on Ensembl 111: 1.6 s for 16 chromosomes (8.9 s before),
+  2.0 s for the whole genome (9.3 s), 2.4 s from `.gtf.gz`. GENCODE v50 loads in
+  4.0 s (basic) and 6.5 s (comprehensive) from `.gtf.gz`. Peak memory falls (407 MB
+  vs 470 MB for 16 chromosomes): `gene_id`, stored for every exon and never read,
+  is gone.
   - It loads exactly the exons noodles did: no line differs across Ensembl 111 and
     GENCODE v50 comprehensive, v50 basic and v47lift37 (26.1M lines).
   - gzip and BGZF are detected from the file's content. The config already accepted
@@ -55,12 +58,15 @@ are affected, and their output is unchanged for well-formed GTFs.
   - A coordinate past 2,147,483,647 is rejected; noodles wrapped it negative.
   - An exon with an empty `transcript_id` is rejected, as a missing one already was.
     noodles merged every such exon into one transcript.
+  - A `transcript_id` that strips to nothing (`"."`, `".1"`) is rejected the same way.
+  - An exon line that is not UTF-8 text is rejected; it used to stop the run.
   - Each of these lines used to move `exon_boundary_dist` with a bogus boundary.
     Rejected lines now get one warning with their count and the first one's line
     number and reason.
-- **The GTF index cache is deprecated.** It saved about 0.5 s a sample: a cache hit
-  cost 0.9 s, and it brought a build step, a Nextflow process and a 97 MB file per
-  chromosome set. It is no longer used:
+- **The GTF index cache is deprecated.** On Ensembl it saved 1–1.4 s a sample: a hit
+  cost 0.9 s in the CLI (~0.3 s of it start-up) against a 1.6–2.0 s load now. It
+  brought a build step, a Nextflow process and a 97 MB file per chromosome set. It is
+  no longer used:
   - `--gtf-cache-dir`, `gbcms build-gtf-cache` and the Nextflow `--gtf_cache` are
     accepted and ignored with a warning, and are removed in 6.7.0.
   - The `GBCMS_BUILD_GTF_CACHE` process, the cache module and its binding are gone.

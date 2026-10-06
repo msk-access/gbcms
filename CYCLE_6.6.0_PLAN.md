@@ -1742,10 +1742,15 @@ page from the CHANGELOG section in the release workflow.
     (`transcript_id  "T1"` gives the ID ` "T1"`, quotes included). It keeps
     start > end, keeps an empty `transcript_id` (all such exons become one
     transcript), and keeps coordinates past i32, which wrap negative.
-  - **The cache now saves about 0.5 s a sample.** A hit costs 0.9 s in the CLI
+  - **The cache saves 1–1.4 s a sample on Ensembl.** A hit costs 0.9 s in the CLI
     (~0.3 s of it is startup), and the cache is 97 MB per chromosome set. It brings a
     build step, a Nextflow process and the bincode format, and bincode 3.0 is a
     `compile_error!` tombstone.
+  - **Shipped loader (review round), `gbcms rna` load time:** Ensembl 111 1.6 s for
+    16 chromosomes (noodles 8.9 s), 2.0 s whole genome (9.3 s), 2.4 s from
+    `.gtf.gz`; GENCODE v50 basic 4.0 s and comprehensive 6.5 s (`.gtf.gz`, whole
+    genome, 1.3 GB peak). Slower than the prototype above, which skipped UTF-8 and
+    full attribute checks; zlib-rs replaces miniz_oxide for gzip.
   - **`.gtf.gz` is advertised, but it crashes.** The config validator accepts
     `.gtf.gz`, and the parser fails with "stream did not contain valid UTF-8".
   - **Tabix gives exactly the same answers.** All seven queries

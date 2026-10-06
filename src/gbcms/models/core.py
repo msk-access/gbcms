@@ -539,7 +539,7 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
         default=None,
         description=(
             "Deprecated in 6.6.0 and ignored (removed in 6.7.0). The GTF index cache "
-            "is gone: the GTF loads in about a second without one."
+            "is gone: the GTF loads in a few seconds without one."
         ),
     )
 
@@ -614,7 +614,7 @@ class GbcmsRnaConfig(GbcmsBaseConfig):
 
             logging.getLogger("gbcms.models").warning(
                 "--gtf-cache-dir is deprecated and ignored: the GTF index cache is gone "
-                "(the GTF loads in about a second without one). It will be removed in 6.7.0."
+                "(the GTF loads in a few seconds without one). It will be removed in 6.7.0."
             )
         return None
 

@@ -647,7 +647,7 @@ def rna(
         "--gtf-cache-dir",
         help=(
             "Deprecated in 6.6.0 and ignored; removed in 6.7.0. The GTF index cache "
-            "is gone: the GTF loads in about a second without one."
+            "is gone: the GTF loads in a few seconds without one."
         ),
     ),
     # Library type flag
@@ -965,8 +965,8 @@ def build_gtf_cache(
     """
     Deprecated in 6.6.0: does nothing; removed in 6.7.0.
 
-    It pre-built a GTF index cache for a cohort. The GTF now loads in about a
-    second (plain or .gtf.gz), so there is no cache to build. The command still
+    It pre-built a GTF index cache for a cohort. The GTF now loads in a few
+    seconds (plain or .gtf.gz), so there is no cache to build. The command still
     checks its options, so a pipeline that calls it keeps working until it is
     removed.
     """
@@ -976,7 +976,7 @@ def build_gtf_cache(
 
     logger.warning(
         "build-gtf-cache is deprecated and does nothing: the GTF index cache is gone "
-        "(the GTF loads in about a second without one). Drop this step and "
+        "(the GTF loads in a few seconds without one). Drop this step and "
         "--gtf-cache-dir; both will be removed in 6.7.0."
     )
 

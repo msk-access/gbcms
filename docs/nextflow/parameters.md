@@ -82,11 +82,16 @@ These parameters are only used when `--mode rna` is specified.
 
 ## GTF Index Caching (RNA) — deprecated
 
-The GTF index cache is gone in 6.6.0: each `GBCMS_RNA` task loads the GTF (plain or `.gtf.gz`) in about a second, so the `GBCMS_BUILD_GTF_CACHE` step was removed.
+The GTF index cache is gone in 6.6.0: each `GBCMS_RNA` task loads the GTF (plain or `.gtf.gz`) in a few seconds (2 s for a whole Ensembl GTF), so the `GBCMS_BUILD_GTF_CACHE` step was removed.
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
 | `--gtf_cache` | `null` | Deprecated in 6.6.0 and ignored; the pipeline warns when it is set. Removed in 6.7.0. |
+
+!!! tip "Cohorts on shared storage: pass the `.gtf.gz`"
+    Every task reads the GTF. The Ensembl GRCh38 GTF is 1.46 GB plain and 61 MB
+    gzipped, so `--gtf Homo_sapiens.GRCh38.111.gtf.gz` keeps per-task reads below
+    what the old cache file was (96–125 MB) for about 0.4 s more decoding.
 
 ## Alignment Backend (Advanced)
 

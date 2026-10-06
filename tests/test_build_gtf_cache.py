@@ -1,8 +1,8 @@
 """The ``build-gtf-cache`` command, deprecated in 6.6.0.
 
 It pre-built a bincode cache of the parsed GTF (M5a). A byte-level parser now loads
-the GTF in about a second, so the cache saved ~0.5 s a sample (CYCLE_6.6.0_PLAN.md,
-"D4 GTF loading"). The command stays for one release so pipelines that call it keep
+a whole Ensembl GTF in 2 s (9 s before), so the cache saved 1-1.4 s a sample
+(CYCLE_6.6.0_PLAN.md, "D4 GTF loading"). The command stays for one release so pipelines that call it keep
 working: it checks its options as before, warns that it is deprecated, and writes
 nothing. It goes in 6.7.0.
 """

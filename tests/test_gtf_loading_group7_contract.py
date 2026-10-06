@@ -1,10 +1,11 @@
 """Group 7 (D4 #139): GTF loading without noodles-gtf or a cache.
 
 Measured on GRCh38.111 (CYCLE_6.6.0_PLAN.md, "D4 GTF loading"): noodles-gtf parsed
-every line before the feature check, 5.9 s of a 6.3 s load; a byte-level loop that
-checks the feature column first loads the same exons in 0.7 s, so the bincode cache
-and its build step save about 0.5 s a sample. The config accepts ``.gtf.gz``, but
-the parser read it as text and failed ("stream did not contain valid UTF-8").
+every line before the feature check; the byte-level loader reads each line's
+feature and chromosome first and loads a whole Ensembl GTF in 2 s instead of 9 s, so
+the bincode cache and its build step saved 1-1.4 s a sample. The config accepted
+``.gtf.gz``, but the parser read it as text and failed ("stream did not contain
+valid UTF-8").
 
 Contracts:
 - a gzip or BGZF ``.gtf.gz`` loads exactly as the plain file;
@@ -144,25 +145,9 @@ _JUNK = {
     "dot-transcript-id": f"chr1\tTEST\texon\t{POS + 4}\t{POS + 30}\t.\t+\t.\t"
     'gene_id "G9"; transcript_id ".";\n',
 }
-_NEW = {"unquoted-final-value", "dot-transcript-id"}  # review round: red first
 
 
-@pytest.mark.parametrize(
-    "kind",
-    [
-        (
-            pytest.param(
-                k,
-                marks=pytest.mark.xfail(
-                    strict=True, reason="loaded; its boundary moves the distance"
-                ),
-            )
-            if k in _NEW
-            else k
-        )
-        for k in sorted(_JUNK)
-    ],
-)
+@pytest.mark.parametrize("kind", sorted(_JUNK))
 def test_malformed_exon_lines_are_not_loaded(tmp_path, kind):
     clean = _run(tmp_path / "clean", _gtf_text())
     junk = _run(tmp_path / "junk", _gtf_text(extra=_JUNK[kind]))
@@ -170,7 +155,6 @@ def test_malformed_exon_lines_are_not_loaded(tmp_path, kind):
     assert junk == clean
 
 
-@pytest.mark.xfail(strict=True, reason="two of the junk kinds load, so the count is 3")
 def test_rejected_exon_lines_are_warned_with_a_count(tmp_path):
     d = tmp_path / "junk"
     _run(d, _gtf_text(extra="".join(_JUNK[k] for k in sorted(_JUNK))))
@@ -180,7 +164,6 @@ def test_rejected_exon_lines_are_warned_with_a_count(tmp_path):
     assert re.search(r"line \d+", hit[0]), hit[0]
 
 
-@pytest.mark.xfail(strict=True, reason="a non-UTF-8 line is dropped at debug level only")
 def test_a_non_utf8_exon_line_is_rejected_and_warned(tmp_path):
     """The old parser stopped the run on a non-UTF-8 line; dropping it silently
     would derive an intron through the missing exon. It is a rejected exon line."""
@@ -192,7 +175,6 @@ def test_a_non_utf8_exon_line_is_rejected_and_warned(tmp_path):
     assert hit and re.search(r"\b1 exon line\b", hit[0]) and "UTF-8" in hit[0], hit
 
 
-@pytest.mark.xfail(strict=True, reason="the empty-index warning blames the file or contigs")
 def test_an_index_emptied_by_rejections_says_so(tmp_path):
     d = tmp_path / "all-junk"
     _run(d, "".join(_JUNK[k] for k in ("start-after-end", "end-past-i32")))

@@ -29,9 +29,11 @@ With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
     variants left without a strand (the first ten, then a count).
 
 !!! tip "Loading cost"
-    The GTF is loaded per run, plain or gzip/BGZF-compressed: about a second for a
-    full Ensembl GTF. There is no cache to build (`--gtf-cache-dir` and
-    `build-gtf-cache` are deprecated in 6.6.0 and do nothing).
+    The GTF is loaded per run, plain or gzip/BGZF-compressed. Measured on a whole
+    genome: 2.0 s for Ensembl 111 (2.4 s from `.gtf.gz`), 4.0 s for GENCODE v50
+    basic and 6.5 s for GENCODE v50 comprehensive; fewer variant chromosomes load
+    less. There is no cache to build (`--gtf-cache-dir` and `build-gtf-cache` are
+    deprecated in 6.6.0 and do nothing).
 
 ---
 
@@ -69,10 +71,11 @@ chromosomes, extracting:
 
 Each exon row is checked column by column with noodles-gtf's grammar (the parser
 used before 6.6.0): positive integer coordinates, a numeric or `.` score, `+`/`-`/`.`
-strand, a `.`/0/1/2 frame, and `key value;` attributes. Whitespace runs may separate
-a key from its value. A row with start after end, a coordinate past 2,147,483,647, or
-a missing or empty `transcript_id` is not loaded. Rejected rows are counted in one
-warning that names the first one's line number and reason.
+strand, a `.`/0/1/2 frame, and `key value;` attributes (an unquoted value ends at
+its `;`). Whitespace runs may separate a key from its value. A row with start after
+end, a coordinate past 2,147,483,647, a missing or empty `transcript_id` (after the
+version is stripped), or bytes that are not UTF-8 text is not loaded. Rejected rows
+are counted in one warning that names the first one's line number and reason.
 
 !!! tip "Chromosome Normalization"
     Chromosomes are normalized by stripping the `chr` prefix for internal matching

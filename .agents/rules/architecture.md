@@ -88,7 +88,7 @@ gbcms/
 7. **Windowed indel detection**: ±5bp scan expanding to `max(5, repeat_span + 2)`.
 8. **Dual alignment backends**: SW (default) or PairHMM (`--alignment-backend hmm`).
 9. **Genomic binning**: ~10kb bins, one `bam.fetch()` per bin, max 200 variants/bin.
-10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The index is built per run from the GTF (plain or gzip/BGZF; ~1 s for a full Ensembl GTF, the feature column read before anything else is parsed); there is no disk cache (`--gtf-cache-dir` / `build-gtf-cache` are deprecated no-ops in 6.6.0, removed in 6.7.0).
+10. **COITree for annotation**: Platform-portable metadata access via `Borrow` trait (nosimd vs NEON/AVX backends). The index is built per run from the GTF (plain or gzip/BGZF; ~2 s for a whole Ensembl GTF, ~6.5 s for GENCODE comprehensive; each line's feature and chromosome read before anything else is parsed); there is no disk cache (`--gtf-cache-dir` / `build-gtf-cache` are deprecated no-ops in 6.6.0, removed in 6.7.0).
 11. **Diagnostic flags**: `gbcms_diagnostic` and `gbcms_rescue` are strongly-typed Rust fields, not dynamic attributes.
 
 ## Binning invariance
