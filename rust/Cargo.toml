@@ -15,7 +15,7 @@ thiserror = "2.0"
 anyhow = "1.0"
 bio-types = "1.0"
 rayon = "1.10"
-bio = "3.0"
+bio = "4.2"
 log = "0.4"
 pyo3-log = "0.13.4"
 # Parquet writer for --mfsd-parquet: writes raw fragment size arrays natively
