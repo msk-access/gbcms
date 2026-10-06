@@ -20,6 +20,7 @@ import random
 import pytest
 from census import Verdict, assert_matches, census, judge, window_for
 from helpers import count_checked, make_read, write_contig
+from read_judgment_cases import _build, _mask_inserted
 
 from gbcms import _rs
 
@@ -166,3 +167,52 @@ def test_the_census_holds_the_same_rule(tmp_path):
     assert judge(ins_read("p", 0, a, INS5, low=(0, 1), q=5), w) == Verdict.ALT
     assert judge(deleted_anchor_read("d", 0, a, INS5), w) == Verdict.ALT
     assert judge(deleted_anchor_read("e", 0, a, "N" * 5, low=range(5)), w) == Verdict.UNREADABLE
+
+
+# ── From the review ───────────────────────────────────────────────────────────
+def _shaped(name, i, anchor, events, mask=None):
+    """A read from `anchor - 40 - i % 5` with read-judgment events (pos, "I", bases)
+    or (pos, "D", n), its inserted bases optionally masked (kind, first, count)."""
+    s = anchor - 40 - (i % 5)
+    seq, cigar = _build(CONTIG, s, L, events)
+    read = make_read(name, seq, s, cigar, flag=16 * (i % 2))
+    if mask:
+        _mask_inserted(read, mask)
+    return read
+
+
+@pytest.mark.xfail(strict=True, reason="a far deletion offsets the anchor")
+def test_an_unrelated_deletion_does_not_cancel_the_rule(tmp_path):
+    """The deleted-anchor shape plus an unrelated D2 twenty bases on: a deletion
+    outside the flanks re-inserts nothing, so it must not offset the anchor."""
+    a, ref, alt = U, CONTIG[U], CONTIG[U] + INS5
+    events = [(a, "D", 1), (a + 1, "I", CONTIG[a] + INS5), (a + 21, "D", 2)]
+    reads = [_shaped(f"n{i}", i, a, events, ("N", 1, 5)) for i in range(4)]
+    reads += [_shaped(f"c{i}", i, a, events) for i in range(4)]
+    assert _count(tmp_path, "ud", reads, a, ref, alt) == (0, 4, 4)
+
+
+@pytest.mark.xfail(strict=True, reason="flagged anywhere in the scan window")
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_an_unreadable_insert_outside_the_window_is_a_separate_event(tmp_path, backend):
+    """An unreadable same-length insert outside the discrimination window cannot be
+    the variant at another placement: a separate event, REF where the window is
+    reference (RJ-8), as a readable one is. A +5 four bases past the junction; a +1
+    after the run's far flank."""
+    a, ref, alt = U, CONTIG[U], CONTIG[U] + INS5
+    reads = [ins_read(f"n{i}", i, a, "N" * 5, shift=4, low=range(5)) for i in range(4)]
+    reads += [ins_read(f"c{i}", i, a, INS5, shift=4) for i in range(4)]
+    assert _count(tmp_path, f"ow{backend}", reads, a, ref, alt, backend) == (8, 0, 0)
+    reads = [ins_read(f"h{i}", i, H, "N", shift=7, low=(0,)) for i in range(4)]
+    assert _count(tmp_path, f"oh{backend}", reads, H, "G", "GA", backend) == (4, 0, 0)
+
+
+@pytest.mark.xfail(strict=True, reason="the census nets only deletions between its anchors")
+def test_the_census_nets_deletions_across_the_bases_it_reads(tmp_path):
+    """M D3 I M: the read deletes the anchor and the two bases before it and
+    re-inserts them with a masked insert. Its readable inserted bases are the three
+    it deleted, so none is the insert: partial, engine and census alike."""
+    a, ref, alt = U, CONTIG[U], CONTIG[U] + INS5
+    events = [(a - 2, "D", 3), (a + 1, "I", CONTIG[a - 2 : a + 1] + INS5)]
+    reads = [_shaped(f"n{i}", i, a, events, ("N", 3, 5)) for i in range(4)]
+    assert _count(tmp_path, "d3", reads, a, ref, alt) == (0, 0, 4)
