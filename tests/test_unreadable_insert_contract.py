@@ -181,7 +181,6 @@ def _shaped(name, i, anchor, events, mask=None):
     return read
 
 
-@pytest.mark.xfail(strict=True, reason="a far deletion offsets the anchor")
 def test_an_unrelated_deletion_does_not_cancel_the_rule(tmp_path):
     """The deleted-anchor shape plus an unrelated D2 twenty bases on: a deletion
     outside the flanks re-inserts nothing, so it must not offset the anchor."""
@@ -192,7 +191,6 @@ def test_an_unrelated_deletion_does_not_cancel_the_rule(tmp_path):
     assert _count(tmp_path, "ud", reads, a, ref, alt) == (0, 4, 4)
 
 
-@pytest.mark.xfail(strict=True, reason="flagged anywhere in the scan window")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_an_unreadable_insert_outside_the_window_is_a_separate_event(tmp_path, backend):
     """An unreadable same-length insert outside the discrimination window cannot be
@@ -207,7 +205,6 @@ def test_an_unreadable_insert_outside_the_window_is_a_separate_event(tmp_path, b
     assert _count(tmp_path, f"oh{backend}", reads, H, "G", "GA", backend) == (4, 0, 0)
 
 
-@pytest.mark.xfail(strict=True, reason="the census nets only deletions between its anchors")
 def test_the_census_nets_deletions_across_the_bases_it_reads(tmp_path):
     """M D3 I M: the read deletes the anchor and the two bases before it and
     re-inserts them with a masked insert. Its readable inserted bases are the three

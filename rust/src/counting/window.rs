@@ -465,7 +465,9 @@ fn read_bases_fit(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, che
                 qp += *n as usize;
             }
             Cigar::Del(n) => {
-                deleted += (rp + *n as i64).min(right) - rp.max(left + 1);
+                // Only the bases it deletes between the flanks: a deletion elsewhere
+                // in the read re-inserts nothing here.
+                deleted += ((rp + *n as i64).min(right) - rp.max(left + 1)).max(0);
                 rp += *n as i64;
             }
             Cigar::RefSkip(n) => rp += *n as i64,
@@ -499,7 +501,7 @@ fn read_bases_fit(record: &Record, v: &Variant, quals: &[u8], min_baseq: u8, che
     // readable inserted bases than the reference bases it deletes (a deleted anchor
     // re-inserted with the insert reads the anchor, not the insert). Length alone
     // is not the sequence.
-    if !want_ref && a.len() > r.len() && read_inserted <= deleted.max(0) {
+    if !want_ref && a.len() > r.len() && read_inserted <= deleted {
         return false;
     }
     read_any

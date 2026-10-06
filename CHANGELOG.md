@@ -46,11 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one row went from 430 ALT reads to 368, most rows lost 0–8. On the FORTE sample, 3
   reads in DNA mode and 8 in RNA mode, all low-quality letters.
 - **The rule (RJ-20).** A read whose inserted bases are all unreadable is neither,
-  with partial evidence, on every path: at the junction, at another placement, across
-  several ops, after a deleted anchor, and as a truncation. "Readable" is the one
-  gate every base passes: not N and at or above `--min-baseq`. A read whose readable
-  inserted bases match the ALT stays ALT, however many are masked. The read census
-  holds the same rule. The post-splice path already counted such reads this way.
+  with partial evidence, on every path: at the junction, at another placement inside
+  the discrimination window, across several ops, after a deleted anchor, and as a
+  truncation. Outside the window such an insert is a separate event, as a readable one
+  is. "Readable" means not N and at or above `--min-baseq`, the gate SNV bases pass.
+  A read whose readable inserted bases match the ALT stays ALT, however many are
+  masked. The read census holds the same rule. The post-splice path already counted
+  such reads this way.
 - **Community practice.** Likelihood callers (GATK, bcftools, Strelka2) credit ALT on
   length; sequence-keyed counters do not: VarDict and freebayes drop such a read,
   bam-readcount and LoFreq report it as its own allele, and GetBaseCountsMultiSample

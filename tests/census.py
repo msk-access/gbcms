@@ -323,31 +323,41 @@ def _molecule(read) -> tuple[int, int, dict[int, int]]:
     return lo, hi, pairs
 
 
-def _insert_unread(read, bases: str, spans, ref_lo: int, ref_hi: int) -> bool:
-    """Whether the read's own inserted bases in the query spans `[lo, hi)` it reads
-    hold no more unmasked bases than the reference bases it deletes in
-    `[ref_lo, ref_hi]` (a deleted anchor re-inserted with the insert reads the
-    anchor, not the insert). False when it inserts nothing there."""
-    qp, rp = 0, read.reference_start
-    inserts, readable, deleted = False, 0, 0
-    for op, n in read.cigartuples:
-        if op == 1:
-            for q in range(qp, qp + n):
-                if any(lo <= q < hi for lo, hi in spans):
-                    inserts = True
-                    readable += bases[q] != "N"
+def _insert_unread(read, bases: str, spans) -> bool:
+    """Whether the read's own inserted bases hold no more unmasked bases than the
+    reference bases it deletes beside them (a deleted anchor re-inserted with the
+    insert reads the anchor, not the insert). Its inserted bases are every I op
+    reaching into the query spans `[lo, hi)` the census reads, whole; its deletions
+    those inside the spans or adjacent to such an I op. False when it inserts
+    nothing there."""
+    ops, qp, at = read.cigartuples, 0, []
+    for op, n in ops:
+        at.append(qp)
+        if op in (0, 1, 4, 7, 8):
             qp += n
-        elif op in (0, 7, 8):
-            qp += n
-            rp += n
-        elif op == 4:
-            qp += n
-        elif op == 2:
-            deleted += max(0, min(rp + n, ref_hi + 1) - max(rp, ref_lo))
-            rp += n
-        elif op == 3:
-            rp += n
-    return inserts and readable <= deleted
+    inside = [
+        op == 1 and any(lo < at[i] + n and at[i] < hi for lo, hi in spans)
+        for i, (op, n) in enumerate(ops)
+    ]
+    if not any(inside):
+        return False
+    readable = sum(
+        bases[q] != "N"
+        for i, (_, n) in enumerate(ops)
+        if inside[i]
+        for q in range(at[i], at[i] + n)
+    )
+    deleted = sum(
+        n
+        for i, (op, n) in enumerate(ops)
+        if op == 2
+        and (
+            any(lo <= at[i] <= hi for lo, hi in spans)
+            or (i > 0 and inside[i - 1])
+            or (i + 1 < len(ops) and inside[i + 1])
+        )
+    )
+    return readable <= deleted
 
 
 def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
@@ -402,7 +412,7 @@ def judge(read, window: Window, min_baseq: int = 20) -> Verdict:
     insertion = window.indel and len(window.alt) > len(window.ref)
 
     def unread(spans) -> bool:
-        return insertion and _insert_unread(read, bases, spans, window.left, window.right)
+        return insertion and _insert_unread(read, bases, spans)
 
     if ql is not None and qr is not None and not any(ql < q <= qr for q in stops):
         stretch = bases[ql + 1 : qr]
