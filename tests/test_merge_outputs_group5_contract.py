@@ -533,12 +533,16 @@ def test_a_record_without_bases_is_counted_once_across_bins(tmp_path, caplog):
 
 
 def _leaf_fields(model, prefix=""):
+    from typing import get_origin
+
     from pydantic import BaseModel
 
     out = []
     for name, field in model.model_fields.items():
         ann = field.annotation
-        if isinstance(ann, type) and issubclass(ann, BaseModel):
+        # get_origin: on Python 3.10 a generic alias such as dict[str, Path] passes
+        # isinstance(ann, type), and issubclass() on it raises under pydantic 2.0.
+        if get_origin(ann) is None and isinstance(ann, type) and issubclass(ann, BaseModel):
             out += _leaf_fields(ann, f"{name}.")
         else:
             out.append(name)

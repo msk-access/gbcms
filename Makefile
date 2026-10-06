@@ -28,10 +28,10 @@ install:
 	uv pip install .
 
 install-dev:
-	uv pip install -e ".[dev]"
+	uv pip install -e . --group dev
 
 install-all:
-	uv pip install -e ".[dev,all]"
+	uv pip install -e ".[all]" --group dev
 
 setup:
 	@chmod +x scripts/setup_and_test.sh

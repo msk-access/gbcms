@@ -293,5 +293,11 @@ def test_only_a_tag_push_publishes_and_the_default_token_is_read_only():
 
 
 def test_ci_installs_what_the_tests_import():
-    install = "\n".join(_runs(j) for j in _jobs("test.yml").values())
-    assert "pyyaml" in install.lower()
+    # CI installs pyproject's `test` dependency group, which lists what the suite
+    # imports beyond gbcms's own dependencies (yaml for these workflow tests).
+    install = _runs(_jobs("test.yml")["test"])
+    assert "--group test" in install
+    toml = (ROOT / "pyproject.toml").read_text()
+    group = re.search(r"^test = \[\n(.*?)^\]", toml, re.M | re.S).group(1)
+    names = set(re.findall(r'^\s*"([A-Za-z0-9_-]+)', group, re.M))
+    assert {"pyyaml", "pyarrow", "pytest-mock"} <= names, names

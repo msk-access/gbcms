@@ -19,7 +19,9 @@ Guide for contributing to gbcms.
     # Install Rust (if not installed)
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
     
-    # Install (builds Rust extension)
+    # Install (builds Rust extension, then installs the `dev` dependency group,
+    # which needs pip>=25.1)
+    pip install --upgrade "pip>=25.1" maturin
     maturin develop --release
     
     # Verify
@@ -40,8 +42,8 @@ Guide for contributing to gbcms.
     # Set libclang path for the Rust build
     export LIBCLANG_PATH=$CONDA_PREFIX/lib
     
-    # Install maturin and build
-    pip install maturin
+    # Install maturin and build (the `dev` dependency group needs pip>=25.1)
+    pip install --upgrade "pip>=25.1" maturin
     maturin develop --release
     
     # Verify
@@ -61,7 +63,9 @@ Guide for contributing to gbcms.
     python -m venv .venv
     source .venv/bin/activate
     
-    # Install (builds Rust extension)
+    # Install (builds Rust extension, then installs the `dev` dependency group,
+    # which needs pip>=25.1)
+    pip install --upgrade "pip>=25.1" maturin
     maturin develop --release
     
     # Verify

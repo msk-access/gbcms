@@ -14,14 +14,20 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 
+# Floors are measured: the suite passes with every one of them installed together
+# (Python 3.10 and 3.11), and CI's floors leg keeps them so. typer below 0.15.4
+# breaks under click >= 8.2; pysam 0.21 has no arm64 wheel and no buildable sdist.
 dependencies = [
-    "pysam>=0.21.0",
-    "typer>=0.9.0",
+    "pysam>=0.22.0",
+    "typer>=0.15.4",
     # click is the engine under typer; the CLI tests import it directly
     # (typer.main.get_command returns a click.Group). Pin it explicitly so the
     # built wheel carries it and CI's lock-bypassing wheel install resolves it.
@@ -35,23 +41,6 @@ dependencies = [
 fast = []
 
 all = []
-
-dev = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.11.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.5.0",
-    "types-pyyaml>=6.0.0",
-    # the workflow-contract tests parse .github/workflows/*.yml
-    "pyyaml>=6.0",
-    # MkDocs 2.0 is incompatible with Material and this site's config (anchor
-    # validation, exclude_docs, snippets); the migration is D3 #138.
-    "mkdocs>=1.6,<2",
-    "mkdocs-material>=9.5,<10",
-    "mkdocs-print-site-plugin>=2.3.0",
-]
 
 [project.scripts]
 gbcms = "gbcms.cli:app"
@@ -158,11 +147,29 @@ exclude_lines = [
 ]
 
 [dependency-groups]
-dev = [
-    "black>=25.9.0",
-    "mypy>=1.18.2",
+# Contributors' tools (PEP 735; not in the published metadata). `maturin develop`
+# installs `dev`, which needs pip>=25.1 or uv. CI installs `test` for the suite and
+# `dev` for lint.
+test = [
     "pytest>=8.4.2",
     "pytest-cov>=4.1.0",
-    "pytest-benchmark>=5.1.0",
+    "pytest-mock>=3.11.0",
+    # the observation tests read Parquet back with it
+    "pyarrow",
+    # the workflow-contract tests parse .github/workflows/*.yml
+    "pyyaml>=6.0",
+    # the contract tests parse pyproject.toml
+    "tomli>=2.0; python_version < '3.11'",
+]
+dev = [
+    {include-group = "test"},
+    "black>=25.9.0",
     "ruff>=0.13.3",
+    "mypy>=1.18.2",
+    "types-pyyaml>=6.0.0",
+    # MkDocs 2.0 is incompatible with Material and this site's config (anchor
+    # validation, exclude_docs, snippets); the migration is D3 #138.
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5,<10",
+    "mkdocs-print-site-plugin>=2.3.0",
 ]

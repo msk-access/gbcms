@@ -20,8 +20,9 @@ Thank you for your interest in contributing to GetBaseCounts! This document prov
    # Install Rust (if not installed)
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    
-   # Build and install in development mode
-   pip install maturin
+   # Build and install in development mode. Needs pip>=25.1 (or `maturin develop --uv`):
+   # it also installs the `dev` dependency group (PEP 735).
+   pip install --upgrade "pip>=25.1" maturin
    maturin develop --release
    ```
 

@@ -87,9 +87,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install the unified wheel
+# Runtime dependencies from the hash-pinned lock (linux/amd64, Python 3.11; refreshed
+# at each release, see the release guide), then the wheel without resolving anything,
+# then pip check: the image holds exactly the locked versions, and they satisfy
+# gbcms's own requirements, so a lock that no longer does fails the build here.
+COPY docker/requirements.lock /app/requirements.lock
 COPY --from=builder /app/dist/*.whl /app/dist/
-RUN pip install --no-cache-dir /app/dist/*.whl
+RUN pip install --no-cache-dir --require-hashes --no-deps -r /app/requirements.lock \
+    && pip install --no-cache-dir --no-deps /app/dist/*.whl \
+    && pip check
 
 # Verify installation
 RUN python -c "from gbcms import _rs; import gbcms; print(f'gbcms {gbcms.__version__} ready')"

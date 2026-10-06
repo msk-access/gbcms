@@ -19,12 +19,9 @@ Contracts:
 import re
 from pathlib import Path
 
-import pytest
 import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
-
-pytestmark = pytest.mark.xfail(strict=True, reason="D4 PR A is not implemented yet")
 
 ROOT = Path(__file__).resolve().parents[1]
 WF = ROOT / ".github" / "workflows"
