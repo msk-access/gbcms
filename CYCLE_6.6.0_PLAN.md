@@ -1924,9 +1924,10 @@ page from the CHANGELOG section in the release workflow.
     flags that change.
 
   Review: no blockers. A recurrence started at the low end of the range drifts as
-  its sum grows (~n ln 2 on balanced tables): 1.9e-12 at n = 20,000, 2.2e-9 at
-  10⁶. It now starts at the mode and stops where terms underflow (e^-750): ≤ 4e-14
-  on the test tables, and u32-max cells take 40 ms instead of a 34 GB allocation.
+  its sum grows (~n ln 2 on balanced tables). Against the exact oracle on 3-SD
+  tables (p ≈ 0.003): 5.8e-11 at n = 10⁵, 9.3e-10 at 10⁶. It now starts at the mode
+  and stops where terms underflow (e^-750): 2.0e-15 and 5.0e-14 on those tables,
+  and u32-max cells take 40 ms instead of a 34 GB allocation.
   Tests now pin R's tie rule against scipy's on three near-tie tables.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
