@@ -38,8 +38,15 @@ runner = CliRunner()
 _EXONS = ((101, 300), (501, 600), (801, 1000))  # 1-based closed, as rna_fixtures
 
 
-def _gtf_text(attrs='gene_id "G1"; transcript_id "T1";', extra=""):
-    return "".join(f"chr1\tTEST\texon\t{s}\t{e}\t.\t+\t.\t{attrs}\n" for s, e in _EXONS) + extra
+def _gtf_text(attrs='gene_id "G1"; transcript_id "T1";', extra="", filler=0):
+    """The gene model's exon lines (after `filler` gene lines on chr2, which push
+    them past the first compressed block) plus `extra`."""
+    head = "".join(
+        f'chr2\tTEST\tgene\t{100 * i + 1}\t{100 * i + 50}\t.\t+\t.\tgene_id "F{i}";\n'
+        for i in range(filler)
+    )
+    exons = "".join(f"chr1\tTEST\texon\t{s}\t{e}\t.\t+\t.\t{attrs}\n" for s, e in _EXONS)
+    return head + exons + extra
 
 
 def _reads(ref):
@@ -59,12 +66,15 @@ def _run(tmp_path, gtf_text, name="gene.gtf", compress=None, extra=()):
     ref = mk_ref()
     reads, alt = _reads(ref)
     fa, bam = write_fasta(tmp_path, ref), write_bam(tmp_path, ref, reads)
+    data = gtf_text if isinstance(gtf_text, bytes) else gtf_text.encode()
     plain = tmp_path / "plain.gtf"
-    plain.write_text(gtf_text)
+    plain.write_bytes(data)
     gtf = tmp_path / name
     if compress == "gzip":
-        with gzip.open(gtf, "wt") as fh:
-            fh.write(gtf_text)
+        gtf.write_bytes(gzip.compress(data))
+    elif compress == "members":  # concatenated gzip members, split mid-file
+        half = data.index(b"\n", len(data) // 2) + 1
+        gtf.write_bytes(gzip.compress(data[:half]) + gzip.compress(data[half:]))
     elif compress == "bgzf":
         pysam.tabix_compress(str(plain), str(gtf), force=True)
     else:
@@ -89,11 +99,15 @@ def _invoke(d, out, *extra):
 # ── Input: .gtf.gz ───────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("compress", ["gzip", "bgzf"])
+@pytest.mark.parametrize("compress", ["gzip", "bgzf", "members"])
 def test_gzipped_gtf_loads_like_the_plain_file(tmp_path, compress):
-    """Every output field of a .gtf.gz run equals the plain run's."""
-    plain = _run(tmp_path / "plain", _gtf_text())
-    packed = _run(tmp_path / "packed", _gtf_text(), name="gene.gtf.gz", compress=compress)
+    """Every output field of a .gtf.gz run equals the plain run's. The exons sit
+    past ~250 KB of other lines, so a decoder that stopped after the first BGZF
+    block or gzip member would lose them."""
+    text = _gtf_text(filler=5000)
+    assert len(text) > 3 * 65536
+    plain = _run(tmp_path / "plain", text)
+    packed = _run(tmp_path / "packed", text, name="gene.gtf.gz", compress=compress)
     assert plain["transcript_read_counts"].startswith("T1:")
     assert packed == plain
 
@@ -123,10 +137,32 @@ _JUNK = {
     'gene_id "G9"; transcript_id "T9";\n',
     "empty-transcript-id": f"chr1\tTEST\texon\t{POS + 4}\t{POS + 30}\t.\t+\t.\t"
     'gene_id "G9"; transcript_id "";\n',
+    # noodles rejected an unquoted last value with no ';' (GTF2.2 ends every
+    # attribute with one); "." strips to an empty ID like "" does.
+    "unquoted-final-value": f"chr1\tTEST\texon\t{POS + 4}\t{POS + 30}\t.\t+\t.\t"
+    'gene_id "G9"; transcript_id "T9"; exon_number 1\n',
+    "dot-transcript-id": f"chr1\tTEST\texon\t{POS + 4}\t{POS + 30}\t.\t+\t.\t"
+    'gene_id "G9"; transcript_id ".";\n',
 }
+_NEW = {"unquoted-final-value", "dot-transcript-id"}  # review round: red first
 
 
-@pytest.mark.parametrize("kind", sorted(_JUNK))
+@pytest.mark.parametrize(
+    "kind",
+    [
+        (
+            pytest.param(
+                k,
+                marks=pytest.mark.xfail(
+                    strict=True, reason="loaded; its boundary moves the distance"
+                ),
+            )
+            if k in _NEW
+            else k
+        )
+        for k in sorted(_JUNK)
+    ],
+)
 def test_malformed_exon_lines_are_not_loaded(tmp_path, kind):
     clean = _run(tmp_path / "clean", _gtf_text())
     junk = _run(tmp_path / "junk", _gtf_text(extra=_JUNK[kind]))
@@ -134,13 +170,36 @@ def test_malformed_exon_lines_are_not_loaded(tmp_path, kind):
     assert junk == clean
 
 
+@pytest.mark.xfail(strict=True, reason="two of the junk kinds load, so the count is 3")
 def test_rejected_exon_lines_are_warned_with_a_count(tmp_path):
     d = tmp_path / "junk"
     _run(d, _gtf_text(extra="".join(_JUNK[k] for k in sorted(_JUNK))))
     hit = [m for m in _invoke(d, tmp_path / "again").splitlines() if "malformed" in m]
     assert hit, "a warning names the rejected lines"
-    assert re.search(r"\b3 exon lines\b", hit[0]), hit[0]
+    assert re.search(rf"\b{len(_JUNK)} exon lines\b", hit[0]), hit[0]
     assert re.search(r"line \d+", hit[0]), hit[0]
+
+
+@pytest.mark.xfail(strict=True, reason="a non-UTF-8 line is dropped at debug level only")
+def test_a_non_utf8_exon_line_is_rejected_and_warned(tmp_path):
+    """The old parser stopped the run on a non-UTF-8 line; dropping it silently
+    would derive an intron through the missing exon. It is a rejected exon line."""
+    lines = _gtf_text().encode().splitlines(keepends=True)
+    lines[1] = lines[1].replace(b'transcript_id "T1";', b'transcript_id "T1"; note "caf\xe9";')
+    d = tmp_path / "latin1"
+    _run(d, b"".join(lines))
+    hit = [m for m in _invoke(d, tmp_path / "again").splitlines() if "malformed" in m]
+    assert hit and re.search(r"\b1 exon line\b", hit[0]) and "UTF-8" in hit[0], hit
+
+
+@pytest.mark.xfail(strict=True, reason="the empty-index warning blames the file or contigs")
+def test_an_index_emptied_by_rejections_says_so(tmp_path):
+    d = tmp_path / "all-junk"
+    _run(d, "".join(_JUNK[k] for k in ("start-after-end", "end-past-i32")))
+    out = _invoke(d, tmp_path / "again")
+    empty = [m for m in out.splitlines() if "inert" in m]
+    assert empty and "rejected" in empty[0], empty
+    assert "wrong file" not in out and "lacks these contigs" not in out
 
 
 # ── The cache is deprecated ──────────────────────────────────────────────────
