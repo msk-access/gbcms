@@ -21,10 +21,10 @@ log = "0.4"
 pyo3-log = "0.13.2"
 # Parquet writer for --mfsd-parquet: writes raw fragment size arrays natively
 # from Rust, avoiding an FFI round-trip and the pyarrow dependency.
-arrow-array = { version = "53", default-features = false }
-arrow-buffer = { version = "53", default-features = false }
-arrow-schema = { version = "53", default-features = false }
-parquet = { version = "53", default-features = false, features = ["arrow", "zstd"] }
+arrow-array = { version = "60", default-features = false }
+arrow-buffer = { version = "60", default-features = false }
+arrow-schema = { version = "60", default-features = false }
+parquet = { version = "60", default-features = false, features = ["arrow", "zstd"] }
 # WFA2 fast-path alignment for Phase 3 read classification triage.
 # Pure Rust implementation from COMBINE-lab — no cmake dependency.
 # NEON/AVX2 SIMD acceleration.
