@@ -14,7 +14,6 @@
 //! - `merge.py` — combined strand bias on merged simplex+duplex counts
 
 use pyo3::prelude::*;
-use statrs::distribution::{Discrete, Hypergeometric};
 
 /// Calculate Fisher's Exact Test for a 2×2 contingency table.
 ///
@@ -51,10 +50,9 @@ pub fn fisher_exact_2x2(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
     }
 
     // Guard: strand bias is undefined/underpowered with ≤1 observation in
-    // either row. For the primary use-case (strand bias), row 2 = ALT counts.
-    // With 0–1 ALT reads there is no statistical power to detect asymmetry;
-    // the Hypergeometric distribution becomes degenerate (K ≈ N), causing
-    // floating-point underflow that produces p ≈ 0.
+    // row 2. For the primary use-case (strand bias), row 2 = ALT counts.
+    // With 0–1 ALT reads there is no statistical power to detect asymmetry,
+    // so the p-value is 1 rather than whatever the lone read's strand gives.
     //
     // Returning NaN for OR signals "undefined" — downstream writers format
     // NaN as '.' in VCF (spec-compliant missing value).
@@ -76,15 +74,18 @@ pub fn fisher_exact_2x2(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
         numerator / denominator
     };
 
-    // Fisher's Exact Test (Two-sided) using Hypergeometric distribution
-    // We want the probability of observing a table as extreme or more extreme than the current one,
-    // given fixed marginals.
-    // Hypergeometric(N, K, n) where:
-    // N = total population size (a+b+c+d)
-    // K = number of successes in population (a+b) (Row 1 sum)
-    // n = sample size (a+c) (Col 1 sum)
-    // k = number of successes in sample (a)
-
+    // Fisher's exact test, two-sided, as R's fisher.test defines it: the sum of the
+    // probabilities of every table with these margins that is at most as likely as
+    // the observed one (times 1 + 1e-7, R's tolerance for ties). Cell a follows a
+    // hypergeometric law over [max(0, r1 + c1 - n), min(r1, c1)].
+    //
+    // Each table's log-probability is taken relative to the mode's, walking outward
+    // through the exact ratio P(k + 1) / P(k) = (r1 - k)(c1 - k) / ((k + 1)(n - r1 - c1 + k + 1)),
+    // then normalized by the sum over all tables, which is 1. No factorial or
+    // binomial is formed, so nothing overflows at any depth (statrs's binomial
+    // C(n, c1) did once it passed f64's range, ~1,030 reads on a strand-balanced
+    // table, and the p-value came out 0). Starting at the mode keeps the running
+    // sum small where the mass is, so the relative error stays near 1e-13.
     let row1_sum = a + b;
     let col1_sum = a + c;
 
@@ -93,35 +94,68 @@ pub fn fisher_exact_2x2(a: u32, b: u32, c: u32, d: u32) -> (f64, f64) {
         return (1.0, odds_ratio);
     }
 
-    let dist = match Hypergeometric::new(n, row1_sum, col1_sum) {
-        Ok(d) => d,
-        Err(_) => return (1.0, odds_ratio), // Should not happen with checks above
+    let lo = (row1_sum + col1_sum).saturating_sub(n);
+    let hi = row1_sum.min(col1_sum);
+    let ln = |x: u64| (x as f64).ln();
+    // ln P(k + 1) - ln P(k). n + k + 1 > r1 + c1 since k >= lo >= r1 + c1 - n.
+    let step = |k: u64| {
+        ln(row1_sum - k) + ln(col1_sum - k)
+            - ln(k + 1)
+            - ln(n + k + 1 - row1_sum - col1_sum)
     };
+    // The hypergeometric mode (in u128: (r1 + 1)(c1 + 1) reaches 2^66).
+    let mode = ((row1_sum as u128 + 1) * (col1_sum as u128 + 1) / (n as u128 + 2)) as u64;
+    let mode = mode.clamp(lo, hi);
+    // A table more than e^-750 below the mode adds exactly 0 to either sum
+    // (exp underflows), and the law is unimodal, so each walk stops there. That
+    // bounds time and memory however wide the margins.
+    const LN_FLOOR: f64 = -750.0;
 
-    let p_observed = dist.pmf(a);
-    let mut p_value = 0.0;
-
-    // Sum probabilities of all tables with p <= p_observed
-    // Range of possible values for cell 'a' is [max(0, row1_sum + col1_sum - n), min(row1_sum, col1_sum)]
-    let min_a = (row1_sum + col1_sum).saturating_sub(n);
-    let max_a = if row1_sum < col1_sum {
-        row1_sum
+    // The observed table's log-probability, by the same steps the sums take.
+    let mut ln_obs = 0.0f64;
+    if a > mode {
+        for k in mode..a {
+            ln_obs += step(k);
+            if ln_obs < LN_FLOOR {
+                return (0.0, odds_ratio);
+            }
+        }
     } else {
-        col1_sum
-    };
-
-    for k in min_a..=max_a {
-        let p = dist.pmf(k);
-        if p <= p_observed + 1e-10 {
-            // Add epsilon for float comparison
-            p_value += p;
+        for k in (a..mode).rev() {
+            ln_obs -= step(k);
+            if ln_obs < LN_FLOOR {
+                return (0.0, odds_ratio);
+            }
         }
     }
 
-    // Cap at 1.0
-    if p_value > 1.0 {
-        p_value = 1.0;
+    let cutoff = ln_obs + 1e-7f64.ln_1p();
+    let (mut tail, mut total) = (0.0f64, 0.0f64);
+    let mut add = |x: f64| {
+        let w = x.exp();
+        total += w;
+        if x <= cutoff {
+            tail += w;
+        }
+    };
+    add(0.0);
+    let mut x = 0.0f64;
+    for k in mode..hi {
+        x += step(k);
+        if x < LN_FLOOR {
+            break;
+        }
+        add(x);
     }
+    let mut x = 0.0f64;
+    for k in (lo..mode).rev() {
+        x -= step(k);
+        if x < LN_FLOOR {
+            break;
+        }
+        add(x);
+    }
+    let p_value = (tail / total).min(1.0);
 
     (p_value, odds_ratio)
 }
@@ -308,6 +342,17 @@ mod tests {
         let (p, or) = fisher_exact_2x2(50, 50, 1, 1);
         assert!(p > 0.5, "2 balanced ALT reads should have p > 0.5, got {}", p);
         assert!(!or.is_nan(), "2 ALT reads should produce a real OR, got NaN");
+    }
+
+    #[test]
+    fn test_fisher_extreme_margins_bounded() {
+        // u32-max cells: the walk stops where terms underflow, so this returns
+        // without holding all 4.3e9 tables of the range.
+        let m = u32::MAX;
+        assert_eq!(fisher_exact_2x2(m, m, m, m).0, 1.0);
+        assert_eq!(fisher_exact_2x2(m, 0, 0, m).0, 0.0);
+        let (p, _) = fisher_exact_2x2(m, m - 200_000, m - 200_000, m);
+        assert!(p > 0.0 && p < 1.0, "p = {}", p);
     }
 
     #[test]

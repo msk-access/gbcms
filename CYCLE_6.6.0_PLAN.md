@@ -1894,6 +1894,41 @@ page from the CHANGELOG section in the release workflow.
   installs on RHEL 8 (#234), wheels for Python 3.10–3.14 (#235), a native arm64
   image (#236) and macOS wheels (#237). In 6.6.0, Docker/Singularity remains the
   RHEL path.
+- **S3 #239: Fisher's exact test at depth (2026-10-06, operator).** Measured on the
+  cached D4 acceptance outputs (`develop`), each row's strand-bias table recomputed
+  exactly with scipy:
+  - **Overflow.** `fisher_exact_2x2` returns p = 0 once C(n, a + c) passes f64's
+    range (statrs's binomial overflows): both strands deep, from ~1,030 reads on a
+    strand-balanced table; a table with one thin strand stays correct. Rows printing p = 0 where the exact p
+    is above 0, out of all rows:
+    - RC cfDNA: read test 316 of 1,060 (298 of them have an exact p ≥ 0.05),
+      fragment test 235;
+    - FORTE RNA mode: 233 of 7,272 (read), 134 (fragment);
+    - FORTE DNA mode: 164 of 2,264 (read), 70 (fragment);
+    - WES 3 of 80, RNA truth 1 of 94, RNA probes 11 of 978.
+  - **ASJD.** 5 of the 7 local junction flags rest on p = 0.
+  - **The tie tolerance was absolute (1e-10).** Strongly biased tables are floored
+    near 1e-10 (e.g. (250, 50, 20, 280) prints 2.1e-10; the exact p is 7.0e-90). On
+    real rows at n ≤ 1,030 only 3 differ beyond the printed precision, all at
+    p < 1e-9.
+  - **Survey.** R's `fisher.test` uses a relative tolerance of 1 + 1e-7 and scipy
+    1 + 1e-14; both work in log space. GATK's FisherStrand scales tables above 400
+    reads down to 200 before testing.
+  - **Merge** recomputes combined strand bias through the same binding.
+
+  Decided:
+  - The exact two-sided p on the raw counts (no GATK-style normalization; the odds
+    ratio column gives the effect size), with R's tie rule: the sum over tables with
+    probability ≤ the observed × (1 + 1e-7). Computed in log space.
+  - Validated against an exact integer oracle; then measure the real rows and ASJD
+    flags that change.
+
+  Review: no blockers. A recurrence started at the low end of the range drifts as
+  its sum grows (~n ln 2 on balanced tables). Against the exact oracle on 3-SD
+  tables (p ≈ 0.003): 5.8e-11 at n = 10⁵, 9.3e-10 at 10⁶. It now starts at the mode
+  and stops where terms underflow (e^-750): 2.0e-15 and 5.0e-14 on those tables,
+  and u32-max cells take 40 ms instead of a 34 GB allocation.
+  Tests now pin R's tie rule against scipy's on three near-tie tables.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists

@@ -33,6 +33,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Fixed — Fisher's exact test at any depth (#239)
+
+- **Strand-bias p-values were 0 at depth.** `strand_bias_p_value`,
+  `fragment_strand_bias_p_value` (VCF `SB_PVAL`, `FSB_PVAL`) and merge's combined
+  columns were 0, as if strongly biased, whenever the binomial C(n, forward total)
+  passed f64's range. That needs both strands well covered: from about 1,030 reads
+  on a strand-balanced table. Tables with one thin strand stayed correct. On the
+  RC cfDNA rows that was 316 of 1,060 read-level p-values, 298 of them truly
+  ≥ 0.05. The ASJD junction test (p < 0.05) read the same zeros.
+- **The fix.** The test is now the exact two-sided p of R's `fisher.test`, computed
+  in log space from the ratio of neighbouring tables, walking out from the most
+  likely table: no factorial, nothing overflows, relative error near 10⁻¹³ at any
+  depth, and tables too unlikely to count are never visited.
+  - Ties follow R's rule (probability ≤ observed × (1 + 10⁻⁷)). That replaces an
+    absolute 10⁻¹⁰ tolerance which floored strongly biased tables near 10⁻¹⁰; one
+    printed 2.1 × 10⁻¹⁰ where the exact p is 7.0 × 10⁻⁹⁰.
+  - The p = 1 guards (≤ 1 ALT observation, empty or full margins) and the odds ratio
+    are unchanged.
+  - The p-value stays the exact p of the raw counts. At deep coverage, read the odds
+    ratio for the size of a bias.
+- **Measured on the local FORTE sample (9,536 rows).**
+  - What moved: 397 read-level and 205 fragment-level strand-bias p-values, and 5
+    ASJD p-values, of which one flag clears. All counts and Parquet tables are
+    unchanged.
+  - Every reported strand-bias p now equals scipy's exact value.
+- **statrs** leaves the direct dependencies.
+
 ### Changed — Rust dependencies on their current releases (#139)
 
 The Rust dependencies move to their current releases, one per commit
@@ -41,10 +68,8 @@ The Rust dependencies move to their current releases, one per commit
   and `Variant` and `BaseCounts` opt in to the by-value conversion that Python
   passes back. The module keeps the GIL on a free-threaded interpreter, as before;
   gbcms is not built or tested free-threaded.
-- **rust-htslib 1.0, arrow/parquet 60, statrs 0.19**, and the semver-compatible
-  updates.
-  - statrs supplies Fisher's exact test. On every table with cells up to 40 its
-    results are bit-identical under both versions.
+- **rust-htslib 1.0, arrow/parquet 60**, and the semver-compatible updates.
+  (statrs went to 0.19 here, then left the dependencies with #239.)
   - parquet 60 truncates column-chunk min/max statistics of strings longer than 64
     bytes. The data are unchanged.
 - **wfa2lib-rs moves to upstream's current commit without its default features.**
