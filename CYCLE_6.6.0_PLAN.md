@@ -1802,6 +1802,14 @@ page from the CHANGELOG section in the release workflow.
   max 44 kb (1,458 cap splits). The architecture page also still cites the retired
   parity suite.
 - **D5 #155:** built last, against the release candidate (after D4).
+- **After the 6.6.0 tag (operator, 2026-10-05): the downstream org repos.**
+  - `mskcc-omics-workflows/containers` gets `containers/gbcms/6.6.0/Dockerfile`,
+    which builds `ghcr.io/mskcc-omics-workflows/gbcms:6.6.0`.
+  - `mskcc-omics-workflows/modules` bumps the `gbcmsrs` modules from 6.3.1:
+    - drop `buildgtfcache` and the `rna` module's `gtf_cache` input (they still
+      work under 6.6.0, with a warning; 6.7.0 removes them);
+    - widen the `gtf` pattern to `*.{gtf,gtf.gz}`;
+    - check the 6.4–6.6 CLI and output changes, then update the nf-test snapshots.
 - 6.7.0 overlap: D3 #138 stays (D3a pins below MkDocs 2); P1 #150 stays (P3's spans
   inform it).
 

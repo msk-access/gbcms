@@ -19,6 +19,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 ## References
 - [Claudelicious harness](claudelicious-reference.md) — the upstream pattern this project's harness follows.
 - [Fragmentomics (Tsui et al., MSK)](fragmentomics-reference.md) — the prior for mFSD and the CH-vs-tumor question; cite for S1 #153 / S2 #154.
+- [Downstream org repos](downstream-org-containers-modules.md) — after a release, the mskcc-omics-workflows containers repo builds the org image and the modules repo's gbcmsrs modules pin it; bump both after the tag.
 
 ## Project facts (from the 2026-06-26 code review)
 - [Bin fetch-end must cover the anchor variant](bin-anchor-coverage.md) — CR-1; pinned by the bin property test and binning-invariance tests.
