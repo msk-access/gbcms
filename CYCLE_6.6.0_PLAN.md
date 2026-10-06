@@ -1850,7 +1850,7 @@ page from the CHANGELOG section in the release workflow.
   | arrow / parquet | 53 → 60 | upgraded; the Parquet companions are identical by content (string column-chunk statistics truncate at 64 bytes now) |
   | pyo3 (+ pyo3-log) | 0.27 → 0.29.3 (0.13.4) | upgraded: `allow_threads` → `detach`; `Variant`/`BaseCounts` opt in to `from_py_object`, the output-only types opt out; `gil_used = true` keeps the module's GIL behaviour |
   | wfa2lib-rs | rev 7d6ec921 → cb8aa3d6 | upgraded, `default-features = false`: clap, tracing and mimalloc (the benchmark binary's) leave the build |
-  | bio | 3.0 (4.2.1 available) | **held** (operator, 2026-10-06); see below |
+  | bio | 3.0 (4.2.1 available) | **held** (operator, 2026-10-06); see below. Upgraded to 4.2.1 after C35 ("bio 4.2.1 after C35") |
   | noodles-gtf, bincode, serde | — | removed in #230 |
   | flate2 | 1.1.10 | zlib-rs backend since #230 |
   | coitrees 0.4, bio-types 1.0.4 | — | already current |
@@ -2050,6 +2050,17 @@ page from the CHANGELOG section in the release workflow.
   carrier counts ALT on both rows (the SNV row's aligned base is never contested), and a
   slid-to-junction ALT is contested by the sibling guard where a junction-written one is
   not.
+- **bio 4.2.1 after C35 (#139, 2026-10-06).** The held commit from D4 PR B, onto
+  develop with C35: `SW_GAP_OPEN` −5 → −6 (bio 4's gap rule, rust-bio#660; every
+  score unchanged) and the PairHMM forward fix (rust-bio#701: extended read-insertion
+  bases now cost their emission). bio keeps statrs 0.18; new transitive crates:
+  borsh, toml_edit/toml_parser/toml_datetime, proc-macro-crate, winnow, cfg_aliases.
+  - The reviewer's synthetic case: both backends now give ALT 10, partial 20 at the
+    homopolymer and the non-repeat insertion (bio 4 before C35: the homopolymer's N
+    and Q2 groups crossed to ALT). The C35 contract tests pass under bio 4.
+  - Acceptance against develop's outputs (the C35 tree): the local FORTE sample
+    (9,536 rows, both backends, 8 Parquet tables) and the cluster sets (28 RC DNA, 33
+    RNA truth, 3 probes, 80 WES; 144 files) are byte-identical.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
