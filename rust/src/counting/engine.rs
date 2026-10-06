@@ -647,9 +647,8 @@ fn count_bam_binned_core(
     };
 
     // Process bins in parallel, each bin does one bam.fetch()
-    #[allow(deprecated)]
     #[allow(clippy::type_complexity)]
-    let bin_results: Result<BinOutput, anyhow::Error> = py.allow_threads(move || {
+    let bin_results: Result<BinOutput, anyhow::Error> = py.detach(move || {
         pool.install(|| {
             bins.par_iter()
                 .map_init(
