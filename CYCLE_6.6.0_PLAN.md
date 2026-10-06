@@ -1981,12 +1981,12 @@ page from the CHANGELOG section in the release workflow.
   RNA −9; RNA truth and probes unchanged.
   Residuals measured after the review:
   - The soft-clip reads: develop calls all 10 RC reads (and 12 FORTE) neither, never
-    ALT. Nothing to fix; recommended: no sub-issue (operator to confirm).
+    ALT. Nothing to fix; no sub-issue (operator, 2026-10-06).
   - The truncation band reads letters at any quality. Both policies on the RC
     truncation candidates: 3,387 pass both, 0 pass only by low-BQ letters, 1 passes
     only with masked identity (an N counted as a mismatch), 24 fail both; FORTE 17
-    fail both. Recommended (operator to confirm): the band stays as it is (the
-    identity-band rule), with a readable base required.
+    fail both. The band stays as it is (operator, 2026-10-06: the identity-band
+    rule), with a readable base required.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
