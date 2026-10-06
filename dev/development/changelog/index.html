@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -794,6 +794,37 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
 </ul>
+<h3 id="changed-dependencies-ci-coverage-and-the-image-139">Changed — dependencies, <abbr title="Continuous Integration - Automated build and test system">CI</abbr> coverage and the image (#139)<a class="headerlink" href="#changed-dependencies-ci-coverage-and-the-image-139" title="Permanent link">¶</a></h3>
+<p>Measured first (<code>CYCLE_6.6.0_PLAN.md</code>, "D4 PR A"). Nothing changes at runtime.
+- <strong>The dependency floors are true.</strong> At the declared floors the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> crashed: typer
+  0.9.0 cannot read its <code>list[...]</code> options. pysam 0.21.0 has no macOS arm64 wheel
+  and an sdist that fails on current setuptools. Bisected one package at a time, the
+  minimums are <code>typer&gt;=0.15.4</code> (older typer does not cap click and breaks with
+  click &gt;= 8.2) and <code>pysam&gt;=0.22.0</code>; rich 13.0, pydantic 2.0 and polars 1.0 held.
+  All of them together pass the suite on Python 3.10 and 3.11. A new <abbr title="Continuous Integration - Automated build and test system">CI</abbr> leg installs
+  the floors on every PR and checks that they are what got installed.
+- <strong>click is no longer a runtime dependency.</strong> typer bundles its own copy, and gbcms
+  never imports click; the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> tests do, so it moved to the <code>test</code> group, and the
+  image no longer installs it.
+- <strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> tests the supported range.</strong> Python 3.10–3.14 all pass on the latest
+  releases, but <abbr title="Continuous Integration - Automated build and test system">CI</abbr> tested only 3.11 and 3.12. PRs now run Ubuntu 3.10 (at the
+  floors), 3.11 (the image's) and 3.14, plus macOS 3.12, and the classifiers list
+  3.10–3.14. A monthly workflow (<code>latest-deps.yml</code>, also run by hand before a release)
+  runs every version on the newest releases with the semver-compatible Rust updates. On failure it opens or updates
+  one <code>latest-deps</code> issue.
+- <strong>One dev-dependency list.</strong> The <code>dev</code> extra and a PEP 735 <code>dev</code> group had drifted
+  apart. The group lacked pytest-mock, types-pyyaml, pyyaml and mkdocs; the extra
+  lacked pyarrow, which the tests import. They are now the dependency groups <code>test</code>
+  and <code>dev</code> (<code>dev</code> includes <code>test</code> and <code>docs</code>, the site's tools, which
+  <code>deploy-docs.yml</code> now installs instead of its own list), kept out of the published
+  metadata.
+  <code>pip install gbcms[dev]</code> no longer exists. <code>maturin develop</code> installs <code>dev</code>, which
+  needs pip &gt;= 25.1 (or uv); the developer docs now say so, since the old
+  <code>python -m venv</code> steps failed on Python's bundled pip. <code>make setup</code> installs it too.
+- <strong>The image installs a hash-pinned lock.</strong> It resolved its dependencies afresh at
+  each build. <code>docker/requirements.lock</code> (linux/amd64, Python 3.11) is installed
+  with <code>--require-hashes --no-deps</code>, then <code>pip check</code>, and is refreshed at each
+  release (release guide step 4). <abbr title="Continuous Integration - Automated build and test system">CI</abbr> now runs the image (<code>--version</code>, <code>pip check</code>).</p>
 <h3 id="changed-gtf-loading-139">Changed — GTF loading (#139)<a class="headerlink" href="#changed-gtf-loading-139" title="Permanent link">¶</a></h3>
 <p>Measured on GRCh38.111 (<code>CYCLE_6.6.0_PLAN.md</code>, "D4 GTF loading"). Only <code>--gtf</code> runs
 are affected, and their output is unchanged for well-formed GTFs.

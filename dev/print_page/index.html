@@ -2695,7 +2695,12 @@ For older systems, see <a href="#getting-started-installation-legacy-linux-rhel-
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#getting-started-installation-__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/msk-access/gbcms.git
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#getting-started-installation-__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>gbcms
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#getting-started-installation-__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#getting-started-installation-__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span>.<span class="w">   </span><span class="c1"># builds the Rust extension: needs a Rust toolchain</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#getting-started-installation-__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#getting-started-installation-__codelineno-2-5"></a><span class="c1"># Contributors: an editable install with the test, lint and docs tools</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#getting-started-installation-__codelineno-2-6"></a><span class="c1"># (a PEP 735 dependency group, which needs pip&gt;=25.1)</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#getting-started-installation-__codelineno-2-7"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span><span class="s2">"pip&gt;=25.1"</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#getting-started-installation-__codelineno-2-8"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--group<span class="w"> </span>dev
 </code></pre></div>
 </div>
 </div>
@@ -16408,11 +16413,13 @@ caveat in gbcms's output.</p>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#development-developer-guide-__codelineno-0-9"></a><span class="c1"># Install Rust (if not installed)</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#development-developer-guide-__codelineno-0-10"></a>curl<span class="w"> </span>--proto<span class="w"> </span><span class="s1">'=https'</span><span class="w"> </span>--tlsv1.2<span class="w"> </span>-sSf<span class="w"> </span>https://sh.rustup.rs<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#development-developer-guide-__codelineno-0-11"></a>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#development-developer-guide-__codelineno-0-12"></a><span class="c1"># Install (builds Rust extension)</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#development-developer-guide-__codelineno-0-13"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#development-developer-guide-__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#development-developer-guide-__codelineno-0-15"></a><span class="c1"># Verify</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#development-developer-guide-__codelineno-0-16"></a>gbcms<span class="w"> </span>--version
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#development-developer-guide-__codelineno-0-12"></a><span class="c1"># Install (builds Rust extension, then installs the `dev` dependency group,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#development-developer-guide-__codelineno-0-13"></a><span class="c1"># which needs pip&gt;=25.1)</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#development-developer-guide-__codelineno-0-14"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span><span class="s2">"pip&gt;=25.1"</span><span class="w"> </span>maturin
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#development-developer-guide-__codelineno-0-15"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#development-developer-guide-__codelineno-0-16"></a>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#development-developer-guide-__codelineno-0-17"></a><span class="c1"># Verify</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#development-developer-guide-__codelineno-0-18"></a>gbcms<span class="w"> </span>--version
 </code></pre></div>
 </div>
 <div class="tabbed-block">
@@ -16428,8 +16435,8 @@ caveat in gbcms's output.</p>
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#development-developer-guide-__codelineno-1-10"></a><span class="c1"># Set libclang path for the Rust build</span>
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#development-developer-guide-__codelineno-1-11"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LIBCLANG_PATH</span><span class="o">=</span><span class="nv">$CONDA_PREFIX</span>/lib
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#development-developer-guide-__codelineno-1-12"></a>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#development-developer-guide-__codelineno-1-13"></a><span class="c1"># Install maturin and build</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#development-developer-guide-__codelineno-1-14"></a>pip<span class="w"> </span>install<span class="w"> </span>maturin
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#development-developer-guide-__codelineno-1-13"></a><span class="c1"># Install maturin and build (the `dev` dependency group needs pip&gt;=25.1)</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#development-developer-guide-__codelineno-1-14"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span><span class="s2">"pip&gt;=25.1"</span><span class="w"> </span>maturin
 <a id="__codelineno-1-15" name="__codelineno-1-15" href="#development-developer-guide-__codelineno-1-15"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
 <a id="__codelineno-1-16" name="__codelineno-1-16" href="#development-developer-guide-__codelineno-1-16"></a>
 <a id="__codelineno-1-17" name="__codelineno-1-17" href="#development-developer-guide-__codelineno-1-17"></a><span class="c1"># Verify</span>
@@ -16448,11 +16455,13 @@ caveat in gbcms's output.</p>
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#development-developer-guide-__codelineno-2-9"></a>python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#development-developer-guide-__codelineno-2-10"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#development-developer-guide-__codelineno-2-11"></a>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#development-developer-guide-__codelineno-2-12"></a><span class="c1"># Install (builds Rust extension)</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#development-developer-guide-__codelineno-2-13"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#development-developer-guide-__codelineno-2-14"></a>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#development-developer-guide-__codelineno-2-15"></a><span class="c1"># Verify</span>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#development-developer-guide-__codelineno-2-16"></a>gbcms<span class="w"> </span>--version
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#development-developer-guide-__codelineno-2-12"></a><span class="c1"># Install (builds Rust extension, then installs the `dev` dependency group,</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#development-developer-guide-__codelineno-2-13"></a><span class="c1"># which needs pip&gt;=25.1)</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#development-developer-guide-__codelineno-2-14"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span><span class="s2">"pip&gt;=25.1"</span><span class="w"> </span>maturin
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#development-developer-guide-__codelineno-2-15"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#development-developer-guide-__codelineno-2-16"></a>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#development-developer-guide-__codelineno-2-17"></a><span class="c1"># Verify</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#development-developer-guide-__codelineno-2-18"></a>gbcms<span class="w"> </span>--version
 </code></pre></div>
 </div>
 </div>
@@ -17651,21 +17660,30 @@ references them:</p>
 <p>The back-merge (step 10) then removes the finished cycle's plan from <code>develop</code>
 too. The next cycle's plan is added to <code>develop</code> after the back-merge.</p>
 <h3 id="development-release-guide-4-run-pre-release-checks">4. Run Pre-Release Checks<a class="headerlink" href="#development-release-guide-4-run-pre-release-checks" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#development-release-guide-__codelineno-5-1"></a><span class="c1"># Python linting + type checking</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#development-release-guide-__codelineno-5-2"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#development-release-guide-__codelineno-5-3"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#development-release-guide-__codelineno-5-4"></a>mypy<span class="w"> </span>src/
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#development-release-guide-__codelineno-5-5"></a>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#development-release-guide-__codelineno-5-6"></a><span class="c1"># Rust linting + unit tests</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#development-release-guide-__codelineno-5-7"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#development-release-guide-__codelineno-5-8"></a>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#development-release-guide-__codelineno-5-9"></a><span class="c1"># Integration tests</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#development-release-guide-__codelineno-5-10"></a>pytest<span class="w"> </span>-v
+<p>Refresh the Docker image's dependency lock first: the newest releases that satisfy
+<code>pyproject.toml</code>. Run <code>latest-deps.yml</code> by hand on the release branch first (Actions →
+Latest dependencies → Run workflow → <code>release/X.Y.Z</code>; its monthly runs test <code>main</code>): it
+tests those releases on every Python, and its summary shows what the refresh changes.
+Commit the lock with the release.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#development-release-guide-__codelineno-5-1"></a>uv<span class="w"> </span>pip<span class="w"> </span>compile<span class="w"> </span>pyproject.toml<span class="w"> </span>--upgrade<span class="w"> </span>--generate-hashes<span class="w"> </span>--python-version<span class="w"> </span><span class="m">3</span>.11<span class="w"> </span>--python-platform<span class="w"> </span>x86_64-manylinux_2_28<span class="w"> </span>-o<span class="w"> </span>docker/requirements.lock
+</code></pre></div>
+<p>The image installs exactly these versions (<code>--require-hashes</code>) and runs <code>pip check</code>,
+so a lock that no longer satisfies <code>pyproject.toml</code> fails the Docker build in <abbr title="Continuous Integration - Automated build and test system">CI</abbr>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#development-release-guide-__codelineno-6-1"></a><span class="c1"># Python linting + type checking</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#development-release-guide-__codelineno-6-2"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w"> </span>tests/
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#development-release-guide-__codelineno-6-3"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#development-release-guide-__codelineno-6-4"></a>mypy<span class="w"> </span>src/
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#development-release-guide-__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#development-release-guide-__codelineno-6-6"></a><span class="c1"># Rust linting + unit tests</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#development-release-guide-__codelineno-6-7"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#development-release-guide-__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#development-release-guide-__codelineno-6-9"></a><span class="c1"># Integration tests</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#development-release-guide-__codelineno-6-10"></a>pytest<span class="w"> </span>-v
 </code></pre></div>
 <h3 id="development-release-guide-5-commit-and-push">5. Commit and Push<a class="headerlink" href="#development-release-guide-5-commit-and-push" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#development-release-guide-__codelineno-6-1"></a>git<span class="w"> </span>add<span class="w"> </span>-A
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#development-release-guide-__codelineno-6-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"chore: bump version to X.Y.Z"</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#development-release-guide-__codelineno-6-3"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/X.Y.Z
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#development-release-guide-__codelineno-7-1"></a>git<span class="w"> </span>add<span class="w"> </span>-A
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#development-release-guide-__codelineno-7-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"chore: bump version to X.Y.Z"</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#development-release-guide-__codelineno-7-3"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/X.Y.Z
 </code></pre></div>
 <h3 id="development-release-guide-6-create-pr-releasexyz-main">6. Create PR: release/X.Y.Z → main<a class="headerlink" href="#development-release-guide-6-create-pr-releasexyz-main" title="Permanent link">¶</a></h3>
 <ul>
@@ -17680,16 +17698,16 @@ dispatch any workflow for the <code>pull_request</code> event, and the PR then s
 GitBook statuses. Nothing is marked failed or pending — the checks are simply <strong>not
 there</strong>, which reads like "nothing to run" rather than "nothing ran". This happened on
 6.2.0; 6.1.0 got the full suite from the same steps, so it is intermittent, not config.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#development-release-guide-__codelineno-7-1"></a>gh<span class="w"> </span>pr<span class="w"> </span>checks<span class="w"> </span>&lt;PR&gt;<span class="w">            </span><span class="c1"># expect Tests jobs + Nextflow Lint, not just GitBook</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#development-release-guide-__codelineno-7-2"></a>gh<span class="w"> </span>run<span class="w"> </span>list<span class="w"> </span>--branch<span class="w"> </span>release/X.Y.Z
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-release-guide-__codelineno-8-1"></a>gh<span class="w"> </span>pr<span class="w"> </span>checks<span class="w"> </span>&lt;PR&gt;<span class="w">            </span><span class="c1"># expect Tests jobs + Nextflow Lint, not just GitBook</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#development-release-guide-__codelineno-8-2"></a>gh<span class="w"> </span>run<span class="w"> </span>list<span class="w"> </span>--branch<span class="w"> </span>release/X.Y.Z
 </code></pre></div>
 <p>If they are missing, re-fire rather than assuming:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#development-release-guide-__codelineno-8-1"></a><span class="c1"># verify the exact release SHA (no PR churn, no notifications)</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#development-release-guide-__codelineno-8-2"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>test.yml<span class="w"> </span>--ref<span class="w"> </span>release/X.Y.Z
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#development-release-guide-__codelineno-8-3"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>nextflow-lint.yml<span class="w"> </span>--ref<span class="w"> </span>release/X.Y.Z
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#development-release-guide-__codelineno-8-4"></a>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#development-release-guide-__codelineno-8-5"></a><span class="c1"># or re-fire the pull_request event so checks attach to the PR itself</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#development-release-guide-__codelineno-8-6"></a>gh<span class="w"> </span>pr<span class="w"> </span>close<span class="w"> </span>&lt;PR&gt;<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>gh<span class="w"> </span>pr<span class="w"> </span>reopen<span class="w"> </span>&lt;PR&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-release-guide-__codelineno-9-1"></a><span class="c1"># verify the exact release SHA (no PR churn, no notifications)</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#development-release-guide-__codelineno-9-2"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>test.yml<span class="w"> </span>--ref<span class="w"> </span>release/X.Y.Z
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#development-release-guide-__codelineno-9-3"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>nextflow-lint.yml<span class="w"> </span>--ref<span class="w"> </span>release/X.Y.Z
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#development-release-guide-__codelineno-9-4"></a>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#development-release-guide-__codelineno-9-5"></a><span class="c1"># or re-fire the pull_request event so checks attach to the PR itself</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#development-release-guide-__codelineno-9-6"></a>gh<span class="w"> </span>pr<span class="w"> </span>close<span class="w"> </span>&lt;PR&gt;<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>gh<span class="w"> </span>pr<span class="w"> </span>reopen<span class="w"> </span>&lt;PR&gt;
 </code></pre></div>
 <p>Pausing a beat between <code>git push</code> and PR creation makes the race far less likely.</p>
 </div>
@@ -17742,14 +17760,14 @@ published (or updates it, re-uploading the assets, if one already exists). Verif
 <code>gh release list</code>: the new version should show <strong>Latest</strong>. If the job failed, re-run it
 from the Actions tab (failed jobs only). By hand, the page alone (without the assets,
 checksums and attestations, which only the job adds) is:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#development-release-guide-__codelineno-9-1"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>notes<span class="w"> </span>--tag<span class="w"> </span>X.Y.Z<span class="w"> </span>--title-out<span class="w"> </span>title.txt<span class="w"> </span>--notes-out<span class="w"> </span>notes.md
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#development-release-guide-__codelineno-9-2"></a>gh<span class="w"> </span>release<span class="w"> </span>create<span class="w"> </span>X.Y.Z<span class="w"> </span>--title<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>cat<span class="w"> </span>title.txt<span class="k">)</span><span class="s2">"</span><span class="w"> </span>--notes-file<span class="w"> </span>notes.md<span class="w"> </span>--latest<span class="w"> </span>--verify-tag
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#development-release-guide-__codelineno-10-1"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>notes<span class="w"> </span>--tag<span class="w"> </span>X.Y.Z<span class="w"> </span>--title-out<span class="w"> </span>title.txt<span class="w"> </span>--notes-out<span class="w"> </span>notes.md
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#development-release-guide-__codelineno-10-2"></a>gh<span class="w"> </span>release<span class="w"> </span>create<span class="w"> </span>X.Y.Z<span class="w"> </span>--title<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>cat<span class="w"> </span>title.txt<span class="k">)</span><span class="s2">"</span><span class="w"> </span>--notes-file<span class="w"> </span>notes.md<span class="w"> </span>--latest<span class="w"> </span>--verify-tag
 </code></pre></div>
 <h3 id="development-release-guide-10-merge-main-back-to-develop">10. Merge main back to develop<a class="headerlink" href="#development-release-guide-10-merge-main-back-to-develop" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#development-release-guide-__codelineno-10-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#development-release-guide-__codelineno-10-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#development-release-guide-__codelineno-10-3"></a>git<span class="w"> </span>merge<span class="w"> </span>main
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#development-release-guide-__codelineno-10-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#development-release-guide-__codelineno-11-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#development-release-guide-__codelineno-11-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#development-release-guide-__codelineno-11-3"></a>git<span class="w"> </span>merge<span class="w"> </span>main
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#development-release-guide-__codelineno-11-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
 </code></pre></div>
 <h3 id="development-release-guide-10b-move-develop-to-the-next-dev-version">10b. Move develop to the next dev version<a class="headerlink" href="#development-release-guide-10b-move-develop-to-the-next-dev-version" title="Permanent link">¶</a></h3>
 <p>Right after the back-merge, bump <code>rust/Cargo.toml</code> on <code>develop</code> to the next dev version
@@ -17757,43 +17775,43 @@ checksums and attestations, which only the job adds) is:</p>
 the Nextflow manifest at <code>X.Y.Z</code>: it names the newest published image. Without the bump
 every dev build stamps the released version in its provenance line; the version check
 on <code>develop</code> fails until it is done.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#development-release-guide-__codelineno-11-1"></a><span class="c1"># rust/Cargo.toml: version = "X.Y+1.0-dev.0"</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#development-release-guide-__codelineno-11-2"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>check<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#development-release-guide-__codelineno-11-3"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>check<span class="w"> </span>--branch<span class="w"> </span>develop
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#development-release-guide-__codelineno-12-1"></a><span class="c1"># rust/Cargo.toml: version = "X.Y+1.0-dev.0"</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#development-release-guide-__codelineno-12-2"></a><span class="nb">cd</span><span class="w"> </span>rust<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>check<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#development-release-guide-__codelineno-12-3"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>check<span class="w"> </span>--branch<span class="w"> </span>develop
 </code></pre></div>
 <h3 id="development-release-guide-11-cleanup">11. Cleanup<a class="headerlink" href="#development-release-guide-11-cleanup" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#development-release-guide-__codelineno-12-1"></a><span class="c1"># Delete local release branch</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#development-release-guide-__codelineno-12-2"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/X.Y.Z
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#development-release-guide-__codelineno-12-3"></a>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#development-release-guide-__codelineno-12-4"></a><span class="c1"># Delete remote release branch (optional)</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#development-release-guide-__codelineno-12-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/X.Y.Z
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#development-release-guide-__codelineno-13-1"></a><span class="c1"># Delete local release branch</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#development-release-guide-__codelineno-13-2"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/X.Y.Z
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#development-release-guide-__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#development-release-guide-__codelineno-13-4"></a><span class="c1"># Delete remote release branch (optional)</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#development-release-guide-__codelineno-13-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/X.Y.Z
 </code></pre></div>
 <hr>
 <h2 id="development-release-guide-hotfix-workflow">Hotfix Workflow<a class="headerlink" href="#development-release-guide-hotfix-workflow" title="Permanent link">¶</a></h2>
 <p>For critical production fixes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#development-release-guide-__codelineno-13-1"></a><span class="c1"># Create hotfix from main</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#development-release-guide-__codelineno-13-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#development-release-guide-__codelineno-13-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>hotfix/X.Y.Z
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#development-release-guide-__codelineno-13-4"></a>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#development-release-guide-__codelineno-13-5"></a><span class="c1"># Fix, commit; then set the version to X.Y.Z in rust/Cargo.toml (cargo check) and the</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#development-release-guide-__codelineno-13-6"></a><span class="c1"># Nextflow manifest, add a dated CHANGELOG section, and check</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#development-release-guide-__codelineno-13-7"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>check<span class="w"> </span>--tag<span class="w"> </span>X.Y.Z
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#development-release-guide-__codelineno-13-8"></a>git<span class="w"> </span>add<span class="w"> </span>-A
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#development-release-guide-__codelineno-13-9"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix: critical issue description"</span>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#development-release-guide-__codelineno-13-10"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>hotfix/X.Y.Z
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#development-release-guide-__codelineno-13-11"></a>
-<a id="__codelineno-13-12" name="__codelineno-13-12" href="#development-release-guide-__codelineno-13-12"></a><span class="c1"># PR to main, tag X.Y.Z, then merge back to develop (keeping develop's dev version)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#development-release-guide-__codelineno-14-1"></a><span class="c1"># Create hotfix from main</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#development-release-guide-__codelineno-14-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#development-release-guide-__codelineno-14-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>hotfix/X.Y.Z
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#development-release-guide-__codelineno-14-4"></a>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#development-release-guide-__codelineno-14-5"></a><span class="c1"># Fix, commit; then set the version to X.Y.Z in rust/Cargo.toml (cargo check) and the</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#development-release-guide-__codelineno-14-6"></a><span class="c1"># Nextflow manifest, add a dated CHANGELOG section, and check</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#development-release-guide-__codelineno-14-7"></a>python<span class="w"> </span>scripts/release.py<span class="w"> </span>check<span class="w"> </span>--tag<span class="w"> </span>X.Y.Z
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#development-release-guide-__codelineno-14-8"></a>git<span class="w"> </span>add<span class="w"> </span>-A
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#development-release-guide-__codelineno-14-9"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix: critical issue description"</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#development-release-guide-__codelineno-14-10"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>hotfix/X.Y.Z
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#development-release-guide-__codelineno-14-11"></a>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#development-release-guide-__codelineno-14-12"></a><span class="c1"># PR to main, tag X.Y.Z, then merge back to develop (keeping develop's dev version)</span>
 </code></pre></div>
 <hr>
 <h2 id="development-release-guide-automation-scripts">Automation Scripts<a class="headerlink" href="#development-release-guide-automation-scripts" title="Permanent link">¶</a></h2>
 <h3 id="development-release-guide-git-flow-helpersh">git-flow-helper.sh<a class="headerlink" href="#development-release-guide-git-flow-helpersh" title="Permanent link">¶</a></h3>
 <p>Interactive helper for git-flow operations:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#development-release-guide-__codelineno-14-1"></a>./git-flow-helper.sh
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#development-release-guide-__codelineno-14-2"></a><span class="c1"># Options:</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#development-release-guide-__codelineno-14-3"></a><span class="c1"># 1) Create feature branch</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#development-release-guide-__codelineno-14-4"></a><span class="c1"># 2) Create release branch</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#development-release-guide-__codelineno-14-5"></a><span class="c1"># 3) Show git status</span>
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#development-release-guide-__codelineno-14-6"></a><span class="c1"># 4) Cleanup merged branches</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#development-release-guide-__codelineno-15-1"></a>./git-flow-helper.sh
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#development-release-guide-__codelineno-15-2"></a><span class="c1"># Options:</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#development-release-guide-__codelineno-15-3"></a><span class="c1"># 1) Create feature branch</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#development-release-guide-__codelineno-15-4"></a><span class="c1"># 2) Create release branch</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#development-release-guide-__codelineno-15-5"></a><span class="c1"># 3) Show git status</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#development-release-guide-__codelineno-15-6"></a><span class="c1"># 4) Cleanup merged branches</span>
 </code></pre></div>
 <h3 id="development-release-guide-makefile-targets">Makefile Targets<a class="headerlink" href="#development-release-guide-makefile-targets" title="Permanent link">¶</a></h3>
 <table>
@@ -17844,7 +17862,12 @@ on <code>develop</code> fails until it is done.</p>
 <tr>
 <td style="text-align: left;"><code>test.yml</code></td>
 <td style="text-align: left;">Push to develop/main, PR</td>
-<td style="text-align: left;">Run tests</td>
+<td style="text-align: left;">Run tests: Ubuntu 3.10 (dependencies at their floors), 3.11 and 3.14, macOS 3.12; lint; Rust unit tests; build and run the image</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>latest-deps.yml</code></td>
+<td style="text-align: left;">Monthly (the 1st), manual before a release</td>
+<td style="text-align: left;">The suite on the newest dependency releases, Python 3.10–3.14, with compatible Rust updates; a failure opens or updates one <code>latest-deps</code> issue</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>release.yml</code></td>
@@ -17933,6 +17956,37 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
 </ul>
+<h3 id="development-changelog-changed-dependencies-ci-coverage-and-the-image-139">Changed — dependencies, <abbr title="Continuous Integration - Automated build and test system">CI</abbr> coverage and the image (#139)<a class="headerlink" href="#development-changelog-changed-dependencies-ci-coverage-and-the-image-139" title="Permanent link">¶</a></h3>
+<p>Measured first (<code>CYCLE_6.6.0_PLAN.md</code>, "D4 PR A"). Nothing changes at runtime.
+- <strong>The dependency floors are true.</strong> At the declared floors the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> crashed: typer
+  0.9.0 cannot read its <code>list[...]</code> options. pysam 0.21.0 has no macOS arm64 wheel
+  and an sdist that fails on current setuptools. Bisected one package at a time, the
+  minimums are <code>typer&gt;=0.15.4</code> (older typer does not cap click and breaks with
+  click &gt;= 8.2) and <code>pysam&gt;=0.22.0</code>; rich 13.0, pydantic 2.0 and polars 1.0 held.
+  All of them together pass the suite on Python 3.10 and 3.11. A new <abbr title="Continuous Integration - Automated build and test system">CI</abbr> leg installs
+  the floors on every PR and checks that they are what got installed.
+- <strong>click is no longer a runtime dependency.</strong> typer bundles its own copy, and gbcms
+  never imports click; the <abbr title="Command Line Interface - Terminal-based program interface">CLI</abbr> tests do, so it moved to the <code>test</code> group, and the
+  image no longer installs it.
+- <strong><abbr title="Continuous Integration - Automated build and test system">CI</abbr> tests the supported range.</strong> Python 3.10–3.14 all pass on the latest
+  releases, but <abbr title="Continuous Integration - Automated build and test system">CI</abbr> tested only 3.11 and 3.12. PRs now run Ubuntu 3.10 (at the
+  floors), 3.11 (the image's) and 3.14, plus macOS 3.12, and the classifiers list
+  3.10–3.14. A monthly workflow (<code>latest-deps.yml</code>, also run by hand before a release)
+  runs every version on the newest releases with the semver-compatible Rust updates. On failure it opens or updates
+  one <code>latest-deps</code> issue.
+- <strong>One dev-dependency list.</strong> The <code>dev</code> extra and a PEP 735 <code>dev</code> group had drifted
+  apart. The group lacked pytest-mock, types-pyyaml, pyyaml and mkdocs; the extra
+  lacked pyarrow, which the tests import. They are now the dependency groups <code>test</code>
+  and <code>dev</code> (<code>dev</code> includes <code>test</code> and <code>docs</code>, the site's tools, which
+  <code>deploy-docs.yml</code> now installs instead of its own list), kept out of the published
+  metadata.
+  <code>pip install gbcms[dev]</code> no longer exists. <code>maturin develop</code> installs <code>dev</code>, which
+  needs pip &gt;= 25.1 (or uv); the developer docs now say so, since the old
+  <code>python -m venv</code> steps failed on Python's bundled pip. <code>make setup</code> installs it too.
+- <strong>The image installs a hash-pinned lock.</strong> It resolved its dependencies afresh at
+  each build. <code>docker/requirements.lock</code> (linux/amd64, Python 3.11) is installed
+  with <code>--require-hashes --no-deps</code>, then <code>pip check</code>, and is refreshed at each
+  release (release guide step 4). <abbr title="Continuous Integration - Automated build and test system">CI</abbr> now runs the image (<code>--version</code>, <code>pip check</code>).</p>
 <h3 id="development-changelog-changed-gtf-loading-139">Changed — GTF loading (#139)<a class="headerlink" href="#development-changelog-changed-gtf-loading-139" title="Permanent link">¶</a></h3>
 <p>Measured on GRCh38.111 (<code>CYCLE_6.6.0_PLAN.md</code>, "D4 GTF loading"). Only <code>--gtf</code> runs
 are affected, and their output is unchanged for well-formed GTFs.
@@ -20846,9 +20900,15 @@ This major release changes several output behaviours:
    </p><div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#development-contributing-__codelineno-2-1"></a><span class="c1"># Install Rust (if not installed)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#development-contributing-__codelineno-2-2"></a>curl<span class="w"> </span>--proto<span class="w"> </span><span class="s1">'=https'</span><span class="w"> </span>--tlsv1.2<span class="w"> </span>-sSf<span class="w"> </span>https://sh.rustup.rs<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#development-contributing-__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#development-contributing-__codelineno-2-4"></a><span class="c1"># Build and install in development mode</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#development-contributing-__codelineno-2-5"></a>pip<span class="w"> </span>install<span class="w"> </span>maturin
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#development-contributing-__codelineno-2-6"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#development-contributing-__codelineno-2-4"></a><span class="c1"># A virtual environment: the build below installs into one, and the system</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#development-contributing-__codelineno-2-5"></a><span class="c1"># pip is often externally managed.</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#development-contributing-__codelineno-2-6"></a>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#development-contributing-__codelineno-2-7"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#development-contributing-__codelineno-2-8"></a>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#development-contributing-__codelineno-2-9"></a><span class="c1"># Build and install in development mode. Needs pip&gt;=25.1 (or `maturin develop --uv`):</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#development-contributing-__codelineno-2-10"></a><span class="c1"># it also installs the `dev` dependency group (PEP 735).</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#development-contributing-__codelineno-2-11"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span><span class="s2">"pip&gt;=25.1"</span><span class="w"> </span>maturin
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#development-contributing-__codelineno-2-12"></a>maturin<span class="w"> </span>develop<span class="w"> </span>--release
 </code></pre></div>
 </li>
 </ol>
