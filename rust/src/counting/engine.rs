@@ -367,34 +367,6 @@ fn parse_alignment_backend(
 }
 
 
-/// Pre-build the GTF annotation cache without counting — the Nextflow pre-warm step.
-///
-/// Parses `gtf_path` for the chromosomes in `variant_chroms` and writes the
-/// serialized intermediate into `cache_dir`. Running this once before a cohort
-/// fans out means every per-sample `count_bam_binned` that follows hits a warm
-/// cache (~0.05s load) instead of each re-parsing the GTF (~8.7s). The chromosome
-/// set is derived **identically** to `count_bam_binned` (`normalize_contig` over the
-/// variant chroms) so the cache key matches and the per-sample runs reuse this entry.
-/// Takes the raw chrom strings (the caller already has them from the variant file);
-/// `normalize_contig` is applied here, exactly as `count_bam_binned` does internally.
-/// Returns the exon count of the built index for a confirming log line.
-#[pyfunction]
-pub fn build_gtf_cache(
-    gtf_path: &str,
-    variant_chroms: Vec<String>,
-    cache_dir: &str,
-) -> PyResult<usize> {
-    let chroms: HashSet<String> = variant_chroms
-        .iter()
-        .map(|c| crate::shared::contig::normalize_contig(c))
-        .collect();
-    let annot = crate::annotation::parse_gtf_cached(gtf_path, &chroms, cache_dir)
-        .map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to build GTF cache: {}", e))
-        })?;
-    Ok(annot.n_exons())
-}
-
 /// Bin-centric parallel BAM counting: groups variants into ~10kb genomic bins,
 /// fetches reads once per bin, then classifies each read against every variant in
 /// the bin. Bin geometry is performance only; counts never depend on it (the
@@ -438,7 +410,6 @@ fn count_bam_binned_core(
     mfsd: bool,
     rna_editing_db: Option<&str>,
     gtf_path: Option<&str>,
-    gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
     bin_window: Option<i64>,
@@ -497,13 +468,7 @@ fn count_bam_binned_core(
             let variant_chroms: HashSet<String> = variants.iter()
                 .map(|v| crate::shared::contig::normalize_contig(&v.chrom))
                 .collect();
-            // When a cache dir is supplied, reuse a serialized parse if one
-            // exists (skips the ~8.7s GTF text parse); otherwise parse + populate it.
-            let annot = match gtf_cache_dir {
-                Some(dir) => crate::annotation::parse_gtf_cached(path, &variant_chroms, dir),
-                None => crate::annotation::parse_gtf(path, &variant_chroms),
-            }
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
+            let annot = crate::annotation::parse_gtf(path, &variant_chroms).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
                 format!("Failed to load GTF annotation: {}", e)
             ))?;
             info!(
@@ -953,7 +918,7 @@ fn count_bam_binned_core(
 /// arguments (production passes neither): counts must not depend on them.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None, warn_per_bam=true))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", bin_window=None, bin_max_variants=None, warn_per_bam=true))]
 pub fn count_bam_binned(
     py: Python<'_>,
     bam_path: String,
@@ -984,7 +949,6 @@ pub fn count_bam_binned(
     mfsd: bool,
     rna_editing_db: Option<&str>,
     gtf_path: Option<&str>,
-    gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
     bin_window: Option<i64>,
@@ -997,7 +961,7 @@ pub fn count_bam_binned(
         filter_indel, threads, fragment_qual_threshold, sibling_variants, alignment_backend,
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
-        mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
+        mfsd, rna_editing_db, gtf_path, reference_fasta, library_type,
         bin_window, bin_max_variants, warn_per_bam,
     )?;
     Ok(counts)
@@ -1015,7 +979,7 @@ pub fn count_bam_binned(
 /// Counts are byte-identical to `count_bam_binned` — same core, same classifier.
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, gtf_cache_dir=None, reference_fasta=None, library_type="capture", observations_path=None, bin_window=None, bin_max_variants=None))]
+#[pyo3(signature = (bam_path, variants, decomposed, min_mapq, min_baseq, filter_duplicates, filter_secondary, filter_supplementary, filter_qc_failed, filter_improper_pair, filter_indel, threads, fragment_qual_threshold=10, sibling_variants=Vec::new(), alignment_backend="pairhmm", hmm_llr_threshold=2.3, hmm_gap_open=1e-4, hmm_gap_extend=0.1, hmm_gap_open_repeat=1e-2, hmm_gap_extend_repeat=0.5, apply_baq=false, umi_tag=None, mode="dna", enforce_strandedness=false, strandedness="reverse", mfsd=false, rna_editing_db=None, gtf_path=None, reference_fasta=None, library_type="capture", observations_path=None, bin_window=None, bin_max_variants=None))]
 pub fn count_bam_binned_observations(
     py: Python<'_>,
     bam_path: String,
@@ -1046,7 +1010,6 @@ pub fn count_bam_binned_observations(
     mfsd: bool,
     rna_editing_db: Option<&str>,
     gtf_path: Option<&str>,
-    gtf_cache_dir: Option<&str>,
     reference_fasta: Option<&str>,
     library_type: &str,
     observations_path: Option<&str>,
@@ -1059,7 +1022,7 @@ pub fn count_bam_binned_observations(
         filter_indel, threads, fragment_qual_threshold, sibling_variants, alignment_backend,
         hmm_llr_threshold, hmm_gap_open, hmm_gap_extend, hmm_gap_open_repeat,
         hmm_gap_extend_repeat, apply_baq, umi_tag, mode, enforce_strandedness, strandedness,
-        mfsd, rna_editing_db, gtf_path, gtf_cache_dir, reference_fasta, library_type,
+        mfsd, rna_editing_db, gtf_path, reference_fasta, library_type,
         bin_window, bin_max_variants, true,
     )
 }

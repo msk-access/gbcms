@@ -29,18 +29,10 @@ parquet = { version = "53", default-features = false, features = ["arrow", "zstd
 # Pure Rust implementation from COMBINE-lab — no cmake dependency.
 # NEON/AVX2 SIMD acceleration.
 wfa2lib-rs = { git = "https://github.com/COMBINE-lab/wfa2lib-rs", rev = "7d6ec921" }
-# Gzip decompression for REDIportal RNA editing DB (.txt.gz support)
-flate2 = "1"
+# Gzip decompression: REDIportal RNA editing DB (.txt.gz) and GTF (.gtf.gz, BGZF).
+# zlib-rs (pure Rust) decodes the 1.46 GB GRCh38 GTF in ~0.5 s vs ~1 s for the
+# default miniz_oxide backend; flate2 prefers it when both are enabled.
+flate2 = { version = "1", features = ["zlib-rs"] }
 # ── P4a: GTF-informed splice mask (v5.0.0) ─────────────────────────────────
 # COITree: cache-oblivious interval tree for O(n+m) exon overlap queries.
 coitrees = "0.4"
-# noodles-gtf: pure-Rust GTF parser. No cmake dependency.
-noodles-gtf = "0.37"
-# ── M5a: GTF AnnotationIndex disk cache ────────────────────────────────────
-# Serialize the *parsed intermediate* (exon records, splice sites, introns,
-# chrom map) so repeated runs over the same GTF skip the ~8.7s text parse of a
-# full Ensembl annotation. The arch-specific COITrees are NOT cached — they are
-# rebuilt from the cached exon records on load (cheap). serde provides the
-# derives; bincode is the compact binary codec.
-serde = { version = "1.0", features = ["derive"] }
-bincode = "1.3"

@@ -29,34 +29,25 @@
 //! rayon workers — the same pattern used for `editing_sites`.
 
 
-mod cache;
 mod gtf;
+mod gtf_line;
 
 use std::collections::HashMap;
 
 #[allow(unused_imports)] // IntervalTree needed for COITree::query trait
 use coitrees::{COITree, IntervalNode, IntervalTree};
 use log::{debug, trace};
-use serde::{Deserialize, Serialize};
 
-// Re-export the GTF parser for use by engine.rs (wired in the splice-annotation integration step)
-#[allow(unused_imports)]
 pub(crate) use gtf::parse_gtf;
-// Cache-backed parse — deserializes the parsed intermediate when a fresh
-// cache exists, else parses + writes it. Falls back to a plain parse on any cache error.
-pub(crate) use cache::parse_gtf_cached;
 
 // ─── Data Structures ─────────────────────────────────────────────────────────
 
 /// Metadata for a single exon, stored in a flat Vec and referenced by COITree
-/// node metadata (index into this Vec). Serializable so the GTF cache can
-/// persist the parsed intermediate (the COITrees are rebuilt from these on load).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// node metadata (index into this Vec).
+#[derive(Clone, Debug)]
 pub struct ExonRecord {
     /// Ensembl/GENCODE transcript ID (e.g., "ENST00000269305").
     pub transcript_id: String,
-    /// Ensembl/GENCODE gene ID (e.g., "ENSG00000141510").
-    pub gene_id: String,
     /// Numeric chromosome ID (key into `AnnotationIndex::chrom_map`).
     pub chrom_id: u32,
     /// 0-based start position (inclusive).
@@ -69,7 +60,7 @@ pub struct ExonRecord {
 
 /// Intron structure for a single transcript, derived from sorted exons.
 /// Used by per-transcript counting and ASJD detection.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct TranscriptIntrons {
     /// Transcript ID.
     pub transcript_id: String,
@@ -105,13 +96,12 @@ pub struct AnnotationIndex {
 
     /// Chromosome → sorted (position, strand) of every annotated intron
     /// boundary: true donor/acceptor sites only (no transcript termini).
-    /// Derived in `new()` from `transcript_introns` + exon strands — never
-    /// serialized, so the GTF cache format is unaffected.
+    /// Derived in `new()` from `transcript_introns` + exon strands.
     intron_boundaries: HashMap<u32, Vec<(i32, char)>>,
 
     /// Chromosome → COITree of every transcript's span (first exon start to last
     /// exon end, introns included); metadata is the transcript's strand
-    /// (`transcript_strands`). Derived in `new()` from `exons`, never serialized.
+    /// (`transcript_strands`). Derived in `new()` from `exons`.
     transcript_trees: HashMap<u32, COITree<usize, u32>>,
     transcript_strands: Vec<char>,
 
@@ -120,13 +110,8 @@ pub struct AnnotationIndex {
     chrom_map: HashMap<String, u32>,
 }
 
-/// Rebuild the per-chromosome exon interval trees from the flat exon list.
-///
-/// Shared by `parse_gtf` (fresh parse) and the cache-load path, so a cached
-/// `AnnotationIndex` is equivalent to a freshly parsed one: the COITree metadata is
-/// the index into `exons`, and identical exon ordering in gives identical query
-/// results out. Cheap relative to the GTF text parse — the trees are built from
-/// already-parsed intervals, so this is the part we *don't* bother caching.
+/// Build the per-chromosome exon interval trees from the flat exon list; the
+/// COITree metadata is the index into `exons`.
 pub(crate) fn build_exon_trees(exons: &[ExonRecord]) -> HashMap<u32, COITree<usize, u32>> {
     let mut tree_nodes: HashMap<u32, Vec<IntervalNode<usize, u32>>> = HashMap::new();
     for (i, exon) in exons.iter().enumerate() {
@@ -509,7 +494,6 @@ mod tests {
         let exons = vec![
             ExonRecord {
                 transcript_id: "ENST00000001".to_string(),
-                gene_id: "ENSG00000001".to_string(),
                 chrom_id: 0,
                 start: 100,
                 end: 200,
@@ -517,7 +501,6 @@ mod tests {
             },
             ExonRecord {
                 transcript_id: "ENST00000001".to_string(),
-                gene_id: "ENSG00000001".to_string(),
                 chrom_id: 0,
                 start: 300,
                 end: 400,
@@ -554,11 +537,11 @@ mod tests {
         // [2000,2100), and an overlapping +/- pair [1000,1100)/[1050,1150) for the
         // ambiguous case.
         let exons = vec![
-            ExonRecord { transcript_id: "tp".into(), gene_id: "gp".into(), chrom_id: 0, start: 100, end: 200, strand: '+' },
-            ExonRecord { transcript_id: "tm".into(), gene_id: "gm".into(), chrom_id: 0, start: 500, end: 600, strand: '-' },
-            ExonRecord { transcript_id: "ta".into(), gene_id: "ga".into(), chrom_id: 0, start: 1000, end: 1100, strand: '+' },
-            ExonRecord { transcript_id: "tb".into(), gene_id: "gb".into(), chrom_id: 0, start: 1050, end: 1150, strand: '-' },
-            ExonRecord { transcript_id: "tu".into(), gene_id: "gu".into(), chrom_id: 0, start: 2000, end: 2100, strand: '.' },
+            ExonRecord { transcript_id: "tp".into(), chrom_id: 0, start: 100, end: 200, strand: '+' },
+            ExonRecord { transcript_id: "tm".into(), chrom_id: 0, start: 500, end: 600, strand: '-' },
+            ExonRecord { transcript_id: "ta".into(), chrom_id: 0, start: 1000, end: 1100, strand: '+' },
+            ExonRecord { transcript_id: "tb".into(), chrom_id: 0, start: 1050, end: 1150, strand: '-' },
+            ExonRecord { transcript_id: "tu".into(), chrom_id: 0, start: 2000, end: 2100, strand: '.' },
         ];
         let exon_trees = build_exon_trees(&exons);
         let mut chrom_map = HashMap::new();
@@ -578,7 +561,7 @@ mod tests {
         // tp '+' exons [100,200) [300,400); tm '-' exons [600,700) [900,1000); tb '-'
         // exons [250,260) [340,350) spans part of tp's intron and exon.
         let ex = |t: &str, s: i32, e: i32, st: char| ExonRecord {
-            transcript_id: t.into(), gene_id: t.into(), chrom_id: 0, start: s, end: e, strand: st,
+            transcript_id: t.into(), chrom_id: 0, start: s, end: e, strand: st,
         };
         let exons = vec![
             ex("tp", 100, 200, '+'), ex("tp", 300, 400, '+'),
@@ -605,7 +588,7 @@ mod tests {
         // version-stripped ID), one on chrom 1 at [10,30): no span on chrom 0 may
         // reach back to 10.
         let ex = |c: u32, s: i32, e: i32| ExonRecord {
-            transcript_id: "TD".into(), gene_id: "GD".into(), chrom_id: c, start: s, end: e, strand: '-',
+            transcript_id: "TD".into(), chrom_id: c, start: s, end: e, strand: '-',
         };
         let exons = vec![ex(0, 1100, 1150), ex(1, 10, 30)];
         let exon_trees = build_exon_trees(&exons);

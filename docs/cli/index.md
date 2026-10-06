@@ -11,7 +11,7 @@ The `gbcms` command-line interface provides two primary commands for variant cou
 | [**merge**](merge.md) | Merge per-BAM-type MAFs into a single type-prefixed output |
 | [**normalize**](normalize.md) | Standalone variant normalization (no counting) |
 | [**convert**](convert.md) | VCF ↔ MAF conversion as vcf2maf / maf2vcf write it (no counting) |
-| **build-gtf-cache** | Pre-build the shared GTF index once for a cohort so per-sample RNA runs reuse it (`gbcms build-gtf-cache --gtf <file> --variants <vcf/maf> --cache-dir <dir>`; see [rna](rna.md)) |
+| **build-gtf-cache** | Deprecated in 6.6.0: does nothing and warns; removed in 6.7.0. The GTF loads in a few seconds, so there is no cache to build. |
 
 ## Quick Example
 

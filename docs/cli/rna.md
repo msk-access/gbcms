@@ -110,8 +110,8 @@ These options are **only available** on `gbcms rna`, not on `gbcms dna`.
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `--gtf` | _(none)_ | Path to Ensembl/GENCODE GTF annotation file (`.gtf` or `.gtf.gz`). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's `gene_strand` — required for `--enforce_strandedness` and ASJD strand-discordance to do anything. |
-| `--gtf-cache-dir` | _(none)_ | Directory holding a prebuilt GTF index. When set, per-sample runs load the cached index (~0.05s) instead of re-parsing the GTF (~9s). Build it once for a cohort with `gbcms build-gtf-cache --gtf <file> --variants <vcf/maf> --cache-dir <dir>`. |
+| `--gtf` | _(none)_ | Path to Ensembl/GENCODE GTF annotation file, plain or gzip/BGZF (`.gtf` or `.gtf.gz`). Enables exon boundary distance, per-transcript counting, and aberrant splice junction detection. Also back-fills each variant's `gene_strand` — required for `--enforce_strandedness` and ASJD strand-discordance to do anything. |
+| `--gtf-cache-dir` | _(none)_ | Deprecated in 6.6.0 and ignored (warns); removed in 6.7.0. The GTF loads in a few seconds, so there is no cache. |
 
 !!! info "What `--gtf` Enables"
     When a GTF file is provided, gbcms builds a `COITree`-based annotation index and adds:

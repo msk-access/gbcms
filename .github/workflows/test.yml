@@ -175,7 +175,7 @@ jobs:
     # binaries the way the shipped extension does, and on Linux the test binary can't
     # resolve the Python symbols (no libpython host at link time), so the ~210 Rust
     # `#[cfg(test)]` unit tests run here. The ARM runner also exercises the Neon COITree
-    # backend the GTF cache rebuilds. (Linux compilation is covered by the maturin builds
+    # backend the annotation index uses. (Linux compilation is covered by the maturin builds
     # in the `test`/`docker-test` jobs; the binning-invariance checks are Python-level —
     # helpers.count_checked and tests/test_binning_invariance.py — and run under pytest in
     # the `test` job, beside the bin-builder property test here.)
@@ -197,7 +197,7 @@ jobs:
         with:
           workspaces: rust
 
-      # The ~210 Rust unit tests (mFSD stats, GTF-cache roundtrip, thread-budget guard,
+      # The ~210 Rust unit tests (mFSD stats, GTF line grammar, thread-budget guard,
       # alignment/CIGAR, WFA, contig normalization, bin geometry, …) — logic not reached
       # through the Python FFI tests.
       - name: Cargo test (Rust unit tests)
