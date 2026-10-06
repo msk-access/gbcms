@@ -19,6 +19,7 @@ Contracts:
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
@@ -30,11 +31,11 @@ LOCK = ROOT / "docker" / "requirements.lock"
 FLOORS = {
     "pysam": "0.22.0",
     "typer": "0.15.4",
-    "click": "8.0",
     "rich": "13.0.0",
     "pydantic": "2.0.0",
     "polars": "1.0.0",
 }
+_REVIEW = pytest.mark.xfail(strict=True, reason="review round, red first")
 
 
 def _toml():
@@ -59,6 +60,7 @@ def _runs(job):
 # ── pyproject ────────────────────────────────────────────────────────────────
 
 
+@_REVIEW
 def test_the_floors_are_the_measured_minimums():
     reqs = {Requirement(r).name: Requirement(r) for r in _toml()["project"]["dependencies"]}
     assert set(reqs) == set(FLOORS)
@@ -76,6 +78,42 @@ def test_the_classifiers_list_python_310_to_314():
         if c.startswith("Programming Language :: Python :: 3.")
     }
     assert listed == {"3.10", "3.11", "3.12", "3.13", "3.14"}
+
+
+def _groups():
+    groups = _toml()["dependency-groups"]
+    return groups, {
+        g: {Requirement(r).name for r in reqs if isinstance(r, str)} for g, reqs in groups.items()
+    }
+
+
+@_REVIEW
+def test_what_only_the_tests_import_is_a_test_dependency():
+    """typer bundles its own click since 0.2x and gbcms never imports it; a test does.
+    packaging is imported by these contract tests."""
+    runtime = {Requirement(r).name for r in _toml()["project"]["dependencies"]}
+    assert "click" not in runtime
+    assert {"click", "packaging"} <= _groups()[1]["test"]
+
+
+@_REVIEW
+def test_the_docs_tools_are_one_list():
+    groups, names = _groups()
+    assert {
+        "mkdocs",
+        "mkdocs-material",
+        "mkdocs-mermaid2-plugin",
+        "mkdocs-glightbox",
+        "mkdocs-git-revision-date-localized-plugin",
+        "mkdocs-panzoom-plugin",
+        "mkdocs-pdf",
+        "mkdocs-print-site-plugin",
+        "mike",
+    } <= names["docs"]
+    assert {"include-group": "docs"} in groups["dev"]
+    deploy = (WF / "deploy-docs.yml").read_text()
+    assert "--group docs" in deploy
+    assert not re.search(r"pip install[^\n]*mkdocs", deploy), "deploy-docs keeps its own list"
 
 
 def test_one_dev_dependency_list():
@@ -112,6 +150,27 @@ def test_pr_ci_covers_the_ends_the_image_and_the_floors():
     assert "matrix.os == 'Linux'" not in yaml.safe_dump(job), "a step that can never run"
 
 
+@_REVIEW
+def test_the_floors_leg_proves_it_installed_the_floors():
+    """lowest-direct keeps an installed version that satisfies a floor, so the floors
+    go in before anything else and a check compares each to pyproject's floor."""
+    runs = _runs(_workflow("test.yml")["jobs"]["test"])
+    floors = runs.index("--resolution lowest-direct")
+    assert floors < runs.index("--group test")
+    assert re.search(r"python scripts/check_floors\.py", runs[floors:])
+    assert re.search(r"uv pip install[^\n]*--no-deps[^\n]*dist/\*\.whl", runs[floors:])
+    assert (ROOT / "scripts" / "check_floors.py").exists()
+
+
+@_REVIEW
+def test_nothing_installs_the_old_dev_extra():
+    extra = re.compile(r"\.\[[^\]]*\bdev\b[^\]]*\]")
+    files = [*WF.glob("*.yml"), *ROOT.glob("scripts/*.sh"), ROOT / "Makefile"]
+    files += [ROOT / "README.md", ROOT / "CONTRIBUTING.md", *ROOT.glob("docs/**/*.md")]
+    hits = [f.relative_to(ROOT) for f in files if extra.search(f.read_text())]
+    assert hits == [], hits
+
+
 def test_no_workflow_installs_the_old_dev_extra():
     for wf in WF.glob("*.yml"):
         assert ".[dev]" not in wf.read_text(), wf.name
@@ -132,12 +191,13 @@ def test_a_monthly_job_runs_the_latest_releases_and_reports_failure():
         matrix = job.get("strategy", {}).get("matrix", {})
         pythons |= {str(p) for p in matrix.get("python-version", [])}
     assert pythons >= {"3.10", "3.11", "3.12", "3.13", "3.14"}
-    text = (WF / "latest-deps.yml").read_text()
-    assert "cargo update" in text and "--upgrade" in text
+    assert "cargo update" in _runs(jobs["python"]) and "cargo update" in _runs(jobs["rust"])
+    assert "--upgrade dist/*.whl" in _runs(jobs["python"])
     reporters = [j for j in jobs.values() if j.get("permissions", {}).get("issues") == "write"]
     assert len(reporters) == 1
     rep = reporters[0]
     assert "failure()" in str(rep.get("if", "")) and "gh issue" in _runs(rep)
+    assert {"python", "rust"} <= set(rep["needs"])
 
 
 # ── Docker ───────────────────────────────────────────────────────────────────
@@ -161,6 +221,9 @@ def test_the_image_installs_a_hash_pinned_lock():
     assert re.search(r"pip install[^\n]*--require-hashes[^\n]*--no-deps[^\n]*-r", docker)
     assert re.search(r"pip install[^\n]*--no-deps[^\n]*\.whl", docker)
     assert "pip check" in docker
+    runtime = docker[docker.rindex("\nFROM ") :]
+    for line in re.findall(r"pip install[^\n]*", runtime):
+        assert "--no-deps" in line, f"re-resolves dependencies: {line}"
 
 
 def test_ci_runs_the_image():
@@ -187,3 +250,12 @@ def test_the_developer_docs_say_pip_251_before_maturin_develop():
         text = (ROOT / doc).read_text()
         first = text.index("maturin develop")
         assert re.search(r"pip>=25\.1", text[:first]), doc
+
+
+@_REVIEW
+def test_contributing_creates_a_venv_before_pip():
+    """maturin develop needs a virtualenv, and the system pip is externally managed."""
+    text = (ROOT / "CONTRIBUTING.md").read_text()
+    assert re.search(
+        r"(python3? -m venv|uv venv)", text[: text.index('pip install --upgrade "pip')]
+    )
