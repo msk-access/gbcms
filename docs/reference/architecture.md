@@ -177,10 +177,11 @@ Where:
     Alt  |    c        d      |
     -----+--------------------+
     
-    p-value = Fisher's exact test on 2×2 contingency table
+    p-value = two-sided exact Fisher test (R's fisher.test), any depth
 ```
 
-Low p-value (< 0.05) indicates potential strand bias artifact.
+Low p-value (< 0.05) indicates potential strand bias artifact; at deep coverage, read
+the odds ratio for the size of the imbalance.
 
 ### Structural Invariants
 

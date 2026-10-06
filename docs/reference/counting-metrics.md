@@ -207,6 +207,19 @@ Computed at **both** levels:
 | **SB_pval** / **SB_OR** | Read | Strand bias from individual reads |
 | **FSB_pval** / **FSB_OR** | Fragment | Strand bias from collapsed fragments |
 
+The p-value is the exact two-sided Fisher test as R's `fisher.test` defines it: the
+sum of the probabilities of every table with the observed margins that is no more
+likely than the observed table (with R's tie tolerance, 1 + 10⁻⁷). It is computed in
+log space, so it is exact at any depth. Before 6.6.0 it was 0 for any table above
+~1,030 reads, and strongly biased tables were floored near 10⁻¹⁰.
+
+!!! note "Depth and effect size"
+    The p-value is computed on the raw counts. At deep coverage a small strand
+    imbalance is statistically clear, so the p-value can be small while the bias is
+    slight. Read the odds ratio (`SB_OR`, `FSB_OR`) for the size of the imbalance.
+    GATK's FisherStrand instead scales tables above 400 reads down to 200 before
+    testing; gbcms reports the exact p of the observed table.
+
 !!! warning "Paired-End Data: Use FSB, Not SB"
     For paired-end sequencing (e.g., MSK-ACCESS), R1 and R2 from the same fragment are **not** independent observations. Read-level SB (`SB_pval`) artificially doubles the sample size N in the Fisher's test contingency table, producing deflated p-values that can falsely flag true variants as strand bias artifacts. **Clinical filtering pipelines should use `FSB_pval`** (fragment-level), which correctly treats each physical fragment as a single independent observation.
 

@@ -33,6 +33,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Fixed — Fisher's exact test at any depth (#239)
+
+- **Strand-bias p-values were 0 above ~1,030 reads.** `strand_bias_p_value`,
+  `fragment_strand_bias_p_value` (VCF `SB_PVAL`, `FSB_PVAL`) and merge's combined
+  columns were 0 for every table above ~1,030 reads, as if strongly biased: a
+  binomial overflowed and every hypergeometric probability became NaN. On the RC
+  cfDNA rows that was 316 of 1,060 read-level p-values, 298 of them truly ≥ 0.05.
+  The ASJD junction test (p < 0.05) read the same zeros.
+- **The fix.** The test is now the exact two-sided p of R's `fisher.test`, computed
+  in log space from the ratio of neighbouring tables: no factorial, nothing
+  overflows, relative error near 10⁻¹² at any depth.
+  - Ties follow R's rule (probability ≤ observed × (1 + 10⁻⁷)). That replaces an
+    absolute 10⁻¹⁰ tolerance which floored strongly biased tables near 10⁻¹⁰; one
+    printed 2.1 × 10⁻¹⁰ where the exact p is 7.0 × 10⁻⁹⁰.
+  - The p = 1 guards (≤ 1 ALT observation, empty or full margins) and the odds ratio
+    are unchanged.
+  - The p-value stays the exact p of the raw counts. At deep coverage, read the odds
+    ratio for the size of a bias.
+- **Measured on the local FORTE sample (9,536 rows).**
+  - What moved: 397 read-level and 205 fragment-level strand-bias p-values, and 5
+    ASJD p-values, of which one flag clears. All counts and Parquet tables are
+    unchanged.
+  - Every reported strand-bias p now equals scipy's exact value.
+- **statrs** leaves the direct dependencies.
+
 ### Changed — Rust dependencies on their current releases (#139)
 
 The Rust dependencies move to their current releases, one per commit
