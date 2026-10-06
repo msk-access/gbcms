@@ -1768,6 +1768,11 @@ page from the CHANGELOG section in the release workflow.
   - Tabix stays out. The design above is the answer if memory ever becomes the
     limit.
   - A PR of its own, before PR B, which then has no noodles or bincode migration.
+  - A public GTF API (a narrow wrapper over `_rs`, like `observe_molecules`) is a
+    candidate, not a ticket: no consumer reads GTFs today (mulligan,
+    ch-fragmentomics), and the annotation answers ship as output columns. The
+    parser (`gtf_line.rs`) and the index's seven queries are self-contained if one
+    appears.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists

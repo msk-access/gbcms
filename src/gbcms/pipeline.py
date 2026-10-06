@@ -349,8 +349,7 @@ def read_variant_file(path: Path) -> list[Variant]:
     """Read raw variants from a ``.vcf``/``.vcf.gz``/``.vcf.bgz``/``.maf`` file.
 
     Format is selected by extension. This is the pre-normalization read, so no
-    reference is required. Shared by the Pipeline (``_load_variants``) and the
-    ``build-gtf-cache`` command, which only needs the variant chromosomes.
+    reference is required.
     """
     reader: VariantReader
     name_lower = path.name.lower()
@@ -864,11 +863,6 @@ class Pipeline:
             "gtf_path": (
                 str(self.config.gtf)  # type: ignore[attr-defined]
                 if getattr(self.config, "gtf", None)
-                else None
-            ),
-            "gtf_cache_dir": (
-                str(self.config.gtf_cache_dir)  # type: ignore[attr-defined]
-                if getattr(self.config, "gtf_cache_dir", None)
                 else None
             ),
             "reference_fasta": str(self.config.reference_fasta),

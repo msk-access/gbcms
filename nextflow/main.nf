@@ -14,7 +14,6 @@ nextflow.enable.dsl = 2
 
 include { GBCMS_DNA_WF }          from './workflows/dna'
 include { GBCMS_RNA_WF }          from './workflows/rna'
-include { GBCMS_BUILD_GTF_CACHE } from './modules/local/gbcms/build_gtf_cache/main'
 include { FILTER_MAF }            from './modules/local/gbcms/filter_maf/main'
 include { PIPELINE_SUMMARY }      from './modules/local/gbcms/pipeline_summary/main'
 include { asBool }                from './modules/local/utils/main'
@@ -44,6 +43,10 @@ workflow {
     if (!params.fasta)    { error 'Reference FASTA not specified! Use --fasta' }
     if (!(params.mode in ['dna', 'rna'])) {
         error "Invalid mode '${params.mode}'. Must be 'dna' or 'rna'. Use --mode dna|rna"
+    }
+    // Deprecated in 6.6.0, removed in 6.7.0: there is no GTF index cache to build.
+    if (params.gtf_cache != null) {
+        log.warn "--gtf_cache is deprecated and ignored: the GTF index cache is gone (each task loads the GTF in about a second). It will be removed in 6.7.0."
     }
 
     log.info """
@@ -190,22 +193,9 @@ workflow {
     // STEP 3: Run the appropriate workflow based on mode
     //
     if (params.mode == 'rna') {
-        // M5a: pre-warm the GTF index cache ONCE for the cohort (shared --gtf +
-        // --variants), then broadcast the prebuilt cache dir to every per-sample
-        // GBCMS_RNA task so none of them re-parse the GTF (~9s each). Without this
-        // up-front build, concurrently-launched samples all cold-miss. Disabled (no
-        // GTF, or --gtf_cache false) => [] => the per-sample runs parse as before.
-        if (params.gtf && asBool(params.gtf_cache)) {
-            GBCMS_BUILD_GTF_CACHE( [ file(params.gtf), ch_variants_file ] )
-            ch_gtf_cache = GBCMS_BUILD_GTF_CACHE.out.cache_dir.first()
-        } else {
-            ch_gtf_cache = channel.value([])
-        }
-
         GBCMS_RNA_WF (
             ch_ready,
-            ch_fasta_tuple,
-            ch_gtf_cache
+            ch_fasta_tuple
         )
     } else {
         GBCMS_DNA_WF (

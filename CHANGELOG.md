@@ -33,6 +33,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.
 
+### Changed — GTF loading (#139)
+
+Measured on GRCh38.111 (`CYCLE_6.6.0_PLAN.md`, "D4 GTF loading"). Only `--gtf` runs
+are affected, and their output is unchanged for well-formed GTFs.
+- **The GTF loads in about a second, plain or `.gtf.gz`.** noodles-gtf parsed every
+  line before reading its feature column, which took 5.9 s of a 6.3 s load. A
+  byte-level parser reads the feature column first and checks only the exon lines it
+  keeps: 1.1 s for the same chromosomes, 1.3 s for a whole genome, 1.7 s from
+  `.gtf.gz`.
+  - It loads exactly the exons noodles did: no line differs across Ensembl 111 and
+    GENCODE v50 comprehensive, v50 basic and v47lift37 (26.1M lines).
+  - gzip and BGZF are detected from the file's content. The config already accepted
+    `.gtf.gz`, but the parser failed on it with "stream did not contain valid UTF-8".
+- **Malformed exon lines are rejected and warned about.** The grammar is noodles-gtf's,
+  column by column, except in four places where noodles loaded a line wrongly:
+  - A whitespace run may now separate a key from its value. noodles read
+    `transcript_id  "T1"` as the ID ` "T1"`, quotes included.
+  - Unquoted values are trimmed.
+  - A line with start after end is rejected; noodles kept it as a negative-length exon.
+  - A coordinate past 2,147,483,647 is rejected; noodles wrapped it negative.
+  - An exon with an empty `transcript_id` is rejected, as a missing one already was.
+    noodles merged every such exon into one transcript.
+  - Each of these lines used to move `exon_boundary_dist` with a bogus boundary.
+    Rejected lines now get one warning with their count and the first one's line
+    number and reason.
+- **The GTF index cache is deprecated.** It saved about 0.5 s a sample: a cache hit
+  cost 0.9 s, and it brought a build step, a Nextflow process and a 97 MB file per
+  chromosome set. It is no longer used:
+  - `--gtf-cache-dir`, `gbcms build-gtf-cache` and the Nextflow `--gtf_cache` are
+    accepted and ignored with a warning, and are removed in 6.7.0.
+  - The `GBCMS_BUILD_GTF_CACHE` process, the cache module and its binding are gone.
+  - The noodles-gtf, bincode and serde dependencies are gone too. bincode 3.0 is a
+    `compile_error!` release, so there was no upgrade path.
+
 ### Changed — mFSD statistics (#153, #154)
 
 Measured first on ACCESS plasma labeled by the patient's buffy coat (operator

@@ -37,7 +37,6 @@ pub(crate) mod parquet_writer;
 // Re-export the PyO3 entry points so lib.rs can register them
 pub use engine::count_bam_binned;
 pub use engine::count_bam_binned_observations;
-pub use engine::build_gtf_cache;
 pub use parquet_writer::write_fsd_parquet;
 
 // Re-export AlignmentBackend for sibling modules (variant_checks dispatches on it)

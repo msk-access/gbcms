@@ -28,11 +28,10 @@ With `--gtf`, GTF mode appends **17 columns** total: `exon_boundary_dist` (1),
     same way and leaves mixed strands undetermined. A run-level WARNING names the
     variants left without a strand (the first ten, then a count).
 
-!!! tip "Cohort runs: pre-build the GTF cache"
-    The GTF is parsed per sample. For a cohort, run `gbcms build-gtf-cache` once and
-    point every sample at the same `--gtf-cache-dir` so each per-sample run reuses the
-    prebuilt index (~9s parse → ~0.05s load). The Nextflow pipeline wires this up
-    automatically via the `GBCMS_BUILD_GTF_CACHE` process (`--gtf_cache`, default on).
+!!! tip "Loading cost"
+    The GTF is loaded per run, plain or gzip/BGZF-compressed: about a second for a
+    full Ensembl GTF. There is no cache to build (`--gtf-cache-dir` and
+    `build-gtf-cache` are deprecated in 6.6.0 and do nothing).
 
 ---
 
@@ -59,12 +58,21 @@ wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencod
 
 ### Parsing Details
 
-The GTF parser (`rust/src/annotation/`) reads **exon** feature rows and extracts:
+The GTF loader (`rust/src/annotation/`) reads plain or gzip/BGZF files (detected
+from the content, not the extension) and keeps the **exon** rows of the variant
+chromosomes, extracting:
 
-- `gene_name` attribute → gene symbol
-- `transcript_id` attribute → transcript identifier
 - `seqname` (column 1) → chromosome (with `chr` prefix normalization)
-- `start`, `end` (columns 4-5) → 1-based exon coordinates
+- `start`, `end` (columns 4-5) → 1-based exon coordinates, stored 0-based half-open
+- `strand` (column 7) → `+`, `-` or unstranded `.`
+- `transcript_id` attribute → transcript identifier (a GENCODE `.N` version is stripped)
+
+Each exon row is checked column by column with noodles-gtf's grammar (the parser
+used before 6.6.0): positive integer coordinates, a numeric or `.` score, `+`/`-`/`.`
+strand, a `.`/0/1/2 frame, and `key value;` attributes. Whitespace runs may separate
+a key from its value. A row with start after end, a coordinate past 2,147,483,647, or
+a missing or empty `transcript_id` is not loaded. Rejected rows are counted in one
+warning that names the first one's line number and reason.
 
 !!! tip "Chromosome Normalization"
     Chromosomes are normalized by stripping the `chr` prefix for internal matching

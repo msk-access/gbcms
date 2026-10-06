@@ -231,8 +231,8 @@ rust/src/
 ├── lib.rs                    # PyO3 module exports
 ├── annotation/               # v5.0.0: GTF annotation index (COITree, splice masks)
 │   ├── mod.rs                # AnnotationIndex struct, COITree queries
-│   ├── gtf.rs                # GTF parser (variant-guided streaming)
-│   └── cache.rs              # GTF disk cache (GtfIndexBundle, bincode) — M5a
+│   ├── gtf.rs                # GTF loader (plain or gzip/BGZF, variant-guided streaming)
+│   └── gtf_line.rs           # One GTF line's exon fields (noodles-gtf's grammar)
 ├── counting/
 │   ├── mod.rs                # Submodule re-exports
 │   ├── engine.rs             # Main loop, genomic binning, BAQ, UMI

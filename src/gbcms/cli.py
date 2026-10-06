@@ -636,19 +636,18 @@ def rna(
         None,
         "--gtf",
         help=(
-            "Path to GTF annotation file (Ensembl/GENCODE). Enables exon "
-            "boundary distance calculation and BAQ suppression at annotated "
-            "splice junctions. Only chromosomes with variants are loaded."
+            "Path to GTF annotation file (Ensembl/GENCODE), plain or gzip/BGZF "
+            "(.gtf.gz). Enables exon boundary distance calculation and BAQ "
+            "suppression at annotated splice junctions. Only chromosomes with "
+            "variants are loaded."
         ),
     ),
     gtf_cache_dir: Path | None = typer.Option(
         None,
         "--gtf-cache-dir",
         help=(
-            "Directory for caching the parsed GTF index. On first use the parsed "
-            "annotation is written here; later runs over the same GTF and variant "
-            "set reuse it, skipping the multi-second GTF text parse. Point every "
-            "sample in a cohort at one shared directory to parse the GTF only once."
+            "Deprecated in 6.6.0 and ignored; removed in 6.7.0. The GTF index cache "
+            "is gone: the GTF loads in about a second without one."
         ),
     ),
     # Library type flag
@@ -954,55 +953,31 @@ def build_gtf_cache(
         "--variants",
         "-v",
         exists=True,
-        help=(
-            "Variant file (VCF/MAF) for the cohort. Only its chromosome set is used. "
-            "It MUST be the same variant file the per-sample 'gbcms rna' runs use, so "
-            "the cache key lines up and those runs reuse this entry."
-        ),
+        help="Variant file (VCF/MAF) for the cohort.",
     ),
     gtf_cache_dir: Path = typer.Option(
         ...,
         "--gtf-cache-dir",
-        help=(
-            "Shared directory to write the cache into (created if missing). Point every "
-            "per-sample 'gbcms rna --gtf-cache-dir' at this same directory."
-        ),
+        help="Directory the cache was written into (no longer written).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-V", help="Enable verbose debug logging"),
 ):
     """
-    Pre-build the GTF index cache so a cohort parses the GTF only once.
+    Deprecated in 6.6.0: does nothing; removed in 6.7.0.
 
-    Parses the GTF for the chromosomes covered by --variants and writes the
-    serialized index into --gtf-cache-dir. Run this ONCE before fanning out the
-    per-sample 'gbcms rna' jobs (all pointed at the same --gtf-cache-dir): each then
-    loads the prebuilt index in ~0.05s instead of re-parsing the GTF (~9s).
-
-    Why a separate step: when many samples launch concurrently they all cold-miss
-    and each re-parses the GTF, so the cache alone saves nothing until a later wave.
-    Building it up front lets every sample start warm.
+    It pre-built a GTF index cache for a cohort. The GTF now loads in about a
+    second (plain or .gtf.gz), so there is no cache to build. The command still
+    checks its options, so a pipeline that calls it keeps working until it is
+    removed.
     """
-    from gbcms import _rs
-    from gbcms.pipeline import read_variant_file
-
     setup_logging(verbose=verbose, trace=False)
 
     _variant_format(variants)
 
-    chroms = [v.chrom for v in read_variant_file(variants)]
-    if not chroms:
-        logger.error("No variants found in %s — nothing to scope the GTF cache to.", variants)
-        raise typer.Exit(code=1)
-
-    logger.info("Building GTF index cache for %d variants -> %s", len(chroms), gtf_cache_dir)
-    n_exons = _rs.build_gtf_cache(str(gtf), chroms, str(gtf_cache_dir))
-    logger.info(
-        "GTF index cache ready in %s (%d exons across %d chromosomes). Per-sample runs "
-        "using --gtf-cache-dir %s will now skip the GTF parse.",
-        gtf_cache_dir,
-        n_exons,
-        len(set(chroms)),
-        gtf_cache_dir,
+    logger.warning(
+        "build-gtf-cache is deprecated and does nothing: the GTF index cache is gone "
+        "(the GTF loads in about a second without one). Drop this step and "
+        "--gtf-cache-dir; both will be removed in 6.7.0."
     )
 
 

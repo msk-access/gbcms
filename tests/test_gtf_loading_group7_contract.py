@@ -19,7 +19,6 @@ Contracts:
 """
 
 import gzip
-import logging
 import re
 from pathlib import Path
 
@@ -34,7 +33,6 @@ from gbcms.cli import app
 
 ROOT = Path(__file__).resolve().parents[1]
 POS = E1[0] + 100  # 0-based SNV, mid-exon: 100 bases from either E1 edge
-GTF_LOGGER = "_rs.annotation.gtf"
 runner = CliRunner()
 
 _EXONS = ((101, 300), (501, 600), (801, 1000))  # 1-based closed, as rna_fixtures
@@ -77,10 +75,20 @@ def _run(tmp_path, gtf_text, name="gene.gtf", compress=None, extra=()):
     return row
 
 
+def _invoke(d, out, *extra):
+    """Re-run `gbcms rna` on the files `_run` wrote in `d`, for its output text
+    (unwrapped: Rich wraps log lines at the terminal width)."""
+    out.mkdir()
+    args = ["rna", "-v", str(d / "variants.vcf"), "-b", f"S:{d / 'rna.s.bam'}"]
+    args += ["-f", str(d / "ref.fasta"), "-o", str(out), "--gtf", str(d / "plain.gtf"), *extra]
+    result = runner.invoke(app, args, env={"COLUMNS": "3000"})
+    assert result.exit_code == 0, result.output
+    return result.output
+
+
 # ── Input: .gtf.gz ───────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="the parser reads .gtf.gz as text and fails")
 @pytest.mark.parametrize("compress", ["gzip", "bgzf"])
 def test_gzipped_gtf_loads_like_the_plain_file(tmp_path, compress):
     """Every output field of a .gtf.gz run equals the plain run's."""
@@ -93,7 +101,6 @@ def test_gzipped_gtf_loads_like_the_plain_file(tmp_path, compress):
 # ── Grammar ──────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason='noodles reads `transcript_id  "T1"` as the ID ` "T1"`')
 def test_whitespace_runs_between_key_and_value_read_the_id(tmp_path):
     row = _run(tmp_path, _gtf_text(attrs='gene_id  "G1";  transcript_id  "T1";'))
     assert row["transcript_read_counts"].startswith("T1:"), row["transcript_read_counts"]
@@ -119,9 +126,6 @@ _JUNK = {
 }
 
 
-@pytest.mark.xfail(
-    strict=True, reason="noodles loads these lines; their boundaries move the distance"
-)
 @pytest.mark.parametrize("kind", sorted(_JUNK))
 def test_malformed_exon_lines_are_not_loaded(tmp_path, kind):
     clean = _run(tmp_path / "clean", _gtf_text())
@@ -130,22 +134,18 @@ def test_malformed_exon_lines_are_not_loaded(tmp_path, kind):
     assert junk == clean
 
 
-@pytest.mark.xfail(strict=True, reason="malformed exon lines are skipped at debug level only")
-def test_rejected_exon_lines_are_warned_with_a_count(tmp_path, caplog):
-    _rs.reset_log_caching()
-    with caplog.at_level(logging.WARNING, logger=GTF_LOGGER):
-        _run(tmp_path, _gtf_text(extra="".join(_JUNK[k] for k in sorted(_JUNK))))
-    msgs = [r.getMessage() for r in caplog.records if r.name == GTF_LOGGER]
-    hit = [m for m in msgs if "malformed" in m]
-    assert hit, msgs
-    assert re.search(r"\b3 exon lines?\b", hit[0]), hit[0]
+def test_rejected_exon_lines_are_warned_with_a_count(tmp_path):
+    d = tmp_path / "junk"
+    _run(d, _gtf_text(extra="".join(_JUNK[k] for k in sorted(_JUNK))))
+    hit = [m for m in _invoke(d, tmp_path / "again").splitlines() if "malformed" in m]
+    assert hit, "a warning names the rejected lines"
+    assert re.search(r"\b3 exon lines\b", hit[0]), hit[0]
     assert re.search(r"line \d+", hit[0]), hit[0]
 
 
 # ── The cache is deprecated ──────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="--gtf-cache-dir still writes a bincode cache")
 def test_gtf_cache_dir_is_accepted_ignored_and_warned(tmp_path):
     cache = tmp_path / "cache"
     clean = _run(tmp_path / "clean", _gtf_text())
@@ -153,17 +153,10 @@ def test_gtf_cache_dir_is_accepted_ignored_and_warned(tmp_path):
     flagged = _run(d, _gtf_text(), extra=("--gtf-cache-dir", str(cache)))
     assert flagged == clean
     assert not cache.exists() or not any(cache.iterdir())
-    # the warning reaches the user in the CLI's output
-    (tmp_path / "again").mkdir()
-    args = ["rna", "-v", str(d / "variants.vcf"), "-b", f"S:{d / 'rna.s.bam'}"]
-    args += ["-f", str(d / "ref.fasta"), "-o", str(tmp_path / "again")]
-    args += ["--gtf", str(d / "plain.gtf"), "--gtf-cache-dir", str(cache)]
-    result = runner.invoke(app, args)
-    assert result.exit_code == 0, result.output
-    assert "deprecated" in result.output.lower(), result.output
+    output = _invoke(d, tmp_path / "again", "--gtf-cache-dir", str(cache))
+    assert "deprecated" in output.lower(), output
 
 
-@pytest.mark.xfail(strict=True, reason="noodles-gtf and bincode are still dependencies")
 def test_no_noodles_gtf_or_bincode_dependency():
     cargo = (ROOT / "rust/Cargo.toml").read_text()
     deps = re.search(r"^\[dependencies\]\n(.*?)(?=^\[|\Z)", cargo, re.M | re.S).group(1)
@@ -173,7 +166,6 @@ def test_no_noodles_gtf_or_bincode_dependency():
     assert not (ROOT / "rust/src/annotation/cache.rs").exists()
 
 
-@pytest.mark.xfail(strict=True, reason="the binding still exposes the cache")
 def test_the_binding_has_no_cache():
     stub = (ROOT / "src/gbcms/_rs.pyi").read_text()
     assert "gtf_cache_dir" not in stub
@@ -181,7 +173,6 @@ def test_the_binding_has_no_cache():
     assert not hasattr(_rs, "build_gtf_cache")
 
 
-@pytest.mark.xfail(strict=True, reason="the Nextflow pipeline still builds the cache")
 def test_nextflow_has_no_cache_step_and_warns_on_the_old_param():
     nf = ROOT / "nextflow"
     assert not (nf / "modules/local/gbcms/build_gtf_cache").exists()

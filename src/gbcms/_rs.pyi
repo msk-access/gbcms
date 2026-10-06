@@ -243,7 +243,6 @@ def count_bam_binned(
     mfsd: bool = False,
     rna_editing_db: str | None = None,
     gtf_path: str | None = None,
-    gtf_cache_dir: str | None = None,
     reference_fasta: str | None = None,
     library_type: str = "capture",
     bin_window: int | None = None,
@@ -279,18 +278,12 @@ def count_bam_binned_observations(
     mfsd: bool = False,
     rna_editing_db: str | None = None,
     gtf_path: str | None = None,
-    gtf_cache_dir: str | None = None,
     reference_fasta: str | None = None,
     library_type: str = "capture",
     observations_path: str | None = None,
     bin_window: int | None = None,
     bin_max_variants: int | None = None,
 ) -> tuple[list[BaseCounts], list[Observation]]: ...
-def build_gtf_cache(
-    gtf_path: str,
-    variant_chroms: list[str],
-    cache_dir: str,
-) -> int: ...
 def reset_log_caching() -> None: ...
 def build_commit() -> str: ...
 def prepare_variants(

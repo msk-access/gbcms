@@ -9,7 +9,6 @@ nothing. It goes in 6.7.0.
 
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from gbcms.cli import app
@@ -34,7 +33,6 @@ def _write(tmp_path: Path, name: str, content: str) -> Path:
     return p
 
 
-@pytest.mark.xfail(strict=True, reason="build-gtf-cache still writes a bincode cache")
 def test_build_gtf_cache_is_deprecated_and_writes_nothing(tmp_path):
     gtf = _write(tmp_path, "tiny.gtf", _GTF)
     vcf = _write(tmp_path, "v.vcf", _VCF)
