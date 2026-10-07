@@ -3,9 +3,15 @@ name: Checkpoint wheels
 # One manylinux x86_64 wheel per commit, built with the release recipe, for the
 # regression panel's attribution (docs/development/regression-panel.md): each
 # checkpoint is installed into its own venv on HPC and run on the changed rows.
-# Manual only; publishes nothing (wheels are workflow artifacts).
+# Publishes nothing (wheels are workflow artifacts). Two ways to start it:
+# - push a branch checkpoint-wheels/<release> that commits
+#   scripts/regression_panel/checkpoints.tsv: a push runs the workflow in the pushed
+#   commit, so this works before the workflow reaches the default branch;
+# - Actions -> Run workflow with the commits (once the file is on the default branch).
 
 on:
+  push:
+    branches: ['checkpoint-wheels/**']
   workflow_dispatch:
     inputs:
       shas:
@@ -25,14 +31,21 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
+      - uses: actions/checkout@v5
+        if: github.event_name == 'push'
       - name: Validate the commit list
         id: matrix
         env:
           SHAS: ${{ inputs.shas }}
         run: |
           python3 - <<'EOF' >> "$GITHUB_OUTPUT"
-          import json, os, re
-          shas = [s for s in re.split(r"[\s,]+", os.environ["SHAS"]) if s]
+          import csv, json, os, re
+          if os.environ.get("GITHUB_EVENT_NAME") == "push":
+              with open("scripts/regression_panel/checkpoints.tsv") as fh:
+                  rows = csv.DictReader((x for x in fh if not x.startswith("# ")), delimiter="\t")
+                  shas = [r["sha"] for r in rows]
+          else:
+              shas = [s for s in re.split(r"[\s,]+", os.environ["SHAS"]) if s]
           bad = [s for s in shas if not re.fullmatch(r"[0-9a-f]{7,40}", s)]
           if not shas or bad:
               raise SystemExit(f"not commit SHAs: {bad or 'none given'}")

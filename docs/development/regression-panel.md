@@ -96,10 +96,14 @@ count-affecting merge since the previous release, run on the changed rows only.
    one build per merge into develop that touches counting code, skipping merges whose
    own acceptance was byte-identical (`NEUTRAL` in the script). Each row names every
    merge in its interval, so a change landing in a skipped merge is still named.
-2. **The wheels.** Actions → *Checkpoint wheels* → *Run workflow*, with the `sha`
-   column of `checkpoints.tsv`: one manylinux wheel per commit, built as the release
-   builds it. Install each into its own venv on HPC
-   (`python3.11 -m venv cp_<sha> && cp_<sha>/bin/pip install gbcms-*.whl`).
+2. **The wheels.** One manylinux wheel per commit, built as the release builds it
+   (the *Checkpoint wheels* workflow; each wheel is an artifact named `wheel-<sha>`).
+   Before a release the workflow is not yet on the default branch, where GitHub
+   requires a manually run workflow to be, so start it with a push: a branch
+   `checkpoint-wheels/X.Y.Z` that commits the list as
+   `scripts/regression_panel/checkpoints.tsv`. Once it is on the default branch,
+   *Run workflow* with the `sha` column works too. Install each wheel into its own venv
+   on HPC (`python3.11 -m venv cp_<sha> && cp_<sha>/bin/pip install gbcms-*.whl`).
 3. **The reduced runs.** `attribute.py prepare TIER OUT 6.5.0 6.6.0 ATTRIB` writes, for
    every run with changes, a variant file holding the changed rows and every row within
    100 bp (siblings classify together), and `ATTRIB/runs.tsv`.
