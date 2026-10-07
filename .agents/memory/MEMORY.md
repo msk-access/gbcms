@@ -29,6 +29,7 @@ One line per memory. Full content lives in the linked file. Keep this index tigh
 - [Nextflow defaults diverge from CLI](nextflow-cli-default-divergence.md) — keep nextflow.config in sync with CLI defaults.
 - [RNA MAPQ default is 1](rna-mapq-default.md) — keeps STAR's 2–4-locus reads (pseudogene-tied junction reads); unique-only cost PIK3CA E545K ALT; decided 2026-10-03.
 - [MAPQ-0 loci (PMS2)](mapq0-loci-pms2.md) — pseudogene genes run at --min-mapq 0; keep MAPQ-0 alignments countable; validate read-admission changes at --min-mapq 0 too.
+- [ABRA2 junction placement](abra2-junction-placement.md) — IMPACT/ACCESS are ABRA2-realigned (junction inserts carry assembly evidence); WES (BWA only) is the placement control.
 
 ## Tooling / build
 - [pyproject is the dep source of truth](deps-pyproject-source-of-truth.md) — floors measured (CI floors leg), dev tools in PEP 735 groups, only the image installs a lock (hash-pinned + pip check); declare every directly-imported package.
