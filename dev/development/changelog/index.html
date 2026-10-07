@@ -31,7 +31,7 @@
             body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
             body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
         </style><meta name="panzoom-theme" content="material">
-<meta name="panzoom-data" content='{"selectors": [".mermaid", ".d2"], "initial_zoom_level": 1.0}'> </head>
+<meta name="panzoom-data" content='{"selectors": [".d2", ".mermaid"], "initial_zoom_level": 1.0}'> </head>
 <body data-md-color-accent="custom" data-md-color-primary="custom" data-md-color-scheme="default" dir="ltr">
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox">
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox">
@@ -793,6 +793,25 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   minimum span that dense variants chain past, bounded by the 200-variant cap; measured
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
+</ul>
+<h3 id="fixed-one-allele-given-twice-is-not-its-own-sibling-246">Fixed — one allele given twice is not its own sibling (#246)<a class="headerlink" href="#fixed-one-allele-given-twice-is-not-its-own-sibling-246" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Carriers lost at both rows.</strong> An input that gives one allele on two rows had
+  each row treated as the other's sibling once normalization made them one variant:
+  the same row given verbatim (a cohort <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> listing a recurrent indel once per
+  sample), or one allele written two ways (a repeat unit inserted at either end of
+  the repeat, as FORTE's indel probes do). A carrier the aligner wrote at the
+  junction counted at both rows; one written anywhere else in a repeat fit both
+  exactly, so the <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> guard counted it at neither: +CTG at a (CTG)x11 tract had <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 7
+  against 62 when counted alone. Outputs before 6.6.0 undercount such rows' indel
+  carriers written away from the junction (an SNV base read directly was never
+  contested). With <code>--rescue-mnp</code>, an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> given twice was skipped as grouped.</li>
+<li><strong>The fix.</strong> A sibling of the row's own allele is left out of its sibling list
+  (the guards, the Phase-3 haplotype matrix and the observed-allele scan all read
+  that list; one entry per other allele), so each row counts every carrier, and
+  the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue skips only a row whose group holds another allele. A row given
+  verbatim is noted at INFO; one allele given two ways warns, naming the rows. A
+  genuinely different allele at the site stays a sibling.</li>
 </ul>
 <h3 id="fixed-a-carrier-behind-a-substitution-is-not-ref-the-junction-alt-stays-245">Fixed — a carrier behind a substitution is not REF; the junction ALT stays (#245)<a class="headerlink" href="#fixed-a-carrier-behind-a-substitution-is-not-ref-the-junction-alt-stays-245" title="Permanent link">¶</a></h3>
 <ul>

@@ -13101,6 +13101,7 @@ discrimination window. Splices there remain the RNA rules' business.</p>
 <p>When multiple variants have overlapping REF spans at the same locus, reads carrying one variant's ALT allele could be incorrectly counted as REF for another variant. The engine addresses this with a two-phase approach:</p>
 <h3 id="reference-allele-classification-phase-1-annotation">Phase 1: Annotation<a class="headerlink" href="#reference-allele-classification-phase-1-annotation" title="Permanent link">¶</a></h3>
 <p>During normalization, <code>assign_multi_allelic_groups()</code> groups co-annotated variants with a fixed-point sweep over sorted <code>(chrom, pos)</code> coordinates, under two criteria: variants whose REF spans intersect (any types — tagged <code>MULTI_ALLELIC</code>), and length-changing variants whose scan windows (<code>max(5, repeat_span+2)</code> each side) overlap (tagged <code>TRACT_CLUSTER</code> when window-only). Groups close transitively and may be non-contiguous in position order; members share a <code>multi_allelic_group</code> ID and the tag is appended to <code>gbcms_status_reason</code> (the verdict stays <code>PASS</code>). Within a group the engine assigns <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> exclusively: a read's ALT call is demoted to <code>partial_alt</code> when a sibling explains it strictly better by span-explanation cost, or exactly as well as the row's ALT does (the two alleles differ only at bases the read has masked, so the read is either), and an alignment-phase ALT not confirmed exactly by the read's own span reconstruction is demoted as ambiguous; anchor-exact <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> evidence is never contested.</p>
+<p>One allele given on two rows is not its own sibling: the same row given verbatim (a cohort <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> listing a recurrent indel once per sample), or one allele written two ways (a repeat unit inserted at either end of the repeat, which normalization makes one variant). Before 6.6.0 each twin was the other's: an indel carrier the aligner wrote anywhere but the junction fit both exactly, so it counted at neither row, while one written at the junction counted at both (and <code>--rescue-mnp</code> skipped an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> given twice as grouped). Each row's sibling list now holds one entry per other allele and never its own, so each row counts every carrier; the rows keep their group and tag. A row given verbatim is noted at INFO; one allele given two ways warns, naming the rows.</p>
 <h3 id="reference-allele-classification-phase-2-sibling-alt-exclusion">Phase 2: Sibling ALT Exclusion<a class="headerlink" href="#reference-allele-classification-phase-2-sibling-alt-exclusion" title="Permanent link">¶</a></h3>
 <p>During counting, a read classified as <strong>REF</strong> for a variant is checked against the
 <strong>siblings whose change lies inside the variant's discrimination window</strong>: its
@@ -18085,6 +18086,25 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   minimum span that dense variants chain past, bounded by the 200-variant cap; measured
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
+</ul>
+<h3 id="development-changelog-fixed-one-allele-given-twice-is-not-its-own-sibling-246">Fixed — one allele given twice is not its own sibling (#246)<a class="headerlink" href="#development-changelog-fixed-one-allele-given-twice-is-not-its-own-sibling-246" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Carriers lost at both rows.</strong> An input that gives one allele on two rows had
+  each row treated as the other's sibling once normalization made them one variant:
+  the same row given verbatim (a cohort <abbr title="Mutation Annotation Format - Standard mutation annotation file format">MAF</abbr> listing a recurrent indel once per
+  sample), or one allele written two ways (a repeat unit inserted at either end of
+  the repeat, as FORTE's indel probes do). A carrier the aligner wrote at the
+  junction counted at both rows; one written anywhere else in a repeat fit both
+  exactly, so the <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> guard counted it at neither: +CTG at a (CTG)x11 tract had <abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 7
+  against 62 when counted alone. Outputs before 6.6.0 undercount such rows' indel
+  carriers written away from the junction (an SNV base read directly was never
+  contested). With <code>--rescue-mnp</code>, an <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> given twice was skipped as grouped.</li>
+<li><strong>The fix.</strong> A sibling of the row's own allele is left out of its sibling list
+  (the guards, the Phase-3 haplotype matrix and the observed-allele scan all read
+  that list; one entry per other allele), so each row counts every carrier, and
+  the <abbr title="Multi-Nucleotide Polymorphism - Multiple adjacent base substitutions">MNP</abbr> rescue skips only a row whose group holds another allele. A row given
+  verbatim is noted at INFO; one allele given two ways warns, naming the rows. A
+  genuinely different allele at the site stays a sibling.</li>
 </ul>
 <h3 id="development-changelog-fixed-a-carrier-behind-a-substitution-is-not-ref-the-junction-alt-stays-245">Fixed — a carrier behind a substitution is not REF; the junction ALT stays (#245)<a class="headerlink" href="#development-changelog-fixed-a-carrier-behind-a-substitution-is-not-ref-the-junction-alt-stays-245" title="Permanent link">¶</a></h3>
 <ul>
