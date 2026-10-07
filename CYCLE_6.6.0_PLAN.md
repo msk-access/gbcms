@@ -2024,6 +2024,14 @@ page from the CHANGELOG section in the release workflow.
   best-aligned placements count. Left as documented: an unreadable insert does not
   slide while a readable one with a masked edge base does (RJ-20's homopolymer
   decision requires it; REF versus partial only, rare).
+  A fourth round on those two changes (no blockers): the walk's last check read the
+  aligner's placement of an insert the scan had judged a separate event (now skipped,
+  red-first). Measured for the operator: the strict path keeps junction ALT reads a
+  slide would place better elsewhere (a realigner forcing a read onto the known indel):
+  FORTE 0 of 2,850 such reads, RC 28 of 12,015 (better placed inside the tract, 1-2
+  mismatches resolved). Final acceptance (a5d62594 vs develop): RC 4 rows (ALT +2,
+  partial -3, REF +1), WES 7 rows (ALT +2, REF -2), FORTE DNA PairHMM 6 rows (REF -14),
+  SW 4 rows (ALT -5), RNA 14 rows (REF -52, ALT +1); truth and probes unchanged.
   Found, not in scope (an issue, pending): at an SNV sibling a compensating-mismatch
   carrier counts ALT on both rows (the SNV row's aligned base is never contested), and a
   slid-to-junction ALT is contested by the sibling guard where a junction-written one is
