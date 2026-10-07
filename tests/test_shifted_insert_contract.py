@@ -26,7 +26,7 @@ from helpers import count_checked, make_read, write_contig
 from gbcms import _rs
 
 L = 100
-U, R, Q = 300, 700, 500  # a non-repeat +8; a +CA in a (CA)x6 tract; A>AT before C
+U, R, Q, P = 300, 700, 500, 850  # +8 unique; +CA in (CA)x6; A>AT before C; +A in A10
 INS8 = "ATGGACTC"
 BACKENDS = ["pairhmm", "sw"]
 
@@ -37,6 +37,7 @@ def _contig():
     c[U - 1], c[U], c[U + 1] = "T", "G", "G"  # ...T G | ATGGACTC | G...: no shift
     c[R - 1 : R + 14] = "TG" + "CA" * 6 + "T"  # G>GCA left-aligned at R
     c[Q - 1 : Q + 3] = "GACG"  # A>AT at Q: ...G A | T | C G...
+    c[P - 1 : P + 12] = "TG" + "A" * 10 + "C"  # G>GA left-aligned at P
     return "".join(c)
 
 
@@ -194,3 +195,35 @@ def test_another_allele_written_outside_the_window_is_not_ref(tmp_path, backend)
     reads += [ref_read(f"r{i}", i, a) for i in range(4)]
     got = _count(tmp_path, f"s{backend}", reads, a, ref, alt, backend, with_census=False)
     assert got == (4, 0, 4)
+
+
+# ── Second review: readability is the aligner's inserted bases' (RJ-20) ───────
+@pytest.mark.xfail(strict=True, reason="slides onto a masked run base, judged unreadable")
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_readable_insert_does_not_become_unreadable_by_sliding(tmp_path, backend):
+    """G>GA before A10: an 11-A read with one run base masked (Q5, or N at Q2) and
+    its readable inserted A written right of the mask. Its own inserted base is
+    read, so it is ALT (RJ-20), as written at the junction; a slide that ends on the
+    masked base must not make it unreadable."""
+    a, ref, alt = P, "G", "GA"
+    reads = [read(f"q{i}", i, a, "A", a + 8, sub=(a + 5, "A", 5)) for i in range(4)]
+    reads += [read(f"n{i}", i, a, "A", a + 11, sub=(a + 5, "N", 2)) for i in range(4)]
+    reads += [ref_read(f"r{i}", i, a) for i in range(4)]
+    assert _count(tmp_path, f"b1{backend}", reads, a, ref, alt, backend) == (4, 8, 0)
+
+
+@pytest.mark.xfail(strict=True, reason="a masked last inserted base cannot leave the insert")
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_carrier_with_a_masked_end_base_slides_back(tmp_path, backend):
+    """The ALT written one junction right with a compensating mismatch, its last
+    inserted base (where the reference base after the anchor belongs) misread as T
+    at Q5: masked, it fits; its readable inserted bases are the ALT's once it slides
+    back, as at the junction."""
+    a, ref, alt = U, CONTIG[U], CONTIG[U] + INS8
+    body = INS8[1:] + "T"
+    reads = [
+        read(f"m{i}", i, a, body, a + 2, sub=(a + 1, INS8[0]), quals=[37] * 7 + [5])
+        for i in range(4)
+    ]
+    got = _count(tmp_path, f"b2{backend}", reads, a, ref, alt, backend, with_census=False)
+    assert got == (0, 4, 0)
