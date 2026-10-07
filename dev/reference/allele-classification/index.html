@@ -3161,7 +3161,7 @@ Use mouse to pan and zoom
 <tr>
 <td style="text-align: left;">Tunable gap probs</td>
 <td style="text-align: left;">Yes (<code>--gap-open-prob</code> etc.)</td>
-<td style="text-align: left;">Fixed affine: open −5, extend −1</td>
+<td style="text-align: left;">Fixed affine: a k-base gap scores −5 − k</td>
 </tr>
 <tr>
 <td style="text-align: left;">Default threshold</td>
@@ -3319,7 +3319,10 @@ apply the same rule.</p>
 <hr>
 <h2 id="sw-gap-penalties"><abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> Gap Penalties<a class="headerlink" href="#sw-gap-penalties" title="Permanent link">¶</a></h2>
 <p>Phase 3's Smith-Waterman aligners use fixed affine gap penalties:
-<code>SW_GAP_OPEN = -5</code>, <code>SW_GAP_EXTEND = -1</code> (match +1, mismatch −1, N scores 0).
+<code>SW_GAP_OPEN = -6</code>, <code>SW_GAP_EXTEND = -1</code> (match +1, mismatch −1, N scores 0). bio 4
+counts a gap's first base in the open penalty (a k-base gap scores
+<code>SW_GAP_OPEN + SW_GAP_EXTEND·(k − 1)</code>, rust-bio#660), so −6 is bio 3's −5 open plus one
+extension: a k-base gap scores −5 − k, as it did.
 They are documented constants, not tuned per locus: an earlier
 <code>dynamic_sw_gap_extend</code> logistic curve rounded to −1 for every <code>repeat_span</code>,
 and traced real runs (ACCESS duplex, <abbr title="Microsatellite Instability - Instability in short tandem repeat regions">MSI</abbr>-high) confirmed <abbr title="Smith-Waterman - Edit-distance based local sequence alignment algorithm">SW</abbr> scores nothing
@@ -3387,7 +3390,7 @@ constants and do not use it).</p>
 <span class="md-icon" title="Last update">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
 </span>
-<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 7, 2026 01:17:58 UTC"><span class="timeago" datetime="2026-10-07T01:17:58+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 7, 2026 01:17:58 UTC">2026-10-07</span>
+<span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 6, 2026 21:37:30 UTC"><span class="timeago" datetime="2026-10-06T21:37:30+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 6, 2026 21:37:30 UTC">2026-10-06</span>
 </span>
 <span class="md-source-file__fact">
 <span class="md-icon" title="Created">
