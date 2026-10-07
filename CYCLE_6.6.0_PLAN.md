@@ -2032,6 +2032,11 @@ page from the CHANGELOG section in the release workflow.
   mismatches resolved). Final acceptance (a5d62594 vs develop): RC 4 rows (ALT +2,
   partial -3, REF +1), WES 7 rows (ALT +2, REF -2), FORTE DNA PairHMM 6 rows (REF -14),
   SW 4 rows (ALT -5), RNA 14 rows (REF -52, ALT +1); truth and probes unchanged.
+  Decided after the reviews (operator, 2026-10-06): stutter of the variant's length in
+  a neighbouring homopolymer that can sit at the shared boundary junction is another
+  allele (partial), by RJ-7's window; the strict path's junction ALT with a better
+  placement elsewhere and the sibling double count are filed for 6.6.0, measured
+  first.
   Found, not in scope (an issue, pending): at an SNV sibling a compensating-mismatch
   carrier counts ALT on both rows (the SNV row's aligned base is never contested), and a
   slid-to-junction ALT is contested by the sibling guard where a junction-written one is
