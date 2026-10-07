@@ -112,7 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The Rust dependencies move to their current releases, one per commit
 (`CYCLE_6.6.0_PLAN.md`, "D4 PR B"). No output changes. bio follows once C35
-(#240) is in.
+(#240) and C36 (#243) are in.
 - **pyo3 0.29** (from 0.27). The API migration: `allow_threads` is now `detach`,
   and `Variant` and `BaseCounts` opt in to the by-value conversion that Python
   passes back. The module keeps the GIL on a free-threaded interpreter, as before;
@@ -124,20 +124,21 @@ The Rust dependencies move to their current releases, one per commit
 - **wfa2lib-rs moves to upstream's current commit without its default features.**
   Those only built its benchmark binary, so clap, tracing and mimalloc leave the
   build.
-- **bio 4.2.1** (from 3.0), held until C35 (#240) landed.
+- **bio 4.2.1** (from 3.0), held until C35 (#240) and C36 (#243) landed.
   - The PairHMM: bio 4.1 fixes how it scores the bases of an extended read
-    insertion (rust-bio#701). For reads whose inserted bases are N or below the
-    base-quality floor that moved gbcms's LLR across ±2.3 (synthetic: 1.8 → 5.0);
-    since C35 such reads never reach the PairHMM (RJ-20), so the fix changes no
-    call there.
+    insertion (rust-bio#701). That moved reads decided in Phase 3: ones whose
+    inserted bases are N or below the base-quality floor crossed ±2.3 (synthetic:
+    1.8 → 5.0), and same-length inserts of other bases leaned to ALT. Since C35 and
+    C36 neither reaches the PairHMM (RJ-20, RJ-21): no pure insertion is decided in
+    Phase 3 on the measured sets.
   - Smith-Waterman: bio 4 counts a gap's first base in the open penalty
     (rust-bio#660), so `SW_GAP_OPEN` moves from −5 to −6 and every score is
     unchanged.
-  - bio keeps its own statrs 0.18; new transitive crates include borsh and
-    toml_edit.
-  - On develop with C35, bio 4 changes no output: the local FORTE sample
-    (9,536 rows, both backends, every Parquet table) and the cluster RC sets (144
-    files) are byte-identical.
+  - `Cargo.toml` caps bio at `~4.2` (its minor releases have changed numerics). bio
+    keeps its own statrs 0.18; the new crates in the lock are unused optional ones.
+  - On develop with C36, bio 4 changes no output: the local FORTE sample (9,536 rows,
+    both backends, every Parquet table) and the cluster RC sets (144 files) are
+    byte-identical.
 - **Unchanged output:**
   - Local FORTE sample (RNA and DNA modes, both alignment backends, 9,536 rows
     including 806 indels observed in the reads): compared after step 1, after steps
