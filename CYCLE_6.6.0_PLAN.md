@@ -2007,6 +2007,21 @@ page from the CHANGELOG section in the release workflow.
   ALT; otherwise inside the discrimination window it is another allele (partial),
   outside it a separate event (REF where the window reads REF, RJ-8). Then bio 4
   (`feature/g7-bio4`) is rebased on top.
+
+  Two review rounds refined how: the first found "inside or outside" decided by the
+  aligner's placement (an ALT read with an absorbed sequencing error counted REF; carriers
+  written further off lost ALT); the second found a slide to a single placement
+  misjudged readability (a readable insert sliding onto a masked run base counted
+  partial: local acceptance ALT -16 in RNA mode). Final rule (RJ-21): a readable insert
+  is judged over every placement it can take as well as the aligner's (it slides a
+  junction when the base it places onto the reference fits it); ALT when one shows the
+  ALT by read bases; otherwise another allele when one sits inside the window; else a
+  separate event. Readability stays its own bases' question (RJ-20; no slide for an
+  unreadable insert). The census trusts the aligned flank and cannot judge slid inserts.
+  Found, not in scope (an issue, pending): at an SNV sibling a compensating-mismatch
+  carrier counts ALT on both rows (the SNV row's aligned base is never contested), and a
+  slid-to-junction ALT is contested by the sibling guard where a junction-written one is
+  not.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists

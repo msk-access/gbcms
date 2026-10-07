@@ -198,26 +198,22 @@ flowchart TD
     WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Ins within window?\n(±max(5, repeat_span+2),\nor in the shift region)"}
     CheckWin -->|No| Continue["Continue CIGAR walk"]
     CheckWin -->|Yes| SameLen{"Same length?"}
-    SameLen -->|Yes| Slide["Slide to the equal placement\nnearest the junction\n(a read base must match\nwhere it lands)"]
-    Slide --> AtJ{"At the variant's\njunction?"}
-    AtJ -->|"Yes: its bases\nagainst the ALT"| JudgeJ(["ALT / another allele /\nunreadable, as the strict path"]):::partial
-    AtJ -->|No| Readable{"Any inserted base\nreadable?"}
+    SameLen -->|Yes| Readable{"Any of its own\ninserted bases readable?\n(RJ-20)"}
     Readable -->|"No, inside the\ndiscrimination window"| FlagUR["Flag has_unreadable_insert"]:::partialflag
+    Readable -->|"No, outside it,\nanother indel in the window"| FlagWL
     Readable -->|"No, outside it:\nseparate event"| Continue
     FlagUR --> Continue
-    Readable -->|Yes| S3{"S3: Same haplotype?\n(X+S = S+Y; quality-masked)"}
-    S3 -->|Yes| Only{"The read's only change\nacross the window?"}
-    Only -->|Yes| S2["S2: Track closest match"]
-    Only -->|No| FlagWL
+    Readable -->|Yes| Places["Every placement it can take\nas well (slide: the base placed\nonto the reference must fit it)"]
+    Places --> AnyAlt{"A placement shows the ALT\nby read bases? (at the junction\nas the strict path; or the variant's\nhaplotype, the only change)"}
+    AnyAlt -->|Yes| S2["S2: Track closest match"]
     S2 --> Continue
-    S3 -->|No| S1{"The variant's\nbases?"}
-    S1 -->|Yes| InDW{"Inside the discrimination\nwindow? (anchor kept)"}
-    InDW -->|Yes| FlagWL
-    InDW -->|"No: separate event"| Continue
-    S1 -->|No| Spells{"The read's bases spell\nthe ALT across the window?"}
+    AnyAlt -->|No| Change{"The variant written with\nanother change, or another\nindel in the window?"}
+    Change -->|Yes| FlagWL
+    Change -->|No| Spells{"The read's bases spell\nthe ALT across the window?"}
     Spells -->|Yes| S2
-    Spells -->|No| InDW3{"Inside the discrimination\nwindow?"}
-    InDW3 -->|Yes| FlagWL
+    Spells -->|No| InDW3{"A placement inside the\ndiscrimination window?"}
+    InDW3 -->|Yes| FlagAA["Flag another_allele_in_window"]:::partialflag
+    FlagAA --> Continue
     InDW3 -->|"No: separate event"| Continue
     SameLen -->|No| FlagWL["Flag has_distinct_allele_nearby\n(any size)"]:::partialflag
     FlagWL --> Continue
@@ -227,7 +223,9 @@ flowchart TD
     Eval -->|Yes| WinAlt(["🔴 ALT — windowed"]):::alt
     Eval -->|No| URCheck{"has_unreadable_insert?"}
     URCheck -->|Yes| URPartial(["⚪ Neither + partial\n(length, not sequence)"]):::partial
-    URCheck -->|No| WLCheck{"has_distinct_allele_nearby\nAND ref coverage?"}
+    URCheck -->|No| AACheck{"another_allele_in_window?"}
+    AACheck -->|Yes| AAPartial(["⚪ Neither + partial\n(another allele, RJ-21)"]):::partial
+    AACheck -->|No| WLCheck{"has_distinct_allele_nearby\nAND ref coverage?"}
     WLCheck -->|"Yes, the read changes\nthe discrimination window"| WLPartial(["⚪ Neither + partial\n(another allele, RJ-7)"]):::partial
     WLCheck -->|"Yes, outside the window"| RefSep(["✅ REF\n(a separate event, RJ-8)"]):::ref
     WLCheck -->|No| HasRef{"Anchor covered by M?"}
@@ -256,15 +254,17 @@ Three layers of validation prevent false-positive windowed matches:
 | **S3** | The placement gives the variant's haplotype: with X the expected insert, Y the read's and S the reference between the two junctions, `X + S = S + Y` (Y right of X) or `S + X = Y + S` (left), and the placement is the read's only change across the discrimination window (another gap, insertion or splice there is another haplotype); read bases below `--min-baseq`, or N, match anything, at least one read. An ALT that also substitutes its anchor base (`A>CCC`) has no equivalent placement | The read's own bases carry the allele wherever the aligner put it in a repeat: the same bases in a homopolymer, a rotation (`AC` for `CA`) in an STR. Before 6.6.0 S3 compared the reference base before the insertion with the anchor base, never equal inside a repeat, so carriers written elsewhere in the repeat counted **REF** (#189) |
 
 !!! note "Two Windowed Flags with Different Outcomes"
-    - **An insertion of the right length carrying other readable bases** is judged by its
-      bases (RJ-21, since 6.6.0), at the placement nearest the junction among those it can
-      equally occupy (it slides a junction when the read base it places onto the reference
-      matches it, so an absorbed sequencing error or a compensating mismatch slides back): at
-      the junction as the strict path judges an insert there; ALT when the read's bases
-      across the window spell the ALT; otherwise another allele when it can sit inside the
-      discrimination window (`another_allele_in_window`), a separate event outside it.
-      Never Phase 3, whose closer haplotype let length win ALT and absorbed other alleles
-      into REF.
+    - **A windowed insertion of the right length with a readable base of its own** is judged
+      by its bases (RJ-21, since 6.6.0) over every placement it can take as well as the
+      aligner's: it slides a junction when the base it places onto the reference fits it
+      (the same base, or a masked one), so an absorbed sequencing error or a compensating
+      mismatch slides back. ALT when a placement shows the ALT by read bases (at the junction
+      as the strict path judges an insert there, or the variant's haplotype) or the read's
+      bases across the window spell the ALT; otherwise another allele when a placement sits
+      inside the discrimination window (`another_allele_in_window`), a separate event when
+      none does. Whether it can be read at all is its own bases' question (RJ-20). Never
+      Phase 3, whose closer haplotype let length win ALT and absorbed other alleles into
+      REF.
     - **`has_distinct_allele_nearby`** — the windowed scan found an insertion of the
       **wrong length** (flagged at any size, so REF can never silently absorb it), or the
       variant's bases placed where they give **another haplotype** inside its discrimination
@@ -527,7 +527,7 @@ as the annotated event inflated VAF several-fold at such loci.
 | Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
 | Same-length insertion with no readable inserted base (each N or below `--min-baseq`), at the anchor or shifted inside the discrimination window | **Neither + `partial_alt`** (RJ-20: the length, not the sequence) |
 | The same outside the discrimination window | A separate event (RJ-8): **REF** unless the read has another indel in the window |
-| A shifted same-length insertion of other readable bases | Judged at the placement nearest the junction among those it can equally occupy (RJ-21): at the junction as the strict path would (**ALT** when its bases are the ALT's, else **neither + `partial_alt`**); **ALT** when the read's bases spell the ALT across the window; else **neither + `partial_alt`** inside the discrimination window, a separate event (**REF**) outside it |
+| A shifted same-length insertion with a readable base of its own | Judged over every placement it can take as well (RJ-21): **ALT** when one shows the ALT by read bases (at the junction as the strict path would, or the variant's haplotype) or the read's bases spell the ALT across the window; else **neither + `partial_alt`** when a placement sits inside the discrimination window, a separate event (**REF**) when none does |
 | Windowed wrong-length op inside the discrimination window (any of the read's indels there) | **Neither + `partial_alt`** (RJ-7; deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
 | Windowed wrong-length op outside the window, the window free of the read's indels | **REF**, a separate event with no partial evidence (RJ-8) |
 

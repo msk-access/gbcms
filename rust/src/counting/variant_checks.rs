@@ -1451,17 +1451,15 @@ struct InsertPlacement {
     quals: Vec<u8>,
 }
 
-/// Where a read's insertion can sit as well as where its aligner wrote it. The read's
-/// bases never change; only the junction the insert is written before. The insert
-/// slides one junction left when its last base, placed onto the reference there, is
-/// read (not N, at or above `min_baseq`) and matches it, and right likewise with its
-/// first base; the read base it takes in may be anything. So a sequencing error the
-/// aligner absorbed into the flank, or a compensating mismatch, slides back, while an
-/// unreadable inserted base never leaves the insert (RJ-20: a read whose own inserted
-/// bases are all unreadable stays unreadable). Returns the placement nearest the
-/// variant's junction: the junction itself when reachable, else the nearest inside
-/// the discrimination window, else the aligner's.
-fn nearest_insert_placement(
+/// Every placement a read's insertion can take as well as the one its aligner wrote.
+/// The read's bases never change; only the junction the insert is written before. The
+/// insert slides one junction left when its last base fits the reference base it is
+/// placed onto (the same base, or one below `min_baseq` or N), and right likewise with
+/// its first base; the read base it takes in may be anything. So a sequencing error
+/// the aligner absorbed into the flank, or a compensating mismatch, slides back.
+/// Called only for an insert with a readable base of its own: whether an insert can be
+/// read is its own bases' question (RJ-20), never a placement's.
+fn insert_placements(
     record: &Record,
     variant: &Variant,
     ins_ref_pos: i64,
@@ -1469,10 +1467,10 @@ fn nearest_insert_placement(
     len: usize,
     quals: &[u8],
     min_baseq: u8,
-) -> InsertPlacement {
+) -> Vec<InsertPlacement> {
     const MAX_SLIDE: usize = 64;
     let seq = record.seq().as_bytes();
-    let reads_ref = |b: u8, q: u8, r: u8| q >= min_baseq && b != b'N' && b != b'n' && b.eq_ignore_ascii_case(&r);
+    let fits = |b: u8, q: u8, r: u8| q < min_baseq || b == b'N' || b == b'n' || b.eq_ignore_ascii_case(&r);
     let ref_at = |p: i64| window::reference_span(variant, p, p + 1).map(|v| v[0]);
     let written = InsertPlacement {
         junction: ins_ref_pos,
@@ -1480,7 +1478,7 @@ fn nearest_insert_placement(
         bases: seq[ins_start..ins_start + len].to_vec(),
         quals: quals[ins_start..ins_start + len].to_vec(),
     };
-    let mut options = vec![written.clone()];
+    let mut out = vec![written.clone()];
     let mut cur = written.clone();
     for _ in 0..MAX_SLIDE {
         let j = cur.junction;
@@ -1488,20 +1486,19 @@ fn nearest_insert_placement(
         if cur.q_start == 0 || find_read_pos(record, j - 1) != Some(cur.q_start - 1) {
             break;
         }
-        let (b, bq) = (seq[cur.q_start - 1], quals[cur.q_start - 1]);
-        let (e, eq) = (cur.bases[len - 1], cur.quals[len - 1]);
-        if !reads_ref(e, eq, r) {
+        if !fits(cur.bases[len - 1], cur.quals[len - 1], r) {
             break;
         }
+        let (b, bq) = (seq[cur.q_start - 1], quals[cur.q_start - 1]);
         cur.bases.pop();
         cur.bases.insert(0, b);
         cur.quals.pop();
         cur.quals.insert(0, bq);
         cur.q_start -= 1;
         cur.junction -= 1;
-        options.push(cur.clone());
+        out.push(cur.clone());
     }
-    let mut cur = written.clone();
+    let mut cur = written;
     for _ in 0..MAX_SLIDE {
         let j = cur.junction;
         let q_after = cur.q_start + len;
@@ -1509,29 +1506,19 @@ fn nearest_insert_placement(
         if q_after >= seq.len() || find_read_pos(record, j) != Some(q_after) {
             break;
         }
-        let (c, cq) = (seq[q_after], quals[q_after]);
-        let (f, fq) = (cur.bases[0], cur.quals[0]);
-        if !reads_ref(f, fq, r) {
+        if !fits(cur.bases[0], cur.quals[0], r) {
             break;
         }
+        let (c, cq) = (seq[q_after], quals[q_after]);
         cur.bases.remove(0);
         cur.bases.push(c);
         cur.quals.remove(0);
         cur.quals.push(cq);
         cur.q_start += 1;
         cur.junction += 1;
-        options.push(cur.clone());
+        out.push(cur.clone());
     }
-    let target = variant.pos + 1;
-    if let Some(p) = options.iter().find(|p| p.junction == target) {
-        return p.clone();
-    }
-    let (lo, hi) = window::discrimination_window(variant);
-    options
-        .into_iter()
-        .filter(|p| lo < p.junction && p.junction < hi)
-        .min_by_key(|p| (p.junction - target).abs())
-        .unwrap_or(written)
+    out
 }
 
 /// Evaluate a windowed (non-junction) I candidate at `ins_ref_pos`.
@@ -1565,164 +1552,118 @@ fn scan_windowed_insertion_candidate(
     // The length check: the inserted length must match
     if ins_len_usize == expected_ins_len {
         if ins_start + ins_len_usize <= record.seq().len() {
-            // Judged where the insert can sit, not only where the aligner wrote it:
-            // the placement nearest the variant's junction among those that fit the
-            // read's bases as well (`nearest_insert_placement`).
-            let place = nearest_insert_placement(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq);
-            let (at, ins_seq, ins_quals) = (place.junction, &place.bases[..], &place.quals[..]);
+            let ins_seq = &record.seq().as_bytes()[ins_start..ins_start + ins_len_usize];
+            let ins_quals = &quals[ins_start..ins_start + ins_len_usize];
             let dw = window::discrimination_window(variant);
-            let inside = dw.0 < at && at < dw.1;
-            if at != ins_ref_pos {
-                trace!(
-                    "check_insertion: windowed I({}) written at pos {} can sit at pos {} as well",
-                    ins_len_usize, ins_ref_pos, at
-                );
-            }
-            if at == anchor_pos + 1 {
-                // It can sit at the variant's junction: judged there as the strict path
-                // judges an insert there (its bases against the ALT).
-                let expected = &variant.alt_allele.as_bytes()[1..];
-                let (mismatches, reliable) = masked_single_compare(ins_seq, ins_quals, expected, min_baseq);
-                if reliable == 0 {
-                    *has_unreadable_insert = true;
-                    trace!("check_insertion: slid onto the junction, no inserted base readable → unreadable");
-                } else if mismatches == 0 && !other_indel_in_window(record, dw, ins_ref_pos, true) {
-                    if best_windowed_match.is_none_or(|prev| prev > 0) {
-                        *best_windowed_match = Some(0);
-                    }
-                    trace!("check_insertion: slid onto the junction, its bases are the ALT → windowed match");
-                } else {
-                    *another_allele_in_window = true;
-                    trace!(
-                        "check_insertion: slid onto the junction, bases differ from the ALT \
-                         (mismatches={}) or another indel in the window → another allele",
-                        mismatches
-                    );
-                }
-                return;
-            }
+            let inside = |j: i64| dw.0 < j && j < dw.1;
             if readable_bases(ins_seq, ins_quals, min_baseq) == 0 {
                 // No inserted base readable (a duplex-masked base inside a run,
                 // which the aligner writes as the insertion): the length, not the
-                // sequence. Inside the discrimination window it may be the variant at
+                // sequence (RJ-20, judged on the insert's own bases where the aligner
+                // wrote it). Inside the discrimination window it may be the variant at
                 // another placement: partial unless the variant is written readably
                 // elsewhere in the read; never Phase 3, where length alone wins ALT.
                 // Outside it, it cannot be: a separate event, as a readable insert
                 // there is (another allele when the read also changes the window).
-                if inside {
+                if inside(ins_ref_pos) {
                     *has_unreadable_insert = true;
                     trace!(
                         "check_insertion: windowed I({}) at pos {}: no inserted base readable \
                          (N or below min_baseq) → unreadable",
-                        ins_len_usize, at
+                        ins_len_usize, ins_ref_pos
                     );
                 } else if other_indel_in_window(record, dw, ins_ref_pos, true) {
                     *has_distinct_allele_nearby = true;
                     trace!(
                         "check_insertion: windowed I({}) at pos {}: unreadable, outside the \
                          window, with another indel in it → distinct-allele candidate",
-                        ins_len_usize, at
+                        ins_len_usize, ins_ref_pos
                     );
                 } else {
                     trace!(
                         "check_insertion: windowed I({}) at pos {}: unreadable, outside the \
                          discrimination window → separate event",
-                        ins_len_usize, at
+                        ins_len_usize, ins_ref_pos
                     );
                 }
                 return;
             }
-            // The haplotype check: the placement gives the variant's haplotype (its
-            // own bases, or a rotation of them, elsewhere in the repeat) and is the
-            // read's only change across the discrimination window.
-            if same_insertion_haplotype(variant, at, ins_seq, ins_quals, min_baseq) {
-                let q_right = ins_start + ins_len_usize;
-                if only_change_in_window(record, dw, ins_ref_pos, ins_start, ins_ref_pos, q_right) {
-                    // Track the closest windowed match
-                    let distance = (at - (anchor_pos + 1)).unsigned_abs();
-                    if best_windowed_match.is_none_or(|prev| distance < prev) {
-                        *best_windowed_match = Some(distance);
-                    }
-                } else {
-                    // The variant written here with another gap, insertion or
-                    // splice across the window: another haplotype.
-                    *has_distinct_allele_nearby = true;
-                    trace!(
-                        "check_insertion: windowed I({}) at pos {} is the variant written \
-                         elsewhere, with another change in its window → distinct-allele candidate",
-                        ins_len_usize, at
-                    );
-                }
-            } else if matches!(
-                masked_single_compare(ins_seq, ins_quals, &variant.alt_allele.as_bytes()[1..], min_baseq),
-                (0, reliable) if reliable > 0
-            ) {
-                // The variant's bases written where they give another haplotype.
-                // Inside the discrimination window the read carries another allele
-                // there: a distinct allele, as a wrong-length insertion is (never REF
-                // or ALT in a repeat; Phase 3 must not arbitrate it). Outside it the
-                // read shows the window as reference, unless it deletes or inserts
-                // there too (M D I M beside the window: the pair is another allele),
-                // and the insertion is a separate event.
-                if inside || other_indel_in_window(record, dw, ins_ref_pos, true) {
-                    *has_distinct_allele_nearby = true;
-                    *another_allele_in_window |= inside;
-                    trace!(
-                        "check_insertion: windowed I({}) at pos {} carries the variant's \
-                         bases but not its haplotype → distinct-allele candidate",
-                        ins_len_usize, at
-                    );
-                } else {
-                    trace!(
-                        "check_insertion: windowed I({}) at pos {} carries the variant's \
-                         bases outside its discrimination window → separate event",
-                        ins_len_usize, at
-                    );
-                }
-            } else if other_indel_in_window(record, dw, ins_ref_pos, true) {
-                // Same length, other bases, beside another gap or insertion in the
-                // window (M D I M): the read's length change is not the ALT's, so
-                // it cannot be the event written differently. Another allele.
-                *has_distinct_allele_nearby = true;
-                trace!(
-                    "check_insertion: windowed I({}) at pos {} of other bases with \
-                     another indel in the window → distinct-allele candidate",
-                    ins_len_usize, at
-                );
-            } else if window::read_spells_alt(record, variant, quals, min_baseq) {
-                // Same length, other bases, yet the read's bases across the window
-                // spell the ALT (a compensating mismatch the slide cannot undo).
-                // Judged by its bases, never Phase 3's closer haplotype (where REF
-                // pays for the gap, so length wins).
+            // A readable insert is judged over every placement it can take as well
+            // as the aligner's (`insert_placements`), never by where the aligner
+            // happened to write it: ALT when one of them shows the ALT by its read
+            // bases; otherwise another allele when one can sit inside the window.
+            let places = insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq);
+            let expected = &variant.alt_allele.as_bytes()[1..];
+            let q_right = ins_start + ins_len_usize;
+            let mut record_match = |at: i64, why: &str| {
                 let distance = (at - (anchor_pos + 1)).unsigned_abs();
                 if best_windowed_match.is_none_or(|prev| distance < prev) {
                     *best_windowed_match = Some(distance);
                 }
                 trace!(
-                    "check_insertion: windowed I({}) at pos {} of other bases, but the read's \
-                     bases spell the ALT → windowed match",
-                    ins_len_usize, at
+                    "check_insertion: windowed I({}) written at pos {} {} → windowed match",
+                    ins_len_usize, ins_ref_pos, why
                 );
-            } else if inside {
-                // Same length, other bases, able to sit inside the discrimination
+            };
+            // At the variant's junction: judged as the strict path judges an insert there.
+            if let Some(p) = places.iter().find(|p| p.junction == anchor_pos + 1) {
+                if matches!(masked_single_compare(&p.bases, &p.quals, expected, min_baseq), (0, r) if r > 0)
+                    && !other_indel_in_window(record, dw, ins_ref_pos, true)
+                {
+                    record_match(p.junction, "can sit at the junction, its bases the ALT's");
+                    return;
+                }
+            }
+            // The variant's haplotype at a placement (its bases or a rotation of them
+            // elsewhere in a repeat), the read's only change across the window.
+            let mut variant_elsewhere = false;
+            for p in &places {
+                if same_insertion_haplotype(variant, p.junction, &p.bases, &p.quals, min_baseq) {
+                    if only_change_in_window(record, dw, ins_ref_pos, ins_start, ins_ref_pos, q_right) {
+                        record_match(p.junction, "gives the variant's haplotype");
+                        return;
+                    }
+                    variant_elsewhere = true;
+                }
+            }
+            if variant_elsewhere || other_indel_in_window(record, dw, ins_ref_pos, true) {
+                // The variant written here with another gap, insertion or splice across
+                // the window, or an insert of other bases beside one (M D I M): another
+                // haplotype, another allele (RJ-7).
+                *has_distinct_allele_nearby = true;
+                trace!(
+                    "check_insertion: windowed I({}) at pos {} with another change in the \
+                     window → distinct-allele candidate",
+                    ins_len_usize, ins_ref_pos
+                );
+                return;
+            }
+            if window::read_spells_alt(record, variant, quals, min_baseq) {
+                // The read's bases across the window spell the ALT (a compensating
+                // mismatch no slide undoes): judged by its bases, never Phase 3's closer
+                // haplotype (where REF pays for the gap, so length wins).
+                record_match(ins_ref_pos, "of other bases, but the read's bases spell the ALT");
+                return;
+            }
+            if places.iter().any(|p| inside(p.junction)) {
+                // Not the ALT by its bases, and able to sit inside the discrimination
                 // window: the read carries another allele there (never REF, never ALT).
                 *has_distinct_allele_nearby = true;
                 *another_allele_in_window = true;
                 trace!(
-                    "check_insertion: windowed I({}) at pos {} of other bases inside the \
-                     window → another allele",
-                    ins_len_usize, at
+                    "check_insertion: windowed I({}) at pos {} can sit inside the window and \
+                     is not the ALT → another allele",
+                    ins_len_usize, ins_ref_pos
                 );
-            } else {
-                // Same length, other bases, every equal placement outside the window:
-                // not the variant; a separate event, as a readable insert of the
-                // variant's bases there is (RJ-8).
-                trace!(
-                    "check_insertion: windowed I({}) at pos {} of other bases outside the \
-                     discrimination window → separate event",
-                    ins_len_usize, at
-                );
+                return;
             }
+            // Every placement outside the window: not the variant; a separate event,
+            // as a readable insert of the variant's bases there is (RJ-8).
+            trace!(
+                "check_insertion: windowed I({}) at pos {} outside the discrimination window \
+                 → separate event",
+                ins_len_usize, ins_ref_pos
+            );
         }
     } else {
         // Different-length insertion in window: I(n) where n ≠ expected — a

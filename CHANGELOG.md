@@ -40,15 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   length win ALT against those bases (Smith-Waterman under both bio versions, PairHMM
   more often under bio 4) and could absorb another allele into REF. On the RC DNA set
   it was the only way a read reached Phase 3 at an insertion row: 50 of 94,530 calls.
-- **The rule (RJ-21).** Such a read is judged by its bases, never Phase 3, and where
-  its insert can sit rather than only where the aligner wrote it: the insert slides a
-  junction when the read base it places onto the reference matches it, so a
-  sequencing error the aligner absorbed into the flank, or a compensating mismatch,
-  slides back (an unreadable inserted base never leaves the insert, so RJ-20 holds).
-  At the variant's junction it is judged as the strict path judges an insert there;
-  a read whose bases across the window spell the ALT is ALT; otherwise it is another
-  allele when it can sit inside the discrimination window, and a separate event (RJ-8)
-  when it cannot. Both backends agree. The deletion side already judged by bases.
+- **The rule (RJ-21).** Such a read is judged by its bases, never Phase 3, and over
+  every placement its insert can take, not only the aligner's: the insert slides a
+  junction when the base it places onto the reference fits it (the same base, or a
+  masked one), so a sequencing error the aligner absorbed into the flank, or a
+  compensating mismatch, slides back. It is ALT when a placement shows the ALT by read
+  bases (at the variant's junction, judged as the strict path judges an insert there,
+  or the variant's haplotype in a repeat) or its bases across the window spell the ALT;
+  otherwise another allele when a placement sits inside the discrimination window,
+  and a separate event (RJ-8) when none does. An insert with no readable base of its
+  own does not slide (RJ-20). Both backends agree. The deletion side already judged by
+  bases.
 
 ### Fixed — an insertion's ALT needs one of the read's own inserted bases read (#240)
 

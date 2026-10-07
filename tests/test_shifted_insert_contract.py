@@ -198,7 +198,6 @@ def test_another_allele_written_outside_the_window_is_not_ref(tmp_path, backend)
 
 
 # ── Second review: readability is the aligner's inserted bases' (RJ-20) ───────
-@pytest.mark.xfail(strict=True, reason="slides onto a masked run base, judged unreadable")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_a_readable_insert_does_not_become_unreadable_by_sliding(tmp_path, backend):
     """G>GA before A10: an 11-A read with one run base masked (Q5, or N at Q2) and
@@ -212,7 +211,6 @@ def test_a_readable_insert_does_not_become_unreadable_by_sliding(tmp_path, backe
     assert _count(tmp_path, f"b1{backend}", reads, a, ref, alt, backend) == (4, 8, 0)
 
 
-@pytest.mark.xfail(strict=True, reason="a masked last inserted base cannot leave the insert")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_a_carrier_with_a_masked_end_base_slides_back(tmp_path, backend):
     """The ALT written one junction right with a compensating mismatch, its last
