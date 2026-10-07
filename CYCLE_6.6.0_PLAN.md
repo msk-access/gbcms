@@ -1987,6 +1987,26 @@ page from the CHANGELOG section in the release workflow.
     only with masked identity (an N counted as a mismatch), 24 fail both; FORTE 17
     fail both. The band stays as it is (operator, 2026-10-06: the identity-band
     rule), with a readable base required.
+- **C36 #243: a same-length insert of other bases (2026-10-06).** Found in the bio 4
+  review. A read whose insertion has the variant's length and other readable bases,
+  near the variant, went to Phase 3, whose closer haplotype let length win ALT
+  against the bases (Smith-Waterman under bio 3 and 4; PairHMM more often under bio 4)
+  and absorbed other alleles into REF. Measured on develop (`harness/c36/`), every
+  read call traced with one thread and each Phase-3 read judged by its bases:
+  - Phase 3 is reached at insertion rows only this way: RC 50 of 94,530 calls (2 ALT
+    and 31 partial whose bases read REF, 16 partial another allele, 1 sibling); FORTE
+    RNA 103 (2 ALT reading REF, 49 REF carrying another allele, 38 partial reading
+    REF); FORTE DNA mode 27 under PairHMM and 25 under SW (SW: 6 ALT against the
+    bases). Deletion rows: no Phase 3 (1 read of 521,213).
+  - Survey: sequence-keyed counters (GetBaseCountsMultiSample's exact junction match,
+    VarDict, bam-readcount) call such a read another allele or noise; GATK's
+    likelihood is the closer haplotype gbcms's Phase 3 computes.
+
+  Decided (operator, 2026-10-06), bases first, never Phase 3: a read whose bases
+  across the window spell the ALT (one junction off with a compensating mismatch) is
+  ALT; otherwise inside the discrimination window it is another allele (partial),
+  outside it a separate event (REF where the window reads REF, RJ-8). Then bio 4
+  (`feature/g7-bio4`) is rebased on top.
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
