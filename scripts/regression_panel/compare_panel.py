@@ -26,10 +26,12 @@ position. Writes to REPORT_DIR (default OUT_ROOT/compare_BASE_vs_NEW):
                               level, and the top 20 per stratum: to adjudicate read by
                               read (the BAM is the truth; the sign-out is a comparison)
   normals.tsv                 matched-normal fillouts against the sign-out normal counts
-  times.tsv                   wall time and peak memory per arm, BASE vs NEW
+  times.tsv                   wall time (runs paired across the builds, those of 10 s
+                              or more in BASE summed) and peak memory per arm
   parquet.tsv                 the mfsd arm's Parquet tables, BASE vs NEW (needs pyarrow)
 Exits 1 when the gate needs attention: failed or missing runs, a stratum whose matched
-concordance fell by more than 5 points, or an arm 1.5x slower or larger.
+concordance fell by more than 5 points, or an arm 1.5x slower or larger (wall time over
+at least 3 paired runs of 10 s or more; peak memory over paired runs).
 """
 
 import collections
@@ -49,7 +51,9 @@ COUNTS = (
 )
 KEY = ("Chromosome", "Start_Position", "End_Position", "Reference_Allele", "Tumor_Seq_Allele2")
 FALL = 0.05  # a stratum whose matched within-fraction falls more than this is adjudicated
-SLOWER = 1.5  # an arm whose median wall time or peak memory grows past this is explained
+SLOWER = 1.5  # an arm whose wall time or peak memory grows past this is explained
+MIN_WALL = 10  # seconds: shorter runs are left out of the wall-time ratio (I/O noise)
+MIN_RUNS = 3  # timed runs an arm needs before its wall-time ratio is judged
 
 
 def read_runs(tier):
@@ -319,29 +323,32 @@ def main():
         for r in normals:
             fh.write("\t".join(map(str, r)) + "\n")
 
-    # Times: each run's latest successful attempt.
+    # Times: runs paired across the builds (each run's latest successful attempt). The
+    # wall-time ratio sums the runs that took at least MIN_WALL seconds in BASE (a
+    # second-scale run is I/O noise) and needs MIN_RUNS of them; peak memory pairs runs.
     slow = []
     with open(os.path.join(rep, "times.tsv"), "w") as fh:
         fh.write(
-            "arm\truns\tmedian_wall_base\tmedian_wall_new\twall_ratio\tmax_rss_base_kb\tmax_rss_new_kb\n"
+            "arm\truns_paired\truns_timed\twall_base_s\twall_new_s\twall_ratio\t"
+            "max_rss_base_kb\tmax_rss_new_kb\n"
         )
-        per_arm = {b: collections.defaultdict(list) for b in (base, new)}
-        for b in (base, new):
-            for x in att[b].values():
-                if str(x.get("exit")) == "0":
-                    per_arm[b][x["arm"]].append(
-                        (as_num(x.get("wall_s")), as_num(x.get("max_rss_kb")))
-                    )
-        for arm in sorted(set(per_arm[base]) | set(per_arm[new])):
-            wb = [w for w, _ in per_arm[base].get(arm, []) if w is not None]
-            wn = [w for w, _ in per_arm[new].get(arm, []) if w is not None]
-            rb = [m for _, m in per_arm[base].get(arm, []) if m is not None]
-            rn = [m for _, m in per_arm[new].get(arm, []) if m is not None]
-            mwb = statistics.median(wb) if wb else None
-            mwn = statistics.median(wn) if wn else None
-            ratio = mwn / mwb if mwb and mwn is not None else None
+        ok = {
+            b: {rid: x for rid, x in att[b].items() if str(x.get("exit")) == "0"}
+            for b in (base, new)
+        }
+        arms = collections.defaultdict(list)
+        for rid in set(ok[base]) & set(ok[new]):
+            arms[ok[new][rid]["arm"]].append(rid)
+        for arm in sorted(arms):
+            pairs = [(ok[base][rid], ok[new][rid]) for rid in arms[arm]]
+            walls = [(as_num(x.get("wall_s")), as_num(y.get("wall_s"))) for x, y in pairs]
+            timed = [(a, b) for a, b in walls if a is not None and b is not None and a >= MIN_WALL]
+            sb, sn = sum(a for a, _ in timed), sum(b for _, b in timed)
+            ratio = sn / sb if len(timed) >= MIN_RUNS and sb else None
+            rb = [m for m in (as_num(x.get("max_rss_kb")) for x, _ in pairs) if m is not None]
+            rn = [m for m in (as_num(y.get("max_rss_kb")) for _, y in pairs) if m is not None]
             fh.write(
-                f"{arm}\t{len(wn)}\t{mwb if mwb is not None else 'NA'}\t{mwn if mwn is not None else 'NA'}\t"
+                f"{arm}\t{len(pairs)}\t{len(timed)}\t{sb:.0f}\t{sn:.0f}\t"
                 f"{f'{ratio:.2f}' if ratio is not None else 'NA'}\t{max(rb) if rb else 'NA'}\t"
                 f"{max(rn) if rn else 'NA'}\n"
             )

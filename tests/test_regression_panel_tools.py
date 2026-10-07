@@ -557,3 +557,34 @@ def test_a_command_that_reads_stdin_does_not_eat_the_run_list(tmp_path):
     )
     done = sorted(p.name for p in (out / "b").iterdir() if p.is_dir())
     assert done == ["f001_rna", "r001_dna_tumor", "r002_dna_tumor"], done
+
+
+def test_the_time_flag_pairs_runs_and_ignores_second_scale_ones(tmp_path):
+    """Three paired dna runs of 20 s that take 40 s flag the arm; second-scale runs
+    that triple do not (I/O noise)."""
+    runs = [(f"r{i:03d}_dna_tumor", "dna") for i in range(3)] + [
+        (f"r{i:03d}_mq0", "mq0") for i in range(3)
+    ]
+    tier = tmp_path / "tier"
+    _write(tier / "mafs" / "r001.maf", KEY, V3)
+    _write(
+        tier / "runs.tsv",
+        RUN_COLS,
+        [(rid, rid[:4], arm, "dna", "dmp", "a.bam", "mafs/r001.maf", "") for rid, arm in runs],
+    )
+    out = tmp_path / "out"
+    for build, dna_wall, mq0_wall in (("base", 20, 1), ("new", 40, 3)):
+        rows = "".join(
+            f"{rid}\t{arm}\t0\t{dna_wall if arm == 'dna' else mq0_wall}\tNA\t1\n"
+            for rid, arm in runs
+        )
+        (out / build).mkdir(parents=True)
+        (out / build / "times.0.tsv").write_text(
+            "run_id\tarm\texit\twall_s\tmax_rss_kb\tend_epoch\n" + rows
+        )
+        for rid, _arm in runs:
+            _write(out / build / rid / "S.maf", KEY + ("alt_count",), [v + ("1",) for v in V3])
+    _compare(tier, out, tmp_path / "rep")
+    gate = (tmp_path / "rep" / "gate.txt").read_text()
+    assert "EXPLAIN: dna wall time x2.00" in gate and "mq0 wall time" not in gate
+    assert "GATE: ATTENTION: run time or memory" in gate

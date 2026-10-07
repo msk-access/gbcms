@@ -2332,6 +2332,12 @@ gate could test an earlier commit than the release (the shipped commit is always
 last checkpoint, and the base tag as a wheel row 0); gbcms read the run list as its
 stdin. The selector's sample-stratum gain and anchor labels were fixed and the panel
 re-selected: 289 samples, 411 runs, 13,323 variants, 70 strata at target.
+The reworked chain on real data (the same 11-run smoke; a mount drop mid-run was
+recorded as failed runs and the gate said so; the resumed run repeated only those):
+no failed runs, the reduction exact (681 rows re-run for 562 changed), all 5,965
+changed MAF cells attributed, none unattributed. Its run-time flag fired on
+second-scale runs over the SFTP mount (paired runs match: 127 against 129 s), so wall
+time is now judged over paired runs of 10 s or more, at least 3 per arm: GATE clean.
 
 ### D6 — One QC-flags reference page (#156) · M
 **Finding.** Every QC flag is documented in `output-formats.md`, but it is

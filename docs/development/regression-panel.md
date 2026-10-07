@@ -156,4 +156,5 @@ The candidate is tagged when:
   and the top discordant rows, are adjudicated read by read (the read census, or the
   reads themselves) before the tag;
 - **run time and peak memory** per arm stay within 1.5× of the previous release, or
-  the excess is explained.
+  the excess is explained (wall time summed over the runs paired across the builds that
+  took 10 s or more, at least 3 per arm; peak memory over paired runs).
