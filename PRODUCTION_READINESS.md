@@ -56,7 +56,7 @@ C10/C2, C1, C12, C13, C14, C21, R1, R2.
 ## 2. Validation evidence: the release gate
 
 The D5 panel (#155) is the gate run, chosen for coverage rather than by hand
-(`CYCLE_6.6.0_PLAN.md` § D5). Arms:
+(`docs/development/regression-panel.md`). Arms:
 
 - **IMPACT and IMPACT-HEME**, **ACCESS duplex and simplex**: signed-out variants
   stratified by allele shape and size, repeat context, co-annotated structure,

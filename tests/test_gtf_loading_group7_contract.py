@@ -1,6 +1,6 @@
 """Group 7 (D4 #139): GTF loading without noodles-gtf or a cache.
 
-Measured on GRCh38.111 (CYCLE_6.6.0_PLAN.md, "D4 GTF loading"): noodles-gtf parsed
+Measured on GRCh38.111 (PR #230): noodles-gtf parsed
 every line before the feature check; the byte-level loader reads each line's
 feature and chromosome first and loads a whole Ensembl GTF in 2 s instead of 9 s, so
 the bincode cache and its build step saved 1-1.4 s a sample. The config accepted

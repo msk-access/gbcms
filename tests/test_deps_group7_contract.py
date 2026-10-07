@@ -1,6 +1,6 @@
 """Group 7 (D4 #139, PR A): Python dependencies, CI coverage and the Docker lock.
 
-Measured (CYCLE_6.6.0_PLAN.md, "D4 PR A"): every Python from 3.10 to 3.14 passes on
+Measured (PR #231): every Python from 3.10 to 3.14 passes on
 the latest releases, but CI tested only 3.11 and 3.12; the declared floors crashed
 (typer 0.9.0) or could not install (pysam 0.21.0 on arm64), the measured minimums
 being typer 0.15.4 and pysam 0.22.0; two dev-dependency lists had drifted apart (and

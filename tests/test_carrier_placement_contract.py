@@ -1,7 +1,7 @@
 """C37 #245: a junction insert keeps its ALT; a carrier behind a substitution is not REF.
 
 Measured on RC (ABRA2-realigned), the WES loci (BWA only) and FORTE (STAR), every read
-judged by its local haplotype (CYCLE_6.6.0_PLAN.md, "C37 #245 and C38 #246"):
+judged by its local haplotype (measured in PR #249):
 - the strict path credits ALT to an insert at the variant's junction with the ALT's
   bases even when a slide could absorb a flank substitution into another insert: RC
   28 reads, each the given ALT plus one molecule's substitution, no other allele

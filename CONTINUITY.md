@@ -3,172 +3,37 @@
 > Tactical state that must survive a closed laptop or a context summary.
 > Update the **Now** and **Next** sections as work progresses.
 
-_Last updated: 2026-10-05_
+_Last updated: 2026-10-07_
 
 ## Now
-**6.6.0 cycle in progress** (plan: `CYCLE_6.6.0_PLAN.md` on develop, tracker #140,
-every item a sub-issue). Merged to develop so far:
-- #160 C10 + C2: REF only from informative reads; window-aware sibling REF guard.
-- #161 count-the-given-allele principle (AGENTS.md invariant 7) and the plan.
-- #162 named per-read trace lines (read-level validation).
-- #164 O4: `OBSERVED_ALLELE` / `COEXISTING_ALLELE`; homopolymer twin opt-in.
-- #165 C1: complex variants count exact carriers (anchored windows, repeat
-  growth, equal-length windows, junctions for long events, splice-aware windows,
-  multi-allelic exact ties).
-- #168 C12: carriers whose allele lies in soft-clipped bases (complex/MNP, DNA).
-- #169 C13 (#166): BAQ spares the variant's own indel evidence.
-- #175 pending list, validation standard, the genotyper principle, and the
-  BAM-caveats reference (`docs/reference/bam-evidence-caveats.md`).
-- #181 R1 (#106): the exon-edge BAQ rule and `exon_boundary_dist` measure from
-  the REF span; `--rescue-mnp` components are counted over their MNP's span.
-  FORTE truth cohort 0 count changes; probes adjudicated per read (plan R1 entry;
-  harness `~/test/gbcms/harness/r1/`, local).
-- #184 C14 (#172): records without bases (SEQ `*`) are dropped in the shared read
-  filter (they panicked, or counted REF from the CIGAR); none in MSK data.
-  Follow-ups C19 #182 and O7 #183.
-- #187 R2 (#114): rna_antisense_depth counts antisense reads under strandedness
-  enforcement (classified, tallied, dropped; REF/ALT unchanged); STRAND_DISCORDANT
-  documented as a --no-strandedness diagnostic. Follow-ups R4 #185, O8 #186.
-- #190 C4 (#142): reference windows clamp only when they pass a contig end (by
-  the record read); RC set byte-identical. Follow-up C20 #188.
+**6.6.0 release in progress.** `release/6.6.0` is cut from develop c01749ab: version
+6.6.0 in `rust/Cargo.toml`, its lock and the Nextflow manifest; the CHANGELOG section
+dated; the cycle plan removed at this cut (a private copy in `~/test/gbcms/plans/`).
+Every 6.6.0 work item is merged (tracker #140); what the release holds is the
+CHANGELOG's 6.6.0 section. One item is open: the release gate, D5 #155.
 
-- #193 C21 (#189): the windowed indel checks accept a placement by its haplotype
-  when it is the read's only change across the discrimination window; the scan
-  and tract-cluster grouping reach every placement in the shift region. Two
-  adversarial reviews; acceptance adjudicated per read (harness
-  `~/test/gbcms/harness/c21/`, local).
+The gate (`docs/development/regression-panel.md`), before the release PR merges:
+1. Checkpoint wheels: `checkpoints.tsv` (6.5.0 to the release head), committed on a
+   pushed `checkpoint-wheels/6.6.0` branch, builds one wheel per checkpoint (CI
+   artifacts, each with its commit's `requirements.lock`).
+2. On HPC: the panel (the local tier `~/test/gbcms/harness/regression_panel/tier_660/`,
+   PHI, carried by the operator: 289 samples, 411 runs) for 6.5.0 from its image and
+   the candidate from its wheel; `compare_panel.py`; `attribute.py` (prepare, the
+   checkpoints on the reduced runs, check, attribute); adjudicate any flagged stratum.
+3. Then: merge the release PR (a merge commit), tag `6.6.0`, check the GitHub Release
+   page, back-merge main into develop, move develop to `6.7.0-dev.0`, clean up.
+4. After the tag: the mskcc-omics-workflows containers repo (`gbcms/6.6.0`
+   Dockerfile) and the modules repo's gbcms modules.
 
-**Merged — cluster 1, #203 (C20 #188, C22 #191, C23 #192, C8 #121; C11 #159
-closed with its measurement):** pure-indel reads count ALT only where their own bases hold
-the ALT; strict-path reads with another indel in the window, same-length deletions
-whose bases spell another allele, and anchor-keeping reads of `A>CCC` variants are
-another allele. Operator decisions (2026-10-01): no margin base on the ALT side;
-accept the exact-carrier rule's semantics for anchor-changing variants. Branch
-`feature/cluster1-pure-indel-read-judgment`; harness `~/test/gbcms/harness/c20/`
-(local). Follow-ups: R5 #198 and C27 #201 (6.7.0); C25 #199 (moved into 6.6.0); C26 #200 (6.6.0,
-decide: which of a read's other indels decide its REF call, inside vs outside
-the window); C28 #202 (6.6.0,
-measure: anchor-deleting reads fall back to Phase 3's closer haplotype).
+Working rules (carried into 6.7.0): measure first, red-first tests, an adversarial
+review, real-data acceptance per read on a matrix of data types (gbcms is a
+genotyper, not a caller), mount runs one at a time, and community practice as a
+floor, not a ceiling.
 
-**Merged — T1 #170 + T2 #171, #205 (test architecture):** the legacy per-variant
-`count_bam` path is retired. Binning invariance replaces parity: a Rust bin property
-test, `tests/test_binning_invariance.py`, and `count_checked` (production vs one
-variant per bin) in every counting test. A read census (`tests/census.py`) checks
-pure-indel classification; the open decisions C26/C27/C28 are strict xfails there.
-
-**Merged — H3 #204 PR A, #206 (count-affecting fixes):**
-- the ALT read-by-bases rule reads clamped reference, and reads from a flank the
-  read reads (unmasked, the reference's);
-- unjudged reads are depth only, counted and warned;
-- `carrier::judges` is shared by prep and dispatch;
-- `observe_molecules` requires a reference, which must be a file;
-- A>CCC uses the delins triage span;
-- reference windows are upper case, and mFSD is deterministic;
-- acceptance: 140 of 144 files byte-identical, 4 rows adjudicated per read.
-
-**Merged — H3 #204 PR B, #209 (refactors, dead code, logging, monitoring,
-comments):** byte-identical to PR A's build (144 of 144 files); an adversarial
-review plus a develop-vs-branch fuzz found no count change beyond the declared
-ones (the plan's H3 "PR B as built").
-
-**Merged — group 1, what a read contributes, #211 (C17 #176, C19 #182, O7 #183,
-C29 #207):** RJ-10 to RJ-13; C17 clips only adapter-like bases past the TLEN
-fragment end (operator); follow-up C31 #212 (6.7.0). Plan "Group 1 as built".
-
-**Merged — group 3, RNA, #217 (R4 #185, R5 #198, O8 #186, C32 #213 closed;
-C15 #173's RNA part, its DNA parts open for 6.7.0):** intronic strand from the
-spanning transcripts (both strands none; exon-index off-by-one fixed); RJ-17 (a
-splice is not coverage); O8 (diagnostics read the counted reads); RJ-18 (an RNA
-clip reaching an exon edge or junction end is not evidence); RJ-19 (spliced
-reads judged on windows over the reference spliced along their junctions; a
-junction entering the event counts ALT only over REF at its own junction). Two
-adversarial reviews, every finding fixed red-first. FORTE: splice probes
-spurious ALT 19 → 2, REF −0.39%; T9 106 rows (REF −24,813); truth 4 rows'
-per-transcript columns only; RC DNA and WES byte-identical. Follow-up C34 #216.
-Harness cleaned (`REMOVED_BUILDS.md`).
-
-**Merged — group 2, read judgment (C28 #202, C27 #201, C16 #174), #215:** branch
-`feature/g2-read-judgment`. RJ-14 (the ALT across several ops),
-RJ-15 (a read deleting the anchor, judged by its bases across the window), RJ-16
-(exact-carrier ALT calls need quality-weighted evidence, one `--min-baseq` base's
-worth). Final acceptance (develop vs head, 144 files): RC DNA 24 rows (REF +57
-at BRCA2 toward the census, ALT ±0), WES 3 (ALT −3), FORTE probes 7; RJ-16 alone
-changes one WES row. Probes: RNA spurious 70 → 19, IMPACT 7 → 1. The C16
-junction-placement guard is deferred to 6.7.0 (needs reference access in the
-engine). Harness `~/test/gbcms/harness/g2/` (local). `PRODUCTION_READINESS.md`
-holds the production gate (operator scope: DNA ACCESS/IMPACT, FORTE, WES;
-no opt-in features).
-
-Follow-ups filed:
-- C29 #207 (6.6.0): `check_complex`'s inline query walk counts hard clips;
-- C30 #208 (6.7.0): two pure-indel tests disagree with the allele kind on
-  lowercase or unprepared input.
-
-**Merged — C25 #199 + C26 #200, #210 (read judgment):** decided spec-first from
-`docs/reference/read-judgment.md` (RJ-7, RJ-8, RJ-9).
-
-**Triage (2026-09-30):** every open issue was gone through by cluster with the
-operator. 6.6.0 keeps 32 work items (plus the tracker #140 and umbrella #92); 16
-moved to a new 6.7.0 milestone (each with its reason on the issue); C5 and P2
-closed; umbrellas #133–#135 closed. See the plan's "Triage" and "Suggested
-order". #92's checklist was verified: 10 items fixed by later PRs, #92 closed;
-M4 #194 (merge NA cells, 6.6.0) and C24 #195 (6.7.0) filed. Deferred issues sit
-under the 6.7.0 tracker #196.
-
-**Validation standard** (adopted 2026-09-28): gbcms is a genotyper, not a caller;
-every count-affecting change is accepted per read, against the reads' own bases, on
-a matrix of data types (synthetic, realigned panel DNA, DNA without realignment,
-RNA, public reference data), not one assay. See the plan's "Validation standard".
-Where the right behaviour is unknown, measure it on that matrix and survey
-community practice before deciding; record the decision in the issue.
-
-**Group 4 merged (#222, develop 9c371263, 2026-10-05):** C9 #122, I1 #123, I2 #124,
-I3 #125, I4 #126, I6 #218, #147, H2 #149, C30 #208; issues commented and closed by
-hand. Non-sequence alleles FAIL `NON_SEQUENCE_ALLELE` (`<NON_SEQUENCE>` in VCF);
-VCF output of MAF input carries the MAF row; Start-1 MAF deletions counted;
-End_Position optional (merge joins on contig, Start, alleles); VCF-input MAF
-output fills Tumor_Seq_Allele1 with REF; REF_MISMATCH rows get `REF_AT_OFFSET(k)`.
-Acceptance: counts unchanged everywhere. Follow-ups: I7 #219, O9 #220 (6.7.0), M5
-#221 (group 5). Group 4 builds and slices removed (REMOVED_BUILDS.md).
-
-**Group 5 merged (#226, develop 39c362fe, 2026-10-05):** M4 #194, M5 #221, M6 #223,
-M2 #129, H1 #148, O1 #130, O2 #131, D6 #156, and from 6.7.0 M1a #224, O9 #220,
-D3a #225; issues commented and closed by hand (#128 and #138 stay open for their
-6.7.0 halves). Combined NA for missing counts and for rows whose flavors' rescue
-differs; every gbcms column per input, read under the writer's --column-prefix;
-later-only rows keep annotations; merged MAF provenance, version warning,
-pre-6.5.0 VCF shape refused; builds name their commit (6.6.0.dev0); atomic
-outputs; per-BAM warnings once; run-start settings block and per-BAM facts; QC
-flags defined once in `docs/reference/qc-flags.md` sections; whole-contig
-deletion VCF record valid; docs toolchain pinned below MkDocs 2. Acceptance:
-counts unchanged everywhere (merge VAF/strand-bias formatting only). Follow-on
-for pointing users at flags: O10 #227 (6.7.0, decisions recorded). Group 5
-builds, slices and the review worktree removed (REMOVED_BUILDS.md).
-
-**Group 6 merged (#228, develop 35634af2, 2026-10-05):** S1 #153, S2 #154; issues
-commented and closed. mFSD is graded, plasma-only evidence: the LLR is the mean per
-fragment; empty classes write NA; the report grades LEANS-SOMATIC / NO-SIZE-EVIDENCE /
-INSUFFICIENT (direction from the KS gap; nothing leans CH; gene membership a note);
-the KS p-value is exact up to 1e7 lattice cells (integer comparison, direct p, band
-walk), Stephens-corrected above; skipped contigs stay out of the BH family;
-`mfsd_alt_confidence` is TESTABLE / SPARSE / NONE. Measured on ACCESS plasma labeled
-by the buffy coat (pilot 39 samples; held-out pairs at 2–5 duplex fragments, 128 CH
-vs 87 not CH). The pre-commit hook allows synthetic fixtures under tests/testdata,
-scanned for identifiers. The CH-vs-tumor model lives in its own local repo
-(`~/Documents/Github/ch-fragmentomics`); CMO-CH (WBC gDNA) is its deep blood truth.
-Harness `~/test/gbcms/harness/g6/` keeps the run outputs (builds removed). Known,
-accepted (operator): the integration-test BAMs in tests/testdata are slices of a real
-ACCESS sample carrying one CMO ID (since 2025-11-21).
-
-## Next (in order; the plan's "Suggested order" is canonical)
-Groups 1–6 are merged (#211, #215, #217, #222, #226, #228). `PRODUCTION_READINESS.md`
-holds the production gate.
-1. Group 7, release (branch `feature/g7-release`): D1 #136, D2 #137, D4 #139 before the cut, P3 #152, then the
-   D5 panel #155 on HPC as the gate run.
-Working rules for every group: measure first, red-first tests, an adversarial
-review, real-data acceptance per read, mount runs one at a time (slice locally
-when several builds read the same BAMs), and community practice as a floor, not
-a ceiling.
+## Next → 6.7.0
+The 6.7.0 milestone and tracker #196 hold the deferred work, among it per-locus gap
+parameters (#244), the sibling shapes measured for #246, and the panel's GIAB and
+TEMPO arms. A 6.7.0 plan is added to develop after the back-merge.
 
 
 ### Previous: 6.5.0 release
@@ -205,16 +70,16 @@ RC check (develop vs the 6.4.0 release, every changed cell attributed; harness
   build of develop 851119f3, `~/test/gbcms/harness/t110/real/final_rc.py`):
   byte-identical, DNA 28/28 runs and RNA 33/33.
 
-**Next → 6.6.0.** The plan is `CYCLE_6.6.0_PLAN.md` on develop (#117). It has
-35 tickets, each with a GitHub issue in the **6.6.0 milestone**, all under the
-tracking issue **#140**. Grouped work is filed as sub-issues: #92 → #141–#144,
-#112 → #145–#147, #133 → #148–#149, #134 → #150–#152, #135 → #153–#154. The
-other top-level issues are #106, #111, #114, #119–#139, #155 and #156. Start with the operator
-decisions (C2, R1, R2, I1, I3, I4, S1/S2), then the count-affecting tickets,
-each measured first.
+**Then → 6.6.0.** The plan was `CYCLE_6.6.0_PLAN.md` (#117; removed at the 6.6.0
+cut, a private copy in `~/test/gbcms/plans/`). It had 35 tickets, each with a GitHub
+issue in the **6.6.0 milestone**, all under the tracking issue **#140**. Grouped
+work is filed as sub-issues: #92 → #141–#144, #112 → #145–#147, #133 → #148–#149,
+#134 → #150–#152, #135 → #153–#154. The other top-level issues are #106, #111, #114,
+#119–#139, #155 and #156. Start with the operator decisions (C2, R1, R2, I1, I3, I4,
+S1/S2), then the count-affecting tickets, each measured first.
 
-Release comparison: the HPC run was not done before the 6.5.0 tag. The operator
-runs it after 6.6.0, on the coverage-driven regression panel (D5, #155) instead
+Release comparison: the HPC run was not done before the 6.5.0 tag. It became the
+6.6.0 release gate, on the coverage-driven regression panel (D5, #155) instead
 of the hand-picked 56 samples. The selection harness is local
 (`~/test/gbcms/harness/regression_panel/`, PHI) and the operator carries its
 output to HPC. If a comparison feeds VCF input and compares MAF output by

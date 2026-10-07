@@ -5,7 +5,7 @@ not rest on a non-significant KS), refined 2026-10-05: mFSD is graded evidence
 (leans somatic / no size evidence / insufficient), never a hard origin call; gene
 membership is a note, not a gate; the KS p-value is exact; an empty fragment class
 has no mean; ``mfsd_alt_confidence`` names how much data there is.
-Measured on labeled ACCESS plasma (``CYCLE_6.6.0_PLAN.md`` § Group 6).
+Measured on labeled ACCESS plasma (PR #228).
 """
 
 import math

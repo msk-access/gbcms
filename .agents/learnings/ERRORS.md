@@ -11,6 +11,18 @@ Newest at the top.
 
 ---
 
+## [ERR-20261007-001] Local `mkdocs build --strict` aborted on "has no git logs"
+- **What happened:** at the 6.6.0 cut, the strict docs build stopped on one
+  warning, `[git-revision-date-localized-plugin] '.../docs' has no git logs`.
+  The plugin runs `git log --diff-filter=r`, and Apple Git 2.50.1 (Apple
+  Git-155) returns nothing for that filter on any path; `git log -- docs` works.
+- **Rule/hook involved:** none at fault — the docs are clean, and CI's git
+  (`deploy-docs.yml`, ubuntu) is unaffected.
+- **Environment fix:** for a local check, point GitPython at a shim that drops
+  `--diff-filter=r` (`GIT_PYTHON_GIT_EXECUTABLE=<shim> mkdocs build --strict`);
+  the build then passes. Recheck after a git update.
+- **Date:** 2026-10-07
+
 ## [ERR-20261005-001] CI Codecov upload crashed on a TLS handshake failure
 - **What happened:** on PR #217, `test (ubuntu-latest, 3.11)` failed at "Upload
   coverage to Codecov" (`write EPROTO ... ssl/tls alert handshake failure`, SSL

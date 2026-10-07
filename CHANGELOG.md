@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [6.6.0] - 2026-10-07 — every read judged by its own bases
 
 ### Changed — release infrastructure (#136, #137, #152)
 
@@ -170,9 +170,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — Rust dependencies on their current releases (#139)
 
-The Rust dependencies move to their current releases, one per commit
-(`CYCLE_6.6.0_PLAN.md`, "D4 PR B"). No output changes. bio follows once C35
-(#240) and C36 (#243) are in.
+The Rust dependencies move to their current releases, one per commit (PR #238).
+No output changes. bio follows once C35 (#240) and C36 (#243) are in.
 - **pyo3 0.29** (from 0.27). The API migration: `allow_threads` is now `detach`,
   and `Variant` and `BaseCounts` opt in to the by-value conversion that Python
   passes back. The module keeps the GIL on a free-threaded interpreter, as before;
@@ -208,7 +207,7 @@ The Rust dependencies move to their current releases, one per commit
 
 ### Changed — dependencies, CI coverage and the image (#139)
 
-Measured first (`CYCLE_6.6.0_PLAN.md`, "D4 PR A"). Nothing changes at runtime.
+Measured first (PR #231). Nothing changes at runtime.
 - **The dependency floors are true.** At the declared floors the CLI crashed: typer
   0.9.0 cannot read its `list[...]` options. pysam 0.21.0 has no macOS arm64 wheel
   and an sdist that fails on current setuptools. Bisected one package at a time, the
@@ -238,11 +237,14 @@ Measured first (`CYCLE_6.6.0_PLAN.md`, "D4 PR A"). Nothing changes at runtime.
   each build. `docker/requirements.lock` (linux/amd64, Python 3.11) is installed
   with `--require-hashes --no-deps`, then `pip check`, and is refreshed at each
   release (release guide step 4). CI now runs the image (`--version`, `pip check`).
+  The 6.6.0 lock takes polars 2.0, released the day before the cut: none of the
+  APIs it removed are used, and the suite passes on it. gbcms uses polars only in
+  `gbcms merge`, the mFSD report and the batch IO helpers, never to count.
 
 ### Changed — GTF loading (#139)
 
-Measured on GRCh38.111 (`CYCLE_6.6.0_PLAN.md`, "D4 GTF loading"). Only `--gtf` runs
-are affected, and their output is unchanged for well-formed GTFs.
+Measured on GRCh38.111 (PR #230). Only `--gtf` runs are affected, and their output
+is unchanged for well-formed GTFs.
 - **The GTF loads in 2 s instead of 9 s, plain or `.gtf.gz`.** noodles-gtf parsed
   every line before reading its feature column. A byte-level parser reads each
   line's feature and chromosome first and checks only the exon lines it keeps.
