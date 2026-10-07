@@ -245,7 +245,6 @@ def test_an_insert_written_past_the_scan_window_is_judged_by_its_placements(tmp_
 
 
 # ── Fourth review: the walk's last check honours the scan's separate event ───
-@pytest.mark.xfail(strict=True, reason="resolve_walk reads the aligner's placement again")
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_a_separate_event_by_its_best_placement_stays_separate(tmp_path, backend):
     """G>GA before A10 then C5 T: the read is REF with a T duplicated after the C run,

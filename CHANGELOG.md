@@ -71,8 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The rule (RJ-20).** A read whose inserted bases are all unreadable is neither,
   with partial evidence, on every path: at the junction, at another placement inside
   the discrimination window, across several ops, after a deleted anchor, and as a
-  truncation. Written outside the window such an insert is a separate event (RJ-8). "Readable" means not N and at or above `--min-baseq`, the gate SNV bases pass.
-  A read whose readable inserted bases match the ALT stays ALT, however many are
+  truncation. Written outside the window such an insert is a separate event (RJ-8).
+  "Readable" means not N and at or above `--min-baseq`, the gate SNV bases pass. A
+  read whose readable inserted bases match the ALT stays ALT, however many are
   masked. The read census holds the same rule. The post-splice path already counted
   such reads this way.
 - **Community practice.** Likelihood callers (GATK, bcftools, Strelka2) credit ALT on

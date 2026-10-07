@@ -1552,6 +1552,7 @@ fn scan_windowed_insertion_candidate(
     has_distinct_allele_nearby: &mut bool,
     has_unreadable_insert: &mut bool,
     another_allele_in_window: &mut bool,
+    separate_insertions: &mut Vec<i64>,
 ) {
     let anchor_pos = variant.pos;
     if ins_ref_pos == anchor_pos + 1 {
@@ -1687,8 +1688,9 @@ fn scan_windowed_insertion_candidate(
                 );
                 return;
             }
-            // Every placement outside the window: not the variant; a separate event,
-            // as a readable insert of the variant's bases there is (RJ-8).
+            // Every placement outside the window: not the variant; a separate event
+            // (RJ-8). The walk's last check must not read it where the aligner wrote it.
+            separate_insertions.push(ins_ref_pos);
             trace!(
                 "check_insertion: windowed I({}) at pos {} outside the discrimination window \
                  → separate event",
@@ -1799,6 +1801,9 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
     // An I of the variant's length and other bases that can sit inside the
     // discrimination window, wherever the aligner wrote it: another allele there.
     let mut another_allele_in_window = false;
+    // Inserts of the variant's length judged separate events by their placements,
+    // where the aligner wrote them: the walk's last check skips them.
+    let mut separate_insertions: Vec<i64> = Vec::new();
 
     for (i, op) in cigar_view.iter().enumerate() {
         match op {
@@ -1887,6 +1892,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         &mut has_distinct_allele_nearby,
                         &mut has_unreadable_insert,
                         &mut another_allele_in_window,
+                        &mut separate_insertions,
                     );
                 }
 
@@ -1933,6 +1939,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                         &mut has_distinct_allele_nearby,
                         &mut has_unreadable_insert,
                         &mut another_allele_in_window,
+                        &mut separate_insertions,
                     );
                 }
             }
@@ -1977,6 +1984,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
                             &mut has_distinct_allele_nearby,
                             &mut has_unreadable_insert,
                             &mut another_allele_in_window,
+                            &mut separate_insertions,
                         );
                     }
                 }
@@ -2008,6 +2016,7 @@ pub fn check_insertion<F: Fn(u8, u8) -> i32>(
             distinct_allele_nearby: has_distinct_allele_nearby,
             unreadable_insert: has_unreadable_insert,
             another_allele_in_window,
+            separate_insertions,
         },
     )
 }
@@ -2036,6 +2045,9 @@ struct WalkFindings {
     /// An insertion of the variant's length and other bases that can sit inside the
     /// discrimination window, wherever the aligner wrote it: another allele there.
     another_allele_in_window: bool,
+    /// Insertions judged separate events by their placements (every one outside the
+    /// window), at the reference junction the aligner wrote each at.
+    separate_insertions: Vec<i64>,
 }
 
 /// The call after an insertion or deletion check's CIGAR walk:
@@ -2139,7 +2151,7 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
         }
         return result;
     }
-    if other_indel_in_window(record, window::discrimination_window(variant), i64::MIN, false) {
+    if other_indel_in_window_except(record, window::discrimination_window(variant), &w.separate_insertions) {
         trace!(
             "check_{}: another insertion or deletion inside the window after {} → neither + \
              partial evidence",
@@ -2243,6 +2255,32 @@ fn other_indel_in_window(record: &Record, (lo, hi): (i64, i64), at: i64, own_is_
             }
             Cigar::Del(n) => {
                 if rp < hi && rp + *n as i64 > lo && !is_own(false, rp) {
+                    return true;
+                }
+                rp += *n as i64;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// `other_indel_in_window` for the walk's last check: any insertion or deletion of the
+/// read inside the window, except insertions the windowed scan judged separate events
+/// by their placements (written inside the window by the aligner, but best placed
+/// outside it).
+fn other_indel_in_window_except(record: &Record, (lo, hi): (i64, i64), separate_insertions: &[i64]) -> bool {
+    let mut rp = record.pos();
+    for op in record.cigar().iter() {
+        match op {
+            Cigar::Match(n) | Cigar::Equal(n) | Cigar::Diff(n) | Cigar::RefSkip(n) => rp += *n as i64,
+            Cigar::Ins(_) => {
+                if lo < rp && rp < hi && !separate_insertions.contains(&rp) {
+                    return true;
+                }
+            }
+            Cigar::Del(n) => {
+                if rp < hi && rp + *n as i64 > lo {
                     return true;
                 }
                 rp += *n as i64;
@@ -3063,6 +3101,7 @@ pub fn check_deletion<F: Fn(u8, u8) -> i32>(
             distinct_allele_nearby: has_distinct_allele_nearby,
             unreadable_insert: false,
             another_allele_in_window: false,
+            separate_insertions: Vec::new(),
         },
     )
 }
