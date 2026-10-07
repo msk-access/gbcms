@@ -2157,6 +2157,11 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">A windowed insertion of the variant's length with a readable base of its own is judged by the read's bases, never Phase 3's closer haplotype (where REF pays for the gap, so length won ALT against the bases, and another allele could be absorbed into REF), and over the best placements it can take, not only the aligner's: the insert slides a junction when the base it places onto the reference fits it (the same base, or a masked one), and a slide that takes in a read mismatch resolves it, so an absorbed sequencing error or a compensating mismatch slides back; only the placements with the fewest mismatches count. It is ALT when a placement shows the ALT by read bases (at the variant's junction as the strict path judges an insert there, its one readable base possibly a flank base taken in, as RJ-20 allows; or the variant's haplotype elsewhere in a repeat, the read's only change across the window) or when the read's bases across the window spell the ALT; otherwise it is another allele (neither, with partial evidence) when a placement sits inside the discrimination window, and a separate event (RJ-8) when none does. A readable insert written past the scan window is scanned when a placement reaches the window. Whether it can be read is its own inserted bases' question (RJ-20): an insert with no readable base does not slide, so it is judged where the aligner wrote it while a readable one with a masked edge base slides (an asymmetry RJ-20's homopolymer decision requires). Both backends give the same call. Amends RJ-8 (an insert's placement is where it can sit) and RJ-20 (the unreadable outside-window case). The census trusts the aligned flank: it misreads a readable insert written just outside the window that can sit inside it, and a compensating mismatch on the flank.</td>
 <td style="text-align: left;">C36 #243, operator 2026-10-06</td>
 </tr>
+<tr>
+<td style="text-align: left;">RJ-22</td>
+<td style="text-align: left;">A readable insert of the variant's length is never a separate event while one of its fewest-mismatch placements sits inside the discrimination window, every junction it can reach scored by the read's readable mismatches there (through the read's contiguous aligned bases, up to 64 junctions each way), not only the junctions a slide reaches base by base: readable mismatches beside the insert (the anchor read as another base, say) block that slide, but are resolved once the insert passes the base that does not fit, so a placement inside the window can be as good as the written one. Such a read carries another allele (neither, with partial evidence), never REF; and never ALT, though that placement may show the ALT's bases, since a per-read rule cannot tell one molecule's error from a recurring other allele. The strict path keeps its junction ALT when a slide could absorb a flank substitution into another insert: the read is the given ALT plus one substitution, as a REF read with a substitution in the window stays REF. An insert with no readable base is unchanged (RJ-20), and the same haplotype written inside a run still slides to the junction as RJ-21 judges it (not seen in the measured data). Amends RJ-8 and RJ-21. The census trusts the aligned flank, so it reads such a carrier as REF; and it needs the window to be one allele exactly, so it reads a junction ALT with a substitution in the window as neither (its first limit).</td>
+<td style="text-align: left;">C37 #245, operator 2026-10-07</td>
+</tr>
 </tbody>
 </table>
 <h3 id="open">Open<a class="headerlink" href="#open" title="Permanent link">¶</a></h3>
@@ -2297,6 +2302,30 @@ spanning-deletion allele or another candidate where one exists, is its own
 haplotype in freebayes, a separate allele in VarDict and depth only in
 GetBaseCounts; a closer-haplotype credit, as Phase 3 gave, appears only in the
 likelihood tools without such a bucket.</p>
+<p>Evidence behind RJ-22 (2026-10-07): every read call at insertion rows traced on
+develop, each read judged by its local haplotype, on RC (ABRA2-realigned), FORTE
+(<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>) and the WES loci (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> only, the control with no realigner).
+- The strict path's junction ALT with a substitution a slide absorbs: RC 28 of
+  12,015 junction ALT reads (FLT3 ITDs, a BRCA2 AAG row), WES 1 of 1,647, FORTE 0.
+  24 of the 29 substitutions appear in no other read and 5 also in non-carriers (an
+  SNV on the haplotype); at every row the given ALT is the dominant non-REF
+  haplotype and no other allele recurs. <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> had soft-clipped 19 of the 28 and
+  written 9 with the insert elsewhere in the tract; ABRA2 moves a read only onto a
+  contig with strictly fewer mismatches, and a singleton gets no contig of its own.
+- The carrier counted REF, measured with the fixed build against develop's outputs:
+  RC 19 reads at 2 rows, both BRCA2 13:32906888 G&gt;GA (an 8-A haplotype, the anchor
+  read as A plus an inserted A, in 11 or more reads across two samples, which ABRA2
+  wrote one and two junctions left); WES 2 (one fragment, a singleton anchor
+  substitution); FORTE 2, one written past the scan window at the far end of a GCT
+  tract. All REF to partial; no ALT or depth changed. Scoring the placements for ALT
+  as well would credit the recurring allele (<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 23 → 28 and 28 → 40), so they decide
+  only another allele against a separate event.</p>
+<p>A survey: GATK prunes haplotypes seen in fewer than two reads and force-calls the
+given alleles beside the discovered ones, so a read with one molecule's
+substitution supports the given ALT; ABRA2 places it on the given allele's contig;
+bcftools treats every same-length insertion as one allele;
+GetBaseCountsMultiSample and bam-readcount count the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> at the junction, and
+count a carrier with the gap elsewhere as REF.</p>
 <h2 id="the-cases">The cases<a class="headerlink" href="#the-cases" title="Permanent link">¶</a></h2>
 <p>Each group below is a set of shapes in <code>read_judgment_cases.py</code>, run at pure
 indels in homopolymers, dinucleotide repeats, duplications and unique sequence,
@@ -2370,6 +2399,11 @@ and at anchor-changing events before an A run.</p>
 <td style="text-align: left;">a 10-base insert of other bases one junction left and four right (REF); an 8-base one inside its duplicated tract (another allele); the ALT written one junction off with a compensating mismatch (ALT); the ALT with an error at its first inserted base, written one junction right (another allele)</td>
 <td style="text-align: left;">decided (RJ-21)</td>
 </tr>
+<tr>
+<td style="text-align: left;">Inserts behind a substitution</td>
+<td style="text-align: left;">+1 in a run, the ALT at the junction with a substitution in the run (ALT); the ALT with its anchor substituted, written one junction left, in a run and as a 10-base insert (another allele)</td>
+<td style="text-align: left;">decided (RJ-22)</td>
+</tr>
 </tbody>
 </table>
 <p>Run <code>python tests/read_judgment_cases.py</code> for the full table: every case's call,
@@ -2399,7 +2433,7 @@ with the read census's verdict next to each pure-indel case.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 7, 2026 01:41:56 UTC"><span class="timeago" datetime="2026-10-07T01:41:56+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 7, 2026 01:41:56 UTC">2026-10-07</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="October 7, 2026 15:22:11 UTC"><span class="timeago" datetime="2026-10-07T15:22:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="October 7, 2026 15:22:11 UTC">2026-10-07</span>
   </span>
 
     

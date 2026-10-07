@@ -11783,7 +11783,7 @@ its validation.</p>
 </button>
     </nav>
     <pre class="mermaid"><code>flowchart TD
-    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within window?\n(±max(5, repeat_span+2),\nor in the shift region)"}
+    WinIn(["→ from CIGAR walk"]):::entry --&gt; CheckWin{"Ins within window?\n(±max(5, repeat_span+2),\nor in the shift region; or a readable\nsame-length insert with a placement,\nbase by base or scored, inside the\ndiscrimination window: RJ-21/RJ-22)"}
     CheckWin --&gt;|No| Continue["Continue CIGAR walk"]
     CheckWin --&gt;|Yes| SameLen{"Same length?"}
     SameLen --&gt;|Yes| Readable{"Any of its own\ninserted bases readable?\n(RJ-20)"}
@@ -11802,7 +11802,9 @@ its validation.</p>
     Spells --&gt;|No| InDW3{"A placement inside the\ndiscrimination window?"}
     InDW3 --&gt;|Yes| FlagAA["Flag another_allele_in_window"]:::partialflag
     FlagAA --&gt; Continue
-    InDW3 --&gt;|"No: separate event"| Continue
+    InDW3 --&gt;|No| Scored{"Every junction scored by its\nreadable mismatches: a fewest-\nmismatch placement inside? (RJ-22)"}
+    Scored --&gt;|Yes| FlagAA
+    Scored --&gt;|"No: separate event"| Continue
     SameLen --&gt;|No| FlagWL["Flag has_distinct_allele_nearby\n(any size)"]:::partialflag
     FlagWL --&gt; Continue
     Continue --&gt; MoreOps{"More CIGAR ops?"}
@@ -11812,7 +11814,7 @@ its validation.</p>
     Eval --&gt;|No| URCheck{"has_unreadable_insert?"}
     URCheck --&gt;|Yes| URPartial(["⚪ Neither + partial\n(length, not sequence)"]):::partial
     URCheck --&gt;|No| AACheck{"another_allele_in_window?"}
-    AACheck --&gt;|Yes| AAPartial(["⚪ Neither + partial\n(another allele, RJ-21)"]):::partial
+    AACheck --&gt;|Yes| AAPartial(["⚪ Neither + partial\n(another allele, RJ-21/RJ-22)"]):::partial
     AACheck --&gt;|No| WLCheck{"has_distinct_allele_nearby\nAND ref coverage?"}
     WLCheck --&gt;|"Yes, the read changes\nthe discrimination window"| WLPartial(["⚪ Neither + partial\n(another allele, RJ-7)"]):::partial
     WLCheck --&gt;|"Yes, outside the window"| RefSep(["✅ REF\n(a separate event, RJ-8)"]):::ref
@@ -11873,9 +11875,16 @@ Use mouse to pan and zoom
   as the strict path judges an insert there, or the variant's haplotype) or the read's
   bases across the window spell the ALT; otherwise another allele when a placement sits
   inside the discrimination window (<code>another_allele_in_window</code>), a separate event when
-  none does. Whether it can be read at all is its own bases' question (RJ-20). Never
-  Phase 3, whose closer haplotype let length win ALT and absorbed other alleles into
-  REF.</li>
+  none does. Readable mismatches beside the insert (the anchor read as another base,
+  say) can block that slide while a placement inside the window is as good as the
+  written one, so before calling it a separate event every junction it can reach is
+  scored by the read's readable mismatches: a fewest-mismatch placement inside the
+  window makes it another allele too, never REF and never ALT (RJ-22, since 6.6.0; a
+  recurring other allele looks the same to one read). Whether it can be read at all is its own bases'
+  question (RJ-20). Never Phase 3, whose closer haplotype let length win ALT and
+  absorbed other alleles into REF. The strict path keeps its junction ALT when a
+  slide could absorb a flank substitution into another insert: the given ALT plus
+  one substitution, SNV-level as for a REF read (RJ-22).</li>
 <li><strong><code>has_distinct_allele_nearby</code></strong> — the windowed scan found an insertion of the
   <strong>wrong length</strong> (flagged at any size, so REF can never silently absorb it), or the
   variant's bases placed where they give <strong>another haplotype</strong> inside its discrimination
@@ -12265,7 +12274,7 @@ as the annotated event inflated <abbr title="Variant Allele Frequency - Fraction
 </tr>
 <tr>
 <td style="text-align: left;">A shifted same-length insertion with a readable base of its own</td>
-<td style="text-align: left;">Judged over every placement it can take as well (RJ-21): <strong>ALT</strong> when one shows the ALT by read bases (at the junction as the strict path would, or the variant's haplotype) or the read's bases spell the ALT across the window; else <strong>neither + <code>partial_alt</code></strong> when a placement sits inside the discrimination window, a separate event (<strong>REF</strong>) when none does</td>
+<td style="text-align: left;">Judged over every placement it can take as well (RJ-21): <strong>ALT</strong> when one shows the ALT by read bases (at the junction as the strict path would, or the variant's haplotype) or the read's bases spell the ALT across the window; else <strong>neither + <code>partial_alt</code></strong> when a placement sits inside the discrimination window, or a fewest-mismatch placement does with every junction it can reach scored by its readable mismatches (RJ-22: readable mismatches beside the insert block the slide); a separate event (<strong>REF</strong>) when none does</td>
 </tr>
 <tr>
 <td style="text-align: left;">Windowed wrong-length op inside the discrimination window (any of the read's indels there)</td>
@@ -13342,6 +13351,11 @@ it shows in review instead of slipping in with an unrelated fix.</p>
 <td style="text-align: left;">A windowed insertion of the variant's length with a readable base of its own is judged by the read's bases, never Phase 3's closer haplotype (where REF pays for the gap, so length won ALT against the bases, and another allele could be absorbed into REF), and over the best placements it can take, not only the aligner's: the insert slides a junction when the base it places onto the reference fits it (the same base, or a masked one), and a slide that takes in a read mismatch resolves it, so an absorbed sequencing error or a compensating mismatch slides back; only the placements with the fewest mismatches count. It is ALT when a placement shows the ALT by read bases (at the variant's junction as the strict path judges an insert there, its one readable base possibly a flank base taken in, as RJ-20 allows; or the variant's haplotype elsewhere in a repeat, the read's only change across the window) or when the read's bases across the window spell the ALT; otherwise it is another allele (neither, with partial evidence) when a placement sits inside the discrimination window, and a separate event (RJ-8) when none does. A readable insert written past the scan window is scanned when a placement reaches the window. Whether it can be read is its own inserted bases' question (RJ-20): an insert with no readable base does not slide, so it is judged where the aligner wrote it while a readable one with a masked edge base slides (an asymmetry RJ-20's homopolymer decision requires). Both backends give the same call. Amends RJ-8 (an insert's placement is where it can sit) and RJ-20 (the unreadable outside-window case). The census trusts the aligned flank: it misreads a readable insert written just outside the window that can sit inside it, and a compensating mismatch on the flank.</td>
 <td style="text-align: left;">C36 #243, operator 2026-10-06</td>
 </tr>
+<tr>
+<td style="text-align: left;">RJ-22</td>
+<td style="text-align: left;">A readable insert of the variant's length is never a separate event while one of its fewest-mismatch placements sits inside the discrimination window, every junction it can reach scored by the read's readable mismatches there (through the read's contiguous aligned bases, up to 64 junctions each way), not only the junctions a slide reaches base by base: readable mismatches beside the insert (the anchor read as another base, say) block that slide, but are resolved once the insert passes the base that does not fit, so a placement inside the window can be as good as the written one. Such a read carries another allele (neither, with partial evidence), never REF; and never ALT, though that placement may show the ALT's bases, since a per-read rule cannot tell one molecule's error from a recurring other allele. The strict path keeps its junction ALT when a slide could absorb a flank substitution into another insert: the read is the given ALT plus one substitution, as a REF read with a substitution in the window stays REF. An insert with no readable base is unchanged (RJ-20), and the same haplotype written inside a run still slides to the junction as RJ-21 judges it (not seen in the measured data). Amends RJ-8 and RJ-21. The census trusts the aligned flank, so it reads such a carrier as REF; and it needs the window to be one allele exactly, so it reads a junction ALT with a substitution in the window as neither (its first limit).</td>
+<td style="text-align: left;">C37 #245, operator 2026-10-07</td>
+</tr>
 </tbody>
 </table>
 <h3 id="reference-read-judgment-open">Open<a class="headerlink" href="#reference-read-judgment-open" title="Permanent link">¶</a></h3>
@@ -13482,6 +13496,30 @@ spanning-deletion allele or another candidate where one exists, is its own
 haplotype in freebayes, a separate allele in VarDict and depth only in
 GetBaseCounts; a closer-haplotype credit, as Phase 3 gave, appears only in the
 likelihood tools without such a bucket.</p>
+<p>Evidence behind RJ-22 (2026-10-07): every read call at insertion rows traced on
+develop, each read judged by its local haplotype, on RC (ABRA2-realigned), FORTE
+(<abbr title="Spliced Transcripts Alignment to a Reference - RNA-seq aligner">STAR</abbr>) and the WES loci (<abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> only, the control with no realigner).
+- The strict path's junction ALT with a substitution a slide absorbs: RC 28 of
+  12,015 junction ALT reads (FLT3 ITDs, a BRCA2 AAG row), WES 1 of 1,647, FORTE 0.
+  24 of the 29 substitutions appear in no other read and 5 also in non-carriers (an
+  SNV on the haplotype); at every row the given ALT is the dominant non-REF
+  haplotype and no other allele recurs. <abbr title="Burrows-Wheeler Aligner - Standard short-read DNA aligner (mem/aln)">BWA</abbr> had soft-clipped 19 of the 28 and
+  written 9 with the insert elsewhere in the tract; ABRA2 moves a read only onto a
+  contig with strictly fewer mismatches, and a singleton gets no contig of its own.
+- The carrier counted REF, measured with the fixed build against develop's outputs:
+  RC 19 reads at 2 rows, both BRCA2 13:32906888 G&gt;GA (an 8-A haplotype, the anchor
+  read as A plus an inserted A, in 11 or more reads across two samples, which ABRA2
+  wrote one and two junctions left); WES 2 (one fragment, a singleton anchor
+  substitution); FORTE 2, one written past the scan window at the far end of a GCT
+  tract. All REF to partial; no ALT or depth changed. Scoring the placements for ALT
+  as well would credit the recurring allele (<abbr title="Alternate Depth - Reads supporting the alternate allele">AD</abbr> 23 → 28 and 28 → 40), so they decide
+  only another allele against a separate event.</p>
+<p>A survey: GATK prunes haplotypes seen in fewer than two reads and force-calls the
+given alleles beside the discovered ones, so a read with one molecule's
+substitution supports the given ALT; ABRA2 places it on the given allele's contig;
+bcftools treats every same-length insertion as one allele;
+GetBaseCountsMultiSample and bam-readcount count the <abbr title="Compact Idiosyncratic Gapped Alignment Report - BAM alignment operation string">CIGAR</abbr> at the junction, and
+count a carrier with the gap elsewhere as REF.</p>
 <h2 id="reference-read-judgment-the-cases">The cases<a class="headerlink" href="#reference-read-judgment-the-cases" title="Permanent link">¶</a></h2>
 <p>Each group below is a set of shapes in <code>read_judgment_cases.py</code>, run at pure
 indels in homopolymers, dinucleotide repeats, duplications and unique sequence,
@@ -13554,6 +13592,11 @@ and at anchor-changing events before an A run.</p>
 <td style="text-align: left;">Inserts of other bases</td>
 <td style="text-align: left;">a 10-base insert of other bases one junction left and four right (REF); an 8-base one inside its duplicated tract (another allele); the ALT written one junction off with a compensating mismatch (ALT); the ALT with an error at its first inserted base, written one junction right (another allele)</td>
 <td style="text-align: left;">decided (RJ-21)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Inserts behind a substitution</td>
+<td style="text-align: left;">+1 in a run, the ALT at the junction with a substitution in the run (ALT); the ALT with its anchor substituted, written one junction left, in a run and as a 10-base insert (another allele)</td>
+<td style="text-align: left;">decided (RJ-22)</td>
 </tr>
 </tbody>
 </table>
@@ -16447,7 +16490,7 @@ caveat in gbcms's output.</p>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>another_allele_in_window</strong></td>
-<td style="text-align: left;">Flag for a windowed insertion of the variant's length, with a readable base of its own, that is not the ALT by its bases at any placement it can take and can sit inside the discrimination window, wherever the aligner wrote it (it slides a junction when the base it places onto the reference fits it): another allele there → neither + <code>partial_alt</code> (RJ-21, since 6.6.0).</td>
+<td style="text-align: left;">Flag for a windowed insertion of the variant's length, with a readable base of its own, that is not the ALT by its bases at any placement it can take and can sit inside the discrimination window, wherever the aligner wrote it (it slides a junction when the base it places onto the reference fits it), or whose fewest-mismatch placement, every junction it can reach scored by its readable mismatches, sits inside it (readable mismatches beside the insert block the slide; RJ-22): another allele there → neither + <code>partial_alt</code>, never REF or ALT (RJ-21, since 6.6.0).</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>left-alignment shift</strong></td>
@@ -18042,6 +18085,28 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   minimum span that dense variants chain past, bounded by the 200-variant cap; measured
   on real inputs (per-sample lists max 29 kb; one input holding a cohort's variants max
   47 kb) and never capped by span. The page no longer cites the retired parity suite.</li>
+</ul>
+<h3 id="development-changelog-fixed-a-carrier-behind-a-substitution-is-not-ref-the-junction-alt-stays-245">Fixed — a carrier behind a substitution is not REF; the junction ALT stays (#245)<a class="headerlink" href="#development-changelog-fixed-a-carrier-behind-a-substitution-is-not-ref-the-junction-alt-stays-245" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>A carrier counted REF.</strong> A readable insert of the variant's length written just
+  outside the window behind a substitution (the anchor read as another base, so the
+  base the insert would place onto the reference does not fit) could not slide back:
+  the read was a separate event and counted REF, though at the variant's junction it
+  costs no more mismatches. Against develop's outputs: RC 19 reads at 2 rows (one
+  BRCA2 allele recurring in two samples), WES 2, FORTE 2; all REF to partial, no ALT
+  or depth changed.</li>
+<li><strong>The rule (RJ-22).</strong> Before such an insert is called a separate event, every
+  junction it can reach (through the read's contiguous aligned bases, up to 64 each
+  way) is scored by the read's readable mismatches; a fewest-mismatch placement
+  inside the discrimination window makes it another allele (neither, with partial
+  evidence): never REF, and never ALT, since one read cannot tell a molecule's error
+  from a recurring other allele. ALT is still judged only over the placements a slide
+  reaches base by base (RJ-21). The scan-window gate admits an insert either way
+  reaches the window. An insert with no readable base is unchanged (RJ-20).</li>
+<li><strong>The strict path keeps its junction ALT</strong> when a slide could absorb a flank
+  substitution into another insert. On RC (28 reads) each is the given ALT plus one
+  molecule's substitution, no other allele recurring: ABRA2's placement of a
+  singleton. Every surveyed tool credits it ALT; a contract test pins it.</li>
 </ul>
 <h3 id="development-changelog-fixed-a-same-length-insert-of-other-bases-is-judged-by-its-bases-243">Fixed — a same-length insert of other bases is judged by its bases (#243)<a class="headerlink" href="#development-changelog-fixed-a-same-length-insert-of-other-bases-is-judged-by-its-bases-243" title="Permanent link">¶</a></h3>
 <ul>
