@@ -1453,15 +1453,20 @@ struct InsertPlacement {
     mismatches: i32,
 }
 
+/// How far (in junctions, each way) an insert slides from where the aligner wrote it.
+const MAX_INSERT_SLIDE: usize = 64;
+
 /// How an insert's slide treats the base it places onto the reference.
 #[derive(Clone, Copy, PartialEq)]
 enum Slide {
     /// Only onto a base it fits (the same base, or a masked one): the placements the
     /// insert can take base by base (RJ-21). Every ALT judgment uses these.
     Fits,
-    /// Onto any base, a readable mismatch costing one: every junction scored by the
-    /// read's readable mismatches there (RJ-22). Only to tell another allele from a
-    /// separate event, never to credit ALT.
+    /// Onto any base, a readable mismatch costing one: every junction the insert can
+    /// reach through the read's contiguous aligned bases, scored by the read's readable
+    /// mismatches there (RJ-22). A placement it reaches only across a base that does not
+    /// fit counts when readable mismatches beyond that base, now resolved, offset it.
+    /// Only to tell another allele from a separate event, never to credit ALT.
     Scored,
 }
 
@@ -1473,8 +1478,10 @@ enum Slide {
 /// when that base was a read mismatch the alignment loses one. So a sequencing error
 /// the aligner absorbed into the flank, or a compensating mismatch, slides back. With
 /// `Slide::Scored` a base that does not fit is placed too, the alignment gaining a
-/// mismatch, so a substitution next to the insert cannot hide a placement as good as
-/// the written one. Only the placements with the fewest mismatches are returned: a
+/// mismatch, so a substitution beside the insert cannot hide a placement as good as
+/// the written one. Either way it slides at most `MAX_INSERT_SLIDE` junctions each
+/// way, through contiguous aligned bases within the variant's prepared reference. Only
+/// the placements with the fewest mismatches are returned: a
 /// placement worse than the best (an insert walked along a run carrying a mismatch the
 /// best one resolves) is not as good. Called only for an insert with a readable base of
 /// its own: whether an insert can be read is its own bases' question (RJ-20), never a
@@ -1490,7 +1497,6 @@ fn insert_placements(
     min_baseq: u8,
     slide: Slide,
 ) -> Vec<InsertPlacement> {
-    const MAX_SLIDE: usize = 64;
     let seq = record.seq().as_bytes();
     let fits = |b: u8, q: u8, r: u8| q < min_baseq || b == b'N' || b == b'n' || b.eq_ignore_ascii_case(&r);
     let ref_at = |p: i64| window::reference_span(variant, p, p + 1).map(|v| v[0]);
@@ -1503,7 +1509,7 @@ fn insert_placements(
     };
     let mut out = vec![written.clone()];
     let mut cur = written.clone();
-    for _ in 0..MAX_SLIDE {
+    for _ in 0..MAX_INSERT_SLIDE {
         let j = cur.junction;
         let Some(r) = ref_at(j - 1) else { break };
         if cur.q_start == 0 || find_read_pos(record, j - 1) != Some(cur.q_start - 1) {
@@ -1524,7 +1530,7 @@ fn insert_placements(
         out.push(cur.clone());
     }
     let mut cur = written;
-    for _ in 0..MAX_SLIDE {
+    for _ in 0..MAX_INSERT_SLIDE {
         let j = cur.junction;
         let q_after = cur.q_start + len;
         let Some(r) = ref_at(j) else { break };
@@ -1553,9 +1559,11 @@ fn insert_placements(
 /// Evaluate a windowed (non-junction) I candidate at `ins_ref_pos`.
 ///
 /// Shared by the M-arm windowed scan and the post-N inspection; mutates the
-/// walk's resolution state. Candidates outside `[window_start, window_end]`
-/// or at the exact expected junction (owned by
-/// `resolve_anchor_insertion_candidate`) are ignored.
+/// walk's resolution state. A candidate at the exact expected junction (owned by
+/// `resolve_anchor_insertion_candidate`) is ignored; one outside
+/// `[window_start, window_end]` only when it is not a readable insert of the
+/// variant's length with a placement, base by base or scored, inside the
+/// discrimination window (RJ-21, RJ-22).
 #[allow(clippy::too_many_arguments)]
 fn scan_windowed_insertion_candidate(
     record: &Record,
@@ -1585,7 +1593,10 @@ fn scan_windowed_insertion_candidate(
         // discrimination window; anything else is out of reach.
         let seq_len = record.seq().len();
         let (lo, hi) = window::discrimination_window(variant);
+        let slide = MAX_INSERT_SLIDE as i64;
         let reaches = ins_len_usize == expected_ins_len
+            && ins_ref_pos + slide > lo
+            && ins_ref_pos - slide < hi
             && ins_start + ins_len_usize <= seq_len
             && readable_bases(
                 &record.seq().as_bytes()[ins_start..ins_start + ins_len_usize],
@@ -1710,13 +1721,14 @@ fn scan_windowed_insertion_candidate(
                 );
                 return;
             }
-            // Every placement it can take base by base lies outside the window. Scored at
-            // every junction by its readable mismatches, its fewest-mismatch placements
-            // may still include one inside: a substitution beside the insert (the anchor
-            // read as another base) blocks the slide, one mismatch either way. Then the
-            // read carries another allele there, never REF; and never ALT, though that
-            // placement may show the ALT's bases: a per-read rule cannot tell one
-            // molecule's error from a recurring other allele (RJ-22).
+            // Every placement it can take base by base lies outside the window. Scored by
+            // its readable mismatches at every junction it can reach, its fewest-mismatch
+            // placements may still include one inside: readable mismatches beside the
+            // insert (the anchor read as another base, say) block the slide but are
+            // resolved past the base that does not fit. Then the read carries another
+            // allele there, never REF; and never ALT, though that placement may show the
+            // ALT's bases: a per-read rule cannot tell one molecule's error from a
+            // recurring other allele (RJ-22).
             if insert_placements(record, variant, ins_ref_pos, ins_start, ins_len_usize, quals, min_baseq, Slide::Scored)
                 .iter()
                 .any(|p| inside(p.junction))
@@ -1789,7 +1801,10 @@ fn scan_windowed_insertion_candidate(
 ///    bases, never Phase 3's closer haplotype: ALT when its bases across the
 ///    window spell the ALT (the event written one junction off with a
 ///    compensating mismatch); otherwise another allele inside the discrimination
-///    window, a separate event outside it (RJ-21).
+///    window, a separate event outside it (RJ-21). Before it is called a separate
+///    event, its fewest-mismatch placements are scored at every junction it can
+///    reach: one inside the window makes it another allele, never REF or ALT
+///    (RJ-22, readable mismatches beside the insert blocking the slide).
 ///    **Phase 3 fallback:** only a read spanning the anchor with no gap the walk
 ///    recognised goes to `phase3_classify` (under PairHMM the pangenomic route
 ///    first, else `check_complex`).
@@ -2139,11 +2154,12 @@ fn resolve_walk<F: Fn(u8, u8) -> i32>(
         return ClassifyResult::neither_with_nearby(w.anchor_qual, ClassifyPhase::Structural);
     }
     if w.another_allele_in_window {
-        // Its insert, of the variant's length and other bases, can sit inside the
-        // window as well as where the aligner wrote it: another allele there.
+        // Its insert, of the variant's length and not the ALT by its bases there, can
+        // sit inside the window as well as where the aligner wrote it (RJ-21), or at
+        // its fewest mismatches (RJ-22): another allele there.
         trace!(
-            "check_{}: an insertion of other bases that can sit inside the window after {} → \
-             neither + partial evidence",
+            "check_{}: an insertion that can sit inside the window after {} and is not the \
+             ALT → another allele, neither + partial evidence",
             w.kind, anchor_pos
         );
         return ClassifyResult::neither_with_nearby(w.anchor_qual, ClassifyPhase::Structural);
@@ -3274,5 +3290,91 @@ mod tests {
         assert!(!insert_truncation_match(COMPLEX_INS, COMPLEX_INS)); // equal length
         let longer = [COMPLEX_INS, b"TT"].concat();
         assert!(!insert_truncation_match(&longer, COMPLEX_INS)); // longer than expected
+    }
+
+    // ── insert_placements — where a read's insert can sit (RJ-21, RJ-22) ──
+    // Prepared reference at 100: C C C C G A A A A A T T T T (G>GA at 104, A run
+    // 105-109, T run 110-113).
+    const PLACE_REF: &str = "CCCCGAAAAATTTT";
+
+    fn place_variant() -> Variant {
+        Variant {
+            chrom: "1".to_string(),
+            pos: 104,
+            ref_allele: "G".to_string(),
+            alt_allele: "GA".to_string(),
+            variant_type: "INSERTION".to_string(),
+            ref_context: Some(PLACE_REF.to_string()),
+            ref_context_start: 100,
+            repeat_span: 5,
+            gene_strand: None,
+            shift_region: None,
+            event_ref: None,
+            boundary_span: None,
+        }
+    }
+
+    /// A read at 100 with one inserted base after `left` aligned bases.
+    fn place_read(seq: &[u8], left: u32) -> Record {
+        let right = seq.len() as u32 - left - 1;
+        let cigar = rust_htslib::bam::record::CigarString(vec![
+            Cigar::Match(left),
+            Cigar::Ins(1),
+            Cigar::Match(right),
+        ]);
+        let mut rec = Record::new();
+        rec.set(b"r", Some(&cigar), seq, &vec![30; seq.len()]);
+        rec.set_pos(100);
+        rec
+    }
+
+    fn junctions(p: &[InsertPlacement]) -> Vec<i64> {
+        let mut j: Vec<i64> = p.iter().map(|x| x.junction).collect();
+        j.sort_unstable();
+        j
+    }
+
+    #[test]
+    fn a_substitution_beside_the_insert_blocks_the_slide_but_not_the_score() {
+        // The ALT with its anchor read as A, written with the inserted A before the
+        // anchor (junction 104): C C C C [A] A A A A A A T T T T. Base by base the
+        // insert cannot move (its A does not fit the anchor G or the C before it);
+        // scored, placing it on the anchor costs one and resolves the anchor's A, so
+        // every junction from 104 through the A run ties at the written cost.
+        let rec = place_read(b"CCCCAAAAAAATTTT", 4);
+        let v = place_variant();
+        let fits = insert_placements(&rec, &v, 104, 4, 1, &[30; 15], 20, Slide::Fits);
+        assert_eq!(junctions(&fits), vec![104]);
+        let scored = insert_placements(&rec, &v, 104, 4, 1, &[30; 15], 20, Slide::Scored);
+        assert!(scored.iter().all(|p| p.mismatches == 0));
+        assert_eq!(junctions(&scored), (104..=110).collect::<Vec<i64>>());
+    }
+
+    #[test]
+    fn without_a_mismatch_to_resolve_scoring_finds_nothing_new() {
+        // REF with a C inserted between the A and T runs (junction 110): no readable
+        // mismatch in the read, so every move costs and none pays back.
+        let rec = place_read(b"CCCCGAAAAACTTTT", 10);
+        let v = place_variant();
+        let q = [30; 15];
+        let fits = insert_placements(&rec, &v, 110, 10, 1, &q, 20, Slide::Fits);
+        let scored = insert_placements(&rec, &v, 110, 10, 1, &q, 20, Slide::Scored);
+        assert_eq!(junctions(&fits), vec![110]);
+        assert_eq!(junctions(&scored), vec![110]);
+    }
+
+    #[test]
+    fn a_masked_substitution_is_no_mismatch_to_resolve() {
+        // The first case with the anchor's A masked (Q5): the inserted A still does
+        // not fit the anchor G, and taking in the masked base resolves nothing (a
+        // masked base counts in neither term), so scoring finds nothing new either.
+        let rec = place_read(b"CCCCAAAAAAATTTT", 4);
+        let v = place_variant();
+        let mut q = [30u8; 15];
+        q[5] = 5;
+        let fits = insert_placements(&rec, &v, 104, 4, 1, &q, 20, Slide::Fits);
+        let scored = insert_placements(&rec, &v, 104, 4, 1, &q, 20, Slide::Scored);
+        assert_eq!(junctions(&fits), vec![104]);
+        assert_eq!(junctions(&scored), vec![104]);
     }
 }

@@ -195,7 +195,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Ins within window?\n(±max(5, repeat_span+2),\nor in the shift region)"}
+    WinIn(["→ from CIGAR walk"]):::entry --> CheckWin{"Ins within window?\n(±max(5, repeat_span+2),\nor in the shift region; or a readable\nsame-length insert with a placement,\nbase by base or scored, inside the\ndiscrimination window: RJ-21/RJ-22)"}
     CheckWin -->|No| Continue["Continue CIGAR walk"]
     CheckWin -->|Yes| SameLen{"Same length?"}
     SameLen -->|Yes| Readable{"Any of its own\ninserted bases readable?\n(RJ-20)"}
@@ -264,12 +264,12 @@ Three layers of validation prevent false-positive windowed matches:
       as the strict path judges an insert there, or the variant's haplotype) or the read's
       bases across the window spell the ALT; otherwise another allele when a placement sits
       inside the discrimination window (`another_allele_in_window`), a separate event when
-      none does. A substitution beside the insert (the anchor read as another base) can
-      block that slide with a placement inside the window as good as the written one, so
-      before calling it a separate event every junction is scored by the read's readable
-      mismatches: a fewest-mismatch placement inside the window makes it another allele
-      too, never REF and never ALT (RJ-22, since 6.6.0; a recurring other allele
-      looks the same to one read). Whether it can be read at all is its own bases'
+      none does. Readable mismatches beside the insert (the anchor read as another base,
+      say) can block that slide while a placement inside the window is as good as the
+      written one, so before calling it a separate event every junction it can reach is
+      scored by the read's readable mismatches: a fewest-mismatch placement inside the
+      window makes it another allele too, never REF and never ALT (RJ-22, since 6.6.0; a
+      recurring other allele looks the same to one read). Whether it can be read at all is its own bases'
       question (RJ-20). Never Phase 3, whose closer haplotype let length win ALT and
       absorbed other alleles into REF. The strict path keeps its junction ALT when a
       slide could absorb a flank substitution into another insert: the given ALT plus
@@ -536,7 +536,7 @@ as the annotated event inflated VAF several-fold at such loci.
 | Same-length insertion with confidently mismatching bases | **Neither + `partial_alt`** (third allele) |
 | Same-length insertion with no readable inserted base (each N or below `--min-baseq`), at the anchor or shifted inside the discrimination window | **Neither + `partial_alt`** (RJ-20: the length, not the sequence) |
 | The same outside the discrimination window | A separate event (RJ-8): **REF** unless the read has another indel in the window |
-| A shifted same-length insertion with a readable base of its own | Judged over every placement it can take as well (RJ-21): **ALT** when one shows the ALT by read bases (at the junction as the strict path would, or the variant's haplotype) or the read's bases spell the ALT across the window; else **neither + `partial_alt`** when a placement sits inside the discrimination window, or a fewest-mismatch placement does with every junction scored by its readable mismatches (RJ-22: a substitution beside the insert blocks the slide); a separate event (**REF**) when none does |
+| A shifted same-length insertion with a readable base of its own | Judged over every placement it can take as well (RJ-21): **ALT** when one shows the ALT by read bases (at the junction as the strict path would, or the variant's haplotype) or the read's bases spell the ALT across the window; else **neither + `partial_alt`** when a placement sits inside the discrimination window, or a fewest-mismatch placement does with every junction it can reach scored by its readable mismatches (RJ-22: readable mismatches beside the insert block the slide); a separate event (**REF**) when none does |
 | Windowed wrong-length op inside the discrimination window (any of the read's indels there) | **Neither + `partial_alt`** (RJ-7; deletions only when the op is ≥5bp — 1–4bp windowed Ds are alignment noise → plain REF; insertions at any size) |
 | Windowed wrong-length op outside the window, the window free of the read's indels | **REF**, a separate event with no partial evidence (RJ-8) |
 

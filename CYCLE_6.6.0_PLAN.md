@@ -2123,6 +2123,20 @@ page from the CHANGELOG section in the release workflow.
     rows then report the allele's full count), and the pipeline warns naming them.
   - #246's shape, the complex and component double annotation and the masked
     two-sibling read: kept and documented; #246 moves to 6.7.0 with these numbers.
+
+  Implemented (`feature/c37-carrier-not-ref`, RJ-22): `insert_placements` gains a scored
+  mode (a base that does not fit placed at a cost of one), consulted before a readable
+  same-length insert is called a separate event and at the scan-window gate; ALT stays
+  judged over the fits-gated placements. Acceptance against develop's outputs: RC 2
+  rows (both BRCA2 13:32906888, REF −19, partial +19), WES 1 row (REF −2), FORTE RNA 2
+  rows (REF −2, one read written past the scan pad at a GCT tract's far end, which the
+  haplotype measurement's window missed); FORTE DNA mode, 8 Parquet tables, RNA truth
+  and probes unchanged; no ALT or depth changed anywhere. The adversarial review found
+  no blocker: two scored branches without a test (the gate's arm, the left slide; now
+  tested, with unit tests of `insert_placements`), the docs' trigger narrower than the
+  code (any readable mismatches a slide resolves, within its reach), and a 1.5x cost
+  on synthetic 10 kb reads dense with insertions (the gate now skips inserts beyond
+  the slide's reach). The twin-row fix is its own branch (`feature/c38-guard-twins`).
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists

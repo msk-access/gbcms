@@ -39,14 +39,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outside the window behind a substitution (the anchor read as another base, so the
   base the insert would place onto the reference does not fit) could not slide back:
   the read was a separate event and counted REF, though at the variant's junction it
-  costs no more mismatches. RC 20 reads at one BRCA2 row (a recurring other allele),
-  WES 2, FORTE 1.
+  costs no more mismatches. Against develop's outputs: RC 19 reads at 2 rows (one
+  BRCA2 allele recurring in two samples), WES 2, FORTE 2; all REF to partial, no ALT
+  or depth changed.
 - **The rule (RJ-22).** Before such an insert is called a separate event, every
-  junction is scored by the read's readable mismatches; a fewest-mismatch placement
+  junction it can reach (through the read's contiguous aligned bases, up to 64 each
+  way) is scored by the read's readable mismatches; a fewest-mismatch placement
   inside the discrimination window makes it another allele (neither, with partial
   evidence): never REF, and never ALT, since one read cannot tell a molecule's error
   from a recurring other allele. ALT is still judged only over the placements a slide
-  reaches base by base (RJ-21). An insert with no readable base is unchanged (RJ-20).
+  reaches base by base (RJ-21). The scan-window gate admits an insert either way
+  reaches the window. An insert with no readable base is unchanged (RJ-20).
 - **The strict path keeps its junction ALT** when a slide could absorb a flank
   substitution into another insert. On RC (28 reads) each is the given ALT plus one
   molecule's substitution, no other allele recurring: ABRA2's placement of a
