@@ -30,7 +30,9 @@ model's habits and loses under load). The deterministic floor lives in
   files in there only after scanning each staged one (decoded where binary) for MSK
   sample, CMO and anonymized-BAM identifiers, under 2 MB; a slice of a real BAM
   never goes there, renamed or not — its reads are the patient's. (Enforced:
-  `.githooks/pre-commit` step 1b.)
+  `.githooks/pre-commit` step 1b.) The one other data-extension file it admits is
+  `scripts/regression_panel/checkpoints.tsv` (commit SHAs and PR labels), only in
+  `checkpoints.py`'s shape and with no identifier in it (step 1a).
 
 ## Outward-facing actions
 - **Ask before public.** The default destination for any artifact is private. A
