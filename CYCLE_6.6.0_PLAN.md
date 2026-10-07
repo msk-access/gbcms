@@ -2317,6 +2317,22 @@ and concordance at the sign-out's own level (99%). Attribution with two checkpoi
 unattributed. GitHub runs a manual workflow only from the default branch, so the
 checkpoint wheels also start from a pushed `checkpoint-wheels/X.Y.Z` branch.
 
+**Adversarial review (2026-10-07), fixed red-first.** Two blockers: the mfsd and rna
+arms' Benjamini-Hochberg q-values are computed across the run's rows, so a reduced run
+could never check exact (those arms now keep their full variant files); GNU time's
+failure line reached the time records and crashed the comparison (a tagged line now).
+Should-fix: a run that failed after writing its MAF counted as finished (runs now
+leave a success marker, and the latest attempt in the time records is the outcome);
+VCF records dropped by the candidate and rows present in one version only went
+unreported or untraced; rows were matched by position (now by locus); a missing
+checkpoint output hid its step; the reduction could cut a co-annotation group
+(span-aware and transitive now, with `gbcms_status_reason` exempt on context rows
+only); concordance ranked IMPACT by fragments, and the gate listed rises as falls; the
+gate could test an earlier commit than the release (the shipped commit is always the
+last checkpoint, and the base tag as a wheel row 0); gbcms read the run list as its
+stdin. The selector's sample-stratum gain and anchor labels were fixed and the panel
+re-selected: 289 samples, 411 runs, 13,323 variants, 70 strata at target.
+
 ### D6 — One QC-flags reference page (#156) · M
 **Finding.** Every QC flag is documented in `output-formats.md`, but it is
 spread out:
