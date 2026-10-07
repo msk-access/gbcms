@@ -2068,6 +2068,75 @@ page from the CHANGELOG section in the release workflow.
     local rows, 8 Parquet tables; 144 cluster files). Docker image built and ran
     (`gbcms --version`, `pip check`) before the rebase; the rebase changed no
     dependency.
+- **C37 #245 and C38 #246, measured (2026-10-07).** On develop (f73f9219), every read
+  call at insertion rows and at rows with a sibling within 50 bp traced with one
+  thread, on RC, FORTE and the WES loci (BWA only, no ABRA2: the control the operator
+  named), and each read judged by its local haplotype (`harness/c37/`):
+  - **The strict path's junction ALT that a slide places better elsewhere (#245).** RC
+    28 of 12,015 junction ALT reads (FLT3 ITDs, the BRCA2 AAG row), WES 1 of 1,647,
+    FORTE 0. Each is the ALT haplotype plus one substitution: 24 of 29 substitutions in
+    no other read (the mate shows the reference where it covers the base), 5 shared
+    with non-carriers (an SNV on the haplotype), none recurring among carriers only. At
+    every row the given ALT is the dominant non-REF haplotype and no other allele
+    recurs. 94% of all RC junction ALT reads carry ABRA2's YO tag; BWA had soft-clipped
+    19 of the 28 and written 9 with the insert elsewhere in the tract. ABRA2 moves a
+    read only onto an assembled contig with strictly fewer mismatches, and a singleton
+    gets no contig of its own, so its junction placement carries the assembly's
+    evidence.
+  - **The mirror (found with the WES control).** A readable same-length insert that the
+    aligner wrote just outside the window behind a substitution (the base it would
+    place onto the reference does not fit) cannot slide back, so it is a separate event
+    and the read counts REF, though its fewest-mismatch placement is at the variant's
+    junction: RC 20 reads, all at BRCA2 13:32906888 G>GA (the 8-A haplotype, G>A plus an
+    A insertion, recurring in 11+ reads across two samples: another allele), WES 2 (one
+    fragment, a singleton anchor substitution), FORTE 1. A prototype that scores every
+    placement by readable mismatches reproduces develop's call on every other read of
+    the three sets.
+  - **Siblings (#246).** The SNV-plus-insertion compensating mismatch: RC 0 (14 reads
+    carry both in cis, counted at both); FORTE has no SNV rows, WES no siblings. A
+    complex row and its component deletion row: RC 4 deletion rows in 3 samples, 348
+    reads (65-93% of those rows' AD) carry the complex allele with the deletion's exact
+    op and the other events outside the deletion's window (RJ-8: in cis). A masked
+    junction insert fitting two same-length siblings: FORTE 1 read. And duplicate input
+    rows of one allele (FORTE's probe set lists +CTG at both ends of a (CTG)x11 tract,
+    3:40462029 and 40462061): prep normalizes them to one variant, each is the other's
+    sibling, and the AD guard calls every carrier written mid-tract "either allele,
+    neither row's AD". Shown not to be binning (one variant per bin gives the same
+    counts): with the twin, +CTG AD 7 (partial 95); without it, AD 62 (partial 40), as
+    when counted alone.
+  - Survey (`survey_c37_c38.md`, docs and source): GATK prunes haplotypes under 2 reads
+    and adds the given alleles, so a singleton-substitution read supports the given ALT;
+    ABRA2 places it on the given allele's contig; bcftools treats every same-length
+    insertion as one allele; GetBaseCountsMultiSample and bam-readcount count the
+    junction CIGAR literally (and count a carrier with the gap elsewhere as REF).
+    Haplotype tools assign each read once and credit a cis read to both records; GATK
+    and bcftools merge duplicate alleles into one record.
+
+  Decided (operator, 2026-10-07):
+  - #245: the strict path keeps its junction ALT (every surveyed tool credits it; the
+    substitutions are single molecules). Pinned by a contract test and documented;
+    best placements on the strict path and placement-scored ALT are rejected
+    (REJECTED REJ-20261007-001, -002).
+  - The mirror: such a read is another allele (partial), never REF and never ALT. The
+    unreadable-insert case (a masked anchor, RJ-20's no-slide rule) stays as decided.
+  - Duplicate rows: the AD guard skips a sibling identical to the row after prep (both
+    rows then report the allele's full count), and the pipeline warns naming them.
+  - #246's shape, the complex and component double annotation and the masked
+    two-sibling read: kept and documented; #246 moves to 6.7.0 with these numbers.
+
+  Implemented (`feature/c37-carrier-not-ref`, RJ-22): `insert_placements` gains a scored
+  mode (a base that does not fit placed at a cost of one), consulted before a readable
+  same-length insert is called a separate event and at the scan-window gate; ALT stays
+  judged over the fits-gated placements. Acceptance against develop's outputs: RC 2
+  rows (both BRCA2 13:32906888, REF −19, partial +19), WES 1 row (REF −2), FORTE RNA 2
+  rows (REF −2, one read written past the scan pad at a GCT tract's far end, which the
+  haplotype measurement's window missed); FORTE DNA mode, 8 Parquet tables, RNA truth
+  and probes unchanged; no ALT or depth changed anywhere. The adversarial review found
+  no blocker: two scored branches without a test (the gate's arm, the left slide; now
+  tested, with unit tests of `insert_placements`), the docs' trigger narrower than the
+  code (any readable mismatches a slide resolves, within its reach), and a 1.5x cost
+  on synthetic 10 kb reads dense with insertions (the gate now skips inserts beyond
+  the slide's reach). The twin-row fix is its own branch (`feature/c38-guard-twins`).
 - **P3 #152: doc the floor.** Measured by replaying the bin rule: `BIN_WINDOW` (10 kb)
   is a floor, not a maximum — each member extends the end by its span plus half a
   window, and the 200-variant cap stops dense inputs. Per-sample signed-out lists
